@@ -170,6 +170,22 @@ public sealed class AppServerClient : IDisposable {
         var parameters = new JsonObject()
             .Add("threadId", threadId)
             .Add("input", input);
+        return await StartTurnAsync(parameters, model, currentDirectory, approvalPolicy, sandboxPolicy, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<TurnInfo> StartTurnAsync(string threadId, JsonArray input, string? model, string? currentDirectory,
+        string? approvalPolicy, SandboxPolicy? sandboxPolicy, CancellationToken cancellationToken = default) {
+        Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
+        Guard.NotNull(input, nameof(input));
+
+        var parameters = new JsonObject()
+            .Add("threadId", threadId)
+            .Add("input", input);
+        return await StartTurnAsync(parameters, model, currentDirectory, approvalPolicy, sandboxPolicy, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<TurnInfo> StartTurnAsync(JsonObject parameters, string? model, string? currentDirectory,
+        string? approvalPolicy, SandboxPolicy? sandboxPolicy, CancellationToken cancellationToken = default) {
         if (!string.IsNullOrWhiteSpace(model)) {
             parameters.Add("model", model);
         }
