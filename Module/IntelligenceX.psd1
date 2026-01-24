@@ -11,6 +11,8 @@
         'Get-IntelligenceXAccount',
         'Start-IntelligenceXThread',
         'Send-IntelligenceXMessage',
+        'Invoke-IntelligenceXChat',
+        'Get-IntelligenceXTurnOutput',
         'Get-IntelligenceXThread',
         'Get-IntelligenceXLoadedThread',
         'Resume-IntelligenceXThread',

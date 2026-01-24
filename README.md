@@ -31,6 +31,53 @@ var thread = await client.StartThreadAsync("gpt-5.1-codex");
 await client.StartTurnAsync(thread.Id, "Hello from IntelligenceX");
 ```
 
+## Super easy (.NET)
+
+EasySession (auto init + login + thread):
+
+```csharp
+using IntelligenceX;
+
+await using var session = await EasySession.StartAsync();
+await session.ChatAsync("Hello!");
+```
+
+```csharp
+using IntelligenceX;
+
+await using var ix = await IntelligenceXClient.ConnectAsync();
+await ix.LoginChatGptAndWaitAsync(url => Console.WriteLine(url));
+await ix.ChatAsync("Hello!");
+```
+
+Images and files (.NET):
+
+```csharp
+using IntelligenceX;
+
+await using var ix = await IntelligenceXClient.ConnectAsync();
+await ix.LoginChatGptAndWaitAsync(url => Console.WriteLine(url));
+
+await ix.ChatWithImagePathAsync("Describe this image", "C:\\Images\\cat.png");
+```
+
+Allow file writes (workspace):
+
+```csharp
+await using var ix = await IntelligenceXClient.ConnectAsync();
+await ix.ChatAsync("Create a report.txt file with a summary of today.",
+    new IntelligenceX.Chat.ChatOptions { Workspace = "C:\\Work" });
+```
+
+Reading image outputs:
+
+```csharp
+var turn = await ix.ChatAsync("Generate a small icon.");
+foreach (var image in turn.ImageOutputs) {
+    Console.WriteLine(image.ImageUrl ?? image.ImagePath ?? image.Base64);
+}
+```
+
 ## Fluent quick start (.NET)
 
 ```csharp
@@ -82,13 +129,54 @@ Watch-IntelligenceXEvent -Client $client
 Invoke-IntelligenceXRpc -Client $client -Method 'thread/list' -Params @{ limit = 5 }
 ```
 
+Super easy PowerShell:
+
+```powershell
+Invoke-IntelligenceXChat "Hello from PowerShell"
+```
+
+PowerShell DSL (pipeline):
+
+```powershell
+"text:Summarize this image", "image:C:\Images\cat.png" | Invoke-IntelligenceXChat
+```
+
+Images and workspace (PowerShell):
+
+```powershell
+Invoke-IntelligenceXChat "Describe this image" -ImagePath "C:\\Images\\cat.png"
+Invoke-IntelligenceXChat "Write a summary to report.txt" -Workspace "C:\\Work"
+```
+
+Reading outputs (PowerShell):
+
+```powershell
+$turn = Invoke-IntelligenceXChat "Generate an icon"
+$turn | Get-IntelligenceXTurnOutput -Images
+```
+
+Save image outputs (PowerShell):
+
+```powershell
+$turn = Invoke-IntelligenceXChat "Generate an icon"
+$turn | Get-IntelligenceXTurnOutput -SaveImagesTo "C:\\Images" -DownloadUrls
+```
+
+Save image outputs in one line:
+
+```powershell
+Invoke-IntelligenceXChat "Generate an icon" -SaveImagesTo "C:\\Images" -DownloadImageUrls
+```
+
+Default file names include a UTC timestamp (and model when known). Use `-ImageFileNamePrefix` or `-FileNamePrefix` to override.
+
 Cmdlet overview (binary):
 - Connection/auth: Connect-IntelligenceX, Initialize-IntelligenceX, Start-IntelligenceXChatGptLogin, Start-IntelligenceXApiKeyLogin
 - Threads/turns: Get-IntelligenceXThread, Get-IntelligenceXLoadedThread, Resume-IntelligenceXThread, New-IntelligenceXThreadFork, Backup-IntelligenceXThread, Restore-IntelligenceXThread, Start-IntelligenceXThread, Send-IntelligenceXMessage, Stop-IntelligenceXTurn
 - Tools/config: Invoke-IntelligenceXCommand, Get-IntelligenceXConfig, Set-IntelligenceXConfigValue, Set-IntelligenceXConfigBatch, Get-IntelligenceXConfigRequirements
 - Skills/models: Get-IntelligenceXSkill, Set-IntelligenceXSkill, Get-IntelligenceXModel, Get-IntelligenceXCollaborationMode
 - MCP/user: Start-IntelligenceXMcpOAuthLogin, Get-IntelligenceXMcpServerStatus, Invoke-IntelligenceXMcpServerConfigReload, Request-IntelligenceXUserInput
-- Events/other: Watch-IntelligenceXEvent, Invoke-IntelligenceXRpc, Send-IntelligenceXFeedback
+- Events/other: Watch-IntelligenceXEvent, Invoke-IntelligenceXRpc, Send-IntelligenceXFeedback, Get-IntelligenceXTurnOutput
 
 ## Examples
 

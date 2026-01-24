@@ -1,0 +1,37 @@
+name: Claude Code Review
+
+on:
+    pull_request:
+        types: [opened, synchronize, reopened]
+    workflow_dispatch:
+
+jobs:
+    claude-review:
+        if: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' && (github.event_name != 'pull_request' || (!github.event.pull_request.draft && !contains(github.event.pull_request.title, '[skip-review]'))) }}
+        runs-on: [self-hosted, ubuntu]
+        permissions:
+            contents: read
+            pull-requests: write
+            issues: write
+            id-token: write
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 1
+
+            - name: Run Claude Code Review
+              uses: anthropics/claude-code-action@beta
+              with:
+                  claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+                  use_sticky_comment: true
+                  direct_prompt: |
+                      Please review this pull request and provide feedback on:
+                      - Code quality and best practices (.NET/PowerShell)
+                      - Potential bugs or issues
+                      - Performance considerations
+                      - Security concerns
+                      - Test coverage
+
+                      Keep the report structured and concise. Highlight risky changes first.
