@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <Title>IntelligenceX</Title>
+        <Description>
+            IntelligenceX is a lightweight .NET client for the Codex app-server protocol. It
+            provides a JSON-RPC client, process management, and convenience methods for
+            authentication and conversations.
+        </Description>
+        <AssemblyName>IntelligenceX</AssemblyName>
+        <AssemblyTitle>IntelligenceX</AssemblyTitle>
+        <VersionPrefix>0.1.0</VersionPrefix>
+        <AssemblyVersion>0.1.0</AssemblyVersion>
+        <FileVersion>0.1.0</FileVersion>
+        <TargetFrameworks Condition=" '$([MSBuild]::IsOsPlatform(`Windows`))' ">netstandard2.0;net472;net8.0;net10.0</TargetFrameworks>
+        <TargetFrameworks Condition=" '$([MSBuild]::IsOsPlatform(`OSX`))'  Or '$([MSBuild]::IsOsPlatform(`Linux`))' ">net8.0;net10.0</TargetFrameworks>
+        <GeneratePackageOnBuild>False</GeneratePackageOnBuild>
+        <Company>Evotec</Company>
+        <Authors>Przemyslaw Klys</Authors>
+        <LangVersion>Latest</LangVersion>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <PackageId>IntelligenceX</PackageId>
+        <PackageTags>codex;json-rpc;app-server;netstandard2.0;net472;net8.0;net10.0</PackageTags>
+        <PackageProjectUrl>https://github.com/EvotecIT/IntelligenceX</PackageProjectUrl>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <RequireLicenseAcceptance>false</RequireLicenseAcceptance>
+        <IsPublishable>True</IsPublishable>
+        <RepositoryUrl>https://github.com/EvotecIT/IntelligenceX</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <GenerateDocumentationFile>True</GenerateDocumentationFile>
+        <NoWarn>$(NoWarn);1591</NoWarn>
+        <NeutralLanguage>en</NeutralLanguage>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="..\README.md">
+            <Pack>True</Pack>
+            <PackagePath>\</PackagePath>
+        </None>
+    </ItemGroup>
+</Project>
