@@ -206,6 +206,13 @@ Optional env/inputs (SocraticLens-style):
 - `skip_titles`, `skip_labels`, `skip_paths`, `skip_draft`
 - `redact_pii`, `redaction_patterns`, `redaction_replacement`
 - `overwrite_summary` (default `true`)
+- `prompt_template` / `prompt_template_path` (override prompt template)
+- `summary_template` / `summary_template_path` (override PR comment template)
+
+Template tokens:
+- Prompt: `{{PersonaBlock}}`, `{{NotesBlock}}`, `{{SeverityBlock}}`, `{{Length}}`, `{{Mode}}`, `{{MaxInlineComments}}`,
+  `{{NextStepsSection}}`, `{{Title}}`, `{{Body}}`, `{{Files}}`
+- Summary: `{{SummaryMarker}}`, `{{Number}}`, `{{Title}}`, `{{InlineNote}}`, `{{ReviewBody}}`, `{{Model}}`, `{{Length}}`
 
 Codex app-server settings (optional):
 - `CODEX_APP_SERVER_PATH`

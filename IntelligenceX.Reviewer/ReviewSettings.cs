@@ -16,6 +16,10 @@ internal sealed class ReviewSettings {
     public string Model { get; set; } = "gpt-5.1-codex";
     public ReviewLength Length { get; set; } = ReviewLength.Long;
     public bool IncludeNextSteps { get; set; } = true;
+    public string? PromptTemplate { get; set; }
+    public string? PromptTemplatePath { get; set; }
+    public string? SummaryTemplate { get; set; }
+    public string? SummaryTemplatePath { get; set; }
     public bool OverwriteSummary { get; set; } = true;
     public bool SkipDraft { get; set; } = true;
     public IReadOnlyList<string> SkipTitles { get; set; } = new[] { "[WIP]", "[skip-review]" };
@@ -53,6 +57,10 @@ internal sealed class ReviewSettings {
             RedactPii = ParseBoolean(GetInput("redact_pii", "REVIEW_REDACT_PII"), false),
             RedactionPatterns = ParseList(GetInput("redaction_patterns", "REDACTION_PATTERNS")),
             RedactionReplacement = GetInput("redaction_replacement", "REDACTION_REPLACEMENT") ?? "[REDACTED]",
+            PromptTemplate = GetInput("prompt_template", "REVIEW_PROMPT_TEMPLATE"),
+            PromptTemplatePath = GetInput("prompt_template_path", "REVIEW_PROMPT_TEMPLATE_PATH"),
+            SummaryTemplate = GetInput("summary_template", "REVIEW_SUMMARY_TEMPLATE"),
+            SummaryTemplatePath = GetInput("summary_template_path", "REVIEW_SUMMARY_TEMPLATE_PATH"),
             WaitSeconds = ParsePositiveInt(GetInput("wait_seconds", "REVIEW_WAIT_SECONDS"), 60),
             IdleSeconds = ParsePositiveInt(GetInput("idle_seconds", "REVIEW_IDLE_SECONDS"), 5),
             CodexPath = Environment.GetEnvironmentVariable("CODEX_APP_SERVER_PATH"),

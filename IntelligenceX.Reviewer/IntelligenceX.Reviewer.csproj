@@ -10,4 +10,8 @@
   <ItemGroup>
     <ProjectReference Include="../IntelligenceX/IntelligenceX.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Templates/*.md" />
+  </ItemGroup>
 </Project>
