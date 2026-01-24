@@ -6,6 +6,9 @@ namespace IntelligenceX.Examples;
 
 internal static class Program {
     private static readonly List<IExample> Examples = new() {
+        new ExampleEasyChat(),
+        new ExampleEasySessionImages(),
+        new ExampleImagesAndFiles(),
         new ExampleChatGptLogin(),
         new ExampleApiKeyLogin(),
         new ExampleChatLoop(),
