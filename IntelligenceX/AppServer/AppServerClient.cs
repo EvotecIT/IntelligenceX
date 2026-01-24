@@ -151,12 +151,7 @@ public sealed class AppServerClient : IDisposable {
         if (threadObj is null) {
             throw new InvalidOperationException("Unexpected thread response.");
         }
-        var id = threadObj.GetString("id") ?? string.Empty;
-        var preview = threadObj.GetString("preview");
-        var modelValue = threadObj.GetString("model") ?? threadObj.GetString("modelProvider") ?? model;
-        var createdAt = threadObj.GetInt64("createdAt");
-        DateTimeOffset? createdAtValue = createdAt is null ? null : DateTimeOffset.FromUnixTimeSeconds(createdAt.Value);
-        return new ThreadInfo(id, preview, modelValue, createdAtValue);
+        return ThreadInfo.FromJson(threadObj);
     }
 
     public async Task<TurnInfo> StartTurnAsync(string threadId, string text, CancellationToken cancellationToken = default) {
@@ -194,9 +189,268 @@ public sealed class AppServerClient : IDisposable {
         if (turnObj is null) {
             throw new InvalidOperationException("Unexpected turn response.");
         }
-        var id = turnObj.GetString("id") ?? string.Empty;
-        var status = turnObj.GetString("status");
-        return new TurnInfo(id, status);
+        return TurnInfo.FromJson(turnObj);
+    }
+
+    public async Task<ThreadInfo> ResumeThreadAsync(string threadId, CancellationToken cancellationToken = default) {
+        Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
+        var parameters = new JsonObject().Add("threadId", threadId);
+        var result = await _rpc.CallAsync("thread/resume", parameters, cancellationToken).ConfigureAwait(false);
+        var obj = result?.AsObject();
+        var threadObj = obj?.GetObject("thread");
+        if (threadObj is null) {
+            throw new InvalidOperationException("Unexpected thread response.");
+        }
+        return ThreadInfo.FromJson(threadObj);
+    }
+
+    public async Task<ThreadInfo> ForkThreadAsync(string threadId, CancellationToken cancellationToken = default) {
+        Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
+        var parameters = new JsonObject().Add("threadId", threadId);
+        var result = await _rpc.CallAsync("thread/fork", parameters, cancellationToken).ConfigureAwait(false);
+        var obj = result?.AsObject();
+        var threadObj = obj?.GetObject("thread");
+        if (threadObj is null) {
+            throw new InvalidOperationException("Unexpected thread response.");
+        }
+        return ThreadInfo.FromJson(threadObj);
+    }
+
+    public async Task<ThreadListResult> ListThreadsAsync(string? cursor = null, int? limit = null, string? sortKey = null,
+        IReadOnlyList<string>? modelProviders = null, CancellationToken cancellationToken = default) {
+        var parameters = new JsonObject();
+        if (!string.IsNullOrWhiteSpace(cursor)) {
+            parameters.Add("cursor", cursor);
+        }
+        if (limit.HasValue) {
+            parameters.Add("limit", limit.Value);
+        }
+        if (!string.IsNullOrWhiteSpace(sortKey)) {
+            parameters.Add("sortKey", sortKey);
+        }
+        if (modelProviders is not null && modelProviders.Count > 0) {
+            var providers = new JsonArray();
+            foreach (var provider in modelProviders) {
+                providers.Add(provider);
+            }
+            parameters.Add("modelProviders", providers);
+        }
+
+        var result = await _rpc.CallAsync("thread/list", parameters, cancellationToken).ConfigureAwait(false);
+        var obj = result?.AsObject() ?? new JsonObject();
+        var dataArray = obj.GetArray("data");
+        var items = new List<ThreadInfo>();
+        if (dataArray is not null) {
+            foreach (var entry in dataArray) {
+                var threadObj = entry.AsObject();
+                if (threadObj is not null) {
+                    items.Add(ThreadInfo.FromJson(threadObj));
+                }
+            }
+        }
+        var nextCursor = obj.GetString("nextCursor");
+        return new ThreadListResult(items, nextCursor);
+    }
+
+    public async Task<ThreadIdListResult> ListLoadedThreadsAsync(CancellationToken cancellationToken = default) {
+        var result = await _rpc.CallAsync("thread/loaded/list", null, cancellationToken).ConfigureAwait(false);
+        var obj = result?.AsObject() ?? new JsonObject();
+        var dataArray = obj.GetArray("data");
+        var items = new List<string>();
+        if (dataArray is not null) {
+            foreach (var entry in dataArray) {
+                var value = entry.AsString();
+                if (!string.IsNullOrWhiteSpace(value)) {
+                    items.Add(value);
+                }
+            }
+        }
+        return new ThreadIdListResult(items);
+    }
+
+    public Task ArchiveThreadAsync(string threadId, CancellationToken cancellationToken = default) {
+        Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
+        var parameters = new JsonObject().Add("threadId", threadId);
+        return _rpc.CallAsync("thread/archive", parameters, cancellationToken);
+    }
+
+    public async Task<ThreadInfo> RollbackThreadAsync(string threadId, int turns, CancellationToken cancellationToken = default) {
+        Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
+        var parameters = new JsonObject()
+            .Add("threadId", threadId)
+            .Add("turns", turns);
+        var result = await _rpc.CallAsync("thread/rollback", parameters, cancellationToken).ConfigureAwait(false);
+        var obj = result?.AsObject();
+        var threadObj = obj?.GetObject("thread");
+        if (threadObj is null) {
+            throw new InvalidOperationException("Unexpected thread response.");
+        }
+        return ThreadInfo.FromJson(threadObj);
+    }
+
+    public Task InterruptTurnAsync(string threadId, string turnId, CancellationToken cancellationToken = default) {
+        Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
+        Guard.NotNullOrWhiteSpace(turnId, nameof(turnId));
+        var parameters = new JsonObject()
+            .Add("threadId", threadId)
+            .Add("turnId", turnId);
+        return _rpc.CallAsync("turn/interrupt", parameters, cancellationToken);
+    }
+
+    public async Task<ReviewStartResult> StartReviewAsync(string threadId, string delivery, ReviewTarget target, CancellationToken cancellationToken = default) {
+        Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
+        Guard.NotNullOrWhiteSpace(delivery, nameof(delivery));
+        Guard.NotNull(target, nameof(target));
+
+        var parameters = new JsonObject()
+            .Add("threadId", threadId)
+            .Add("delivery", delivery)
+            .Add("target", target.Payload);
+
+        var result = await _rpc.CallAsync("review/start", parameters, cancellationToken).ConfigureAwait(false);
+        var obj = result?.AsObject();
+        var turnObj = obj?.GetObject("turn");
+        if (turnObj is null) {
+            throw new InvalidOperationException("Unexpected review response.");
+        }
+        var reviewThreadId = obj?.GetString("reviewThreadId");
+        return new ReviewStartResult(TurnInfo.FromJson(turnObj), reviewThreadId);
+    }
+
+    public async Task<CommandExecResult> ExecuteCommandAsync(CommandExecRequest request, CancellationToken cancellationToken = default) {
+        Guard.NotNull(request, nameof(request));
+
+        var commandArray = new JsonArray();
+        foreach (var item in request.Command) {
+            commandArray.Add(item);
+        }
+
+        var parameters = new JsonObject()
+            .Add("command", commandArray);
+        if (!string.IsNullOrWhiteSpace(request.WorkingDirectory)) {
+            parameters.Add("cwd", request.WorkingDirectory);
+        }
+        if (request.SandboxPolicy is not null) {
+            parameters.Add("sandboxPolicy", request.SandboxPolicy.ToJson());
+        }
+        if (request.TimeoutMs.HasValue) {
+            parameters.Add("timeoutMs", request.TimeoutMs.Value);
+        }
+
+        var result = await _rpc.CallAsync("command/exec", parameters, cancellationToken).ConfigureAwait(false);
+        var obj = result?.AsObject();
+        var exitCode = obj?.GetInt64("exitCode");
+        var stdout = obj?.GetString("stdout");
+        var stderr = obj?.GetString("stderr");
+        return new CommandExecResult(exitCode is null ? null : (int?)exitCode.Value, stdout, stderr);
+    }
+
+    public Task<JsonValue?> ListModelsAsync(CancellationToken cancellationToken = default) {
+        return _rpc.CallAsync("model/list", null, cancellationToken);
+    }
+
+    public Task<JsonValue?> ListCollaborationModesAsync(CancellationToken cancellationToken = default) {
+        return _rpc.CallAsync("collaborationMode/list", null, cancellationToken);
+    }
+
+    public Task<JsonValue?> ListSkillsAsync(IReadOnlyList<string>? cwds = null, bool? forceReload = null,
+        CancellationToken cancellationToken = default) {
+        var parameters = new JsonObject();
+        if (cwds is not null && cwds.Count > 0) {
+            var array = new JsonArray();
+            foreach (var cwd in cwds) {
+                array.Add(cwd);
+            }
+            parameters.Add("cwds", array);
+        }
+        if (forceReload.HasValue) {
+            parameters.Add("forceReload", forceReload.Value);
+        }
+        return _rpc.CallAsync("skills/list", parameters, cancellationToken);
+    }
+
+    public Task WriteSkillConfigAsync(string path, bool enabled, CancellationToken cancellationToken = default) {
+        Guard.NotNullOrWhiteSpace(path, nameof(path));
+        var parameters = new JsonObject()
+            .Add("path", path)
+            .Add("enabled", enabled);
+        return _rpc.CallAsync("skills/config/write", parameters, cancellationToken);
+    }
+
+    public Task<JsonValue?> ReadConfigAsync(CancellationToken cancellationToken = default) {
+        return _rpc.CallAsync("config/read", null, cancellationToken);
+    }
+
+    public Task WriteConfigValueAsync(string key, JsonValue value, CancellationToken cancellationToken = default) {
+        Guard.NotNullOrWhiteSpace(key, nameof(key));
+        Guard.NotNull(value, nameof(value));
+        var parameters = new JsonObject()
+            .Add("key", key)
+            .Add("value", value);
+        return _rpc.CallAsync("config/value/write", parameters, cancellationToken);
+    }
+
+    public Task WriteConfigBatchAsync(IReadOnlyList<ConfigEntry> entries, CancellationToken cancellationToken = default) {
+        Guard.NotNull(entries, nameof(entries));
+        var items = new JsonArray();
+        foreach (var entry in entries) {
+            items.Add(new JsonObject()
+                .Add("key", entry.Key)
+                .Add("value", entry.Value));
+        }
+        var parameters = new JsonObject().Add("items", items);
+        return _rpc.CallAsync("config/batchWrite", parameters, cancellationToken);
+    }
+
+    public Task<JsonValue?> ReadConfigRequirementsAsync(CancellationToken cancellationToken = default) {
+        return _rpc.CallAsync("configRequirements/read", null, cancellationToken);
+    }
+
+    public async Task<McpOauthLoginStart> StartMcpOauthLoginAsync(string? serverId, string? serverName = null,
+        CancellationToken cancellationToken = default) {
+        var parameters = new JsonObject();
+        if (!string.IsNullOrWhiteSpace(serverId)) {
+            parameters.Add("serverId", serverId);
+        }
+        if (!string.IsNullOrWhiteSpace(serverName)) {
+            parameters.Add("serverName", serverName);
+        }
+        var result = await _rpc.CallAsync("mcpServer/oauth/login", parameters, cancellationToken).ConfigureAwait(false);
+        var obj = result?.AsObject();
+        var loginId = obj?.GetString("loginId");
+        var authUrl = obj?.GetString("authUrl");
+        return new McpOauthLoginStart(loginId, authUrl);
+    }
+
+    public Task<JsonValue?> ListMcpServerStatusAsync(string? cursor = null, int? limit = null, CancellationToken cancellationToken = default) {
+        var parameters = new JsonObject();
+        if (!string.IsNullOrWhiteSpace(cursor)) {
+            parameters.Add("cursor", cursor);
+        }
+        if (limit.HasValue) {
+            parameters.Add("limit", limit.Value);
+        }
+        return _rpc.CallAsync("mcpServerStatus/list", parameters, cancellationToken);
+    }
+
+    public Task<JsonValue?> ReloadMcpServerConfigAsync(CancellationToken cancellationToken = default) {
+        return _rpc.CallAsync("config/mcpServer/reload", null, cancellationToken);
+    }
+
+    public Task<JsonValue?> RequestUserInputAsync(IReadOnlyList<string> questions, CancellationToken cancellationToken = default) {
+        Guard.NotNull(questions, nameof(questions));
+        var array = new JsonArray();
+        foreach (var question in questions) {
+            array.Add(question);
+        }
+        var parameters = new JsonObject().Add("questions", array);
+        return _rpc.CallAsync("tool/requestUserInput", parameters, cancellationToken);
+    }
+
+    public Task UploadFeedbackAsync(string content, CancellationToken cancellationToken = default) {
+        Guard.NotNullOrWhiteSpace(content, nameof(content));
+        var parameters = new JsonObject().Add("content", content);
+        return _rpc.CallAsync("feedback/upload", parameters, cancellationToken);
     }
 
     public Task<JsonValue?> CallAsync(string method, JsonObject? parameters, CancellationToken cancellationToken = default) {

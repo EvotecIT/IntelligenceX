@@ -1,91 +1,76 @@
 using System;
-using System.Diagnostics;
+using System.Collections.Generic;
 using System.Threading.Tasks;
-using IntelligenceX.AppServer;
-using IntelligenceX.Json;
 
 namespace IntelligenceX.Examples;
 
 internal static class Program {
-    private const string DefaultModel = "gpt-5.1-codex";
+    private static readonly List<IExample> Examples = new() {
+        new ExampleChatGptLogin(),
+        new ExampleApiKeyLogin(),
+        new ExampleChatLoop(),
+        new ExampleThreadList(),
+        new ExampleFluentChat()
+    };
 
-    private static async Task<int> Main() {
-        Console.WriteLine("IntelligenceX examples");
-        Console.WriteLine("Starting Codex app-server...");
-
-        var client = await AppServerClient.StartAsync(new AppServerOptions {
-            ExecutablePath = Environment.GetEnvironmentVariable("CODEX_APP_SERVER_PATH") ?? "codex",
-            Arguments = Environment.GetEnvironmentVariable("CODEX_APP_SERVER_ARGS") ?? "app-server"
-        });
-
-        client.NotificationReceived += (_, args) => {
-            var text = ExtractDelta(args.Params);
-            if (!string.IsNullOrWhiteSpace(text)) {
-                Console.Write(text);
-            } else {
-                Console.WriteLine($"\n{args.Method}: {args.Params}");
-            }
-        };
-
-        client.StandardErrorReceived += (_, line) => {
-            Console.Error.WriteLine($"[app-server] {line}");
-        };
-
-        await client.InitializeAsync(new ClientInfo("IntelligenceX.Examples", "IntelligenceX Examples", "0.1.0"));
-
-        Console.WriteLine("Choose login method: 1) ChatGPT 2) API key");
-        var choice = Console.ReadLine();
-        if (choice == "2") {
-            Console.Write("API key: ");
-            var apiKey = Console.ReadLine();
-            if (!string.IsNullOrWhiteSpace(apiKey)) {
-                await client.LoginWithApiKeyAsync(apiKey);
-            }
-        } else {
-            var login = await client.StartChatGptLoginAsync();
-            Console.WriteLine($"Open this URL to login: {login.AuthUrl}");
-            TryOpenUrl(login.AuthUrl);
-            Console.WriteLine("Waiting for login completion...");
-            await client.WaitForLoginCompletionAsync(login.LoginId);
-        }
-
-        var account = await client.ReadAccountAsync();
-        Console.WriteLine($"Logged in as: {account.Email} ({account.PlanType})");
-
-        var thread = await client.StartThreadAsync(DefaultModel);
-        Console.WriteLine($"Thread started: {thread.Id}");
-
-        Console.WriteLine("Send a message (empty line to quit):");
-        while (true) {
-            Console.Write("you> ");
+    private static async Task<int> Main(string[] args) {
+        if (args.Length == 0) {
+            PrintExamples();
+            Console.Write("Select example by number: ");
             var input = Console.ReadLine();
-            if (string.IsNullOrWhiteSpace(input)) {
-                break;
+            if (int.TryParse(input, out var index)) {
+                return await RunByIndex(index - 1).ConfigureAwait(false);
             }
-            await client.StartTurnAsync(thread.Id, input);
-            Console.WriteLine();
+            return 1;
         }
 
-        client.Dispose();
-        return 0;
+        if (args[0].Equals("list", StringComparison.OrdinalIgnoreCase)) {
+            PrintExamples();
+            return 0;
+        }
+
+        if (int.TryParse(args[0], out var number)) {
+            return await RunByIndex(number - 1).ConfigureAwait(false);
+        }
+
+        return await RunByName(args[0]).ConfigureAwait(false);
     }
 
-    private static string? ExtractDelta(JsonValue? value) {
-        var obj = value?.AsObject();
-        var delta = obj?.GetObject("delta");
-        var text = delta?.GetString("text");
-        return text;
+    private static Task<int> RunByIndex(int index) {
+        if (index < 0 || index >= Examples.Count) {
+            Console.WriteLine("Invalid example index.");
+            return Task.FromResult(1);
+        }
+        return RunExampleAsync(Examples[index]);
     }
 
-    private static void TryOpenUrl(string url) {
+    private static Task<int> RunByName(string name) {
+        foreach (var example in Examples) {
+            if (example.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) {
+                return RunExampleAsync(example);
+            }
+        }
+
+        Console.WriteLine($"Unknown example '{name}'.");
+        PrintExamples();
+        return Task.FromResult(1);
+    }
+
+    private static async Task<int> RunExampleAsync(IExample example) {
         try {
-            var psi = new ProcessStartInfo {
-                FileName = url,
-                UseShellExecute = true
-            };
-            Process.Start(psi);
-        } catch {
-            // Ignore failures to open browser.
+            Console.WriteLine($"Running: {example.Name} - {example.Description}");
+            await example.RunAsync().ConfigureAwait(false);
+            return 0;
+        } catch (Exception ex) {
+            Console.WriteLine(ex.Message);
+            return 1;
+        }
+    }
+
+    private static void PrintExamples() {
+        Console.WriteLine("Available examples:");
+        for (var i = 0; i < Examples.Count; i++) {
+            Console.WriteLine($"  {i + 1}. {Examples[i].Name} - {Examples[i].Description}");
         }
     }
 }

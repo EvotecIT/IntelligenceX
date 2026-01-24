@@ -11,15 +11,24 @@ public sealed class SandboxPolicy {
         WritableRoots = writableRoots;
     }
 
+    public SandboxPolicy(string type, string networkAccessMode, IReadOnlyList<string>? writableRoots = null) {
+        Type = Guard.NotNullOrWhiteSpace(type, nameof(type));
+        NetworkAccessMode = networkAccessMode;
+        WritableRoots = writableRoots;
+    }
+
     public string Type { get; }
     public bool? NetworkAccess { get; }
+    public string? NetworkAccessMode { get; }
     public IReadOnlyList<string>? WritableRoots { get; }
 
     internal JsonObject ToJson() {
         var obj = new JsonObject()
             .Add("type", Type);
 
-        if (NetworkAccess.HasValue) {
+        if (!string.IsNullOrWhiteSpace(NetworkAccessMode)) {
+            obj.Add("networkAccess", NetworkAccessMode);
+        } else if (NetworkAccess.HasValue) {
             obj.Add("networkAccess", NetworkAccess.Value);
         }
 

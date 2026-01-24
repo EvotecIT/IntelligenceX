@@ -1,204 +1,139 @@
-$script:IxClient = $null
+# Get public and private function definition files.
+$Public = @( Get-ChildItem -Path $PSScriptRoot\Public\*.ps1 -ErrorAction SilentlyContinue -Recurse -File)
+$Private = @( Get-ChildItem -Path $PSScriptRoot\Private\*.ps1 -ErrorAction SilentlyContinue -Recurse -File)
+$Classes = @( Get-ChildItem -Path $PSScriptRoot\Classes\*.ps1 -ErrorAction SilentlyContinue -Recurse -File)
+$Enums = @( Get-ChildItem -Path $PSScriptRoot\Enums\*.ps1 -ErrorAction SilentlyContinue -Recurse -File)
+# Get all assemblies
+$AssemblyFolders = Get-ChildItem -Path $PSScriptRoot\Lib -Directory -ErrorAction SilentlyContinue -File
+$AssemblyFolders = Get-ChildItem -Path $PSScriptRoot\bin\Debug\net472 -File -ErrorAction SilentlyContinue
 
-function Get-IntelligenceXClient {
-    param(
-        [Parameter(ValueFromPipeline = $true)]
-        $Client
-    )
-    if ($null -ne $Client) {
-        return $Client
-    }
-    return $script:IxClient
-}
-
-function Initialize-IntelligenceXAssembly {
-    $moduleRoot = $PSScriptRoot
-    $libRoot = Join-Path $moduleRoot 'Lib'
-    $framework = if ($PSEdition -eq 'Desktop') { 'net472' } else { 'net8.0' }
-    $primaryPath = Join-Path (Join-Path $libRoot $framework) 'IntelligenceX.PowerShell.dll'
-    $fallbackPath = Join-Path $libRoot 'IntelligenceX.PowerShell.dll'
-
-    $assemblyPath = if (Test-Path $primaryPath) { $primaryPath } elseif (Test-Path $fallbackPath) { $fallbackPath } else { $null }
-    if (-not $assemblyPath) {
-        throw "IntelligenceX.PowerShell.dll not found. Run Module/Build/Build-Module.ps1 to build the module."
-    }
-
-    if (-not ([System.AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.Location -eq $assemblyPath })) {
-        Add-Type -Path $assemblyPath
-    }
-}
-
-function Connect-IntelligenceX {
-    [CmdletBinding()]
-    param(
-        [string]$ExecutablePath,
-        [string]$Arguments,
-        [string]$WorkingDirectory
-    )
-
-    Initialize-IntelligenceXAssembly
-    $client = [IntelligenceX.PowerShell.PowerShellBridge]::Connect($ExecutablePath, $Arguments, $WorkingDirectory)
-    $script:IxClient = $client
-    return $client
-}
-
-function Disconnect-IntelligenceX {
-    [CmdletBinding()]
-    param(
-        [Parameter(ValueFromPipeline = $true)]
-        $Client
-    )
-
-    Initialize-IntelligenceXAssembly
-    $resolved = Get-IntelligenceXClient -Client $Client
-    if ($null -eq $resolved) {
-        return
-    }
-
-    [IntelligenceX.PowerShell.PowerShellBridge]::Disconnect($resolved)
-    if ($resolved -eq $script:IxClient) {
-        $script:IxClient = $null
+# to speed up development adding direct path to binaries, instead of the the Lib folder
+$Development = $false
+$DevelopmentPath = "$PSScriptRoot\..\IntelligenceX.PowerShell\bin\Debug"
+$DevelopmentFolderCore = "net8.0"
+$DevelopmentFolderDefault = "net472"
+$BinaryModules = @(
+    "IntelligenceX.PowerShell.dll"
+)
+# Lets find which libraries we need to load
+$Default = $false
+$Core = $false
+$Standard = $false
+foreach ($A in $AssemblyFolders.Name) {
+    if ($A -eq 'Default') {
+        $Default = $true
+    } elseif ($A -eq 'Core') {
+        $Core = $true
+    } elseif ($A -eq 'Standard') {
+        $Standard = $true
     }
 }
-
-function Initialize-IntelligenceX {
-    [CmdletBinding()]
-    param(
-        [Parameter(ValueFromPipeline = $true)]
-        $Client,
-        [Parameter(Mandatory = $true)]
-        [string]$Name,
-        [Parameter(Mandatory = $true)]
-        [string]$Title,
-        [Parameter(Mandatory = $true)]
-        [string]$Version
-    )
-
-    Initialize-IntelligenceXAssembly
-    $resolved = Get-IntelligenceXClient -Client $Client
-    if ($null -eq $resolved) {
-        throw 'No active IntelligenceX client. Use Connect-IntelligenceX first.'
-    }
-
-    [IntelligenceX.PowerShell.PowerShellBridge]::Initialize($resolved, $Name, $Title, $Version)
+if ($Standard -and $Core -and $Default) {
+    $FrameworkNet = 'Default'
+    $Framework = 'Standard'
+} elseif ($Standard -and $Core) {
+    $Framework = 'Standard'
+    $FrameworkNet = 'Standard'
+} elseif ($Core -and $Default) {
+    $Framework = 'Core'
+    $FrameworkNet = 'Default'
+} elseif ($Standard -and $Default) {
+    $Framework = 'Standard'
+    $FrameworkNet = 'Default'
+} elseif ($Standard) {
+    $Framework = 'Standard'
+    $FrameworkNet = 'Standard'
+} elseif ($Core) {
+    $Framework = 'Core'
+    $FrameworkNet = ''
+} elseif ($Default) {
+    $Framework = ''
+    $FrameworkNet = 'Default'
+} else {
+    #Write-Error -Message 'No assemblies found'
 }
 
-function Start-IntelligenceXChatGptLogin {
-    [CmdletBinding()]
-    param(
-        [Parameter(ValueFromPipeline = $true)]
-        $Client
-    )
-
-    Initialize-IntelligenceXAssembly
-    $resolved = Get-IntelligenceXClient -Client $Client
-    if ($null -eq $resolved) {
-        throw 'No active IntelligenceX client. Use Connect-IntelligenceX first.'
+$BinaryDev = @(
+    foreach ($BinaryModule in $BinaryModules) {
+        if ($PSEdition -eq 'Core') {
+            $Variable = Resolve-Path "$DevelopmentPath\$DevelopmentFolderCore\$BinaryModule"
+        } else {
+            $Variable = Resolve-Path "$DevelopmentPath\$DevelopmentFolderDefault\$BinaryModule"
+        }
+        $Variable
+        Write-Warning "Development mode: Using binaries from $Variable"
     }
+)
 
-    return [IntelligenceX.PowerShell.PowerShellBridge]::StartChatGptLogin($resolved)
+$Assembly = @(
+    if ($Framework -and $PSEdition -eq 'Core') {
+        Get-ChildItem -Path $PSScriptRoot\Lib\$Framework\*.dll -ErrorAction SilentlyContinue -Recurse
+    }
+    if ($FrameworkNet -and $PSEdition -ne 'Core') {
+        Get-ChildItem -Path $PSScriptRoot\Lib\$FrameworkNet\*.dll -ErrorAction SilentlyContinue -Recurse
+    }
+)
+
+$FoundErrors = @(
+    if ($Development) {
+        foreach ($BinaryModule in $BinaryDev) {
+            try {
+                Import-Module -Name $BinaryModule -Force -ErrorAction Stop
+            } catch {
+                Write-Warning "Failed to import module $($BinaryModule): $($_.Exception.Message)"
+                $true
+            }
+        }
+    } else {
+        foreach ($BinaryModule in $BinaryModules) {
+            try {
+                if ($Framework -and $PSEdition -eq 'Core') {
+                    Import-Module -Name "$PSScriptRoot\Lib\$Framework\$BinaryModule" -Force -ErrorAction Stop
+                }
+                if ($FrameworkNet -and $PSEdition -ne 'Core') {
+                    Import-Module -Name "$PSScriptRoot\Lib\$FrameworkNet\$BinaryModule" -Force -ErrorAction Stop
+                }
+            } catch {
+                Write-Warning "Failed to import module $($BinaryModule): $($_.Exception.Message)"
+                $true
+            }
+        }
+    }
+    foreach ($Import in @($Assembly)) {
+        try {
+            Write-Verbose -Message $Import.FullName
+            Add-Type -Path $Import.Fullname -ErrorAction Stop
+        } catch [System.Reflection.ReflectionTypeLoadException] {
+            Write-Warning "Processing $($Import.Name) Exception: $($_.Exception.Message)"
+            $LoaderExceptions = $($_.Exception.LoaderExceptions) | Sort-Object -Unique
+            foreach ($E in $LoaderExceptions) {
+                Write-Warning "Processing $($Import.Name) LoaderExceptions: $($E.Message)"
+            }
+            $true
+        } catch {
+            Write-Warning "Processing $($Import.Name) Exception: $($_.Exception.Message)"
+            $LoaderExceptions = $($_.Exception.LoaderExceptions) | Sort-Object -Unique
+            foreach ($E in $LoaderExceptions) {
+                Write-Warning "Processing $($Import.Name) LoaderExceptions: $($E.Message)"
+            }
+            $true
+        }
+    }
+)
+
+if ($FoundErrors -contains $true) {
+    throw "Error during module import"
 }
 
-function Start-IntelligenceXApiKeyLogin {
-    [CmdletBinding()]
-    param(
-        [Parameter(ValueFromPipeline = $true)]
-        $Client,
-        [Parameter(Mandatory = $true)]
-        [string]$ApiKey
-    )
-
-    Initialize-IntelligenceXAssembly
-    $resolved = Get-IntelligenceXClient -Client $Client
-    if ($null -eq $resolved) {
-        throw 'No active IntelligenceX client. Use Connect-IntelligenceX first.'
+# Dot source the files
+foreach ($Import in @($Classes + $Enums + $Private + $Public)) {
+    try {
+        . $Import.FullName
+    } catch {
+        Write-Error -Message "Failed to import functions from $($Import.FullName): $($_.Exception.Message)"
     }
-
-    [IntelligenceX.PowerShell.PowerShellBridge]::LoginWithApiKey($resolved, $ApiKey)
 }
 
-function Wait-IntelligenceXLogin {
-    [CmdletBinding()]
-    param(
-        [Parameter(ValueFromPipeline = $true)]
-        $Client,
-        [string]$LoginId,
-        [int]$TimeoutSeconds = 300
-    )
-
-    Initialize-IntelligenceXAssembly
-    $resolved = Get-IntelligenceXClient -Client $Client
-    if ($null -eq $resolved) {
-        throw 'No active IntelligenceX client. Use Connect-IntelligenceX first.'
-    }
-
-    [IntelligenceX.PowerShell.PowerShellBridge]::WaitForLogin($resolved, $LoginId, $TimeoutSeconds)
-}
-
-function Get-IntelligenceXAccount {
-    [CmdletBinding()]
-    param(
-        [Parameter(ValueFromPipeline = $true)]
-        $Client
-    )
-
-    Initialize-IntelligenceXAssembly
-    $resolved = Get-IntelligenceXClient -Client $Client
-    if ($null -eq $resolved) {
-        throw 'No active IntelligenceX client. Use Connect-IntelligenceX first.'
-    }
-
-    return [IntelligenceX.PowerShell.PowerShellBridge]::GetAccount($resolved)
-}
-
-function Start-IntelligenceXThread {
-    [CmdletBinding()]
-    param(
-        [Parameter(ValueFromPipeline = $true)]
-        $Client,
-        [Parameter(Mandatory = $true)]
-        [string]$Model,
-        [string]$CurrentDirectory,
-        [string]$ApprovalPolicy,
-        [string]$Sandbox
-    )
-
-    Initialize-IntelligenceXAssembly
-    $resolved = Get-IntelligenceXClient -Client $Client
-    if ($null -eq $resolved) {
-        throw 'No active IntelligenceX client. Use Connect-IntelligenceX first.'
-    }
-
-    return [IntelligenceX.PowerShell.PowerShellBridge]::StartThread($resolved, $Model, $CurrentDirectory, $ApprovalPolicy, $Sandbox)
-}
-
-function Send-IntelligenceXMessage {
-    [CmdletBinding()]
-    param(
-        [Parameter(ValueFromPipeline = $true)]
-        $Client,
-        [Parameter(Mandatory = $true)]
-        [string]$ThreadId,
-        [Parameter(Mandatory = $true)]
-        [string]$Text
-    )
-
-    Initialize-IntelligenceXAssembly
-    $resolved = Get-IntelligenceXClient -Client $Client
-    if ($null -eq $resolved) {
-        throw 'No active IntelligenceX client. Use Connect-IntelligenceX first.'
-    }
-
-    return [IntelligenceX.PowerShell.PowerShellBridge]::StartTurn($resolved, $ThreadId, $Text)
-}
-
-Export-ModuleMember -Function \
-    'Connect-IntelligenceX', \
-    'Disconnect-IntelligenceX', \
-    'Initialize-IntelligenceX', \
-    'Start-IntelligenceXChatGptLogin', \
-    'Start-IntelligenceXApiKeyLogin', \
-    'Wait-IntelligenceXLogin', \
-    'Get-IntelligenceXAccount', \
-    'Start-IntelligenceXThread', \
-    'Send-IntelligenceXMessage'
+# Export public functions and aliases if any
+$PublicFunctions = @($Public | Select-Object -ExpandProperty BaseName)
+Export-ModuleMember -Function $PublicFunctions
