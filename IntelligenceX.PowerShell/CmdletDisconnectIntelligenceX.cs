@@ -23,6 +23,8 @@ public sealed class CmdletDisconnectIntelligenceX : IntelligenceXCmdlet {
         var resolved = ResolveClient(Client);
         resolved.Dispose();
         ClearDefaultClient(resolved);
+        ClientContext.DefaultThreadId = null;
+        ClientContext.Initialized = false;
         return Task.CompletedTask;
     }
 }
