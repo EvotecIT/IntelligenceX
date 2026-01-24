@@ -188,6 +188,32 @@ dotnet run --project IntelligenceX.Examples/IntelligenceX.Examples.csproj -- lis
 
 PowerShell scripts live in `Module/Examples`.
 
+## Reviewer (GitHub Actions)
+
+`IntelligenceX.Reviewer` is a console tool that reads the GitHub PR event payload, asks Codex for a review,
+and posts a sticky comment.
+
+Required env:
+- `GITHUB_EVENT_PATH`
+- `GITHUB_TOKEN`
+
+Optional env/inputs (SocraticLens-style):
+- `mode` (`summary|inline|hybrid`) — inline is not enabled yet (summary only)
+- `length` (`short|long`)
+- `persona`, `notes`
+- `max_files`, `max_patch_chars`, `max_inline_comments`
+- `severity_threshold` (`low|medium|high|critical`)
+- `skip_titles`, `skip_labels`, `skip_paths`, `skip_draft`
+- `redact_pii`, `redaction_patterns`, `redaction_replacement`
+- `overwrite_summary` (default `true`)
+
+Codex app-server settings (optional):
+- `CODEX_APP_SERVER_PATH`
+- `CODEX_APP_SERVER_ARGS`
+- `CODEX_APP_SERVER_CWD`
+
+The runner must have Codex CLI installed and a valid ChatGPT login cache (`~/.codex/auth.json`).
+
 ## Notes
 
 - This library targets the Codex app-server JSON-RPC protocol.
