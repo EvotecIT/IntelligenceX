@@ -2,8 +2,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Management.Automation;
 using System.Threading.Tasks;
-using IntelligenceX.AppServer;
-using IntelligenceX.AppServer.Models;
+using IntelligenceX.OpenAI.AppServer;
+using IntelligenceX.OpenAI.AppServer.Models;
 
 namespace IntelligenceX.PowerShell;
 

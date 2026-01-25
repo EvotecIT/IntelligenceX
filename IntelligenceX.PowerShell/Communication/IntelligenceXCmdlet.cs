@@ -1,5 +1,5 @@
 using System;
-using IntelligenceX.AppServer;
+using IntelligenceX.OpenAI.AppServer;
 
 namespace IntelligenceX.PowerShell;
 

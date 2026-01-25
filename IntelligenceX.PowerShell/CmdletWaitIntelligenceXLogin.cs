@@ -2,7 +2,7 @@ using System;
 using System.Management.Automation;
 using System.Threading;
 using System.Threading.Tasks;
-using IntelligenceX.AppServer;
+using IntelligenceX.OpenAI.AppServer;
 
 namespace IntelligenceX.PowerShell;
 

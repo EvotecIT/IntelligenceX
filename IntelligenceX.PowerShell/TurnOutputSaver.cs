@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Threading.Tasks;
-using IntelligenceX.AppServer.Models;
+using IntelligenceX.OpenAI.AppServer.Models;
 
 namespace IntelligenceX.PowerShell;
 
