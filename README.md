@@ -199,7 +199,7 @@ Required env:
 
 Optional env/inputs (SocraticLens-style):
 - `mode` (`summary|inline|hybrid`) — inline is not enabled yet (summary only)
-- `length` (`short|long`)
+- `length` (`short|medium|long`)
 - `persona`, `notes`
 - `max_files`, `max_patch_chars`, `max_inline_comments`
 - `severity_threshold` (`low|medium|high|critical`)
@@ -219,7 +219,72 @@ Codex app-server settings (optional):
 - `CODEX_APP_SERVER_ARGS`
 - `CODEX_APP_SERVER_CWD`
 
-The runner must have Codex CLI installed and a valid ChatGPT login cache (`~/.codex/auth.json`).
+The runner must have a valid ChatGPT login cache (`~/.codex/auth.json`). You can create it with `IntelligenceX.AuthTool sync-codex`.
+
+## Auth Tool (OAuth)
+
+`IntelligenceX.AuthTool` provides a native OAuth login flow (similar to Clawdbot) without requiring Codex CLI.
+Defaults are built in; environment variables only override them.
+
+Defaults:
+- authorize URL: `https://auth.openai.com/oauth/authorize`
+- token URL: `https://auth.openai.com/oauth/token`
+- client id: `app_EMoamEEZ73f0CkXaXp7hrann`
+- scopes: `openid profile email offline_access`
+- redirect: `http://127.0.0.1:1455/auth/callback`
+
+Optional overrides:
+- `OPENAI_AUTH_AUTHORIZE_URL`
+- `OPENAI_AUTH_TOKEN_URL`
+- `OPENAI_AUTH_CLIENT_ID`
+- `OPENAI_AUTH_SCOPES`
+- `OPENAI_AUTH_REDIRECT_URL`
+- `INTELLIGENCEX_AUTH_PATH` (default: `~/.intelligencex/auth.json`)
+- `INTELLIGENCEX_AUTH_KEY` (base64 32 bytes, enables encryption; .NET 8+ only)
+- `INTELLIGENCEX_AUTH_EXPORT_FORMAT=base64` (for export)
+- `CODEX_HOME` (used by `sync-codex`)
+
+Login:
+
+```bash
+dotnet run --project IntelligenceX.AuthTool/IntelligenceX.AuthTool.csproj -- login
+```
+
+Export (base64 for GitHub Secrets):
+
+```bash
+INTELLIGENCEX_AUTH_EXPORT_FORMAT=base64 \
+dotnet run --project IntelligenceX.AuthTool/IntelligenceX.AuthTool.csproj -- export
+```
+
+Write Codex auth.json (for app-server/CLI reuse):
+
+```bash
+dotnet run --project IntelligenceX.AuthTool/IntelligenceX.AuthTool.csproj -- sync-codex
+```
+
+## Copilot CLI (GitHub)
+
+IntelligenceX includes a minimal Copilot CLI client (no extra dependencies). It talks JSON-RPC over the Copilot CLI server mode.
+
+Requirements:
+- `copilot` CLI installed and authenticated (run `copilot` once to log in).
+
+Example:
+
+```csharp
+using IntelligenceX.Copilot;
+
+await using var client = await CopilotClient.StartAsync();
+var auth = await client.GetAuthStatusAsync();
+if (!auth.IsAuthenticated) {
+    Console.WriteLine("Copilot CLI not authenticated.");
+    return;
+}
+var session = await client.CreateSessionAsync(new CopilotSessionOptions { Model = "gpt-5" });
+var response = await session.SendAndWaitAsync(new CopilotMessageOptions { Prompt = "Hello from Copilot." });
+Console.WriteLine(response);
+```
 
 ## Notes
 
