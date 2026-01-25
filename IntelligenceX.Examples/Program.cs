@@ -11,6 +11,7 @@ internal static class Program {
         new ExampleImagesAndFiles(),
         new ExampleChatGptLogin(),
         new ExampleApiKeyLogin(),
+        new ExampleCopilotChat(),
         new ExampleChatLoop(),
         new ExampleThreadList(),
         new ExampleFluentChat()
