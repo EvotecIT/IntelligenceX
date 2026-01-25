@@ -38,7 +38,11 @@ internal static class PromptBuilder {
         if (!string.IsNullOrWhiteSpace(settings.PromptTemplatePath)) {
             return File.ReadAllText(settings.PromptTemplatePath!);
         }
-        var name = settings.Length == ReviewLength.Short ? "ReviewPrompt.Short.md" : "ReviewPrompt.Long.md";
+        var name = settings.Length switch {
+            ReviewLength.Short => "ReviewPrompt.Short.md",
+            ReviewLength.Medium => "ReviewPrompt.Medium.md",
+            _ => "ReviewPrompt.Long.md"
+        };
         return TemplateLoader.Load(name);
     }
 

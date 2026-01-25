@@ -6,6 +6,7 @@ namespace IntelligenceX.Reviewer;
 
 internal enum ReviewLength {
     Short,
+    Medium,
     Long
 }
 
@@ -13,7 +14,7 @@ internal sealed class ReviewSettings {
     public string Mode { get; set; } = "hybrid";
     public string? Persona { get; set; }
     public string? Notes { get; set; }
-    public string Model { get; set; } = "gpt-5.1-codex";
+    public string Model { get; set; } = "gpt-5.2-codex";
     public ReviewLength Length { get; set; } = ReviewLength.Long;
     public bool IncludeNextSteps { get; set; } = true;
     public string? PromptTemplate { get; set; }
@@ -69,7 +70,11 @@ internal sealed class ReviewSettings {
         };
 
         var length = GetInput("length", "REVIEW_LENGTH");
-        settings.Length = string.Equals(length, "short", StringComparison.OrdinalIgnoreCase) ? ReviewLength.Short : ReviewLength.Long;
+        settings.Length = length?.ToLowerInvariant() switch {
+            "short" => ReviewLength.Short,
+            "medium" => ReviewLength.Medium,
+            _ => ReviewLength.Long
+        };
 
         var includeNextSteps = GetInput("include_next_steps", "REVIEW_INCLUDE_NEXT_STEPS");
         if (!string.IsNullOrWhiteSpace(includeNextSteps)) {
