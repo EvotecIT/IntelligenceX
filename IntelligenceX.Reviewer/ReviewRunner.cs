@@ -4,9 +4,9 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using IntelligenceX;
-using IntelligenceX.AppServer.Models;
-using IntelligenceX.Chat;
+using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.AppServer.Models;
+using IntelligenceX.OpenAI.Chat;
 
 namespace IntelligenceX.Reviewer;
 

@@ -7,6 +7,11 @@ process, speaks JSON-RPC over JSONL, and exposes simple methods for authenticati
 - Cross-platform (.NET 8/.NET 10) + Windows (.NET Framework 4.7.2)
 - PowerShell module included (binary cmdlets, net472/net8)
 
+## Providers
+
+- `IntelligenceX/Providers/OpenAI` — Codex app-server (ChatGPT) client, auth, and easy/fluent APIs.
+- `IntelligenceX/Providers/Copilot` — GitHub Copilot CLI client (JSON-RPC).
+
 ## Requirements
 
 - Codex CLI installed and available on PATH ("codex")
@@ -15,7 +20,7 @@ process, speaks JSON-RPC over JSONL, and exposes simple methods for authenticati
 ## Quick start (.NET)
 
 ```csharp
-using IntelligenceX.AppServer;
+using IntelligenceX.OpenAI.AppServer;
 
 var client = await AppServerClient.StartAsync(new AppServerOptions {
     ExecutablePath = "codex",
@@ -36,14 +41,14 @@ await client.StartTurnAsync(thread.Id, "Hello from IntelligenceX");
 EasySession (auto init + login + thread):
 
 ```csharp
-using IntelligenceX;
+using IntelligenceX.OpenAI;
 
 await using var session = await EasySession.StartAsync();
 await session.ChatAsync("Hello!");
 ```
 
 ```csharp
-using IntelligenceX;
+using IntelligenceX.OpenAI;
 
 await using var ix = await IntelligenceXClient.ConnectAsync();
 await ix.LoginChatGptAndWaitAsync(url => Console.WriteLine(url));
@@ -53,7 +58,7 @@ await ix.ChatAsync("Hello!");
 Images and files (.NET):
 
 ```csharp
-using IntelligenceX;
+using IntelligenceX.OpenAI;
 
 await using var ix = await IntelligenceXClient.ConnectAsync();
 await ix.LoginChatGptAndWaitAsync(url => Console.WriteLine(url));
@@ -66,7 +71,7 @@ Allow file writes (workspace):
 ```csharp
 await using var ix = await IntelligenceXClient.ConnectAsync();
 await ix.ChatAsync("Create a report.txt file with a summary of today.",
-    new IntelligenceX.Chat.ChatOptions { Workspace = "C:\\Work" });
+    new IntelligenceX.OpenAI.Chat.ChatOptions { Workspace = "C:\\Work" });
 ```
 
 Reading image outputs:
@@ -81,8 +86,8 @@ foreach (var image in turn.ImageOutputs) {
 ## Fluent quick start (.NET)
 
 ```csharp
-using IntelligenceX.AppServer;
-using IntelligenceX.Fluent;
+using IntelligenceX.OpenAI.AppServer;
+using IntelligenceX.OpenAI.Fluent;
 
 var session = await AppServerFluent.StartAsync(new AppServerOptions());
 await session.InitializeAsync(new ClientInfo("IntelligenceX", "Fluent Demo", "0.1.0"));
@@ -269,6 +274,30 @@ IntelligenceX includes a minimal Copilot CLI client (no extra dependencies). It 
 
 Requirements:
 - `copilot` CLI installed and authenticated (run `copilot` once to log in).
+  Optionally set `COPILOT_CLI_PATH` if the CLI is not on PATH.
+  If you want auto-install from apps, set `CopilotClientOptions.AutoInstallCli = true`.
+
+Install or update Copilot CLI:
+
+Windows (winget):
+```powershell
+winget install GitHub.Copilot
+```
+
+macOS/Linux (Homebrew):
+```bash
+brew install copilot-cli
+```
+
+All platforms (npm, Node.js 22+):
+```bash
+npm install -g @github/copilot
+```
+
+macOS/Linux (install script):
+```bash
+curl -fsSL https://gh.io/copilot-install | bash
+```
 
 Example:
 
