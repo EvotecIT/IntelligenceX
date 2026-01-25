@@ -21,7 +21,11 @@ internal sealed class JsonRpcClient : IDisposable {
     public event EventHandler<JsonRpcRequestEventArgs>? RequestReceived;
     public event EventHandler<Exception>? ProtocolError;
 
-    public async Task<JsonValue?> CallAsync(string method, JsonObject? @params, CancellationToken cancellationToken = default) {
+    public Task<JsonValue?> CallAsync(string method, JsonObject? @params, CancellationToken cancellationToken = default) {
+        return CallAsync(method, @params is null ? null : JsonValue.From(@params), cancellationToken);
+    }
+
+    public async Task<JsonValue?> CallAsync(string method, JsonValue? @params, CancellationToken cancellationToken = default) {
         if (string.IsNullOrWhiteSpace(method)) {
             throw new ArgumentException("Method cannot be null or whitespace.", nameof(method));
         }
@@ -37,6 +41,10 @@ internal sealed class JsonRpcClient : IDisposable {
     }
 
     public Task NotifyAsync(string method, JsonObject? @params, CancellationToken cancellationToken = default) {
+        return NotifyAsync(method, @params is null ? null : JsonValue.From(@params), cancellationToken);
+    }
+
+    public Task NotifyAsync(string method, JsonValue? @params, CancellationToken cancellationToken = default) {
         if (string.IsNullOrWhiteSpace(method)) {
             throw new ArgumentException("Method cannot be null or whitespace.", nameof(method));
         }
@@ -112,7 +120,7 @@ internal sealed class JsonRpcClient : IDisposable {
         return new JsonRpcError(code, message, data);
     }
 
-    private async Task SendRequestAsync(long id, string method, JsonObject? @params) {
+    private async Task SendRequestAsync(long id, string method, JsonValue? @params) {
         var obj = new JsonObject()
             .Add("id", id)
             .Add("method", method);
@@ -122,7 +130,7 @@ internal sealed class JsonRpcClient : IDisposable {
         await SendLineAsync(JsonLite.Serialize(obj)).ConfigureAwait(false);
     }
 
-    private async Task SendNotificationAsync(string method, JsonObject? @params) {
+    private async Task SendNotificationAsync(string method, JsonValue? @params) {
         var obj = new JsonObject()
             .Add("method", method);
         if (@params is not null) {
