@@ -79,11 +79,14 @@ internal sealed class GitHubClient : IDisposable {
         return comments;
     }
 
-    public async Task CreateIssueCommentAsync(string owner, string repo, int number, string body,
+    public async Task<IssueComment> CreateIssueCommentAsync(string owner, string repo, int number, string body,
         CancellationToken cancellationToken) {
         var payload = new JsonObject().Add("body", body);
-        await PostJsonAsync($"/repos/{owner}/{repo}/issues/{number}/comments", payload, cancellationToken)
+        var response = await PostJsonAsync($"/repos/{owner}/{repo}/issues/{number}/comments", payload, cancellationToken)
             .ConfigureAwait(false);
+        var obj = response.AsObject();
+        var id = obj?.GetInt64("id") ?? 0;
+        return new IssueComment(id, body);
     }
 
     public async Task UpdateIssueCommentAsync(string owner, string repo, long commentId, string body,
@@ -104,14 +107,15 @@ internal sealed class GitHubClient : IDisposable {
         return JsonLite.Parse(content) ?? JsonValue.Null;
     }
 
-    private async Task PostJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken) {
+    private async Task<JsonValue> PostJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken) {
         var json = JsonLite.Serialize(JsonValue.From(payload));
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
         using var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
+        var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode) {
-            var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {responseText}");
         }
+        return JsonLite.Parse(responseText) ?? JsonValue.Null;
     }
 
     private async Task PatchJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken) {

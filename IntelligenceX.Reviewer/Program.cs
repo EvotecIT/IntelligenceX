@@ -11,7 +11,7 @@ namespace IntelligenceX.Reviewer;
 internal static class Program {
     private static async Task<int> Main(string[] args) {
         try {
-            var settings = ReviewSettings.FromEnvironment();
+            var settings = ReviewSettings.Load();
             var eventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
             var token = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
 
@@ -47,6 +47,9 @@ internal static class Program {
             }
 
             using var github = new GitHubClient(token);
+            var progress = new ReviewProgress {
+                StatusLine = "Starting review."
+            };
             var files = await github.GetPullRequestFilesAsync(context.Owner, context.Repo, context.Number, CancellationToken.None)
                 .ConfigureAwait(false);
 
@@ -60,17 +63,49 @@ internal static class Program {
                 return 0;
             }
 
+            progress.Context = ReviewProgressState.Complete;
+            progress.Files = ReviewProgressState.Complete;
+            progress.StatusLine = "Analyzed changed files.";
+
             var limitedFiles = PrepareFiles(files, settings.MaxFiles, settings.MaxPatchChars);
             var prompt = PromptBuilder.Build(context, limitedFiles, settings);
             if (settings.RedactPii) {
                 prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
             }
 
+            long? commentId = null;
+            if (settings.ProgressUpdates) {
+                var progressBody = ReviewFormatter.BuildProgressComment(context, settings, progress, null, inlineSupported: false);
+                commentId = await CreateOrUpdateProgressCommentAsync(github, context, settings, progressBody, CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+
             var runner = new ReviewRunner(settings);
-            var reviewBody = await runner.RunAsync(prompt, CancellationToken.None).ConfigureAwait(false);
+            progress.Review = ReviewProgressState.InProgress;
+            progress.StatusLine = "Generating review findings.";
+
+            Func<string, Task>? onPartial = null;
+            if (settings.ProgressUpdates && commentId.HasValue) {
+                onPartial = async partial => {
+                    var body = ReviewFormatter.BuildProgressComment(context, settings, progress, partial, inlineSupported: false);
+                    await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, body, CancellationToken.None)
+                        .ConfigureAwait(false);
+                };
+            }
+
+            var reviewBody = await runner.RunAsync(prompt, onPartial, TimeSpan.FromSeconds(settings.ProgressUpdateSeconds),
+                CancellationToken.None).ConfigureAwait(false);
 
             var commentBody = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: false);
-            if (settings.OverwriteSummary) {
+            progress.Review = ReviewProgressState.Complete;
+            progress.Finalize = ReviewProgressState.InProgress;
+            progress.StatusLine = "Finalizing summary.";
+
+            if (commentId.HasValue) {
+                await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, commentBody, CancellationToken.None)
+                    .ConfigureAwait(false);
+                Console.WriteLine("Updated review comment.");
+            } else if (settings.OverwriteSummary && settings.CommentMode == ReviewCommentMode.Sticky) {
                 var existing = await FindExistingSummaryAsync(github, context, CancellationToken.None).ConfigureAwait(false);
                 if (existing is not null) {
                     await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, commentBody, CancellationToken.None)
@@ -78,11 +113,15 @@ internal static class Program {
                     Console.WriteLine("Updated existing review comment.");
                     return 0;
                 }
+                await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, CancellationToken.None)
+                    .ConfigureAwait(false);
+                Console.WriteLine("Posted review comment.");
+            } else {
+                await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, CancellationToken.None)
+                    .ConfigureAwait(false);
+                Console.WriteLine("Posted review comment.");
             }
 
-            await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, CancellationToken.None)
-                .ConfigureAwait(false);
-            Console.WriteLine("Posted review comment.");
             return 0;
         } catch (Exception ex) {
             Console.Error.WriteLine(ex.Message);
@@ -158,5 +197,23 @@ internal static class Program {
             }
         }
         return null;
+    }
+
+    private static async Task<long?> CreateOrUpdateProgressCommentAsync(GitHubClient github, PullRequestContext context,
+        ReviewSettings settings, string body, CancellationToken cancellationToken) {
+        IssueComment? existing = null;
+        if (settings.CommentMode == ReviewCommentMode.Sticky) {
+            existing = await FindExistingSummaryAsync(github, context, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (existing is not null) {
+            await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, body, cancellationToken)
+                .ConfigureAwait(false);
+            return existing.Id;
+        }
+
+        var created = await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, cancellationToken)
+            .ConfigureAwait(false);
+        return created.Id;
     }
 }

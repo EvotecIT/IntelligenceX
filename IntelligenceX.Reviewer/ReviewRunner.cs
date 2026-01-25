@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Copilot;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Chat;
@@ -17,7 +18,15 @@ internal sealed class ReviewRunner {
         _settings = settings;
     }
 
-    public async Task<string> RunAsync(string prompt, CancellationToken cancellationToken) {
+    public async Task<string> RunAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
+        CancellationToken cancellationToken) {
+        return _settings.Provider == ReviewProvider.Copilot
+            ? await RunCopilotAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false)
+            : await RunOpenAiAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<string> RunOpenAiAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
+        CancellationToken cancellationToken) {
         var options = new IntelligenceXClientOptions {
             DefaultModel = _settings.Model
         };
@@ -45,6 +54,19 @@ internal sealed class ReviewRunner {
             }
         });
 
+        Task? progressTask = null;
+        CancellationTokenSource? progressCts = null;
+        if (onPartial is not null && updateInterval.HasValue && updateInterval.Value > TimeSpan.Zero) {
+            progressCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            progressTask = Task.Run(async () => {
+                while (!progressCts.IsCancellationRequested) {
+                    await Task.Delay(updateInterval.Value, progressCts.Token).ConfigureAwait(false);
+                    var snapshot = GetDeltas(deltas);
+                    await onPartial(snapshot).ConfigureAwait(false);
+                }
+            }, progressCts.Token);
+        }
+
         var chatOptions = new ChatOptions {
             Model = _settings.Model,
             NewThread = true
@@ -53,11 +75,105 @@ internal sealed class ReviewRunner {
         var turn = await client.ChatAsync(input, chatOptions, cancellationToken).ConfigureAwait(false);
 
         var output = ExtractOutputs(turn.Outputs);
+        if (progressTask is not null && progressCts is not null) {
+            progressCts.Cancel();
+            try {
+                await progressTask.ConfigureAwait(false);
+            } catch (OperationCanceledException) {
+                // Expected when stopping progress updates.
+            }
+            progressCts.Dispose();
+        }
+
         if (!string.IsNullOrWhiteSpace(output)) {
             return output;
         }
 
         return await WaitForDeltasAsync(deltas, () => lastDelta, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<string> RunCopilotAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
+        CancellationToken cancellationToken) {
+        var options = new CopilotClientOptions();
+        if (!string.IsNullOrWhiteSpace(_settings.CopilotCliPath)) {
+            options.CliPath = _settings.CopilotCliPath;
+        }
+        if (!string.IsNullOrWhiteSpace(_settings.CopilotCliUrl)) {
+            options.CliUrl = _settings.CopilotCliUrl;
+        }
+        if (!string.IsNullOrWhiteSpace(_settings.CopilotWorkingDirectory)) {
+            options.WorkingDirectory = _settings.CopilotWorkingDirectory;
+        }
+        if (_settings.CopilotAutoInstall) {
+            options.AutoInstallCli = true;
+        }
+        if (!string.IsNullOrWhiteSpace(_settings.CopilotAutoInstallMethod) &&
+            Enum.TryParse(_settings.CopilotAutoInstallMethod, true, out CopilotCliInstallMethod method)) {
+            options.AutoInstallMethod = method;
+        }
+        options.AutoInstallPrerelease = _settings.CopilotAutoInstallPrerelease;
+
+        await using var client = await CopilotClient.StartAsync(options, cancellationToken).ConfigureAwait(false);
+        var session = await client.CreateSessionAsync(new CopilotSessionOptions {
+            Model = _settings.Model,
+            Streaming = true
+        }, cancellationToken).ConfigureAwait(false);
+
+        var deltas = new StringBuilder();
+        string? finalMessage = null;
+
+        var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        using var subscription = session.OnEvent(evt => {
+            if (!string.IsNullOrWhiteSpace(evt.Content)) {
+                finalMessage = evt.Content;
+            }
+            if (!string.IsNullOrWhiteSpace(evt.DeltaContent)) {
+                lock (deltas) {
+                    deltas.Append(evt.DeltaContent);
+                }
+            }
+            if (!string.IsNullOrWhiteSpace(evt.ErrorMessage)) {
+                tcs.TrySetException(new InvalidOperationException(evt.ErrorMessage));
+            }
+            if (evt.IsIdle) {
+                tcs.TrySetResult(finalMessage ?? GetDeltas(deltas));
+            }
+        });
+
+        CancellationTokenSource? progressCts = null;
+        Task? progressTask = null;
+        if (onPartial is not null && updateInterval.HasValue && updateInterval.Value > TimeSpan.Zero) {
+            progressCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            progressTask = Task.Run(async () => {
+                while (!progressCts.IsCancellationRequested) {
+                    await Task.Delay(updateInterval.Value, progressCts.Token).ConfigureAwait(false);
+                    var snapshot = GetDeltas(deltas);
+                    await onPartial(snapshot).ConfigureAwait(false);
+                }
+            }, progressCts.Token);
+        }
+
+        await session.SendAsync(new CopilotMessageOptions { Prompt = prompt }, cancellationToken).ConfigureAwait(false);
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(_settings.WaitSeconds));
+        using var registration = timeout.Token.Register(() =>
+            tcs.TrySetException(new TimeoutException($"Copilot review timed out after {_settings.WaitSeconds} seconds.")));
+
+        var result = await tcs.Task.ConfigureAwait(false);
+
+        if (progressTask is not null && progressCts is not null) {
+            progressCts.Cancel();
+            try {
+                await progressTask.ConfigureAwait(false);
+            } catch (OperationCanceledException) {
+                // Expected on cancellation.
+            }
+            progressCts.Dispose();
+        }
+
+        return result ?? string.Empty;
     }
 
     private async Task<string> WaitForDeltasAsync(StringBuilder deltas, Func<DateTimeOffset> getLastDelta,
@@ -90,5 +206,11 @@ internal sealed class ReviewRunner {
             }
         }
         return builder.ToString().Trim();
+    }
+
+    private static string GetDeltas(StringBuilder deltas) {
+        lock (deltas) {
+            return deltas.ToString();
+        }
     }
 }

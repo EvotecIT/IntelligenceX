@@ -8,6 +8,10 @@ namespace IntelligenceX.Reviewer;
 internal static class PromptBuilder {
     public static string Build(PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings) {
         var template = ResolveTemplate(settings);
+        var profileBlock = string.IsNullOrWhiteSpace(settings.Profile) ? string.Empty : $"Profile: {settings.Profile}\n";
+        var strictnessBlock = string.IsNullOrWhiteSpace(settings.Strictness) ? string.Empty : $"Strictness: {settings.Strictness}\n";
+        var toneBlock = string.IsNullOrWhiteSpace(settings.Tone) ? string.Empty : $"Tone: {settings.Tone}\n";
+        var focusBlock = settings.Focus.Count == 0 ? string.Empty : $"Focus areas: {string.Join(", ", settings.Focus)}\n";
         var personaBlock = string.IsNullOrWhiteSpace(settings.Persona) ? string.Empty : $"Persona: {settings.Persona}\n";
         var notesBlock = string.IsNullOrWhiteSpace(settings.Notes) ? string.Empty : $"Additional guidance: {settings.Notes}\n";
         var severityBlock = string.IsNullOrWhiteSpace(settings.SeverityThreshold)
@@ -16,6 +20,10 @@ internal static class PromptBuilder {
         var nextStepsSection = settings.IncludeNextSteps ? "- Next Steps\n" : string.Empty;
 
         var tokens = new Dictionary<string, string> {
+            ["ProfileBlock"] = profileBlock,
+            ["StrictnessBlock"] = strictnessBlock,
+            ["ToneBlock"] = toneBlock,
+            ["FocusBlock"] = focusBlock,
             ["PersonaBlock"] = personaBlock,
             ["NotesBlock"] = notesBlock,
             ["SeverityBlock"] = severityBlock,
