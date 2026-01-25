@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using IntelligenceX;
+using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.Examples;
 

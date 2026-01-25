@@ -1,8 +1,8 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using IntelligenceX;
-using IntelligenceX.Chat;
+using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.Chat;
 
 namespace IntelligenceX.Examples;
 

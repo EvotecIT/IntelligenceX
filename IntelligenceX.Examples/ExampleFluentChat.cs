@@ -1,7 +1,7 @@
 using System;
 using System.Threading.Tasks;
-using IntelligenceX.AppServer;
-using IntelligenceX.Fluent;
+using IntelligenceX.OpenAI.AppServer;
+using IntelligenceX.OpenAI.Fluent;
 
 namespace IntelligenceX.Examples;
 

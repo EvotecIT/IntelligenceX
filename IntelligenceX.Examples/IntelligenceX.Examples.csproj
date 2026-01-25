@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
+        <OutputType>Exe</OutputType>
         <AssemblyName>IntelligenceX.Examples</AssemblyName>
         <AssemblyTitle>IntelligenceX Examples</AssemblyTitle>
         <Title>IntelligenceX Examples</Title>
