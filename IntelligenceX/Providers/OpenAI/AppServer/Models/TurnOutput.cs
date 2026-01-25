@@ -5,7 +5,8 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
 public sealed class TurnOutput {
-    public TurnOutput(string type, string? text, string? imageUrl, string? imagePath, string? base64, string? mimeType, JsonObject raw) {
+    public TurnOutput(string type, string? text, string? imageUrl, string? imagePath, string? base64, string? mimeType,
+        JsonObject raw, JsonObject? additional) {
         Type = type;
         Text = text;
         ImageUrl = imageUrl;
@@ -13,6 +14,7 @@ public sealed class TurnOutput {
         Base64 = base64;
         MimeType = mimeType;
         Raw = raw;
+        Additional = additional;
     }
 
     public string Type { get; }
@@ -22,6 +24,7 @@ public sealed class TurnOutput {
     public string? Base64 { get; }
     public string? MimeType { get; }
     public JsonObject Raw { get; }
+    public JsonObject? Additional { get; }
 
     public bool IsText => string.Equals(Type, "text", StringComparison.OrdinalIgnoreCase);
     public bool IsImage => string.Equals(Type, "image", StringComparison.OrdinalIgnoreCase);
@@ -63,7 +66,10 @@ public sealed class TurnOutput {
         var path = obj.GetString("path") ?? obj.GetString("file") ?? obj.GetString("filePath");
         var base64 = obj.GetString("base64") ?? obj.GetString("data");
         var mime = obj.GetString("mimeType") ?? obj.GetString("mime_type") ?? obj.GetString("contentType");
-        return new TurnOutput(type, text, url, path, base64, mime, obj);
+        var additional = obj.ExtractAdditional(
+            "type", "kind", "text", "content", "url", "imageUrl", "image_url",
+            "path", "file", "filePath", "base64", "data", "mimeType", "mime_type", "contentType");
+        return new TurnOutput(type, text, url, path, base64, mime, obj, additional);
     }
 
     private static JsonArray? FindOutputs(JsonObject turnObj) {

@@ -42,27 +42,18 @@ public sealed class CopilotClient : IDisposable, IAsyncDisposable {
         var result = await CallAsync("status.get", JsonValue.From(new JsonArray()), cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         if (obj is null) {
-            return new CopilotStatus();
+            return new CopilotStatus(string.Empty, 0, new JsonObject(), null);
         }
-        return new CopilotStatus {
-            Version = obj.GetString("version") ?? string.Empty,
-            ProtocolVersion = (int)(obj.GetInt64("protocolVersion") ?? 0)
-        };
+        return CopilotStatus.FromJson(obj);
     }
 
     public async Task<CopilotAuthStatus> GetAuthStatusAsync(CancellationToken cancellationToken = default) {
         var result = await CallAsync("auth.getStatus", JsonValue.From(new JsonArray()), cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         if (obj is null) {
-            return new CopilotAuthStatus();
+            return new CopilotAuthStatus(false, null, null, null, null, new JsonObject(), null);
         }
-        return new CopilotAuthStatus {
-            IsAuthenticated = obj.GetBoolean("isAuthenticated"),
-            AuthType = obj.GetString("authType"),
-            Host = obj.GetString("host"),
-            Login = obj.GetString("login"),
-            StatusMessage = obj.GetString("statusMessage")
-        };
+        return CopilotAuthStatus.FromJson(obj);
     }
 
     public async Task<IReadOnlyList<CopilotModelInfo>> ListModelsAsync(CancellationToken cancellationToken = default) {
@@ -78,9 +69,7 @@ public sealed class CopilotClient : IDisposable, IAsyncDisposable {
             if (model is null) {
                 continue;
             }
-            var id = model.GetString("id") ?? string.Empty;
-            var name = model.GetString("name");
-            var info = new CopilotModelInfo(id, name);
+            var info = CopilotModelInfo.FromJson(model);
             list.Add(info);
         }
         return list;

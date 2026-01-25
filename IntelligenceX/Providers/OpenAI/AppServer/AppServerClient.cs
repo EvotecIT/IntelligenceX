@@ -102,9 +102,7 @@ public sealed class AppServerClient : IDisposable {
         if (obj is null) {
             throw new InvalidOperationException("Unexpected login response.");
         }
-        var loginId = obj.GetString("loginId") ?? string.Empty;
-        var authUrl = obj.GetString("authUrl") ?? string.Empty;
-        return new ChatGptLoginStart(loginId, authUrl);
+        return ChatGptLoginStart.FromJson(obj);
     }
 
     public Task LoginWithApiKeyAsync(string apiKey, CancellationToken cancellationToken = default) {
@@ -121,10 +119,7 @@ public sealed class AppServerClient : IDisposable {
         if (obj is null) {
             throw new InvalidOperationException("Unexpected account response.");
         }
-        var email = obj.GetString("email");
-        var plan = obj.GetString("planType");
-        var id = obj.GetString("id");
-        return new AccountInfo(email, plan, id);
+        return AccountInfo.FromJson(obj);
     }
 
     public Task LogoutAsync(CancellationToken cancellationToken = default)
@@ -254,35 +249,20 @@ public sealed class AppServerClient : IDisposable {
         }
 
         var result = await _rpc.CallAsync("thread/list", parameters, cancellationToken).ConfigureAwait(false);
-        var obj = result?.AsObject() ?? new JsonObject();
-        var dataArray = obj.GetArray("data");
-        var items = new List<ThreadInfo>();
-        if (dataArray is not null) {
-            foreach (var entry in dataArray) {
-                var threadObj = entry.AsObject();
-                if (threadObj is not null) {
-                    items.Add(ThreadInfo.FromJson(threadObj));
-                }
-            }
+        var obj = result?.AsObject();
+        if (obj is null) {
+            throw new InvalidOperationException("Unexpected thread list response.");
         }
-        var nextCursor = obj.GetString("nextCursor");
-        return new ThreadListResult(items, nextCursor);
+        return ThreadListResult.FromJson(obj);
     }
 
     public async Task<ThreadIdListResult> ListLoadedThreadsAsync(CancellationToken cancellationToken = default) {
         var result = await _rpc.CallAsync("thread/loaded/list", (JsonObject?)null, cancellationToken).ConfigureAwait(false);
-        var obj = result?.AsObject() ?? new JsonObject();
-        var dataArray = obj.GetArray("data");
-        var items = new List<string>();
-        if (dataArray is not null) {
-            foreach (var entry in dataArray) {
-                var value = entry.AsString();
-                if (!string.IsNullOrWhiteSpace(value)) {
-                    items.Add(value);
-                }
-            }
+        var obj = result?.AsObject();
+        if (obj is null) {
+            throw new InvalidOperationException("Unexpected loaded thread response.");
         }
-        return new ThreadIdListResult(items);
+        return ThreadIdListResult.FromJson(obj);
     }
 
     public Task ArchiveThreadAsync(string threadId, CancellationToken cancellationToken = default) {
@@ -326,12 +306,10 @@ public sealed class AppServerClient : IDisposable {
 
         var result = await _rpc.CallAsync("review/start", parameters, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
-        var turnObj = obj?.GetObject("turn");
-        if (turnObj is null) {
+        if (obj is null) {
             throw new InvalidOperationException("Unexpected review response.");
         }
-        var reviewThreadId = obj?.GetString("reviewThreadId");
-        return new ReviewStartResult(TurnInfo.FromJson(turnObj), reviewThreadId);
+        return ReviewStartResult.FromJson(obj);
     }
 
     public async Task<CommandExecResult> ExecuteCommandAsync(CommandExecRequest request, CancellationToken cancellationToken = default) {
@@ -356,21 +334,31 @@ public sealed class AppServerClient : IDisposable {
 
         var result = await _rpc.CallAsync("command/exec", parameters, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
-        var exitCode = obj?.GetInt64("exitCode");
-        var stdout = obj?.GetString("stdout");
-        var stderr = obj?.GetString("stderr");
-        return new CommandExecResult(exitCode is null ? null : (int?)exitCode.Value, stdout, stderr);
+        if (obj is null) {
+            throw new InvalidOperationException("Unexpected command response.");
+        }
+        return CommandExecResult.FromJson(obj);
     }
 
-    public Task<JsonValue?> ListModelsAsync(CancellationToken cancellationToken = default) {
-        return _rpc.CallAsync("model/list", (JsonObject?)null, cancellationToken);
+    public async Task<ModelListResult> ListModelsAsync(CancellationToken cancellationToken = default) {
+        var result = await _rpc.CallAsync("model/list", (JsonObject?)null, cancellationToken).ConfigureAwait(false);
+        var obj = result?.AsObject();
+        if (obj is null) {
+            throw new InvalidOperationException("Unexpected model list response.");
+        }
+        return ModelListResult.FromJson(obj);
     }
 
-    public Task<JsonValue?> ListCollaborationModesAsync(CancellationToken cancellationToken = default) {
-        return _rpc.CallAsync("collaborationMode/list", (JsonObject?)null, cancellationToken);
+    public async Task<CollaborationModeListResult> ListCollaborationModesAsync(CancellationToken cancellationToken = default) {
+        var result = await _rpc.CallAsync("collaborationMode/list", (JsonObject?)null, cancellationToken).ConfigureAwait(false);
+        var obj = result?.AsObject();
+        if (obj is null) {
+            throw new InvalidOperationException("Unexpected collaboration mode response.");
+        }
+        return CollaborationModeListResult.FromJson(obj);
     }
 
-    public Task<JsonValue?> ListSkillsAsync(IReadOnlyList<string>? cwds = null, bool? forceReload = null,
+    public async Task<SkillListResult> ListSkillsAsync(IReadOnlyList<string>? cwds = null, bool? forceReload = null,
         CancellationToken cancellationToken = default) {
         var parameters = new JsonObject();
         if (cwds is not null && cwds.Count > 0) {
@@ -383,7 +371,12 @@ public sealed class AppServerClient : IDisposable {
         if (forceReload.HasValue) {
             parameters.Add("forceReload", forceReload.Value);
         }
-        return _rpc.CallAsync("skills/list", parameters, cancellationToken);
+        var result = await _rpc.CallAsync("skills/list", parameters, cancellationToken).ConfigureAwait(false);
+        var obj = result?.AsObject();
+        if (obj is null) {
+            throw new InvalidOperationException("Unexpected skills list response.");
+        }
+        return SkillListResult.FromJson(obj);
     }
 
     public Task WriteSkillConfigAsync(string path, bool enabled, CancellationToken cancellationToken = default) {
@@ -394,8 +387,13 @@ public sealed class AppServerClient : IDisposable {
         return _rpc.CallAsync("skills/config/write", parameters, cancellationToken);
     }
 
-    public Task<JsonValue?> ReadConfigAsync(CancellationToken cancellationToken = default) {
-        return _rpc.CallAsync("config/read", (JsonObject?)null, cancellationToken);
+    public async Task<ConfigReadResult> ReadConfigAsync(CancellationToken cancellationToken = default) {
+        var result = await _rpc.CallAsync("config/read", (JsonObject?)null, cancellationToken).ConfigureAwait(false);
+        var obj = result?.AsObject();
+        if (obj is null) {
+            throw new InvalidOperationException("Unexpected config response.");
+        }
+        return ConfigReadResult.FromJson(obj);
     }
 
     public Task WriteConfigValueAsync(string key, JsonValue value, CancellationToken cancellationToken = default) {
@@ -419,8 +417,13 @@ public sealed class AppServerClient : IDisposable {
         return _rpc.CallAsync("config/batchWrite", parameters, cancellationToken);
     }
 
-    public Task<JsonValue?> ReadConfigRequirementsAsync(CancellationToken cancellationToken = default) {
-        return _rpc.CallAsync("configRequirements/read", (JsonObject?)null, cancellationToken);
+    public async Task<ConfigRequirementsReadResult> ReadConfigRequirementsAsync(CancellationToken cancellationToken = default) {
+        var result = await _rpc.CallAsync("configRequirements/read", (JsonObject?)null, cancellationToken).ConfigureAwait(false);
+        var obj = result?.AsObject();
+        if (obj is null) {
+            throw new InvalidOperationException("Unexpected config requirements response.");
+        }
+        return ConfigRequirementsReadResult.FromJson(obj);
     }
 
     public async Task<McpOauthLoginStart> StartMcpOauthLoginAsync(string? serverId, string? serverName = null,
@@ -434,12 +437,14 @@ public sealed class AppServerClient : IDisposable {
         }
         var result = await _rpc.CallAsync("mcpServer/oauth/login", parameters, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
-        var loginId = obj?.GetString("loginId");
-        var authUrl = obj?.GetString("authUrl");
-        return new McpOauthLoginStart(loginId, authUrl);
+        if (obj is null) {
+            throw new InvalidOperationException("Unexpected MCP OAuth response.");
+        }
+        return McpOauthLoginStart.FromJson(obj);
     }
 
-    public Task<JsonValue?> ListMcpServerStatusAsync(string? cursor = null, int? limit = null, CancellationToken cancellationToken = default) {
+    public async Task<McpServerStatusListResult> ListMcpServerStatusAsync(string? cursor = null, int? limit = null,
+        CancellationToken cancellationToken = default) {
         var parameters = new JsonObject();
         if (!string.IsNullOrWhiteSpace(cursor)) {
             parameters.Add("cursor", cursor);
@@ -447,21 +452,31 @@ public sealed class AppServerClient : IDisposable {
         if (limit.HasValue) {
             parameters.Add("limit", limit.Value);
         }
-        return _rpc.CallAsync("mcpServerStatus/list", parameters, cancellationToken);
+        var result = await _rpc.CallAsync("mcpServerStatus/list", parameters, cancellationToken).ConfigureAwait(false);
+        var obj = result?.AsObject();
+        if (obj is null) {
+            throw new InvalidOperationException("Unexpected MCP server status response.");
+        }
+        return McpServerStatusListResult.FromJson(obj);
     }
 
-    public Task<JsonValue?> ReloadMcpServerConfigAsync(CancellationToken cancellationToken = default) {
-        return _rpc.CallAsync("config/mcpServer/reload", (JsonObject?)null, cancellationToken);
+    public async Task ReloadMcpServerConfigAsync(CancellationToken cancellationToken = default) {
+        await _rpc.CallAsync("config/mcpServer/reload", (JsonObject?)null, cancellationToken).ConfigureAwait(false);
     }
 
-    public Task<JsonValue?> RequestUserInputAsync(IReadOnlyList<string> questions, CancellationToken cancellationToken = default) {
+    public async Task<UserInputResponse> RequestUserInputAsync(IReadOnlyList<string> questions, CancellationToken cancellationToken = default) {
         Guard.NotNull(questions, nameof(questions));
         var array = new JsonArray();
         foreach (var question in questions) {
             array.Add(question);
         }
         var parameters = new JsonObject().Add("questions", array);
-        return _rpc.CallAsync("tool/requestUserInput", parameters, cancellationToken);
+        var result = await _rpc.CallAsync("tool/requestUserInput", parameters, cancellationToken).ConfigureAwait(false);
+        var obj = result?.AsObject();
+        if (obj is null) {
+            throw new InvalidOperationException("Unexpected user input response.");
+        }
+        return UserInputResponse.FromJson(obj);
     }
 
     public Task UploadFeedbackAsync(string content, CancellationToken cancellationToken = default) {

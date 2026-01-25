@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
@@ -39,6 +40,25 @@ public sealed class EasySession : IAsyncDisposable {
 
     public Task<TurnInfo> ChatAsync(string text, CancellationToken cancellationToken = default) {
         return ChatAsync(ChatInput.FromText(text), null, cancellationToken);
+    }
+
+    public async Task<EasyChatResult> AskAsync(string text, EasyChatOptions? options = null, CancellationToken cancellationToken = default) {
+        var turn = await ChatAsync(ChatInput.FromText(text), options, cancellationToken).ConfigureAwait(false);
+        return EasyChatResult.FromTurn(turn);
+    }
+
+    public async Task<EasyChatResult> AskWithImagePathAsync(string text, string imagePath, EasyChatOptions? options = null,
+        CancellationToken cancellationToken = default) {
+        var input = ChatInput.FromTextWithImagePath(text, imagePath);
+        var turn = await ChatAsync(input, options, cancellationToken).ConfigureAwait(false);
+        return EasyChatResult.FromTurn(turn);
+    }
+
+    public async Task<EasyChatResult> AskWithImageUrlAsync(string text, string imageUrl, EasyChatOptions? options = null,
+        CancellationToken cancellationToken = default) {
+        var input = ChatInput.FromTextWithImageUrl(text, imageUrl);
+        var turn = await ChatAsync(input, options, cancellationToken).ConfigureAwait(false);
+        return EasyChatResult.FromTurn(turn);
     }
 
     public Task<TurnInfo> ChatWithImagePathAsync(string text, string imagePath, EasyChatOptions? options = null,
@@ -86,8 +106,7 @@ public sealed class EasySession : IAsyncDisposable {
                 await _client.LoginApiKeyAsync(key, cancellationToken).ConfigureAwait(false);
                 break;
             case EasyLoginMode.ChatGpt:
-                var callback = _options.OnLoginUrl ?? (url => Console.WriteLine(url));
-                await _client.LoginChatGptAndWaitAsync(callback, cancellationToken).ConfigureAwait(false);
+                await LoginChatGptAsync(cancellationToken).ConfigureAwait(false);
                 break;
         }
 
@@ -121,6 +140,32 @@ public sealed class EasySession : IAsyncDisposable {
         }
 
         return clientOptions;
+    }
+
+    private async Task LoginChatGptAsync(CancellationToken cancellationToken) {
+        var login = await _client.LoginChatGptAsync(cancellationToken).ConfigureAwait(false);
+        if (_options.OnLoginUrl is not null) {
+            _options.OnLoginUrl(login.AuthUrl);
+        } else if (_options.PrintLoginUrl) {
+            Console.WriteLine(login.AuthUrl);
+        }
+
+        if (_options.OpenBrowser) {
+            TryOpenUrl(login.AuthUrl);
+        }
+        await _client.RawClient.WaitForLoginCompletionAsync(login.LoginId, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static void TryOpenUrl(string url) {
+        try {
+            var psi = new ProcessStartInfo {
+                FileName = url,
+                UseShellExecute = true
+            };
+            Process.Start(psi);
+        } catch {
+            // Ignore failures to open browser.
+        }
     }
 
     public ValueTask DisposeAsync() => _client.DisposeAsync();

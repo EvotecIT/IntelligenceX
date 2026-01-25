@@ -15,6 +15,8 @@ public sealed class EasySessionOptions {
     public EasyLoginMode Login { get; set; } = EasyLoginMode.ChatGpt;
     public string? ApiKey { get; set; }
     public Action<string>? OnLoginUrl { get; set; }
+    public bool OpenBrowser { get; set; } = true;
+    public bool PrintLoginUrl { get; set; } = true;
     public bool AutoInitialize { get; set; } = true;
     public bool AutoLogin { get; set; } = true;
     public string DefaultModel { get; set; } = "gpt-5.1-codex";
