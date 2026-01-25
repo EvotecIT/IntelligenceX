@@ -1,6 +1,7 @@
 using System.Management.Automation;
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
+using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.Json;
 
 namespace IntelligenceX.PowerShell;
@@ -9,7 +10,7 @@ namespace IntelligenceX.PowerShell;
 /// <para type="synopsis">Lists available skills.</para>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXSkill")]
-[OutputType(typeof(JsonValue))]
+[OutputType(typeof(SkillListResult), typeof(JsonValue))]
 public sealed class CmdletGetIntelligenceXSkill : IntelligenceXCmdlet {
     /// <summary>
     /// <para type="description">Client instance to use. Defaults to the active client.</para>
@@ -29,9 +30,31 @@ public sealed class CmdletGetIntelligenceXSkill : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter ForceReload { get; set; }
 
+    /// <summary>
+    /// <para type="description">Return raw JSON response.</para>
+    /// </summary>
+    [Parameter]
+    public SwitchParameter Raw { get; set; }
+
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveClient(Client);
-        var result = await resolved.ListSkillsAsync(Cwd, ForceReload.IsPresent, CancelToken).ConfigureAwait(false);
-        WriteObject(result);
+        if (Raw.IsPresent) {
+            var parameters = new JsonObject();
+            if (Cwd is not null && Cwd.Length > 0) {
+                var array = new JsonArray();
+                foreach (var cwd in Cwd) {
+                    array.Add(cwd);
+                }
+                parameters.Add("cwds", array);
+            }
+            if (ForceReload.IsPresent) {
+                parameters.Add("forceReload", true);
+            }
+            var result = await resolved.CallAsync("skills/list", parameters, CancelToken).ConfigureAwait(false);
+            WriteObject(result);
+        } else {
+            var result = await resolved.ListSkillsAsync(Cwd, ForceReload.IsPresent, CancelToken).ConfigureAwait(false);
+            WriteObject(result);
+        }
     }
 }

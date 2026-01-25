@@ -2,6 +2,7 @@ using System.Management.Automation;
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
+using IntelligenceX.Json;
 
 namespace IntelligenceX.PowerShell;
 
@@ -9,7 +10,7 @@ namespace IntelligenceX.PowerShell;
 /// <para type="synopsis">Sends a message to a thread and starts a turn.</para>
 /// </summary>
 [Cmdlet(VerbsCommunications.Send, "IntelligenceXMessage")]
-[OutputType(typeof(TurnInfo))]
+[OutputType(typeof(TurnInfo), typeof(JsonValue))]
 public sealed class CmdletSendIntelligenceXMessage : IntelligenceXCmdlet {
     /// <summary>
     /// <para type="description">Client instance to use. Defaults to the active client.</para>
@@ -65,6 +66,12 @@ public sealed class CmdletSendIntelligenceXMessage : IntelligenceXCmdlet {
     [Parameter]
     public string[]? WritableRoot { get; set; }
 
+    /// <summary>
+    /// <para type="description">Return raw JSON response.</para>
+    /// </summary>
+    [Parameter]
+    public SwitchParameter Raw { get; set; }
+
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveClient(Client);
         SandboxPolicy? sandbox = null;
@@ -72,8 +79,32 @@ public sealed class CmdletSendIntelligenceXMessage : IntelligenceXCmdlet {
             sandbox = new SandboxPolicy(SandboxType!, NetworkAccess.IsPresent, WritableRoot);
         }
 
-        var turn = await resolved.StartTurnAsync(ThreadId, Text, Model, CurrentDirectory, ApprovalPolicy, sandbox, CancelToken)
-            .ConfigureAwait(false);
-        WriteObject(turn);
+        if (Raw.IsPresent) {
+            var input = new JsonArray()
+                .Add(new JsonObject()
+                    .Add("type", "text")
+                    .Add("text", Text));
+            var parameters = new JsonObject()
+                .Add("threadId", ThreadId)
+                .Add("input", input);
+            if (!string.IsNullOrWhiteSpace(Model)) {
+                parameters.Add("model", Model);
+            }
+            if (!string.IsNullOrWhiteSpace(CurrentDirectory)) {
+                parameters.Add("cwd", CurrentDirectory);
+            }
+            if (!string.IsNullOrWhiteSpace(ApprovalPolicy)) {
+                parameters.Add("approvalPolicy", ApprovalPolicy);
+            }
+            if (sandbox is not null) {
+                parameters.Add("sandboxPolicy", SandboxPolicyJson.ToJson(sandbox));
+            }
+            var turn = await resolved.CallAsync("turn/start", parameters, CancelToken).ConfigureAwait(false);
+            WriteObject(turn);
+        } else {
+            var turn = await resolved.StartTurnAsync(ThreadId, Text, Model, CurrentDirectory, ApprovalPolicy, sandbox, CancelToken)
+                .ConfigureAwait(false);
+            WriteObject(turn);
+        }
     }
 }

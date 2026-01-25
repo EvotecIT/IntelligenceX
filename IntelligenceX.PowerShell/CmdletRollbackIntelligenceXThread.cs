@@ -2,6 +2,7 @@ using System.Management.Automation;
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
+using IntelligenceX.Json;
 
 namespace IntelligenceX.PowerShell;
 
@@ -9,7 +10,7 @@ namespace IntelligenceX.PowerShell;
 /// <para type="synopsis">Rolls back the last N turns from a thread.</para>
 /// </summary>
 [Cmdlet(VerbsData.Restore, "IntelligenceXThread")]
-[OutputType(typeof(ThreadInfo))]
+[OutputType(typeof(ThreadInfo), typeof(JsonValue))]
 public sealed class CmdletRollbackIntelligenceXThread : IntelligenceXCmdlet {
     /// <summary>
     /// <para type="description">Client instance to use. Defaults to the active client.</para>
@@ -29,9 +30,23 @@ public sealed class CmdletRollbackIntelligenceXThread : IntelligenceXCmdlet {
     [Parameter(Mandatory = true)]
     public int Turns { get; set; }
 
+    /// <summary>
+    /// <para type="description">Return raw JSON response.</para>
+    /// </summary>
+    [Parameter]
+    public SwitchParameter Raw { get; set; }
+
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveClient(Client);
-        var thread = await resolved.RollbackThreadAsync(ThreadId, Turns, CancelToken).ConfigureAwait(false);
-        WriteObject(thread);
+        if (Raw.IsPresent) {
+            var parameters = new JsonObject()
+                .Add("threadId", ThreadId)
+                .Add("turns", Turns);
+            var thread = await resolved.CallAsync("thread/rollback", parameters, CancelToken).ConfigureAwait(false);
+            WriteObject(thread);
+        } else {
+            var thread = await resolved.RollbackThreadAsync(ThreadId, Turns, CancelToken).ConfigureAwait(false);
+            WriteObject(thread);
+        }
     }
 }

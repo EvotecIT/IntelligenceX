@@ -2,6 +2,7 @@ using System.Management.Automation;
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
+using IntelligenceX.Json;
 
 namespace IntelligenceX.PowerShell;
 
@@ -9,7 +10,7 @@ namespace IntelligenceX.PowerShell;
 /// <para type="synopsis">Creates a new conversation thread.</para>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Start, "IntelligenceXThread")]
-[OutputType(typeof(ThreadInfo))]
+[OutputType(typeof(ThreadInfo), typeof(JsonValue))]
 public sealed class CmdletStartIntelligenceXThread : IntelligenceXCmdlet {
     /// <summary>
     /// <para type="description">Client instance to use. Defaults to the active client.</para>
@@ -41,9 +42,30 @@ public sealed class CmdletStartIntelligenceXThread : IntelligenceXCmdlet {
     [Parameter]
     public string? Sandbox { get; set; }
 
+    /// <summary>
+    /// <para type="description">Return raw JSON response.</para>
+    /// </summary>
+    [Parameter]
+    public SwitchParameter Raw { get; set; }
+
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveClient(Client);
-        var thread = await resolved.StartThreadAsync(Model, CurrentDirectory, ApprovalPolicy, Sandbox, CancelToken).ConfigureAwait(false);
-        WriteObject(thread);
+        if (Raw.IsPresent) {
+            var parameters = new JsonObject().Add("model", Model);
+            if (!string.IsNullOrWhiteSpace(CurrentDirectory)) {
+                parameters.Add("cwd", CurrentDirectory);
+            }
+            if (!string.IsNullOrWhiteSpace(ApprovalPolicy)) {
+                parameters.Add("approvalPolicy", ApprovalPolicy);
+            }
+            if (!string.IsNullOrWhiteSpace(Sandbox)) {
+                parameters.Add("sandbox", Sandbox);
+            }
+            var thread = await resolved.CallAsync("thread/start", parameters, CancelToken).ConfigureAwait(false);
+            WriteObject(thread);
+        } else {
+            var thread = await resolved.StartThreadAsync(Model, CurrentDirectory, ApprovalPolicy, Sandbox, CancelToken).ConfigureAwait(false);
+            WriteObject(thread);
+        }
     }
 }

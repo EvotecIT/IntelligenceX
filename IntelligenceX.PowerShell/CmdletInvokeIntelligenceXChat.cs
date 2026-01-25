@@ -4,6 +4,7 @@ using System.Management.Automation;
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
+using IntelligenceX.Json;
 
 namespace IntelligenceX.PowerShell;
 
@@ -11,7 +12,7 @@ namespace IntelligenceX.PowerShell;
 /// <para type="synopsis">Super-easy chat command that handles connect, init, login, thread, and send.</para>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Invoke, "IntelligenceXChat", DefaultParameterSetName = "Text")]
-[OutputType(typeof(TurnInfo))]
+[OutputType(typeof(TurnInfo), typeof(JsonValue))]
 public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
     private readonly System.Collections.Generic.List<string> _pipelineInputs = new();
 
@@ -167,6 +168,12 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
     [Parameter]
     public string? ImageFileNamePrefix { get; set; }
 
+    /// <summary>
+    /// <para type="description">Return raw JSON response.</para>
+    /// </summary>
+    [Parameter]
+    public SwitchParameter Raw { get; set; }
+
     protected override async Task ProcessRecordAsync() {
         if (ParameterSetName.Equals("Pipeline", StringComparison.OrdinalIgnoreCase)) {
             if (!string.IsNullOrWhiteSpace(InputObject)) {
@@ -241,6 +248,49 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
         var approval = ApprovalPolicy;
         if (string.IsNullOrWhiteSpace(approval) && !string.IsNullOrWhiteSpace(Workspace)) {
             approval = "auto";
+        }
+
+        if (Raw.IsPresent) {
+            void Handler(object? sender, IntelligenceX.Rpc.JsonRpcNotificationEventArgs args) {
+                if (!Stream.IsPresent) {
+                    return;
+                }
+                var text = args.Params?.AsObject()?.GetObject("delta")?.GetString("text");
+                if (!string.IsNullOrWhiteSpace(text)) {
+                    WriteObject(text);
+                }
+            }
+
+            if (Stream.IsPresent) {
+                client.NotificationReceived += Handler;
+            }
+            try {
+                var parameters = new JsonObject()
+                    .Add("threadId", ClientContext.DefaultThreadId!)
+                    .Add("input", input);
+                if (!string.IsNullOrWhiteSpace(Model)) {
+                    parameters.Add("model", Model);
+                }
+                if (!string.IsNullOrWhiteSpace(cwd)) {
+                    parameters.Add("cwd", cwd);
+                }
+                if (!string.IsNullOrWhiteSpace(approval)) {
+                    parameters.Add("approvalPolicy", approval);
+                }
+                if (sandboxPolicy is not null) {
+                    parameters.Add("sandboxPolicy", SandboxPolicyJson.ToJson(sandboxPolicy));
+                }
+                var rawResult = await client.CallAsync("turn/start", parameters, CancelToken).ConfigureAwait(false);
+                if (WaitSeconds > 0 && Stream.IsPresent) {
+                    await Task.Delay(TimeSpan.FromSeconds(WaitSeconds), CancelToken).ConfigureAwait(false);
+                }
+                WriteObject(rawResult);
+            } finally {
+                if (Stream.IsPresent) {
+                    client.NotificationReceived -= Handler;
+                }
+            }
+            return;
         }
 
         if (Stream.IsPresent) {

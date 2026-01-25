@@ -2,6 +2,7 @@ using System.Management.Automation;
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
+using IntelligenceX.Json;
 
 namespace IntelligenceX.PowerShell;
 
@@ -9,7 +10,7 @@ namespace IntelligenceX.PowerShell;
 /// <para type="synopsis">Executes a command through the app-server.</para>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Invoke, "IntelligenceXCommand")]
-[OutputType(typeof(CommandExecResult))]
+[OutputType(typeof(CommandExecResult), typeof(JsonValue))]
 public sealed class CmdletInvokeIntelligenceXCommand : IntelligenceXCmdlet {
     /// <summary>
     /// <para type="description">Client instance to use. Defaults to the active client.</para>
@@ -53,6 +54,12 @@ public sealed class CmdletInvokeIntelligenceXCommand : IntelligenceXCmdlet {
     [Parameter]
     public int? TimeoutMs { get; set; }
 
+    /// <summary>
+    /// <para type="description">Return raw JSON response.</para>
+    /// </summary>
+    [Parameter]
+    public SwitchParameter Raw { get; set; }
+
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveClient(Client);
         var request = new CommandExecRequest(Command) {
@@ -64,7 +71,27 @@ public sealed class CmdletInvokeIntelligenceXCommand : IntelligenceXCmdlet {
             request.SandboxPolicy = new SandboxPolicy(SandboxType!, NetworkAccess.IsPresent, WritableRoot);
         }
 
-        var result = await resolved.ExecuteCommandAsync(request, CancelToken).ConfigureAwait(false);
-        WriteObject(result);
+        if (Raw.IsPresent) {
+            var commandArray = new JsonArray();
+            foreach (var item in request.Command) {
+                commandArray.Add(item);
+            }
+            var parameters = new JsonObject()
+                .Add("command", commandArray);
+            if (!string.IsNullOrWhiteSpace(request.WorkingDirectory)) {
+                parameters.Add("cwd", request.WorkingDirectory);
+            }
+            if (request.SandboxPolicy is not null) {
+                parameters.Add("sandboxPolicy", SandboxPolicyJson.ToJson(request.SandboxPolicy));
+            }
+            if (request.TimeoutMs.HasValue) {
+                parameters.Add("timeoutMs", request.TimeoutMs.Value);
+            }
+            var result = await resolved.CallAsync("command/exec", parameters, CancelToken).ConfigureAwait(false);
+            WriteObject(result);
+        } else {
+            var result = await resolved.ExecuteCommandAsync(request, CancelToken).ConfigureAwait(false);
+            WriteObject(result);
+        }
     }
 }

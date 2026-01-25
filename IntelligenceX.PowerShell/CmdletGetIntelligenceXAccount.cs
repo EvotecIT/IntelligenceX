@@ -2,6 +2,7 @@ using System.Management.Automation;
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
+using IntelligenceX.Json;
 
 namespace IntelligenceX.PowerShell;
 
@@ -9,7 +10,7 @@ namespace IntelligenceX.PowerShell;
 /// <para type="synopsis">Returns the current account details.</para>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXAccount")]
-[OutputType(typeof(AccountInfo))]
+[OutputType(typeof(AccountInfo), typeof(JsonValue))]
 public sealed class CmdletGetIntelligenceXAccount : IntelligenceXCmdlet {
     /// <summary>
     /// <para type="description">Client instance to use. Defaults to the active client.</para>
@@ -17,9 +18,20 @@ public sealed class CmdletGetIntelligenceXAccount : IntelligenceXCmdlet {
     [Parameter(ValueFromPipeline = true)]
     public AppServerClient? Client { get; set; }
 
+    /// <summary>
+    /// <para type="description">Return raw JSON response.</para>
+    /// </summary>
+    [Parameter]
+    public SwitchParameter Raw { get; set; }
+
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveClient(Client);
-        var account = await resolved.ReadAccountAsync(CancelToken).ConfigureAwait(false);
-        WriteObject(account);
+        if (Raw.IsPresent) {
+            var account = await resolved.CallAsync("account/read", (JsonObject?)null, CancelToken).ConfigureAwait(false);
+            WriteObject(account);
+        } else {
+            var account = await resolved.ReadAccountAsync(CancelToken).ConfigureAwait(false);
+            WriteObject(account);
+        }
     }
 }
