@@ -1,0 +1,30 @@
+name: IntelligenceX Review
+
+on:
+    pull_request:
+        types: [opened, synchronize, reopened]
+    workflow_dispatch:
+
+jobs:
+    review:
+        permissions:
+            contents: read
+            pull-requests: write
+            issues: write
+            id-token: write
+        uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@main
+        with:
+            runs_on: '["self-hosted","ubuntu"]'
+            provider: openai
+            model: gpt-5.2-codex
+            profile: balanced
+            length: long
+            mode: hybrid
+            comment_mode: sticky
+            progress_updates: true
+            progress_update_seconds: 30
+            # codex_path: /opt/codex/app-server
+            # codex_args: ''
+            # codex_cwd: ''
+        secrets:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
