@@ -43,8 +43,40 @@ EasySession (auto init + login + thread):
 ```csharp
 using IntelligenceX.OpenAI;
 
+var result = await Easy.ChatAsync("Hello!");
+Console.WriteLine(result.Text);
+```
+
+```csharp
+using IntelligenceX.OpenAI;
+
 await using var session = await EasySession.StartAsync();
 await session.ChatAsync("Hello!");
+```
+
+### Reviewer configuration (GitHub Action / CLI)
+
+If you run `IntelligenceX.Reviewer`, you can configure it using environment variables **or**
+a repo-local file at `.intelligencex/reviewer.json`.
+
+Example `.intelligencex/reviewer.json`:
+
+```json
+{
+  "review": {
+    "provider": "openai",
+    "profile": "picky",
+    "length": "long",
+    "focus": ["bugs", "security", "tests"],
+    "progressUpdates": true,
+    "progressUpdateSeconds": 30,
+    "commentMode": "sticky"
+  },
+  "copilot": {
+    "cliPath": "copilot",
+    "autoInstall": false
+  }
+}
 ```
 
 ```csharp
