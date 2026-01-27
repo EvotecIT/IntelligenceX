@@ -1,0 +1,16 @@
+{
+  "openai": {
+    "defaultModel": "gpt-5.2-codex",
+    "appServerPath": "codex",
+    "appServerArgs": "app-server",
+    "openBrowser": true,
+    "printLoginUrl": true,
+    "loginMode": "chatgpt",
+    "maxImageBytes": 10485760,
+    "requireWorkspaceForFileAccess": true
+  },
+  "copilot": {
+    "cliPath": "copilot",
+    "autoInstall": false
+  }
+}
