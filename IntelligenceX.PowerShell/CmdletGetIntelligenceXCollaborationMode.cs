@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.Json;
+using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.PowerShell;
 
@@ -16,7 +17,7 @@ public sealed class CmdletGetIntelligenceXCollaborationMode : IntelligenceXCmdle
     /// <para type="description">Client instance to use. Defaults to the active client.</para>
     /// </summary>
     [Parameter(ValueFromPipeline = true)]
-    public AppServerClient? Client { get; set; }
+    public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
     /// <para type="description">Return raw JSON response.</para>
@@ -25,7 +26,7 @@ public sealed class CmdletGetIntelligenceXCollaborationMode : IntelligenceXCmdle
     public SwitchParameter Raw { get; set; }
 
     protected override async Task ProcessRecordAsync() {
-        var resolved = ResolveClient(Client);
+        var resolved = ResolveAppServerClient(Client);
         if (Raw.IsPresent) {
             var result = await resolved.CallAsync("collaborationMode/list", (JsonObject?)null, CancelToken).ConfigureAwait(false);
             WriteObject(result);

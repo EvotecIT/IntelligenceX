@@ -4,6 +4,7 @@ using System.Management.Automation;
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
+using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.PowerShell;
 
@@ -16,7 +17,7 @@ public sealed class CmdletSetIntelligenceXConfigBatch : IntelligenceXCmdlet {
     /// <para type="description">Client instance to use. Defaults to the active client.</para>
     /// </summary>
     [Parameter(ValueFromPipeline = true)]
-    public AppServerClient? Client { get; set; }
+    public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
     /// <para type="description">Hashtable of key/value pairs.</para>
@@ -25,7 +26,7 @@ public sealed class CmdletSetIntelligenceXConfigBatch : IntelligenceXCmdlet {
     public Hashtable Values { get; set; } = new Hashtable();
 
     protected override async Task ProcessRecordAsync() {
-        var resolved = ResolveClient(Client);
+        var resolved = ResolveAppServerClient(Client);
         var entries = new List<ConfigEntry>();
         foreach (DictionaryEntry entry in Values) {
             var key = entry.Key?.ToString() ?? string.Empty;

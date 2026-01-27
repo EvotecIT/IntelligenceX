@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.Rpc;
+using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.PowerShell;
 
@@ -17,7 +18,7 @@ public sealed class CmdletWatchIntelligenceXEvent : IntelligenceXCmdlet {
     /// <para type="description">Client instance to use. Defaults to the active client.</para>
     /// </summary>
     [Parameter(ValueFromPipeline = true)]
-    public AppServerClient? Client { get; set; }
+    public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
     /// <para type="description">Optional method filter.</para>
@@ -26,7 +27,7 @@ public sealed class CmdletWatchIntelligenceXEvent : IntelligenceXCmdlet {
     public string[]? Method { get; set; }
 
     protected override async Task ProcessRecordAsync() {
-        var resolved = ResolveClient(Client);
+        var resolved = ResolveAppServerClient(Client);
         void Handler(object? sender, JsonRpcNotificationEventArgs args) {
             if (Method is not null && Method.Length > 0) {
                 var matched = false;

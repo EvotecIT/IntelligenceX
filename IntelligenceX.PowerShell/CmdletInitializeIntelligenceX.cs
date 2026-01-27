@@ -1,5 +1,6 @@
 using System.Management.Automation;
 using System.Threading.Tasks;
+using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.AppServer;
 
 namespace IntelligenceX.PowerShell;
@@ -13,7 +14,7 @@ public sealed class CmdletInitializeIntelligenceX : IntelligenceXCmdlet {
     /// <para type="description">Client instance to initialize. Defaults to the active client.</para>
     /// </summary>
     [Parameter(ValueFromPipeline = true)]
-    public AppServerClient? Client { get; set; }
+    public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
     /// <para type="description">Client name sent to the app-server.</para>

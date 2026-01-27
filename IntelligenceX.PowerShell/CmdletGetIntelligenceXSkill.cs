@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.Json;
+using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.PowerShell;
 
@@ -16,7 +17,7 @@ public sealed class CmdletGetIntelligenceXSkill : IntelligenceXCmdlet {
     /// <para type="description">Client instance to use. Defaults to the active client.</para>
     /// </summary>
     [Parameter(ValueFromPipeline = true)]
-    public AppServerClient? Client { get; set; }
+    public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
     /// <para type="description">Working directories to scan for skills.</para>
@@ -37,7 +38,7 @@ public sealed class CmdletGetIntelligenceXSkill : IntelligenceXCmdlet {
     public SwitchParameter Raw { get; set; }
 
     protected override async Task ProcessRecordAsync() {
-        var resolved = ResolveClient(Client);
+        var resolved = ResolveAppServerClient(Client);
         if (Raw.IsPresent) {
             var parameters = new JsonObject();
             if (Cwd is not null && Cwd.Length > 0) {

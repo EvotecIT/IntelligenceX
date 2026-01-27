@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.Json;
+using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.PowerShell;
 
@@ -16,7 +17,7 @@ public sealed class CmdletSendIntelligenceXMessage : IntelligenceXCmdlet {
     /// <para type="description">Client instance to use. Defaults to the active client.</para>
     /// </summary>
     [Parameter(ValueFromPipeline = true)]
-    public AppServerClient? Client { get; set; }
+    public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
     /// <para type="description">Thread identifier to send the message to.</para>
@@ -73,7 +74,7 @@ public sealed class CmdletSendIntelligenceXMessage : IntelligenceXCmdlet {
     public SwitchParameter Raw { get; set; }
 
     protected override async Task ProcessRecordAsync() {
-        var resolved = ResolveClient(Client);
+        var resolved = ResolveAppServerClient(Client);
         SandboxPolicy? sandbox = null;
         if (!string.IsNullOrWhiteSpace(SandboxType)) {
             sandbox = new SandboxPolicy(SandboxType!, NetworkAccess.IsPresent, WritableRoot);

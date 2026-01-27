@@ -1,11 +1,11 @@
 using System;
-using IntelligenceX.OpenAI.AppServer;
+using IntelligenceX.OpenAI;
 using IntelligenceX.Telemetry;
 
 namespace IntelligenceX.PowerShell;
 
 internal sealed class DiagnosticsSubscription : IDisposable {
-    private readonly AppServerClient _client;
+    private readonly IntelligenceXClient _client;
     private readonly Action<string> _writer;
 
     private readonly EventHandler<RpcCallStartedEventArgs> _rpcStarted;
@@ -15,7 +15,7 @@ internal sealed class DiagnosticsSubscription : IDisposable {
     private readonly EventHandler<string> _protocol;
     private readonly EventHandler<string> _stderr;
 
-    public DiagnosticsSubscription(AppServerClient client, Action<string> writer) {
+    public DiagnosticsSubscription(IntelligenceXClient client, Action<string> writer) {
         _client = client;
         _writer = writer;
 

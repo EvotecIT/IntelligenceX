@@ -2,7 +2,7 @@ using System.Management.Automation;
 using System.Threading.Tasks;
 using IntelligenceX.Configuration;
 using IntelligenceX.Copilot;
-using IntelligenceX.OpenAI.AppServer;
+using IntelligenceX.OpenAI;
 using IntelligenceX.Utils;
 
 namespace IntelligenceX.PowerShell;
@@ -17,7 +17,7 @@ public sealed class CmdletGetIntelligenceXHealth : IntelligenceXCmdlet {
     /// <para type="description">OpenAI app-server client instance. Defaults to the active client.</para>
     /// </summary>
     [Parameter(ValueFromPipeline = true)]
-    public AppServerClient? Client { get; set; }
+    public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
     /// <para type="description">Run a Copilot CLI health check.</para>

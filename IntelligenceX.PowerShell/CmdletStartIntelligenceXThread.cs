@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.Json;
+using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.PowerShell;
 
@@ -16,7 +17,7 @@ public sealed class CmdletStartIntelligenceXThread : IntelligenceXCmdlet {
     /// <para type="description">Client instance to use. Defaults to the active client.</para>
     /// </summary>
     [Parameter(ValueFromPipeline = true)]
-    public AppServerClient? Client { get; set; }
+    public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
     /// <para type="description">Model identifier to use (for example gpt-5.1-codex).</para>
@@ -49,7 +50,7 @@ public sealed class CmdletStartIntelligenceXThread : IntelligenceXCmdlet {
     public SwitchParameter Raw { get; set; }
 
     protected override async Task ProcessRecordAsync() {
-        var resolved = ResolveClient(Client);
+        var resolved = ResolveAppServerClient(Client);
         if (Raw.IsPresent) {
             var parameters = new JsonObject().Add("model", Model);
             if (!string.IsNullOrWhiteSpace(CurrentDirectory)) {

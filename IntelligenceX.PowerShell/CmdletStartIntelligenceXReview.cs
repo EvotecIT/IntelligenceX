@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.Json;
+using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.PowerShell;
 
@@ -16,7 +17,7 @@ public sealed class CmdletStartIntelligenceXReview : IntelligenceXCmdlet {
     /// <para type="description">Client instance to use. Defaults to the active client.</para>
     /// </summary>
     [Parameter(ValueFromPipeline = true)]
-    public AppServerClient? Client { get; set; }
+    public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
     /// <para type="description">Thread identifier.</para>
@@ -49,7 +50,7 @@ public sealed class CmdletStartIntelligenceXReview : IntelligenceXCmdlet {
     public SwitchParameter Raw { get; set; }
 
     protected override async Task ProcessRecordAsync() {
-        var resolved = ResolveClient(Client);
+        var resolved = ResolveAppServerClient(Client);
         var target = TargetType switch {
             "uncommittedChanges" => ReviewTarget.UncommittedChanges(),
             "baseBranch" => ReviewTarget.BaseBranch(TargetValue ?? string.Empty),

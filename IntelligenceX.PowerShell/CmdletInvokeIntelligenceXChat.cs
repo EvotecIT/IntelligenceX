@@ -2,8 +2,10 @@ using System;
 using System.Diagnostics;
 using System.Management.Automation;
 using System.Threading.Tasks;
+using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
+using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.Json;
 
 namespace IntelligenceX.PowerShell;
@@ -176,8 +178,9 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
 
     protected override async Task ProcessRecordAsync() {
         if (ParameterSetName.Equals("Pipeline", StringComparison.OrdinalIgnoreCase)) {
-            if (!string.IsNullOrWhiteSpace(InputObject)) {
-                _pipelineInputs.Add(InputObject!);
+            var inputObject = InputObject;
+            if (!IsNullOrWhiteSpace(inputObject)) {
+                _pipelineInputs.Add(inputObject!);
             }
             return;
         }
@@ -198,17 +201,24 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
     private async Task SendAsync(IntelligenceX.Json.JsonArray input) {
         var client = ClientContext.DefaultClient;
         if (client is null) {
-            var options = new AppServerOptions();
+            var options = new IntelligenceXClientOptions {
+                TransportKind = OpenAITransportKind.Native
+            };
+            if (!string.IsNullOrWhiteSpace(ExecutablePath) ||
+                !string.IsNullOrWhiteSpace(Arguments) ||
+                !string.IsNullOrWhiteSpace(WorkingDirectory)) {
+                options.TransportKind = OpenAITransportKind.AppServer;
+            }
             if (!string.IsNullOrWhiteSpace(ExecutablePath)) {
-                options.ExecutablePath = ExecutablePath!;
+                options.AppServerOptions.ExecutablePath = ExecutablePath!;
             }
             if (!string.IsNullOrWhiteSpace(Arguments)) {
-                options.Arguments = Arguments!;
+                options.AppServerOptions.Arguments = Arguments!;
             }
             if (!string.IsNullOrWhiteSpace(WorkingDirectory)) {
-                options.WorkingDirectory = WorkingDirectory!;
+                options.AppServerOptions.WorkingDirectory = WorkingDirectory!;
             }
-            client = await AppServerClient.StartAsync(options, CancelToken).ConfigureAwait(false);
+            client = await IntelligenceXClient.ConnectAsync(options, CancelToken).ConfigureAwait(false);
             SetDefaultClient(client);
         }
 
@@ -226,21 +236,23 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
                     if (string.IsNullOrWhiteSpace(key)) {
                         throw new InvalidOperationException("API key is required for ApiKey login.");
                     }
-                    await client.LoginWithApiKeyAsync(key, CancelToken).ConfigureAwait(false);
+                    await client.LoginApiKeyAsync(key, CancelToken).ConfigureAwait(false);
                 } else {
-                    var login = await client.StartChatGptLoginAsync(CancelToken).ConfigureAwait(false);
-                    WriteVerbose($"Login URL: {login.AuthUrl}");
-                    if (OpenBrowser.IsPresent) {
-                        TryOpenUrl(login.AuthUrl);
-                    }
-                    await client.WaitForLoginCompletionAsync(login.LoginId, CancelToken).ConfigureAwait(false);
+                    await client.LoginChatGptAndWaitAsync(url => {
+                        WriteVerbose($"Login URL: {url}");
+                        if (OpenBrowser.IsPresent) {
+                            TryOpenUrl(url);
+                        }
+                    }, cancellationToken: CancelToken).ConfigureAwait(false);
                 }
             }
         }
 
         if (NewThread.IsPresent || string.IsNullOrWhiteSpace(ClientContext.DefaultThreadId)) {
-            var thread = await client.StartThreadAsync(Model, cancellationToken: CancelToken).ConfigureAwait(false);
+            var thread = await client.StartNewThreadAsync(Model, cancellationToken: CancelToken).ConfigureAwait(false);
             ClientContext.DefaultThreadId = thread.Id;
+        } else {
+            await client.UseThreadAsync(ClientContext.DefaultThreadId!, CancelToken).ConfigureAwait(false);
         }
 
         var sandboxPolicy = BuildSandboxPolicy();
@@ -251,6 +263,7 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
         }
 
         if (Raw.IsPresent) {
+            var rawClient = client.RequireAppServer();
             void Handler(object? sender, IntelligenceX.Rpc.JsonRpcNotificationEventArgs args) {
                 if (!Stream.IsPresent) {
                     return;
@@ -262,7 +275,7 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
             }
 
             if (Stream.IsPresent) {
-                client.NotificationReceived += Handler;
+                rawClient.NotificationReceived += Handler;
             }
             try {
                 var parameters = new JsonObject()
@@ -280,51 +293,55 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
                 if (sandboxPolicy is not null) {
                     parameters.Add("sandboxPolicy", SandboxPolicyJson.ToJson(sandboxPolicy));
                 }
-                var rawResult = await client.CallAsync("turn/start", parameters, CancelToken).ConfigureAwait(false);
+                var rawResult = await rawClient.CallAsync("turn/start", parameters, CancelToken).ConfigureAwait(false);
                 if (WaitSeconds > 0 && Stream.IsPresent) {
                     await Task.Delay(TimeSpan.FromSeconds(WaitSeconds), CancelToken).ConfigureAwait(false);
                 }
                 WriteObject(rawResult);
             } finally {
                 if (Stream.IsPresent) {
-                    client.NotificationReceived -= Handler;
+                    rawClient.NotificationReceived -= Handler;
                 }
             }
             return;
         }
 
+        var chatInput = BuildChatInput(input);
+        var requireWorkspace = !string.IsNullOrWhiteSpace(Workspace);
+        var chatOptions = new ChatOptions {
+            Model = Model,
+            WorkingDirectory = cwd,
+            Workspace = Workspace,
+            AllowNetwork = AllowNetwork.IsPresent,
+            ApprovalPolicy = approval,
+            SandboxPolicy = sandboxPolicy,
+            RequireWorkspaceForFileAccess = requireWorkspace
+        };
+
+        IDisposable? subscription = null;
         if (Stream.IsPresent) {
-            void Handler(object? sender, IntelligenceX.Rpc.JsonRpcNotificationEventArgs args) {
-                var text = args.Params?.AsObject()?.GetObject("delta")?.GetString("text");
+            subscription = client.SubscribeDelta(text => {
                 if (!string.IsNullOrWhiteSpace(text)) {
                     WriteObject(text);
                 }
-            }
-
-            client.NotificationReceived += Handler;
-            try {
-                var turn = await client.StartTurnAsync(ClientContext.DefaultThreadId!, input, Model, cwd, approval, sandboxPolicy, CancelToken)
-                    .ConfigureAwait(false);
-                await TrySaveImagesAsync(turn).ConfigureAwait(false);
-                if (WaitSeconds > 0) {
-                    await Task.Delay(TimeSpan.FromSeconds(WaitSeconds), CancelToken).ConfigureAwait(false);
-                }
-                WriteObject(turn);
-            } finally {
-                client.NotificationReceived -= Handler;
-            }
-            return;
+            });
         }
 
-        var result = await client.StartTurnAsync(ClientContext.DefaultThreadId!, input, Model, cwd, approval, sandboxPolicy, CancelToken)
-            .ConfigureAwait(false);
-        await TrySaveImagesAsync(result).ConfigureAwait(false);
-        WriteObject(result);
+        try {
+            var turn = await client.ChatAsync(chatInput, chatOptions, CancelToken).ConfigureAwait(false);
+            await TrySaveImagesAsync(turn).ConfigureAwait(false);
+            if (WaitSeconds > 0 && Stream.IsPresent) {
+                await Task.Delay(TimeSpan.FromSeconds(WaitSeconds), CancelToken).ConfigureAwait(false);
+            }
+            WriteObject(turn);
+        } finally {
+            subscription?.Dispose();
+        }
     }
 
-    private static async Task<bool> TryReadAccountAsync(AppServerClient client) {
+    private static async Task<bool> TryReadAccountAsync(IntelligenceXClient client) {
         try {
-            await client.ReadAccountAsync().ConfigureAwait(false);
+            await client.GetAccountAsync().ConfigureAwait(false);
             return true;
         } catch {
             return false;
@@ -361,6 +378,17 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
                 .Add("url", ImageUrl));
         }
         return input;
+    }
+
+    private static ChatInput BuildChatInput(IntelligenceX.Json.JsonArray input) {
+        var chat = new ChatInput();
+        foreach (var item in input) {
+            var obj = item.AsObject();
+            if (obj is not null) {
+                chat.AddRaw(obj);
+            }
+        }
+        return chat;
     }
 
     private IntelligenceX.Json.JsonArray BuildInputFromPipeline() {
@@ -471,7 +499,7 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
 
     private SandboxPolicy? BuildSandboxPolicy() {
         var workspace = Workspace;
-        if (!string.IsNullOrWhiteSpace(workspace)) {
+        if (!IsNullOrWhiteSpace(workspace)) {
             return new SandboxPolicy("workspace", AllowNetwork.IsPresent, new[] { workspace! });
         }
         return null;
@@ -486,5 +514,17 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
         await TurnOutputSaver.SaveImagesAsync(images, SaveImagesTo!, turn.Id, DownloadImageUrls.IsPresent,
                 OverwriteImages.IsPresent, ImageFileNamePrefix, Model, WriteWarning, WriteVerbose)
             .ConfigureAwait(false);
+    }
+
+    private static bool IsNullOrWhiteSpace(string? value) {
+        if (value is null) {
+            return true;
+        }
+        for (var i = 0; i < value.Length; i++) {
+            if (!char.IsWhiteSpace(value[i])) {
+                return false;
+            }
+        }
+        return true;
     }
 }

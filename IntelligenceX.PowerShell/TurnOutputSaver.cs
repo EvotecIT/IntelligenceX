@@ -1,14 +1,20 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+#if NETFRAMEWORK
+using System.Net;
+#else
 using System.Net.Http;
+#endif
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer.Models;
 
 namespace IntelligenceX.PowerShell;
 
 internal static class TurnOutputSaver {
+#if !NETFRAMEWORK
     private static readonly HttpClient HttpClient = new();
+#endif
 
     public static IReadOnlyList<TurnOutput> ApplyFirst(IReadOnlyList<TurnOutput> outputs, int first) {
         if (first <= 0 || outputs.Count <= first) {
@@ -63,7 +69,7 @@ internal static class TurnOutputSaver {
             }
 
             if (downloadUrls && !string.IsNullOrWhiteSpace(output.ImageUrl)) {
-                var bytes = await HttpClient.GetByteArrayAsync(output.ImageUrl!).ConfigureAwait(false);
+                var bytes = await DownloadBytesAsync(output.ImageUrl!).ConfigureAwait(false);
                 File.WriteAllBytes(targetPath, bytes);
                 saved.Add(targetPath);
                 counter++;
@@ -82,15 +88,18 @@ internal static class TurnOutputSaver {
 
     private static string GetExtension(string? mimeType, string? pathOrUrl) {
         var ext = TryGetExtensionFromPath(pathOrUrl);
-        if (!string.IsNullOrWhiteSpace(ext)) {
-            return ext!;
+        if (ext is not null && ext.Length > 0) {
+            return ext;
         }
 
-        if (string.IsNullOrWhiteSpace(mimeType)) {
+        if (mimeType is null) {
             return ".bin";
         }
 
-        var mime = mimeType!;
+        var mime = mimeType.Trim();
+        if (mime.Length == 0) {
+            return ".bin";
+        }
         switch (mime.ToLowerInvariant()) {
             case "image/png":
                 return ".png";
@@ -117,16 +126,16 @@ internal static class TurnOutputSaver {
     }
 
     private static string? TryGetExtensionFromPath(string? pathOrUrl) {
-        if (string.IsNullOrWhiteSpace(pathOrUrl)) {
+        if (pathOrUrl is null || pathOrUrl.Length == 0) {
             return null;
         }
 
-        var ext = Path.GetExtension(pathOrUrl!);
+        var ext = Path.GetExtension(pathOrUrl);
         if (!string.IsNullOrWhiteSpace(ext)) {
             return ext;
         }
 
-        if (Uri.TryCreate(pathOrUrl!, UriKind.Absolute, out var uri)) {
+        if (Uri.TryCreate(pathOrUrl, UriKind.Absolute, out var uri)) {
             ext = Path.GetExtension(uri.AbsolutePath);
             if (!string.IsNullOrWhiteSpace(ext)) {
                 return ext;
@@ -174,11 +183,11 @@ internal static class TurnOutputSaver {
 
     private static string BuildDefaultPrefix(string? model) {
         var timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss");
-        if (string.IsNullOrWhiteSpace(model)) {
+        if (model is null || IsWhiteSpace(model)) {
             return $"intelligencex-image-{timestamp}-";
         }
 
-        var cleaned = SanitizeFileName(model!);
+        var cleaned = SanitizeFileName(model);
         return $"intelligencex-image-{timestamp}-{cleaned}-";
     }
 
@@ -191,5 +200,24 @@ internal static class TurnOutputSaver {
             }
         }
         return new string(chars);
+    }
+
+    private static bool IsWhiteSpace(string value) {
+        for (var i = 0; i < value.Length; i++) {
+            if (!char.IsWhiteSpace(value[i])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static Task<byte[]> DownloadBytesAsync(string url) {
+#if NETFRAMEWORK
+        using (var client = new WebClient()) {
+            return Task.FromResult(client.DownloadData(url));
+        }
+#else
+        return HttpClient.GetByteArrayAsync(url);
+#endif
     }
 }

@@ -2,6 +2,7 @@ using System.Management.Automation;
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.Json;
+using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.PowerShell;
 
@@ -15,7 +16,7 @@ public sealed class CmdletInvokeIntelligenceXRpc : IntelligenceXCmdlet {
     /// <para type="description">Client instance to use. Defaults to the active client.</para>
     /// </summary>
     [Parameter(ValueFromPipeline = true)]
-    public AppServerClient? Client { get; set; }
+    public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
     /// <para type="description">JSON-RPC method name.</para>
@@ -30,7 +31,7 @@ public sealed class CmdletInvokeIntelligenceXRpc : IntelligenceXCmdlet {
     public object? Params { get; set; }
 
     protected override async Task ProcessRecordAsync() {
-        var resolved = ResolveClient(Client);
+        var resolved = ResolveAppServerClient(Client);
         var parameters = JsonConversion.ToJsonObject(Params);
         var result = await resolved.CallAsync(Method, parameters, CancelToken).ConfigureAwait(false);
         WriteObject(result);

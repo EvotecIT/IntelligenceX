@@ -2,7 +2,7 @@ using System;
 using System.Management.Automation;
 using System.Threading;
 using System.Threading.Tasks;
-using IntelligenceX.OpenAI.AppServer;
+using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.PowerShell;
 
@@ -15,7 +15,7 @@ public sealed class CmdletWaitIntelligenceXLogin : IntelligenceXCmdlet {
     /// <para type="description">Client instance to use. Defaults to the active client.</para>
     /// </summary>
     [Parameter(ValueFromPipeline = true)]
-    public AppServerClient? Client { get; set; }
+    public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
     /// <para type="description">Optional login identifier to wait for.</para>
@@ -30,7 +30,7 @@ public sealed class CmdletWaitIntelligenceXLogin : IntelligenceXCmdlet {
     public int TimeoutSeconds { get; set; } = 300;
 
     protected override async Task ProcessRecordAsync() {
-        var resolved = ResolveClient(Client);
+        var resolved = ResolveAppServerClient(Client);
         using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(TimeoutSeconds));
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(CancelToken, timeoutCts.Token);
         await resolved.WaitForLoginCompletionAsync(LoginId, linkedCts.Token).ConfigureAwait(false);

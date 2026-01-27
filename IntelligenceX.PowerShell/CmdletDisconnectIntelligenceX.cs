@@ -1,6 +1,6 @@
 using System.Management.Automation;
 using System.Threading.Tasks;
-using IntelligenceX.OpenAI.AppServer;
+using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.PowerShell;
 
@@ -13,7 +13,7 @@ public sealed class CmdletDisconnectIntelligenceX : IntelligenceXCmdlet {
     /// <para type="description">Client instance to disconnect. Defaults to the active client.</para>
     /// </summary>
     [Parameter(ValueFromPipeline = true)]
-    public AppServerClient? Client { get; set; }
+    public IntelligenceXClient? Client { get; set; }
 
     protected override Task ProcessRecordAsync() {
         if (Client is null && ClientContext.DefaultClient is null) {

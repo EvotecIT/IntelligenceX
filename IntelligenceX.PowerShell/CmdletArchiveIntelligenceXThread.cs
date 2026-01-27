@@ -1,6 +1,7 @@
 using System.Management.Automation;
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
+using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.PowerShell;
 
@@ -13,7 +14,7 @@ public sealed class CmdletArchiveIntelligenceXThread : IntelligenceXCmdlet {
     /// <para type="description">Client instance to use. Defaults to the active client.</para>
     /// </summary>
     [Parameter(ValueFromPipeline = true)]
-    public AppServerClient? Client { get; set; }
+    public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
     /// <para type="description">Thread identifier.</para>
@@ -22,7 +23,7 @@ public sealed class CmdletArchiveIntelligenceXThread : IntelligenceXCmdlet {
     public string ThreadId { get; set; } = string.Empty;
 
     protected override async Task ProcessRecordAsync() {
-        var resolved = ResolveClient(Client);
+        var resolved = ResolveAppServerClient(Client);
         await resolved.ArchiveThreadAsync(ThreadId, CancelToken).ConfigureAwait(false);
     }
 }

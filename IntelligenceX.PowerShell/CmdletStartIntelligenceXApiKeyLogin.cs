@@ -1,6 +1,6 @@
 using System.Management.Automation;
 using System.Threading.Tasks;
-using IntelligenceX.OpenAI.AppServer;
+using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.PowerShell;
 
@@ -13,7 +13,7 @@ public sealed class CmdletStartIntelligenceXApiKeyLogin : IntelligenceXCmdlet {
     /// <para type="description">Client instance to use. Defaults to the active client.</para>
     /// </summary>
     [Parameter(ValueFromPipeline = true)]
-    public AppServerClient? Client { get; set; }
+    public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
     /// <para type="description">API key to authenticate with.</para>
@@ -23,6 +23,6 @@ public sealed class CmdletStartIntelligenceXApiKeyLogin : IntelligenceXCmdlet {
 
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveClient(Client);
-        await resolved.LoginWithApiKeyAsync(ApiKey, CancelToken).ConfigureAwait(false);
+        await resolved.LoginApiKeyAsync(ApiKey, CancelToken).ConfigureAwait(false);
     }
 }
