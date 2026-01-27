@@ -28,7 +28,8 @@ internal sealed class ReviewRunner {
     private async Task<string> RunOpenAiAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
         CancellationToken cancellationToken) {
         var options = new IntelligenceXClientOptions {
-            DefaultModel = _settings.Model
+            DefaultModel = _settings.Model,
+            TransportKind = OpenAITransportKind.AppServer
         };
         if (!string.IsNullOrWhiteSpace(_settings.CodexPath)) {
             options.AppServerOptions.ExecutablePath = _settings.CodexPath!;
