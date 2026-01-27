@@ -29,7 +29,7 @@ public sealed class EasySessionOptions {
     public bool ValidateLoginOnEachRequest { get; set; } = true;
     public bool RequireWorkspaceForFileAccess { get; set; } = true;
     public long MaxImageBytes { get; set; } = 10 * 1024 * 1024;
-    public string DefaultModel { get; set; } = "gpt-5.1-codex";
+    public string DefaultModel { get; set; } = "gpt-5.2-codex";
     public string? WorkingDirectory { get; set; }
     public string? Workspace { get; set; }
     public bool AllowNetwork { get; set; }

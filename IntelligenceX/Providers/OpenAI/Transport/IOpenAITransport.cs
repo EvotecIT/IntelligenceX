@@ -37,6 +37,6 @@ internal interface IOpenAITransport : IDisposable {
 
     Task<ThreadInfo> ResumeThreadAsync(string threadId, CancellationToken cancellationToken);
 
-    Task<TurnInfo> StartTurnAsync(string threadId, ChatInput input, string? model, string? currentDirectory,
+    Task<TurnInfo> StartTurnAsync(string threadId, ChatInput input, ChatOptions? options, string? currentDirectory,
         string? approvalPolicy, SandboxPolicy? sandboxPolicy, CancellationToken cancellationToken);
 }

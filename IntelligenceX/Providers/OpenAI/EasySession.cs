@@ -90,6 +90,11 @@ public sealed class EasySession : IDisposable
         var chatOptions = new ChatOptions();
         if (options is not null) {
             chatOptions.Model = options.Model;
+            chatOptions.Instructions = options.Instructions;
+            chatOptions.ReasoningEffort = options.ReasoningEffort;
+            chatOptions.ReasoningSummary = options.ReasoningSummary;
+            chatOptions.TextVerbosity = options.TextVerbosity;
+            chatOptions.Temperature = options.Temperature;
             chatOptions.NewThread = options.NewThread;
             chatOptions.Workspace = options.Workspace;
             chatOptions.AllowNetwork = options.AllowNetwork;
@@ -159,6 +164,11 @@ public sealed class EasySession : IDisposable
         clientOptions.NativeOptions.AuthStore = options.NativeOptions.AuthStore;
         clientOptions.NativeOptions.Originator = options.NativeOptions.Originator;
         clientOptions.NativeOptions.ResponsesUrl = options.NativeOptions.ResponsesUrl;
+        clientOptions.NativeOptions.ModelUrls = options.NativeOptions.ModelUrls;
+        clientOptions.NativeOptions.ClientVersion = options.NativeOptions.ClientVersion;
+        clientOptions.NativeOptions.Instructions = options.NativeOptions.Instructions;
+        clientOptions.NativeOptions.ReasoningEffort = options.NativeOptions.ReasoningEffort;
+        clientOptions.NativeOptions.ReasoningSummary = options.NativeOptions.ReasoningSummary;
         clientOptions.NativeOptions.TextVerbosity = options.NativeOptions.TextVerbosity;
         clientOptions.NativeOptions.IncludeReasoningEncryptedContent = options.NativeOptions.IncludeReasoningEncryptedContent;
         clientOptions.NativeOptions.OAuthTimeout = options.NativeOptions.OAuthTimeout;

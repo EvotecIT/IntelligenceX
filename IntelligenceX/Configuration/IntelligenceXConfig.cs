@@ -4,6 +4,7 @@ using IntelligenceX.Copilot;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.AppServer;
+using IntelligenceX.OpenAI.Chat;
 
 namespace IntelligenceX.Configuration;
 
@@ -65,6 +66,8 @@ public sealed class OpenAIConfig {
     public string? Transport { get; set; }
     public string? Originator { get; set; }
     public string? ResponsesUrl { get; set; }
+    public string? Instructions { get; set; }
+    public string? TextVerbosity { get; set; }
     public string? AppServerPath { get; set; }
     public string? AppServerArgs { get; set; }
     public string? AppServerWorkingDirectory { get; set; }
@@ -84,6 +87,8 @@ public sealed class OpenAIConfig {
         Transport = obj.GetString("transport") ?? Transport;
         Originator = obj.GetString("originator") ?? Originator;
         ResponsesUrl = obj.GetString("responsesUrl") ?? ResponsesUrl;
+        Instructions = obj.GetString("instructions") ?? Instructions;
+        TextVerbosity = obj.GetString("textVerbosity") ?? TextVerbosity;
         AppServerPath = obj.GetString("appServerPath") ?? AppServerPath;
         AppServerArgs = obj.GetString("appServerArgs") ?? AppServerArgs;
         AppServerWorkingDirectory = obj.GetString("appServerWorkingDirectory") ?? AppServerWorkingDirectory;
@@ -120,11 +125,26 @@ public sealed class OpenAIConfig {
         if (!string.IsNullOrWhiteSpace(ResponsesUrl)) {
             options.NativeOptions.ResponsesUrl = ResponsesUrl!;
         }
+        if (!string.IsNullOrWhiteSpace(Instructions)) {
+            options.NativeOptions.Instructions = Instructions!;
+        }
+        if (!string.IsNullOrWhiteSpace(TextVerbosity)) {
+            var verbosity = ChatEnumParser.ParseTextVerbosity(TextVerbosity);
+            if (verbosity.HasValue) {
+                options.NativeOptions.TextVerbosity = verbosity.Value;
+            }
+        }
         if (!string.IsNullOrWhiteSpace(ReasoningEffort)) {
-            options.NativeOptions.ReasoningEffort = ReasoningEffort!;
+            var effort = ChatEnumParser.ParseReasoningEffort(ReasoningEffort);
+            if (effort.HasValue) {
+                options.NativeOptions.ReasoningEffort = effort.Value;
+            }
         }
         if (!string.IsNullOrWhiteSpace(ReasoningSummary)) {
-            options.NativeOptions.ReasoningSummary = ReasoningSummary!;
+            var summary = ChatEnumParser.ParseReasoningSummary(ReasoningSummary);
+            if (summary.HasValue) {
+                options.NativeOptions.ReasoningSummary = summary.Value;
+            }
         }
         if (!string.IsNullOrWhiteSpace(AppServerPath)) {
             options.AppServerOptions.ExecutablePath = AppServerPath!;
@@ -174,11 +194,26 @@ public sealed class OpenAIConfig {
         if (!string.IsNullOrWhiteSpace(ResponsesUrl)) {
             options.NativeOptions.ResponsesUrl = ResponsesUrl!;
         }
+        if (!string.IsNullOrWhiteSpace(Instructions)) {
+            options.NativeOptions.Instructions = Instructions!;
+        }
+        if (!string.IsNullOrWhiteSpace(TextVerbosity)) {
+            var verbosity = ChatEnumParser.ParseTextVerbosity(TextVerbosity);
+            if (verbosity.HasValue) {
+                options.NativeOptions.TextVerbosity = verbosity.Value;
+            }
+        }
         if (!string.IsNullOrWhiteSpace(ReasoningEffort)) {
-            options.NativeOptions.ReasoningEffort = ReasoningEffort!;
+            var effort = ChatEnumParser.ParseReasoningEffort(ReasoningEffort);
+            if (effort.HasValue) {
+                options.NativeOptions.ReasoningEffort = effort.Value;
+            }
         }
         if (!string.IsNullOrWhiteSpace(ReasoningSummary)) {
-            options.NativeOptions.ReasoningSummary = ReasoningSummary!;
+            var summary = ChatEnumParser.ParseReasoningSummary(ReasoningSummary);
+            if (summary.HasValue) {
+                options.NativeOptions.ReasoningSummary = summary.Value;
+            }
         }
         if (!string.IsNullOrWhiteSpace(AppServerPath)) {
             options.AppServerOptions.ExecutablePath = AppServerPath!;

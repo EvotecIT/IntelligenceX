@@ -159,10 +159,11 @@ public sealed class IntelligenceXClient : IDisposable
             _currentThreadId = null;
         }
         EnsureFileSafety(input, options);
-        await EnsureThreadAsync(options.Model, cancellationToken).ConfigureAwait(false);
 
         var workspace = options.Workspace;
         var model = options.Model ?? _defaultModel;
+        options.Model ??= model;
+        await EnsureThreadAsync(model, cancellationToken).ConfigureAwait(false);
         var cwd = options.WorkingDirectory ?? _defaultWorkingDirectory;
         var approval = options.ApprovalPolicy ?? _defaultApprovalPolicy;
         var sandbox = options.SandboxPolicy ?? _defaultSandboxPolicy;
@@ -179,7 +180,7 @@ public sealed class IntelligenceXClient : IDisposable
             }
         }
 
-        return await _transport.StartTurnAsync(_currentThreadId!, input, model, cwd, approval, sandbox, cancellationToken)
+        return await _transport.StartTurnAsync(_currentThreadId!, input, options, cwd, approval, sandbox, cancellationToken)
             .ConfigureAwait(false);
     }
 

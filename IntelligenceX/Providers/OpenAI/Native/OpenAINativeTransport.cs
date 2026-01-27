@@ -145,13 +145,14 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
         return Task.FromResult(state.ToThreadInfo());
     }
 
-    public async Task<TurnInfo> StartTurnAsync(string threadId, ChatInput input, string? model, string? currentDirectory,
+    public async Task<TurnInfo> StartTurnAsync(string threadId, ChatInput input, ChatOptions? options, string? currentDirectory,
         string? approvalPolicy, SandboxPolicy? sandboxPolicy, CancellationToken cancellationToken) {
         if (!_threads.TryGet(threadId, out var state)) {
-            state = _threads.Resume(threadId, model ?? string.Empty);
+            state = _threads.Resume(threadId, options?.Model ?? string.Empty);
         }
 
-        var resolvedModel = NormalizeModelId(model, state.Model);
+        options ??= new ChatOptions();
+        var resolvedModel = NormalizeModelId(options.Model, state.Model);
         state.Touch(resolvedModel);
 
         var bundle = await EnsureAuthAsync(cancellationToken).ConfigureAwait(false);
@@ -165,7 +166,7 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
         requestMessages.AddRange(state.Messages);
         requestMessages.Add(userMessage);
 
-        var body = BuildRequestBody(resolvedModel, requestMessages, state.SessionId);
+        var body = BuildRequestBody(resolvedModel, requestMessages, state.SessionId, options);
         var turnId = Guid.NewGuid().ToString("N");
 
         var rpcParameters = JsonValue.From(body);
@@ -173,7 +174,7 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try {
             var turn = await SendWithModelFallbackAsync(body, bundle.AccessToken, accountId!, state, userMessage,
-                    resolvedModel, turnId, cancellationToken)
+                    resolvedModel, turnId, options, cancellationToken)
                 .ConfigureAwait(false);
             RpcCallCompleted?.Invoke(this, new RpcCallCompletedEventArgs("responses.create", sw.Elapsed, true));
             return turn;
@@ -295,7 +296,8 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
     }
 
     private async Task<TurnInfo> SendWithModelFallbackAsync(JsonObject body, string accessToken, string accountId,
-        NativeThreadState state, JsonObject userMessage, string model, string turnId, CancellationToken cancellationToken) {
+        NativeThreadState state, JsonObject userMessage, string model, string turnId, ChatOptions options,
+        CancellationToken cancellationToken) {
         var response = await SendAsync(body, accessToken, accountId, state.SessionId, cancellationToken)
             .ConfigureAwait(false);
         try {
@@ -310,7 +312,7 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
             var requestMessages = new List<JsonObject>(state.Messages.Count + 1);
             requestMessages.AddRange(state.Messages);
             requestMessages.Add(userMessage);
-            var retryBody = BuildRequestBody(fallback!, requestMessages, state.SessionId);
+            var retryBody = BuildRequestBody(fallback!, requestMessages, state.SessionId, options);
             var retry = await SendAsync(retryBody, accessToken, accountId, state.SessionId, cancellationToken)
                 .ConfigureAwait(false);
             return await ProcessResponseAsync(retry, turnId, fallback!, state, userMessage, cancellationToken)
@@ -362,31 +364,42 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
         }
     }
 
-    private JsonObject BuildRequestBody(string model, IReadOnlyList<JsonObject> messages, string sessionId) {
+    private JsonObject BuildRequestBody(string model, IReadOnlyList<JsonObject> messages, string sessionId, ChatOptions options) {
         var input = new JsonArray();
         foreach (var message in messages) {
             input.Add(message);
         }
 
+        var instructions = string.IsNullOrWhiteSpace(options.Instructions)
+            ? _options.Instructions
+            : options.Instructions!;
+        var verbosity = options.TextVerbosity ?? _options.TextVerbosity;
+        var reasoningEffort = options.ReasoningEffort ?? _options.ReasoningEffort;
+        var reasoningSummary = options.ReasoningSummary ?? _options.ReasoningSummary;
+        var temperature = options.Temperature;
+
         var body = new JsonObject()
             .Add("model", model)
             .Add("store", false)
             .Add("stream", true)
-            .Add("instructions", _options.Instructions)
+            .Add("instructions", instructions)
             .Add("input", input)
-            .Add("text", new JsonObject().Add("verbosity", _options.TextVerbosity))
+            .Add("text", new JsonObject().Add("verbosity", verbosity.ToApiString()))
             .Add("prompt_cache_key", sessionId)
             .Add("tool_choice", "auto")
             .Add("parallel_tool_calls", true);
 
-        if (!string.IsNullOrWhiteSpace(_options.ReasoningEffort) ||
-            !string.IsNullOrWhiteSpace(_options.ReasoningSummary)) {
+        if (temperature.HasValue) {
+            body.Add("temperature", temperature.Value);
+        }
+
+        if (reasoningEffort.HasValue || reasoningSummary.HasValue) {
             var reasoning = new JsonObject();
-            if (!string.IsNullOrWhiteSpace(_options.ReasoningEffort)) {
-                reasoning.Add("effort", _options.ReasoningEffort!);
+            if (reasoningEffort.HasValue) {
+                reasoning.Add("effort", reasoningEffort.Value.ToApiString());
             }
-            if (!string.IsNullOrWhiteSpace(_options.ReasoningSummary)) {
-                reasoning.Add("summary", _options.ReasoningSummary!);
+            if (reasoningSummary.HasValue) {
+                reasoning.Add("summary", reasoningSummary.Value.ToApiString());
             }
             body.Add("reasoning", reasoning);
         }

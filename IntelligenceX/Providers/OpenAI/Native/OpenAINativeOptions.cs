@@ -1,5 +1,6 @@
 using System;
 using IntelligenceX.OpenAI.Auth;
+using IntelligenceX.OpenAI.Chat;
 
 namespace IntelligenceX.OpenAI.Native;
 
@@ -16,12 +17,14 @@ public sealed class OpenAINativeOptions {
         Environment.GetEnvironmentVariable("INTELLIGENCEX_CLIENT_VERSION") ?? "0.0.0";
     public string Instructions { get; set; } =
         Environment.GetEnvironmentVariable("INTELLIGENCEX_INSTRUCTIONS") ?? "You are a helpful assistant.";
-    public string? ReasoningEffort { get; set; } =
-        Environment.GetEnvironmentVariable("INTELLIGENCEX_REASONING_EFFORT");
-    public string? ReasoningSummary { get; set; } =
-        Environment.GetEnvironmentVariable("INTELLIGENCEX_REASONING_SUMMARY");
+    public ReasoningEffort? ReasoningEffort { get; set; } =
+        ChatEnumParser.ParseReasoningEffort(Environment.GetEnvironmentVariable("INTELLIGENCEX_REASONING_EFFORT"));
+    public ReasoningSummary? ReasoningSummary { get; set; } =
+        ChatEnumParser.ParseReasoningSummary(Environment.GetEnvironmentVariable("INTELLIGENCEX_REASONING_SUMMARY"));
     public string Originator { get; set; } = "pi";
-    public string TextVerbosity { get; set; } = "medium";
+    public TextVerbosity TextVerbosity { get; set; } =
+        ChatEnumParser.ParseTextVerbosity(Environment.GetEnvironmentVariable("INTELLIGENCEX_TEXT_VERBOSITY"))
+        ?? TextVerbosity.Medium;
     public bool IncludeReasoningEncryptedContent { get; set; } = true;
 
     public TimeSpan OAuthTimeout { get; set; } = TimeSpan.FromMinutes(3);

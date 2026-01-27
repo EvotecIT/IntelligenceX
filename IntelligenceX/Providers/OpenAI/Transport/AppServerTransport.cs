@@ -77,8 +77,9 @@ internal sealed class AppServerTransport : IOpenAITransport {
         return _client.ResumeThreadAsync(threadId, cancellationToken);
     }
 
-    public Task<TurnInfo> StartTurnAsync(string threadId, ChatInput input, string? model, string? currentDirectory,
+    public Task<TurnInfo> StartTurnAsync(string threadId, ChatInput input, ChatOptions? options, string? currentDirectory,
         string? approvalPolicy, SandboxPolicy? sandboxPolicy, CancellationToken cancellationToken) {
+        var model = options?.Model;
         return _client.StartTurnAsync(threadId, input.ToJson(), NormalizeModel(model), currentDirectory, approvalPolicy, sandboxPolicy, cancellationToken);
     }
 
