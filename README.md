@@ -17,6 +17,12 @@ process, speaks JSON-RPC over JSONL, and exposes simple methods for authenticati
 - Codex CLI installed and available on PATH ("codex")
 - .NET SDK 8+ for building examples and tests
 
+Full build check (includes legacy TFMs on any OS):
+
+```powershell
+pwsh ./Build/Build-All.ps1 -Configuration Release
+```
+
 ## Quick start (.NET)
 
 ```csharp
@@ -54,6 +60,53 @@ await using var session = await EasySession.StartAsync();
 await session.ChatAsync("Hello!");
 ```
 
+## Config overrides (.intelligencex/config.json)
+
+You can override defaults without code changes by adding `.intelligencex/config.json`
+or setting `INTELLIGENCEX_CONFIG_PATH`.
+
+Example `.intelligencex/config.json`:
+
+```json
+{
+  "openai": {
+    "defaultModel": "gpt-5.2-codex",
+    "appServerPath": "codex",
+    "appServerArgs": "app-server",
+    "openBrowser": true,
+    "printLoginUrl": true,
+    "loginMode": "chatgpt",
+    "maxImageBytes": 10485760,
+    "requireWorkspaceForFileAccess": true
+  },
+  "copilot": {
+    "cliPath": "copilot",
+    "autoInstall": false
+  }
+}
+```
+
+```csharp
+using IntelligenceX.OpenAI;
+
+var options = EasySessionOptions.FromConfig();
+await using var session = await EasySession.StartAsync(options);
+await session.ChatAsync("Hello with config overrides.");
+```
+
+## Telemetry hooks (.NET)
+
+```csharp
+using IntelligenceX.OpenAI;
+
+await using var client = await IntelligenceXClient.ConnectAsync();
+client.RpcCallStarted += (_, args) => Console.WriteLine($"RPC -> {args.Method}");
+client.RpcCallCompleted += (_, args) => Console.WriteLine($"RPC <- {args.Method} ({args.Duration.TotalMilliseconds:0} ms)");
+client.LoginStarted += (_, args) => Console.WriteLine($"Login started: {args.LoginType}");
+client.LoginCompleted += (_, args) => Console.WriteLine($"Login completed: {args.LoginType}");
+client.StandardErrorReceived += (_, line) => Console.WriteLine($"STDERR: {line}");
+```
+
 ### Reviewer configuration (GitHub Action / CLI)
 
 If you run `IntelligenceX.Reviewer`, you can configure it using environment variables **or**
@@ -78,6 +131,35 @@ Example `.intelligencex/reviewer.json`:
   }
 }
 ```
+
+## Diagnostics and health (PowerShell)
+
+Enable diagnostic output on connect:
+
+```powershell
+Connect-IntelligenceX -Diagnostics
+```
+
+Run health checks:
+
+```powershell
+# OpenAI app-server (uses current client)
+Get-IntelligenceXHealth
+
+# Copilot CLI (optional)
+Get-IntelligenceXHealth -Copilot
+```
+
+## Troubleshooting JSON-RPC errors
+
+Common JSON-RPC codes and hints:
+
+- `-32700` Parse error (malformed JSON)
+- `-32600` Invalid request
+- `-32601` Method not found
+- `-32602` Invalid params
+- `-32603` Internal error
+- `-32000` Server error
 
 ```csharp
 using IntelligenceX.OpenAI;
@@ -153,6 +235,15 @@ Send-IntelligenceXMessage -Client $client -ThreadId $thread.Id -Text 'Hello from
 Disconnect-IntelligenceX -Client $client
 ```
 
+Quick diagnostics + health:
+
+```powershell
+Import-Module ./Module/IntelligenceX.psd1 -Force
+$client = Connect-IntelligenceX -Diagnostics
+Get-IntelligenceXHealth
+Disconnect-IntelligenceX -Client $client
+```
+
 More cmdlets:
 
 ```powershell
@@ -214,6 +305,7 @@ Cmdlet overview (binary):
 - Skills/models: Get-IntelligenceXSkill, Set-IntelligenceXSkill, Get-IntelligenceXModel, Get-IntelligenceXCollaborationMode
 - MCP/user: Start-IntelligenceXMcpOAuthLogin, Get-IntelligenceXMcpServerStatus, Invoke-IntelligenceXMcpServerConfigReload, Request-IntelligenceXUserInput
 - Events/other: Watch-IntelligenceXEvent, Invoke-IntelligenceXRpc, Send-IntelligenceXFeedback, Get-IntelligenceXTurnOutput
+- Health/diagnostics: Get-IntelligenceXHealth
 
 ## Examples
 
@@ -223,7 +315,10 @@ Console examples live in `IntelligenceX.Examples` and are split into separate fi
 dotnet run --project IntelligenceX.Examples/IntelligenceX.Examples.csproj -- list
 ```
 
-PowerShell scripts live in `Module/Examples`.
+PowerShell scripts live in `Module/Examples`:
+- `Example.Login.ps1`
+- `Example.Chat.ps1`
+- `Example.Health.ps1`
 
 ## Reviewer (GitHub Actions)
 
