@@ -74,6 +74,8 @@ public sealed class OpenAIConfig {
     public string? LoginMode { get; set; }
     public long? MaxImageBytes { get; set; }
     public bool? RequireWorkspaceForFileAccess { get; set; }
+    public string? ReasoningEffort { get; set; }
+    public string? ReasoningSummary { get; set; }
 
     internal void ReadFrom(JsonObject obj) {
         DefaultModel = obj.GetString("defaultModel") ?? DefaultModel;
@@ -92,6 +94,8 @@ public sealed class OpenAIConfig {
         LoginMode = obj.GetString("loginMode") ?? LoginMode;
         MaxImageBytes = ReadLong(obj, "maxImageBytes", MaxImageBytes);
         RequireWorkspaceForFileAccess = ReadBool(obj, "requireWorkspaceForFileAccess", RequireWorkspaceForFileAccess);
+        ReasoningEffort = obj.GetString("reasoningEffort") ?? ReasoningEffort;
+        ReasoningSummary = obj.GetString("reasoningSummary") ?? ReasoningSummary;
     }
 
     public void ApplyTo(EasySessionOptions options) {
@@ -115,6 +119,12 @@ public sealed class OpenAIConfig {
         }
         if (!string.IsNullOrWhiteSpace(ResponsesUrl)) {
             options.NativeOptions.ResponsesUrl = ResponsesUrl!;
+        }
+        if (!string.IsNullOrWhiteSpace(ReasoningEffort)) {
+            options.NativeOptions.ReasoningEffort = ReasoningEffort!;
+        }
+        if (!string.IsNullOrWhiteSpace(ReasoningSummary)) {
+            options.NativeOptions.ReasoningSummary = ReasoningSummary!;
         }
         if (!string.IsNullOrWhiteSpace(AppServerPath)) {
             options.AppServerOptions.ExecutablePath = AppServerPath!;
@@ -163,6 +173,12 @@ public sealed class OpenAIConfig {
         }
         if (!string.IsNullOrWhiteSpace(ResponsesUrl)) {
             options.NativeOptions.ResponsesUrl = ResponsesUrl!;
+        }
+        if (!string.IsNullOrWhiteSpace(ReasoningEffort)) {
+            options.NativeOptions.ReasoningEffort = ReasoningEffort!;
+        }
+        if (!string.IsNullOrWhiteSpace(ReasoningSummary)) {
+            options.NativeOptions.ReasoningSummary = ReasoningSummary!;
         }
         if (!string.IsNullOrWhiteSpace(AppServerPath)) {
             options.AppServerOptions.ExecutablePath = AppServerPath!;

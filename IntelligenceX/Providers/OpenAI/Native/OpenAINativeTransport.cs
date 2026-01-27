@@ -372,11 +372,24 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
             .Add("model", model)
             .Add("store", false)
             .Add("stream", true)
+            .Add("instructions", _options.Instructions)
             .Add("input", input)
             .Add("text", new JsonObject().Add("verbosity", _options.TextVerbosity))
             .Add("prompt_cache_key", sessionId)
             .Add("tool_choice", "auto")
             .Add("parallel_tool_calls", true);
+
+        if (!string.IsNullOrWhiteSpace(_options.ReasoningEffort) ||
+            !string.IsNullOrWhiteSpace(_options.ReasoningSummary)) {
+            var reasoning = new JsonObject();
+            if (!string.IsNullOrWhiteSpace(_options.ReasoningEffort)) {
+                reasoning.Add("effort", _options.ReasoningEffort!);
+            }
+            if (!string.IsNullOrWhiteSpace(_options.ReasoningSummary)) {
+                reasoning.Add("summary", _options.ReasoningSummary!);
+            }
+            body.Add("reasoning", reasoning);
+        }
 
         if (_options.IncludeReasoningEncryptedContent) {
             var include = new JsonArray();
@@ -478,7 +491,7 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
     }
 
     private static string? PickChatGptFallbackModel(string currentModel) {
-        var candidates = new[] { "gpt-5.2", "gpt-5.1" };
+        var candidates = new[] { "gpt-5.2-codex", "gpt-5.2", "gpt-5.1-codex", "gpt-5.1" };
         foreach (var candidate in candidates) {
             if (!string.Equals(candidate, currentModel, StringComparison.OrdinalIgnoreCase)) {
                 return candidate;

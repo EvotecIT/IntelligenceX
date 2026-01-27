@@ -65,9 +65,15 @@ public sealed class ModelInfo {
     public JsonObject? Additional { get; }
 
     public static ModelInfo FromJson(JsonObject obj) {
-        var id = GetString(obj, "id") ?? string.Empty;
+        var displayName = GetString(obj, "displayName", "display_name");
+        var id = GetString(obj, "id")
+                 ?? GetString(obj, "model")
+                 ?? GetString(obj, "slug")
+                 ?? GetString(obj, "name")
+                 ?? displayName
+                 ?? string.Empty;
         var model = GetString(obj, "model") ?? id;
-        var displayName = GetString(obj, "displayName", "display_name") ?? model;
+        displayName ??= model;
         var description = GetString(obj, "description") ?? string.Empty;
 
         var efforts = new List<ReasoningEffortOption>();

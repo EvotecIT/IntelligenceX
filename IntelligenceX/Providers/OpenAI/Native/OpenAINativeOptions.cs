@@ -14,6 +14,12 @@ public sealed class OpenAINativeOptions {
     };
     public string ClientVersion { get; set; } =
         Environment.GetEnvironmentVariable("INTELLIGENCEX_CLIENT_VERSION") ?? "0.0.0";
+    public string Instructions { get; set; } =
+        Environment.GetEnvironmentVariable("INTELLIGENCEX_INSTRUCTIONS") ?? "You are a helpful assistant.";
+    public string? ReasoningEffort { get; set; } =
+        Environment.GetEnvironmentVariable("INTELLIGENCEX_REASONING_EFFORT");
+    public string? ReasoningSummary { get; set; } =
+        Environment.GetEnvironmentVariable("INTELLIGENCEX_REASONING_SUMMARY");
     public string Originator { get; set; } = "pi";
     public string TextVerbosity { get; set; } = "medium";
     public bool IncludeReasoningEncryptedContent { get; set; } = true;
@@ -42,6 +48,9 @@ public sealed class OpenAINativeOptions {
         }
         if (string.IsNullOrWhiteSpace(ClientVersion)) {
             throw new ArgumentException("ClientVersion cannot be null or whitespace.", nameof(ClientVersion));
+        }
+        if (string.IsNullOrWhiteSpace(Instructions)) {
+            throw new ArgumentException("Instructions cannot be null or whitespace.", nameof(Instructions));
         }
         if (OAuthTimeout <= TimeSpan.Zero) {
             throw new ArgumentOutOfRangeException(nameof(OAuthTimeout), "OAuthTimeout must be positive.");
