@@ -1,5 +1,6 @@
 using System.Management.Automation;
 using System.Threading.Tasks;
+using IntelligenceX.Configuration;
 using IntelligenceX.OpenAI.AppServer;
 
 namespace IntelligenceX.PowerShell;
@@ -28,8 +29,23 @@ public sealed class CmdletConnectIntelligenceX : IntelligenceXCmdlet {
     [Parameter]
     public string? WorkingDirectory { get; set; }
 
+    /// <summary>
+    /// <para type="description">Enable diagnostics output (RPC calls, login events, stderr).</para>
+    /// </summary>
+    [Parameter]
+    public SwitchParameter Diagnostics { get; set; }
+
+    /// <summary>
+    /// <para type="description">Ignore .intelligencex/config.json overrides.</para>
+    /// </summary>
+    [Parameter]
+    public SwitchParameter NoConfig { get; set; }
+
     protected override async Task ProcessRecordAsync() {
         var options = new AppServerOptions();
+        if (!NoConfig.IsPresent && IntelligenceXConfig.TryLoad(out var config)) {
+            config.OpenAI.ApplyTo(options);
+        }
         if (!string.IsNullOrWhiteSpace(ExecutablePath)) {
             options.ExecutablePath = ExecutablePath!;
         }
@@ -41,6 +57,10 @@ public sealed class CmdletConnectIntelligenceX : IntelligenceXCmdlet {
         }
 
         var client = await AppServerClient.StartAsync(options, CancelToken).ConfigureAwait(false);
+        if (Diagnostics.IsPresent || MyInvocation.BoundParameters.ContainsKey("Verbose")) {
+            ClientContext.Diagnostics?.Dispose();
+            ClientContext.Diagnostics = new DiagnosticsSubscription(client, message => System.Console.Error.WriteLine(message));
+        }
         SetDefaultClient(client);
         WriteObject(client);
     }

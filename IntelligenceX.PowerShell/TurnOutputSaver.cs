@@ -63,7 +63,7 @@ internal static class TurnOutputSaver {
             }
 
             if (downloadUrls && !string.IsNullOrWhiteSpace(output.ImageUrl)) {
-                var bytes = await HttpClient.GetByteArrayAsync(output.ImageUrl).ConfigureAwait(false);
+                var bytes = await HttpClient.GetByteArrayAsync(output.ImageUrl!).ConfigureAwait(false);
                 File.WriteAllBytes(targetPath, bytes);
                 saved.Add(targetPath);
                 counter++;
@@ -83,14 +83,15 @@ internal static class TurnOutputSaver {
     private static string GetExtension(string? mimeType, string? pathOrUrl) {
         var ext = TryGetExtensionFromPath(pathOrUrl);
         if (!string.IsNullOrWhiteSpace(ext)) {
-            return ext;
+            return ext!;
         }
 
         if (string.IsNullOrWhiteSpace(mimeType)) {
             return ".bin";
         }
 
-        switch (mimeType.ToLowerInvariant()) {
+        var mime = mimeType!;
+        switch (mime.ToLowerInvariant()) {
             case "image/png":
                 return ".png";
             case "image/jpeg":
@@ -120,12 +121,12 @@ internal static class TurnOutputSaver {
             return null;
         }
 
-        var ext = Path.GetExtension(pathOrUrl);
+        var ext = Path.GetExtension(pathOrUrl!);
         if (!string.IsNullOrWhiteSpace(ext)) {
             return ext;
         }
 
-        if (Uri.TryCreate(pathOrUrl, UriKind.Absolute, out var uri)) {
+        if (Uri.TryCreate(pathOrUrl!, UriKind.Absolute, out var uri)) {
             ext = Path.GetExtension(uri.AbsolutePath);
             if (!string.IsNullOrWhiteSpace(ext)) {
                 return ext;
@@ -177,7 +178,7 @@ internal static class TurnOutputSaver {
             return $"intelligencex-image-{timestamp}-";
         }
 
-        var cleaned = SanitizeFileName(model);
+        var cleaned = SanitizeFileName(model!);
         return $"intelligencex-image-{timestamp}-{cleaned}-";
     }
 

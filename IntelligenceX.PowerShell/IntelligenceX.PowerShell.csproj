@@ -46,4 +46,8 @@
     <ItemGroup>
         <ProjectReference Include="..\IntelligenceX\IntelligenceX.csproj" />
     </ItemGroup>
+
+    <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
+        <Reference Include="System.Net.Http" />
+    </ItemGroup>
 </Project>

@@ -177,7 +177,7 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
     protected override async Task ProcessRecordAsync() {
         if (ParameterSetName.Equals("Pipeline", StringComparison.OrdinalIgnoreCase)) {
             if (!string.IsNullOrWhiteSpace(InputObject)) {
-                _pipelineInputs.Add(InputObject);
+                _pipelineInputs.Add(InputObject!);
             }
             return;
         }
@@ -472,7 +472,7 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
     private SandboxPolicy? BuildSandboxPolicy() {
         var workspace = Workspace;
         if (!string.IsNullOrWhiteSpace(workspace)) {
-            return new SandboxPolicy("workspace", AllowNetwork.IsPresent, new[] { workspace });
+            return new SandboxPolicy("workspace", AllowNetwork.IsPresent, new[] { workspace! });
         }
         return null;
     }
