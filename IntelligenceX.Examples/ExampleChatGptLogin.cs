@@ -11,7 +11,7 @@ internal sealed class ExampleChatGptLogin : IExample {
         using var client = await ExampleHelpers.StartClientAsync().ConfigureAwait(false);
         await ExampleHelpers.InitializeAsync(client).ConfigureAwait(false);
         await ExampleHelpers.LoginChatGptAsync(client).ConfigureAwait(false);
-        var account = await client.ReadAccountAsync().ConfigureAwait(false);
-        Console.WriteLine($"Logged in as: {account.Email} ({account.PlanType})");
+        var account = await client.GetAccountAsync().ConfigureAwait(false);
+        Console.WriteLine($"Logged in as: {account.Email ?? account.AccountId} ({account.PlanType ?? "unknown"})");
     }
 }

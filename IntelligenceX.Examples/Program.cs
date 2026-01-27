@@ -8,6 +8,7 @@ internal static class Program {
     private static readonly List<IExample> Examples = new() {
         new ExampleEasyChat(),
         new ExampleEasySessionImages(),
+        new ExampleModels(),
         new ExampleImagesAndFiles(),
         new ExampleChatGptLogin(),
         new ExampleApiKeyLogin(),

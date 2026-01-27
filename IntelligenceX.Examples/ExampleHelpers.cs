@@ -1,32 +1,48 @@
 using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
+using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.AppServer;
 
 namespace IntelligenceX.Examples;
 
 internal static class ExampleHelpers {
-    public static async Task<AppServerClient> StartClientAsync() {
-        var options = new AppServerOptions {
-            ExecutablePath = Environment.GetEnvironmentVariable("CODEX_APP_SERVER_PATH") ?? "codex",
-            Arguments = Environment.GetEnvironmentVariable("CODEX_APP_SERVER_ARGS") ?? "app-server"
+    public static async Task<IntelligenceXClient> StartClientAsync() {
+        var options = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.Native
         };
-        return await AppServerClient.StartAsync(options).ConfigureAwait(false);
+
+        var codexPath = Environment.GetEnvironmentVariable("CODEX_APP_SERVER_PATH");
+        if (!string.IsNullOrWhiteSpace(codexPath)) {
+            options.TransportKind = OpenAITransportKind.AppServer;
+            options.AppServerOptions.ExecutablePath = codexPath!;
+            options.AppServerOptions.Arguments = Environment.GetEnvironmentVariable("CODEX_APP_SERVER_ARGS") ?? "app-server";
+        }
+
+        return await IntelligenceXClient.ConnectAsync(options).ConfigureAwait(false);
     }
 
-    public static async Task InitializeAsync(AppServerClient client) {
+    public static async Task InitializeAsync(IntelligenceXClient client) {
         await client.InitializeAsync(new ClientInfo("IntelligenceX.Examples", "IntelligenceX Examples", "0.1.0")).ConfigureAwait(false);
     }
 
-    public static async Task LoginChatGptAsync(AppServerClient client) {
-        var login = await client.StartChatGptLoginAsync().ConfigureAwait(false);
-        Console.WriteLine($"Open this URL to login: {login.AuthUrl}");
-        TryOpenUrl(login.AuthUrl);
-        Console.WriteLine("Waiting for login completion...");
-        await client.WaitForLoginCompletionAsync(login.LoginId).ConfigureAwait(false);
+    public static async Task LoginChatGptAsync(IntelligenceXClient client) {
+        await client.LoginChatGptAndWaitAsync(url => {
+            Console.WriteLine($"Open this URL to login: {url}");
+            TryOpenUrl(url);
+        }).ConfigureAwait(false);
     }
 
-    public static async Task LoginApiKeyAsync(AppServerClient client) {
+    public static async Task EnsureChatGptLoginAsync(IntelligenceXClient client) {
+        try {
+            await client.GetAccountAsync().ConfigureAwait(false);
+            return;
+        } catch (InvalidOperationException ex) when (IsAuthMissing(ex)) {
+            await LoginChatGptAsync(client).ConfigureAwait(false);
+        }
+    }
+
+    public static async Task LoginApiKeyAsync(IntelligenceXClient client) {
         var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
         if (string.IsNullOrWhiteSpace(apiKey)) {
             Console.Write("API key: ");
@@ -35,17 +51,15 @@ internal static class ExampleHelpers {
         if (string.IsNullOrWhiteSpace(apiKey)) {
             throw new InvalidOperationException("API key is required.");
         }
-        await client.LoginWithApiKeyAsync(apiKey).ConfigureAwait(false);
+        await client.LoginApiKeyAsync(apiKey).ConfigureAwait(false);
     }
 
-    public static void AttachNotifications(AppServerClient client) {
-        client.NotificationReceived += (_, args) => {
-            var text = args.Params?.AsObject()?.GetObject("delta")?.GetString("text");
+    public static void AttachNotifications(IntelligenceXClient client) {
+        client.SubscribeDelta(text => {
             if (!string.IsNullOrWhiteSpace(text)) {
                 Console.Write(text);
             }
-        };
-
+        });
         client.StandardErrorReceived += (_, line) => {
             Console.Error.WriteLine($"[app-server] {line}");
         };
@@ -61,5 +75,11 @@ internal static class ExampleHelpers {
         } catch {
             // Ignore failures to open browser.
         }
+    }
+
+    private static bool IsAuthMissing(InvalidOperationException ex) {
+        var message = ex.Message ?? string.Empty;
+        return message.IndexOf("not logged in", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               message.IndexOf("login", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 }

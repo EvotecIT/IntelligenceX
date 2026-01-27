@@ -27,8 +27,12 @@ internal sealed class ExampleImagesAndFiles : IExample {
             Console.WriteLine($"Image example skipped; file not found: {imagePath}");
         }
 
-        var options = new ChatOptions { Workspace = Environment.CurrentDirectory };
-        await ix.ChatAsync(ChatInput.FromText("Create a report.txt file with a short summary of this run."), options)
-            .ConfigureAwait(false);
+        if (ix.TransportKind == OpenAITransportKind.AppServer) {
+            var options = new ChatOptions { Workspace = Environment.CurrentDirectory };
+            await ix.ChatAsync(ChatInput.FromText("Create a report.txt file with a short summary of this run."), options)
+                .ConfigureAwait(false);
+        } else {
+            Console.WriteLine("Workspace file writes require the app-server transport.");
+        }
     }
 }
