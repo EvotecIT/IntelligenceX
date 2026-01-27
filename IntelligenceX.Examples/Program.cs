@@ -14,7 +14,8 @@ internal static class Program {
         new ExampleCopilotChat(),
         new ExampleChatLoop(),
         new ExampleThreadList(),
-        new ExampleFluentChat()
+        new ExampleFluentChat(),
+        new ExampleTelemetry()
     };
 
     private static async Task<int> Main(string[] args) {
