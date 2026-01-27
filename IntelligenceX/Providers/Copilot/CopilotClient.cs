@@ -10,10 +10,16 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
 using IntelligenceX.Rpc;
+using IntelligenceX.Telemetry;
+using IntelligenceX.Utils;
 
 namespace IntelligenceX.Copilot;
 
-public sealed class CopilotClient : IDisposable, IAsyncDisposable {
+public sealed class CopilotClient : IDisposable
+#if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+    , IAsyncDisposable
+#endif
+{
     private readonly CopilotClientOptions _options;
     private readonly ConcurrentDictionary<string, CopilotSession> _sessions = new(StringComparer.Ordinal);
     private readonly CancellationTokenSource _cts = new();
@@ -24,22 +30,33 @@ public sealed class CopilotClient : IDisposable, IAsyncDisposable {
     private JsonRpcClient? _rpc;
     private Task? _readerTask;
     private Task? _stderrTask;
+    private readonly TimeSpan _shutdownTimeout;
+    private readonly RpcRetryOptions _rpcRetry;
     private bool _disposed;
 
     private CopilotClient(CopilotClientOptions options) {
         _options = options;
+        _shutdownTimeout = options.ShutdownTimeout;
+        _rpcRetry = options.RpcRetry;
     }
 
     public event EventHandler<string>? StandardErrorReceived;
+    public event EventHandler<string>? StandardOutputReceived;
+    public event EventHandler<string>? ProtocolMessageReceived;
+    public event EventHandler<string>? ProtocolMessageSent;
+    public event EventHandler<RpcCallStartedEventArgs>? RpcCallStarted;
+    public event EventHandler<RpcCallCompletedEventArgs>? RpcCallCompleted;
 
     public static async Task<CopilotClient> StartAsync(CopilotClientOptions? options = null, CancellationToken cancellationToken = default) {
-        var client = new CopilotClient(options ?? new CopilotClientOptions());
-        await client.StartCoreAsync(cancellationToken).ConfigureAwait(false);
+        options ??= new CopilotClientOptions();
+        options.Validate();
+        var client = new CopilotClient(options);
+        await client.StartWithRetryAsync(cancellationToken).ConfigureAwait(false);
         return client;
     }
 
     public async Task<CopilotStatus> GetStatusAsync(CancellationToken cancellationToken = default) {
-        var result = await CallAsync("status.get", JsonValue.From(new JsonArray()), cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("status.get", JsonValue.From(new JsonArray()), true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         if (obj is null) {
             return new CopilotStatus(string.Empty, 0, new JsonObject(), null);
@@ -48,7 +65,7 @@ public sealed class CopilotClient : IDisposable, IAsyncDisposable {
     }
 
     public async Task<CopilotAuthStatus> GetAuthStatusAsync(CancellationToken cancellationToken = default) {
-        var result = await CallAsync("auth.getStatus", JsonValue.From(new JsonArray()), cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("auth.getStatus", JsonValue.From(new JsonArray()), true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         if (obj is null) {
             return new CopilotAuthStatus(false, null, null, null, null, new JsonObject(), null);
@@ -57,7 +74,7 @@ public sealed class CopilotClient : IDisposable, IAsyncDisposable {
     }
 
     public async Task<IReadOnlyList<CopilotModelInfo>> ListModelsAsync(CancellationToken cancellationToken = default) {
-        var result = await CallAsync("models.list", JsonValue.From(new JsonArray()), cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("models.list", JsonValue.From(new JsonArray()), true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         var modelsObj = obj?.GetArray("models");
         var list = new List<CopilotModelInfo>();
@@ -119,10 +136,38 @@ public sealed class CopilotClient : IDisposable, IAsyncDisposable {
         return _rpc!.CallAsync(method, parameters, cancellationToken);
     }
 
+    private Task<JsonValue?> CallWithRetryAsync(string method, JsonValue? parameters, bool idempotent, CancellationToken cancellationToken) {
+        EnsureConnected();
+        return RpcRetryHelper.ExecuteAsync(token => _rpc!.CallAsync(method, parameters, token), _rpcRetry, idempotent, cancellationToken);
+    }
+
     private void EnsureConnected() {
         if (_rpc is null) {
             throw new InvalidOperationException("Copilot client is not connected.");
         }
+    }
+
+    private async Task StartWithRetryAsync(CancellationToken cancellationToken) {
+        var retries = _options.ConnectRetryCount;
+        var delay = _options.ConnectRetryInitialDelay;
+        Exception? lastError = null;
+
+        for (var attempt = 0; attempt <= retries; attempt++) {
+            cancellationToken.ThrowIfCancellationRequested();
+            try {
+                await StartCoreAsync(cancellationToken).ConfigureAwait(false);
+                return;
+            } catch (Exception ex) {
+                lastError = ex;
+                if (attempt >= retries) {
+                    throw;
+                }
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                delay = NextDelay(delay, _options.ConnectRetryMaxDelay);
+            }
+        }
+
+        throw lastError ?? new InvalidOperationException("Failed to start Copilot client.");
     }
 
     private async Task StartCoreAsync(CancellationToken cancellationToken) {
@@ -133,11 +178,19 @@ public sealed class CopilotClient : IDisposable, IAsyncDisposable {
         if (!string.IsNullOrWhiteSpace(_options.CliUrl)) {
             var (host, port) = ParseCliUrl(_options.CliUrl!);
             _tcpClient = new TcpClient();
-            await _tcpClient.ConnectAsync(host, port).ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
+            var connectToken = CreateTimeoutToken(_options.ConnectTimeout, cancellationToken, out var cts);
+            try {
+                await ConnectAsync(_tcpClient, host, port, connectToken).ConfigureAwait(false);
+            } finally {
+                cts?.Dispose();
+            }
             _networkStream = _tcpClient.GetStream();
             InitializeTransport(_networkStream, _networkStream);
             return;
+        }
+
+        if (!_options.AutoStart) {
+            throw new InvalidOperationException("Copilot AutoStart is disabled and no CliUrl was provided.");
         }
 
         var resolvedPath = await ResolveCliPathOrInstallAsync(_options, cancellationToken).ConfigureAwait(false);
@@ -158,11 +211,20 @@ public sealed class CopilotClient : IDisposable, IAsyncDisposable {
         } else {
             var port = _options.Port;
             if (port <= 0) {
-                port = await DetectPortAsync(_process, cancellationToken).ConfigureAwait(false);
+                var portToken = CreateTimeoutToken(_options.ConnectTimeout, cancellationToken, out var cts);
+                try {
+                    port = await DetectPortAsync(_process, portToken).ConfigureAwait(false);
+                } finally {
+                    cts?.Dispose();
+                }
             }
             _tcpClient = new TcpClient();
-            await _tcpClient.ConnectAsync("localhost", port).ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
+            var localToken = CreateTimeoutToken(_options.ConnectTimeout, cancellationToken, out var cts2);
+            try {
+                await ConnectAsync(_tcpClient, "localhost", port, localToken).ConfigureAwait(false);
+            } finally {
+                cts2?.Dispose();
+            }
             _networkStream = _tcpClient.GetStream();
             InitializeTransport(_networkStream, _networkStream);
         }
@@ -173,6 +235,10 @@ public sealed class CopilotClient : IDisposable, IAsyncDisposable {
     private void InitializeTransport(Stream input, Stream output) {
         _transport = new HeaderDelimitedMessageTransport(input, output);
         _rpc = new JsonRpcClient(message => _transport.SendAsync(message, _cts.Token));
+        _rpc.CallStarted += (_, args) => RpcCallStarted?.Invoke(this, args);
+        _rpc.CallCompleted += (_, args) => RpcCallCompleted?.Invoke(this, args);
+        _transport.MessageReceived += (_, message) => ProtocolMessageReceived?.Invoke(this, message);
+        _transport.MessageSent += (_, message) => ProtocolMessageSent?.Invoke(this, message);
         _rpc.RequestReceived += OnRequestReceived;
         _rpc.NotificationReceived += OnNotificationReceived;
         _readerTask = Task.Run(() => _transport.ReadLoopAsync(_rpc.HandleLine, _cts.Token), _cts.Token);
@@ -210,7 +276,7 @@ public sealed class CopilotClient : IDisposable, IAsyncDisposable {
         if (string.IsNullOrWhiteSpace(sessionId) || evtObj is null) {
             return null;
         }
-        if (!_sessions.TryGetValue(sessionId, out var session)) {
+        if (!_sessions.TryGetValue(sessionId!, out var session)) {
             return null;
         }
         var evt = CopilotSessionEvent.FromJson(evtObj);
@@ -367,6 +433,7 @@ public sealed class CopilotClient : IDisposable, IAsyncDisposable {
             if (line is null) {
                 throw new InvalidOperationException("Copilot CLI exited before reporting a port.");
             }
+            StandardOutputReceived?.Invoke(this, line);
             var match = regex.Match(line);
             if (match.Success && int.TryParse(match.Groups[1].Value, out var port)) {
                 return port;
@@ -399,22 +466,81 @@ public sealed class CopilotClient : IDisposable, IAsyncDisposable {
         return await readTask.ConfigureAwait(false);
     }
 
-    public void Dispose() {
-        DisposeAsync().AsTask().GetAwaiter().GetResult();
+    public async Task<HealthCheckResult> HealthCheckAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default) {
+        var sw = Stopwatch.StartNew();
+        var token = CreateTimeoutToken(timeout ?? _options.ConnectTimeout, cancellationToken, out var cts);
+        try {
+            await GetStatusAsync(token).ConfigureAwait(false);
+            return new HealthCheckResult(true, "status.get", null, sw.Elapsed);
+        } catch (Exception ex) {
+            return new HealthCheckResult(false, "status.get", ex, sw.Elapsed);
+        } finally {
+            cts?.Dispose();
+        }
     }
 
+    private static TimeSpan NextDelay(TimeSpan current, TimeSpan max) {
+        if (current <= TimeSpan.Zero) {
+            return TimeSpan.Zero;
+        }
+        var next = TimeSpan.FromMilliseconds(current.TotalMilliseconds * 2);
+        return next > max ? max : next;
+    }
+
+    private static CancellationToken CreateTimeoutToken(TimeSpan timeout, CancellationToken cancellationToken, out CancellationTokenSource? cts) {
+        if (timeout > TimeSpan.Zero) {
+            cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(timeout);
+            return cts.Token;
+        }
+        cts = null;
+        return cancellationToken;
+    }
+
+    private static async Task ConnectAsync(TcpClient client, string host, int port, CancellationToken cancellationToken) {
+        var connectTask = client.ConnectAsync(host, port);
+        var completed = await Task.WhenAny(connectTask, Task.Delay(Timeout.Infinite, cancellationToken)).ConfigureAwait(false);
+        if (completed != connectTask) {
+            throw new OperationCanceledException(cancellationToken);
+        }
+        await connectTask.ConfigureAwait(false);
+    }
+
+    private static async Task WaitWithTimeoutAsync(Task? task, TimeSpan timeout) {
+        if (task is null) {
+            return;
+        }
+        try {
+            var completed = await Task.WhenAny(task, Task.Delay(timeout)).ConfigureAwait(false);
+            if (completed != task) {
+                return;
+            }
+            await task.ConfigureAwait(false);
+        } catch {
+            // Ignore shutdown wait failures.
+        }
+    }
+
+    public void Dispose() {
+#if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+        DisposeAsync().AsTask().GetAwaiter().GetResult();
+#else
+        DisposeAsync().GetAwaiter().GetResult();
+#endif
+    }
+
+#if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
     public async ValueTask DisposeAsync() {
+#else
+    public async Task DisposeAsync() {
+#endif
         if (_disposed) {
             return;
         }
         _disposed = true;
         _cts.Cancel();
-        if (_readerTask is not null) {
-            await _readerTask.ConfigureAwait(false);
-        }
-        if (_stderrTask is not null) {
-            await _stderrTask.ConfigureAwait(false);
-        }
+        await WaitWithTimeoutAsync(_readerTask, _shutdownTimeout).ConfigureAwait(false);
+        await WaitWithTimeoutAsync(_stderrTask, _shutdownTimeout).ConfigureAwait(false);
         _rpc?.Dispose();
         _transport?.Dispose();
         _networkStream?.Dispose();

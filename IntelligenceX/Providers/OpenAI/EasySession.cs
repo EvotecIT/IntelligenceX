@@ -5,10 +5,15 @@ using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Chat;
+using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI;
 
-public sealed class EasySession : IAsyncDisposable {
+public sealed class EasySession : IDisposable
+#if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+    , IAsyncDisposable
+#endif
+{
     private readonly IntelligenceXClient _client;
     private readonly EasySessionOptions _options;
     private bool _loggedIn;
@@ -22,6 +27,7 @@ public sealed class EasySession : IAsyncDisposable {
 
     public static async Task<EasySession> StartAsync(EasySessionOptions? options = null, CancellationToken cancellationToken = default) {
         options ??= new EasySessionOptions();
+        options.Validate();
         var clientOptions = BuildClientOptions(options);
         var client = await IntelligenceXClient.ConnectAsync(clientOptions, cancellationToken).ConfigureAwait(false);
 
@@ -76,18 +82,33 @@ public sealed class EasySession : IAsyncDisposable {
     public async Task<TurnInfo> ChatAsync(ChatInput input, EasyChatOptions? options = null, CancellationToken cancellationToken = default) {
         await EnsureLoggedInAsync(cancellationToken).ConfigureAwait(false);
 
+        var resolvedWorkspace = options?.Workspace ?? _options.Workspace;
+        var maxImageBytes = options?.MaxImageBytes ?? _options.MaxImageBytes;
+        var requireWorkspace = options?.RequireWorkspaceForFileAccess ?? _options.RequireWorkspaceForFileAccess;
+        EnsureFileSafety(input, resolvedWorkspace, maxImageBytes, requireWorkspace);
+
         var chatOptions = new ChatOptions();
         if (options is not null) {
             chatOptions.Model = options.Model;
             chatOptions.NewThread = options.NewThread;
             chatOptions.Workspace = options.Workspace;
             chatOptions.AllowNetwork = options.AllowNetwork;
+            chatOptions.MaxImageBytes = options.MaxImageBytes;
+            if (options.RequireWorkspaceForFileAccess.HasValue) {
+                chatOptions.RequireWorkspaceForFileAccess = options.RequireWorkspaceForFileAccess.Value;
+            }
         }
 
         return await _client.ChatAsync(input, chatOptions, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task EnsureLoggedInAsync(CancellationToken cancellationToken = default) {
+        if (_options.ValidateLoginOnEachRequest && _loggedIn) {
+            if (!await TryReadAccountAsync(cancellationToken).ConfigureAwait(false)) {
+                _loggedIn = false;
+            }
+        }
+
         if (_loggedIn || _options.Login == EasyLoginMode.None) {
             return;
         }
@@ -168,5 +189,34 @@ public sealed class EasySession : IAsyncDisposable {
         }
     }
 
+    private static void EnsureFileSafety(ChatInput input, string? workspace, long maxImageBytes, bool requireWorkspace) {
+        var paths = input.GetImagePaths();
+        if (paths.Length == 0) {
+            return;
+        }
+        foreach (var path in paths) {
+            PathSafety.EnsureFileExists(path);
+            PathSafety.EnsureMaxFileSize(path, maxImageBytes);
+            if (requireWorkspace) {
+                if (string.IsNullOrWhiteSpace(workspace)) {
+                    throw new InvalidOperationException("Workspace is required for file access.");
+                }
+                PathSafety.EnsureUnderRoot(path, workspace!);
+            }
+        }
+    }
+
+    public void Dispose() {
+#if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+        _client.DisposeAsync().AsTask().GetAwaiter().GetResult();
+#else
+        _client.DisposeAsync().GetAwaiter().GetResult();
+#endif
+    }
+
+#if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
     public ValueTask DisposeAsync() => _client.DisposeAsync();
+#else
+    public Task DisposeAsync() => _client.DisposeAsync();
+#endif
 }

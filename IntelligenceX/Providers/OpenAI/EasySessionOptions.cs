@@ -1,4 +1,5 @@
 using System;
+using IntelligenceX.Configuration;
 using IntelligenceX.OpenAI.AppServer;
 
 namespace IntelligenceX.OpenAI;
@@ -19,9 +20,42 @@ public sealed class EasySessionOptions {
     public bool PrintLoginUrl { get; set; } = true;
     public bool AutoInitialize { get; set; } = true;
     public bool AutoLogin { get; set; } = true;
+    public bool ValidateLoginOnEachRequest { get; set; } = true;
+    public bool RequireWorkspaceForFileAccess { get; set; } = true;
+    public long MaxImageBytes { get; set; } = 10 * 1024 * 1024;
     public string DefaultModel { get; set; } = "gpt-5.1-codex";
     public string? WorkingDirectory { get; set; }
     public string? Workspace { get; set; }
     public bool AllowNetwork { get; set; }
     public string? ApprovalPolicy { get; set; }
+
+    public void Validate() {
+        if (ClientInfo is null) {
+            throw new ArgumentNullException(nameof(ClientInfo));
+        }
+        if (AppServerOptions is null) {
+            throw new ArgumentNullException(nameof(AppServerOptions));
+        }
+        if (string.IsNullOrWhiteSpace(DefaultModel)) {
+            throw new ArgumentException("DefaultModel cannot be null or whitespace.", nameof(DefaultModel));
+        }
+        if (MaxImageBytes < 0) {
+            throw new ArgumentOutOfRangeException(nameof(MaxImageBytes), "MaxImageBytes cannot be negative.");
+        }
+        AppServerOptions.Validate();
+    }
+
+    public bool TryApplyConfig(string? path = null, string? baseDirectory = null) {
+        if (!IntelligenceXConfig.TryLoad(out var config, path, baseDirectory)) {
+            return false;
+        }
+        config.OpenAI.ApplyTo(this);
+        return true;
+    }
+
+    public static EasySessionOptions FromConfig(string? path = null, string? baseDirectory = null) {
+        var options = new EasySessionOptions();
+        options.TryApplyConfig(path, baseDirectory);
+        return options;
+    }
 }

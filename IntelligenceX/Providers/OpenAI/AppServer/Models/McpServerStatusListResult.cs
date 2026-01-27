@@ -234,7 +234,7 @@ internal static class McpAuthStatusExtensions {
         if (string.IsNullOrWhiteSpace(value)) {
             return McpAuthStatus.Unknown;
         }
-        var normalized = value.Trim().ToLowerInvariant().Replace("-", "_").Replace(" ", "_");
+        var normalized = value!.Trim().ToLowerInvariant().Replace("-", "_").Replace(" ", "_");
         return normalized switch {
             "unsupported" => McpAuthStatus.Unsupported,
             "not_logged_in" => McpAuthStatus.NotLoggedIn,

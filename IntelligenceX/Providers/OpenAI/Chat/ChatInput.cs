@@ -50,5 +50,24 @@ public sealed class ChatInput {
         return this;
     }
 
+    internal string[] GetImagePaths() {
+        var list = new System.Collections.Generic.List<string>();
+        foreach (var item in _items) {
+            var obj = item.AsObject();
+            if (obj is null) {
+                continue;
+            }
+            var type = obj.GetString("type");
+            if (!string.Equals(type, "image", StringComparison.Ordinal)) {
+                continue;
+            }
+            var path = obj.GetString("path");
+            if (!string.IsNullOrWhiteSpace(path)) {
+                list.Add(path!);
+            }
+        }
+        return list.ToArray();
+    }
+
     internal JsonArray ToJson() => _items;
 }

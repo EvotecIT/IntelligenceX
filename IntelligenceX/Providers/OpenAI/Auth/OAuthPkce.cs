@@ -6,7 +6,8 @@ namespace IntelligenceX.OpenAI.Auth;
 
 internal static class OAuthPkce {
     public static string CreateCodeVerifier() {
-        var bytes = RandomNumberGenerator.GetBytes(32);
+        var bytes = new byte[32];
+        FillRandom(bytes);
         return Base64UrlEncode(bytes);
     }
 
@@ -21,5 +22,14 @@ internal static class OAuthPkce {
             .TrimEnd('=')
             .Replace('+', '-')
             .Replace('/', '_');
+    }
+
+    private static void FillRandom(byte[] buffer) {
+#if NETSTANDARD2_0 || NET472
+        using var rng = RandomNumberGenerator.Create();
+        rng.GetBytes(buffer);
+#else
+        RandomNumberGenerator.Fill(buffer);
+#endif
     }
 }

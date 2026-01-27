@@ -96,7 +96,7 @@ public static class AuthBundleSerializer {
         if (expiresAtValue.HasValue && expiresAtValue.Value > 0) {
             expiresAt = DateTimeOffset.FromUnixTimeMilliseconds(expiresAtValue.Value);
         }
-        var bundle = new AuthBundle(provider, accessToken, refreshToken, expiresAt) {
+        var bundle = new AuthBundle(provider!, accessToken!, refreshToken!, expiresAt) {
             TokenType = obj.GetString("token_type") ?? obj.GetString("tokenType"),
             Scope = obj.GetString("scope"),
             AccountId = obj.GetString("account_id") ?? obj.GetString("accountId"),

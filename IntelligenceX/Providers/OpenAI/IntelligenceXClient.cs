@@ -5,11 +5,16 @@ using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.Json;
 using IntelligenceX.Rpc;
+using IntelligenceX.Telemetry;
 using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI;
 
-public sealed class IntelligenceXClient : IAsyncDisposable {
+public sealed class IntelligenceXClient : IDisposable
+#if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+    , IAsyncDisposable
+#endif
+{
     private readonly AppServerClient _client;
     private string? _currentThreadId;
     private string _defaultModel;
@@ -24,16 +29,27 @@ public sealed class IntelligenceXClient : IAsyncDisposable {
         _defaultApprovalPolicy = approvalPolicy;
         _defaultSandboxPolicy = sandboxPolicy;
         _client.NotificationReceived += OnNotificationReceived;
+        _client.RpcCallStarted += OnRpcCallStarted;
+        _client.RpcCallCompleted += OnRpcCallCompleted;
+        _client.LoginStarted += OnLoginStarted;
+        _client.LoginCompleted += OnLoginCompleted;
+        _client.ProtocolLineReceived += OnProtocolLineReceived;
+        _client.StandardErrorReceived += OnStandardErrorReceived;
     }
 
     public event EventHandler<string>? DeltaReceived;
+    public event EventHandler<RpcCallStartedEventArgs>? RpcCallStarted;
+    public event EventHandler<RpcCallCompletedEventArgs>? RpcCallCompleted;
+    public event EventHandler<LoginEventArgs>? LoginStarted;
+    public event EventHandler<LoginEventArgs>? LoginCompleted;
+    public event EventHandler<string>? ProtocolLineReceived;
+    public event EventHandler<string>? StandardErrorReceived;
 
     public AppServerClient RawClient => _client;
 
     public static async Task<IntelligenceXClient> ConnectAsync(IntelligenceXClientOptions? options = null, CancellationToken cancellationToken = default) {
         options ??= new IntelligenceXClientOptions();
-        Guard.NotNull(options.ClientInfo, nameof(options.ClientInfo));
-        Guard.NotNull(options.AppServerOptions, nameof(options.AppServerOptions));
+        options.Validate();
 
         var client = await AppServerClient.StartAsync(options.AppServerOptions, cancellationToken).ConfigureAwait(false);
         var wrapper = new IntelligenceXClient(client, options.DefaultModel, options.DefaultWorkingDirectory, options.DefaultApprovalPolicy, options.DefaultSandboxPolicy);
@@ -45,6 +61,11 @@ public sealed class IntelligenceXClient : IAsyncDisposable {
 
     public Task InitializeAsync(ClientInfo clientInfo, CancellationToken cancellationToken = default) {
         return _client.InitializeAsync(clientInfo, cancellationToken);
+    }
+
+    public Task<HealthCheckResult> HealthCheckAsync(string? method = null, TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default) {
+        return _client.HealthCheckAsync(method, timeout, cancellationToken);
     }
 
     public Task<AccountInfo> GetAccountAsync(CancellationToken cancellationToken = default) {
@@ -111,6 +132,7 @@ public sealed class IntelligenceXClient : IAsyncDisposable {
         if (options.NewThread) {
             _currentThreadId = null;
         }
+        EnsureFileSafety(input, options);
         await EnsureThreadAsync(options.Model, cancellationToken).ConfigureAwait(false);
 
         var workspace = options.Workspace;
@@ -145,7 +167,7 @@ public sealed class IntelligenceXClient : IAsyncDisposable {
     public IntelligenceXClient ConfigureDefaults(string? model = null, string? workingDirectory = null, string? approvalPolicy = null,
         SandboxPolicy? sandboxPolicy = null) {
         if (!string.IsNullOrWhiteSpace(model)) {
-            _defaultModel = model;
+            _defaultModel = model!;
         }
         if (!string.IsNullOrWhiteSpace(workingDirectory)) {
             _defaultWorkingDirectory = workingDirectory;
@@ -176,19 +198,79 @@ public sealed class IntelligenceXClient : IAsyncDisposable {
     private void OnNotificationReceived(object? sender, JsonRpcNotificationEventArgs args) {
         var delta = TryExtractDelta(args.Params);
         if (!string.IsNullOrWhiteSpace(delta)) {
-            DeltaReceived?.Invoke(this, delta);
+            DeltaReceived?.Invoke(this, delta!);
         }
     }
+
+    private void OnRpcCallStarted(object? sender, RpcCallStartedEventArgs args) => RpcCallStarted?.Invoke(this, args);
+    private void OnRpcCallCompleted(object? sender, RpcCallCompletedEventArgs args) => RpcCallCompleted?.Invoke(this, args);
+    private void OnLoginStarted(object? sender, LoginEventArgs args) => LoginStarted?.Invoke(this, args);
+    private void OnLoginCompleted(object? sender, LoginEventArgs args) => LoginCompleted?.Invoke(this, args);
+    private void OnProtocolLineReceived(object? sender, string line) => ProtocolLineReceived?.Invoke(this, line);
+    private void OnStandardErrorReceived(object? sender, string line) => StandardErrorReceived?.Invoke(this, line);
 
     private static string? TryExtractDelta(JsonValue? value) {
         return value?.AsObject()?.GetObject("delta")?.GetString("text");
     }
 
+    private void EnsureFileSafety(Chat.ChatInput input, Chat.ChatOptions options) {
+        var paths = input.GetImagePaths();
+        if (paths.Length == 0) {
+            return;
+        }
+
+        var maxImageBytes = options.MaxImageBytes ?? 0;
+        var requireWorkspace = options.RequireWorkspaceForFileAccess;
+        var workspace = options.Workspace ?? options.WorkingDirectory ?? _defaultWorkingDirectory;
+
+        foreach (var path in paths) {
+            PathSafety.EnsureFileExists(path);
+            PathSafety.EnsureMaxFileSize(path, maxImageBytes);
+            if (requireWorkspace) {
+                if (string.IsNullOrWhiteSpace(workspace)) {
+                    throw new InvalidOperationException("Workspace is required for file access.");
+                }
+                PathSafety.EnsureUnderRoot(path, workspace!);
+            }
+        }
+    }
+
+    public void Dispose() {
+        _client.NotificationReceived -= OnNotificationReceived;
+        _client.RpcCallStarted -= OnRpcCallStarted;
+        _client.RpcCallCompleted -= OnRpcCallCompleted;
+        _client.LoginStarted -= OnLoginStarted;
+        _client.LoginCompleted -= OnLoginCompleted;
+        _client.ProtocolLineReceived -= OnProtocolLineReceived;
+        _client.StandardErrorReceived -= OnStandardErrorReceived;
+        _client.Dispose();
+    }
+
+#if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
     public ValueTask DisposeAsync() {
         _client.NotificationReceived -= OnNotificationReceived;
+        _client.RpcCallStarted -= OnRpcCallStarted;
+        _client.RpcCallCompleted -= OnRpcCallCompleted;
+        _client.LoginStarted -= OnLoginStarted;
+        _client.LoginCompleted -= OnLoginCompleted;
+        _client.ProtocolLineReceived -= OnProtocolLineReceived;
+        _client.StandardErrorReceived -= OnStandardErrorReceived;
         _client.Dispose();
         return ValueTask.CompletedTask;
     }
+#else
+    public Task DisposeAsync() {
+        _client.NotificationReceived -= OnNotificationReceived;
+        _client.RpcCallStarted -= OnRpcCallStarted;
+        _client.RpcCallCompleted -= OnRpcCallCompleted;
+        _client.LoginStarted -= OnLoginStarted;
+        _client.LoginCompleted -= OnLoginCompleted;
+        _client.ProtocolLineReceived -= OnProtocolLineReceived;
+        _client.StandardErrorReceived -= OnStandardErrorReceived;
+        _client.Dispose();
+        return Task.CompletedTask;
+    }
+#endif
 
     private sealed class Subscription : IDisposable {
         private readonly Action _onDispose;

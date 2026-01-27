@@ -54,7 +54,7 @@ public sealed class ConfigRequirements {
         foreach (var item in array) {
             var value = item.AsString();
             if (!string.IsNullOrWhiteSpace(value)) {
-                items.Add(value);
+                items.Add(value!);
             }
         }
         return items;

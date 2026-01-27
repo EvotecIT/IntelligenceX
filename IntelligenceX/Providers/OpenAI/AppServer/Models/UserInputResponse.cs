@@ -27,7 +27,7 @@ public sealed class UserInputResponse {
                 foreach (var item in answerArray) {
                     var value = item.AsString();
                     if (!string.IsNullOrWhiteSpace(value)) {
-                        answers.Add(value);
+                        answers.Add(value!);
                     }
                 }
             } else {
@@ -45,7 +45,7 @@ public sealed class UserInputResponse {
                             foreach (var answer in itemArray) {
                                 var text = answer.AsString();
                                 if (!string.IsNullOrWhiteSpace(text)) {
-                                    values.Add(text);
+                                    values.Add(text!);
                                 }
                             }
                         }

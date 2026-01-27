@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.Json;
 using IntelligenceX.Rpc;
+using IntelligenceX.Telemetry;
 using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI.AppServer;
@@ -20,14 +21,21 @@ public sealed class AppServerClient : IDisposable {
     private readonly JsonRpcClient _rpc;
     private readonly Task _readerTask;
     private readonly Task? _stderrTask;
+    private readonly TimeSpan _shutdownTimeout;
+    private readonly RpcRetryOptions _rpcRetry;
     private bool _disposed;
 
-    private AppServerClient(Process process, StreamWriter stdin, StreamReader stdout, StreamReader? stderr) {
+    private AppServerClient(Process process, StreamWriter stdin, StreamReader stdout, StreamReader? stderr, TimeSpan shutdownTimeout,
+        RpcRetryOptions rpcRetry) {
         _process = process;
         _stdin = stdin;
         _stdout = stdout;
         _stderr = stderr;
+        _shutdownTimeout = shutdownTimeout;
+        _rpcRetry = rpcRetry;
         _rpc = new JsonRpcClient(SendLineAsync);
+        _rpc.CallStarted += (_, args) => RpcCallStarted?.Invoke(this, args);
+        _rpc.CallCompleted += (_, args) => RpcCallCompleted?.Invoke(this, args);
         _rpc.NotificationReceived += (_, args) => NotificationReceived?.Invoke(this, args);
         _rpc.RequestReceived += (_, args) => RequestReceived?.Invoke(this, args);
         _rpc.ProtocolError += (_, args) => ProtocolError?.Invoke(this, args);
@@ -41,9 +49,53 @@ public sealed class AppServerClient : IDisposable {
     public event EventHandler<JsonRpcRequestEventArgs>? RequestReceived;
     public event EventHandler<Exception>? ProtocolError;
     public event EventHandler<string>? StandardErrorReceived;
+    public event EventHandler<string>? ProtocolLineReceived;
+    public event EventHandler<RpcCallStartedEventArgs>? RpcCallStarted;
+    public event EventHandler<RpcCallCompletedEventArgs>? RpcCallCompleted;
+    public event EventHandler<LoginEventArgs>? LoginStarted;
+    public event EventHandler<LoginEventArgs>? LoginCompleted;
 
-    public static Task<AppServerClient> StartAsync(AppServerOptions? options = null, CancellationToken cancellationToken = default) {
+    public static async Task<AppServerClient> StartAsync(AppServerOptions? options = null, CancellationToken cancellationToken = default) {
         options ??= new AppServerOptions();
+        options.Validate();
+
+        var retries = options.ConnectRetryCount;
+        var delay = options.ConnectRetryInitialDelay;
+        Exception? lastError = null;
+
+        for (var attempt = 0; attempt <= retries; attempt++) {
+            cancellationToken.ThrowIfCancellationRequested();
+            AppServerClient? client = null;
+            try {
+                client = await StartOnceAsync(options, cancellationToken).ConfigureAwait(false);
+                if (options.HealthCheckOnStart) {
+                    var healthToken = CreateTimeoutToken(options.StartTimeout, cancellationToken, out var cts);
+                    try {
+                        var check = await client.HealthCheckAsync(options.HealthCheckMethod, options.HealthCheckTimeout, healthToken)
+                            .ConfigureAwait(false);
+                        if (!check.Ok) {
+                            throw check.Error ?? new InvalidOperationException(check.Message ?? "App-server health check failed.");
+                        }
+                    } finally {
+                        cts?.Dispose();
+                    }
+                }
+                return client;
+            } catch (Exception ex) {
+                lastError = ex;
+                client?.Dispose();
+                if (attempt >= retries) {
+                    throw;
+                }
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                delay = NextDelay(delay, options.ConnectRetryMaxDelay);
+            }
+        }
+
+        throw lastError ?? new InvalidOperationException("Failed to start Codex app-server process.");
+    }
+
+    private static Task<AppServerClient> StartOnceAsync(AppServerOptions options, CancellationToken cancellationToken) {
         Guard.NotNullOrWhiteSpace(options.ExecutablePath, nameof(options.ExecutablePath));
         Guard.NotNullOrWhiteSpace(options.Arguments, nameof(options.Arguments));
 
@@ -79,7 +131,7 @@ public sealed class AppServerClient : IDisposable {
         var stdout = process.StandardOutput;
         var stderr = options.RedirectStandardError ? process.StandardError : null;
 
-        return Task.FromResult(new AppServerClient(process, stdin, stdout, stderr));
+        return Task.FromResult(new AppServerClient(process, stdin, stdout, stderr, options.ShutdownTimeout, options.RpcRetry));
     }
 
     public async Task InitializeAsync(ClientInfo clientInfo, CancellationToken cancellationToken = default) {
@@ -95,26 +147,54 @@ public sealed class AppServerClient : IDisposable {
         await _rpc.NotifyAsync("initialized", (JsonObject?)null, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<HealthCheckResult> HealthCheckAsync(string? method = null, TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default) {
+        var sw = Stopwatch.StartNew();
+        var target = string.IsNullOrWhiteSpace(method) ? "config/read" : method!;
+        var token = CreateTimeoutToken(timeout, cancellationToken, out var cts);
+        try {
+            await CallWithRetryAsync(target, (JsonObject?)null, true, token).ConfigureAwait(false);
+            return new HealthCheckResult(true, target, null, sw.Elapsed);
+        } catch (Exception ex) {
+            return new HealthCheckResult(false, target, ex, sw.Elapsed);
+        } finally {
+            cts?.Dispose();
+        }
+    }
+
+    private Task<JsonValue?> CallWithRetryAsync(string method, JsonObject? parameters, bool idempotent, CancellationToken cancellationToken) {
+        return RpcRetryHelper.ExecuteAsync(token => _rpc.CallAsync(method, parameters, token), _rpcRetry, idempotent, cancellationToken);
+    }
+
     public async Task<ChatGptLoginStart> StartChatGptLoginAsync(CancellationToken cancellationToken = default) {
         var parameters = new JsonObject().Add("type", "chatgpt");
-        var result = await _rpc.CallAsync("account/login/start", parameters, cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("account/login/start", parameters, false, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         if (obj is null) {
             throw new InvalidOperationException("Unexpected login response.");
         }
-        return ChatGptLoginStart.FromJson(obj);
+        var login = ChatGptLoginStart.FromJson(obj);
+        LoginStarted?.Invoke(this, new LoginEventArgs("chatgpt", login.LoginId, login.AuthUrl));
+        return login;
     }
 
     public Task LoginWithApiKeyAsync(string apiKey, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(apiKey, nameof(apiKey));
+        LoginStarted?.Invoke(this, new LoginEventArgs("apikey"));
         var parameters = new JsonObject()
             .Add("type", "apiKey")
             .Add("apiKey", apiKey);
-        return _rpc.CallAsync("account/login/start", parameters, cancellationToken);
+        return CallWithRetryAsync("account/login/start", parameters, false, cancellationToken)
+            .ContinueWith(task => {
+                if (IsTaskSuccessful(task)) {
+                    LoginCompleted?.Invoke(this, new LoginEventArgs("apikey"));
+                }
+                return task;
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default).Unwrap();
     }
 
     public async Task<AccountInfo> ReadAccountAsync(CancellationToken cancellationToken = default) {
-        var result = await _rpc.CallAsync("account/read", (JsonObject?)null, cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("account/read", (JsonObject?)null, true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         if (obj is null) {
             throw new InvalidOperationException("Unexpected account response.");
@@ -123,7 +203,7 @@ public sealed class AppServerClient : IDisposable {
     }
 
     public Task LogoutAsync(CancellationToken cancellationToken = default)
-        => _rpc.CallAsync("account/logout", (JsonObject?)null, cancellationToken);
+        => CallWithRetryAsync("account/logout", (JsonObject?)null, false, cancellationToken);
 
     public async Task<ThreadInfo> StartThreadAsync(string model, string? currentDirectory = null, string? approvalPolicy = null,
         string? sandbox = null, CancellationToken cancellationToken = default) {
@@ -141,7 +221,7 @@ public sealed class AppServerClient : IDisposable {
             parameters.Add("sandbox", sandbox);
         }
 
-        var result = await _rpc.CallAsync("thread/start", parameters, cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("thread/start", parameters, false, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         var threadObj = obj?.GetObject("thread");
         if (threadObj is null) {
@@ -195,7 +275,7 @@ public sealed class AppServerClient : IDisposable {
             parameters.Add("sandboxPolicy", sandboxPolicy.ToJson());
         }
 
-        var result = await _rpc.CallAsync("turn/start", parameters, cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("turn/start", parameters, false, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         var turnObj = obj?.GetObject("turn");
         if (turnObj is null) {
@@ -207,7 +287,7 @@ public sealed class AppServerClient : IDisposable {
     public async Task<ThreadInfo> ResumeThreadAsync(string threadId, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
         var parameters = new JsonObject().Add("threadId", threadId);
-        var result = await _rpc.CallAsync("thread/resume", parameters, cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("thread/resume", parameters, false, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         var threadObj = obj?.GetObject("thread");
         if (threadObj is null) {
@@ -219,7 +299,7 @@ public sealed class AppServerClient : IDisposable {
     public async Task<ThreadInfo> ForkThreadAsync(string threadId, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
         var parameters = new JsonObject().Add("threadId", threadId);
-        var result = await _rpc.CallAsync("thread/fork", parameters, cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("thread/fork", parameters, false, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         var threadObj = obj?.GetObject("thread");
         if (threadObj is null) {
@@ -248,7 +328,7 @@ public sealed class AppServerClient : IDisposable {
             parameters.Add("modelProviders", providers);
         }
 
-        var result = await _rpc.CallAsync("thread/list", parameters, cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("thread/list", parameters, true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         if (obj is null) {
             throw new InvalidOperationException("Unexpected thread list response.");
@@ -257,7 +337,7 @@ public sealed class AppServerClient : IDisposable {
     }
 
     public async Task<ThreadIdListResult> ListLoadedThreadsAsync(CancellationToken cancellationToken = default) {
-        var result = await _rpc.CallAsync("thread/loaded/list", (JsonObject?)null, cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("thread/loaded/list", (JsonObject?)null, true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         if (obj is null) {
             throw new InvalidOperationException("Unexpected loaded thread response.");
@@ -268,7 +348,7 @@ public sealed class AppServerClient : IDisposable {
     public Task ArchiveThreadAsync(string threadId, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
         var parameters = new JsonObject().Add("threadId", threadId);
-        return _rpc.CallAsync("thread/archive", parameters, cancellationToken);
+        return CallWithRetryAsync("thread/archive", parameters, false, cancellationToken);
     }
 
     public async Task<ThreadInfo> RollbackThreadAsync(string threadId, int turns, CancellationToken cancellationToken = default) {
@@ -276,7 +356,7 @@ public sealed class AppServerClient : IDisposable {
         var parameters = new JsonObject()
             .Add("threadId", threadId)
             .Add("turns", turns);
-        var result = await _rpc.CallAsync("thread/rollback", parameters, cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("thread/rollback", parameters, false, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         var threadObj = obj?.GetObject("thread");
         if (threadObj is null) {
@@ -291,7 +371,7 @@ public sealed class AppServerClient : IDisposable {
         var parameters = new JsonObject()
             .Add("threadId", threadId)
             .Add("turnId", turnId);
-        return _rpc.CallAsync("turn/interrupt", parameters, cancellationToken);
+        return CallWithRetryAsync("turn/interrupt", parameters, false, cancellationToken);
     }
 
     public async Task<ReviewStartResult> StartReviewAsync(string threadId, string delivery, ReviewTarget target, CancellationToken cancellationToken = default) {
@@ -304,7 +384,7 @@ public sealed class AppServerClient : IDisposable {
             .Add("delivery", delivery)
             .Add("target", target.Payload);
 
-        var result = await _rpc.CallAsync("review/start", parameters, cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("review/start", parameters, false, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         if (obj is null) {
             throw new InvalidOperationException("Unexpected review response.");
@@ -332,7 +412,7 @@ public sealed class AppServerClient : IDisposable {
             parameters.Add("timeoutMs", request.TimeoutMs.Value);
         }
 
-        var result = await _rpc.CallAsync("command/exec", parameters, cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("command/exec", parameters, false, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         if (obj is null) {
             throw new InvalidOperationException("Unexpected command response.");
@@ -341,7 +421,7 @@ public sealed class AppServerClient : IDisposable {
     }
 
     public async Task<ModelListResult> ListModelsAsync(CancellationToken cancellationToken = default) {
-        var result = await _rpc.CallAsync("model/list", (JsonObject?)null, cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("model/list", (JsonObject?)null, true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         if (obj is null) {
             throw new InvalidOperationException("Unexpected model list response.");
@@ -350,7 +430,7 @@ public sealed class AppServerClient : IDisposable {
     }
 
     public async Task<CollaborationModeListResult> ListCollaborationModesAsync(CancellationToken cancellationToken = default) {
-        var result = await _rpc.CallAsync("collaborationMode/list", (JsonObject?)null, cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("collaborationMode/list", (JsonObject?)null, true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         if (obj is null) {
             throw new InvalidOperationException("Unexpected collaboration mode response.");
@@ -371,7 +451,7 @@ public sealed class AppServerClient : IDisposable {
         if (forceReload.HasValue) {
             parameters.Add("forceReload", forceReload.Value);
         }
-        var result = await _rpc.CallAsync("skills/list", parameters, cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("skills/list", parameters, true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         if (obj is null) {
             throw new InvalidOperationException("Unexpected skills list response.");
@@ -384,11 +464,11 @@ public sealed class AppServerClient : IDisposable {
         var parameters = new JsonObject()
             .Add("path", path)
             .Add("enabled", enabled);
-        return _rpc.CallAsync("skills/config/write", parameters, cancellationToken);
+        return CallWithRetryAsync("skills/config/write", parameters, false, cancellationToken);
     }
 
     public async Task<ConfigReadResult> ReadConfigAsync(CancellationToken cancellationToken = default) {
-        var result = await _rpc.CallAsync("config/read", (JsonObject?)null, cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("config/read", (JsonObject?)null, true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         if (obj is null) {
             throw new InvalidOperationException("Unexpected config response.");
@@ -402,7 +482,7 @@ public sealed class AppServerClient : IDisposable {
         var parameters = new JsonObject()
             .Add("key", key)
             .Add("value", value);
-        return _rpc.CallAsync("config/value/write", parameters, cancellationToken);
+        return CallWithRetryAsync("config/value/write", parameters, false, cancellationToken);
     }
 
     public Task WriteConfigBatchAsync(IReadOnlyList<ConfigEntry> entries, CancellationToken cancellationToken = default) {
@@ -414,11 +494,11 @@ public sealed class AppServerClient : IDisposable {
                 .Add("value", entry.Value));
         }
         var parameters = new JsonObject().Add("items", items);
-        return _rpc.CallAsync("config/batchWrite", parameters, cancellationToken);
+        return CallWithRetryAsync("config/batchWrite", parameters, false, cancellationToken);
     }
 
     public async Task<ConfigRequirementsReadResult> ReadConfigRequirementsAsync(CancellationToken cancellationToken = default) {
-        var result = await _rpc.CallAsync("configRequirements/read", (JsonObject?)null, cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("configRequirements/read", (JsonObject?)null, true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         if (obj is null) {
             throw new InvalidOperationException("Unexpected config requirements response.");
@@ -435,7 +515,7 @@ public sealed class AppServerClient : IDisposable {
         if (!string.IsNullOrWhiteSpace(serverName)) {
             parameters.Add("serverName", serverName);
         }
-        var result = await _rpc.CallAsync("mcpServer/oauth/login", parameters, cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("mcpServer/oauth/login", parameters, false, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         if (obj is null) {
             throw new InvalidOperationException("Unexpected MCP OAuth response.");
@@ -452,7 +532,7 @@ public sealed class AppServerClient : IDisposable {
         if (limit.HasValue) {
             parameters.Add("limit", limit.Value);
         }
-        var result = await _rpc.CallAsync("mcpServerStatus/list", parameters, cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("mcpServerStatus/list", parameters, true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         if (obj is null) {
             throw new InvalidOperationException("Unexpected MCP server status response.");
@@ -461,7 +541,7 @@ public sealed class AppServerClient : IDisposable {
     }
 
     public async Task ReloadMcpServerConfigAsync(CancellationToken cancellationToken = default) {
-        await _rpc.CallAsync("config/mcpServer/reload", (JsonObject?)null, cancellationToken).ConfigureAwait(false);
+        await CallWithRetryAsync("config/mcpServer/reload", (JsonObject?)null, false, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<UserInputResponse> RequestUserInputAsync(IReadOnlyList<string> questions, CancellationToken cancellationToken = default) {
@@ -471,7 +551,7 @@ public sealed class AppServerClient : IDisposable {
             array.Add(question);
         }
         var parameters = new JsonObject().Add("questions", array);
-        var result = await _rpc.CallAsync("tool/requestUserInput", parameters, cancellationToken).ConfigureAwait(false);
+        var result = await CallWithRetryAsync("tool/requestUserInput", parameters, false, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         if (obj is null) {
             throw new InvalidOperationException("Unexpected user input response.");
@@ -482,7 +562,7 @@ public sealed class AppServerClient : IDisposable {
     public Task UploadFeedbackAsync(string content, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(content, nameof(content));
         var parameters = new JsonObject().Add("content", content);
-        return _rpc.CallAsync("feedback/upload", parameters, cancellationToken);
+        return CallWithRetryAsync("feedback/upload", parameters, false, cancellationToken);
     }
 
     public Task<JsonValue?> CallAsync(string method, JsonObject? parameters, CancellationToken cancellationToken = default) {
@@ -517,6 +597,9 @@ public sealed class AppServerClient : IDisposable {
 
         return tcs.Task.ContinueWith(task => {
             NotificationReceived -= Handler;
+            if (IsTaskSuccessful(task)) {
+                LoginCompleted?.Invoke(this, new LoginEventArgs("chatgpt", loginId));
+            }
             return task;
         }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default).Unwrap();
     }
@@ -532,6 +615,7 @@ public sealed class AppServerClient : IDisposable {
                 if (line is null) {
                     break;
                 }
+                ProtocolLineReceived?.Invoke(this, line);
                 _rpc.HandleLine(line);
             }
         } catch (Exception ex) {
@@ -553,6 +637,43 @@ public sealed class AppServerClient : IDisposable {
         }
     }
 
+    private static TimeSpan NextDelay(TimeSpan current, TimeSpan max) {
+        if (current <= TimeSpan.Zero) {
+            return TimeSpan.Zero;
+        }
+        var next = TimeSpan.FromMilliseconds(current.TotalMilliseconds * 2);
+        return next > max ? max : next;
+    }
+
+    private static CancellationToken CreateTimeoutToken(TimeSpan? timeout, CancellationToken cancellationToken, out CancellationTokenSource? cts) {
+        if (timeout.HasValue && timeout.Value > TimeSpan.Zero) {
+            cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(timeout.Value);
+            return cts.Token;
+        }
+        cts = null;
+        return cancellationToken;
+    }
+
+    private static void TryWait(Task? task, TimeSpan timeout) {
+        if (task is null) {
+            return;
+        }
+        try {
+            task.Wait(timeout);
+        } catch {
+            // Ignore shutdown wait failures.
+        }
+    }
+
+    private static bool IsTaskSuccessful(Task task) {
+#if NETSTANDARD2_0 || NET472
+        return task.Status == TaskStatus.RanToCompletion;
+#else
+        return task.IsCompletedSuccessfully;
+#endif
+    }
+
     public void Dispose() {
         if (_disposed) {
             return;
@@ -560,6 +681,8 @@ public sealed class AppServerClient : IDisposable {
         _disposed = true;
 
         _cts.Cancel();
+        TryWait(_readerTask, _shutdownTimeout);
+        TryWait(_stderrTask, _shutdownTimeout);
         _rpc.Dispose();
 
         try {

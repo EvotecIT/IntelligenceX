@@ -3,12 +3,23 @@ using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
+using IntelligenceX.Telemetry;
 
 namespace IntelligenceX.Rpc;
 
 internal sealed class JsonRpcClient : IDisposable {
+    private sealed class PendingCall {
+        public PendingCall(string method, TaskCompletionSource<JsonValue?> tcs) {
+            Method = method;
+            Tcs = tcs;
+        }
+
+        public string Method { get; }
+        public TaskCompletionSource<JsonValue?> Tcs { get; }
+    }
+
     private readonly Func<string, Task> _sendLineAsync;
-    private readonly ConcurrentDictionary<long, TaskCompletionSource<JsonValue?>> _pending = new();
+    private readonly ConcurrentDictionary<long, PendingCall> _pending = new();
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private long _nextId;
     private bool _disposed;
@@ -20,6 +31,8 @@ internal sealed class JsonRpcClient : IDisposable {
     public event EventHandler<JsonRpcNotificationEventArgs>? NotificationReceived;
     public event EventHandler<JsonRpcRequestEventArgs>? RequestReceived;
     public event EventHandler<Exception>? ProtocolError;
+    public event EventHandler<RpcCallStartedEventArgs>? CallStarted;
+    public event EventHandler<RpcCallCompletedEventArgs>? CallCompleted;
 
     public Task<JsonValue?> CallAsync(string method, JsonObject? @params, CancellationToken cancellationToken = default) {
         return CallAsync(method, @params is null ? null : JsonValue.From(@params), cancellationToken);
@@ -30,14 +43,25 @@ internal sealed class JsonRpcClient : IDisposable {
             throw new ArgumentException("Method cannot be null or whitespace.", nameof(method));
         }
 
+        CallStarted?.Invoke(this, new RpcCallStartedEventArgs(method, @params));
+        var started = DateTime.UtcNow;
         var id = Interlocked.Increment(ref _nextId);
         var tcs = new TaskCompletionSource<JsonValue?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pending.TryAdd(id, tcs);
+        _pending.TryAdd(id, new PendingCall(method, tcs));
 
         using var ctr = cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
         await SendRequestAsync(id, method, @params).ConfigureAwait(false);
 
-        return await tcs.Task.ConfigureAwait(false);
+        try {
+            var result = await tcs.Task.ConfigureAwait(false);
+            var duration = DateTime.UtcNow - started;
+            CallCompleted?.Invoke(this, new RpcCallCompletedEventArgs(method, duration, true));
+            return result;
+        } catch (Exception ex) {
+            var duration = DateTime.UtcNow - started;
+            CallCompleted?.Invoke(this, new RpcCallCompletedEventArgs(method, duration, false, ex));
+            throw;
+        }
     }
 
     public Task NotifyAsync(string method, JsonObject? @params, CancellationToken cancellationToken = default) {
@@ -78,7 +102,7 @@ internal sealed class JsonRpcClient : IDisposable {
             var method = methodValue?.AsString();
             if (!string.IsNullOrWhiteSpace(method)) {
                 obj.TryGetValue("params", out var parameters);
-                NotificationReceived?.Invoke(this, new JsonRpcNotificationEventArgs(method, parameters));
+                NotificationReceived?.Invoke(this, new JsonRpcNotificationEventArgs(method!, parameters));
                 return;
             }
         }
@@ -92,15 +116,15 @@ internal sealed class JsonRpcClient : IDisposable {
         }
 
         if (hasId && idValue?.AsInt64() is long responseId) {
-            if (_pending.TryRemove(responseId, out var tcs)) {
+            if (_pending.TryRemove(responseId, out var pending)) {
                 if (obj.TryGetValue("error", out var errorValue)) {
                     var error = ParseError(errorValue);
-                    tcs.TrySetException(new JsonRpcException(error));
+                    pending.Tcs.TrySetException(new JsonRpcException(pending.Method, error));
                     return;
                 }
 
                 obj.TryGetValue("result", out var resultValue);
-                tcs.TrySetResult(resultValue);
+                pending.Tcs.TrySetResult(resultValue);
                 return;
             }
         }
@@ -179,7 +203,7 @@ internal sealed class JsonRpcClient : IDisposable {
         _disposed = true;
         _sendLock.Dispose();
         foreach (var pending in _pending.Values) {
-            pending.TrySetCanceled();
+            pending.Tcs.TrySetCanceled();
         }
         _pending.Clear();
     }

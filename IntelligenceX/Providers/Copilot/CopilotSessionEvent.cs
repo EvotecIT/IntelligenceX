@@ -15,11 +15,11 @@ public sealed class CopilotSessionEvent {
     public JsonObject? Data { get; }
     public JsonObject Raw { get; }
     public JsonObject? Additional { get; }
-    public string? Content { get; init; }
-    public string? DeltaContent { get; init; }
-    public string? MessageId { get; init; }
-    public string? ErrorMessage { get; init; }
-    public string? ErrorStack { get; init; }
+    public string? Content { get; private set; }
+    public string? DeltaContent { get; private set; }
+    public string? MessageId { get; private set; }
+    public string? ErrorMessage { get; private set; }
+    public string? ErrorStack { get; private set; }
 
     public bool IsIdle => string.Equals(Type, "session.idle", StringComparison.Ordinal);
 

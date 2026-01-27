@@ -19,6 +19,9 @@ internal sealed class HeaderDelimitedMessageTransport : IDisposable {
         _output = output ?? throw new ArgumentNullException(nameof(output));
     }
 
+    public event EventHandler<string>? MessageSent;
+    public event EventHandler<string>? MessageReceived;
+
     public async Task SendAsync(string message, CancellationToken cancellationToken = default) {
         if (message is null) {
             throw new ArgumentNullException(nameof(message));
@@ -31,6 +34,7 @@ internal sealed class HeaderDelimitedMessageTransport : IDisposable {
             await _output.WriteAsync(header, 0, header.Length, cancellationToken).ConfigureAwait(false);
             await _output.WriteAsync(payload, 0, payload.Length, cancellationToken).ConfigureAwait(false);
             await _output.FlushAsync(cancellationToken).ConfigureAwait(false);
+            MessageSent?.Invoke(this, message);
         } finally {
             _sendLock.Release();
         }
@@ -45,6 +49,7 @@ internal sealed class HeaderDelimitedMessageTransport : IDisposable {
             if (message is null) {
                 break;
             }
+            MessageReceived?.Invoke(this, message);
             onMessage(message);
         }
     }
@@ -106,7 +111,7 @@ internal sealed class HeaderDelimitedMessageTransport : IDisposable {
     private static int ParseContentLength(string headerText) {
         var lines = headerText.Split(new[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
         foreach (var line in lines) {
-            var parts = line.Split(':', 2);
+            var parts = line.Split(new[] { ':' }, 2, StringSplitOptions.None);
             if (parts.Length != 2) {
                 continue;
             }

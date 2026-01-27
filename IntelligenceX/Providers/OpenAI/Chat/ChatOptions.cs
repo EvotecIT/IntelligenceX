@@ -10,4 +10,6 @@ public sealed class ChatOptions {
     public string? ApprovalPolicy { get; set; }
     public SandboxPolicy? SandboxPolicy { get; set; }
     public bool NewThread { get; set; }
+    public long? MaxImageBytes { get; set; }
+    public bool RequireWorkspaceForFileAccess { get; set; }
 }

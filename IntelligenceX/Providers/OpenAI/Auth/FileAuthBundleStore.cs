@@ -49,7 +49,7 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
         if (!File.Exists(_path)) {
             return null;
         }
-        var content = await File.ReadAllTextAsync(_path, cancellationToken).ConfigureAwait(false);
+        var content = await ReadAllTextAsync(_path, cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(content)) {
             return null;
         }
@@ -74,7 +74,7 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
         if (!string.IsNullOrWhiteSpace(dir)) {
             Directory.CreateDirectory(dir);
         }
-        await File.WriteAllTextAsync(_path, content, cancellationToken).ConfigureAwait(false);
+        await WriteAllTextAsync(_path, content, cancellationToken).ConfigureAwait(false);
     }
 
     private static string BuildKey(string provider, string? accountId) {
@@ -98,6 +98,25 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
 
     private static bool IsEncrypted(string content) {
         return content.StartsWith("{\"encrypted\":", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken) {
+#if NETSTANDARD2_0 || NET472
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(File.ReadAllText(path));
+#else
+        return File.ReadAllTextAsync(path, cancellationToken);
+#endif
+    }
+
+    private static Task WriteAllTextAsync(string path, string content, CancellationToken cancellationToken) {
+#if NETSTANDARD2_0 || NET472
+        cancellationToken.ThrowIfCancellationRequested();
+        File.WriteAllText(path, content);
+        return Task.CompletedTask;
+#else
+        return File.WriteAllTextAsync(path, content, cancellationToken);
+#endif
     }
 
     private static string Encrypt(string plaintext, byte[] key) {

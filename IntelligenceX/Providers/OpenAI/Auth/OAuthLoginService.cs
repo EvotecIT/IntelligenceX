@@ -47,7 +47,7 @@ public sealed class OAuthLoginService {
             throw new InvalidOperationException("Authorization code was not provided.");
         }
 
-        var tokenResponse = await ExchangeCodeAsync(config, redirectUri, verifier, code, ct).ConfigureAwait(false);
+        var tokenResponse = await ExchangeCodeAsync(config, redirectUri, verifier, code!, ct).ConfigureAwait(false);
         var bundle = BuildBundle(tokenResponse);
         return new OAuthLoginResult(bundle, tokenResponse);
     }
@@ -123,7 +123,7 @@ public sealed class OAuthLoginService {
     private async Task<Dictionary<string, string>> PostFormAsync(string url, Dictionary<string, string> body, CancellationToken cancellationToken) {
         using var content = new FormUrlEncodedContent(body);
         using var response = await _httpClient.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
-        var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        var responseText = await ReadAsStringAsync(response.Content, cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode) {
             throw new InvalidOperationException($"OAuth token request failed ({(int)response.StatusCode}): {responseText}");
         }
@@ -161,7 +161,8 @@ public sealed class OAuthLoginService {
     }
 
     private static string CreateState() {
-        var bytes = RandomNumberGenerator.GetBytes(16);
+        var bytes = new byte[16];
+        FillRandom(bytes);
         return Convert.ToBase64String(bytes)
             .TrimEnd('=')
             .Replace('+', '-')
@@ -235,11 +236,11 @@ public sealed class OAuthLoginService {
             return null;
         }
         var trimmed = query.TrimStart('?', '#');
-        var pairs = trimmed.Split('&', StringSplitOptions.RemoveEmptyEntries);
+        var pairs = trimmed.Split(new[] { '&' }, StringSplitOptions.RemoveEmptyEntries);
         string? code = null;
         string? state = null;
         foreach (var pair in pairs) {
-            var parts = pair.Split('=', 2);
+            var parts = pair.Split(new[] { '=' }, 2, StringSplitOptions.None);
             if (parts.Length != 2) {
                 continue;
             }
@@ -310,6 +311,24 @@ public sealed class OAuthLoginService {
             return trimmed;
         }
         return trimmed.Substring(equals + 1);
+    }
+
+    private static Task<string> ReadAsStringAsync(HttpContent content, CancellationToken cancellationToken) {
+#if NETSTANDARD2_0 || NET472
+        cancellationToken.ThrowIfCancellationRequested();
+        return content.ReadAsStringAsync();
+#else
+        return content.ReadAsStringAsync(cancellationToken);
+#endif
+    }
+
+    private static void FillRandom(byte[] buffer) {
+#if NETSTANDARD2_0 || NET472
+        using var rng = RandomNumberGenerator.Create();
+        rng.GetBytes(buffer);
+#else
+        RandomNumberGenerator.Fill(buffer);
+#endif
     }
 
     private static string? ResolveAccountId(string accessToken, Dictionary<string, string> tokenResponse, string? fallback) {

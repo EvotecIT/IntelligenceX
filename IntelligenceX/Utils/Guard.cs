@@ -7,13 +7,13 @@ internal static class Guard {
         if (string.IsNullOrWhiteSpace(value)) {
             throw new ArgumentException("Value cannot be null or whitespace.", paramName);
         }
-        return value;
+        return value!;
     }
 
     public static T NotNull<T>(T? value, string paramName) where T : class {
         if (value is null) {
             throw new ArgumentNullException(paramName);
         }
-        return value;
+        return value!;
     }
 }

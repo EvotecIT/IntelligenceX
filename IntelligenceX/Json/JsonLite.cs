@@ -242,6 +242,203 @@ public static class JsonLite {
         builder.Append('"');
     }
 
+#if NETSTANDARD2_0 || NET472
+    private sealed class Parser {
+        private readonly string _json;
+        private int _index;
+
+        public Parser(string json) {
+            _json = json ?? string.Empty;
+            _index = 0;
+        }
+
+        public bool End => _index >= _json.Length;
+
+        public void SkipWhitespace() {
+            while (!End && char.IsWhiteSpace(_json[_index])) {
+                _index++;
+            }
+        }
+
+        public JsonValue ParseValue() {
+            SkipWhitespace();
+            if (End) {
+                throw new FormatException("Unexpected end of JSON.");
+            }
+
+            var ch = _json[_index];
+            switch (ch) {
+                case '{':
+                    return JsonValue.From(ParseObject());
+                case '[':
+                    return JsonValue.From(ParseArray());
+                case '"':
+                    return JsonValue.From(ParseString());
+                case 't':
+                    ConsumeLiteral("true");
+                    return JsonValue.From(true);
+                case 'f':
+                    ConsumeLiteral("false");
+                    return JsonValue.From(false);
+                case 'n':
+                    ConsumeLiteral("null");
+                    return JsonValue.Null;
+                default:
+                    if (ch == '-' || char.IsDigit(ch)) {
+                        return ParseNumber();
+                    }
+                    throw new FormatException($"Unexpected character '{ch}' at position {_index}.");
+            }
+        }
+
+        private JsonObject ParseObject() {
+            Expect('{');
+            var obj = new JsonObject();
+            SkipWhitespace();
+            if (TryConsume('}')) {
+                return obj;
+            }
+            while (true) {
+                SkipWhitespace();
+                var key = ParseString();
+                SkipWhitespace();
+                Expect(':');
+                var value = ParseValue();
+                obj.Add(key, value);
+                SkipWhitespace();
+                if (TryConsume('}')) {
+                    return obj;
+                }
+                Expect(',');
+            }
+        }
+
+        private JsonArray ParseArray() {
+            Expect('[');
+            var array = new JsonArray();
+            SkipWhitespace();
+            if (TryConsume(']')) {
+                return array;
+            }
+            while (true) {
+                var value = ParseValue();
+                array.Add(value);
+                SkipWhitespace();
+                if (TryConsume(']')) {
+                    return array;
+                }
+                Expect(',');
+            }
+        }
+
+        private string ParseString() {
+            Expect('"');
+            var builder = new StringBuilder();
+            while (true) {
+                if (End) {
+                    throw new FormatException("Unterminated string literal.");
+                }
+                var ch = _json[_index++];
+                if (ch == '"') {
+                    return builder.ToString();
+                }
+                if (ch == '\\') {
+                    if (End) {
+                        throw new FormatException("Unterminated escape sequence.");
+                    }
+                    var esc = _json[_index++];
+                    switch (esc) {
+                        case '"': builder.Append('"'); break;
+                        case '\\': builder.Append('\\'); break;
+                        case '/': builder.Append('/'); break;
+                        case 'b': builder.Append('\b'); break;
+                        case 'f': builder.Append('\f'); break;
+                        case 'n': builder.Append('\n'); break;
+                        case 'r': builder.Append('\r'); break;
+                        case 't': builder.Append('\t'); break;
+                        case 'u':
+                            builder.Append(ParseUnicode());
+                            break;
+                        default:
+                            throw new FormatException($"Invalid escape sequence '\\{esc}'.");
+                    }
+                } else {
+                    builder.Append(ch);
+                }
+            }
+        }
+
+        private char ParseUnicode() {
+            if (_index + 4 > _json.Length) {
+                throw new FormatException("Incomplete unicode escape sequence.");
+            }
+            var hex = _json.Substring(_index, 4);
+            if (!int.TryParse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var code)) {
+                throw new FormatException("Invalid unicode escape sequence.");
+            }
+            _index += 4;
+            return (char)code;
+        }
+
+        private JsonValue ParseNumber() {
+            var start = _index;
+            if (_json[_index] == '-') {
+                _index++;
+            }
+            while (!End && char.IsDigit(_json[_index])) {
+                _index++;
+            }
+            if (!End && _json[_index] == '.') {
+                _index++;
+                while (!End && char.IsDigit(_json[_index])) {
+                    _index++;
+                }
+            }
+            if (!End && (_json[_index] == 'e' || _json[_index] == 'E')) {
+                _index++;
+                if (!End && (_json[_index] == '+' || _json[_index] == '-')) {
+                    _index++;
+                }
+                while (!End && char.IsDigit(_json[_index])) {
+                    _index++;
+                }
+            }
+
+            var text = _json.Substring(start, _index - start);
+            if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var longValue)) {
+                return JsonValue.From(longValue);
+            }
+            if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var doubleValue)) {
+                return JsonValue.From(doubleValue);
+            }
+            throw new FormatException($"Invalid numeric literal '{text}'.");
+        }
+
+        private void ConsumeLiteral(string literal) {
+            for (var i = 0; i < literal.Length; i++) {
+                if (End || _json[_index] != literal[i]) {
+                    throw new FormatException($"Expected literal '{literal}'.");
+                }
+                _index++;
+            }
+        }
+
+        private void Expect(char expected) {
+            if (End || _json[_index] != expected) {
+                throw new FormatException($"Expected '{expected}'.");
+            }
+            _index++;
+        }
+
+        private bool TryConsume(char ch) {
+            if (!End && _json[_index] == ch) {
+                _index++;
+                return true;
+            }
+            return false;
+        }
+    }
+#else
     private ref struct Parser {
         private readonly ReadOnlySpan<char> _span;
         private int _index;
@@ -438,4 +635,5 @@ public static class JsonLite {
             return false;
         }
     }
+#endif
 }

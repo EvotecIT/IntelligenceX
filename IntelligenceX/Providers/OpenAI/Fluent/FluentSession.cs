@@ -7,7 +7,11 @@ using IntelligenceX.OpenAI.AppServer.Models;
 
 namespace IntelligenceX.OpenAI.Fluent;
 
-public sealed class FluentSession : IAsyncDisposable {
+public sealed class FluentSession : IDisposable
+#if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+    , IAsyncDisposable
+#endif
+{
     internal FluentSession(AppServerClient client) {
         Client = client;
     }
@@ -53,8 +57,19 @@ public sealed class FluentSession : IAsyncDisposable {
         return Client.LogoutAsync(cancellationToken);
     }
 
+    public void Dispose() {
+        Client.Dispose();
+    }
+
+#if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
     public ValueTask DisposeAsync() {
         Client.Dispose();
         return ValueTask.CompletedTask;
     }
+#else
+    public Task DisposeAsync() {
+        Client.Dispose();
+        return Task.CompletedTask;
+    }
+#endif
 }

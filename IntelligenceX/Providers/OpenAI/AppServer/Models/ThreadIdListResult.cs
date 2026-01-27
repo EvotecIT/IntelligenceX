@@ -21,7 +21,7 @@ public sealed class ThreadIdListResult {
             foreach (var entry in dataArray) {
                 var value = entry.AsString();
                 if (!string.IsNullOrWhiteSpace(value)) {
-                    items.Add(value);
+                    items.Add(value!);
                 }
             }
         }
