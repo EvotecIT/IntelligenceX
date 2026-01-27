@@ -1,6 +1,8 @@
 using System;
+using System.Threading.Tasks;
 using IntelligenceX.Configuration;
 using IntelligenceX.OpenAI.AppServer;
+using IntelligenceX.OpenAI.Native;
 
 namespace IntelligenceX.OpenAI;
 
@@ -12,10 +14,14 @@ public enum EasyLoginMode {
 
 public sealed class EasySessionOptions {
     public AppServerOptions AppServerOptions { get; } = new();
+    public OpenAINativeOptions NativeOptions { get; } = new();
+    public OpenAITransportKind TransportKind { get; set; } = OpenAITransportKind.Native;
     public ClientInfo ClientInfo { get; set; } = new("IntelligenceX", "IntelligenceX Easy", "0.1.0");
     public EasyLoginMode Login { get; set; } = EasyLoginMode.ChatGpt;
     public string? ApiKey { get; set; }
     public Action<string>? OnLoginUrl { get; set; }
+    public Func<string, Task<string>>? OnPrompt { get; set; }
+    public bool UseLocalListener { get; set; } = true;
     public bool OpenBrowser { get; set; } = true;
     public bool PrintLoginUrl { get; set; } = true;
     public bool AutoInitialize { get; set; } = true;
@@ -36,13 +42,20 @@ public sealed class EasySessionOptions {
         if (AppServerOptions is null) {
             throw new ArgumentNullException(nameof(AppServerOptions));
         }
+        if (NativeOptions is null) {
+            throw new ArgumentNullException(nameof(NativeOptions));
+        }
         if (string.IsNullOrWhiteSpace(DefaultModel)) {
             throw new ArgumentException("DefaultModel cannot be null or whitespace.", nameof(DefaultModel));
         }
         if (MaxImageBytes < 0) {
             throw new ArgumentOutOfRangeException(nameof(MaxImageBytes), "MaxImageBytes cannot be negative.");
         }
-        AppServerOptions.Validate();
+        if (TransportKind == OpenAITransportKind.AppServer) {
+            AppServerOptions.Validate();
+        } else {
+            NativeOptions.Validate();
+        }
     }
 
     public bool TryApplyConfig(string? path = null, string? baseDirectory = null) {

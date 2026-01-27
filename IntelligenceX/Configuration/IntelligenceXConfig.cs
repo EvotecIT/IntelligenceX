@@ -62,6 +62,9 @@ public sealed class OpenAIConfig {
     public string? WorkingDirectory { get; set; }
     public string? ApprovalPolicy { get; set; }
     public bool? AllowNetwork { get; set; }
+    public string? Transport { get; set; }
+    public string? Originator { get; set; }
+    public string? ResponsesUrl { get; set; }
     public string? AppServerPath { get; set; }
     public string? AppServerArgs { get; set; }
     public string? AppServerWorkingDirectory { get; set; }
@@ -76,6 +79,9 @@ public sealed class OpenAIConfig {
         DefaultModel = obj.GetString("defaultModel") ?? DefaultModel;
         WorkingDirectory = obj.GetString("workingDirectory") ?? WorkingDirectory;
         ApprovalPolicy = obj.GetString("approvalPolicy") ?? ApprovalPolicy;
+        Transport = obj.GetString("transport") ?? Transport;
+        Originator = obj.GetString("originator") ?? Originator;
+        ResponsesUrl = obj.GetString("responsesUrl") ?? ResponsesUrl;
         AppServerPath = obj.GetString("appServerPath") ?? AppServerPath;
         AppServerArgs = obj.GetString("appServerArgs") ?? AppServerArgs;
         AppServerWorkingDirectory = obj.GetString("appServerWorkingDirectory") ?? AppServerWorkingDirectory;
@@ -100,6 +106,15 @@ public sealed class OpenAIConfig {
         }
         if (AllowNetwork.HasValue) {
             options.AllowNetwork = AllowNetwork.Value;
+        }
+        if (!string.IsNullOrWhiteSpace(Transport)) {
+            options.TransportKind = ParseTransport(Transport!);
+        }
+        if (!string.IsNullOrWhiteSpace(Originator)) {
+            options.NativeOptions.Originator = Originator!;
+        }
+        if (!string.IsNullOrWhiteSpace(ResponsesUrl)) {
+            options.NativeOptions.ResponsesUrl = ResponsesUrl!;
         }
         if (!string.IsNullOrWhiteSpace(AppServerPath)) {
             options.AppServerOptions.ExecutablePath = AppServerPath!;
@@ -140,6 +155,15 @@ public sealed class OpenAIConfig {
         if (!string.IsNullOrWhiteSpace(ApprovalPolicy)) {
             options.DefaultApprovalPolicy = ApprovalPolicy;
         }
+        if (!string.IsNullOrWhiteSpace(Transport)) {
+            options.TransportKind = ParseTransport(Transport!);
+        }
+        if (!string.IsNullOrWhiteSpace(Originator)) {
+            options.NativeOptions.Originator = Originator!;
+        }
+        if (!string.IsNullOrWhiteSpace(ResponsesUrl)) {
+            options.NativeOptions.ResponsesUrl = ResponsesUrl!;
+        }
         if (!string.IsNullOrWhiteSpace(AppServerPath)) {
             options.AppServerOptions.ExecutablePath = AppServerPath!;
         }
@@ -168,6 +192,13 @@ public sealed class OpenAIConfig {
             "api" or "apikey" => EasyLoginMode.ApiKey,
             "none" => EasyLoginMode.None,
             _ => EasyLoginMode.ChatGpt
+        };
+    }
+
+    private static OpenAITransportKind ParseTransport(string value) {
+        return value.Trim().ToLowerInvariant() switch {
+            "appserver" or "app-server" or "codex" => OpenAITransportKind.AppServer,
+            _ => OpenAITransportKind.Native
         };
     }
 

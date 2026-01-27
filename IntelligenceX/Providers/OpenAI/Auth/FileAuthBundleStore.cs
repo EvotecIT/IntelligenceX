@@ -45,6 +45,12 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
         await WriteFileAsync(file, cancellationToken).ConfigureAwait(false);
     }
 
+    public void Delete() {
+        if (File.Exists(_path)) {
+            File.Delete(_path);
+        }
+    }
+
     private async Task<AuthBundleFile?> ReadFileAsync(CancellationToken cancellationToken) {
         if (!File.Exists(_path)) {
             return null;

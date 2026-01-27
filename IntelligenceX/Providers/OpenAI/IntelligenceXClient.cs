@@ -3,7 +3,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
-using IntelligenceX.Json;
+using IntelligenceX.OpenAI.Native;
+using IntelligenceX.OpenAI.Transport;
 using IntelligenceX.Rpc;
 using IntelligenceX.Telemetry;
 using IntelligenceX.Utils;
@@ -15,26 +16,26 @@ public sealed class IntelligenceXClient : IDisposable
     , IAsyncDisposable
 #endif
 {
-    private readonly AppServerClient _client;
+    private readonly IOpenAITransport _transport;
     private string? _currentThreadId;
     private string _defaultModel;
     private string? _defaultWorkingDirectory;
     private string? _defaultApprovalPolicy;
     private SandboxPolicy? _defaultSandboxPolicy;
 
-    private IntelligenceXClient(AppServerClient client, string defaultModel, string? workingDirectory, string? approvalPolicy, SandboxPolicy? sandboxPolicy) {
-        _client = client;
+    private IntelligenceXClient(IOpenAITransport transport, string defaultModel, string? workingDirectory, string? approvalPolicy, SandboxPolicy? sandboxPolicy) {
+        _transport = transport;
         _defaultModel = defaultModel;
         _defaultWorkingDirectory = workingDirectory;
         _defaultApprovalPolicy = approvalPolicy;
         _defaultSandboxPolicy = sandboxPolicy;
-        _client.NotificationReceived += OnNotificationReceived;
-        _client.RpcCallStarted += OnRpcCallStarted;
-        _client.RpcCallCompleted += OnRpcCallCompleted;
-        _client.LoginStarted += OnLoginStarted;
-        _client.LoginCompleted += OnLoginCompleted;
-        _client.ProtocolLineReceived += OnProtocolLineReceived;
-        _client.StandardErrorReceived += OnStandardErrorReceived;
+        _transport.DeltaReceived += OnDeltaReceived;
+        _transport.RpcCallStarted += OnRpcCallStarted;
+        _transport.RpcCallCompleted += OnRpcCallCompleted;
+        _transport.LoginStarted += OnLoginStarted;
+        _transport.LoginCompleted += OnLoginCompleted;
+        _transport.ProtocolLineReceived += OnProtocolLineReceived;
+        _transport.StandardErrorReceived += OnStandardErrorReceived;
     }
 
     public event EventHandler<string>? DeltaReceived;
@@ -45,14 +46,30 @@ public sealed class IntelligenceXClient : IDisposable
     public event EventHandler<string>? ProtocolLineReceived;
     public event EventHandler<string>? StandardErrorReceived;
 
-    public AppServerClient RawClient => _client;
+    public OpenAITransportKind TransportKind => _transport.Kind;
+
+    public AppServerClient RawClient => RequireAppServer();
+
+    public AppServerClient RequireAppServer() {
+        var client = _transport.RawAppServerClient;
+        if (client is null) {
+            throw new InvalidOperationException("App-server transport is not active. Use TransportKind=AppServer.");
+        }
+        return client;
+    }
 
     public static async Task<IntelligenceXClient> ConnectAsync(IntelligenceXClientOptions? options = null, CancellationToken cancellationToken = default) {
         options ??= new IntelligenceXClientOptions();
         options.Validate();
 
-        var client = await AppServerClient.StartAsync(options.AppServerOptions, cancellationToken).ConfigureAwait(false);
-        var wrapper = new IntelligenceXClient(client, options.DefaultModel, options.DefaultWorkingDirectory, options.DefaultApprovalPolicy, options.DefaultSandboxPolicy);
+        IOpenAITransport transport;
+        if (options.TransportKind == OpenAITransportKind.AppServer) {
+            var client = await AppServerClient.StartAsync(options.AppServerOptions, cancellationToken).ConfigureAwait(false);
+            transport = new AppServerTransport(client);
+        } else {
+            transport = new OpenAINativeTransport(options.NativeOptions);
+        }
+        var wrapper = new IntelligenceXClient(transport, options.DefaultModel, options.DefaultWorkingDirectory, options.DefaultApprovalPolicy, options.DefaultSandboxPolicy);
         if (options.AutoInitialize) {
             await wrapper.InitializeAsync(options.ClientInfo, cancellationToken).ConfigureAwait(false);
         }
@@ -60,39 +77,48 @@ public sealed class IntelligenceXClient : IDisposable
     }
 
     public Task InitializeAsync(ClientInfo clientInfo, CancellationToken cancellationToken = default) {
-        return _client.InitializeAsync(clientInfo, cancellationToken);
+        return _transport.InitializeAsync(clientInfo, cancellationToken);
     }
 
     public Task<HealthCheckResult> HealthCheckAsync(string? method = null, TimeSpan? timeout = null,
         CancellationToken cancellationToken = default) {
-        return _client.HealthCheckAsync(method, timeout, cancellationToken);
+        return _transport.HealthCheckAsync(method, timeout, cancellationToken);
     }
 
     public Task<AccountInfo> GetAccountAsync(CancellationToken cancellationToken = default) {
-        return _client.ReadAccountAsync(cancellationToken);
+        return _transport.GetAccountAsync(cancellationToken);
     }
 
     public Task LogoutAsync(CancellationToken cancellationToken = default) {
-        return _client.LogoutAsync(cancellationToken);
+        return _transport.LogoutAsync(cancellationToken);
     }
 
-    public async Task<ChatGptLoginStart> LoginChatGptAsync(CancellationToken cancellationToken = default) {
-        return await _client.StartChatGptLoginAsync(cancellationToken).ConfigureAwait(false);
+    public Task<ModelListResult> ListModelsAsync(CancellationToken cancellationToken = default) {
+        return _transport.ListModelsAsync(cancellationToken);
     }
 
-    public async Task LoginChatGptAndWaitAsync(Action<string>? onUrl = null, CancellationToken cancellationToken = default) {
-        var login = await _client.StartChatGptLoginAsync(cancellationToken).ConfigureAwait(false);
-        onUrl?.Invoke(login.AuthUrl);
-        await _client.WaitForLoginCompletionAsync(login.LoginId, cancellationToken).ConfigureAwait(false);
+    public Task<ChatGptLoginStart> LoginChatGptAsync(CancellationToken cancellationToken = default) {
+        return LoginChatGptAsync(null, null, true, null, cancellationToken);
+    }
+
+    public Task<ChatGptLoginStart> LoginChatGptAsync(Action<string>? onUrl, Func<string, Task<string>>? onPrompt,
+        bool useLocalListener = true, TimeSpan? timeout = null, CancellationToken cancellationToken = default) {
+        var resolvedTimeout = timeout ?? TimeSpan.FromMinutes(3);
+        return _transport.LoginChatGptAsync(onUrl, onPrompt, useLocalListener, resolvedTimeout, cancellationToken);
+    }
+
+    public async Task LoginChatGptAndWaitAsync(Action<string>? onUrl = null, Func<string, Task<string>>? onPrompt = null,
+        bool useLocalListener = true, TimeSpan? timeout = null, CancellationToken cancellationToken = default) {
+        await LoginChatGptAsync(onUrl, onPrompt, useLocalListener, timeout, cancellationToken).ConfigureAwait(false);
     }
 
     public Task LoginApiKeyAsync(string apiKey, CancellationToken cancellationToken = default) {
-        return _client.LoginWithApiKeyAsync(apiKey, cancellationToken);
+        return _transport.LoginApiKeyAsync(apiKey, cancellationToken);
     }
 
     public async Task<ThreadInfo> StartNewThreadAsync(string? model = null, string? currentDirectory = null, string? approvalPolicy = null,
         string? sandbox = null, CancellationToken cancellationToken = default) {
-        var thread = await _client.StartThreadAsync(model ?? _defaultModel, currentDirectory, approvalPolicy, sandbox, cancellationToken)
+        var thread = await _transport.StartThreadAsync(model ?? _defaultModel, currentDirectory, approvalPolicy, sandbox, cancellationToken)
             .ConfigureAwait(false);
         _currentThreadId = thread.Id;
         return thread;
@@ -101,7 +127,7 @@ public sealed class IntelligenceXClient : IDisposable
     public Task<ThreadInfo> UseThreadAsync(string threadId, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
         _currentThreadId = threadId;
-        return _client.ResumeThreadAsync(threadId, cancellationToken);
+        return _transport.ResumeThreadAsync(threadId, cancellationToken);
     }
 
     public async Task<TurnInfo> ChatAsync(string text, string? model = null, CancellationToken cancellationToken = default) {
@@ -153,7 +179,7 @@ public sealed class IntelligenceXClient : IDisposable
             }
         }
 
-        return await _client.StartTurnAsync(_currentThreadId!, input.ToJson(), model, cwd, approval, sandbox, cancellationToken)
+        return await _transport.StartTurnAsync(_currentThreadId!, input, model, cwd, approval, sandbox, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -195,23 +221,13 @@ public sealed class IntelligenceXClient : IDisposable
         await StartNewThreadAsync(model, _defaultWorkingDirectory, _defaultApprovalPolicy, null, cancellationToken).ConfigureAwait(false);
     }
 
-    private void OnNotificationReceived(object? sender, JsonRpcNotificationEventArgs args) {
-        var delta = TryExtractDelta(args.Params);
-        if (!string.IsNullOrWhiteSpace(delta)) {
-            DeltaReceived?.Invoke(this, delta!);
-        }
-    }
-
     private void OnRpcCallStarted(object? sender, RpcCallStartedEventArgs args) => RpcCallStarted?.Invoke(this, args);
     private void OnRpcCallCompleted(object? sender, RpcCallCompletedEventArgs args) => RpcCallCompleted?.Invoke(this, args);
     private void OnLoginStarted(object? sender, LoginEventArgs args) => LoginStarted?.Invoke(this, args);
     private void OnLoginCompleted(object? sender, LoginEventArgs args) => LoginCompleted?.Invoke(this, args);
     private void OnProtocolLineReceived(object? sender, string line) => ProtocolLineReceived?.Invoke(this, line);
     private void OnStandardErrorReceived(object? sender, string line) => StandardErrorReceived?.Invoke(this, line);
-
-    private static string? TryExtractDelta(JsonValue? value) {
-        return value?.AsObject()?.GetObject("delta")?.GetString("text");
-    }
+    private void OnDeltaReceived(object? sender, string text) => DeltaReceived?.Invoke(this, text);
 
     private void EnsureFileSafety(Chat.ChatInput input, Chat.ChatOptions options) {
         var paths = input.GetImagePaths();
@@ -236,38 +252,38 @@ public sealed class IntelligenceXClient : IDisposable
     }
 
     public void Dispose() {
-        _client.NotificationReceived -= OnNotificationReceived;
-        _client.RpcCallStarted -= OnRpcCallStarted;
-        _client.RpcCallCompleted -= OnRpcCallCompleted;
-        _client.LoginStarted -= OnLoginStarted;
-        _client.LoginCompleted -= OnLoginCompleted;
-        _client.ProtocolLineReceived -= OnProtocolLineReceived;
-        _client.StandardErrorReceived -= OnStandardErrorReceived;
-        _client.Dispose();
+        _transport.DeltaReceived -= OnDeltaReceived;
+        _transport.RpcCallStarted -= OnRpcCallStarted;
+        _transport.RpcCallCompleted -= OnRpcCallCompleted;
+        _transport.LoginStarted -= OnLoginStarted;
+        _transport.LoginCompleted -= OnLoginCompleted;
+        _transport.ProtocolLineReceived -= OnProtocolLineReceived;
+        _transport.StandardErrorReceived -= OnStandardErrorReceived;
+        _transport.Dispose();
     }
 
 #if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
     public ValueTask DisposeAsync() {
-        _client.NotificationReceived -= OnNotificationReceived;
-        _client.RpcCallStarted -= OnRpcCallStarted;
-        _client.RpcCallCompleted -= OnRpcCallCompleted;
-        _client.LoginStarted -= OnLoginStarted;
-        _client.LoginCompleted -= OnLoginCompleted;
-        _client.ProtocolLineReceived -= OnProtocolLineReceived;
-        _client.StandardErrorReceived -= OnStandardErrorReceived;
-        _client.Dispose();
+        _transport.DeltaReceived -= OnDeltaReceived;
+        _transport.RpcCallStarted -= OnRpcCallStarted;
+        _transport.RpcCallCompleted -= OnRpcCallCompleted;
+        _transport.LoginStarted -= OnLoginStarted;
+        _transport.LoginCompleted -= OnLoginCompleted;
+        _transport.ProtocolLineReceived -= OnProtocolLineReceived;
+        _transport.StandardErrorReceived -= OnStandardErrorReceived;
+        _transport.Dispose();
         return ValueTask.CompletedTask;
     }
 #else
     public Task DisposeAsync() {
-        _client.NotificationReceived -= OnNotificationReceived;
-        _client.RpcCallStarted -= OnRpcCallStarted;
-        _client.RpcCallCompleted -= OnRpcCallCompleted;
-        _client.LoginStarted -= OnLoginStarted;
-        _client.LoginCompleted -= OnLoginCompleted;
-        _client.ProtocolLineReceived -= OnProtocolLineReceived;
-        _client.StandardErrorReceived -= OnStandardErrorReceived;
-        _client.Dispose();
+        _transport.DeltaReceived -= OnDeltaReceived;
+        _transport.RpcCallStarted -= OnRpcCallStarted;
+        _transport.RpcCallCompleted -= OnRpcCallCompleted;
+        _transport.LoginStarted -= OnLoginStarted;
+        _transport.LoginCompleted -= OnLoginCompleted;
+        _transport.ProtocolLineReceived -= OnProtocolLineReceived;
+        _transport.StandardErrorReceived -= OnStandardErrorReceived;
+        _transport.Dispose();
         return Task.CompletedTask;
     }
 #endif

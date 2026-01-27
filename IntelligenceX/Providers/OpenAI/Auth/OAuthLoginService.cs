@@ -266,7 +266,7 @@ public sealed class OAuthLoginService {
         if (!path.StartsWith("/", StringComparison.Ordinal)) {
             path = "/" + path;
         }
-        return $"http://127.0.0.1:{config.RedirectPort}{path}";
+        return $"http://localhost:{config.RedirectPort}{path}";
     }
 
     private static string BuildListenerPrefix(string redirectUri) {

@@ -120,6 +120,9 @@ public sealed class EasySession : IDisposable
 
         switch (_options.Login) {
             case EasyLoginMode.ApiKey:
+                if (_options.TransportKind == OpenAITransportKind.Native) {
+                    throw new InvalidOperationException("API key login is not supported with native ChatGPT transport.");
+                }
                 var key = _options.ApiKey ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY");
                 if (string.IsNullOrWhiteSpace(key)) {
                     throw new InvalidOperationException("API key is required for ApiKey login.");
@@ -149,32 +152,58 @@ public sealed class EasySession : IDisposable
             AutoInitialize = options.AutoInitialize,
             DefaultModel = options.DefaultModel,
             DefaultWorkingDirectory = options.WorkingDirectory,
-            DefaultApprovalPolicy = options.ApprovalPolicy
+            DefaultApprovalPolicy = options.ApprovalPolicy,
+            TransportKind = options.TransportKind
         };
 
-        clientOptions.AppServerOptions.ExecutablePath = options.AppServerOptions.ExecutablePath;
-        clientOptions.AppServerOptions.Arguments = options.AppServerOptions.Arguments;
-        clientOptions.AppServerOptions.WorkingDirectory = options.AppServerOptions.WorkingDirectory;
-        clientOptions.AppServerOptions.RedirectStandardError = options.AppServerOptions.RedirectStandardError;
-        foreach (var pair in options.AppServerOptions.Environment) {
-            clientOptions.AppServerOptions.Environment[pair.Key] = pair.Value;
+        clientOptions.NativeOptions.AuthStore = options.NativeOptions.AuthStore;
+        clientOptions.NativeOptions.Originator = options.NativeOptions.Originator;
+        clientOptions.NativeOptions.ResponsesUrl = options.NativeOptions.ResponsesUrl;
+        clientOptions.NativeOptions.TextVerbosity = options.NativeOptions.TextVerbosity;
+        clientOptions.NativeOptions.IncludeReasoningEncryptedContent = options.NativeOptions.IncludeReasoningEncryptedContent;
+        clientOptions.NativeOptions.OAuthTimeout = options.NativeOptions.OAuthTimeout;
+        clientOptions.NativeOptions.UseLocalListener = options.NativeOptions.UseLocalListener;
+        clientOptions.NativeOptions.PersistCodexAuthJson = options.NativeOptions.PersistCodexAuthJson;
+        clientOptions.NativeOptions.CodexHome = options.NativeOptions.CodexHome;
+        clientOptions.NativeOptions.UserAgent = options.NativeOptions.UserAgent;
+        clientOptions.NativeOptions.OAuth.AuthorizeUrl = options.NativeOptions.OAuth.AuthorizeUrl;
+        clientOptions.NativeOptions.OAuth.TokenUrl = options.NativeOptions.OAuth.TokenUrl;
+        clientOptions.NativeOptions.OAuth.ClientId = options.NativeOptions.OAuth.ClientId;
+        clientOptions.NativeOptions.OAuth.Scopes = options.NativeOptions.OAuth.Scopes;
+        clientOptions.NativeOptions.OAuth.RedirectUri = options.NativeOptions.OAuth.RedirectUri;
+        clientOptions.NativeOptions.OAuth.RedirectPort = options.NativeOptions.OAuth.RedirectPort;
+        clientOptions.NativeOptions.OAuth.RedirectPath = options.NativeOptions.OAuth.RedirectPath;
+        clientOptions.NativeOptions.OAuth.AddOrganizations = options.NativeOptions.OAuth.AddOrganizations;
+        clientOptions.NativeOptions.OAuth.CodexCliSimplifiedFlow = options.NativeOptions.OAuth.CodexCliSimplifiedFlow;
+        clientOptions.NativeOptions.OAuth.Originator = options.NativeOptions.OAuth.Originator;
+
+        if (options.TransportKind == OpenAITransportKind.AppServer) {
+            clientOptions.AppServerOptions.ExecutablePath = options.AppServerOptions.ExecutablePath;
+            clientOptions.AppServerOptions.Arguments = options.AppServerOptions.Arguments;
+            clientOptions.AppServerOptions.WorkingDirectory = options.AppServerOptions.WorkingDirectory;
+            clientOptions.AppServerOptions.RedirectStandardError = options.AppServerOptions.RedirectStandardError;
+            foreach (var pair in options.AppServerOptions.Environment) {
+                clientOptions.AppServerOptions.Environment[pair.Key] = pair.Value;
+            }
         }
 
         return clientOptions;
     }
 
     private async Task LoginChatGptAsync(CancellationToken cancellationToken) {
-        var login = await _client.LoginChatGptAsync(cancellationToken).ConfigureAwait(false);
-        if (_options.OnLoginUrl is not null) {
-            _options.OnLoginUrl(login.AuthUrl);
-        } else if (_options.PrintLoginUrl) {
-            Console.WriteLine(login.AuthUrl);
+        void HandleUrl(string url) {
+            if (_options.OnLoginUrl is not null) {
+                _options.OnLoginUrl(url);
+            } else if (_options.PrintLoginUrl) {
+                Console.WriteLine(url);
+            }
+            if (_options.OpenBrowser) {
+                TryOpenUrl(url);
+            }
         }
 
-        if (_options.OpenBrowser) {
-            TryOpenUrl(login.AuthUrl);
-        }
-        await _client.RawClient.WaitForLoginCompletionAsync(login.LoginId, cancellationToken).ConfigureAwait(false);
+        await _client.LoginChatGptAndWaitAsync(HandleUrl, _options.OnPrompt, _options.UseLocalListener,
+            _options.NativeOptions.OAuthTimeout, cancellationToken).ConfigureAwait(false);
     }
 
     private static void TryOpenUrl(string url) {
