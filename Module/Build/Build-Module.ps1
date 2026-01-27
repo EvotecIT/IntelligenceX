@@ -1,4 +1,4 @@
-#Import-Module "C:\Support\GitHub\PSPublishModule\PSPublishModule.psd1" -Force
+Import-Module "PSPublishModule" -RequiredVersion '2.0.27' -Force
 
 Build-Module -ModuleName 'IntelligenceX' {
     # Usual defaults as per standard module
@@ -14,7 +14,7 @@ Build-Module -ModuleName 'IntelligenceX' {
         IconUri              = 'https://raw.githubusercontent.com/EvotecIT/IntelligenceX/master/Assets/Icons/IntelligenceX_128x128.png'
         ProjectUri           = 'https://github.com/EvotecIT/IntelligenceX'
         PowerShellVersion    = '5.1'
-        FormatsToProcess     = @('IntelligenceX.Format.ps1xml')
+        # FormatsToProcess     = @('IntelligenceX.Format.ps1xml')
     }
     New-ConfigurationManifest @Manifest
 
@@ -85,7 +85,7 @@ Build-Module -ModuleName 'IntelligenceX' {
     New-ConfigurationBuild @newConfigurationBuildSplat
 
     # Copy formatting file to module output
-    New-ConfigurationModule -Type RequiredFile -Path "$PSScriptRoot\..\..\IntelligenceX.PowerShell\IntelligenceX.Format.ps1xml" -Destination 'IntelligenceX.Format.ps1xml'
+    #New-ConfigurationModule -Type RequiredFile -Path "$PSScriptRoot\..\..\IntelligenceX.PowerShell\IntelligenceX.Format.ps1xml" -Destination 'IntelligenceX.Format.ps1xml'
 
     New-ConfigurationArtefact -Type Unpacked -Enable -Path "$PSScriptRoot\..\Artefacts\Unpacked" -RequiredModulesPath "$PSScriptRoot\..\Artefacts\Unpacked\Modules"
     New-ConfigurationArtefact -Type Packed -Enable -Path "$PSScriptRoot\..\Artefacts\Packed" -IncludeTagName -ArtefactName "IntelligenceX-PowerShellModule.<TagModuleVersionWithPreRelease>.zip" -ID 'ToGitHub'

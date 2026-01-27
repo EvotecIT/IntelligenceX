@@ -1,4 +1,4 @@
-# Get public and private function definition files.
+﻿# Get public and private function definition files.
 $Public = @( Get-ChildItem -Path $PSScriptRoot\Public\*.ps1 -ErrorAction SilentlyContinue -Recurse -File)
 $Private = @( Get-ChildItem -Path $PSScriptRoot\Private\*.ps1 -ErrorAction SilentlyContinue -Recurse -File)
 $Classes = @( Get-ChildItem -Path $PSScriptRoot\Classes\*.ps1 -ErrorAction SilentlyContinue -Recurse -File)
@@ -8,7 +8,7 @@ $AssemblyFolders = Get-ChildItem -Path $PSScriptRoot\Lib -Directory -ErrorAction
 $AssemblyFolders = Get-ChildItem -Path $PSScriptRoot\bin\Debug\net472 -File -ErrorAction SilentlyContinue
 
 # to speed up development adding direct path to binaries, instead of the the Lib folder
-$Development = $false
+$Development = $true
 $DevelopmentPath = "$PSScriptRoot\..\IntelligenceX.PowerShell\bin\Debug"
 $DevelopmentFolderCore = "net8.0"
 $DevelopmentFolderDefault = "net472"
@@ -103,6 +103,7 @@ $FoundErrors = @(
         try {
             Write-Verbose -Message $Import.FullName
             Add-Type -Path $Import.Fullname -ErrorAction Stop
+            #  }
         } catch [System.Reflection.ReflectionTypeLoadException] {
             Write-Warning "Processing $($Import.Name) Exception: $($_.Exception.Message)"
             $LoaderExceptions = $($_.Exception.LoaderExceptions) | Sort-Object -Unique
@@ -110,6 +111,7 @@ $FoundErrors = @(
                 Write-Warning "Processing $($Import.Name) LoaderExceptions: $($E.Message)"
             }
             $true
+            #Write-Error -Message "StackTrace: $($_.Exception.StackTrace)"
         } catch {
             Write-Warning "Processing $($Import.Name) Exception: $($_.Exception.Message)"
             $LoaderExceptions = $($_.Exception.LoaderExceptions) | Sort-Object -Unique
@@ -117,23 +119,24 @@ $FoundErrors = @(
                 Write-Warning "Processing $($Import.Name) LoaderExceptions: $($E.Message)"
             }
             $true
+            #Write-Error -Message "StackTrace: $($_.Exception.StackTrace)"
+        }
+    }
+    #Dot source the files
+    foreach ($Import in @($Classes + $Enums + $Private + $Public)) {
+        try {
+            . $Import.Fullname
+        } catch {
+            Write-Error -Message "Failed to import functions from $($import.Fullname): $_"
+            $true
         }
     }
 )
 
-if ($FoundErrors -contains $true) {
-    throw "Error during module import"
+if ($FoundErrors.Count -gt 0) {
+    $ModuleName = (Get-ChildItem $PSScriptRoot\*.psd1).BaseName
+    Write-Warning "Importing module $ModuleName failed. Fix errors before continuing."
+    break
 }
 
-# Dot source the files
-foreach ($Import in @($Classes + $Enums + $Private + $Public)) {
-    try {
-        . $Import.FullName
-    } catch {
-        Write-Error -Message "Failed to import functions from $($Import.FullName): $($_.Exception.Message)"
-    }
-}
-
-# Export public functions and aliases if any
-$PublicFunctions = @($Public | Select-Object -ExpandProperty BaseName)
-Export-ModuleMember -Function $PublicFunctions
+Export-ModuleMember -Function '*' -Alias '*' -Cmdlet '*'

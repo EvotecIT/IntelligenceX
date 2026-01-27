@@ -1,43 +1,7 @@
-@{
+﻿@{
     AliasesToExport      = @()
     Author               = 'Przemyslaw Klys'
-    CmdletsToExport      = @(
-        'Connect-IntelligenceX',
-        'Disconnect-IntelligenceX',
-        'Initialize-IntelligenceX',
-        'Start-IntelligenceXChatGptLogin',
-        'Start-IntelligenceXApiKeyLogin',
-        'Wait-IntelligenceXLogin',
-        'Get-IntelligenceXAccount',
-        'Start-IntelligenceXThread',
-        'Send-IntelligenceXMessage',
-        'Invoke-IntelligenceXChat',
-        'Get-IntelligenceXTurnOutput',
-        'Get-IntelligenceXThread',
-        'Get-IntelligenceXLoadedThread',
-        'Resume-IntelligenceXThread',
-        'New-IntelligenceXThreadFork',
-        'Backup-IntelligenceXThread',
-        'Restore-IntelligenceXThread',
-        'Stop-IntelligenceXTurn',
-        'Start-IntelligenceXReview',
-        'Invoke-IntelligenceXCommand',
-        'Invoke-IntelligenceXRpc',
-        'Get-IntelligenceXModel',
-        'Get-IntelligenceXCollaborationMode',
-        'Get-IntelligenceXSkill',
-        'Set-IntelligenceXSkill',
-        'Get-IntelligenceXConfig',
-        'Set-IntelligenceXConfigValue',
-        'Set-IntelligenceXConfigBatch',
-        'Get-IntelligenceXConfigRequirements',
-        'Start-IntelligenceXMcpOAuthLogin',
-        'Get-IntelligenceXMcpServerStatus',
-        'Invoke-IntelligenceXMcpServerConfigReload',
-        'Request-IntelligenceXUserInput',
-        'Send-IntelligenceXFeedback',
-        'Watch-IntelligenceXEvent'
-    )
+    CmdletsToExport      = @('Backup-IntelligenceXThread', 'Connect-IntelligenceX', 'Disconnect-IntelligenceX', 'New-IntelligenceXThreadFork', 'Get-IntelligenceXAccount', 'Get-IntelligenceXCollaborationMode', 'Get-IntelligenceXConfig', 'Get-IntelligenceXConfigRequirements', 'Get-IntelligenceXCopilotInstall', 'Get-IntelligenceXHealth', 'Get-IntelligenceXLoadedThread', 'Get-IntelligenceXMcpServerStatus', 'Get-IntelligenceXModel', 'Get-IntelligenceXSkill', 'Get-IntelligenceXThread', 'Get-IntelligenceXTurnOutput', 'Initialize-IntelligenceX', 'Install-IntelligenceXCopilotCli', 'Invoke-IntelligenceXChat', 'Invoke-IntelligenceXCommand', 'Invoke-IntelligenceXRpc', 'Invoke-IntelligenceXMcpServerConfigReload', 'Request-IntelligenceXUserInput', 'Resume-IntelligenceXThread', 'Restore-IntelligenceXThread', 'Send-IntelligenceXFeedback', 'Send-IntelligenceXMessage', 'Set-IntelligenceXConfigBatch', 'Set-IntelligenceXConfigValue', 'Set-IntelligenceXSkill', 'Start-IntelligenceXApiKeyLogin', 'Start-IntelligenceXChatGptLogin', 'Start-IntelligenceXMcpOAuthLogin', 'Start-IntelligenceXReview', 'Start-IntelligenceXThread', 'Stop-IntelligenceXTurn', 'Wait-IntelligenceXLogin', 'Watch-IntelligenceXEvent')
     CompanyName          = 'Evotec'
     CompatiblePSEditions = @('Desktop', 'Core')
     Copyright            = '(c) 2011 - 2026 Przemyslaw Klys @ Evotec. All rights reserved.'
@@ -49,9 +13,10 @@
     PowerShellVersion    = '5.1'
     PrivateData          = @{
         PSData = @{
-            IconUri    = 'https://raw.githubusercontent.com/EvotecIT/IntelligenceX/master/Assets/Icons/IntelligenceX_128x128.png'
-            ProjectUri = 'https://github.com/EvotecIT/IntelligenceX'
-            Tags       = @('Windows', 'MacOS', 'Linux')
+            IconUri                  = 'https://raw.githubusercontent.com/EvotecIT/IntelligenceX/master/Assets/Icons/IntelligenceX_128x128.png'
+            ProjectUri               = 'https://github.com/EvotecIT/IntelligenceX'
+            RequireLicenseAcceptance = $false
+            Tags                     = @('Windows', 'MacOS', 'Linux')
         }
     }
     RootModule           = 'IntelligenceX.psm1'
