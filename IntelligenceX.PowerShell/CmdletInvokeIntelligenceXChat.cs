@@ -38,10 +38,10 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
     public SwitchParameter Dsl { get; set; }
 
     /// <summary>
-    /// <para type="description">Model identifier. Defaults to gpt-5.1-codex.</para>
+    /// <para type="description">Model identifier. Defaults to gpt-5.2-codex.</para>
     /// </summary>
     [Parameter]
-    public string Model { get; set; } = "gpt-5.1-codex";
+    public string Model { get; set; } = "gpt-5.2-codex";
 
     /// <summary>
     /// <para type="description">Login method: ChatGpt, ApiKey, or None.</para>
@@ -145,6 +145,36 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
     /// </summary>
     [Parameter]
     public string? ImageUrl { get; set; }
+
+    /// <summary>
+    /// <para type="description">System instructions for the assistant.</para>
+    /// </summary>
+    [Parameter]
+    public string? Instructions { get; set; }
+
+    /// <summary>
+    /// <para type="description">Reasoning effort level.</para>
+    /// </summary>
+    [Parameter]
+    public ReasoningEffort? ReasoningEffort { get; set; }
+
+    /// <summary>
+    /// <para type="description">Reasoning summary level.</para>
+    /// </summary>
+    [Parameter]
+    public ReasoningSummary? ReasoningSummary { get; set; }
+
+    /// <summary>
+    /// <para type="description">Response verbosity level.</para>
+    /// </summary>
+    [Parameter]
+    public TextVerbosity? TextVerbosity { get; set; }
+
+    /// <summary>
+    /// <para type="description">Sampling temperature.</para>
+    /// </summary>
+    [Parameter]
+    public double? Temperature { get; set; }
 
     /// <summary>
     /// <para type="description">Save image outputs to the specified directory.</para>
@@ -310,6 +340,11 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
         var requireWorkspace = !string.IsNullOrWhiteSpace(Workspace);
         var chatOptions = new ChatOptions {
             Model = Model,
+            Instructions = Instructions,
+            ReasoningEffort = ReasoningEffort,
+            ReasoningSummary = ReasoningSummary,
+            TextVerbosity = TextVerbosity,
+            Temperature = Temperature,
             WorkingDirectory = cwd,
             Workspace = Workspace,
             AllowNetwork = AllowNetwork.IsPresent,

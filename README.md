@@ -38,7 +38,7 @@ var login = await client.StartChatGptLoginAsync();
 Console.WriteLine($"Login URL: {login.AuthUrl}");
 await client.WaitForLoginCompletionAsync(login.LoginId);
 
-var thread = await client.StartThreadAsync("gpt-5.1-codex");
+var thread = await client.StartThreadAsync("gpt-5.2-codex");
 await client.StartTurnAsync(thread.Id, "Hello from IntelligenceX");
 ```
 
@@ -60,6 +60,22 @@ await using var session = await EasySession.StartAsync();
 await session.ChatAsync("Hello!");
 ```
 
+Reasoning/verbosity (C#):
+
+```csharp
+using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.Chat;
+
+await using var session = await EasySession.StartAsync();
+var options = new ChatOptions {
+    ReasoningEffort = ReasoningEffort.Medium,
+    ReasoningSummary = ReasoningSummary.Auto,
+    TextVerbosity = TextVerbosity.Low,
+    Instructions = "Be concise."
+};
+await session.ChatAsync(ChatInput.FromText("Explain DNS"), options);
+```
+
 ## Config overrides (.intelligencex/config.json)
 
 You can override defaults without code changes by adding `.intelligencex/config.json`
@@ -71,6 +87,10 @@ Example `.intelligencex/config.json`:
 {
   "openai": {
     "defaultModel": "gpt-5.2-codex",
+    "instructions": "You are a helpful assistant.",
+    "reasoningEffort": "medium",
+    "reasoningSummary": "auto",
+    "textVerbosity": "medium",
     "appServerPath": "codex",
     "appServerArgs": "app-server",
     "openBrowser": true,
@@ -85,6 +105,11 @@ Example `.intelligencex/config.json`:
   }
 }
 ```
+
+Supported values:
+- `reasoningEffort`: `minimal|low|medium|high|xhigh`
+- `reasoningSummary`: `auto|concise|detailed|off`
+- `textVerbosity`: `low|medium|high`
 
 ```csharp
 using IntelligenceX.OpenAI;
@@ -209,7 +234,7 @@ var login = await session.LoginChatGptAsync();
 Console.WriteLine(login.Login.AuthUrl);
 await login.WaitAsync();
 
-var thread = await session.StartThreadAsync("gpt-5.1-codex");
+var thread = await session.StartThreadAsync("gpt-5.2-codex");
 await thread.SendAsync("Hello from fluent API");
 ```
 
@@ -230,7 +255,7 @@ Initialize-IntelligenceX -Client $client -Name 'IntelligenceX' -Title 'Demo' -Ve
 $login = Start-IntelligenceXChatGptLogin -Client $client
 Write-Host $login.AuthUrl
 Wait-IntelligenceXLogin -Client $client -LoginId $login.LoginId
-$thread = Start-IntelligenceXThread -Client $client -Model 'gpt-5.1-codex'
+$thread = Start-IntelligenceXThread -Client $client -Model 'gpt-5.2-codex'
 Send-IntelligenceXMessage -Client $client -ThreadId $thread.Id -Text 'Hello from PowerShell'
 Disconnect-IntelligenceX -Client $client
 ```
@@ -261,6 +286,12 @@ Super easy PowerShell:
 
 ```powershell
 Invoke-IntelligenceXChat "Hello from PowerShell"
+```
+
+Reasoning/verbosity (PowerShell):
+
+```powershell
+Invoke-IntelligenceXChat "Explain TCP" -ReasoningEffort Medium -ReasoningSummary Auto -TextVerbosity Low
 ```
 
 PowerShell DSL (pipeline):
@@ -375,6 +406,13 @@ Optional overrides:
 - `INTELLIGENCEX_AUTH_KEY` (base64 32 bytes, enables encryption; .NET 8+ only)
 - `INTELLIGENCEX_AUTH_EXPORT_FORMAT=base64` (for export)
 - `CODEX_HOME` (used by `sync-codex`)
+
+Native ChatGPT overrides (optional):
+- `INTELLIGENCEX_INSTRUCTIONS`
+- `INTELLIGENCEX_REASONING_EFFORT` (`minimal|low|medium|high|xhigh`)
+- `INTELLIGENCEX_REASONING_SUMMARY` (`auto|concise|detailed|off`)
+- `INTELLIGENCEX_TEXT_VERBOSITY` (`low|medium|high`)
+- `INTELLIGENCEX_CLIENT_VERSION`
 
 Login:
 

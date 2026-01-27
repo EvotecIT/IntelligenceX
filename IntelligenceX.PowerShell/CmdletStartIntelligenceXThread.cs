@@ -20,7 +20,7 @@ public sealed class CmdletStartIntelligenceXThread : IntelligenceXCmdlet {
     public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
-    /// <para type="description">Model identifier to use (for example gpt-5.1-codex).</para>
+    /// <para type="description">Model identifier to use (for example gpt-5.2-codex).</para>
     /// </summary>
     [Parameter(Mandatory = true)]
     public string Model { get; set; } = string.Empty;
