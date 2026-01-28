@@ -11,6 +11,7 @@ Return your review in markdown with these sections:
 - Other Issues
 - Tests / Coverage
 {{NextStepsSection}}
+For each issue or todo item, include a one-sentence rationale (why it matters). Avoid chain-of-thought.
 PR Context:
 Title: {{Title}}
 Description:
@@ -18,3 +19,4 @@ Description:
 
 Changed files:
 {{Files}}
+{{IssueCommentsSection}}{{ReviewCommentsSection}}{{RelatedPrsSection}}

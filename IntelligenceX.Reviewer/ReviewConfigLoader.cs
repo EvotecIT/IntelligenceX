@@ -42,6 +42,7 @@ internal static class ReviewConfigLoader {
         ApplyBooleans(reviewObj, settings);
         ApplyCommentMode(reviewObj, settings);
         ApplyLength(reviewObj, settings);
+        ApplyContext(reviewObj, settings);
         ApplyCodex(root, settings);
         ApplyCopilot(root, settings);
         ApplyCleanup(root, settings);
@@ -142,6 +143,16 @@ internal static class ReviewConfigLoader {
         };
     }
 
+    private static void ApplyContext(JsonObject obj, ReviewSettings settings) {
+        settings.IncludeIssueComments = ReadBool(obj, "includeIssueComments", settings.IncludeIssueComments);
+        settings.IncludeReviewComments = ReadBool(obj, "includeReviewComments", settings.IncludeReviewComments);
+        settings.MaxCommentChars = ReadInt(obj, "maxCommentChars", settings.MaxCommentChars);
+        settings.MaxComments = ReadInt(obj, "maxComments", settings.MaxComments);
+        settings.IncludeRelatedPrs = ReadBool(obj, "includeRelatedPrs", settings.IncludeRelatedPrs);
+        settings.RelatedPrsQuery = obj.GetString("relatedPrsQuery") ?? settings.RelatedPrsQuery;
+        settings.MaxRelatedPrs = ReadInt(obj, "maxRelatedPrs", settings.MaxRelatedPrs);
+    }
+
     private static void ApplyCodex(JsonObject root, ReviewSettings settings) {
         var codex = root.GetObject("codex") ?? root.GetObject("appServer");
         if (codex is null) {
@@ -183,7 +194,7 @@ internal static class ReviewConfigLoader {
         settings.Cleanup.PostEditComment = ReadBool(cleanup, "postEditComment", settings.Cleanup.PostEditComment);
         var minConfidence = cleanup.GetDouble("minConfidence");
         if (minConfidence.HasValue) {
-            settings.Cleanup.MinConfidence = CleanupSettings.ClampConfidence(minConfidence.Value, settings.Cleanup.MinConfidence);
+            settings.Cleanup.MinConfidence = CleanupSettings.ClampConfidence(minConfidence.Value);
         }
         var allowedEdits = ReadStringList(cleanup, "allowedEdits");
         if (allowedEdits is not null) {

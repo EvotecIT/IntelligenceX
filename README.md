@@ -398,6 +398,8 @@ Optional env/inputs (SocraticLens-style):
 - cleanup: `cleanup_enabled`, `cleanup_mode` (`comment|edit|hybrid`), `cleanup_scope` (`pr|issue|both`),
   `cleanup_require_label`, `cleanup_min_confidence`, `cleanup_allowed_edits`, `cleanup_template`,
   `cleanup_template_path`, `cleanup_post_edit_comment`
+- context: `include_issue_comments`, `include_review_comments`, `max_comment_chars`, `max_comments`,
+  `include_related_prs`, `related_prs_query`, `max_related_prs` (use `{repo}`, `{owner}`, `{name}`, `{number}`)
 
 Cleanup is opt-in and controlled by repository config. Use `comment` mode for suggestions only, or `edit`
 to automatically update PR title/body (requires `pull-requests: write`).

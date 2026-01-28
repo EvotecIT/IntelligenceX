@@ -79,12 +79,18 @@ internal sealed class CleanupSettings {
             return fallback;
         }
         if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)) {
-            return ClampConfidence(parsed, fallback);
+            return ClampConfidence(parsed);
         }
         return fallback;
     }
 
-    public static double ClampConfidence(double value, double fallback) {
-        return value >= 0 && value <= 1 ? value : fallback;
+    public static double ClampConfidence(double value) {
+        if (value < 0) {
+            return 0;
+        }
+        if (value > 1) {
+            return 1;
+        }
+        return value;
     }
 }

@@ -24,9 +24,10 @@ internal sealed class CleanupResult {
             if (obj is null) {
                 return null;
             }
+            var confidence = obj.GetDouble("confidence") ?? 0;
             return new CleanupResult {
                 NeedsCleanup = obj.GetBoolean("needs_cleanup") || obj.GetBoolean("needsCleanup"),
-                Confidence = obj.GetDouble("confidence") ?? 0,
+                Confidence = CleanupSettings.ClampConfidence(confidence),
                 Title = obj.GetString("title"),
                 Body = obj.GetString("body"),
                 Notes = obj.GetString("notes")

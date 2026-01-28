@@ -54,7 +54,7 @@ internal static class CleanupService {
                 newTitle, newBody, context.Draft, context.HeadSha, context.Labels);
         }
 
-        if (cleanup.Mode == CleanupMode.Comment || cleanup.Mode == CleanupMode.Edit || cleanup.Mode == CleanupMode.Hybrid) {
+        if (cleanup.Mode == CleanupMode.Comment || cleanup.Mode == CleanupMode.Hybrid) {
             await PostSuggestionAsync(github, context, result, cancellationToken).ConfigureAwait(false);
         }
         return context;

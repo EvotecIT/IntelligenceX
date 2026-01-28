@@ -6,7 +6,8 @@ using System.Text;
 namespace IntelligenceX.Reviewer;
 
 internal static class PromptBuilder {
-    public static string Build(PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings) {
+    public static string Build(PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
+        ReviewContextExtras? extras = null) {
         var template = ResolveTemplate(settings);
         var profileBlock = string.IsNullOrWhiteSpace(settings.Profile) ? string.Empty : $"Profile: {settings.Profile}\n";
         var strictnessBlock = string.IsNullOrWhiteSpace(settings.Strictness) ? string.Empty : $"Strictness: {settings.Strictness}\n";
@@ -33,7 +34,10 @@ internal static class PromptBuilder {
             ["NextStepsSection"] = nextStepsSection,
             ["Title"] = context.Title ?? string.Empty,
             ["Body"] = string.IsNullOrWhiteSpace(context.Body) ? "<no description>" : context.Body,
-            ["Files"] = BuildFilesBlock(files)
+            ["Files"] = BuildFilesBlock(files),
+            ["IssueCommentsSection"] = extras?.IssueCommentsSection ?? string.Empty,
+            ["ReviewCommentsSection"] = extras?.ReviewCommentsSection ?? string.Empty,
+            ["RelatedPrsSection"] = extras?.RelatedPrsSection ?? string.Empty
         };
 
         return TemplateRenderer.Render(template, tokens);

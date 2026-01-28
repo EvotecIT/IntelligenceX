@@ -84,8 +84,10 @@ public static class ReviewerApp {
             progress.Files = ReviewProgressState.Complete;
             progress.StatusLine = "Analyzed changed files.";
 
+            var extras = await BuildExtrasAsync(github, context, settings, CancellationToken.None)
+                .ConfigureAwait(false);
             var limitedFiles = PrepareFiles(files, settings.MaxFiles, settings.MaxPatchChars);
-            var prompt = PromptBuilder.Build(context, limitedFiles, settings);
+            var prompt = PromptBuilder.Build(context, limitedFiles, settings, extras);
             if (settings.RedactPii) {
                 prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
             }
@@ -230,6 +232,141 @@ public static class ReviewerApp {
             count++;
         }
         return list;
+    }
+
+    private static async Task<ReviewContextExtras> BuildExtrasAsync(GitHubClient github, PullRequestContext context,
+        ReviewSettings settings, CancellationToken cancellationToken) {
+        var extras = new ReviewContextExtras();
+        if (settings.IncludeIssueComments) {
+            var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, cancellationToken)
+                .ConfigureAwait(false);
+            extras.IssueCommentsSection = BuildIssueCommentsSection(comments, settings);
+        }
+        if (settings.IncludeReviewComments) {
+            var comments = await github.ListPullRequestReviewCommentsAsync(context.Owner, context.Repo, context.Number, cancellationToken)
+                .ConfigureAwait(false);
+            extras.ReviewCommentsSection = BuildReviewCommentsSection(comments, settings);
+        }
+        if (settings.IncludeRelatedPrs) {
+            var query = ResolveRelatedPrsQuery(context, settings);
+            if (!string.IsNullOrWhiteSpace(query)) {
+                var related = await github.SearchPullRequestsAsync(query, settings.MaxRelatedPrs, cancellationToken)
+                    .ConfigureAwait(false);
+                extras.RelatedPrsSection = BuildRelatedPrsSection(context, related);
+            }
+        }
+        return extras;
+    }
+
+    private static string BuildIssueCommentsSection(IReadOnlyList<IssueComment> comments, ReviewSettings settings) {
+        var filtered = new List<IssueComment>();
+        foreach (var comment in comments) {
+            if (string.IsNullOrWhiteSpace(comment.Body)) {
+                continue;
+            }
+            if (comment.Body.Contains(ReviewFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase) ||
+                comment.Body.Contains(CleanupFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            filtered.Add(comment);
+        }
+        if (filtered.Count == 0) {
+            return string.Empty;
+        }
+        var recent = TakeLast(filtered, settings.MaxComments);
+        var sb = new StringBuilder();
+        sb.AppendLine();
+        sb.AppendLine("Issue comments (most recent first):");
+        for (var i = recent.Count - 1; i >= 0; i--) {
+            var comment = recent[i];
+            var author = string.IsNullOrWhiteSpace(comment.Author) ? "unknown" : comment.Author;
+            var body = TrimComment(comment.Body, settings.MaxCommentChars);
+            sb.AppendLine($"- {author}: {body}");
+        }
+        sb.AppendLine();
+        return sb.ToString();
+    }
+
+    private static string BuildReviewCommentsSection(IReadOnlyList<PullRequestReviewComment> comments, ReviewSettings settings) {
+        if (comments.Count == 0) {
+            return string.Empty;
+        }
+        var recent = TakeLast(comments, settings.MaxComments);
+        var sb = new StringBuilder();
+        sb.AppendLine();
+        sb.AppendLine("Review comments (most recent first):");
+        for (var i = recent.Count - 1; i >= 0; i--) {
+            var comment = recent[i];
+            var author = string.IsNullOrWhiteSpace(comment.Author) ? "unknown" : comment.Author;
+            var body = TrimComment(comment.Body, settings.MaxCommentChars);
+            var location = string.IsNullOrWhiteSpace(comment.Path)
+                ? string.Empty
+                : comment.Line.HasValue
+                    ? $" ({comment.Path}:{comment.Line.Value})"
+                    : $" ({comment.Path})";
+            sb.AppendLine($"- {author}{location}: {body}");
+        }
+        sb.AppendLine();
+        return sb.ToString();
+    }
+
+    private static string BuildRelatedPrsSection(PullRequestContext context, IReadOnlyList<RelatedPullRequest> related) {
+        if (related.Count == 0) {
+            return string.Empty;
+        }
+        var lines = new List<string>();
+        foreach (var pr in related) {
+            if (pr.RepoFullName.Equals(context.RepoFullName, StringComparison.OrdinalIgnoreCase) &&
+                pr.Number == context.Number) {
+                continue;
+            }
+            lines.Add($"- {pr.RepoFullName}#{pr.Number}: {pr.Title} ({pr.Url})");
+        }
+        if (lines.Count == 0) {
+            return string.Empty;
+        }
+        var sb = new StringBuilder();
+        sb.AppendLine();
+        sb.AppendLine("Related pull requests (search results):");
+        foreach (var line in lines) {
+            sb.AppendLine(line);
+        }
+        sb.AppendLine();
+        return sb.ToString();
+    }
+
+    private static string ResolveRelatedPrsQuery(PullRequestContext context, ReviewSettings settings) {
+        if (string.IsNullOrWhiteSpace(settings.RelatedPrsQuery)) {
+            return string.Empty;
+        }
+        return settings.RelatedPrsQuery!
+            .Replace("{repo}", context.RepoFullName, StringComparison.OrdinalIgnoreCase)
+            .Replace("{owner}", context.Owner, StringComparison.OrdinalIgnoreCase)
+            .Replace("{name}", context.Repo, StringComparison.OrdinalIgnoreCase)
+            .Replace("{number}", context.Number.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static List<T> TakeLast<T>(IReadOnlyList<T> items, int maxItems) {
+        if (maxItems <= 0 || items.Count <= maxItems) {
+            return new List<T>(items);
+        }
+        var start = Math.Max(0, items.Count - maxItems);
+        var list = new List<T>(maxItems);
+        for (var i = start; i < items.Count; i++) {
+            list.Add(items[i]);
+        }
+        return list;
+    }
+
+    private static string TrimComment(string value, int maxChars) {
+        var text = value.Replace("\r", "").Trim();
+        if (string.IsNullOrWhiteSpace(text)) {
+            return "<empty>";
+        }
+        if (text.Length <= maxChars) {
+            return text;
+        }
+        return text.Substring(0, maxChars) + "...";
     }
 
     private static async Task<IssueComment?> FindExistingSummaryAsync(GitHubClient github, PullRequestContext context,
