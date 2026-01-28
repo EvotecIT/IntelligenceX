@@ -238,12 +238,12 @@ public static class ReviewerApp {
         ReviewSettings settings, CancellationToken cancellationToken) {
         var extras = new ReviewContextExtras();
         if (settings.IncludeIssueComments) {
-            var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, cancellationToken)
+            var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, settings.MaxComments, cancellationToken)
                 .ConfigureAwait(false);
             extras.IssueCommentsSection = BuildIssueCommentsSection(comments, settings);
         }
         if (settings.IncludeReviewComments) {
-            var comments = await github.ListPullRequestReviewCommentsAsync(context.Owner, context.Repo, context.Number, cancellationToken)
+            var comments = await github.ListPullRequestReviewCommentsAsync(context.Owner, context.Repo, context.Number, settings.MaxComments, cancellationToken)
                 .ConfigureAwait(false);
             extras.ReviewCommentsSection = BuildReviewCommentsSection(comments, settings);
         }
@@ -276,12 +276,10 @@ public static class ReviewerApp {
         if (filtered.Count == 0) {
             return string.Empty;
         }
-        var recent = TakeLast(filtered, settings.MaxComments);
         var sb = new StringBuilder();
         sb.AppendLine();
         sb.AppendLine("Issue comments (most recent first):");
-        for (var i = recent.Count - 1; i >= 0; i--) {
-            var comment = recent[i];
+        foreach (var comment in filtered) {
             var author = string.IsNullOrWhiteSpace(comment.Author) ? "unknown" : comment.Author;
             var body = TrimComment(comment.Body, settings.MaxCommentChars);
             sb.AppendLine($"- {author}: {body}");
@@ -307,12 +305,10 @@ public static class ReviewerApp {
         if (filtered.Count == 0) {
             return string.Empty;
         }
-        var recent = TakeLast(filtered, settings.MaxComments);
         var sb = new StringBuilder();
         sb.AppendLine();
         sb.AppendLine("Review comments (most recent first):");
-        for (var i = recent.Count - 1; i >= 0; i--) {
-            var comment = recent[i];
+        foreach (var comment in filtered) {
             var author = string.IsNullOrWhiteSpace(comment.Author) ? "unknown" : comment.Author;
             var body = TrimComment(comment.Body, settings.MaxCommentChars);
             var location = string.IsNullOrWhiteSpace(comment.Path)
@@ -360,18 +356,6 @@ public static class ReviewerApp {
             .Replace("{owner}", context.Owner, StringComparison.OrdinalIgnoreCase)
             .Replace("{name}", context.Repo, StringComparison.OrdinalIgnoreCase)
             .Replace("{number}", context.Number.ToString(), StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static List<T> TakeLast<T>(IReadOnlyList<T> items, int maxItems) {
-        if (maxItems <= 0 || items.Count <= maxItems) {
-            return new List<T>(items);
-        }
-        var start = Math.Max(0, items.Count - maxItems);
-        var list = new List<T>(maxItems);
-        for (var i = start; i < items.Count; i++) {
-            list.Add(items[i]);
-        }
-        return list;
     }
 
     private static string TrimComment(string value, int maxChars) {

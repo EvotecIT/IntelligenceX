@@ -84,11 +84,11 @@ internal sealed class GitHubClient : IDisposable {
     }
 
     public async Task<IReadOnlyList<IssueComment>> ListIssueCommentsAsync(string owner, string repo, int number,
-        CancellationToken cancellationToken) {
+        int maxResults, CancellationToken cancellationToken) {
         var comments = new List<IssueComment>();
         var page = 1;
         while (true) {
-            var url = $"/repos/{owner}/{repo}/issues/{number}/comments?per_page=100&page={page}";
+            var url = $"/repos/{owner}/{repo}/issues/{number}/comments?per_page=100&page={page}&sort=created&direction=desc";
             var json = await GetJsonAsync(url, cancellationToken).ConfigureAwait(false);
             var array = json.AsArray();
             if (array is null || array.Count == 0) {
@@ -103,8 +103,11 @@ internal sealed class GitHubClient : IDisposable {
                 var body = obj.GetString("body") ?? string.Empty;
                 var author = obj.GetObject("user")?.GetString("login");
                 comments.Add(new IssueComment(id, body, author));
+                if (maxResults > 0 && comments.Count >= maxResults) {
+                    break;
+                }
             }
-            if (array.Count < 100) {
+            if (array.Count < 100 || (maxResults > 0 && comments.Count >= maxResults)) {
                 break;
             }
             page++;
@@ -113,11 +116,11 @@ internal sealed class GitHubClient : IDisposable {
     }
 
     public async Task<IReadOnlyList<PullRequestReviewComment>> ListPullRequestReviewCommentsAsync(string owner, string repo, int number,
-        CancellationToken cancellationToken) {
+        int maxResults, CancellationToken cancellationToken) {
         var comments = new List<PullRequestReviewComment>();
         var page = 1;
         while (true) {
-            var url = $"/repos/{owner}/{repo}/pulls/{number}/comments?per_page=100&page={page}";
+            var url = $"/repos/{owner}/{repo}/pulls/{number}/comments?per_page=100&page={page}&sort=created&direction=desc";
             var json = await GetJsonAsync(url, cancellationToken).ConfigureAwait(false);
             var array = json.AsArray();
             if (array is null || array.Count == 0) {
@@ -133,8 +136,11 @@ internal sealed class GitHubClient : IDisposable {
                 var path = obj.GetString("path");
                 var line = obj.GetInt64("line");
                 comments.Add(new PullRequestReviewComment(body, author, path, line.HasValue ? (int?)line.Value : null));
+                if (maxResults > 0 && comments.Count >= maxResults) {
+                    break;
+                }
             }
-            if (array.Count < 100) {
+            if (array.Count < 100 || (maxResults > 0 && comments.Count >= maxResults)) {
                 break;
             }
             page++;

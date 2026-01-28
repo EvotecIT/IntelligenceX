@@ -50,9 +50,18 @@ internal sealed class CleanupResult {
             }
             trimmed = trimmed.Trim();
         }
-        if (!trimmed.StartsWith("{", StringComparison.Ordinal) || !trimmed.EndsWith("}", StringComparison.Ordinal)) {
+        if (trimmed.StartsWith("{", StringComparison.Ordinal) && trimmed.EndsWith("}", StringComparison.Ordinal)) {
+            return trimmed;
+        }
+        var start = trimmed.IndexOf('{');
+        var end = trimmed.LastIndexOf('}');
+        if (start < 0 || end <= start) {
             return null;
         }
-        return trimmed;
+        var prefix = trimmed.Substring(0, start);
+        if (prefix.Length > 40 || prefix.Contains('\n') || prefix.Contains('\r')) {
+            return null;
+        }
+        return trimmed.Substring(start, end - start + 1);
     }
 }

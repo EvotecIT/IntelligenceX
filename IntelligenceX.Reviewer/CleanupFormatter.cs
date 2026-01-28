@@ -16,7 +16,7 @@ internal static class CleanupFormatter {
         if (!string.IsNullOrWhiteSpace(result.Title)) {
             builder.AppendLine("**Proposed title**");
             builder.AppendLine();
-            builder.AppendLine($"`{result.Title.Trim()}`");
+            builder.AppendLine(result.Title.Trim());
             builder.AppendLine();
         }
         if (!string.IsNullOrWhiteSpace(result.Body)) {
