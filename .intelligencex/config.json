@@ -1,0 +1,13 @@
+{
+  "review": {
+    "provider": "openai",
+    "openaiTransport": "native",
+    "openaiModel": "gpt-5.2-codex",
+    "profile": "balanced",
+    "mode": "hybrid",
+    "commentMode": "sticky",
+    "includeIssueComments": true,
+    "includeReviewComments": true,
+    "includeRelatedPullRequests": true
+  }
+}
