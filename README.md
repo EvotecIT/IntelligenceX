@@ -19,7 +19,7 @@ Status: Active development | APIs in flux | Actions in beta
 [![Threads](https://img.shields.io/badge/Threads-@PrzemyslawKlys-000000.svg?logo=Threads&logoColor=White)](https://www.threads.net/@przemyslaw.klys)
 [![Discord](https://img.shields.io/discord/508328927853281280?style=flat-square&label=discord%20chat)](https://evo.yt/discord)
 
-- No external NuGet dependencies
+- Core library has no external NuGet dependencies (CLI uses Sodium.Core for GitHub secrets)
 - Cross-platform (.NET 8/.NET 10) + Windows (.NET Framework 4.7.2)
 - PowerShell module included (binary cmdlets, net472/net8)
 
@@ -180,6 +180,31 @@ Example `.intelligencex/reviewer.json`:
   }
 }
 ```
+
+## CLI setup (GitHub Actions)
+
+Use the CLI to add or update the review workflow and secrets.
+
+```powershell
+# Interactive setup (uses GitHub device flow)
+intelligencex setup --repo EvotecIT/IntelligenceX
+
+# Skip secret creation (manual secret paste)
+intelligencex setup --repo EvotecIT/IntelligenceX --skip-secret
+
+# Update only the OpenAI auth secret
+intelligencex setup --repo EvotecIT/IntelligenceX --update-secret
+
+# Remove workflow/config (optional: keep secret)
+intelligencex setup --repo EvotecIT/IntelligenceX --cleanup --keep-secret
+```
+
+Common options:
+- `--actions-repo` / `--actions-ref` to point at the reusable workflow
+- `--reviewer-source` (`release|source`) + `--reviewer-release-*`
+- `--progress-updates <true|false>` to toggle progress comment updates
+
+The CLI uses the GitHub secrets API to store `INTELLIGENCEX_AUTH_B64` (requires Sodium.Core).
 
 ## Diagnostics and health (PowerShell)
 

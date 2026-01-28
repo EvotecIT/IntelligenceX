@@ -22,6 +22,7 @@ internal static class Program {
         return command switch {
             "auth" => await RunAuthAsync(rest).ConfigureAwait(false),
             "reviewer" => await RunReviewerAsync(rest).ConfigureAwait(false),
+            "setup" => await RunSetupAsync(rest).ConfigureAwait(false),
             "help" or "-h" or "--help" => PrintHelpReturn(),
             _ => PrintHelpReturn()
         };
@@ -38,6 +39,7 @@ internal static class Program {
         Console.WriteLine("Usage:");
         Console.WriteLine("  intelligencex auth <command>");
         Console.WriteLine("  intelligencex reviewer run");
+        Console.WriteLine("  intelligencex setup [options]");
         Console.WriteLine();
         Console.WriteLine("Auth commands:");
         Console.WriteLine("  auth login       Start OAuth login flow and store credentials");
@@ -46,6 +48,9 @@ internal static class Program {
         Console.WriteLine();
         Console.WriteLine("Reviewer commands:");
         Console.WriteLine("  reviewer run     Run reviewer using GitHub event payload or inputs");
+        Console.WriteLine();
+        Console.WriteLine("Setup:");
+        Console.WriteLine("  setup            Configure GitHub Actions workflow and secrets");
         Console.WriteLine();
         Console.WriteLine("Environment variables (optional overrides):");
         Console.WriteLine("  OPENAI_AUTH_AUTHORIZE_URL, OPENAI_AUTH_TOKEN_URL, OPENAI_AUTH_CLIENT_ID");
@@ -102,6 +107,10 @@ internal static class Program {
     private static void PrintReviewerHelp() {
         Console.WriteLine("Reviewer commands:");
         Console.WriteLine("  intelligencex reviewer run");
+    }
+
+    private static async Task<int> RunSetupAsync(string[] args) {
+        return await Setup.SetupRunner.RunAsync(args).ConfigureAwait(false);
     }
 
     private static bool IsLegacyAuthCommand(string command) {

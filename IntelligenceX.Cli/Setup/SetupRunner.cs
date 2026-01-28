@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Globalization;
 using System.Net.Http.Headers;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -12,12 +15,12 @@ using System.Threading.Tasks;
 using IntelligenceX.OpenAI.Auth;
 using Sodium;
 
-namespace IntelligenceX.Setup;
+namespace IntelligenceX.Cli.Setup;
 
-internal static class Program {
+internal static class SetupRunner {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public static async Task<int> Main(string[] args) {
+    public static async Task<int> RunAsync(string[] args) {
         try {
             var options = SetupOptions.Parse(args);
             if (options.ShowHelp) {
@@ -422,6 +425,21 @@ internal static class Program {
             if (!options.RunsOnSet && !string.IsNullOrWhiteSpace(snapshot.RunsOn)) {
                 settings.RunsOn = snapshot.RunsOn!;
             }
+            if (!options.ReviewerSourceSet && !string.IsNullOrWhiteSpace(snapshot.ReviewerSource)) {
+                settings.ReviewerSource = snapshot.ReviewerSource!;
+            }
+            if (!options.ReviewerReleaseRepoSet && !string.IsNullOrWhiteSpace(snapshot.ReviewerReleaseRepo)) {
+                settings.ReviewerReleaseRepo = snapshot.ReviewerReleaseRepo!;
+            }
+            if (!options.ReviewerReleaseTagSet && !string.IsNullOrWhiteSpace(snapshot.ReviewerReleaseTag)) {
+                settings.ReviewerReleaseTag = snapshot.ReviewerReleaseTag!;
+            }
+            if (!options.ReviewerReleaseAssetSet && snapshot.ReviewerReleaseAsset is not null) {
+                settings.ReviewerReleaseAsset = snapshot.ReviewerReleaseAsset;
+            }
+            if (!options.ReviewerReleaseUrlSet && snapshot.ReviewerReleaseUrl is not null) {
+                settings.ReviewerReleaseUrl = snapshot.ReviewerReleaseUrl;
+            }
             if (!options.ProviderSet && !string.IsNullOrWhiteSpace(snapshot.Provider)) {
                 settings.Provider = snapshot.Provider!;
             }
@@ -439,6 +457,30 @@ internal static class Program {
             }
             if (!options.IncludeRelatedPullRequestsSet && snapshot.IncludeRelatedPullRequests.HasValue) {
                 settings.IncludeRelatedPullRequests = snapshot.IncludeRelatedPullRequests.Value;
+            }
+            if (!options.ProgressUpdatesSet && snapshot.ProgressUpdates.HasValue) {
+                settings.ProgressUpdates = snapshot.ProgressUpdates.Value;
+            }
+            if (!options.CleanupEnabledSet && snapshot.CleanupEnabled.HasValue) {
+                settings.CleanupEnabled = snapshot.CleanupEnabled.Value;
+            }
+            if (!options.CleanupModeSet && !string.IsNullOrWhiteSpace(snapshot.CleanupMode)) {
+                settings.CleanupMode = snapshot.CleanupMode!;
+            }
+            if (!options.CleanupScopeSet && !string.IsNullOrWhiteSpace(snapshot.CleanupScope)) {
+                settings.CleanupScope = snapshot.CleanupScope!;
+            }
+            if (!options.CleanupRequireLabelSet && snapshot.CleanupRequireLabel is not null) {
+                settings.CleanupRequireLabel = snapshot.CleanupRequireLabel;
+            }
+            if (!options.CleanupMinConfidenceSet && snapshot.CleanupMinConfidence.HasValue) {
+                settings.CleanupMinConfidence = snapshot.CleanupMinConfidence.Value;
+            }
+            if (!options.CleanupAllowedEditsSet && snapshot.CleanupAllowedEdits is not null) {
+                settings.CleanupAllowedEdits = snapshot.CleanupAllowedEdits;
+            }
+            if (!options.CleanupPostEditCommentSet && snapshot.CleanupPostEditComment.HasValue) {
+                settings.CleanupPostEditComment = snapshot.CleanupPostEditComment.Value;
             }
         }
 
@@ -484,6 +526,9 @@ internal static class Program {
         if (!options.IncludeRelatedPullRequestsSet && snapshot.IncludeRelatedPullRequests.HasValue) {
             settings.IncludeRelatedPullRequests = snapshot.IncludeRelatedPullRequests.Value;
         }
+        if (!options.ProgressUpdatesSet && snapshot.ProgressUpdates.HasValue) {
+            settings.ProgressUpdates = snapshot.ProgressUpdates.Value;
+        }
 
         return settings;
     }
@@ -499,7 +544,8 @@ internal static class Program {
                 ["commentMode"] = settings.CommentMode,
                 ["includeIssueComments"] = settings.IncludeIssueComments,
                 ["includeReviewComments"] = settings.IncludeReviewComments,
-                ["includeRelatedPullRequests"] = settings.IncludeRelatedPullRequests
+                ["includeRelatedPullRequests"] = settings.IncludeRelatedPullRequests,
+                ["progressUpdates"] = settings.ProgressUpdates
             }
         };
 
@@ -518,57 +564,87 @@ internal static class Program {
         review["includeIssueComments"] = settings.IncludeIssueComments;
         review["includeReviewComments"] = settings.IncludeReviewComments;
         review["includeRelatedPullRequests"] = settings.IncludeRelatedPullRequests;
+        review["progressUpdates"] = settings.ProgressUpdates;
         node["review"] = review;
         return node.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
 
     private static string BuildWorkflowYaml(WorkflowSettings settings) {
-        var sb = new StringBuilder();
-        sb.AppendLine("name: IntelligenceX Review");
-        sb.AppendLine();
-        sb.AppendLine("on:");
-        sb.AppendLine("  pull_request:");
-        sb.AppendLine("    types: [opened, synchronize, reopened, ready_for_review]");
-        sb.AppendLine("  workflow_dispatch:");
-        sb.AppendLine("    inputs:");
-        sb.AppendLine("      repo:");
-        sb.AppendLine("        description: 'Repository (owner/name) for manual runs'");
-        sb.AppendLine("        required: false");
-        sb.AppendLine("        default: ''");
-        sb.AppendLine("      pr_number:");
-        sb.AppendLine("        description: 'Pull request number for manual runs'");
-        sb.AppendLine("        required: false");
-        sb.AppendLine("        default: ''");
-        sb.AppendLine();
-        sb.AppendLine("jobs:");
-        sb.Append(BuildManagedWorkflowBlock(settings, indent: 2));
-        return sb.ToString();
+        var template = ReadEmbeddedResource("review-intelligencex.yml");
+        var managed = BuildManagedWorkflowBlock(settings, indent: 2).TrimEnd();
+        return template.Replace("{{ManagedBlock}}", managed, StringComparison.Ordinal);
     }
 
     private static string BuildManagedWorkflowBlock(WorkflowSettings settings, int indent) {
+        var template = ReadEmbeddedResource("review-intelligencex.managed.yml");
+        var tokens = new Dictionary<string, string> {
+            ["ActionsRepo"] = settings.ActionsRepo,
+            ["ActionsRef"] = settings.ActionsRef,
+            ["RunsOn"] = NormalizeRunsOn(settings.RunsOn),
+            ["ReviewerSource"] = settings.ReviewerSource,
+            ["ReviewerReleaseRepo"] = settings.ReviewerReleaseRepo,
+            ["ReviewerReleaseTag"] = settings.ReviewerReleaseTag,
+            ["ReviewerReleaseAsset"] = YamlQuote(settings.ReviewerReleaseAsset),
+            ["ReviewerReleaseUrl"] = YamlQuote(settings.ReviewerReleaseUrl),
+            ["Provider"] = settings.Provider,
+            ["Model"] = settings.Model,
+            ["OpenAITransport"] = settings.OpenAITransport,
+            ["IncludeIssueComments"] = ToYamlBool(settings.IncludeIssueComments),
+            ["IncludeReviewComments"] = ToYamlBool(settings.IncludeReviewComments),
+            ["IncludeRelatedPullRequests"] = ToYamlBool(settings.IncludeRelatedPullRequests),
+            ["ProgressUpdates"] = ToYamlBool(settings.ProgressUpdates),
+            ["CleanupEnabled"] = ToYamlBool(settings.CleanupEnabled),
+            ["CleanupMode"] = settings.CleanupMode,
+            ["CleanupScope"] = settings.CleanupScope,
+            ["CleanupRequireLabel"] = YamlQuote(settings.CleanupRequireLabel),
+            ["CleanupMinConfidence"] = settings.CleanupMinConfidence.ToString(CultureInfo.InvariantCulture),
+            ["CleanupAllowedEdits"] = YamlQuote(settings.CleanupAllowedEdits),
+            ["CleanupPostEditComment"] = ToYamlBool(settings.CleanupPostEditComment)
+        };
+
+        var block = ReplaceTokens(template, tokens);
+        return IndentBlock(block, indent);
+    }
+
+    private static string ReplaceTokens(string template, IReadOnlyDictionary<string, string> tokens) {
+        var result = template;
+        foreach (var pair in tokens) {
+            result = result.Replace("{{" + pair.Key + "}}", pair.Value ?? string.Empty, StringComparison.Ordinal);
+        }
+        return result;
+    }
+
+    private static string IndentBlock(string content, int indent) {
+        if (indent <= 0) {
+            return content;
+        }
+        var normalized = NormalizeLineEndings(content);
+        var lines = normalized.Split('\n');
         var pad = new string(' ', indent);
-        var sb = new StringBuilder();
-        sb.AppendLine($"{pad}# INTELLIGENCEX:BEGIN");
-        sb.AppendLine($"{pad}review:");
-        sb.AppendLine($"{pad}  permissions:");
-        sb.AppendLine($"{pad}    contents: read");
-        sb.AppendLine($"{pad}    pull-requests: write");
-        sb.AppendLine($"{pad}    issues: write");
-        sb.AppendLine($"{pad}    id-token: write");
-        sb.AppendLine($"{pad}  uses: {settings.ActionsRepo}/.github/workflows/review-intelligencex.yml@{settings.ActionsRef}");
-        sb.AppendLine($"{pad}  with:");
-        sb.AppendLine($"{pad}    runs_on: {NormalizeRunsOn(settings.RunsOn)}");
-        sb.AppendLine($"{pad}    repo: ${{{{ github.event.pull_request.number && github.repository || inputs.repo }}}}");
-        sb.AppendLine($"{pad}    pr_number: ${{{{ github.event.pull_request.number || inputs.pr_number }}}}");
-        sb.AppendLine($"{pad}    provider: {settings.Provider}");
-        sb.AppendLine($"{pad}    model: {settings.Model}");
-        sb.AppendLine($"{pad}    openai_transport: {settings.OpenAITransport}");
-        sb.AppendLine($"{pad}    include_issue_comments: {settings.IncludeIssueComments.ToString().ToLowerInvariant()}");
-        sb.AppendLine($"{pad}    include_review_comments: {settings.IncludeReviewComments.ToString().ToLowerInvariant()}");
-        sb.AppendLine($"{pad}    include_related_prs: {settings.IncludeRelatedPullRequests.ToString().ToLowerInvariant()}");
-        sb.AppendLine($"{pad}  secrets: inherit");
-        sb.AppendLine($"{pad}# INTELLIGENCEX:END");
-        return sb.ToString();
+        for (var i = 0; i < lines.Length; i++) {
+            if (lines[i].Length > 0) {
+                lines[i] = pad + lines[i];
+            }
+        }
+        return string.Join("\n", lines);
+    }
+
+    private static string ToYamlBool(bool value) => value ? "true" : "false";
+
+    private static string YamlQuote(string? value) {
+        var raw = value ?? string.Empty;
+        var escaped = raw.Replace("'", "''", StringComparison.Ordinal);
+        return $"'{escaped}'";
+    }
+
+    private static string ReadEmbeddedResource(string name) {
+        var assembly = Assembly.GetExecutingAssembly();
+        using var stream = assembly.GetManifestResourceStream(name);
+        if (stream is null) {
+            throw new InvalidOperationException($"Embedded template not found: {name}");
+        }
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        return reader.ReadToEnd();
     }
 
     private static string NormalizeRunsOn(string? value) {
@@ -615,12 +691,25 @@ internal static class Program {
         }
 
         snapshot.RunsOn = ReadYamlScalar(content, "runs_on");
+        snapshot.ReviewerSource = ReadYamlScalar(content, "reviewer_source");
+        snapshot.ReviewerReleaseRepo = ReadYamlScalar(content, "reviewer_release_repo");
+        snapshot.ReviewerReleaseTag = ReadYamlScalar(content, "reviewer_release_tag");
+        snapshot.ReviewerReleaseAsset = ReadYamlScalar(content, "reviewer_release_asset");
+        snapshot.ReviewerReleaseUrl = ReadYamlScalar(content, "reviewer_release_url");
         snapshot.Provider = ReadYamlScalar(content, "provider");
         snapshot.Model = ReadYamlScalar(content, "model");
         snapshot.OpenAITransport = ReadYamlScalar(content, "openai_transport");
         snapshot.IncludeIssueComments = ReadYamlBool(content, "include_issue_comments");
         snapshot.IncludeReviewComments = ReadYamlBool(content, "include_review_comments");
         snapshot.IncludeRelatedPullRequests = ReadYamlBool(content, "include_related_prs");
+        snapshot.ProgressUpdates = ReadYamlBool(content, "progress_updates");
+        snapshot.CleanupEnabled = ReadYamlBool(content, "cleanup_enabled");
+        snapshot.CleanupMode = ReadYamlScalar(content, "cleanup_mode");
+        snapshot.CleanupScope = ReadYamlScalar(content, "cleanup_scope");
+        snapshot.CleanupRequireLabel = ReadYamlScalar(content, "cleanup_require_label");
+        snapshot.CleanupMinConfidence = ReadYamlDouble(content, "cleanup_min_confidence");
+        snapshot.CleanupAllowedEdits = ReadYamlScalar(content, "cleanup_allowed_edits");
+        snapshot.CleanupPostEditComment = ReadYamlBool(content, "cleanup_post_edit_comment");
 
         return snapshot.HasAny;
     }
@@ -633,7 +722,13 @@ internal static class Program {
         }
         var value = match.Groups[1].Value.Trim();
         var commentIndex = value.IndexOf(" #", StringComparison.Ordinal);
-        return commentIndex >= 0 ? value.Substring(0, commentIndex).Trim() : value;
+        value = commentIndex >= 0 ? value.Substring(0, commentIndex).Trim() : value;
+        if (value.Length >= 2 &&
+            ((value.StartsWith('\'') && value.EndsWith('\'')) || (value.StartsWith('"') && value.EndsWith('"')))) {
+            value = value.Substring(1, value.Length - 2);
+            value = value.Replace("''", "'", StringComparison.Ordinal);
+        }
+        return value;
     }
 
     private static bool? ReadYamlBool(string content, string key) {
@@ -648,6 +743,17 @@ internal static class Program {
         };
     }
 
+    private static double? ReadYamlDouble(string content, string key) {
+        var value = ReadYamlScalar(content, key);
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+        if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var result)) {
+            return result;
+        }
+        return null;
+    }
+
     private static bool TryReadConfigSnapshot(string content, out ConfigSnapshot snapshot) {
         snapshot = new ConfigSnapshot();
         try {
@@ -656,17 +762,18 @@ internal static class Program {
                 return false;
             }
             var review = root["review"] as JsonObject;
-            if (review is not null) {
-                snapshot.Provider = ReadJsonString(review, "provider");
-                snapshot.OpenAITransport = ReadJsonString(review, "openaiTransport");
-                snapshot.OpenAIModel = ReadJsonString(review, "openaiModel");
-                snapshot.Profile = ReadJsonString(review, "profile");
-                snapshot.Mode = ReadJsonString(review, "mode");
-                snapshot.CommentMode = ReadJsonString(review, "commentMode");
-                snapshot.IncludeIssueComments = ReadJsonBool(review, "includeIssueComments");
-                snapshot.IncludeReviewComments = ReadJsonBool(review, "includeReviewComments");
-                snapshot.IncludeRelatedPullRequests = ReadJsonBool(review, "includeRelatedPullRequests");
-            }
+                if (review is not null) {
+                    snapshot.Provider = ReadJsonString(review, "provider");
+                    snapshot.OpenAITransport = ReadJsonString(review, "openaiTransport");
+                    snapshot.OpenAIModel = ReadJsonString(review, "openaiModel");
+                    snapshot.Profile = ReadJsonString(review, "profile");
+                    snapshot.Mode = ReadJsonString(review, "mode");
+                    snapshot.CommentMode = ReadJsonString(review, "commentMode");
+                    snapshot.IncludeIssueComments = ReadJsonBool(review, "includeIssueComments");
+                    snapshot.IncludeReviewComments = ReadJsonBool(review, "includeReviewComments");
+                    snapshot.IncludeRelatedPullRequests = ReadJsonBool(review, "includeRelatedPullRequests");
+                    snapshot.ProgressUpdates = ReadJsonBool(review, "progressUpdates");
+                }
             return true;
         } catch {
             return false;
@@ -705,7 +812,7 @@ internal static class Program {
     }
 
     private static void WriteHelp() {
-        Console.WriteLine("IntelligenceX.Setup");
+        Console.WriteLine("IntelligenceX setup");
         Console.WriteLine();
         Console.WriteLine("Options:");
         Console.WriteLine("  --repo <owner/name>");
@@ -716,12 +823,25 @@ internal static class Program {
         Console.WriteLine("  --actions-repo <owner/repo> (default evotecit/github-actions)");
         Console.WriteLine("  --actions-ref <ref> (default master)");
         Console.WriteLine("  --runs-on <json-array> (default [\"self-hosted\",\"ubuntu\"])");
+        Console.WriteLine("  --reviewer-source <source|release> (default release)");
+        Console.WriteLine("  --reviewer-release-repo <owner/repo> (default EvotecIT/github-actions)");
+        Console.WriteLine("  --reviewer-release-tag <tag> (default latest)");
+        Console.WriteLine("  --reviewer-release-asset <name>");
+        Console.WriteLine("  --reviewer-release-url <url>");
         Console.WriteLine("  --provider <openai|copilot> (default openai)");
         Console.WriteLine("  --openai-model <model>");
         Console.WriteLine("  --openai-transport <native|appserver>");
         Console.WriteLine("  --include-issue-comments <true|false>");
         Console.WriteLine("  --include-review-comments <true|false>");
         Console.WriteLine("  --include-related-prs <true|false>");
+        Console.WriteLine("  --progress-updates <true|false>");
+        Console.WriteLine("  --cleanup-enabled <true|false>");
+        Console.WriteLine("  --cleanup-mode <comment|edit|hybrid>");
+        Console.WriteLine("  --cleanup-scope <pr|issue|both>");
+        Console.WriteLine("  --cleanup-require-label <label>");
+        Console.WriteLine("  --cleanup-min-confidence <0-1>");
+        Console.WriteLine("  --cleanup-allowed-edits <comma-list>");
+        Console.WriteLine("  --cleanup-post-edit-comment <true|false>");
         Console.WriteLine("  --with-config (also write .intelligencex/config.json)");
         Console.WriteLine("  --upgrade (update managed sections instead of skipping)");
         Console.WriteLine("  --update-secret (refresh INTELLIGENCEX_AUTH_B64 only)");
@@ -753,9 +873,22 @@ internal static class Program {
         public string? Provider { get; set; } = "openai";
         public string? OpenAIModel { get; set; } = "gpt-5.2-codex";
         public string? OpenAITransport { get; set; } = "native";
+        public string? ReviewerSource { get; set; } = "release";
+        public string? ReviewerReleaseRepo { get; set; } = "EvotecIT/github-actions";
+        public string? ReviewerReleaseTag { get; set; } = "latest";
+        public string? ReviewerReleaseAsset { get; set; }
+        public string? ReviewerReleaseUrl { get; set; }
         public bool IncludeIssueComments { get; set; } = true;
         public bool IncludeReviewComments { get; set; } = true;
         public bool IncludeRelatedPullRequests { get; set; } = true;
+        public bool ProgressUpdates { get; set; } = true;
+        public bool CleanupEnabled { get; set; }
+        public string? CleanupMode { get; set; } = "comment";
+        public string? CleanupScope { get; set; } = "pr";
+        public string? CleanupRequireLabel { get; set; } = string.Empty;
+        public double CleanupMinConfidence { get; set; } = 0.85;
+        public string? CleanupAllowedEdits { get; set; } = "formatting,grammar,title,sections";
+        public bool CleanupPostEditComment { get; set; } = true;
         public string? BranchName { get; set; }
         public bool WithConfig { get; set; }
         public bool Upgrade { get; set; }
@@ -772,9 +905,22 @@ internal static class Program {
         public bool ProviderSet { get; set; }
         public bool OpenAIModelSet { get; set; }
         public bool OpenAITransportSet { get; set; }
+        public bool ReviewerSourceSet { get; set; }
+        public bool ReviewerReleaseRepoSet { get; set; }
+        public bool ReviewerReleaseTagSet { get; set; }
+        public bool ReviewerReleaseAssetSet { get; set; }
+        public bool ReviewerReleaseUrlSet { get; set; }
         public bool IncludeIssueCommentsSet { get; set; }
         public bool IncludeReviewCommentsSet { get; set; }
         public bool IncludeRelatedPullRequestsSet { get; set; }
+        public bool ProgressUpdatesSet { get; set; }
+        public bool CleanupEnabledSet { get; set; }
+        public bool CleanupModeSet { get; set; }
+        public bool CleanupScopeSet { get; set; }
+        public bool CleanupRequireLabelSet { get; set; }
+        public bool CleanupMinConfidenceSet { get; set; }
+        public bool CleanupAllowedEditsSet { get; set; }
+        public bool CleanupPostEditCommentSet { get; set; }
 
         public static SetupOptions Parse(string[] args) {
             var options = new SetupOptions {
@@ -834,6 +980,26 @@ internal static class Program {
                         options.OpenAITransport = value;
                         options.OpenAITransportSet = true;
                         break;
+                    case "reviewer-source":
+                        options.ReviewerSource = value;
+                        options.ReviewerSourceSet = true;
+                        break;
+                    case "reviewer-release-repo":
+                        options.ReviewerReleaseRepo = value;
+                        options.ReviewerReleaseRepoSet = true;
+                        break;
+                    case "reviewer-release-tag":
+                        options.ReviewerReleaseTag = value;
+                        options.ReviewerReleaseTagSet = true;
+                        break;
+                    case "reviewer-release-asset":
+                        options.ReviewerReleaseAsset = value;
+                        options.ReviewerReleaseAssetSet = true;
+                        break;
+                    case "reviewer-release-url":
+                        options.ReviewerReleaseUrl = value;
+                        options.ReviewerReleaseUrlSet = true;
+                        break;
                     case "include-issue-comments":
                         options.IncludeIssueComments = ParseBool(value, options.IncludeIssueComments);
                         options.IncludeIssueCommentsSet = true;
@@ -845,6 +1011,38 @@ internal static class Program {
                     case "include-related-prs":
                         options.IncludeRelatedPullRequests = ParseBool(value, options.IncludeRelatedPullRequests);
                         options.IncludeRelatedPullRequestsSet = true;
+                        break;
+                    case "progress-updates":
+                        options.ProgressUpdates = ParseBool(value, options.ProgressUpdates);
+                        options.ProgressUpdatesSet = true;
+                        break;
+                    case "cleanup-enabled":
+                        options.CleanupEnabled = ParseBool(value, options.CleanupEnabled);
+                        options.CleanupEnabledSet = true;
+                        break;
+                    case "cleanup-mode":
+                        options.CleanupMode = value;
+                        options.CleanupModeSet = true;
+                        break;
+                    case "cleanup-scope":
+                        options.CleanupScope = value;
+                        options.CleanupScopeSet = true;
+                        break;
+                    case "cleanup-require-label":
+                        options.CleanupRequireLabel = value;
+                        options.CleanupRequireLabelSet = true;
+                        break;
+                    case "cleanup-min-confidence":
+                        options.CleanupMinConfidence = ParseDouble(value, options.CleanupMinConfidence);
+                        options.CleanupMinConfidenceSet = true;
+                        break;
+                    case "cleanup-allowed-edits":
+                        options.CleanupAllowedEdits = value;
+                        options.CleanupAllowedEditsSet = true;
+                        break;
+                    case "cleanup-post-edit-comment":
+                        options.CleanupPostEditComment = ParseBool(value, options.CleanupPostEditComment);
+                        options.CleanupPostEditCommentSet = true;
                         break;
                     case "with-config":
                         options.WithConfig = ParseBool(value, true);
@@ -914,24 +1112,50 @@ internal static class Program {
         public string ActionsRepo { get; set; } = "evotecit/github-actions";
         public string ActionsRef { get; set; } = "master";
         public string RunsOn { get; set; } = "[\"self-hosted\",\"ubuntu\"]";
+        public string ReviewerSource { get; set; } = "release";
+        public string ReviewerReleaseRepo { get; set; } = "EvotecIT/github-actions";
+        public string ReviewerReleaseTag { get; set; } = "latest";
+        public string? ReviewerReleaseAsset { get; set; }
+        public string? ReviewerReleaseUrl { get; set; }
         public string Provider { get; set; } = "openai";
         public string Model { get; set; } = "gpt-5.2-codex";
         public string OpenAITransport { get; set; } = "native";
         public bool IncludeIssueComments { get; set; } = true;
         public bool IncludeReviewComments { get; set; } = true;
         public bool IncludeRelatedPullRequests { get; set; } = true;
+        public bool ProgressUpdates { get; set; } = true;
+        public bool CleanupEnabled { get; set; }
+        public string CleanupMode { get; set; } = "comment";
+        public string CleanupScope { get; set; } = "pr";
+        public string? CleanupRequireLabel { get; set; } = string.Empty;
+        public double CleanupMinConfidence { get; set; } = 0.85;
+        public string CleanupAllowedEdits { get; set; } = "formatting,grammar,title,sections";
+        public bool CleanupPostEditComment { get; set; } = true;
 
         public static WorkflowSettings FromOptions(SetupOptions options) {
             return new WorkflowSettings {
                 ActionsRepo = NormalizeActionsRepo(options.ActionsRepo ?? "evotecit/github-actions"),
                 ActionsRef = options.ActionsRef ?? "master",
                 RunsOn = options.RunsOn ?? "[\"self-hosted\",\"ubuntu\"]",
+                ReviewerSource = options.ReviewerSource ?? "release",
+                ReviewerReleaseRepo = options.ReviewerReleaseRepo ?? "EvotecIT/github-actions",
+                ReviewerReleaseTag = options.ReviewerReleaseTag ?? "latest",
+                ReviewerReleaseAsset = options.ReviewerReleaseAsset,
+                ReviewerReleaseUrl = options.ReviewerReleaseUrl,
                 Provider = options.Provider ?? "openai",
                 Model = options.OpenAIModel ?? "gpt-5.2-codex",
                 OpenAITransport = options.OpenAITransport ?? "native",
                 IncludeIssueComments = options.IncludeIssueComments,
                 IncludeReviewComments = options.IncludeReviewComments,
-                IncludeRelatedPullRequests = options.IncludeRelatedPullRequests
+                IncludeRelatedPullRequests = options.IncludeRelatedPullRequests,
+                ProgressUpdates = options.ProgressUpdates,
+                CleanupEnabled = options.CleanupEnabled,
+                CleanupMode = options.CleanupMode ?? "comment",
+                CleanupScope = options.CleanupScope ?? "pr",
+                CleanupRequireLabel = options.CleanupRequireLabel ?? string.Empty,
+                CleanupMinConfidence = options.CleanupMinConfidence,
+                CleanupAllowedEdits = options.CleanupAllowedEdits ?? "formatting,grammar,title,sections",
+                CleanupPostEditComment = options.CleanupPostEditComment
             };
         }
     }
@@ -946,6 +1170,7 @@ internal static class Program {
         public bool IncludeIssueComments { get; set; } = true;
         public bool IncludeReviewComments { get; set; } = true;
         public bool IncludeRelatedPullRequests { get; set; } = true;
+        public bool ProgressUpdates { get; set; } = true;
 
         public static ConfigSettings FromOptions(SetupOptions options) {
             return new ConfigSettings {
@@ -954,7 +1179,8 @@ internal static class Program {
                 OpenAIModel = options.OpenAIModel ?? "gpt-5.2-codex",
                 IncludeIssueComments = options.IncludeIssueComments,
                 IncludeReviewComments = options.IncludeReviewComments,
-                IncludeRelatedPullRequests = options.IncludeRelatedPullRequests
+                IncludeRelatedPullRequests = options.IncludeRelatedPullRequests,
+                ProgressUpdates = options.ProgressUpdates
             };
         }
     }
@@ -963,23 +1189,49 @@ internal static class Program {
         public string? ActionsRepo { get; set; }
         public string? ActionsRef { get; set; }
         public string? RunsOn { get; set; }
+        public string? ReviewerSource { get; set; }
+        public string? ReviewerReleaseRepo { get; set; }
+        public string? ReviewerReleaseTag { get; set; }
+        public string? ReviewerReleaseAsset { get; set; }
+        public string? ReviewerReleaseUrl { get; set; }
         public string? Provider { get; set; }
         public string? Model { get; set; }
         public string? OpenAITransport { get; set; }
         public bool? IncludeIssueComments { get; set; }
         public bool? IncludeReviewComments { get; set; }
         public bool? IncludeRelatedPullRequests { get; set; }
+        public bool? ProgressUpdates { get; set; }
+        public bool? CleanupEnabled { get; set; }
+        public string? CleanupMode { get; set; }
+        public string? CleanupScope { get; set; }
+        public string? CleanupRequireLabel { get; set; }
+        public double? CleanupMinConfidence { get; set; }
+        public string? CleanupAllowedEdits { get; set; }
+        public bool? CleanupPostEditComment { get; set; }
 
         public bool HasAny =>
             ActionsRepo is not null ||
             ActionsRef is not null ||
             RunsOn is not null ||
+            ReviewerSource is not null ||
+            ReviewerReleaseRepo is not null ||
+            ReviewerReleaseTag is not null ||
+            ReviewerReleaseAsset is not null ||
+            ReviewerReleaseUrl is not null ||
             Provider is not null ||
             Model is not null ||
             OpenAITransport is not null ||
             IncludeIssueComments.HasValue ||
             IncludeReviewComments.HasValue ||
-            IncludeRelatedPullRequests.HasValue;
+            IncludeRelatedPullRequests.HasValue ||
+            ProgressUpdates.HasValue ||
+            CleanupEnabled.HasValue ||
+            CleanupMode is not null ||
+            CleanupScope is not null ||
+            CleanupRequireLabel is not null ||
+            CleanupMinConfidence.HasValue ||
+            CleanupAllowedEdits is not null ||
+            CleanupPostEditComment.HasValue;
     }
 
     private sealed class ConfigSnapshot {
@@ -992,6 +1244,7 @@ internal static class Program {
         public bool? IncludeIssueComments { get; set; }
         public bool? IncludeReviewComments { get; set; }
         public bool? IncludeRelatedPullRequests { get; set; }
+        public bool? ProgressUpdates { get; set; }
 
         public bool HasAny =>
             Provider is not null ||
@@ -1002,7 +1255,8 @@ internal static class Program {
             CommentMode is not null ||
             IncludeIssueComments.HasValue ||
             IncludeReviewComments.HasValue ||
-            IncludeRelatedPullRequests.HasValue;
+            IncludeRelatedPullRequests.HasValue ||
+            ProgressUpdates.HasValue;
     }
 
     private sealed class SetupState {
@@ -1123,7 +1377,7 @@ internal static class Program {
             _http = new HttpClient {
                 BaseAddress = new Uri(apiBaseUrl)
             };
-            _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("IntelligenceX.Setup", "1.0"));
+            _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("IntelligenceX.Cli", "1.0"));
             _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
             _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
             _http.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
@@ -1351,5 +1605,15 @@ internal static class Program {
             "false" or "0" or "no" or "n" or "off" => false,
             _ => fallback
         };
+    }
+
+    private static double ParseDouble(string value, double fallback) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return fallback;
+        }
+        if (double.TryParse(value.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)) {
+            return parsed;
+        }
+        return fallback;
     }
 }

@@ -28,6 +28,8 @@ jobs:
       reviewer_source: release
       reviewer_release_repo: EvotecIT/github-actions
       reviewer_release_tag: latest
+      reviewer_release_asset: ''
+      reviewer_release_url: ''
       repo: ${{ github.event.pull_request.number && github.repository || inputs.repo }}
       pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
       provider: openai
@@ -36,6 +38,7 @@ jobs:
       include_issue_comments: true
       include_review_comments: true
       include_related_prs: true
+      progress_updates: true
       cleanup_enabled: false
       cleanup_mode: comment
       cleanup_scope: pr
