@@ -7,12 +7,24 @@ process, speaks JSON-RPC over JSONL, and exposes simple methods for authenticati
 - Cross-platform (.NET 8/.NET 10) + Windows (.NET Framework 4.7.2)
 - PowerShell module included (binary cmdlets, net472/net8)
 
-## Providers
+## Components
+
+- **IntelligenceX (library)** — .NET SDK for building apps that talk to Codex app-server and Copilot CLI.
+- **IntelligenceX.Reviewer (CLI)** — GitHub PR reviewer used by the Actions workflow.
+- **IntelligenceX.AuthTool (CLI)** — OAuth login helper for ChatGPT native transport.
+- **PowerShell module** — cmdlets for scripting and automation.
+
+The CLI tools live in this repo to share code and simplify releases, but they can be packaged separately
+if you prefer a slimmer library-only distribution.
+
+## Library (.NET)
+
+### Providers
 
 - `IntelligenceX/Providers/OpenAI` — Codex app-server (ChatGPT) client, auth, and easy/fluent APIs.
 - `IntelligenceX/Providers/Copilot` — GitHub Copilot CLI client (JSON-RPC).
 
-## Requirements
+### Requirements
 
 - Codex CLI installed and available on PATH ("codex")
 - .NET SDK 8+ for building examples and tests
@@ -23,7 +35,7 @@ Full build check (includes legacy TFMs on any OS):
 pwsh ./Build/Build-All.ps1 -Configuration Release
 ```
 
-## Quick start (.NET)
+### Quick start (.NET)
 
 ```csharp
 using IntelligenceX.OpenAI.AppServer;
@@ -42,7 +54,7 @@ var thread = await client.StartThreadAsync("gpt-5.2-codex");
 await client.StartTurnAsync(thread.Id, "Hello from IntelligenceX");
 ```
 
-## Super easy (.NET)
+### Super easy (.NET)
 
 EasySession (auto init + login + thread):
 
@@ -76,7 +88,7 @@ var options = new ChatOptions {
 await session.ChatAsync(ChatInput.FromText("Explain DNS"), options);
 ```
 
-## Config overrides (.intelligencex/config.json)
+### Config overrides (.intelligencex/config.json)
 
 You can override defaults without code changes by adding `.intelligencex/config.json`
 or setting `INTELLIGENCEX_CONFIG_PATH`.
@@ -119,7 +131,7 @@ await using var session = await EasySession.StartAsync(options);
 await session.ChatAsync("Hello with config overrides.");
 ```
 
-## Telemetry hooks (.NET)
+### Telemetry hooks (.NET)
 
 ```csharp
 using IntelligenceX.OpenAI;
@@ -132,18 +144,55 @@ client.LoginCompleted += (_, args) => Console.WriteLine($"Login completed: {args
 client.StandardErrorReceived += (_, line) => Console.WriteLine($"STDERR: {line}");
 ```
 
-### Reviewer configuration (GitHub Action / CLI)
+## Reviewer (GitHub Actions)
 
-If you run `IntelligenceX.Reviewer`, you can configure it using environment variables **or**
-a repo-local file at `.intelligencex/reviewer.json`.
+`IntelligenceX.Reviewer` is the console tool behind the review workflow. It reads PR context, generates
+review feedback, and posts a sticky comment.
 
-Example `.intelligencex/reviewer.json`:
+### Quick start
+
+Use the reusable workflow from `evotecit/github-actions`:
+
+```yaml
+jobs:
+  review:
+    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@master
+    with:
+      reviewer_source: release
+      openai_transport: native
+      output_style: claude
+      style: colorful
+    secrets: inherit
+```
+
+### GitHub App identity (optional)
+
+To post reviews from a branded bot identity, create a GitHub App and store:
+- `INTELLIGENCEX_GITHUB_APP_ID`
+- `INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY`
+
+When present, the workflow creates an App token and the reviewer uses it. Otherwise it falls back to `GITHUB_TOKEN`.
+
+### ChatGPT auth (native transport)
+
+Set `INTELLIGENCEX_AUTH_B64` to the auth **store** file (not a single bundle). Generate it with:
+
+```powershell
+$env:INTELLIGENCEX_AUTH_EXPORT_FORMAT="store-base64"
+dotnet run --project IntelligenceX.AuthTool --framework net8.0 -- export
+```
+
+### Reviewer configuration file
+
+You can configure the reviewer with environment variables **or** a repo-local file at `.intelligencex/reviewer.json`.
 
 ```json
 {
   "review": {
     "provider": "openai",
     "profile": "picky",
+    "style": "colorful",
+    "outputStyle": "claude",
     "length": "long",
     "focus": ["bugs", "security", "tests"],
     "progressUpdates": true,
@@ -156,6 +205,32 @@ Example `.intelligencex/reviewer.json`:
   }
 }
 ```
+
+### Inputs / env
+
+Required:
+- `GITHUB_TOKEN` (or `INTELLIGENCEX_GITHUB_TOKEN`)
+- For manual runs: `repo` + `pr_number` (or `GITHUB_EVENT_PATH` on PR events)
+
+Common inputs/env:
+- `provider`, `model`, `openai_transport` (`native|appserver`)
+- `profile`, `style`, `output_style`, `tone`, `persona`, `notes`
+- `mode`, `length`, `max_files`, `max_patch_chars`, `max_inline_comments`
+- `skip_titles`, `skip_labels`, `skip_paths`, `skip_draft`
+- `redact_pii`, `redaction_patterns`, `redaction_replacement`
+- `prompt_template` / `prompt_template_path`
+- `summary_template` / `summary_template_path`
+
+Template tokens:
+- Prompt: `{{ProfileBlock}}`, `{{StrictnessBlock}}`, `{{StyleBlock}}`, `{{ToneBlock}}`, `{{FocusBlock}}`,
+  `{{PersonaBlock}}`, `{{NotesBlock}}`, `{{SeverityBlock}}`, `{{Length}}`, `{{Mode}}`, `{{MaxInlineComments}}`,
+  `{{NextStepsSection}}`, `{{Title}}`, `{{Body}}`, `{{Files}}`
+- Summary: `{{SummaryMarker}}`, `{{Number}}`, `{{Title}}`, `{{InlineNote}}`, `{{ReviewBody}}`, `{{Model}}`, `{{Length}}`
+
+Codex app-server settings (optional):
+- `CODEX_APP_SERVER_PATH`
+- `CODEX_APP_SERVER_ARGS`
+- `CODEX_APP_SERVER_CWD`
 
 ## Diagnostics and health (PowerShell)
 
@@ -175,7 +250,7 @@ Get-IntelligenceXHealth
 Get-IntelligenceXHealth -Copilot
 ```
 
-## Troubleshooting JSON-RPC errors
+### Troubleshooting JSON-RPC errors
 
 Common JSON-RPC codes and hints:
 
@@ -222,7 +297,7 @@ foreach (var image in turn.ImageOutputs) {
 }
 ```
 
-## Fluent quick start (.NET)
+### Fluent quick start (.NET)
 
 ```csharp
 using IntelligenceX.OpenAI.AppServer;
@@ -351,39 +426,6 @@ PowerShell scripts live in `Module/Examples`:
 - `Example.Chat.ps1`
 - `Example.Health.ps1`
 
-## Reviewer (GitHub Actions)
-
-`IntelligenceX.Reviewer` is a console tool that reads the GitHub PR event payload, asks Codex for a review,
-and posts a sticky comment.
-
-Required env:
-- `GITHUB_EVENT_PATH`
-- `GITHUB_TOKEN`
-
-Optional env/inputs (SocraticLens-style):
-- `mode` (`summary|inline|hybrid`) — inline is not enabled yet (summary only)
-- `length` (`short|medium|long`)
-- `persona`, `notes`
-- `max_files`, `max_patch_chars`, `max_inline_comments`
-- `severity_threshold` (`low|medium|high|critical`)
-- `skip_titles`, `skip_labels`, `skip_paths`, `skip_draft`
-- `redact_pii`, `redaction_patterns`, `redaction_replacement`
-- `overwrite_summary` (default `true`)
-- `prompt_template` / `prompt_template_path` (override prompt template)
-- `summary_template` / `summary_template_path` (override PR comment template)
-
-Template tokens:
-- Prompt: `{{PersonaBlock}}`, `{{NotesBlock}}`, `{{SeverityBlock}}`, `{{Length}}`, `{{Mode}}`, `{{MaxInlineComments}}`,
-  `{{NextStepsSection}}`, `{{Title}}`, `{{Body}}`, `{{Files}}`
-- Summary: `{{SummaryMarker}}`, `{{Number}}`, `{{Title}}`, `{{InlineNote}}`, `{{ReviewBody}}`, `{{Model}}`, `{{Length}}`
-
-Codex app-server settings (optional):
-- `CODEX_APP_SERVER_PATH`
-- `CODEX_APP_SERVER_ARGS`
-- `CODEX_APP_SERVER_CWD`
-
-The runner must have a valid ChatGPT login cache (`~/.codex/auth.json`). You can create it with `IntelligenceX.AuthTool sync-codex`.
-
 ## Auth Tool (OAuth)
 
 `IntelligenceX.AuthTool` provides a native OAuth login flow (similar to Clawdbot) without requiring Codex CLI.
@@ -404,7 +446,7 @@ Optional overrides:
 - `OPENAI_AUTH_REDIRECT_URL`
 - `INTELLIGENCEX_AUTH_PATH` (default: `~/.intelligencex/auth.json`)
 - `INTELLIGENCEX_AUTH_KEY` (base64 32 bytes, enables encryption; .NET 8+ only)
-- `INTELLIGENCEX_AUTH_EXPORT_FORMAT=base64` (for export)
+- `INTELLIGENCEX_AUTH_EXPORT_FORMAT=json|base64|store|store-base64` (for export)
 - `CODEX_HOME` (used by `sync-codex`)
 
 Native ChatGPT overrides (optional):
@@ -420,10 +462,10 @@ Login:
 dotnet run --project IntelligenceX.AuthTool/IntelligenceX.AuthTool.csproj -- login
 ```
 
-Export (base64 for GitHub Secrets):
+Export (store-base64 for GitHub Secrets):
 
 ```bash
-INTELLIGENCEX_AUTH_EXPORT_FORMAT=base64 \
+INTELLIGENCEX_AUTH_EXPORT_FORMAT=store-base64 \
 dotnet run --project IntelligenceX.AuthTool/IntelligenceX.AuthTool.csproj -- export
 ```
 
