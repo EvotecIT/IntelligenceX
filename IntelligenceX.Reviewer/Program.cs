@@ -2,37 +2,51 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
+using IntelligenceX.OpenAI.Auth;
 
 namespace IntelligenceX.Reviewer;
 
 internal static class Program {
     private static async Task<int> Main(string[] args) {
         try {
+            TryWriteAuthFromEnv();
             var settings = ReviewSettings.Load();
-            var eventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
             var token = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
 
-            if (string.IsNullOrWhiteSpace(eventPath) || !File.Exists(eventPath)) {
-                Console.Error.WriteLine("Missing GITHUB_EVENT_PATH.");
-                return 1;
-            }
             if (string.IsNullOrWhiteSpace(token)) {
                 Console.Error.WriteLine("Missing GITHUB_TOKEN.");
                 return 1;
             }
 
-            var json = await File.ReadAllTextAsync(eventPath).ConfigureAwait(false);
-            var rootValue = JsonLite.Parse(json);
-            var root = rootValue?.AsObject();
-            if (root is null) {
-                Console.Error.WriteLine("Invalid GitHub event payload.");
-                return 1;
+            using var github = new GitHubClient(token);
+            PullRequestContext? context = null;
+            var eventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
+            if (!string.IsNullOrWhiteSpace(eventPath) && File.Exists(eventPath)) {
+                var json = await File.ReadAllTextAsync(eventPath).ConfigureAwait(false);
+                var rootValue = JsonLite.Parse(json);
+                var root = rootValue?.AsObject();
+                if (root is null) {
+                    Console.Error.WriteLine("Invalid GitHub event payload.");
+                    return 1;
+                }
+                context = GitHubEventParser.TryParsePullRequest(root);
+            }
+            if (context is null) {
+                var repoName = GetInput("repo") ?? GetInput("repository") ?? Environment.GetEnvironmentVariable("GITHUB_REPOSITORY");
+                var prNumber = GetInputInt("pr_number") ?? GetInputInt("pull_request") ?? GetInputInt("number");
+                if (string.IsNullOrWhiteSpace(repoName) || !prNumber.HasValue) {
+                    Console.Error.WriteLine("Missing pull_request data. Provide inputs: repo and pr_number.");
+                    return 1;
+                }
+                var (owner, repo) = SplitRepo(repoName!);
+                context = await github.GetPullRequestAsync(owner, repo, prNumber.Value, CancellationToken.None)
+                    .ConfigureAwait(false);
             }
 
-            var context = GitHubEventParser.ParsePullRequest(root);
             if (settings.SkipDraft && context.Draft) {
                 Console.WriteLine("Skipping draft pull request.");
                 return 0;
@@ -45,8 +59,6 @@ internal static class Program {
                 Console.WriteLine("Skipping pull request due to label filter.");
                 return 0;
             }
-
-            using var github = new GitHubClient(token);
             var progress = new ReviewProgress {
                 StatusLine = "Starting review."
             };
@@ -127,6 +139,34 @@ internal static class Program {
             Console.Error.WriteLine(ex.Message);
             return 1;
         }
+    }
+
+    private static void TryWriteAuthFromEnv() {
+        var authJson = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_JSON");
+        var authB64 = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_B64");
+        if (string.IsNullOrWhiteSpace(authJson) && string.IsNullOrWhiteSpace(authB64)) {
+            return;
+        }
+
+        string content;
+        if (!string.IsNullOrWhiteSpace(authJson)) {
+            content = authJson!;
+        } else {
+            try {
+                var bytes = Convert.FromBase64String(authB64!);
+                content = Encoding.UTF8.GetString(bytes);
+            } catch {
+                Console.Error.WriteLine("Failed to decode INTELLIGENCEX_AUTH_B64.");
+                return;
+            }
+        }
+
+        var path = AuthPaths.ResolveAuthPath();
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(dir)) {
+            Directory.CreateDirectory(dir);
+        }
+        File.WriteAllText(path, content);
     }
 
     private static bool ShouldSkipByTitle(string title, IReadOnlyList<string> skipTitles) {
@@ -215,5 +255,29 @@ internal static class Program {
         var created = await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, cancellationToken)
             .ConfigureAwait(false);
         return created.Id;
+    }
+
+    private static string? GetInput(string name) {
+        var value = Environment.GetEnvironmentVariable($"INPUT_{name.ToUpperInvariant()}");
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static int? GetInputInt(string name) {
+        var value = GetInput(name);
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+        if (int.TryParse(value, out var parsed) && parsed > 0) {
+            return parsed;
+        }
+        return null;
+    }
+
+    private static (string owner, string repo) SplitRepo(string fullName) {
+        var parts = fullName.Split('/');
+        if (parts.Length != 2) {
+            throw new InvalidOperationException($"Invalid repo name '{fullName}'.");
+        }
+        return (parts[0], parts[1]);
     }
 }
