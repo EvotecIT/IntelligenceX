@@ -18,18 +18,22 @@ internal sealed class CleanupResult {
         if (string.IsNullOrWhiteSpace(json)) {
             return null;
         }
-        var value = JsonLite.Parse(json);
-        var obj = value?.AsObject();
-        if (obj is null) {
+        try {
+            var value = JsonLite.Parse(json);
+            var obj = value?.AsObject();
+            if (obj is null) {
+                return null;
+            }
+            return new CleanupResult {
+                NeedsCleanup = obj.GetBoolean("needs_cleanup") || obj.GetBoolean("needsCleanup"),
+                Confidence = obj.GetDouble("confidence") ?? 0,
+                Title = obj.GetString("title"),
+                Body = obj.GetString("body"),
+                Notes = obj.GetString("notes")
+            };
+        } catch {
             return null;
         }
-        return new CleanupResult {
-            NeedsCleanup = obj.GetBoolean("needs_cleanup") || obj.GetBoolean("needsCleanup"),
-            Confidence = obj.GetDouble("confidence") ?? 0,
-            Title = obj.GetString("title"),
-            Body = obj.GetString("body"),
-            Notes = obj.GetString("notes")
-        };
     }
 
     private static string? ExtractJson(string text) {

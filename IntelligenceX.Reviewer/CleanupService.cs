@@ -14,6 +14,9 @@ internal static class CleanupService {
         if (cleanup.RequiresLabel && !cleanup.HasLabel(context.Labels)) {
             return context;
         }
+        if (!cleanup.AllowsTitleEdit && !cleanup.AllowsBodyEdit) {
+            return context;
+        }
 
         var prompt = CleanupPromptBuilder.Build(context, cleanup);
         var runner = new ReviewRunner(settings);
@@ -41,31 +44,20 @@ internal static class CleanupService {
             return context;
         }
 
-        switch (cleanup.Mode) {
-            case CleanupMode.Comment:
-                await PostSuggestionAsync(github, context, result, cancellationToken).ConfigureAwait(false);
-                return context;
-            case CleanupMode.Edit:
-                if (result.Confidence >= cleanup.MinConfidence) {
-                    await ApplyEditAsync(github, context, result, newTitle, newBody, cleanup, cancellationToken)
-                        .ConfigureAwait(false);
-                    return new PullRequestContext(context.RepoFullName, context.Owner, context.Repo, context.Number,
-                        newTitle, newBody, context.Draft, context.HeadSha, context.Labels);
-                }
-                await PostSuggestionAsync(github, context, result, cancellationToken).ConfigureAwait(false);
-                return context;
-            case CleanupMode.Hybrid:
-                if (result.Confidence >= cleanup.MinConfidence) {
-                    await ApplyEditAsync(github, context, result, newTitle, newBody, cleanup, cancellationToken)
-                        .ConfigureAwait(false);
-                    return new PullRequestContext(context.RepoFullName, context.Owner, context.Repo, context.Number,
-                        newTitle, newBody, context.Draft, context.HeadSha, context.Labels);
-                }
-                await PostSuggestionAsync(github, context, result, cancellationToken).ConfigureAwait(false);
-                return context;
-            default:
-                return context;
+        var canEdit = (cleanup.Mode == CleanupMode.Edit || cleanup.Mode == CleanupMode.Hybrid) &&
+            result.Confidence >= cleanup.MinConfidence;
+
+        if (canEdit) {
+            await ApplyEditAsync(github, context, result, newTitle, newBody, cleanup, cancellationToken)
+                .ConfigureAwait(false);
+            return new PullRequestContext(context.RepoFullName, context.Owner, context.Repo, context.Number,
+                newTitle, newBody, context.Draft, context.HeadSha, context.Labels);
         }
+
+        if (cleanup.Mode == CleanupMode.Comment || cleanup.Mode == CleanupMode.Edit || cleanup.Mode == CleanupMode.Hybrid) {
+            await PostSuggestionAsync(github, context, result, cancellationToken).ConfigureAwait(false);
+        }
+        return context;
     }
 
     private static async Task PostSuggestionAsync(GitHubClient github, PullRequestContext context, CleanupResult result,

@@ -78,10 +78,13 @@ internal sealed class CleanupSettings {
         if (string.IsNullOrWhiteSpace(value)) {
             return fallback;
         }
-        if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) &&
-            parsed >= 0 && parsed <= 1) {
-            return parsed;
+        if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)) {
+            return ClampConfidence(parsed, fallback);
         }
         return fallback;
+    }
+
+    public static double ClampConfidence(double value, double fallback) {
+        return value >= 0 && value <= 1 ? value : fallback;
     }
 }

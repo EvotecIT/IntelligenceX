@@ -183,7 +183,7 @@ internal static class ReviewConfigLoader {
         settings.Cleanup.PostEditComment = ReadBool(cleanup, "postEditComment", settings.Cleanup.PostEditComment);
         var minConfidence = cleanup.GetDouble("minConfidence");
         if (minConfidence.HasValue) {
-            settings.Cleanup.MinConfidence = minConfidence.Value;
+            settings.Cleanup.MinConfidence = CleanupSettings.ClampConfidence(minConfidence.Value, settings.Cleanup.MinConfidence);
         }
         var allowedEdits = ReadStringList(cleanup, "allowedEdits");
         if (allowedEdits is not null) {
