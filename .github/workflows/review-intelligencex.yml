@@ -25,7 +25,5 @@ jobs:
       include_issue_comments: true
       include_review_comments: true
       include_related_prs: true
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
+    secrets: inherit
   # INTELLIGENCEX:END
