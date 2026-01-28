@@ -22,9 +22,7 @@ internal static class CleanupFormatter {
         if (!string.IsNullOrWhiteSpace(result.Body)) {
             builder.AppendLine("**Proposed body**");
             builder.AppendLine();
-            builder.AppendLine("```markdown");
-            builder.AppendLine(result.Body.Trim());
-            builder.AppendLine("```");
+            AppendBodyBlock(builder, result.Body.Trim());
             builder.AppendLine();
         }
         if (!string.IsNullOrWhiteSpace(result.Notes)) {
@@ -52,5 +50,17 @@ internal static class CleanupFormatter {
         builder.AppendLine();
         builder.AppendLine($"Confidence: {result.Confidence:0.00}");
         return builder.ToString().TrimEnd();
+    }
+
+    private static void AppendBodyBlock(StringBuilder builder, string body) {
+        if (body.Contains("```", StringComparison.Ordinal)) {
+            foreach (var line in body.Replace("\r", "").Split('\n')) {
+                builder.AppendLine("    " + line);
+            }
+            return;
+        }
+        builder.AppendLine("```markdown");
+        builder.AppendLine(body);
+        builder.AppendLine("```");
     }
 }

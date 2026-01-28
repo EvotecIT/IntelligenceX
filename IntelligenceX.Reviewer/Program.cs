@@ -401,7 +401,8 @@ public static class ReviewerApp {
     }
 
     private static bool IsBotAuthor(string author) {
-        if (author.EndsWith("bot", StringComparison.OrdinalIgnoreCase)) {
+        if (author.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase) ||
+            author.EndsWith("bot", StringComparison.OrdinalIgnoreCase)) {
             return true;
         }
         return author.Equals("github-actions", StringComparison.OrdinalIgnoreCase) ||

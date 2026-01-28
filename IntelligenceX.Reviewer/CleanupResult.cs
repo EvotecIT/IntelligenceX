@@ -49,8 +49,6 @@ internal sealed class CleanupResult {
                 trimmed = trimmed.Substring(0, endFence);
             }
             trimmed = trimmed.Trim();
-        } else {
-            return null;
         }
         if (!trimmed.StartsWith("{", StringComparison.Ordinal) || !trimmed.EndsWith("}", StringComparison.Ordinal)) {
             return null;

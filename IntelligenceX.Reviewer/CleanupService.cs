@@ -117,7 +117,8 @@ internal static class CleanupService {
         if (string.IsNullOrWhiteSpace(comment.Author)) {
             return false;
         }
-        if (comment.Author.EndsWith("bot", StringComparison.OrdinalIgnoreCase)) {
+        if (comment.Author.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase) ||
+            comment.Author.EndsWith("bot", StringComparison.OrdinalIgnoreCase)) {
             return true;
         }
         return comment.Author.Equals("intelligencex-review", StringComparison.OrdinalIgnoreCase);
