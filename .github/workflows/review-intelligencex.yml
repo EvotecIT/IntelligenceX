@@ -36,5 +36,12 @@ jobs:
       include_issue_comments: true
       include_review_comments: true
       include_related_prs: true
+      cleanup_enabled: false
+      cleanup_mode: comment
+      cleanup_scope: pr
+      cleanup_require_label: ''
+      cleanup_min_confidence: 0.85
+      cleanup_allowed_edits: 'formatting,grammar,title,sections'
+      cleanup_post_edit_comment: true
     secrets: inherit
   # INTELLIGENCEX:END
