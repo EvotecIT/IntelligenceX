@@ -25,6 +25,7 @@ internal sealed class ReviewSettings {
     public string Mode { get; set; } = "hybrid";
     public ReviewProvider Provider { get; set; } = ReviewProvider.OpenAI;
     public string? Profile { get; set; }
+    public string? Style { get; set; }
     public string? Strictness { get; set; }
     public string? Tone { get; set; }
     public IReadOnlyList<string> Focus { get; set; } = Array.Empty<string>();
@@ -101,6 +102,12 @@ internal sealed class ReviewSettings {
         var strictness = GetInput("strictness", "REVIEW_STRICTNESS");
         if (!string.IsNullOrWhiteSpace(strictness)) {
             settings.Strictness = strictness;
+        }
+
+        var style = GetInput("style", "REVIEW_STYLE");
+        if (!string.IsNullOrWhiteSpace(style)) {
+            ReviewStyles.Apply(style!, settings);
+            settings.Style = style;
         }
 
         var tone = GetInput("tone", "REVIEW_TONE");

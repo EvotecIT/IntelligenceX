@@ -10,6 +10,7 @@ internal static class PromptBuilder {
         var template = ResolveTemplate(settings);
         var profileBlock = string.IsNullOrWhiteSpace(settings.Profile) ? string.Empty : $"Profile: {settings.Profile}\n";
         var strictnessBlock = string.IsNullOrWhiteSpace(settings.Strictness) ? string.Empty : $"Strictness: {settings.Strictness}\n";
+        var styleBlock = string.IsNullOrWhiteSpace(settings.Style) ? string.Empty : $"Style: {settings.Style}\n";
         var toneBlock = string.IsNullOrWhiteSpace(settings.Tone) ? string.Empty : $"Tone: {settings.Tone}\n";
         var focusBlock = settings.Focus.Count == 0 ? string.Empty : $"Focus areas: {string.Join(", ", settings.Focus)}\n";
         var personaBlock = string.IsNullOrWhiteSpace(settings.Persona) ? string.Empty : $"Persona: {settings.Persona}\n";
@@ -22,6 +23,7 @@ internal static class PromptBuilder {
         var tokens = new Dictionary<string, string> {
             ["ProfileBlock"] = profileBlock,
             ["StrictnessBlock"] = strictnessBlock,
+            ["StyleBlock"] = styleBlock,
             ["ToneBlock"] = toneBlock,
             ["FocusBlock"] = focusBlock,
             ["PersonaBlock"] = personaBlock,

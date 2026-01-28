@@ -1,6 +1,6 @@
 You are reviewing a pull request. Be concise and focus on correctness, security, and maintainability.
 
-{{ProfileBlock}}{{StrictnessBlock}}{{ToneBlock}}{{FocusBlock}}{{PersonaBlock}}{{NotesBlock}}{{SeverityBlock}}Review length: {{Length}}
+{{ProfileBlock}}{{StrictnessBlock}}{{StyleBlock}}{{ToneBlock}}{{FocusBlock}}{{PersonaBlock}}{{NotesBlock}}{{SeverityBlock}}Review length: {{Length}}
 Review mode: {{Mode}}
 Max inline comments: {{MaxInlineComments}}
 

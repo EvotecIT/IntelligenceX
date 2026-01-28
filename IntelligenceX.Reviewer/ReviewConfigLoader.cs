@@ -27,6 +27,12 @@ internal static class ReviewConfigLoader {
             settings.Profile = profile;
         }
 
+        var style = reviewObj.GetString("style");
+        if (!string.IsNullOrWhiteSpace(style)) {
+            ReviewStyles.Apply(style!, settings);
+            settings.Style = style;
+        }
+
         var provider = reviewObj.GetString("provider");
         if (!string.IsNullOrWhiteSpace(provider)) {
             settings.Provider = provider.Trim().ToLowerInvariant() switch {
