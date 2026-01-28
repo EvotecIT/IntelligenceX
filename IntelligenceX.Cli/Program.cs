@@ -16,6 +16,9 @@ internal static class Program {
 
         var command = args[0].ToLowerInvariant();
         var rest = args.Skip(1).ToArray();
+        if (IsLegacyAuthCommand(command)) {
+            return await RunAuthAsync(new[] { command }.Concat(rest).ToArray()).ConfigureAwait(false);
+        }
         return command switch {
             "auth" => await RunAuthAsync(rest).ConfigureAwait(false),
             "reviewer" => await RunReviewerAsync(rest).ConfigureAwait(false),
@@ -99,6 +102,15 @@ internal static class Program {
     private static void PrintReviewerHelp() {
         Console.WriteLine("Reviewer commands:");
         Console.WriteLine("  intelligencex reviewer run");
+    }
+
+    private static bool IsLegacyAuthCommand(string command) {
+        return command switch {
+            "login" => true,
+            "export" => true,
+            "sync-codex" => true,
+            _ => false
+        };
     }
 
     private static async Task<int> RunLoginAsync() {

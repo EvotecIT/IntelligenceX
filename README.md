@@ -406,6 +406,7 @@ Cleanup is opt-in and controlled by repository config. Use `comment` mode for su
 to automatically update PR title/body (requires `pull-requests: write`).
 In `edit` mode, if confidence is below the threshold, no comment is posted.
 `cleanup_template_path` is restricted to repo-local files (under `GITHUB_WORKSPACE`).
+Cleanup suggestions are only updated if the previous cleanup comment was authored by the bot.
 
 Template tokens:
 - Prompt: `{{PersonaBlock}}`, `{{NotesBlock}}`, `{{SeverityBlock}}`, `{{Length}}`, `{{Mode}}`, `{{MaxInlineComments}}`,
@@ -460,6 +461,7 @@ Commands:
 - `intelligencex auth export`
 - `intelligencex auth sync-codex`
 - `intelligencex reviewer run`
+Legacy aliases are supported: `login`, `export`, `sync-codex`.
 Defaults are built in; environment variables only override them.
 
 Defaults:

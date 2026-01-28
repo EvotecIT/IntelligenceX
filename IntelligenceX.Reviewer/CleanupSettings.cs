@@ -70,10 +70,20 @@ internal sealed class CleanupSettings {
         var baseDir = !string.IsNullOrWhiteSpace(workspace) ? workspace : Environment.CurrentDirectory;
         var baseFull = Path.GetFullPath(baseDir);
         var fullPath = Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(baseFull, path));
-        if (!fullPath.StartsWith(baseFull, StringComparison.OrdinalIgnoreCase)) {
+        if (!IsUnderRoot(baseFull, fullPath)) {
             return null;
         }
         return fullPath;
+    }
+
+    private static bool IsUnderRoot(string root, string candidate) {
+        var rootFull = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var candidateFull = Path.GetFullPath(candidate);
+        if (candidateFull.Equals(rootFull, StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+        var prefix = rootFull + Path.DirectorySeparatorChar;
+        return candidateFull.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
     }
 
     private bool ScopeMatches(string value) {

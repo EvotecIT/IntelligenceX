@@ -40,7 +40,10 @@ internal static class CleanupPromptBuilder {
         builder.AppendLine(context.Body ?? string.Empty);
         builder.AppendLine("-----");
         builder.AppendLine();
-        builder.AppendLine("Return only JSON.");
+        builder.AppendLine("Return only fenced JSON:");
+        builder.AppendLine("```json");
+        builder.AppendLine("{\"needs_cleanup\":false,\"confidence\":0,\"title\":\"\",\"body\":\"\",\"notes\":\"\"}");
+        builder.AppendLine("```");
         return builder.ToString();
     }
 }

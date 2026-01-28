@@ -103,10 +103,23 @@ internal static class CleanupService {
         var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, cancellationToken)
             .ConfigureAwait(false);
         foreach (var comment in comments) {
-            if (comment.Body.Contains(CleanupFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase)) {
+            if (!comment.Body.Contains(CleanupFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (IsOwnCleanupComment(comment)) {
                 return comment;
             }
         }
         return null;
+    }
+
+    private static bool IsOwnCleanupComment(IssueComment comment) {
+        if (string.IsNullOrWhiteSpace(comment.Author)) {
+            return false;
+        }
+        if (comment.Author.EndsWith("bot", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+        return comment.Author.Equals("intelligencex-review", StringComparison.OrdinalIgnoreCase);
     }
 }

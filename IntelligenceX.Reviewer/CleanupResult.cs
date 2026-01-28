@@ -49,12 +49,12 @@ internal sealed class CleanupResult {
                 trimmed = trimmed.Substring(0, endFence);
             }
             trimmed = trimmed.Trim();
-        }
-        var start = trimmed.IndexOf('{');
-        var end = trimmed.LastIndexOf('}');
-        if (start < 0 || end <= start) {
+        } else {
             return null;
         }
-        return trimmed.Substring(start, end - start + 1);
+        if (!trimmed.StartsWith("{", StringComparison.Ordinal) || !trimmed.EndsWith("}", StringComparison.Ordinal)) {
+            return null;
+        }
+        return trimmed;
     }
 }
