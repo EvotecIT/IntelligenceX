@@ -121,6 +121,15 @@ internal sealed class GitHubClient : IDisposable {
         return new IssueComment(id, body);
     }
 
+    public async Task UpdatePullRequestAsync(string owner, string repo, int number, string title, string body,
+        CancellationToken cancellationToken) {
+        var payload = new JsonObject()
+            .Add("title", title)
+            .Add("body", body);
+        await PatchJsonAsync($"/repos/{owner}/{repo}/pulls/{number}", payload, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task UpdateIssueCommentAsync(string owner, string repo, long commentId, string body,
         CancellationToken cancellationToken) {
         var payload = new JsonObject().Add("body", body);

@@ -44,6 +44,7 @@ internal static class ReviewConfigLoader {
         ApplyLength(reviewObj, settings);
         ApplyCodex(root, settings);
         ApplyCopilot(root, settings);
+        ApplyCleanup(root, settings);
     }
 
     private static string? ResolveConfigPath() {
@@ -162,6 +163,34 @@ internal static class ReviewConfigLoader {
         settings.CopilotAutoInstall = ReadBool(copilot, "autoInstall", settings.CopilotAutoInstall);
         settings.CopilotAutoInstallMethod = copilot.GetString("autoInstallMethod") ?? settings.CopilotAutoInstallMethod;
         settings.CopilotAutoInstallPrerelease = ReadBool(copilot, "autoInstallPrerelease", settings.CopilotAutoInstallPrerelease);
+    }
+
+    private static void ApplyCleanup(JsonObject root, ReviewSettings settings) {
+        var cleanup = root.GetObject("cleanup");
+        if (cleanup is null) {
+            return;
+        }
+        settings.Cleanup.Enabled = ReadBool(cleanup, "enabled", settings.Cleanup.Enabled);
+        var mode = cleanup.GetString("mode");
+        if (!string.IsNullOrWhiteSpace(mode)) {
+            settings.Cleanup.Mode = CleanupSettings.ParseMode(mode, settings.Cleanup.Mode);
+        }
+        var scope = cleanup.GetString("scope");
+        if (!string.IsNullOrWhiteSpace(scope)) {
+            settings.Cleanup.Scope = scope;
+        }
+        settings.Cleanup.RequireLabel = cleanup.GetString("requireLabel") ?? settings.Cleanup.RequireLabel;
+        settings.Cleanup.PostEditComment = ReadBool(cleanup, "postEditComment", settings.Cleanup.PostEditComment);
+        var minConfidence = cleanup.GetDouble("minConfidence");
+        if (minConfidence.HasValue) {
+            settings.Cleanup.MinConfidence = minConfidence.Value;
+        }
+        var allowedEdits = ReadStringList(cleanup, "allowedEdits");
+        if (allowedEdits is not null) {
+            settings.Cleanup.AllowedEdits = allowedEdits;
+        }
+        settings.Cleanup.Template = cleanup.GetString("template") ?? settings.Cleanup.Template;
+        settings.Cleanup.TemplatePath = cleanup.GetString("templatePath") ?? settings.Cleanup.TemplatePath;
     }
 
     private static IReadOnlyList<string>? ReadStringList(JsonObject obj, string key) {

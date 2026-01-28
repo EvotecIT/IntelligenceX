@@ -166,6 +166,14 @@ Example `.intelligencex/reviewer.json`:
     "progressUpdateSeconds": 30,
     "commentMode": "sticky"
   },
+  "cleanup": {
+    "enabled": true,
+    "mode": "hybrid",
+    "requireLabel": "ix-cleanup",
+    "minConfidence": 0.85,
+    "allowedEdits": ["formatting", "grammar", "title", "sections"],
+    "template": "## Summary\n- \n\n## Changes\n- \n\n## Notes\n- "
+  },
   "copilot": {
     "cliPath": "copilot",
     "autoInstall": false
@@ -387,6 +395,12 @@ Optional env/inputs (SocraticLens-style):
 - `overwrite_summary` (default `true`)
 - `prompt_template` / `prompt_template_path` (override prompt template)
 - `summary_template` / `summary_template_path` (override PR comment template)
+- cleanup: `cleanup_enabled`, `cleanup_mode` (`comment|edit|hybrid`), `cleanup_scope` (`pr|issue|both`),
+  `cleanup_require_label`, `cleanup_min_confidence`, `cleanup_allowed_edits`, `cleanup_template`,
+  `cleanup_template_path`, `cleanup_post_edit_comment`
+
+Cleanup is opt-in and controlled by repository config. Use `comment` mode for suggestions only, or `edit`
+to automatically update PR title/body (requires `pull-requests: write`).
 
 Template tokens:
 - Prompt: `{{PersonaBlock}}`, `{{NotesBlock}}`, `{{SeverityBlock}}`, `{{Length}}`, `{{Mode}}`, `{{MaxInlineComments}}`,

@@ -19,7 +19,7 @@ public static class ReviewerApp {
                 ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN");
 
             if (string.IsNullOrWhiteSpace(token)) {
-                Console.Error.WriteLine("Missing GITHUB_TOKEN.");
+                Console.Error.WriteLine("Missing GitHub token (INTELLIGENCEX_GITHUB_TOKEN or GITHUB_TOKEN).");
                 return 1;
             }
 
@@ -60,6 +60,10 @@ public static class ReviewerApp {
                 Console.WriteLine("Skipping pull request due to label filter.");
                 return 0;
             }
+
+            context = await CleanupService.RunAsync(github, context, settings, CancellationToken.None)
+                .ConfigureAwait(false);
+
             var progress = new ReviewProgress {
                 StatusLine = "Starting review."
             };

@@ -56,6 +56,7 @@ internal sealed class ReviewSettings {
     public int ProgressUpdateSeconds { get; set; } = 30;
     public int ProgressPreviewChars { get; set; } = 4000;
     public ReviewCommentMode CommentMode { get; set; } = ReviewCommentMode.Sticky;
+    public CleanupSettings Cleanup { get; } = new CleanupSettings();
 
     public string? CodexPath { get; set; }
     public string? CodexArgs { get; set; }
@@ -298,6 +299,43 @@ internal sealed class ReviewSettings {
                 "fresh" => ReviewCommentMode.Fresh,
                 _ => ReviewCommentMode.Sticky
             };
+        }
+
+        var cleanupEnabled = GetInput("cleanup_enabled", "REVIEW_CLEANUP_ENABLED");
+        if (!string.IsNullOrWhiteSpace(cleanupEnabled)) {
+            settings.Cleanup.Enabled = ParseBoolean(cleanupEnabled, settings.Cleanup.Enabled);
+        }
+        var cleanupMode = GetInput("cleanup_mode", "REVIEW_CLEANUP_MODE");
+        if (!string.IsNullOrWhiteSpace(cleanupMode)) {
+            settings.Cleanup.Mode = CleanupSettings.ParseMode(cleanupMode, settings.Cleanup.Mode);
+        }
+        var cleanupScope = GetInput("cleanup_scope", "REVIEW_CLEANUP_SCOPE");
+        if (!string.IsNullOrWhiteSpace(cleanupScope)) {
+            settings.Cleanup.Scope = cleanupScope!.Trim();
+        }
+        var cleanupRequireLabel = GetInput("cleanup_require_label", "REVIEW_CLEANUP_REQUIRE_LABEL");
+        if (!string.IsNullOrWhiteSpace(cleanupRequireLabel)) {
+            settings.Cleanup.RequireLabel = cleanupRequireLabel;
+        }
+        var cleanupAllowedEdits = GetInput("cleanup_allowed_edits", "REVIEW_CLEANUP_ALLOWED_EDITS");
+        if (!string.IsNullOrWhiteSpace(cleanupAllowedEdits)) {
+            settings.Cleanup.AllowedEdits = ParseList(cleanupAllowedEdits);
+        }
+        var cleanupMinConfidence = GetInput("cleanup_min_confidence", "REVIEW_CLEANUP_MIN_CONFIDENCE");
+        if (!string.IsNullOrWhiteSpace(cleanupMinConfidence)) {
+            settings.Cleanup.MinConfidence = CleanupSettings.ParseConfidence(cleanupMinConfidence, settings.Cleanup.MinConfidence);
+        }
+        var cleanupTemplate = GetInput("cleanup_template", "REVIEW_CLEANUP_TEMPLATE");
+        if (!string.IsNullOrWhiteSpace(cleanupTemplate)) {
+            settings.Cleanup.Template = cleanupTemplate;
+        }
+        var cleanupTemplatePath = GetInput("cleanup_template_path", "REVIEW_CLEANUP_TEMPLATE_PATH");
+        if (!string.IsNullOrWhiteSpace(cleanupTemplatePath)) {
+            settings.Cleanup.TemplatePath = cleanupTemplatePath;
+        }
+        var cleanupPostEdit = GetInput("cleanup_post_edit_comment", "REVIEW_CLEANUP_POST_EDIT_COMMENT");
+        if (!string.IsNullOrWhiteSpace(cleanupPostEdit)) {
+            settings.Cleanup.PostEditComment = ParseBoolean(cleanupPostEdit, settings.Cleanup.PostEditComment);
         }
     }
 
