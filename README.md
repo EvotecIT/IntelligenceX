@@ -430,6 +430,21 @@ Create the app and install it on the target repo, then add secrets:
 
 The reusable workflow will mint `INTELLIGENCEX_GITHUB_TOKEN` automatically from those secrets.
 
+### GitHub Auth Paths
+
+There are three supported ways to authenticate GitHub for reviews:
+
+1) **Standard GitHub Actions (default)**  
+   Use `GITHUB_TOKEN`. Works everywhere but posts as `github-actions[bot]`.
+
+2) **BYOA (recommended)**  
+   Each org/user creates their own GitHub App and stores its secrets in their repo/org.  
+   This keeps trust local and enables a custom bot identity.
+
+3) **Shared App (requires a service)**  
+   A single shared GitHub App only works across many repos if you run a service that mints
+   short-lived app tokens, because the private key cannot be distributed to users safely.
+
 ## CLI
 
 `IntelligenceX.Cli` provides a native OAuth login flow (similar to Clawdbot) without requiring Codex CLI.
