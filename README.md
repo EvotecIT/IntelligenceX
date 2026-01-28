@@ -400,9 +400,12 @@ Optional env/inputs (SocraticLens-style):
   `cleanup_template_path`, `cleanup_post_edit_comment`
 - context: `include_issue_comments`, `include_review_comments`, `max_comment_chars`, `max_comments`,
   `include_related_prs`, `related_prs_query`, `max_related_prs` (use `{repo}`, `{owner}`, `{name}`, `{number}`)
+  Comments are treated as untrusted context and bot/self comments are filtered.
 
 Cleanup is opt-in and controlled by repository config. Use `comment` mode for suggestions only, or `edit`
 to automatically update PR title/body (requires `pull-requests: write`).
+In `edit` mode, if confidence is below the threshold, no comment is posted.
+`cleanup_template_path` is restricted to repo-local files (under `GITHUB_WORKSPACE`).
 
 Template tokens:
 - Prompt: `{{PersonaBlock}}`, `{{NotesBlock}}`, `{{SeverityBlock}}`, `{{Length}}`, `{{Mode}}`, `{{MaxInlineComments}}`,

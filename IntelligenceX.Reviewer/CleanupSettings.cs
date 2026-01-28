@@ -53,10 +53,27 @@ internal sealed class CleanupSettings {
         if (!string.IsNullOrWhiteSpace(Template)) {
             return Template;
         }
-        if (!string.IsNullOrWhiteSpace(TemplatePath) && File.Exists(TemplatePath)) {
-            return File.ReadAllText(TemplatePath);
+        if (!string.IsNullOrWhiteSpace(TemplatePath)) {
+            var path = ResolveTemplatePath(TemplatePath!);
+            if (!string.IsNullOrWhiteSpace(path) && File.Exists(path)) {
+                var info = new FileInfo(path);
+                if (info.Length <= 50_000) {
+                    return File.ReadAllText(path);
+                }
+            }
         }
         return null;
+    }
+
+    private static string? ResolveTemplatePath(string path) {
+        var workspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        var baseDir = !string.IsNullOrWhiteSpace(workspace) ? workspace : Environment.CurrentDirectory;
+        var baseFull = Path.GetFullPath(baseDir);
+        var fullPath = Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(baseFull, path));
+        if (!fullPath.StartsWith(baseFull, StringComparison.OrdinalIgnoreCase)) {
+            return null;
+        }
+        return fullPath;
     }
 
     private bool ScopeMatches(string value) {

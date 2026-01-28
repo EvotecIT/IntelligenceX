@@ -268,6 +268,9 @@ public static class ReviewerApp {
                 comment.Body.Contains(CleanupFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
+            if (!ShouldIncludeComment(comment.Author, comment.Body)) {
+                continue;
+            }
             filtered.Add(comment);
         }
         if (filtered.Count == 0) {
@@ -291,7 +294,20 @@ public static class ReviewerApp {
         if (comments.Count == 0) {
             return string.Empty;
         }
-        var recent = TakeLast(comments, settings.MaxComments);
+        var filtered = new List<PullRequestReviewComment>();
+        foreach (var comment in comments) {
+            if (string.IsNullOrWhiteSpace(comment.Body)) {
+                continue;
+            }
+            if (!ShouldIncludeComment(comment.Author, comment.Body)) {
+                continue;
+            }
+            filtered.Add(comment);
+        }
+        if (filtered.Count == 0) {
+            return string.Empty;
+        }
+        var recent = TakeLast(filtered, settings.MaxComments);
         var sb = new StringBuilder();
         sb.AppendLine();
         sb.AppendLine("Review comments (most recent first):");
@@ -359,7 +375,7 @@ public static class ReviewerApp {
     }
 
     private static string TrimComment(string value, int maxChars) {
-        var text = value.Replace("\r", "").Trim();
+        var text = value.Replace("\r", "").Replace("\n", " ").Trim();
         if (string.IsNullOrWhiteSpace(text)) {
             return "<empty>";
         }
@@ -367,6 +383,29 @@ public static class ReviewerApp {
             return text;
         }
         return text.Substring(0, maxChars) + "...";
+    }
+
+    private static bool ShouldIncludeComment(string? author, string body) {
+        if (string.IsNullOrWhiteSpace(body)) {
+            return false;
+        }
+        if (!string.IsNullOrWhiteSpace(author)) {
+            if (IsBotAuthor(author)) {
+                return false;
+            }
+        }
+        if (body.Contains("<!-- intelligencex", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+        return true;
+    }
+
+    private static bool IsBotAuthor(string author) {
+        if (author.EndsWith("bot", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+        return author.Equals("github-actions", StringComparison.OrdinalIgnoreCase) ||
+            author.Equals("intelligencex-review", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<IssueComment?> FindExistingSummaryAsync(GitHubClient github, PullRequestContext context,

@@ -73,6 +73,12 @@ internal static class Program {
             var rest = args.Length == 0 ? Array.Empty<string>() : args.Skip(1).ToArray();
             return await IntelligenceX.Reviewer.ReviewerApp.RunAsync(rest).ConfigureAwait(false);
         }
+        if (args[0].Equals("help", StringComparison.OrdinalIgnoreCase) ||
+            args[0].Equals("-h", StringComparison.OrdinalIgnoreCase) ||
+            args[0].Equals("--help", StringComparison.OrdinalIgnoreCase)) {
+            PrintReviewerHelp();
+            return 0;
+        }
 
         PrintReviewerHelp();
         return 1;
