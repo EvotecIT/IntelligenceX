@@ -3,6 +3,22 @@
 IntelligenceX is a lightweight .NET client for the Codex app-server protocol. It manages the app-server
 process, speaks JSON-RPC over JSONL, and exposes simple methods for authentication and conversations.
 
+Status: Active development | APIs in flux | Actions in beta
+
+## Project Information
+
+[![top language](https://img.shields.io/github/languages/top/EvotecIT/IntelligenceX.svg)](https://github.com/EvotecIT/IntelligenceX)
+[![license](https://img.shields.io/github/license/EvotecIT/IntelligenceX.svg)](https://github.com/EvotecIT/IntelligenceX)
+[![build](https://github.com/EvotecIT/IntelligenceX/actions/workflows/test-dotnet.yml/badge.svg)](https://github.com/EvotecIT/IntelligenceX/actions/workflows/test-dotnet.yml)
+
+## Author & Social
+
+[![Twitter follow](https://img.shields.io/twitter/follow/PrzemyslawKlys.svg?label=Twitter%20%40PrzemyslawKlys&style=social)](https://twitter.com/PrzemyslawKlys)
+[![Blog](https://img.shields.io/badge/Blog-evotec.xyz-2A6496.svg)](https://evotec.xyz/hub)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-pklys-0077B5.svg?logo=LinkedIn)](https://www.linkedin.com/in/pklys)
+[![Threads](https://img.shields.io/badge/Threads-@PrzemyslawKlys-000000.svg?logo=Threads&logoColor=White)](https://www.threads.net/@przemyslaw.klys)
+[![Discord](https://img.shields.io/discord/508328927853281280?style=flat-square&label=discord%20chat)](https://evo.yt/discord)
+
 - No external NuGet dependencies
 - Cross-platform (.NET 8/.NET 10) + Windows (.NET Framework 4.7.2)
 - PowerShell module included (binary cmdlets, net472/net8)
@@ -358,10 +374,10 @@ and posts a sticky comment.
 
 Required env:
 - `GITHUB_EVENT_PATH`
-- `GITHUB_TOKEN`
+- `INTELLIGENCEX_GITHUB_TOKEN` (preferred, for GitHub App identity) or `GITHUB_TOKEN`
 
 Optional env/inputs (SocraticLens-style):
-- `mode` (`summary|inline|hybrid`) — inline is not enabled yet (summary only)
+- `mode` (`summary|inline|hybrid`) - inline is not enabled yet (summary only)
 - `length` (`short|medium|long`)
 - `persona`, `notes`
 - `max_files`, `max_patch_chars`, `max_inline_comments`
@@ -382,11 +398,34 @@ Codex app-server settings (optional):
 - `CODEX_APP_SERVER_ARGS`
 - `CODEX_APP_SERVER_CWD`
 
-The runner must have a valid ChatGPT login cache (`~/.codex/auth.json`). You can create it with `IntelligenceX.AuthTool sync-codex`.
+The runner must have a valid ChatGPT login cache at `~/.intelligencex/auth.json`. You can create it with `IntelligenceX.Cli auth login`. If you also need Codex CLI/app-server compatibility, run `IntelligenceX.Cli auth sync-codex` to write `~/.codex/auth.json`.
 
-## Auth Tool (OAuth)
+### Bring Your Own GitHub App (BYOA)
 
-`IntelligenceX.AuthTool` provides a native OAuth login flow (similar to Clawdbot) without requiring Codex CLI.
+If you want the reviewer to post as a dedicated bot (instead of `github-actions`), use a GitHub App token.
+Create an app (personal or org) and add the app credentials as secrets.
+
+Minimal app settings:
+- Permissions: `Pull requests: Read & write`, `Issues: Write`, `Contents: Read`
+- Subscribe to events: none
+- Webhook: disabled
+
+Create the app and install it on the target repo, then add secrets:
+- `INTELLIGENCEX_GITHUB_APP_ID` (the App ID)
+- `INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY` (the PEM contents)
+
+The reusable workflow will mint `INTELLIGENCEX_GITHUB_TOKEN` automatically from those secrets.
+
+## CLI
+
+`IntelligenceX.Cli` provides a native OAuth login flow (similar to Clawdbot) without requiring Codex CLI.
+It also exposes reviewer entry points for automation.
+
+Commands:
+- `intelligencex auth login`
+- `intelligencex auth export`
+- `intelligencex auth sync-codex`
+- `intelligencex reviewer run`
 Defaults are built in; environment variables only override them.
 
 Defaults:
@@ -417,20 +456,20 @@ Native ChatGPT overrides (optional):
 Login:
 
 ```bash
-dotnet run --project IntelligenceX.AuthTool/IntelligenceX.AuthTool.csproj -- login
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- auth login
 ```
 
 Export (base64 for GitHub Secrets):
 
 ```bash
 INTELLIGENCEX_AUTH_EXPORT_FORMAT=base64 \
-dotnet run --project IntelligenceX.AuthTool/IntelligenceX.AuthTool.csproj -- export
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- auth export
 ```
 
 Write Codex auth.json (for app-server/CLI reuse):
 
 ```bash
-dotnet run --project IntelligenceX.AuthTool/IntelligenceX.AuthTool.csproj -- sync-codex
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- auth sync-codex
 ```
 
 ## Copilot CLI (GitHub)
@@ -485,3 +524,7 @@ Console.WriteLine(response);
 - This library targets the Codex app-server JSON-RPC protocol.
 - For custom app-server arguments set `CODEX_APP_SERVER_ARGS`.
 - For custom app-server path set `CODEX_APP_SERVER_PATH`.
+
+
+
+

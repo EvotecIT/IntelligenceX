@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <AssemblyName>intelligencex</AssemblyName>
     <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -9,5 +10,6 @@
 
   <ItemGroup>
     <ProjectReference Include="../IntelligenceX/IntelligenceX.csproj" />
+    <ProjectReference Include="../IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj" />
   </ItemGroup>
 </Project>

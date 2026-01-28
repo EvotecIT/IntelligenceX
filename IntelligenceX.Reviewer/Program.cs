@@ -10,12 +10,13 @@ using IntelligenceX.OpenAI.Auth;
 
 namespace IntelligenceX.Reviewer;
 
-internal static class Program {
-    private static async Task<int> Main(string[] args) {
+public static class ReviewerApp {
+    public static async Task<int> RunAsync(string[] args) {
         try {
             TryWriteAuthFromEnv();
             var settings = ReviewSettings.Load();
-            var token = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+            var token = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN")
+                ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN");
 
             if (string.IsNullOrWhiteSpace(token)) {
                 Console.Error.WriteLine("Missing GITHUB_TOKEN.");
@@ -280,4 +281,8 @@ internal static class Program {
         }
         return (parts[0], parts[1]);
     }
+}
+
+internal static class Program {
+    private static Task<int> Main(string[] args) => ReviewerApp.RunAsync(args);
 }
