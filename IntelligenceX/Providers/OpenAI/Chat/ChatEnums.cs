@@ -41,7 +41,7 @@ public static class ChatEnumParser {
         if (string.IsNullOrWhiteSpace(value)) {
             return false;
         }
-        var normalized = value.Trim();
+        var normalized = value!.Trim();
         normalized = normalized.Replace("-", string.Empty).Replace("_", string.Empty);
         return Enum.TryParse(normalized, true, out result);
     }
