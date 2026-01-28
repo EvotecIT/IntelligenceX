@@ -7,7 +7,7 @@ namespace IntelligenceX.Reviewer;
 
 internal static class PromptBuilder {
     public static string Build(PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
-        ReviewContextExtras? extras = null) {
+        ReviewContextExtras? extras = null, bool inlineSupported = false) {
         var template = ResolveTemplate(settings);
         var profileBlock = string.IsNullOrWhiteSpace(settings.Profile) ? string.Empty : $"Profile: {settings.Profile}\n";
         var strictnessBlock = string.IsNullOrWhiteSpace(settings.Strictness) ? string.Empty : $"Strictness: {settings.Strictness}\n";
@@ -31,6 +31,7 @@ internal static class PromptBuilder {
             ["Length"] = settings.Length.ToString().ToLowerInvariant(),
             ["Mode"] = settings.Mode,
             ["MaxInlineComments"] = settings.MaxInlineComments.ToString(),
+            ["InlineSupported"] = inlineSupported ? "true" : "false",
             ["NextStepsSection"] = nextStepsSection,
             ["Title"] = context.Title ?? string.Empty,
             ["Body"] = string.IsNullOrWhiteSpace(context.Body) ? "<no description>" : context.Body,

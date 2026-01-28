@@ -87,7 +87,7 @@ public static class ReviewerApp {
             var extras = await BuildExtrasAsync(github, context, settings, CancellationToken.None)
                 .ConfigureAwait(false);
             var limitedFiles = PrepareFiles(files, settings.MaxFiles, settings.MaxPatchChars);
-            var prompt = PromptBuilder.Build(context, limitedFiles, settings, extras);
+            var prompt = PromptBuilder.Build(context, limitedFiles, settings, extras, inlineSupported: false);
             if (settings.RedactPii) {
                 prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
             }
