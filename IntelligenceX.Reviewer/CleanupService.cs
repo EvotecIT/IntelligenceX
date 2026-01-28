@@ -22,7 +22,13 @@ internal static class CleanupService {
         var runner = new ReviewRunner(settings);
         var response = await runner.RunAsync(prompt, null, null, cancellationToken).ConfigureAwait(false);
         var result = CleanupResult.TryParse(response);
-        if (result is null || !result.NeedsCleanup) {
+        if (result is null) {
+            if (!string.IsNullOrWhiteSpace(response)) {
+                Console.WriteLine("Cleanup response parsing failed; skipping cleanup.");
+            }
+            return context;
+        }
+        if (!result.NeedsCleanup) {
             return context;
         }
 
@@ -36,7 +42,10 @@ internal static class CleanupService {
         }
 
         var newTitle = string.IsNullOrWhiteSpace(normalizedTitle) ? context.Title : normalizedTitle!;
-        var newBody = normalizedBody ?? context.Body ?? string.Empty;
+        var newBody = normalizedBody;
+        if (string.IsNullOrWhiteSpace(newBody)) {
+            newBody = context.Body ?? string.Empty;
+        }
 
         var titleChanged = !string.Equals(context.Title, newTitle, StringComparison.Ordinal);
         var bodyChanged = !string.Equals(context.Body ?? string.Empty, newBody, StringComparison.Ordinal);

@@ -56,9 +56,13 @@ internal sealed class CleanupSettings {
         if (!string.IsNullOrWhiteSpace(TemplatePath)) {
             var path = ResolveTemplatePath(TemplatePath!);
             if (!string.IsNullOrWhiteSpace(path) && File.Exists(path)) {
-                var info = new FileInfo(path);
-                if (info.Length <= 50_000) {
-                    return File.ReadAllText(path);
+                try {
+                    var info = new FileInfo(path);
+                    if (info.Length <= 50_000) {
+                        return File.ReadAllText(path);
+                    }
+                } catch {
+                    return null;
                 }
             }
         }
