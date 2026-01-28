@@ -16,6 +16,9 @@ jobs:
     uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@master
     with:
       runs_on: '["self-hosted","ubuntu"]'
+      reviewer_source: release
+      reviewer_release_repo: EvotecIT/github-actions
+      reviewer_release_tag: latest
       provider: openai
       model: gpt-5.2-codex
       openai_transport: native
