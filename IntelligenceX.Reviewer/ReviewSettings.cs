@@ -37,6 +37,7 @@ internal sealed class ReviewSettings {
     public bool IncludeNextSteps { get; set; } = true;
     public string? PromptTemplate { get; set; }
     public string? PromptTemplatePath { get; set; }
+    public string? OutputStyle { get; set; }
     public string? SummaryTemplate { get; set; }
     public string? SummaryTemplatePath { get; set; }
     public bool OverwriteSummary { get; set; } = true;
@@ -208,6 +209,11 @@ internal sealed class ReviewSettings {
         var promptTemplatePath = GetInput("prompt_template_path", "REVIEW_PROMPT_TEMPLATE_PATH");
         if (!string.IsNullOrWhiteSpace(promptTemplatePath)) {
             settings.PromptTemplatePath = promptTemplatePath;
+        }
+
+        var outputStyle = GetInput("output_style", "REVIEW_OUTPUT_STYLE");
+        if (!string.IsNullOrWhiteSpace(outputStyle)) {
+            settings.OutputStyle = outputStyle;
         }
 
         var summaryTemplate = GetInput("summary_template", "REVIEW_SUMMARY_TEMPLATE");
