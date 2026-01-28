@@ -85,6 +85,9 @@ internal sealed class GitHubClient : IDisposable {
 
     public async Task<IReadOnlyList<IssueComment>> ListIssueCommentsAsync(string owner, string repo, int number,
         int maxResults, CancellationToken cancellationToken) {
+        if (maxResults <= 0) {
+            return Array.Empty<IssueComment>();
+        }
         var comments = new List<IssueComment>();
         var page = 1;
         while (true) {
@@ -117,6 +120,9 @@ internal sealed class GitHubClient : IDisposable {
 
     public async Task<IReadOnlyList<PullRequestReviewComment>> ListPullRequestReviewCommentsAsync(string owner, string repo, int number,
         int maxResults, CancellationToken cancellationToken) {
+        if (maxResults <= 0) {
+            return Array.Empty<PullRequestReviewComment>();
+        }
         var comments = new List<PullRequestReviewComment>();
         var page = 1;
         while (true) {

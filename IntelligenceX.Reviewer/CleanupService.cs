@@ -64,7 +64,8 @@ internal static class CleanupService {
         }
 
         if (cleanup.Mode == CleanupMode.Comment || cleanup.Mode == CleanupMode.Hybrid) {
-            await PostSuggestionAsync(github, context, result, cancellationToken).ConfigureAwait(false);
+            var suggestion = BuildSuggestionResult(result, normalizedTitle, normalizedBody, cleanup);
+            await PostSuggestionAsync(github, context, suggestion, cancellationToken).ConfigureAwait(false);
         }
         return context;
     }
@@ -105,6 +106,17 @@ internal static class CleanupService {
             return null;
         }
         return value.Trim();
+    }
+
+    private static CleanupResult BuildSuggestionResult(CleanupResult result, string? normalizedTitle, string? normalizedBody,
+        CleanupSettings settings) {
+        return new CleanupResult {
+            NeedsCleanup = result.NeedsCleanup,
+            Confidence = result.Confidence,
+            Title = settings.AllowsTitleEdit ? normalizedTitle : null,
+            Body = settings.AllowsBodyEdit ? normalizedBody : null,
+            Notes = result.Notes
+        };
     }
 
     private static async Task<IssueComment?> FindExistingCleanupCommentAsync(GitHubClient github, PullRequestContext context,
