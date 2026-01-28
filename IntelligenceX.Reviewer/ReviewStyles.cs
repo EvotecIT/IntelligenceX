@@ -12,38 +12,38 @@ internal static class ReviewStyles {
         switch (key) {
             case "direct":
             case "blunt":
-                SetIfEmpty(ref settings.Tone, "direct");
-                SetIfEmpty(ref settings.Persona, "Direct, no-nonsense reviewer");
-                SetIfEmpty(ref settings.Notes, "Be concise and candid. Avoid emojis.");
+                SetIfEmpty(() => settings.Tone, value => settings.Tone = value, "direct");
+                SetIfEmpty(() => settings.Persona, value => settings.Persona = value, "Direct, no-nonsense reviewer");
+                SetIfEmpty(() => settings.Notes, value => settings.Notes = value, "Be concise and candid. Avoid emojis.");
                 break;
             case "friendly":
-                SetIfEmpty(ref settings.Tone, "friendly");
-                SetIfEmpty(ref settings.Persona, "Supportive reviewer who explains tradeoffs");
-                SetIfEmpty(ref settings.Notes, "Be encouraging and constructive.");
+                SetIfEmpty(() => settings.Tone, value => settings.Tone = value, "friendly");
+                SetIfEmpty(() => settings.Persona, value => settings.Persona = value, "Supportive reviewer who explains tradeoffs");
+                SetIfEmpty(() => settings.Notes, value => settings.Notes = value, "Be encouraging and constructive.");
                 break;
             case "funny":
             case "witty":
-                SetIfEmpty(ref settings.Tone, "light, witty");
-                SetIfEmpty(ref settings.Persona, "Helpful reviewer with light humor");
-                SetIfEmpty(ref settings.Notes, "Use light humor sparingly. Stay professional.");
+                SetIfEmpty(() => settings.Tone, value => settings.Tone = value, "light, witty");
+                SetIfEmpty(() => settings.Persona, value => settings.Persona = value, "Helpful reviewer with light humor");
+                SetIfEmpty(() => settings.Notes, value => settings.Notes = value, "Use light humor sparingly. Stay professional.");
                 break;
             case "colorful":
             case "emoji":
-                SetIfEmpty(ref settings.Tone, "expressive");
-                SetIfEmpty(ref settings.Persona, "Energetic reviewer");
-                SetIfEmpty(ref settings.Notes, "Use emojis sparingly to highlight key points.");
+                SetIfEmpty(() => settings.Tone, value => settings.Tone = value, "expressive");
+                SetIfEmpty(() => settings.Persona, value => settings.Persona = value, "Energetic reviewer");
+                SetIfEmpty(() => settings.Notes, value => settings.Notes = value, "Use emojis sparingly to highlight key points.");
                 break;
             case "formal":
-                SetIfEmpty(ref settings.Tone, "formal");
-                SetIfEmpty(ref settings.Persona, "Formal reviewer");
-                SetIfEmpty(ref settings.Notes, "Keep a professional tone.");
+                SetIfEmpty(() => settings.Tone, value => settings.Tone = value, "formal");
+                SetIfEmpty(() => settings.Persona, value => settings.Persona = value, "Formal reviewer");
+                SetIfEmpty(() => settings.Notes, value => settings.Notes = value, "Keep a professional tone.");
                 break;
         }
     }
 
-    private static void SetIfEmpty(ref string? target, string value) {
-        if (string.IsNullOrWhiteSpace(target)) {
-            target = value;
+    private static void SetIfEmpty(Func<string?> getter, Action<string> setter, string value) {
+        if (string.IsNullOrWhiteSpace(getter())) {
+            setter(value);
         }
     }
 }
