@@ -75,6 +75,7 @@ internal static class ReviewConfigLoader {
         settings.RedactionReplacement = obj.GetString("redactionReplacement") ?? settings.RedactionReplacement;
         settings.PromptTemplate = obj.GetString("promptTemplate") ?? settings.PromptTemplate;
         settings.PromptTemplatePath = obj.GetString("promptTemplatePath") ?? settings.PromptTemplatePath;
+        settings.OutputStyle = obj.GetString("outputStyle") ?? settings.OutputStyle;
         settings.SummaryTemplate = obj.GetString("summaryTemplate") ?? settings.SummaryTemplate;
         settings.SummaryTemplatePath = obj.GetString("summaryTemplatePath") ?? settings.SummaryTemplatePath;
     }

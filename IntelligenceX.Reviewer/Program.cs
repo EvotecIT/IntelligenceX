@@ -15,7 +15,10 @@ internal static class Program {
         try {
             TryWriteAuthFromEnv();
             var settings = ReviewSettings.Load();
-            var token = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+            var token = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN");
+            if (string.IsNullOrWhiteSpace(token)) {
+                token = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+            }
 
             if (string.IsNullOrWhiteSpace(token)) {
                 Console.Error.WriteLine("Missing GITHUB_TOKEN.");
