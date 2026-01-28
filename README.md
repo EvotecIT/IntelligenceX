@@ -28,6 +28,13 @@ Status: Active development | APIs in flux | Actions in beta
 - `IntelligenceX/Providers/OpenAI` — Codex app-server (ChatGPT) client, auth, and easy/fluent APIs.
 - `IntelligenceX/Providers/Copilot` — GitHub Copilot CLI client (JSON-RPC).
 
+## Project structure
+
+- `IntelligenceX` — core .NET library (Codex app-server + Copilot client)
+- `IntelligenceX.Cli` — CLI (`intelligencex`) for auth, setup, and reviewer
+- `IntelligenceX.Reviewer` — GitHub Actions reviewer runner
+- `IntelligenceX.PowerShell` — PowerShell module (binary cmdlets)
+
 ## Requirements
 
 - Codex CLI installed and available on PATH ("codex")
@@ -160,6 +167,8 @@ Example `.intelligencex/reviewer.json`:
   "review": {
     "provider": "openai",
     "profile": "picky",
+    "style": "direct",
+    "outputStyle": "claude",
     "length": "long",
     "focus": ["bugs", "security", "tests"],
     "progressUpdates": true,
@@ -180,6 +189,8 @@ Example `.intelligencex/reviewer.json`:
   }
 }
 ```
+
+Schema: `Schemas/reviewer.schema.json`
 
 ## CLI setup (GitHub Actions)
 

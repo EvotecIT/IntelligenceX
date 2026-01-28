@@ -12,6 +12,8 @@ internal static class PromptBuilder {
         var profileBlock = string.IsNullOrWhiteSpace(settings.Profile) ? string.Empty : $"Profile: {settings.Profile}\n";
         var strictnessBlock = string.IsNullOrWhiteSpace(settings.Strictness) ? string.Empty : $"Strictness: {settings.Strictness}\n";
         var toneBlock = string.IsNullOrWhiteSpace(settings.Tone) ? string.Empty : $"Tone: {settings.Tone}\n";
+        var styleBlock = string.IsNullOrWhiteSpace(settings.Style) ? string.Empty : $"Style: {settings.Style}\n";
+        var outputStyleBlock = string.IsNullOrWhiteSpace(settings.OutputStyle) ? string.Empty : $"Output style: {settings.OutputStyle}\n";
         var focusBlock = settings.Focus.Count == 0 ? string.Empty : $"Focus areas: {string.Join(", ", settings.Focus)}\n";
         var personaBlock = string.IsNullOrWhiteSpace(settings.Persona) ? string.Empty : $"Persona: {settings.Persona}\n";
         var notesBlock = string.IsNullOrWhiteSpace(settings.Notes) ? string.Empty : $"Additional guidance: {settings.Notes}\n";
@@ -24,6 +26,8 @@ internal static class PromptBuilder {
             ["ProfileBlock"] = profileBlock,
             ["StrictnessBlock"] = strictnessBlock,
             ["ToneBlock"] = toneBlock,
+            ["StyleBlock"] = styleBlock,
+            ["OutputStyleBlock"] = outputStyleBlock,
             ["FocusBlock"] = focusBlock,
             ["PersonaBlock"] = personaBlock,
             ["NotesBlock"] = notesBlock,

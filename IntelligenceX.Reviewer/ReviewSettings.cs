@@ -27,6 +27,8 @@ internal sealed class ReviewSettings {
     public string? Profile { get; set; }
     public string? Strictness { get; set; }
     public string? Tone { get; set; }
+    public string? Style { get; set; }
+    public string? OutputStyle { get; set; }
     public IReadOnlyList<string> Focus { get; set; } = Array.Empty<string>();
     public string? Persona { get; set; }
     public string? Notes { get; set; }
@@ -112,6 +114,12 @@ internal sealed class ReviewSettings {
             settings.Strictness = strictness;
         }
 
+        var style = GetInput("style", "REVIEW_STYLE");
+        if (!string.IsNullOrWhiteSpace(style)) {
+            settings.Style = style;
+            ReviewStyles.Apply(style!, settings);
+        }
+
         var tone = GetInput("tone", "REVIEW_TONE");
         if (!string.IsNullOrWhiteSpace(tone)) {
             settings.Tone = tone;
@@ -125,6 +133,11 @@ internal sealed class ReviewSettings {
         var persona = GetInput("persona", "REVIEW_PERSONA");
         if (!string.IsNullOrWhiteSpace(persona)) {
             settings.Persona = persona;
+        }
+
+        var outputStyle = GetInput("output_style", "REVIEW_OUTPUT_STYLE");
+        if (!string.IsNullOrWhiteSpace(outputStyle)) {
+            settings.OutputStyle = outputStyle;
         }
 
         var notes = GetInput("notes", "REVIEW_NOTES");

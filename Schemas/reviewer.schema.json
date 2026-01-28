@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "IntelligenceX reviewer.json",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "review": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "provider": { "type": "string", "enum": ["openai", "copilot", "codex"] },
+        "profile": { "type": "string" },
+        "length": { "type": "string", "enum": ["short", "medium", "long"] },
+        "mode": { "type": "string" },
+        "strictness": { "type": "string" },
+        "tone": { "type": "string" },
+        "style": { "type": "string", "enum": ["direct", "friendly", "funny", "colorful", "formal"] },
+        "outputStyle": { "type": "string" },
+        "focus": { "type": "array", "items": { "type": "string" } },
+        "persona": { "type": "string" },
+        "notes": { "type": "string" },
+        "model": { "type": "string" },
+        "openaiTransport": { "type": "string", "enum": ["native", "appserver"] },
+        "commentMode": { "type": "string", "enum": ["sticky", "fresh"] },
+        "includeIssueComments": { "type": "boolean" },
+        "includeReviewComments": { "type": "boolean" },
+        "includeRelatedPrs": { "type": "boolean" },
+        "maxCommentChars": { "type": "integer", "minimum": 0 },
+        "maxComments": { "type": "integer", "minimum": 0 },
+        "maxFiles": { "type": "integer", "minimum": 0 },
+        "maxPatchChars": { "type": "integer", "minimum": 0 },
+        "maxInlineComments": { "type": "integer", "minimum": 0 },
+        "severityThreshold": { "type": "string" },
+        "progressUpdates": { "type": "boolean" },
+        "progressUpdateSeconds": { "type": "integer", "minimum": 0 },
+        "progressPreviewChars": { "type": "integer", "minimum": 0 },
+        "skipDraft": { "type": "boolean" },
+        "skipTitles": { "type": "array", "items": { "type": "string" } },
+        "skipLabels": { "type": "array", "items": { "type": "string" } },
+        "skipPaths": { "type": "array", "items": { "type": "string" } },
+        "redactPii": { "type": "boolean" },
+        "redactionPatterns": { "type": "array", "items": { "type": "string" } },
+        "redactionReplacement": { "type": "string" },
+        "promptTemplate": { "type": "string" },
+        "promptTemplatePath": { "type": "string" },
+        "summaryTemplate": { "type": "string" },
+        "summaryTemplatePath": { "type": "string" }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "mode": { "type": "string", "enum": ["comment", "edit", "hybrid"] },
+        "scope": { "type": "string", "enum": ["pr", "issue", "both", "pull_request", "issues"] },
+        "requireLabel": { "type": "string" },
+        "minConfidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "allowedEdits": { "type": "array", "items": { "type": "string" } },
+        "template": { "type": "string" },
+        "templatePath": { "type": "string" },
+        "postEditComment": { "type": "boolean" }
+      }
+    },
+    "codex": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "path": { "type": "string" },
+        "args": { "type": "string" },
+        "workingDirectory": { "type": "string" }
+      }
+    },
+    "copilot": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "cliPath": { "type": "string" },
+        "cliUrl": { "type": "string" },
+        "workingDirectory": { "type": "string" },
+        "autoInstall": { "type": "boolean" },
+        "autoInstallMethod": { "type": "string" },
+        "autoInstallPrerelease": { "type": "boolean" }
+      }
+    }
+  }
+}

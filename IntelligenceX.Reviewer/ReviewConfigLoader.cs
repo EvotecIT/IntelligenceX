@@ -36,6 +36,17 @@ internal static class ReviewConfigLoader {
             };
         }
 
+        var style = reviewObj.GetString("style");
+        if (!string.IsNullOrWhiteSpace(style)) {
+            settings.Style = style;
+            ReviewStyles.Apply(style!, settings);
+        }
+
+        var outputStyle = reviewObj.GetString("outputStyle");
+        if (!string.IsNullOrWhiteSpace(outputStyle)) {
+            settings.OutputStyle = outputStyle;
+        }
+
         ApplyStrings(reviewObj, settings);
         ApplyLists(reviewObj, settings);
         ApplyNumbers(reviewObj, settings);
