@@ -51,6 +51,38 @@ internal sealed class GitHubClient : IDisposable {
         return files;
     }
 
+    public async Task<PullRequestContext> GetPullRequestAsync(string owner, string repo, int number,
+        CancellationToken cancellationToken) {
+        var json = await GetJsonAsync($"/repos/{owner}/{repo}/pulls/{number}", cancellationToken)
+            .ConfigureAwait(false);
+        var obj = json.AsObject();
+        if (obj is null) {
+            throw new InvalidOperationException("Invalid pull request response.");
+        }
+
+        var title = obj.GetString("title") ?? string.Empty;
+        var body = obj.GetString("body");
+        var draft = obj.GetBoolean("draft");
+        var prNumber = (int)(obj.GetInt64("number") ?? number);
+        var headSha = obj.GetObject("head")?.GetString("sha");
+        var repoFullName = obj.GetObject("base")?.GetObject("repo")?.GetString("full_name")
+            ?? $"{owner}/{repo}";
+
+        var labels = new List<string>();
+        var labelsArray = obj.GetArray("labels");
+        if (labelsArray is not null) {
+            foreach (var item in labelsArray) {
+                var labelObj = item.AsObject();
+                var name = labelObj?.GetString("name");
+                if (!string.IsNullOrWhiteSpace(name)) {
+                    labels.Add(name);
+                }
+            }
+        }
+
+        return new PullRequestContext(repoFullName, owner, repo, prNumber, title, body, draft, headSha, labels);
+    }
+
     public async Task<IReadOnlyList<IssueComment>> ListIssueCommentsAsync(string owner, string repo, int number,
         CancellationToken cancellationToken) {
         var comments = new List<IssueComment>();
