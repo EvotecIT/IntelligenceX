@@ -395,7 +395,7 @@ public static class ReviewerApp {
 
     private static async Task<IssueComment?> FindExistingSummaryAsync(GitHubClient github, PullRequestContext context,
         CancellationToken cancellationToken) {
-        var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, cancellationToken)
+        var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, 200, cancellationToken)
             .ConfigureAwait(false);
         foreach (var comment in comments) {
             if (comment.Body.Contains(ReviewFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase)) {
