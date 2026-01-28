@@ -29,16 +29,18 @@ internal sealed class ReviewRunner {
         CancellationToken cancellationToken) {
         var options = new IntelligenceXClientOptions {
             DefaultModel = _settings.Model,
-            TransportKind = OpenAITransportKind.AppServer
+            TransportKind = _settings.OpenAITransport
         };
-        if (!string.IsNullOrWhiteSpace(_settings.CodexPath)) {
-            options.AppServerOptions.ExecutablePath = _settings.CodexPath!;
-        }
-        if (!string.IsNullOrWhiteSpace(_settings.CodexArgs)) {
-            options.AppServerOptions.Arguments = _settings.CodexArgs!;
-        }
-        if (!string.IsNullOrWhiteSpace(_settings.CodexWorkingDirectory)) {
-            options.AppServerOptions.WorkingDirectory = _settings.CodexWorkingDirectory;
+        if (options.TransportKind == OpenAITransportKind.AppServer) {
+            if (!string.IsNullOrWhiteSpace(_settings.CodexPath)) {
+                options.AppServerOptions.ExecutablePath = _settings.CodexPath!;
+            }
+            if (!string.IsNullOrWhiteSpace(_settings.CodexArgs)) {
+                options.AppServerOptions.Arguments = _settings.CodexArgs!;
+            }
+            if (!string.IsNullOrWhiteSpace(_settings.CodexWorkingDirectory)) {
+                options.AppServerOptions.WorkingDirectory = _settings.CodexWorkingDirectory;
+            }
         }
 
         await using var client = await IntelligenceXClient.ConnectAsync(options, cancellationToken)
