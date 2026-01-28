@@ -80,9 +80,7 @@ internal static class Program {
             progress.StatusLine = "Analyzed changed files.";
 
             var limitedFiles = PrepareFiles(files, settings.MaxFiles, settings.MaxPatchChars);
-            var commentsBlock = await BuildCommentsBlockAsync(github, context, settings).ConfigureAwait(false);
-            var relatedBlock = await BuildRelatedPullRequestsBlockAsync(github, context, settings).ConfigureAwait(false);
-            var prompt = PromptBuilder.Build(context, limitedFiles, settings, commentsBlock, relatedBlock);
+            var prompt = PromptBuilder.Build(context, limitedFiles, settings);
             if (settings.RedactPii) {
                 prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
             }
@@ -257,66 +255,6 @@ internal static class Program {
         var created = await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, cancellationToken)
             .ConfigureAwait(false);
         return created.Id;
-    }
-
-    private static async Task<string?> BuildCommentsBlockAsync(GitHubClient github, PullRequestContext context, ReviewSettings settings) {
-        if (!settings.IncludeIssueComments && !settings.IncludeReviewComments) {
-            return null;
-        }
-
-        var issueComments = settings.IncludeIssueComments
-            ? await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, CancellationToken.None)
-                .ConfigureAwait(false)
-            : Array.Empty<IssueComment>();
-        var reviewComments = settings.IncludeReviewComments
-            ? await github.ListReviewCommentsAsync(context.Owner, context.Repo, context.Number, CancellationToken.None)
-                .ConfigureAwait(false)
-            : Array.Empty<ReviewComment>();
-
-        return PromptBuilder.BuildCommentsBlock(issueComments, reviewComments, settings);
-    }
-
-    private static async Task<string?> BuildRelatedPullRequestsBlockAsync(GitHubClient github, PullRequestContext context,
-        ReviewSettings settings) {
-        if (!settings.IncludeRelatedPullRequests) {
-            return null;
-        }
-
-        var query = BuildRelatedPullRequestsQuery(context, settings);
-        if (string.IsNullOrWhiteSpace(query)) {
-            return null;
-        }
-
-        var related = await github.SearchPullRequestsAsync(query, settings.MaxRelatedPullRequests, CancellationToken.None)
-            .ConfigureAwait(false);
-        if (related.Count == 0) {
-            return null;
-        }
-        return PromptBuilder.BuildRelatedPullRequestsBlock(related, settings);
-    }
-
-    private static string? BuildRelatedPullRequestsQuery(PullRequestContext context, ReviewSettings settings) {
-        if (!string.IsNullOrWhiteSpace(settings.RelatedPullRequestsQuery)) {
-            return settings.RelatedPullRequestsQuery;
-        }
-
-        if (context.Labels.Count == 0) {
-            return null;
-        }
-
-        var parts = new List<string> {
-            $"repo:{context.RepoFullName}",
-            "is:pr",
-            "is:open",
-            $"-number:{context.Number}"
-        };
-        foreach (var label in context.Labels) {
-            if (!string.IsNullOrWhiteSpace(label)) {
-                parts.Add($"label:\"{label}\"");
-            }
-        }
-
-        return string.Join(" ", parts);
     }
 
     private static string? GetInput(string name) {
