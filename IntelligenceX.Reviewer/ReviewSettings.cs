@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.Reviewer;
 
@@ -30,6 +31,7 @@ internal sealed class ReviewSettings {
     public string? Persona { get; set; }
     public string? Notes { get; set; }
     public string Model { get; set; } = "gpt-5.2-codex";
+    public OpenAITransportKind OpenAITransport { get; set; } = OpenAITransportKind.AppServer;
     public ReviewLength Length { get; set; } = ReviewLength.Long;
     public bool IncludeNextSteps { get; set; } = true;
     public string? PromptTemplate { get; set; }
@@ -124,6 +126,11 @@ internal sealed class ReviewSettings {
         var model = GetInput("model", "OPENAI_MODEL");
         if (!string.IsNullOrWhiteSpace(model)) {
             settings.Model = model!;
+        }
+
+        var transport = GetInput("openai_transport", "OPENAI_TRANSPORT");
+        if (!string.IsNullOrWhiteSpace(transport)) {
+            settings.OpenAITransport = ParseTransport(transport);
         }
 
         var overwriteSummary = GetInput("overwrite_summary", "OVERWRITE_SUMMARY");
@@ -300,6 +307,15 @@ internal sealed class ReviewSettings {
             "copilot" => ReviewProvider.Copilot,
             "openai" or "codex" => ReviewProvider.OpenAI,
             _ => ReviewProvider.OpenAI
+        };
+    }
+
+    private static OpenAITransportKind ParseTransport(string value) {
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "native" => OpenAITransportKind.Native,
+            "appserver" or "app-server" or "codex" => OpenAITransportKind.AppServer,
+            _ => OpenAITransportKind.AppServer
         };
     }
 

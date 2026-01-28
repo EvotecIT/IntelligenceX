@@ -5,6 +5,14 @@ using IntelligenceX.Json;
 namespace IntelligenceX.Reviewer;
 
 internal static class GitHubEventParser {
+    public static PullRequestContext? TryParsePullRequest(JsonObject root) {
+        try {
+            return ParsePullRequest(root);
+        } catch {
+            return null;
+        }
+    }
+
     public static PullRequestContext ParsePullRequest(JsonObject root) {
         var pr = root.GetObject("pull_request") ?? throw new InvalidOperationException("Missing pull_request object.");
         var repoFullName = root.GetObject("repository")?.GetString("full_name")
