@@ -18,8 +18,8 @@ Do not use fenced code blocks as locations.
 If you cannot provide a file path + line or a snippet, omit the inline section entirely.
 If inline comments are supported and you mention any code-level issue or todo, you must include an Inline Comments section and map each issue to a location (path+line or snippet).
 
-Return your review in markdown with these sections:
-- Inline Comments (if any)
+Return your review in markdown with these sections in this exact order, using markdown headings:
+- Inline Comments
 - Todo List
 - Review Summary
 - Code Quality Assessment (include a 1-5 star rating)
@@ -30,6 +30,7 @@ Return your review in markdown with these sections:
 - Backward Compatibility
 - Recommendations
 {{NextStepsSection}}
+If there are no inline comments, write "None." under Inline Comments.
 Keep each section to a maximum of 8 bullet points.
 
 PR Context:
