@@ -156,15 +156,16 @@ internal sealed class GitHubClient : IDisposable {
 
     public async Task<IReadOnlyList<PullRequestReviewThread>> ListPullRequestReviewThreadsAsync(string owner, string repo, int number,
         int maxThreads, int maxComments, CancellationToken cancellationToken) {
-        if (maxThreads <= 0) {
+        if (maxThreads <= 0 || maxComments <= 0) {
             return Array.Empty<PullRequestReviewThread>();
         }
 
         var threads = new List<PullRequestReviewThread>();
+        var commentLimit = Math.Min(Math.Max(1, maxComments), 100);
         string? cursor = null;
         while (threads.Count < maxThreads) {
             var payload = new JsonObject()
-                .Add("query", @"query($owner:String!,$name:String!,$number:Int!,$cursor:String){
+                .Add("query", @"query($owner:String!,$name:String!,$number:Int!,$cursor:String,$commentLimit:Int!){
   repository(owner:$owner,name:$name){
     pullRequest(number:$number){
       reviewThreads(first:50, after:$cursor){
@@ -172,7 +173,7 @@ internal sealed class GitHubClient : IDisposable {
           id
           isResolved
           isOutdated
-          comments(first:10){
+          comments(first:$commentLimit){
             nodes{
               body
               path
@@ -190,7 +191,8 @@ internal sealed class GitHubClient : IDisposable {
                     .Add("owner", owner)
                     .Add("name", repo)
                     .Add("number", number)
-                    .Add("cursor", cursor));
+                    .Add("cursor", cursor)
+                    .Add("commentLimit", commentLimit));
 
             var response = await PostGraphQlAsync(payload, cancellationToken).ConfigureAwait(false);
             var root = response.AsObject();
@@ -219,7 +221,7 @@ internal sealed class GitHubClient : IDisposable {
                 var comments = new List<PullRequestReviewThreadComment>();
                 if (commentNodes is not null) {
                     foreach (var comment in commentNodes) {
-                        if (maxComments > 0 && comments.Count >= maxComments) {
+                        if (comments.Count >= maxComments) {
                             break;
                         }
                         var commentObj = comment.AsObject();

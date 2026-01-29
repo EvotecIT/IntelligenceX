@@ -372,7 +372,13 @@ public static class ReviewerApp {
                 continue;
             }
 
-            var status = thread.IsOutdated ? "stale" : thread.IsResolved ? "resolved" : "active";
+            var status = thread.IsResolved && thread.IsOutdated
+                ? "resolved (stale)"
+                : thread.IsResolved
+                    ? "resolved"
+                    : thread.IsOutdated
+                        ? "stale"
+                        : "active";
             var perThread = 0;
             foreach (var comment in thread.Comments) {
                 if (perThread >= settings.ReviewThreadsMaxComments) {
