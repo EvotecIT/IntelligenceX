@@ -20,7 +20,7 @@ internal static class PromptBuilder {
         var severityBlock = string.IsNullOrWhiteSpace(settings.SeverityThreshold)
             ? string.Empty
             : $"Only include issues with severity >= {settings.SeverityThreshold}.\n";
-        var nextStepsSection = settings.IncludeNextSteps ? "- Next Steps\n" : string.Empty;
+        var nextStepsSection = settings.IncludeNextSteps ? "- Next Steps 🚀\n" : string.Empty;
 
         var tokens = new Dictionary<string, string> {
             ["ProfileBlock"] = profileBlock,

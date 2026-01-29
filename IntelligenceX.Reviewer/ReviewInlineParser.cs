@@ -289,6 +289,23 @@ internal static class ReviewInlineParser {
         if (trimmed.EndsWith(":", StringComparison.Ordinal)) {
             trimmed = trimmed.Substring(0, trimmed.Length - 1).Trim();
         }
+        trimmed = TrimTrailingDecorations(trimmed);
         return trimmed;
+    }
+
+    private static string TrimTrailingDecorations(string value) {
+        var span = value.AsSpan();
+        var end = span.Length - 1;
+        while (end >= 0) {
+            var ch = span[end];
+            if (char.IsLetterOrDigit(ch)) {
+                break;
+            }
+            end--;
+        }
+        if (end < 0) {
+            return string.Empty;
+        }
+        return span[..(end + 1)].ToString().TrimEnd();
     }
 }

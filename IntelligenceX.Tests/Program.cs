@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -35,6 +36,11 @@ internal static class Program {
         failed += Run("Inline comments extract", TestInlineCommentsExtract);
         failed += Run("Inline comments backticks", TestInlineCommentsBackticks);
         failed += Run("Inline comments snippet header", TestInlineCommentsSnippetHeader);
+        failed += Run("Review retry transient", TestReviewRetryTransient);
+        failed += Run("Review retry non-transient", TestReviewRetryNonTransient);
+        failed += Run("Review retry rethrows", TestReviewRetryRethrows);
+        failed += Run("Context deny invalid regex", TestContextDenyInvalidRegex);
+        failed += Run("Context deny timeout", TestContextDenyTimeout);
 #endif
 
         Console.WriteLine(failed == 0 ? "All tests passed." : $"{failed} test(s) failed.");
@@ -296,6 +302,80 @@ internal static class Program {
         AssertEqual(0, result.Comments[0].Line, "inline snippet line");
         AssertEqual("public string Slugify(string input)", result.Comments[0].Snippet, "inline snippet");
         AssertContains(result.Comments[0].Body.Split('\n'), "Add a null guard to avoid exceptions.", "inline snippet body");
+    }
+
+    private static void TestReviewRetryTransient() {
+        var attempts = 0;
+        var result = ReviewRunner.ReviewRetryPolicy.RunAsync(() => {
+                attempts++;
+                if (attempts < 3) {
+                    throw new IOException("transient");
+                }
+                return Task.FromResult("ok");
+            },
+            ex => ex is IOException,
+            maxAttempts: 3,
+            retryDelaySeconds: 1,
+            retryMaxDelaySeconds: 1,
+            CancellationToken.None).GetAwaiter().GetResult();
+
+        AssertEqual("ok", result, "retry result");
+        AssertEqual(3, attempts, "retry attempts");
+    }
+
+    private static void TestReviewRetryNonTransient() {
+        var attempts = 0;
+        var thrown = false;
+        try {
+            ReviewRunner.ReviewRetryPolicy.RunAsync(() => {
+                    attempts++;
+                    throw new InvalidOperationException("nope");
+                },
+                ex => ex is IOException,
+                maxAttempts: 3,
+                retryDelaySeconds: 1,
+                retryMaxDelaySeconds: 1,
+                CancellationToken.None).GetAwaiter().GetResult();
+        } catch (InvalidOperationException) {
+            thrown = true;
+        }
+
+        AssertEqual(true, thrown, "non-transient thrown");
+        AssertEqual(1, attempts, "non-transient attempts");
+    }
+
+    private static void TestReviewRetryRethrows() {
+        var attempts = 0;
+        var ex = new IOException("boom");
+        try {
+            ReviewRunner.ReviewRetryPolicy.RunAsync(() => {
+                    attempts++;
+                    throw ex;
+                },
+                _ => true,
+                maxAttempts: 2,
+                retryDelaySeconds: 1,
+                retryMaxDelaySeconds: 1,
+                CancellationToken.None).GetAwaiter().GetResult();
+            throw new InvalidOperationException("Expected exception.");
+        } catch (IOException caught) {
+            AssertEqual(true, ReferenceEquals(ex, caught), "retry exception instance");
+        }
+
+        AssertEqual(2, attempts, "retry attempts rethrow");
+    }
+
+    private static void TestContextDenyInvalidRegex() {
+        var matched = ContextDenyMatcher.Matches("hello world", new[] { "[", "poem" });
+        AssertEqual(false, matched, "invalid regex match");
+        var matchedAllowed = ContextDenyMatcher.Matches("please write a poem", new[] { "poem" });
+        AssertEqual(true, matchedAllowed, "valid regex match");
+    }
+
+    private static void TestContextDenyTimeout() {
+        var input = new string('a', 20000) + "!";
+        var matched = ContextDenyMatcher.Matches(input, new[] { "(a+)+$" });
+        AssertEqual(false, matched, "timeout match");
     }
 #endif
 

@@ -18,9 +18,26 @@ on:
         description: 'Version label for changelog section (default: current ref)'
         required: false
         default: ''
+      create_pr:
+        description: 'Create a PR instead of pushing directly'
+        required: false
+        default: 'false'
+      pr_branch:
+        description: 'Branch name for PR (optional)'
+        required: false
+        default: ''
+      pr_title:
+        description: 'PR title (optional)'
+        required: false
+        default: ''
+      pr_body:
+        description: 'PR body (optional)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   release-notes:
@@ -56,11 +73,36 @@ jobs:
           from_input="${{ inputs.from }}"
           to_input="${{ inputs.to }}"
           version_input="${{ inputs.version }}"
+          pr_branch_input="${{ inputs.pr_branch }}"
+          pr_title_input="${{ inputs.pr_title }}"
+          pr_body_input="${{ inputs.pr_body }}"
           default_ref="${GITHUB_REF_NAME}"
           current_ref="${to_input:-${default_ref}}"
           version_label="${version_input:-${current_ref}}"
+          pr_branch="${pr_branch_input:-release-notes/${version_label}}"
+          pr_title="${pr_title_input:-Release notes for ${version_label}}"
+          pr_body="${pr_body_input:-Automated release notes update.}"
+          sanitize_branch() {
+            local raw="${1}"
+            local sanitized
+            sanitized=$(echo "${raw}" \
+              | tr '[:upper:]' '[:lower:]' \
+              | sed -E 's/[^a-z0-9._\/-]+/-/g' \
+              | sed -E 's/\/+/-/g' \
+              | sed -E 's/\.\.+/./g' \
+              | sed -E 's/@\{/-/g' \
+              | sed -E 's/^-+//; s/[\/.-]+$//')
+            if [ -z "${sanitized}" ]; then
+              sanitized="release-notes/${GITHUB_RUN_ID}"
+            fi
+            echo "${sanitized}"
+          }
+          pr_branch="$(sanitize_branch "${pr_branch}")"
           echo "current_ref=${current_ref}" >> "$GITHUB_OUTPUT"
           echo "version_label=${version_label}" >> "$GITHUB_OUTPUT"
+          echo "pr_branch=${pr_branch}" >> "$GITHUB_OUTPUT"
+          echo "pr_title=${pr_title}" >> "$GITHUB_OUTPUT"
+          echo "pr_body=${pr_body}" >> "$GITHUB_OUTPUT"
           if [ -n "${from_input}" ]; then
             echo "from_tag=${from_input}" >> "$GITHUB_OUTPUT"
             exit 0
@@ -91,16 +133,33 @@ jobs:
           fi
           dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- "${args[@]}"
 
-      - name: Commit changelog
+      - name: Check changelog changes
+        id: changes
         shell: bash
         run: |
           set -euo pipefail
           if git diff --quiet; then
-            echo "No changelog updates to commit."
-            exit 0
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Commit changelog
+        if: ${{ steps.changes.outputs.has_changes == 'true' && inputs.create_pr != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add CHANGELOG.md
           git commit -m "Release notes for ${{ steps.tags.outputs.version_label }}"
           git push
+
+      - name: Create pull request
+        if: ${{ steps.changes.outputs.has_changes == 'true' && inputs.create_pr == 'true' }}
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: ${{ steps.tags.outputs.pr_branch }}
+          commit-message: "Release notes for ${{ steps.tags.outputs.version_label }}"
+          title: ${{ steps.tags.outputs.pr_title }}
+          body: ${{ steps.tags.outputs.pr_body }}
