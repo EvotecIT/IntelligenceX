@@ -16,6 +16,11 @@ Each inline item should use a real file path and line number (example above).
 If you cannot provide a line number, use a single-line code snippet in backticks as the location (must appear in the diff).
 Do not use fenced code blocks as locations.
 If you cannot provide a file path + line or a snippet, omit the inline section entirely.
+If you can propose a precise change for that location, include a GitHub suggestion block:
+```suggestion
+replacement text
+```
+Only use suggestions when you are confident the replacement is correct and limited to the referenced lines.
 
 Return your review in markdown with these sections:
 - Summary

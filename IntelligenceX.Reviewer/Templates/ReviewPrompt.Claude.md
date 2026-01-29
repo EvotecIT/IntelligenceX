@@ -17,6 +17,11 @@ If you cannot provide a line number, use a single-line code snippet in backticks
 Do not use fenced code blocks as locations.
 If you cannot provide a file path + line or a snippet, omit the inline section entirely.
 If inline comments are supported and you mention any code-level issue or todo, you must include an Inline Comments section and map each issue to a location (path+line or snippet).
+If you can propose a precise change for that location, include a GitHub suggestion block:
+```suggestion
+replacement text
+```
+Only use suggestions when you are confident the replacement is correct and limited to the referenced lines.
 
 Return your review in markdown with these sections in this exact order, using markdown headings:
 - Inline Comments
