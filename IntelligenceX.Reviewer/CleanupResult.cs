@@ -58,10 +58,6 @@ internal sealed class CleanupResult {
         if (start < 0 || end <= start) {
             return null;
         }
-        var prefix = trimmed.Substring(0, start);
-        if (prefix.Length > 40 || prefix.Contains('\n') || prefix.Contains('\r')) {
-            return null;
-        }
         return trimmed.Substring(start, end - start + 1);
     }
 }

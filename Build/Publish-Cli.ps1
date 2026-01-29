@@ -27,7 +27,7 @@
     [string] $SignToolPath = 'signtool.exe',
     [string] $SignThumbprint,
     [string] $SignSubjectName,
-    [string] $SignTimestampUrl = 'http://timestamp.digicert.com',
+    [string] $SignTimestampUrl = 'https://timestamp.digicert.com',
     [string] $SignDescription = 'IntelligenceX CLI',
     [string] $SignUrl,
     [string] $SignCsp,

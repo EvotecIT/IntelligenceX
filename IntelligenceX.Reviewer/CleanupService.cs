@@ -19,6 +19,9 @@ internal static class CleanupService {
         }
 
         var prompt = CleanupPromptBuilder.Build(context, cleanup);
+        if (settings.RedactPii) {
+            prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
+        }
         var runner = new ReviewRunner(settings);
         var response = await runner.RunAsync(prompt, null, null, cancellationToken).ConfigureAwait(false);
         var result = CleanupResult.TryParse(response);
