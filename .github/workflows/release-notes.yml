@@ -1,0 +1,70 @@
+name: IntelligenceX Release Notes
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag or ref to generate notes for (default: current ref)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  release-notes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Resolve tag range
+        id: tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag_input="${{ inputs.tag }}"
+          current_tag="${tag_input:-${GITHUB_REF_NAME}}"
+          echo "current_tag=${current_tag}" >> "$GITHUB_OUTPUT"
+          tags=$(git tag --sort=-v:refname)
+          prev=$(echo "$tags" | grep -v "^${current_tag}$" | head -n 1 || true)
+          echo "prev_tag=${prev}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release notes
+        env:
+          INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
+          OPENAI_MODEL: gpt-5.2-codex
+          OPENAI_TRANSPORT: native
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=("release" "notes" "--to" "${{ steps.tags.outputs.current_tag }}" "--version" "${{ steps.tags.outputs.current_tag }}" "--update-changelog")
+          if [ -n "${{ steps.tags.outputs.prev_tag }}" ]; then
+            args+=("--from" "${{ steps.tags.outputs.prev_tag }}")
+          fi
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- "${args[@]}"
+
+      - name: Commit changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No changelog updates to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "Release notes for ${{ steps.tags.outputs.current_tag }}"
+          git push

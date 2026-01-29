@@ -578,6 +578,18 @@ Generate release notes between tags (and update CHANGELOG.md):
 dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release notes --from v1.2.3 --to v1.2.4 --version v1.2.4 --update-changelog
 ```
 
+### Release notes automation (direct to default branch)
+
+Template workflow is available at `IntelligenceX.Cli/Templates/release-notes.yml`.
+It runs on tag push and updates `CHANGELOG.md` on the default branch.
+
+Required secret:
+- `INTELLIGENCEX_AUTH_B64` (Auth store base64 from `intelligencex auth export --format store-base64`)
+
+Optional overrides:
+- `OPENAI_MODEL`
+- `OPENAI_TRANSPORT`
+
 ## Copilot CLI (GitHub)
 
 IntelligenceX includes a minimal Copilot CLI client (no extra dependencies). It talks JSON-RPC over the Copilot CLI server mode.
