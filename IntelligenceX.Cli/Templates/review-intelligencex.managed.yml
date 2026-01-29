@@ -11,8 +11,8 @@ review:
     reviewer_source: {{ReviewerSource}}
     reviewer_release_repo: {{ReviewerReleaseRepo}}
     reviewer_release_tag: {{ReviewerReleaseTag}}
-    reviewer_release_asset: {{ReviewerReleaseAsset}}
-    reviewer_release_url: {{ReviewerReleaseUrl}}
+    {{ReviewerReleaseAssetLine}}
+    {{ReviewerReleaseUrlLine}}
     repo: ${{ github.event.pull_request.number && github.repository || inputs.repo }}
     pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
     provider: {{Provider}}

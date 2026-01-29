@@ -584,8 +584,12 @@ internal static class SetupRunner {
             ["ReviewerSource"] = settings.ReviewerSource,
             ["ReviewerReleaseRepo"] = settings.ReviewerReleaseRepo,
             ["ReviewerReleaseTag"] = settings.ReviewerReleaseTag,
-            ["ReviewerReleaseAsset"] = YamlQuote(settings.ReviewerReleaseAsset),
-            ["ReviewerReleaseUrl"] = YamlQuote(settings.ReviewerReleaseUrl),
+            ["ReviewerReleaseAssetLine"] = string.IsNullOrWhiteSpace(settings.ReviewerReleaseAsset)
+                ? string.Empty
+                : $"reviewer_release_asset: {YamlQuote(settings.ReviewerReleaseAsset)}",
+            ["ReviewerReleaseUrlLine"] = string.IsNullOrWhiteSpace(settings.ReviewerReleaseUrl)
+                ? string.Empty
+                : $"reviewer_release_url: {YamlQuote(settings.ReviewerReleaseUrl)}",
             ["Provider"] = settings.Provider,
             ["Model"] = settings.Model,
             ["OpenAITransport"] = settings.OpenAITransport,
