@@ -25,15 +25,16 @@ jobs:
     uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@master
     with:
       runs_on: '["self-hosted","ubuntu"]'
-      reviewer_source: release
+      reviewer_source: source
       reviewer_release_repo: EvotecIT/github-actions
       reviewer_release_tag: latest
       repo: ${{ github.event.pull_request.number && github.repository || inputs.repo }}
       pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
       provider: openai
       model: gpt-5.2-codex
-      style: colorful
+      style: direct
       output_style: claude
+      mode: inline
       openai_transport: native
       include_issue_comments: true
       include_review_comments: true

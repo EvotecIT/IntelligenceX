@@ -5,8 +5,26 @@ Focus on correctness, security, performance, and maintainability.
 {{ProfileBlock}}{{StrictnessBlock}}{{StyleBlock}}{{ToneBlock}}{{FocusBlock}}{{PersonaBlock}}{{NotesBlock}}{{SeverityBlock}}Review length: {{Length}}
 Review mode: {{Mode}}
 Max inline comments: {{MaxInlineComments}}
+Inline comments supported: {{InlineSupported}}
+If inline comments are not supported, do not include an inline comments section or inline suggestions.
+If inline comments are supported and you have inline findings, add a section:
+Inline Comments (max {{MaxInlineComments}})
+1) path/to/file.ext:123
+Comment text.
+Only reference lines that appear in the diff.
+Each inline item should use a real file path and line number (example above).
+If you cannot provide a line number, use a single-line code snippet in backticks as the location (must appear in the diff).
+Do not use fenced code blocks as locations.
+If you cannot provide a file path + line or a snippet, omit the inline section entirely.
+If inline comments are supported and you mention any code-level issue or todo, you must include an Inline Comments section and map each issue to a location (path+line or snippet).
+If you can propose a precise change for that location, include a GitHub suggestion block:
+```suggestion
+replacement text
+```
+Only use suggestions when you are confident the replacement is correct and limited to the referenced lines.
 
-Return your review in markdown with these sections:
+Return your review in markdown with these sections in this exact order, using markdown headings:
+- Inline Comments
 - Todo List
 - Review Summary
 - Code Quality Assessment (include a 1-5 star rating)
@@ -17,6 +35,7 @@ Return your review in markdown with these sections:
 - Backward Compatibility
 - Recommendations
 {{NextStepsSection}}
+If there are no inline comments, write "None." under Inline Comments.
 Keep each section to a maximum of 8 bullet points.
 
 PR Context:

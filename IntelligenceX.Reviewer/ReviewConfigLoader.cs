@@ -131,6 +131,9 @@ internal static class ReviewConfigLoader {
         settings.IdleSeconds = ReadInt(obj, "idleSeconds", settings.IdleSeconds);
         settings.ProgressUpdateSeconds = ReadInt(obj, "progressUpdateSeconds", settings.ProgressUpdateSeconds);
         settings.ProgressPreviewChars = ReadInt(obj, "progressPreviewChars", settings.ProgressPreviewChars);
+        settings.RetryCount = ReadInt(obj, "retryCount", settings.RetryCount);
+        settings.RetryDelaySeconds = ReadInt(obj, "retryDelaySeconds", settings.RetryDelaySeconds);
+        settings.RetryMaxDelaySeconds = ReadInt(obj, "retryMaxDelaySeconds", settings.RetryMaxDelaySeconds);
     }
 
     private static void ApplyBooleans(JsonObject obj, ReviewSettings settings) {
