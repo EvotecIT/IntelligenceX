@@ -1,0 +1,106 @@
+name: IntelligenceX Release Notes
+
+on:
+  push:
+    tags:
+      - '*'
+  workflow_dispatch:
+    inputs:
+      from:
+        description: 'Start tag for notes (optional)'
+        required: false
+        default: ''
+      to:
+        description: 'End tag/ref for notes (default: current ref)'
+        required: false
+        default: ''
+      version:
+        description: 'Version label for changelog section (default: current ref)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  release-notes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Ensure auth secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${INTELLIGENCEX_AUTH_B64:-}" ]; then
+            echo "Missing INTELLIGENCEX_AUTH_B64. Generate it with: intelligencex auth export --format store-base64" >&2
+            exit 1
+          fi
+        env:
+          INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
+
+      - name: Resolve tag range
+        id: tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          from_input="${{ inputs.from }}"
+          to_input="${{ inputs.to }}"
+          version_input="${{ inputs.version }}"
+          default_ref="${GITHUB_REF_NAME}"
+          current_ref="${to_input:-${default_ref}}"
+          version_label="${version_input:-${current_ref}}"
+          echo "current_ref=${current_ref}" >> "$GITHUB_OUTPUT"
+          echo "version_label=${version_label}" >> "$GITHUB_OUTPUT"
+          if [ -n "${from_input}" ]; then
+            echo "from_tag=${from_input}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          tags=$(git tag --sort=-v:refname)
+          if [ -z "${tags}" ]; then
+            echo "from_tag=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if echo "$tags" | grep -Fxq "${current_ref}"; then
+            prev=$(echo "$tags" | grep -Fxv "${current_ref}" | head -n 1 || true)
+          else
+            prev=$(echo "$tags" | head -n 1 || true)
+          fi
+          echo "from_tag=${prev}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release notes
+        env:
+          INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
+          OPENAI_MODEL: gpt-5.2-codex
+          OPENAI_TRANSPORT: native
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=("release" "notes" "--to" "${{ steps.tags.outputs.current_ref }}" "--version" "${{ steps.tags.outputs.version_label }}" "--update-changelog")
+          if [ -n "${{ steps.tags.outputs.from_tag }}" ]; then
+            args+=("--from" "${{ steps.tags.outputs.from_tag }}")
+          fi
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- "${args[@]}"
+
+      - name: Commit changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No changelog updates to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "Release notes for ${{ steps.tags.outputs.version_label }}"
+          git push

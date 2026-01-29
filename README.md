@@ -524,6 +524,7 @@ Commands:
 - `intelligencex auth export`
 - `intelligencex auth sync-codex`
 - `intelligencex reviewer run`
+- `intelligencex release notes`
 Legacy aliases are supported: `login`, `export`, `sync-codex`.
 Defaults are built in; environment variables only override them.
 
@@ -570,6 +571,26 @@ Write Codex auth.json (for app-server/CLI reuse):
 ```bash
 dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- auth sync-codex
 ```
+
+Generate release notes between tags (and update CHANGELOG.md):
+
+```bash
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release notes --from v1.2.3 --to v1.2.4 --version v1.2.4 --update-changelog
+```
+
+### Release notes automation (direct to default branch)
+
+Template workflow is available at `IntelligenceX.Cli/Templates/release-notes.yml`.
+It runs on tag push (any tag) and supports manual runs with `from`/`to`/`version` inputs.
+It updates `CHANGELOG.md` on the default branch.
+
+Required secret:
+- `INTELLIGENCEX_AUTH_B64` (Auth store base64 from `intelligencex auth export --format store-base64`)
+  The workflow will fail with a clear message if this secret is missing.
+
+Optional overrides:
+- `OPENAI_MODEL`
+- `OPENAI_TRANSPORT`
 
 ## Copilot CLI (GitHub)
 
