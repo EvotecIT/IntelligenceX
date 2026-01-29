@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -37,7 +38,11 @@ internal sealed class ReviewRunner {
         Exception? lastError = null;
         for (var attempt = 1; attempt <= attempts; attempt++) {
             try {
-                return await RunOpenAiOnceAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false);
+                var output = await RunOpenAiOnceAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false);
+                if (string.IsNullOrWhiteSpace(output)) {
+                    throw new InvalidOperationException("OpenAI response was empty.");
+                }
+                return output;
             } catch (Exception ex) when (IsTransient(ex) && attempt < attempts && !cancellationToken.IsCancellationRequested) {
                 lastError = ex;
                 var jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(200, 800));
@@ -50,9 +55,9 @@ internal sealed class ReviewRunner {
         }
 
         if (lastError is not null) {
-            throw lastError;
+            ExceptionDispatchInfo.Capture(lastError).Throw();
         }
-        return string.Empty;
+        throw new InvalidOperationException("OpenAI request failed without a captured exception.");
     }
 
     private async Task<string> RunOpenAiOnceAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
