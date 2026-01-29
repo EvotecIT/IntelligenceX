@@ -148,24 +148,36 @@ internal static class ReviewInlineParser {
         }
 
         var cleaned = ListPrefix.Replace(line.Trim(), string.Empty).Trim();
+        var hasListPrefix = ListPrefix.IsMatch(line);
         if (string.IsNullOrWhiteSpace(cleaned)) {
             return false;
         }
 
-        if (cleaned.StartsWith("`", StringComparison.Ordinal) && cleaned.EndsWith("`", StringComparison.Ordinal)) {
-            cleaned = cleaned.Trim('`').Trim();
+        var trimmed = cleaned;
+        if (trimmed.StartsWith("`", StringComparison.Ordinal) && trimmed.EndsWith("`", StringComparison.Ordinal)) {
+            trimmed = trimmed.Trim('`').Trim();
         }
 
-        var hashIndex = cleaned.LastIndexOf("#L", StringComparison.OrdinalIgnoreCase);
+        var hashIndex = trimmed.LastIndexOf("#L", StringComparison.OrdinalIgnoreCase);
         if (hashIndex > -1) {
-            var rawPath = cleaned.Substring(0, hashIndex).Trim();
-            var rawLine = cleaned.Substring(hashIndex + 2).Trim();
+            var rawPath = trimmed.Substring(0, hashIndex).Trim();
+            var rawLine = trimmed.Substring(hashIndex + 2).Trim();
             return TryParsePathLine(rawPath, rawLine, out path, out lineNumber, out inlineBody);
         }
 
-        var colonIndex = cleaned.LastIndexOf(':');
+        var colonIndex = trimmed.LastIndexOf(':');
         if (colonIndex < 0) {
-            var snippetCandidate = ExtractSnippet(line);
+            if (!hasListPrefix) {
+                return false;
+            }
+            if (!cleaned.StartsWith("`", StringComparison.Ordinal) ||
+                !cleaned.EndsWith("`", StringComparison.Ordinal)) {
+                return false;
+            }
+            if (cleaned.Count(ch => ch == '`') != 2) {
+                return false;
+            }
+            var snippetCandidate = ExtractSnippet(cleaned);
             if (!string.IsNullOrWhiteSpace(snippetCandidate)) {
                 snippet = snippetCandidate;
                 return true;
@@ -173,8 +185,8 @@ internal static class ReviewInlineParser {
             return false;
         }
 
-        var pathPart = cleaned.Substring(0, colonIndex).Trim();
-        var linePart = cleaned.Substring(colonIndex + 1).Trim();
+        var pathPart = trimmed.Substring(0, colonIndex).Trim();
+        var linePart = trimmed.Substring(colonIndex + 1).Trim();
         if (TryParsePathLine(pathPart, linePart, out path, out lineNumber, out inlineBody)) {
             return true;
         }
@@ -196,7 +208,7 @@ internal static class ReviewInlineParser {
         if (start < 0) {
             return null;
         }
-        var end = line.LastIndexOf('`');
+        var end = line.IndexOf('`', start + 1);
         if (end <= start) {
             return null;
         }

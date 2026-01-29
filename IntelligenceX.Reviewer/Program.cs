@@ -537,8 +537,8 @@ public static class ReviewerApp {
             if (line.StartsWith("@@", StringComparison.Ordinal)) {
                 var match = Regex.Match(line, @"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@");
                 if (match.Success) {
-                    oldLine = int.Parse(match.Groups[1].Value);
-                    newLine = int.Parse(match.Groups[2].Value);
+                    oldLine = int.Parse(match.Groups[1].Value) - 1;
+                    newLine = int.Parse(match.Groups[2].Value) - 1;
                 }
                 continue;
             }
@@ -569,8 +569,8 @@ public static class ReviewerApp {
             if (line.StartsWith("@@", StringComparison.Ordinal)) {
                 var match = Regex.Match(line, @"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@");
                 if (match.Success) {
-                    oldLine = int.Parse(match.Groups[1].Value);
-                    newLine = int.Parse(match.Groups[2].Value);
+                    oldLine = int.Parse(match.Groups[1].Value) - 1;
+                    newLine = int.Parse(match.Groups[2].Value) - 1;
                 }
                 continue;
             }
@@ -769,3 +769,4 @@ public static class ReviewerApp {
 internal static class Program {
     private static Task<int> Main(string[] args) => ReviewerApp.RunAsync(args);
 }
+

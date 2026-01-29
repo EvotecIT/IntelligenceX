@@ -33,6 +33,8 @@ internal static class Program {
         failed += Run("Cleanup result parse embedded", TestCleanupResultParseEmbedded);
         failed += Run("Cleanup template path guard", TestCleanupTemplatePathGuard);
         failed += Run("Inline comments extract", TestInlineCommentsExtract);
+        failed += Run("Inline comments backticks", TestInlineCommentsBackticks);
+        failed += Run("Inline comments snippet header", TestInlineCommentsSnippetHeader);
 #endif
 
         Console.WriteLine(failed == 0 ? "All tests passed." : $"{failed} test(s) failed.");
@@ -261,6 +263,39 @@ internal static class Program {
         if (result.Body.Contains("Inline Comments", StringComparison.OrdinalIgnoreCase)) {
             throw new InvalidOperationException("Inline section was not stripped.");
         }
+    }
+
+    private static void TestInlineCommentsBackticks() {
+        var text = string.Join("\n", new[] {
+            "Inline Comments (max 2)",
+            "1) src/Foo.cs:42",
+            "Use `ConfigureAwait(false)` to avoid context capture.",
+            "",
+            "Tests / Coverage",
+            "N/A"
+        });
+
+        var result = ReviewInlineParser.Extract(text, 5);
+        AssertEqual(1, result.Comments.Count, "inline count backticks");
+        AssertContains(result.Comments[0].Body.Split('\n'), "Use `ConfigureAwait(false)` to avoid context capture.", "inline body backticks");
+    }
+
+    private static void TestInlineCommentsSnippetHeader() {
+        var text = string.Join("\n", new[] {
+            "Inline Comments (max 1)",
+            "1) `public string Slugify(string input)`",
+            "Add a null guard to avoid exceptions.",
+            "",
+            "Tests / Coverage",
+            "N/A"
+        });
+
+        var result = ReviewInlineParser.Extract(text, 5);
+        AssertEqual(1, result.Comments.Count, "inline count snippet");
+        AssertEqual(string.Empty, result.Comments[0].Path, "inline snippet path");
+        AssertEqual(0, result.Comments[0].Line, "inline snippet line");
+        AssertEqual("public string Slugify(string input)", result.Comments[0].Snippet, "inline snippet");
+        AssertContains(result.Comments[0].Body.Split('\n'), "Add a null guard to avoid exceptions.", "inline snippet body");
     }
 #endif
 
