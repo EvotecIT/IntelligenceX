@@ -581,7 +581,8 @@ dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release notes
 ### Release notes automation (direct to default branch)
 
 Template workflow is available at `IntelligenceX.Cli/Templates/release-notes.yml`.
-It runs on tag push and updates `CHANGELOG.md` on the default branch.
+It runs on tag push (any tag) and supports manual runs with `from`/`to`/`version` inputs.
+It updates `CHANGELOG.md` on the default branch.
 
 Required secret:
 - `INTELLIGENCEX_AUTH_B64` (Auth store base64 from `intelligencex auth export --format store-base64`)

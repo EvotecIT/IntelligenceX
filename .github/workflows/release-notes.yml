@@ -3,11 +3,19 @@ name: IntelligenceX Release Notes
 on:
   push:
     tags:
-      - 'v*'
+      - '*'
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'Tag or ref to generate notes for (default: current ref)'
+      from:
+        description: 'Start tag for notes (optional)'
+        required: false
+        default: ''
+      to:
+        description: 'End tag/ref for notes (default: current ref)'
+        required: false
+        default: ''
+      version:
+        description: 'Version label for changelog section (default: current ref)'
         required: false
         default: ''
 
@@ -34,12 +42,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag_input="${{ inputs.tag }}"
-          current_tag="${tag_input:-${GITHUB_REF_NAME}}"
-          echo "current_tag=${current_tag}" >> "$GITHUB_OUTPUT"
+          from_input="${{ inputs.from }}"
+          to_input="${{ inputs.to }}"
+          version_input="${{ inputs.version }}"
+          default_ref="${GITHUB_REF_NAME}"
+          current_ref="${to_input:-${default_ref}}"
+          version_label="${version_input:-${current_ref}}"
+          echo "current_ref=${current_ref}" >> "$GITHUB_OUTPUT"
+          echo "version_label=${version_label}" >> "$GITHUB_OUTPUT"
+          if [ -n "${from_input}" ]; then
+            echo "from_tag=${from_input}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           tags=$(git tag --sort=-v:refname)
-          prev=$(echo "$tags" | grep -v "^${current_tag}$" | head -n 1 || true)
-          echo "prev_tag=${prev}" >> "$GITHUB_OUTPUT"
+          prev=$(echo "$tags" | grep -v "^${current_ref}$" | head -n 1 || true)
+          echo "from_tag=${prev}" >> "$GITHUB_OUTPUT"
 
       - name: Generate release notes
         env:
@@ -49,9 +66,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          args=("release" "notes" "--to" "${{ steps.tags.outputs.current_tag }}" "--version" "${{ steps.tags.outputs.current_tag }}" "--update-changelog")
-          if [ -n "${{ steps.tags.outputs.prev_tag }}" ]; then
-            args+=("--from" "${{ steps.tags.outputs.prev_tag }}")
+          args=("release" "notes" "--to" "${{ steps.tags.outputs.current_ref }}" "--version" "${{ steps.tags.outputs.version_label }}" "--update-changelog")
+          if [ -n "${{ steps.tags.outputs.from_tag }}" ]; then
+            args+=("--from" "${{ steps.tags.outputs.from_tag }}")
           fi
           dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- "${args[@]}"
 
@@ -66,5 +83,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add CHANGELOG.md
-          git commit -m "Release notes for ${{ steps.tags.outputs.current_tag }}"
+          git commit -m "Release notes for ${{ steps.tags.outputs.version_label }}"
           git push
