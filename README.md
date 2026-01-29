@@ -213,8 +213,16 @@ You can configure the reviewer with environment variables **or** a repo-local fi
     "maxInlineComments": 10,
     "progressUpdates": true,
     "progressUpdateSeconds": 30,
+    "retryCount": 3,
+    "retryDelaySeconds": 5,
+    "retryMaxDelaySeconds": 30,
     "commentSearchLimit": 500,
-    "commentMode": "sticky"
+    "commentMode": "sticky",
+    "contextDenyEnabled": true,
+    "contextDenyPatterns": [
+      "\\bpoem\\b",
+      "\\blife advice\\b"
+    ]
   },
   "cleanup": {
     "enabled": true,
@@ -236,6 +244,7 @@ Schema: `Schemas/reviewer.schema.json`
 Notes:
 - Set `maxInlineComments` to `0` to disable inline review comments.
 - `reasoningEffort`/`reasoningSummary` map to Codex reasoning controls.
+- Context deny patterns are regex with a short timeout; invalid patterns are ignored with a warning.
 
 ## CLI setup (GitHub Actions)
 
@@ -274,6 +283,8 @@ Common inputs/env:
 - `profile`, `style`, `output_style`, `tone`, `persona`, `notes`
 - `mode`, `length`, `max_files`, `max_patch_chars`, `max_inline_comments`
 - `skip_titles`, `skip_labels`, `skip_paths`, `skip_draft`
+- `retry_count`, `retry_delay_seconds`, `retry_max_delay_seconds`
+- `context_deny_enabled`, `context_deny_patterns`
 - `redact_pii`, `redaction_patterns`, `redaction_replacement`
 - `prompt_template` / `prompt_template_path`
 - `summary_template` / `summary_template_path`
@@ -583,6 +594,10 @@ dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release notes
 Template workflow is available at `IntelligenceX.Cli/Templates/release-notes.yml`.
 It runs on tag push (any tag) and supports manual runs with `from`/`to`/`version` inputs.
 It updates `CHANGELOG.md` on the default branch.
+
+Optional PR mode:
+- Set `create_pr: 'true'` to open/update a PR instead of pushing directly.
+- Optional inputs: `pr_branch`, `pr_title`, `pr_body`.
 
 Required secret:
 - `INTELLIGENCEX_AUTH_B64` (Auth store base64 from `intelligencex auth export --format store-base64`)

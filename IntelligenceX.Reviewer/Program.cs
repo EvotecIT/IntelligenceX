@@ -12,10 +12,6 @@ using IntelligenceX.OpenAI.Auth;
 namespace IntelligenceX.Reviewer;
 
 public static class ReviewerApp {
-    private static readonly TimeSpan DenyPatternTimeout = TimeSpan.FromMilliseconds(200);
-    private static readonly object DenyPatternLock = new();
-    private static readonly HashSet<string> DenyPatternFailures = new(StringComparer.OrdinalIgnoreCase);
-
     public static async Task<int> RunAsync(string[] args) {
         try {
             TryWriteAuthFromEnv();
@@ -405,7 +401,7 @@ public static class ReviewerApp {
             return false;
         }
         if (settings.ContextDenyEnabled && settings.ContextDenyPatterns.Count > 0) {
-            if (MatchesDenyPatterns(body, settings.ContextDenyPatterns)) {
+            if (ContextDenyMatcher.Matches(body, settings.ContextDenyPatterns)) {
                 return false;
             }
         }
@@ -418,33 +414,6 @@ public static class ReviewerApp {
             return false;
         }
         return true;
-    }
-
-    private static bool MatchesDenyPatterns(string body, IReadOnlyList<string> patterns) {
-        foreach (var pattern in patterns) {
-            if (string.IsNullOrWhiteSpace(pattern)) {
-                continue;
-            }
-            try {
-                if (Regex.IsMatch(body, pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, DenyPatternTimeout)) {
-                    return true;
-                }
-            } catch (RegexMatchTimeoutException ex) {
-                LogDenyPatternOnce(pattern, $"Context deny regex timed out: '{pattern}'. {ex.Message}");
-            } catch (ArgumentException ex) {
-                LogDenyPatternOnce(pattern, $"Invalid context deny regex: '{pattern}'. {ex.Message}");
-            }
-        }
-        return false;
-    }
-
-    private static void LogDenyPatternOnce(string pattern, string message) {
-        lock (DenyPatternLock) {
-            if (!DenyPatternFailures.Add(pattern)) {
-                return;
-            }
-        }
-        Console.Error.WriteLine(message);
     }
 
     private static bool IsBotAuthor(string author) {
