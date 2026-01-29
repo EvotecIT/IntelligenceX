@@ -428,6 +428,7 @@ public static class ReviewerApp {
         }
 
         var lineMap = BuildInlineLineMap(files);
+        var patchIndex = BuildInlinePatchIndex(files);
         if (lineMap.Count == 0) {
             return;
         }
@@ -453,11 +454,21 @@ public static class ReviewerApp {
                 break;
             }
             var normalizedPath = NormalizePath(inline.Path);
-            if (!lineMap.TryGetValue(normalizedPath, out var allowedLines) ||
-                !allowedLines.Contains(inline.Line)) {
+            var lineNumber = inline.Line;
+            if ((string.IsNullOrWhiteSpace(normalizedPath) || lineNumber <= 0) &&
+                !string.IsNullOrWhiteSpace(inline.Snippet)) {
+                if (!TryResolveSnippet(inline.Snippet!, patchIndex, normalizedPath, out normalizedPath, out lineNumber)) {
+                    continue;
+                }
+            }
+            if (string.IsNullOrWhiteSpace(normalizedPath) || lineNumber <= 0) {
                 continue;
             }
-            var key = BuildInlineKey(normalizedPath, inline.Line);
+            if (!lineMap.TryGetValue(normalizedPath, out var allowedLines) ||
+                !allowedLines.Contains(lineNumber)) {
+                continue;
+            }
+            var key = BuildInlineKey(normalizedPath, lineNumber);
             if (existingKeys.Contains(key) || !seen.Add(key)) {
                 continue;
             }
@@ -470,11 +481,11 @@ public static class ReviewerApp {
 
             try {
                 await github.CreatePullRequestReviewCommentAsync(context.Owner, context.Repo, context.Number, body,
-                        context.HeadSha!, normalizedPath, inline.Line, cancellationToken)
+                        context.HeadSha!, normalizedPath, lineNumber, cancellationToken)
                     .ConfigureAwait(false);
                 posted++;
             } catch (Exception ex) {
-                Console.Error.WriteLine($"Inline comment failed for {normalizedPath}:{inline.Line} - {ex.Message}");
+                Console.Error.WriteLine($"Inline comment failed for {normalizedPath}:{lineNumber} - {ex.Message}");
             }
         }
     }
@@ -495,6 +506,26 @@ public static class ReviewerApp {
             }
         }
         return map;
+    }
+
+    private sealed record PatchLine(int LineNumber, string Text, string NormalizedText);
+
+    private static Dictionary<string, List<PatchLine>> BuildInlinePatchIndex(IReadOnlyList<PullRequestFile> files) {
+        var index = new Dictionary<string, List<PatchLine>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in files) {
+            if (string.IsNullOrWhiteSpace(file.Patch)) {
+                continue;
+            }
+            var normalizedPath = NormalizePath(file.Filename);
+            if (string.IsNullOrWhiteSpace(normalizedPath)) {
+                continue;
+            }
+            var lines = ParsePatchContent(file.Patch!);
+            if (lines.Count > 0) {
+                index[normalizedPath] = lines;
+            }
+        }
+        return index;
     }
 
     private static HashSet<int> ParsePatchLines(string patch) {
@@ -527,6 +558,144 @@ public static class ReviewerApp {
             }
         }
         return allowed;
+    }
+
+    private static List<PatchLine> ParsePatchContent(string patch) {
+        var results = new List<PatchLine>();
+        var lines = patch.Replace("\r\n", "\n").Split('\n');
+        var oldLine = 0;
+        var newLine = 0;
+        foreach (var line in lines) {
+            if (line.StartsWith("@@", StringComparison.Ordinal)) {
+                var match = Regex.Match(line, @"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@");
+                if (match.Success) {
+                    oldLine = int.Parse(match.Groups[1].Value);
+                    newLine = int.Parse(match.Groups[2].Value);
+                }
+                continue;
+            }
+            if (line.StartsWith("+", StringComparison.Ordinal) && !line.StartsWith("+++", StringComparison.Ordinal)) {
+                newLine++;
+                AddPatchLine(results, newLine, line.Substring(1));
+                continue;
+            }
+            if (line.StartsWith("-", StringComparison.Ordinal) && !line.StartsWith("---", StringComparison.Ordinal)) {
+                oldLine++;
+                continue;
+            }
+            if (line.StartsWith(" ", StringComparison.Ordinal)) {
+                oldLine++;
+                newLine++;
+                AddPatchLine(results, newLine, line.Substring(1));
+            }
+        }
+        return results;
+    }
+
+    private static void AddPatchLine(List<PatchLine> results, int lineNumber, string text) {
+        var normalized = NormalizeSnippetText(text);
+        if (string.IsNullOrWhiteSpace(normalized)) {
+            return;
+        }
+        results.Add(new PatchLine(lineNumber, text, normalized));
+    }
+
+    private static bool TryResolveSnippet(string snippet, Dictionary<string, List<PatchLine>> patchIndex, string? preferredPath,
+        out string path, out int lineNumber) {
+        path = string.Empty;
+        lineNumber = 0;
+        var normalizedSnippet = NormalizeSnippetText(snippet);
+        if (string.IsNullOrWhiteSpace(normalizedSnippet) || normalizedSnippet.Length < 3) {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(preferredPath)) {
+            var normalizedPreferred = NormalizePath(preferredPath);
+            if (patchIndex.TryGetValue(normalizedPreferred, out var lines) &&
+                TryResolveSnippetInLines(normalizedSnippet, normalizedPreferred, lines, out path, out lineNumber)) {
+                return true;
+            }
+            return false;
+        }
+
+        var candidates = new List<(string path, int line, string normalized)>();
+        foreach (var (filePath, lines) in patchIndex) {
+            foreach (var line in lines) {
+                if (line.NormalizedText.Contains(normalizedSnippet, StringComparison.Ordinal)) {
+                    candidates.Add((filePath, line.LineNumber, line.NormalizedText));
+                }
+            }
+        }
+
+        if (candidates.Count == 1) {
+            path = candidates[0].path;
+            lineNumber = candidates[0].line;
+            return true;
+        }
+
+        if (candidates.Count > 1) {
+            var exact = candidates.Where(candidate => candidate.normalized.Equals(normalizedSnippet, StringComparison.Ordinal)).ToList();
+            if (exact.Count == 1) {
+                path = exact[0].path;
+                lineNumber = exact[0].line;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryResolveSnippetInLines(string normalizedSnippet, string path,
+        IReadOnlyList<PatchLine> lines, out string resolvedPath, out int resolvedLine) {
+        resolvedPath = string.Empty;
+        resolvedLine = 0;
+        var candidates = new List<PatchLine>();
+        foreach (var line in lines) {
+            if (line.NormalizedText.Contains(normalizedSnippet, StringComparison.Ordinal)) {
+                candidates.Add(line);
+            }
+        }
+
+        if (candidates.Count == 1) {
+            resolvedPath = path;
+            resolvedLine = candidates[0].LineNumber;
+            return true;
+        }
+
+        if (candidates.Count > 1) {
+            var exact = candidates.Where(line => line.NormalizedText.Equals(normalizedSnippet, StringComparison.Ordinal)).ToList();
+            if (exact.Count == 1) {
+                resolvedPath = path;
+                resolvedLine = exact[0].LineNumber;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string NormalizeSnippetText(string text) {
+        if (string.IsNullOrWhiteSpace(text)) {
+            return string.Empty;
+        }
+        var trimmed = text.Trim();
+        if (trimmed.Length == 0) {
+            return string.Empty;
+        }
+        var buffer = new System.Text.StringBuilder(trimmed.Length);
+        var inWhitespace = false;
+        foreach (var ch in trimmed) {
+            if (char.IsWhiteSpace(ch)) {
+                if (!inWhitespace) {
+                    buffer.Append(' ');
+                    inWhitespace = true;
+                }
+            } else {
+                buffer.Append(ch);
+                inWhitespace = false;
+            }
+        }
+        return buffer.ToString();
     }
 
     private static string NormalizePath(string path) {

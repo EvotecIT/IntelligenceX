@@ -6,15 +6,17 @@ using System.Text.RegularExpressions;
 namespace IntelligenceX.Reviewer;
 
 internal sealed class InlineReviewComment {
-    public InlineReviewComment(string path, int line, string body) {
+    public InlineReviewComment(string path, int line, string body, string? snippet = null) {
         Path = path;
         Line = line;
         Body = body;
+        Snippet = snippet;
     }
 
     public string Path { get; }
     public int Line { get; }
     public string Body { get; }
+    public string? Snippet { get; }
 }
 
 internal sealed class InlineSectionResult {
@@ -94,14 +96,14 @@ internal static class ReviewInlineParser {
         var results = new List<InlineReviewComment>();
         var index = start;
         while (index < end) {
-            if (!TryParseCommentHeader(lines[index], out var path, out var line, out var inlineBody)) {
+            if (!TryParseCommentHeader(lines[index], out var path, out var line, out var inlineBody, out var snippet)) {
                 index++;
                 continue;
             }
 
             index++;
             var bodyLines = new List<string>();
-            while (index < end && !TryParseCommentHeader(lines[index], out _, out _, out _)) {
+            while (index < end && !TryParseCommentHeader(lines[index], out _, out _, out _, out _)) {
                 if (IsSectionHeader(lines[index])) {
                     break;
                 }
@@ -114,7 +116,7 @@ internal static class ReviewInlineParser {
                 body = inlineBody ?? string.Empty;
             }
             if (!string.IsNullOrWhiteSpace(body)) {
-                results.Add(new InlineReviewComment(path, line, body));
+                results.Add(new InlineReviewComment(path, line, body, snippet));
             }
 
             if (results.Count >= maxComments) {
@@ -125,10 +127,12 @@ internal static class ReviewInlineParser {
         return results;
     }
 
-    private static bool TryParseCommentHeader(string line, out string path, out int lineNumber, out string? inlineBody) {
+    private static bool TryParseCommentHeader(string line, out string path, out int lineNumber, out string? inlineBody,
+        out string? snippet) {
         path = string.Empty;
         lineNumber = 0;
         inlineBody = null;
+        snippet = null;
         if (string.IsNullOrWhiteSpace(line)) {
             return false;
         }
@@ -151,12 +155,46 @@ internal static class ReviewInlineParser {
 
         var colonIndex = cleaned.LastIndexOf(':');
         if (colonIndex < 0) {
+            var snippetCandidate = ExtractSnippet(line);
+            if (!string.IsNullOrWhiteSpace(snippetCandidate)) {
+                snippet = snippetCandidate;
+                return true;
+            }
             return false;
         }
 
         var pathPart = cleaned.Substring(0, colonIndex).Trim();
         var linePart = cleaned.Substring(colonIndex + 1).Trim();
-        return TryParsePathLine(pathPart, linePart, out path, out lineNumber, out inlineBody);
+        if (TryParsePathLine(pathPart, linePart, out path, out lineNumber, out inlineBody)) {
+            return true;
+        }
+
+        var snippetFallback = ExtractSnippet(line);
+        if (!string.IsNullOrWhiteSpace(snippetFallback)) {
+            snippet = snippetFallback;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static string? ExtractSnippet(string line) {
+        if (string.IsNullOrWhiteSpace(line)) {
+            return null;
+        }
+        var start = line.IndexOf('`');
+        if (start < 0) {
+            return null;
+        }
+        var end = line.LastIndexOf('`');
+        if (end <= start) {
+            return null;
+        }
+        var snippet = line.Substring(start + 1, end - start - 1).Trim();
+        if (string.IsNullOrWhiteSpace(snippet)) {
+            return null;
+        }
+        return snippet;
     }
 
     private static bool TryParsePathLine(string rawPath, string rawLine, out string path, out int lineNumber,
