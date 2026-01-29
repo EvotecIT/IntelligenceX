@@ -37,6 +37,17 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Ensure auth secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${INTELLIGENCEX_AUTH_B64:-}" ]; then
+            echo "Missing INTELLIGENCEX_AUTH_B64. Generate it with: intelligencex auth export --format store-base64" >&2
+            exit 1
+          fi
+        env:
+          INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
+
       - name: Resolve tag range
         id: tags
         shell: bash

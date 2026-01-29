@@ -586,6 +586,7 @@ It updates `CHANGELOG.md` on the default branch.
 
 Required secret:
 - `INTELLIGENCEX_AUTH_B64` (Auth store base64 from `intelligencex auth export --format store-base64`)
+  The workflow will fail with a clear message if this secret is missing.
 
 Optional overrides:
 - `OPENAI_MODEL`
