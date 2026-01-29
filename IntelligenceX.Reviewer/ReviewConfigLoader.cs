@@ -170,6 +170,11 @@ internal static class ReviewConfigLoader {
         settings.MaxCommentChars = ReadInt(obj, "maxCommentChars", settings.MaxCommentChars);
         settings.MaxComments = ReadInt(obj, "maxComments", settings.MaxComments);
         settings.CommentSearchLimit = ReadInt(obj, "commentSearchLimit", settings.CommentSearchLimit);
+        settings.ContextDenyEnabled = ReadBool(obj, "contextDenyEnabled", settings.ContextDenyEnabled);
+        var contextDenyPatterns = ReadStringList(obj, "contextDenyPatterns");
+        if (contextDenyPatterns is not null) {
+            settings.ContextDenyPatterns = contextDenyPatterns;
+        }
         settings.IncludeRelatedPrs = ReadBool(obj, "includeRelatedPrs", settings.IncludeRelatedPrs);
         settings.RelatedPrsQuery = obj.GetString("relatedPrsQuery") ?? settings.RelatedPrsQuery;
         settings.MaxRelatedPrs = ReadInt(obj, "maxRelatedPrs", settings.MaxRelatedPrs);
