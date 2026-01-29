@@ -19,6 +19,7 @@ If you cannot provide a file path + line or a snippet, omit the inline section e
 If inline comments are supported and you mention any code-level issue or todo, you must include an Inline Comments section and map each issue to a location (path+line or snippet).
 
 Return your review in markdown with these sections:
+- Inline Comments (if any)
 - Todo List
 - Review Summary
 - Code Quality Assessment (include a 1-5 star rating)
