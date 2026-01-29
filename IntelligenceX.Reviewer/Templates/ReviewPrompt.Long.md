@@ -12,8 +12,10 @@ Inline Comments (max {{MaxInlineComments}})
 1) path/to/file.ext:123
 Comment text.
 Only reference lines that appear in the diff.
-Each inline item must use a real file path and line number (example above). Do not use code snippets as locations.
-If you cannot provide a file path + line, omit the inline section entirely.
+Each inline item should use a real file path and line number (example above).
+If you cannot provide a line number, use a single-line code snippet in backticks as the location (must appear in the diff).
+Do not use fenced code blocks as locations.
+If you cannot provide a file path + line or a snippet, omit the inline section entirely.
 
 Return your review in markdown with these sections:
 - Summary
