@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
@@ -10,18 +11,16 @@ using IntelligenceX.OpenAI.Auth;
 
 namespace IntelligenceX.Reviewer;
 
-internal static class Program {
-    private static async Task<int> Main(string[] args) {
+public static class ReviewerApp {
+    public static async Task<int> RunAsync(string[] args) {
         try {
             TryWriteAuthFromEnv();
             var settings = ReviewSettings.Load();
-            var token = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN");
-            if (string.IsNullOrWhiteSpace(token)) {
-                token = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
-            }
+            var token = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN")
+                ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN");
 
             if (string.IsNullOrWhiteSpace(token)) {
-                Console.Error.WriteLine("Missing GITHUB_TOKEN.");
+                Console.Error.WriteLine("Missing GitHub token (INTELLIGENCEX_GITHUB_TOKEN or GITHUB_TOKEN).");
                 return 1;
             }
 
@@ -62,6 +61,10 @@ internal static class Program {
                 Console.WriteLine("Skipping pull request due to label filter.");
                 return 0;
             }
+
+            context = await CleanupService.RunAsync(github, context, settings, CancellationToken.None)
+                .ConfigureAwait(false);
+
             var progress = new ReviewProgress {
                 StatusLine = "Starting review."
             };
@@ -82,15 +85,20 @@ internal static class Program {
             progress.Files = ReviewProgressState.Complete;
             progress.StatusLine = "Analyzed changed files.";
 
+            var extras = await BuildExtrasAsync(github, context, settings, CancellationToken.None)
+                .ConfigureAwait(false);
+            var inlineSupported = !string.Equals(settings.Mode, "summary", StringComparison.OrdinalIgnoreCase) &&
+                                  settings.MaxInlineComments > 0 &&
+                                  !string.IsNullOrWhiteSpace(context.HeadSha);
             var limitedFiles = PrepareFiles(files, settings.MaxFiles, settings.MaxPatchChars);
-            var prompt = PromptBuilder.Build(context, limitedFiles, settings);
+            var prompt = PromptBuilder.Build(context, limitedFiles, settings, extras, inlineSupported);
             if (settings.RedactPii) {
                 prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
             }
 
             long? commentId = null;
             if (settings.ProgressUpdates) {
-                var progressBody = ReviewFormatter.BuildProgressComment(context, settings, progress, null, inlineSupported: false);
+                var progressBody = ReviewFormatter.BuildProgressComment(context, settings, progress, null, inlineSupported);
                 commentId = await CreateOrUpdateProgressCommentAsync(github, context, settings, progressBody, CancellationToken.None)
                     .ConfigureAwait(false);
             }
@@ -102,7 +110,7 @@ internal static class Program {
             Func<string, Task>? onPartial = null;
             if (settings.ProgressUpdates && commentId.HasValue) {
                 onPartial = async partial => {
-                    var body = ReviewFormatter.BuildProgressComment(context, settings, progress, partial, inlineSupported: false);
+                    var body = ReviewFormatter.BuildProgressComment(context, settings, progress, partial, inlineSupported);
                     await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, body, CancellationToken.None)
                         .ConfigureAwait(false);
                 };
@@ -111,7 +119,22 @@ internal static class Program {
             var reviewBody = await runner.RunAsync(prompt, onPartial, TimeSpan.FromSeconds(settings.ProgressUpdateSeconds),
                 CancellationToken.None).ConfigureAwait(false);
 
-            var commentBody = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: false);
+            var inlineComments = Array.Empty<InlineReviewComment>();
+            var summaryBody = reviewBody;
+            if (inlineSupported) {
+                var inlineResult = ReviewInlineParser.Extract(reviewBody, settings.MaxInlineComments);
+                inlineComments = inlineResult.Comments as InlineReviewComment[] ?? inlineResult.Comments.ToArray();
+                if (inlineResult.HadInlineSection && !string.IsNullOrWhiteSpace(inlineResult.Body)) {
+                    summaryBody = inlineResult.Body;
+                }
+            }
+
+            if (inlineSupported && inlineComments.Length > 0) {
+                await PostInlineCommentsAsync(github, context, files, settings, inlineComments, CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+
+            var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported);
             progress.Review = ReviewProgressState.Complete;
             progress.Finalize = ReviewProgressState.InProgress;
             progress.StatusLine = "Finalizing summary.";
@@ -121,7 +144,7 @@ internal static class Program {
                     .ConfigureAwait(false);
                 Console.WriteLine("Updated review comment.");
             } else if (settings.OverwriteSummary && settings.CommentMode == ReviewCommentMode.Sticky) {
-                var existing = await FindExistingSummaryAsync(github, context, CancellationToken.None).ConfigureAwait(false);
+                var existing = await FindExistingSummaryAsync(github, context, settings, CancellationToken.None).ConfigureAwait(false);
                 if (existing is not null) {
                     await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, commentBody, CancellationToken.None)
                         .ConfigureAwait(false);
@@ -222,7 +245,15 @@ internal static class Program {
             }
             var patch = file.Patch;
             if (!string.IsNullOrWhiteSpace(patch) && patch.Length > maxPatchChars) {
-                patch = patch.Substring(0, maxPatchChars) + "\n... (truncated)";
+                var headSize = Math.Max(0, maxPatchChars / 2);
+                var tailSize = Math.Max(0, maxPatchChars - headSize);
+                if (headSize + tailSize > patch.Length) {
+                    patch = patch.Substring(0, maxPatchChars) + "\n... (truncated)";
+                } else {
+                    var head = patch.Substring(0, headSize);
+                    var tail = patch.Substring(patch.Length - tailSize);
+                    patch = head + "\n... (truncated) ...\n" + tail;
+                }
             }
             list.Add(new PullRequestFile(file.Filename, file.Status, patch));
             count++;
@@ -230,9 +261,290 @@ internal static class Program {
         return list;
     }
 
-    private static async Task<IssueComment?> FindExistingSummaryAsync(GitHubClient github, PullRequestContext context,
+    private static async Task<ReviewContextExtras> BuildExtrasAsync(GitHubClient github, PullRequestContext context,
+        ReviewSettings settings, CancellationToken cancellationToken) {
+        var extras = new ReviewContextExtras();
+        if (settings.IncludeIssueComments) {
+            var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, settings.MaxComments, cancellationToken)
+                .ConfigureAwait(false);
+            extras.IssueCommentsSection = BuildIssueCommentsSection(comments, settings);
+        }
+        if (settings.IncludeReviewComments) {
+            var comments = await github.ListPullRequestReviewCommentsAsync(context.Owner, context.Repo, context.Number, settings.MaxComments, cancellationToken)
+                .ConfigureAwait(false);
+            extras.ReviewCommentsSection = BuildReviewCommentsSection(comments, settings);
+        }
+        if (settings.IncludeRelatedPrs) {
+            var query = ResolveRelatedPrsQuery(context, settings);
+            if (!string.IsNullOrWhiteSpace(query)) {
+                var related = await github.SearchPullRequestsAsync(query, settings.MaxRelatedPrs, cancellationToken)
+                    .ConfigureAwait(false);
+                extras.RelatedPrsSection = BuildRelatedPrsSection(context, related);
+            }
+        }
+        return extras;
+    }
+
+    private static string BuildIssueCommentsSection(IReadOnlyList<IssueComment> comments, ReviewSettings settings) {
+        var filtered = new List<IssueComment>();
+        foreach (var comment in comments) {
+            if (string.IsNullOrWhiteSpace(comment.Body)) {
+                continue;
+            }
+            if (comment.Body.Contains(ReviewFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase) ||
+                comment.Body.Contains(CleanupFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (!ShouldIncludeComment(comment.Author, comment.Body)) {
+                continue;
+            }
+            filtered.Add(comment);
+        }
+        if (filtered.Count == 0) {
+            return string.Empty;
+        }
+        var sb = new StringBuilder();
+        sb.AppendLine();
+        sb.AppendLine("Issue comments (most recent first):");
+        foreach (var comment in filtered) {
+            var author = string.IsNullOrWhiteSpace(comment.Author) ? "unknown" : comment.Author;
+            var body = TrimComment(comment.Body, settings.MaxCommentChars);
+            sb.AppendLine($"- {author}: {body}");
+        }
+        sb.AppendLine();
+        return sb.ToString();
+    }
+
+    private static string BuildReviewCommentsSection(IReadOnlyList<PullRequestReviewComment> comments, ReviewSettings settings) {
+        if (comments.Count == 0) {
+            return string.Empty;
+        }
+        var filtered = new List<PullRequestReviewComment>();
+        foreach (var comment in comments) {
+            if (string.IsNullOrWhiteSpace(comment.Body)) {
+                continue;
+            }
+            if (!ShouldIncludeComment(comment.Author, comment.Body)) {
+                continue;
+            }
+            filtered.Add(comment);
+        }
+        if (filtered.Count == 0) {
+            return string.Empty;
+        }
+        var sb = new StringBuilder();
+        sb.AppendLine();
+        sb.AppendLine("Review comments (most recent first):");
+        foreach (var comment in filtered) {
+            var author = string.IsNullOrWhiteSpace(comment.Author) ? "unknown" : comment.Author;
+            var body = TrimComment(comment.Body, settings.MaxCommentChars);
+            var location = string.IsNullOrWhiteSpace(comment.Path)
+                ? string.Empty
+                : comment.Line.HasValue
+                    ? $" ({comment.Path}:{comment.Line.Value})"
+                    : $" ({comment.Path})";
+            sb.AppendLine($"- {author}{location}: {body}");
+        }
+        sb.AppendLine();
+        return sb.ToString();
+    }
+
+    private static string BuildRelatedPrsSection(PullRequestContext context, IReadOnlyList<RelatedPullRequest> related) {
+        if (related.Count == 0) {
+            return string.Empty;
+        }
+        var lines = new List<string>();
+        foreach (var pr in related) {
+            if (pr.RepoFullName.Equals(context.RepoFullName, StringComparison.OrdinalIgnoreCase) &&
+                pr.Number == context.Number) {
+                continue;
+            }
+            lines.Add($"- {pr.RepoFullName}#{pr.Number}: {pr.Title} ({pr.Url})");
+        }
+        if (lines.Count == 0) {
+            return string.Empty;
+        }
+        var sb = new StringBuilder();
+        sb.AppendLine();
+        sb.AppendLine("Related pull requests (search results):");
+        foreach (var line in lines) {
+            sb.AppendLine(line);
+        }
+        sb.AppendLine();
+        return sb.ToString();
+    }
+
+    private static string ResolveRelatedPrsQuery(PullRequestContext context, ReviewSettings settings) {
+        if (string.IsNullOrWhiteSpace(settings.RelatedPrsQuery)) {
+            return string.Empty;
+        }
+        return settings.RelatedPrsQuery!
+            .Replace("{repo}", context.RepoFullName, StringComparison.OrdinalIgnoreCase)
+            .Replace("{owner}", context.Owner, StringComparison.OrdinalIgnoreCase)
+            .Replace("{name}", context.Repo, StringComparison.OrdinalIgnoreCase)
+            .Replace("{number}", context.Number.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string TrimComment(string value, int maxChars) {
+        var text = value.Replace("\r", "").Replace("\n", " ").Trim();
+        if (string.IsNullOrWhiteSpace(text)) {
+            return "<empty>";
+        }
+        if (text.Length <= maxChars) {
+            return text;
+        }
+        return text.Substring(0, maxChars) + "...";
+    }
+
+    private static bool ShouldIncludeComment(string? author, string body) {
+        if (string.IsNullOrWhiteSpace(body)) {
+            return false;
+        }
+        if (!string.IsNullOrWhiteSpace(author)) {
+            if (IsBotAuthor(author)) {
+                return false;
+            }
+        }
+        if (body.Contains("<!-- intelligencex", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+        return true;
+    }
+
+    private static bool IsBotAuthor(string author) {
+        if (author.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase) ||
+            author.EndsWith("bot", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+        return author.Equals("github-actions", StringComparison.OrdinalIgnoreCase) ||
+            author.Equals("intelligencex-review", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static async Task PostInlineCommentsAsync(GitHubClient github, PullRequestContext context,
+        IReadOnlyList<PullRequestFile> files, ReviewSettings settings, IReadOnlyList<InlineReviewComment> inlineComments,
         CancellationToken cancellationToken) {
-        var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, cancellationToken)
+        if (inlineComments.Count == 0 || string.IsNullOrWhiteSpace(context.HeadSha)) {
+            return;
+        }
+
+        var lineMap = BuildInlineLineMap(files);
+        if (lineMap.Count == 0) {
+            return;
+        }
+
+        var limit = Math.Max(0, settings.CommentSearchLimit);
+        var existing = await github.ListPullRequestReviewCommentsAsync(context.Owner, context.Repo, context.Number, limit, cancellationToken)
+            .ConfigureAwait(false);
+        var existingKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var comment in existing) {
+            if (string.IsNullOrWhiteSpace(comment.Path) || !comment.Line.HasValue) {
+                continue;
+            }
+            if (!comment.Body.Contains(ReviewFormatter.InlineMarker, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            existingKeys.Add(BuildInlineKey(comment.Path!, comment.Line.Value));
+        }
+
+        var posted = 0;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var inline in inlineComments) {
+            if (posted >= settings.MaxInlineComments) {
+                break;
+            }
+            var normalizedPath = NormalizePath(inline.Path);
+            if (!lineMap.TryGetValue(normalizedPath, out var allowedLines) ||
+                !allowedLines.Contains(inline.Line)) {
+                continue;
+            }
+            var key = BuildInlineKey(normalizedPath, inline.Line);
+            if (existingKeys.Contains(key) || !seen.Add(key)) {
+                continue;
+            }
+
+            var body = inline.Body.Trim();
+            if (string.IsNullOrWhiteSpace(body)) {
+                continue;
+            }
+            body = $"{ReviewFormatter.InlineMarker}\n{body}";
+
+            try {
+                await github.CreatePullRequestReviewCommentAsync(context.Owner, context.Repo, context.Number, body,
+                        context.HeadSha!, normalizedPath, inline.Line, cancellationToken)
+                    .ConfigureAwait(false);
+                posted++;
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Inline comment failed for {normalizedPath}:{inline.Line} - {ex.Message}");
+            }
+        }
+    }
+
+    private static Dictionary<string, HashSet<int>> BuildInlineLineMap(IReadOnlyList<PullRequestFile> files) {
+        var map = new Dictionary<string, HashSet<int>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in files) {
+            if (string.IsNullOrWhiteSpace(file.Patch)) {
+                continue;
+            }
+            var normalizedPath = NormalizePath(file.Filename);
+            if (string.IsNullOrWhiteSpace(normalizedPath)) {
+                continue;
+            }
+            var allowed = ParsePatchLines(file.Patch!);
+            if (allowed.Count > 0) {
+                map[normalizedPath] = allowed;
+            }
+        }
+        return map;
+    }
+
+    private static HashSet<int> ParsePatchLines(string patch) {
+        var allowed = new HashSet<int>();
+        var lines = patch.Replace("\r\n", "\n").Split('\n');
+        var oldLine = 0;
+        var newLine = 0;
+        foreach (var line in lines) {
+            if (line.StartsWith("@@", StringComparison.Ordinal)) {
+                var match = Regex.Match(line, @"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@");
+                if (match.Success) {
+                    oldLine = int.Parse(match.Groups[1].Value);
+                    newLine = int.Parse(match.Groups[2].Value);
+                }
+                continue;
+            }
+            if (line.StartsWith("+", StringComparison.Ordinal) && !line.StartsWith("+++", StringComparison.Ordinal)) {
+                newLine++;
+                allowed.Add(newLine);
+                continue;
+            }
+            if (line.StartsWith("-", StringComparison.Ordinal) && !line.StartsWith("---", StringComparison.Ordinal)) {
+                oldLine++;
+                continue;
+            }
+            if (line.StartsWith(" ", StringComparison.Ordinal)) {
+                oldLine++;
+                newLine++;
+                allowed.Add(newLine);
+            }
+        }
+        return allowed;
+    }
+
+    private static string NormalizePath(string path) {
+        var normalized = path.Replace('\\', '/').Trim();
+        if (normalized.StartsWith("./", StringComparison.Ordinal)) {
+            normalized = normalized.Substring(2);
+        }
+        return normalized;
+    }
+
+    private static string BuildInlineKey(string path, int line) {
+        return $"{NormalizePath(path)}:{line}";
+    }
+
+    private static async Task<IssueComment?> FindExistingSummaryAsync(GitHubClient github, PullRequestContext context,
+        ReviewSettings settings, CancellationToken cancellationToken) {
+        var limit = Math.Max(0, settings.CommentSearchLimit);
+        var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, limit, cancellationToken)
             .ConfigureAwait(false);
         foreach (var comment in comments) {
             if (comment.Body.Contains(ReviewFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase)) {
@@ -246,7 +558,7 @@ internal static class Program {
         ReviewSettings settings, string body, CancellationToken cancellationToken) {
         IssueComment? existing = null;
         if (settings.CommentMode == ReviewCommentMode.Sticky) {
-            existing = await FindExistingSummaryAsync(github, context, cancellationToken).ConfigureAwait(false);
+            existing = await FindExistingSummaryAsync(github, context, settings, cancellationToken).ConfigureAwait(false);
         }
 
         if (existing is not null) {
@@ -283,4 +595,8 @@ internal static class Program {
         }
         return (parts[0], parts[1]);
     }
+}
+
+internal static class Program {
+    private static Task<int> Main(string[] args) => ReviewerApp.RunAsync(args);
 }

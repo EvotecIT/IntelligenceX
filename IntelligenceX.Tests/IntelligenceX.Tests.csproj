@@ -20,4 +20,12 @@
     <ItemGroup>
         <ProjectReference Include="..\IntelligenceX\IntelligenceX.csproj" />
     </ItemGroup>
+
+    <PropertyGroup Condition=" '$(TargetFramework)' != 'net472' ">
+        <DefineConstants>$(DefineConstants);INTELLIGENCEX_REVIEWER</DefineConstants>
+    </PropertyGroup>
+
+    <ItemGroup Condition=" '$(TargetFramework)' != 'net472' ">
+        <ProjectReference Include="..\IntelligenceX.Reviewer\IntelligenceX.Reviewer.csproj" />
+    </ItemGroup>
 </Project>

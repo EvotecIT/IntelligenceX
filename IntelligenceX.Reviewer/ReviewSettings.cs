@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.Chat;
 
 namespace IntelligenceX.Reviewer;
 
@@ -25,19 +26,21 @@ internal sealed class ReviewSettings {
     public string Mode { get; set; } = "hybrid";
     public ReviewProvider Provider { get; set; } = ReviewProvider.OpenAI;
     public string? Profile { get; set; }
-    public string? Style { get; set; }
     public string? Strictness { get; set; }
     public string? Tone { get; set; }
+    public string? Style { get; set; }
+    public string? OutputStyle { get; set; }
     public IReadOnlyList<string> Focus { get; set; } = Array.Empty<string>();
     public string? Persona { get; set; }
     public string? Notes { get; set; }
     public string Model { get; set; } = "gpt-5.2-codex";
+    public ReasoningEffort? ReasoningEffort { get; set; }
+    public ReasoningSummary? ReasoningSummary { get; set; }
     public OpenAITransportKind OpenAITransport { get; set; } = OpenAITransportKind.AppServer;
     public ReviewLength Length { get; set; } = ReviewLength.Long;
     public bool IncludeNextSteps { get; set; } = true;
     public string? PromptTemplate { get; set; }
     public string? PromptTemplatePath { get; set; }
-    public string? OutputStyle { get; set; }
     public string? SummaryTemplate { get; set; }
     public string? SummaryTemplatePath { get; set; }
     public bool OverwriteSummary { get; set; } = true;
@@ -58,6 +61,16 @@ internal sealed class ReviewSettings {
     public int ProgressUpdateSeconds { get; set; } = 30;
     public int ProgressPreviewChars { get; set; } = 4000;
     public ReviewCommentMode CommentMode { get; set; } = ReviewCommentMode.Sticky;
+    public CleanupSettings Cleanup { get; } = new CleanupSettings();
+
+    public bool IncludeIssueComments { get; set; }
+    public bool IncludeReviewComments { get; set; }
+    public int MaxCommentChars { get; set; } = 4000;
+    public int MaxComments { get; set; } = 20;
+    public int CommentSearchLimit { get; set; } = 500;
+    public bool IncludeRelatedPrs { get; set; }
+    public string? RelatedPrsQuery { get; set; }
+    public int MaxRelatedPrs { get; set; } = 5;
 
     public string? CodexPath { get; set; }
     public string? CodexArgs { get; set; }
@@ -107,8 +120,8 @@ internal sealed class ReviewSettings {
 
         var style = GetInput("style", "REVIEW_STYLE");
         if (!string.IsNullOrWhiteSpace(style)) {
-            ReviewStyles.Apply(style!, settings);
             settings.Style = style;
+            ReviewStyles.Apply(style!, settings);
         }
 
         var tone = GetInput("tone", "REVIEW_TONE");
@@ -126,6 +139,11 @@ internal sealed class ReviewSettings {
             settings.Persona = persona;
         }
 
+        var outputStyle = GetInput("output_style", "REVIEW_OUTPUT_STYLE");
+        if (!string.IsNullOrWhiteSpace(outputStyle)) {
+            settings.OutputStyle = outputStyle;
+        }
+
         var notes = GetInput("notes", "REVIEW_NOTES");
         if (!string.IsNullOrWhiteSpace(notes)) {
             settings.Notes = notes;
@@ -134,6 +152,22 @@ internal sealed class ReviewSettings {
         var model = GetInput("model", "OPENAI_MODEL");
         if (!string.IsNullOrWhiteSpace(model)) {
             settings.Model = model!;
+        }
+
+        var reasoningEffort = GetInput("reasoning_effort", "OPENAI_REASONING_EFFORT");
+        if (!string.IsNullOrWhiteSpace(reasoningEffort)) {
+            var parsed = ChatEnumParser.ParseReasoningEffort(reasoningEffort);
+            if (parsed.HasValue) {
+                settings.ReasoningEffort = parsed;
+            }
+        }
+
+        var reasoningSummary = GetInput("reasoning_summary", "OPENAI_REASONING_SUMMARY");
+        if (!string.IsNullOrWhiteSpace(reasoningSummary)) {
+            var parsed = ChatEnumParser.ParseReasoningSummary(reasoningSummary);
+            if (parsed.HasValue) {
+                settings.ReasoningSummary = parsed;
+            }
         }
 
         var transport = GetInput("openai_transport", "OPENAI_TRANSPORT");
@@ -209,11 +243,6 @@ internal sealed class ReviewSettings {
         var promptTemplatePath = GetInput("prompt_template_path", "REVIEW_PROMPT_TEMPLATE_PATH");
         if (!string.IsNullOrWhiteSpace(promptTemplatePath)) {
             settings.PromptTemplatePath = promptTemplatePath;
-        }
-
-        var outputStyle = GetInput("output_style", "REVIEW_OUTPUT_STYLE");
-        if (!string.IsNullOrWhiteSpace(outputStyle)) {
-            settings.OutputStyle = outputStyle;
         }
 
         var summaryTemplate = GetInput("summary_template", "REVIEW_SUMMARY_TEMPLATE");
@@ -311,6 +340,76 @@ internal sealed class ReviewSettings {
                 "fresh" => ReviewCommentMode.Fresh,
                 _ => ReviewCommentMode.Sticky
             };
+        }
+
+        var includeIssueComments = GetInput("include_issue_comments", "REVIEW_INCLUDE_ISSUE_COMMENTS");
+        if (!string.IsNullOrWhiteSpace(includeIssueComments)) {
+            settings.IncludeIssueComments = ParseBoolean(includeIssueComments, settings.IncludeIssueComments);
+        }
+        var includeReviewComments = GetInput("include_review_comments", "REVIEW_INCLUDE_REVIEW_COMMENTS");
+        if (!string.IsNullOrWhiteSpace(includeReviewComments)) {
+            settings.IncludeReviewComments = ParseBoolean(includeReviewComments, settings.IncludeReviewComments);
+        }
+        var maxCommentChars = GetInput("max_comment_chars", "REVIEW_MAX_COMMENT_CHARS");
+        if (!string.IsNullOrWhiteSpace(maxCommentChars)) {
+            settings.MaxCommentChars = ParsePositiveInt(maxCommentChars, settings.MaxCommentChars);
+        }
+        var maxComments = GetInput("max_comments", "REVIEW_MAX_COMMENTS");
+        if (!string.IsNullOrWhiteSpace(maxComments)) {
+            settings.MaxComments = ParsePositiveInt(maxComments, settings.MaxComments);
+        }
+        var commentSearchLimit = GetInput("comment_search_limit", "REVIEW_COMMENT_SEARCH_LIMIT");
+        if (!string.IsNullOrWhiteSpace(commentSearchLimit)) {
+            settings.CommentSearchLimit = ParsePositiveInt(commentSearchLimit, settings.CommentSearchLimit);
+        }
+        var includeRelatedPrs = GetInput("include_related_prs", "REVIEW_INCLUDE_RELATED_PRS");
+        if (!string.IsNullOrWhiteSpace(includeRelatedPrs)) {
+            settings.IncludeRelatedPrs = ParseBoolean(includeRelatedPrs, settings.IncludeRelatedPrs);
+        }
+        var relatedPrsQuery = GetInput("related_prs_query", "REVIEW_RELATED_PRS_QUERY");
+        if (!string.IsNullOrWhiteSpace(relatedPrsQuery)) {
+            settings.RelatedPrsQuery = relatedPrsQuery;
+        }
+        var maxRelatedPrs = GetInput("max_related_prs", "REVIEW_MAX_RELATED_PRS");
+        if (!string.IsNullOrWhiteSpace(maxRelatedPrs)) {
+            settings.MaxRelatedPrs = ParsePositiveInt(maxRelatedPrs, settings.MaxRelatedPrs);
+        }
+
+        var cleanupEnabled = GetInput("cleanup_enabled", "REVIEW_CLEANUP_ENABLED");
+        if (!string.IsNullOrWhiteSpace(cleanupEnabled)) {
+            settings.Cleanup.Enabled = ParseBoolean(cleanupEnabled, settings.Cleanup.Enabled);
+        }
+        var cleanupMode = GetInput("cleanup_mode", "REVIEW_CLEANUP_MODE");
+        if (!string.IsNullOrWhiteSpace(cleanupMode)) {
+            settings.Cleanup.Mode = CleanupSettings.ParseMode(cleanupMode, settings.Cleanup.Mode);
+        }
+        var cleanupScope = GetInput("cleanup_scope", "REVIEW_CLEANUP_SCOPE");
+        if (!string.IsNullOrWhiteSpace(cleanupScope)) {
+            settings.Cleanup.Scope = cleanupScope!.Trim();
+        }
+        var cleanupRequireLabel = GetInput("cleanup_require_label", "REVIEW_CLEANUP_REQUIRE_LABEL");
+        if (!string.IsNullOrWhiteSpace(cleanupRequireLabel)) {
+            settings.Cleanup.RequireLabel = cleanupRequireLabel;
+        }
+        var cleanupAllowedEdits = GetInput("cleanup_allowed_edits", "REVIEW_CLEANUP_ALLOWED_EDITS");
+        if (!string.IsNullOrWhiteSpace(cleanupAllowedEdits)) {
+            settings.Cleanup.AllowedEdits = CleanupSettings.NormalizeAllowedEdits(ParseList(cleanupAllowedEdits));
+        }
+        var cleanupMinConfidence = GetInput("cleanup_min_confidence", "REVIEW_CLEANUP_MIN_CONFIDENCE");
+        if (!string.IsNullOrWhiteSpace(cleanupMinConfidence)) {
+            settings.Cleanup.MinConfidence = CleanupSettings.ParseConfidence(cleanupMinConfidence, settings.Cleanup.MinConfidence);
+        }
+        var cleanupTemplate = GetInput("cleanup_template", "REVIEW_CLEANUP_TEMPLATE");
+        if (!string.IsNullOrWhiteSpace(cleanupTemplate)) {
+            settings.Cleanup.Template = cleanupTemplate;
+        }
+        var cleanupTemplatePath = GetInput("cleanup_template_path", "REVIEW_CLEANUP_TEMPLATE_PATH");
+        if (!string.IsNullOrWhiteSpace(cleanupTemplatePath)) {
+            settings.Cleanup.TemplatePath = cleanupTemplatePath;
+        }
+        var cleanupPostEdit = GetInput("cleanup_post_edit_comment", "REVIEW_CLEANUP_POST_EDIT_COMMENT");
+        if (!string.IsNullOrWhiteSpace(cleanupPostEdit)) {
+            settings.Cleanup.PostEditComment = ParseBoolean(cleanupPostEdit, settings.Cleanup.PostEditComment);
         }
     }
 

@@ -27,12 +27,6 @@ internal static class ReviewConfigLoader {
             settings.Profile = profile;
         }
 
-        var style = reviewObj.GetString("style");
-        if (!string.IsNullOrWhiteSpace(style)) {
-            ReviewStyles.Apply(style!, settings);
-            settings.Style = style;
-        }
-
         var provider = reviewObj.GetString("provider");
         if (!string.IsNullOrWhiteSpace(provider)) {
             settings.Provider = provider.Trim().ToLowerInvariant() switch {
@@ -42,14 +36,22 @@ internal static class ReviewConfigLoader {
             };
         }
 
+        var style = reviewObj.GetString("style");
+        if (!string.IsNullOrWhiteSpace(style)) {
+            settings.Style = style;
+            ReviewStyles.Apply(style!, settings);
+        }
+
         ApplyStrings(reviewObj, settings);
         ApplyLists(reviewObj, settings);
         ApplyNumbers(reviewObj, settings);
         ApplyBooleans(reviewObj, settings);
         ApplyCommentMode(reviewObj, settings);
         ApplyLength(reviewObj, settings);
+        ApplyContext(reviewObj, settings);
         ApplyCodex(root, settings);
         ApplyCopilot(root, settings);
+        ApplyCleanup(root, settings);
     }
 
     private static string? ResolveConfigPath() {
@@ -71,6 +73,20 @@ internal static class ReviewConfigLoader {
         settings.Persona = obj.GetString("persona") ?? settings.Persona;
         settings.Notes = obj.GetString("notes") ?? settings.Notes;
         settings.Model = obj.GetString("model") ?? settings.Model;
+        var reasoningEffort = obj.GetString("reasoningEffort");
+        if (!string.IsNullOrWhiteSpace(reasoningEffort)) {
+            var parsed = IntelligenceX.OpenAI.Chat.ChatEnumParser.ParseReasoningEffort(reasoningEffort);
+            if (parsed.HasValue) {
+                settings.ReasoningEffort = parsed;
+            }
+        }
+        var reasoningSummary = obj.GetString("reasoningSummary");
+        if (!string.IsNullOrWhiteSpace(reasoningSummary)) {
+            var parsed = IntelligenceX.OpenAI.Chat.ChatEnumParser.ParseReasoningSummary(reasoningSummary);
+            if (parsed.HasValue) {
+                settings.ReasoningSummary = parsed;
+            }
+        }
         settings.SeverityThreshold = obj.GetString("severityThreshold") ?? settings.SeverityThreshold;
         settings.RedactionReplacement = obj.GetString("redactionReplacement") ?? settings.RedactionReplacement;
         settings.PromptTemplate = obj.GetString("promptTemplate") ?? settings.PromptTemplate;
@@ -148,6 +164,17 @@ internal static class ReviewConfigLoader {
         };
     }
 
+    private static void ApplyContext(JsonObject obj, ReviewSettings settings) {
+        settings.IncludeIssueComments = ReadBool(obj, "includeIssueComments", settings.IncludeIssueComments);
+        settings.IncludeReviewComments = ReadBool(obj, "includeReviewComments", settings.IncludeReviewComments);
+        settings.MaxCommentChars = ReadInt(obj, "maxCommentChars", settings.MaxCommentChars);
+        settings.MaxComments = ReadInt(obj, "maxComments", settings.MaxComments);
+        settings.CommentSearchLimit = ReadInt(obj, "commentSearchLimit", settings.CommentSearchLimit);
+        settings.IncludeRelatedPrs = ReadBool(obj, "includeRelatedPrs", settings.IncludeRelatedPrs);
+        settings.RelatedPrsQuery = obj.GetString("relatedPrsQuery") ?? settings.RelatedPrsQuery;
+        settings.MaxRelatedPrs = ReadInt(obj, "maxRelatedPrs", settings.MaxRelatedPrs);
+    }
+
     private static void ApplyCodex(JsonObject root, ReviewSettings settings) {
         var codex = root.GetObject("codex") ?? root.GetObject("appServer");
         if (codex is null) {
@@ -169,6 +196,34 @@ internal static class ReviewConfigLoader {
         settings.CopilotAutoInstall = ReadBool(copilot, "autoInstall", settings.CopilotAutoInstall);
         settings.CopilotAutoInstallMethod = copilot.GetString("autoInstallMethod") ?? settings.CopilotAutoInstallMethod;
         settings.CopilotAutoInstallPrerelease = ReadBool(copilot, "autoInstallPrerelease", settings.CopilotAutoInstallPrerelease);
+    }
+
+    private static void ApplyCleanup(JsonObject root, ReviewSettings settings) {
+        var cleanup = root.GetObject("cleanup");
+        if (cleanup is null) {
+            return;
+        }
+        settings.Cleanup.Enabled = ReadBool(cleanup, "enabled", settings.Cleanup.Enabled);
+        var mode = cleanup.GetString("mode");
+        if (!string.IsNullOrWhiteSpace(mode)) {
+            settings.Cleanup.Mode = CleanupSettings.ParseMode(mode, settings.Cleanup.Mode);
+        }
+        var scope = cleanup.GetString("scope");
+        if (!string.IsNullOrWhiteSpace(scope)) {
+            settings.Cleanup.Scope = scope;
+        }
+        settings.Cleanup.RequireLabel = cleanup.GetString("requireLabel") ?? settings.Cleanup.RequireLabel;
+        settings.Cleanup.PostEditComment = ReadBool(cleanup, "postEditComment", settings.Cleanup.PostEditComment);
+        var minConfidence = cleanup.GetDouble("minConfidence");
+        if (minConfidence.HasValue) {
+            settings.Cleanup.MinConfidence = CleanupSettings.ClampConfidence(minConfidence.Value);
+        }
+        var allowedEdits = ReadStringList(cleanup, "allowedEdits");
+        if (allowedEdits is not null) {
+            settings.Cleanup.AllowedEdits = CleanupSettings.NormalizeAllowedEdits(allowedEdits);
+        }
+        settings.Cleanup.Template = cleanup.GetString("template") ?? settings.Cleanup.Template;
+        settings.Cleanup.TemplatePath = cleanup.GetString("templatePath") ?? settings.Cleanup.TemplatePath;
     }
 
     private static IReadOnlyList<string>? ReadStringList(JsonObject obj, string key) {

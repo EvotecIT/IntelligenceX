@@ -6,12 +6,14 @@ using System.Text;
 namespace IntelligenceX.Reviewer;
 
 internal static class PromptBuilder {
-    public static string Build(PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings) {
+    public static string Build(PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
+        ReviewContextExtras? extras = null, bool inlineSupported = false) {
         var template = ResolveTemplate(settings);
         var profileBlock = string.IsNullOrWhiteSpace(settings.Profile) ? string.Empty : $"Profile: {settings.Profile}\n";
         var strictnessBlock = string.IsNullOrWhiteSpace(settings.Strictness) ? string.Empty : $"Strictness: {settings.Strictness}\n";
         var styleBlock = string.IsNullOrWhiteSpace(settings.Style) ? string.Empty : $"Style: {settings.Style}\n";
         var toneBlock = string.IsNullOrWhiteSpace(settings.Tone) ? string.Empty : $"Tone: {settings.Tone}\n";
+        var outputStyleBlock = string.IsNullOrWhiteSpace(settings.OutputStyle) ? string.Empty : $"Output style: {settings.OutputStyle}\n";
         var focusBlock = settings.Focus.Count == 0 ? string.Empty : $"Focus areas: {string.Join(", ", settings.Focus)}\n";
         var personaBlock = string.IsNullOrWhiteSpace(settings.Persona) ? string.Empty : $"Persona: {settings.Persona}\n";
         var notesBlock = string.IsNullOrWhiteSpace(settings.Notes) ? string.Empty : $"Additional guidance: {settings.Notes}\n";
@@ -25,6 +27,7 @@ internal static class PromptBuilder {
             ["StrictnessBlock"] = strictnessBlock,
             ["StyleBlock"] = styleBlock,
             ["ToneBlock"] = toneBlock,
+            ["OutputStyleBlock"] = outputStyleBlock,
             ["FocusBlock"] = focusBlock,
             ["PersonaBlock"] = personaBlock,
             ["NotesBlock"] = notesBlock,
@@ -32,10 +35,14 @@ internal static class PromptBuilder {
             ["Length"] = settings.Length.ToString().ToLowerInvariant(),
             ["Mode"] = settings.Mode,
             ["MaxInlineComments"] = settings.MaxInlineComments.ToString(),
+            ["InlineSupported"] = inlineSupported ? "true" : "false",
             ["NextStepsSection"] = nextStepsSection,
             ["Title"] = context.Title ?? string.Empty,
             ["Body"] = string.IsNullOrWhiteSpace(context.Body) ? "<no description>" : context.Body,
-            ["Files"] = BuildFilesBlock(files)
+            ["Files"] = BuildFilesBlock(files),
+            ["IssueCommentsSection"] = extras?.IssueCommentsSection ?? string.Empty,
+            ["ReviewCommentsSection"] = extras?.ReviewCommentsSection ?? string.Empty,
+            ["RelatedPrsSection"] = extras?.RelatedPrsSection ?? string.Empty
         };
 
         return TemplateRenderer.Render(template, tokens);

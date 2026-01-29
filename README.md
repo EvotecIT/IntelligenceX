@@ -3,19 +3,32 @@
 IntelligenceX is a lightweight .NET client for the Codex app-server protocol. It manages the app-server
 process, speaks JSON-RPC over JSONL, and exposes simple methods for authentication and conversations.
 
-- No external NuGet dependencies
+Status: Active development | APIs in flux | Actions in beta
+
+## Project Information
+
+[![top language](https://img.shields.io/github/languages/top/EvotecIT/IntelligenceX.svg)](https://github.com/EvotecIT/IntelligenceX)
+[![license](https://img.shields.io/github/license/EvotecIT/IntelligenceX.svg)](https://github.com/EvotecIT/IntelligenceX)
+[![build](https://github.com/EvotecIT/IntelligenceX/actions/workflows/test-dotnet.yml/badge.svg)](https://github.com/EvotecIT/IntelligenceX/actions/workflows/test-dotnet.yml)
+
+## Author & Social
+
+[![Twitter follow](https://img.shields.io/twitter/follow/PrzemyslawKlys.svg?label=Twitter%20%40PrzemyslawKlys&style=social)](https://twitter.com/PrzemyslawKlys)
+[![Blog](https://img.shields.io/badge/Blog-evotec.xyz-2A6496.svg)](https://evotec.xyz/hub)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-pklys-0077B5.svg?logo=LinkedIn)](https://www.linkedin.com/in/pklys)
+[![Threads](https://img.shields.io/badge/Threads-@PrzemyslawKlys-000000.svg?logo=Threads&logoColor=White)](https://www.threads.net/@przemyslaw.klys)
+[![Discord](https://img.shields.io/discord/508328927853281280?style=flat-square&label=discord%20chat)](https://evo.yt/discord)
+
+- Core library has no external NuGet dependencies (CLI uses Sodium.Core for GitHub secrets)
 - Cross-platform (.NET 8/.NET 10) + Windows (.NET Framework 4.7.2)
 - PowerShell module included (binary cmdlets, net472/net8)
 
-## Components
+## Project structure
 
-- **IntelligenceX (library)** — .NET SDK for building apps that talk to Codex app-server and Copilot CLI.
-- **IntelligenceX.Reviewer (CLI)** — GitHub PR reviewer used by the Actions workflow.
-- **IntelligenceX.AuthTool (CLI)** — OAuth login helper for ChatGPT native transport.
-- **PowerShell module** — cmdlets for scripting and automation.
-
-The CLI tools live in this repo to share code and simplify releases, but they can be packaged separately
-if you prefer a slimmer library-only distribution.
+- `IntelligenceX` — core .NET library (Codex app-server + Copilot client)
+- `IntelligenceX.Cli` — CLI (`intelligencex`) for auth, setup, and reviewer
+- `IntelligenceX.Reviewer` — GitHub Actions reviewer runner
+- `IntelligenceX.PowerShell` — PowerShell module (binary cmdlets)
 
 ## Library (.NET)
 
@@ -179,7 +192,7 @@ Set `INTELLIGENCEX_AUTH_B64` to the auth **store** file (not a single bundle). G
 
 ```powershell
 $env:INTELLIGENCEX_AUTH_EXPORT_FORMAT="store-base64"
-dotnet run --project IntelligenceX.AuthTool --framework net8.0 -- export
+intelligencex auth export --format store-base64
 ```
 
 ### Reviewer configuration file
@@ -191,13 +204,25 @@ You can configure the reviewer with environment variables **or** a repo-local fi
   "review": {
     "provider": "openai",
     "profile": "picky",
-    "style": "colorful",
+    "style": "direct",
     "outputStyle": "claude",
+    "reasoningEffort": "high",
+    "reasoningSummary": "auto",
     "length": "long",
     "focus": ["bugs", "security", "tests"],
+    "maxInlineComments": 10,
     "progressUpdates": true,
     "progressUpdateSeconds": 30,
+    "commentSearchLimit": 500,
     "commentMode": "sticky"
+  },
+  "cleanup": {
+    "enabled": true,
+    "mode": "hybrid",
+    "requireLabel": "ix-cleanup",
+    "minConfidence": 0.85,
+    "allowedEdits": ["formatting", "grammar", "title", "sections"],
+    "template": "## Summary\n- \n\n## Changes\n- \n\n## Notes\n- "
   },
   "copilot": {
     "cliPath": "copilot",
@@ -205,6 +230,37 @@ You can configure the reviewer with environment variables **or** a repo-local fi
   }
 }
 ```
+
+Schema: `Schemas/reviewer.schema.json`
+
+Notes:
+- Set `maxInlineComments` to `0` to disable inline review comments.
+- `reasoningEffort`/`reasoningSummary` map to Codex reasoning controls.
+
+## CLI setup (GitHub Actions)
+
+Use the CLI to add or update the review workflow and secrets.
+
+```powershell
+# Interactive setup (uses GitHub device flow)
+intelligencex setup --repo EvotecIT/IntelligenceX
+
+# Skip secret creation (manual secret paste)
+intelligencex setup --repo EvotecIT/IntelligenceX --skip-secret
+
+# Update only the OpenAI auth secret
+intelligencex setup --repo EvotecIT/IntelligenceX --update-secret
+
+# Remove workflow/config (optional: keep secret)
+intelligencex setup --repo EvotecIT/IntelligenceX --cleanup --keep-secret
+```
+
+Common options:
+- `--actions-repo` / `--actions-ref` to point at the reusable workflow
+- `--reviewer-source` (`release|source`) + `--reviewer-release-*`
+- `--progress-updates <true|false>` to toggle progress comment updates
+
+The CLI uses the GitHub secrets API to store `INTELLIGENCEX_AUTH_B64` (requires Sodium.Core).
 
 ### Inputs / env
 
@@ -214,6 +270,7 @@ Required:
 
 Common inputs/env:
 - `provider`, `model`, `openai_transport` (`native|appserver`)
+- `reasoning_effort`, `reasoning_summary`
 - `profile`, `style`, `output_style`, `tone`, `persona`, `notes`
 - `mode`, `length`, `max_files`, `max_patch_chars`, `max_inline_comments`
 - `skip_titles`, `skip_labels`, `skip_paths`, `skip_draft`
@@ -222,8 +279,8 @@ Common inputs/env:
 - `summary_template` / `summary_template_path`
 
 Template tokens:
-- Prompt: `{{ProfileBlock}}`, `{{StrictnessBlock}}`, `{{StyleBlock}}`, `{{ToneBlock}}`, `{{FocusBlock}}`,
-  `{{PersonaBlock}}`, `{{NotesBlock}}`, `{{SeverityBlock}}`, `{{Length}}`, `{{Mode}}`, `{{MaxInlineComments}}`,
+- Prompt: `{{ProfileBlock}}`, `{{StrictnessBlock}}`, `{{StyleBlock}}`, `{{OutputStyleBlock}}`, `{{ToneBlock}}`, `{{FocusBlock}}`,
+  `{{PersonaBlock}}`, `{{NotesBlock}}`, `{{SeverityBlock}}`, `{{Length}}`, `{{Mode}}`, `{{MaxInlineComments}}`, `{{InlineSupported}}`,
   `{{NextStepsSection}}`, `{{Title}}`, `{{Body}}`, `{{Files}}`
 - Summary: `{{SummaryMarker}}`, `{{Number}}`, `{{Title}}`, `{{InlineNote}}`, `{{ReviewBody}}`, `{{Model}}`, `{{Length}}`
 
@@ -426,9 +483,48 @@ PowerShell scripts live in `Module/Examples`:
 - `Example.Chat.ps1`
 - `Example.Health.ps1`
 
-## Auth Tool (OAuth)
+### GitHub App details
 
-`IntelligenceX.AuthTool` provides a native OAuth login flow (similar to Clawdbot) without requiring Codex CLI.
+If you want the reviewer to post as a dedicated bot (instead of `github-actions`), use a GitHub App token.
+Create an app (personal or org) and add the app credentials as secrets.
+
+Minimal app settings:
+- Permissions: `Pull requests: Read & write`, `Issues: Write`, `Contents: Read`
+- Subscribe to events: none
+- Webhook: disabled
+
+Create the app and install it on the target repo, then add secrets:
+- `INTELLIGENCEX_GITHUB_APP_ID` (the App ID)
+- `INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY` (the PEM contents)
+
+The reusable workflow will mint `INTELLIGENCEX_GITHUB_TOKEN` automatically from those secrets.
+
+### GitHub Auth Paths
+
+There are three supported ways to authenticate GitHub for reviews:
+
+1) **Standard GitHub Actions (default)**  
+   Use `GITHUB_TOKEN`. Works everywhere but posts as `github-actions[bot]`.
+
+2) **BYOA (recommended)**  
+   Each org/user creates their own GitHub App and stores its secrets in their repo/org.  
+   This keeps trust local and enables a custom bot identity.
+
+3) **Shared App (requires a service)**  
+   A single shared GitHub App only works across many repos if you run a service that mints
+   short-lived app tokens, because the private key cannot be distributed to users safely.
+
+## CLI
+
+`IntelligenceX.Cli` provides a native OAuth login flow (similar to Clawdbot) without requiring Codex CLI.
+It also exposes reviewer entry points for automation.
+
+Commands:
+- `intelligencex auth login`
+- `intelligencex auth export`
+- `intelligencex auth sync-codex`
+- `intelligencex reviewer run`
+Legacy aliases are supported: `login`, `export`, `sync-codex`.
 Defaults are built in; environment variables only override them.
 
 Defaults:
@@ -459,20 +555,20 @@ Native ChatGPT overrides (optional):
 Login:
 
 ```bash
-dotnet run --project IntelligenceX.AuthTool/IntelligenceX.AuthTool.csproj -- login
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- auth login
 ```
 
 Export (store-base64 for GitHub Secrets):
 
 ```bash
 INTELLIGENCEX_AUTH_EXPORT_FORMAT=store-base64 \
-dotnet run --project IntelligenceX.AuthTool/IntelligenceX.AuthTool.csproj -- export
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- auth export
 ```
 
 Write Codex auth.json (for app-server/CLI reuse):
 
 ```bash
-dotnet run --project IntelligenceX.AuthTool/IntelligenceX.AuthTool.csproj -- sync-codex
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- auth sync-codex
 ```
 
 ## Copilot CLI (GitHub)
@@ -527,3 +623,7 @@ Console.WriteLine(response);
 - This library targets the Codex app-server JSON-RPC protocol.
 - For custom app-server arguments set `CODEX_APP_SERVER_ARGS`.
 - For custom app-server path set `CODEX_APP_SERVER_PATH`.
+
+
+
+

@@ -13,7 +13,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.PowerShell", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Reviewer", "IntelligenceX.Reviewer\IntelligenceX.Reviewer.csproj", "{4944FF21-A87E-44D9-8C32-55F174A14077}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.AuthTool", "IntelligenceX.AuthTool\IntelligenceX.AuthTool.csproj", "{3CC3EC98-2F2B-41FE-95B1-2E56ECC94A92}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Cli", "IntelligenceX.Cli\IntelligenceX.Cli.csproj", "{3CC3EC98-2F2B-41FE-95B1-2E56ECC94A92}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

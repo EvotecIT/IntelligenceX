@@ -1,0 +1,18 @@
+name: IntelligenceX Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: 'Repository (owner/name) for manual runs'
+        required: false
+        default: ''
+      pr_number:
+        description: 'Pull request number for manual runs'
+        required: false
+        default: ''
+
+jobs:
+{{ManagedBlock}}

@@ -1,0 +1,33 @@
+# INTELLIGENCEX:BEGIN
+review:
+  permissions:
+    contents: read
+    pull-requests: write
+    issues: write
+    id-token: write
+  uses: {{ActionsRepo}}/.github/workflows/review-intelligencex.yml@{{ActionsRef}}
+  with:
+    runs_on: {{RunsOn}}
+    reviewer_source: {{ReviewerSource}}
+    reviewer_release_repo: {{ReviewerReleaseRepo}}
+    reviewer_release_tag: {{ReviewerReleaseTag}}
+    {{ReviewerReleaseAssetLine}}
+    {{ReviewerReleaseUrlLine}}
+    repo: ${{ github.event.pull_request.number && github.repository || inputs.repo }}
+    pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
+    provider: {{Provider}}
+    model: {{Model}}
+    openai_transport: {{OpenAITransport}}
+    include_issue_comments: {{IncludeIssueComments}}
+    include_review_comments: {{IncludeReviewComments}}
+    include_related_prs: {{IncludeRelatedPullRequests}}
+    progress_updates: {{ProgressUpdates}}
+    cleanup_enabled: {{CleanupEnabled}}
+    cleanup_mode: {{CleanupMode}}
+    cleanup_scope: {{CleanupScope}}
+    cleanup_require_label: {{CleanupRequireLabel}}
+    cleanup_min_confidence: {{CleanupMinConfidence}}
+    cleanup_allowed_edits: {{CleanupAllowedEdits}}
+    cleanup_post_edit_comment: {{CleanupPostEditComment}}
+  secrets: inherit
+# INTELLIGENCEX:END

@@ -84,11 +84,14 @@ internal sealed class GitHubClient : IDisposable {
     }
 
     public async Task<IReadOnlyList<IssueComment>> ListIssueCommentsAsync(string owner, string repo, int number,
-        CancellationToken cancellationToken) {
+        int maxResults, CancellationToken cancellationToken) {
+        if (maxResults <= 0) {
+            return Array.Empty<IssueComment>();
+        }
         var comments = new List<IssueComment>();
         var page = 1;
         while (true) {
-            var url = $"/repos/{owner}/{repo}/issues/{number}/comments?per_page=100&page={page}";
+            var url = $"/repos/{owner}/{repo}/issues/{number}/comments?per_page=100&page={page}&sort=created&direction=desc";
             var json = await GetJsonAsync(url, cancellationToken).ConfigureAwait(false);
             var array = json.AsArray();
             if (array is null || array.Count == 0) {
@@ -101,14 +104,95 @@ internal sealed class GitHubClient : IDisposable {
                 }
                 var id = obj.GetInt64("id") ?? 0;
                 var body = obj.GetString("body") ?? string.Empty;
-                comments.Add(new IssueComment(id, body));
+                var author = obj.GetObject("user")?.GetString("login");
+                comments.Add(new IssueComment(id, body, author));
+                if (maxResults > 0 && comments.Count >= maxResults) {
+                    break;
+                }
             }
-            if (array.Count < 100) {
+            if (array.Count < 100 || (maxResults > 0 && comments.Count >= maxResults)) {
                 break;
             }
             page++;
         }
         return comments;
+    }
+
+    public async Task<IReadOnlyList<PullRequestReviewComment>> ListPullRequestReviewCommentsAsync(string owner, string repo, int number,
+        int maxResults, CancellationToken cancellationToken) {
+        if (maxResults <= 0) {
+            return Array.Empty<PullRequestReviewComment>();
+        }
+        var comments = new List<PullRequestReviewComment>();
+        var page = 1;
+        while (true) {
+            var url = $"/repos/{owner}/{repo}/pulls/{number}/comments?per_page=100&page={page}&sort=created&direction=desc";
+            var json = await GetJsonAsync(url, cancellationToken).ConfigureAwait(false);
+            var array = json.AsArray();
+            if (array is null || array.Count == 0) {
+                break;
+            }
+            foreach (var item in array) {
+                var obj = item.AsObject();
+                if (obj is null) {
+                    continue;
+                }
+                var body = obj.GetString("body") ?? string.Empty;
+                var author = obj.GetObject("user")?.GetString("login");
+                var path = obj.GetString("path");
+                var line = obj.GetInt64("line");
+                comments.Add(new PullRequestReviewComment(body, author, path, line.HasValue ? (int?)line.Value : null));
+                if (maxResults > 0 && comments.Count >= maxResults) {
+                    break;
+                }
+            }
+            if (array.Count < 100 || (maxResults > 0 && comments.Count >= maxResults)) {
+                break;
+            }
+            page++;
+        }
+        return comments;
+    }
+
+    public async Task<IReadOnlyList<RelatedPullRequest>> SearchPullRequestsAsync(string query, int maxResults,
+        CancellationToken cancellationToken) {
+        if (string.IsNullOrWhiteSpace(query) || maxResults <= 0) {
+            return Array.Empty<RelatedPullRequest>();
+        }
+        var results = new List<RelatedPullRequest>();
+        var page = 1;
+        while (results.Count < maxResults) {
+            var url = $"/search/issues?q={Uri.EscapeDataString(query)}&per_page=100&page={page}";
+            var json = await GetJsonAsync(url, cancellationToken).ConfigureAwait(false);
+            var root = json.AsObject();
+            var items = root?.GetArray("items");
+            if (items is null || items.Count == 0) {
+                break;
+            }
+            foreach (var item in items) {
+                var obj = item.AsObject();
+                if (obj is null || obj.GetObject("pull_request") is null) {
+                    continue;
+                }
+                var title = obj.GetString("title") ?? string.Empty;
+                var urlValue = obj.GetString("html_url") ?? string.Empty;
+                var number = obj.GetInt64("number") ?? 0;
+                var repoUrl = obj.GetString("repository_url") ?? string.Empty;
+                var repoFullName = ParseRepoFullName(repoUrl);
+                if (string.IsNullOrWhiteSpace(urlValue) || string.IsNullOrWhiteSpace(repoFullName) || number <= 0) {
+                    continue;
+                }
+                results.Add(new RelatedPullRequest(title, urlValue, repoFullName, (int)number));
+                if (results.Count >= maxResults) {
+                    break;
+                }
+            }
+            if (items.Count < 100) {
+                break;
+            }
+            page++;
+        }
+        return results;
     }
 
     public async Task<IssueComment> CreateIssueCommentAsync(string owner, string repo, int number, string body,
@@ -121,11 +205,37 @@ internal sealed class GitHubClient : IDisposable {
         return new IssueComment(id, body);
     }
 
+    public async Task UpdatePullRequestAsync(string owner, string repo, int number, string title, string body,
+        CancellationToken cancellationToken) {
+        var payload = new JsonObject()
+            .Add("title", title)
+            .Add("body", body);
+        await PatchJsonAsync($"/repos/{owner}/{repo}/pulls/{number}", payload, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task UpdateIssueCommentAsync(string owner, string repo, long commentId, string body,
         CancellationToken cancellationToken) {
         var payload = new JsonObject().Add("body", body);
         await PatchJsonAsync($"/repos/{owner}/{repo}/issues/comments/{commentId}", payload, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    public async Task<PullRequestReviewComment> CreatePullRequestReviewCommentAsync(string owner, string repo, int number,
+        string body, string commitId, string path, int line, CancellationToken cancellationToken) {
+        var payload = new JsonObject()
+            .Add("body", body)
+            .Add("commit_id", commitId)
+            .Add("path", path)
+            .Add("line", line)
+            .Add("side", "RIGHT");
+        var response = await PostJsonAsync($"/repos/{owner}/{repo}/pulls/{number}/comments", payload, cancellationToken)
+            .ConfigureAwait(false);
+        var obj = response.AsObject();
+        var author = obj?.GetObject("user")?.GetString("login");
+        var responsePath = obj?.GetString("path") ?? path;
+        var responseLine = obj?.GetInt64("line");
+        return new PullRequestReviewComment(body, author, responsePath, responseLine.HasValue ? (int?)responseLine.Value : line);
     }
 
     public void Dispose() => _http.Dispose();
@@ -159,5 +269,19 @@ internal sealed class GitHubClient : IDisposable {
             var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {responseText}");
         }
+    }
+
+    private static string ParseRepoFullName(string url) {
+        if (string.IsNullOrWhiteSpace(url)) {
+            return string.Empty;
+        }
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) {
+            return string.Empty;
+        }
+        var segments = uri.AbsolutePath.Trim('/').Split('/');
+        if (segments.Length < 2) {
+            return string.Empty;
+        }
+        return $"{segments[^2]}/{segments[^1]}";
     }
 }

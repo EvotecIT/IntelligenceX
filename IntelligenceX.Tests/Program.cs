@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -6,6 +7,9 @@ using System.Threading.Tasks;
 using IntelligenceX.Copilot;
 using IntelligenceX.Json;
 using IntelligenceX.Rpc;
+#if INTELLIGENCEX_REVIEWER
+using IntelligenceX.Reviewer;
+#endif
 
 namespace IntelligenceX.Tests;
 
@@ -22,6 +26,14 @@ internal static class Program {
         failed += Run("Header transport message", TestHeaderTransportMessage);
         failed += Run("Header transport truncated", TestHeaderTransportTruncated);
         failed += Run("Copilot idle event", TestCopilotIdleEvent);
+#if INTELLIGENCEX_REVIEWER
+        failed += Run("Cleanup normalize allowed edits", TestCleanupNormalizeAllowedEdits);
+        failed += Run("Cleanup clamp confidence", TestCleanupClampConfidence);
+        failed += Run("Cleanup result parse fenced", TestCleanupResultParseFenced);
+        failed += Run("Cleanup result parse embedded", TestCleanupResultParseEmbedded);
+        failed += Run("Cleanup template path guard", TestCleanupTemplatePathGuard);
+        failed += Run("Inline comments extract", TestInlineCommentsExtract);
+#endif
 
         Console.WriteLine(failed == 0 ? "All tests passed." : $"{failed} test(s) failed.");
         return failed == 0 ? 0 : 1;
@@ -159,10 +171,123 @@ internal static class Program {
         AssertEqual(true, evt.IsIdle, "idle");
     }
 
+#if INTELLIGENCEX_REVIEWER
+    private static void TestCleanupNormalizeAllowedEdits() {
+        var normalized = CleanupSettings.NormalizeAllowedEdits(new[] { "Grammar", "unknown", "TITLE", " " });
+        AssertSequenceEqual(new[] { "grammar", "title" }, normalized, "normalized");
+
+        var defaults = CleanupSettings.NormalizeAllowedEdits(Array.Empty<string>());
+        AssertContains(defaults, "formatting", "defaults formatting");
+        AssertContains(defaults, "grammar", "defaults grammar");
+        AssertContains(defaults, "title", "defaults title");
+        AssertContains(defaults, "sections", "defaults sections");
+    }
+
+    private static void TestCleanupClampConfidence() {
+        AssertEqual(0d, CleanupSettings.ClampConfidence(-1), "clamp below");
+        AssertEqual(1d, CleanupSettings.ClampConfidence(2), "clamp above");
+        AssertEqual(0.42d, CleanupSettings.ClampConfidence(0.42d), "clamp mid");
+    }
+
+    private static void TestCleanupResultParseFenced() {
+        var input = "```json\n{ \"needs_cleanup\": true, \"confidence\": 0.9, \"title\": \"Fix\", \"body\": \"Body\" }\n```";
+        var result = CleanupResult.TryParse(input);
+        AssertNotNull(result, "result");
+        AssertEqual(true, result!.NeedsCleanup, "needs cleanup");
+        AssertEqual(0.9d, result.Confidence, "confidence");
+        AssertEqual("Fix", result.Title, "title");
+        AssertEqual("Body", result.Body, "body");
+    }
+
+    private static void TestCleanupResultParseEmbedded() {
+        var input = "note {\"needsCleanup\":true,\"confidence\":2} trailing";
+        var result = CleanupResult.TryParse(input);
+        AssertNotNull(result, "result");
+        AssertEqual(true, result!.NeedsCleanup, "needs cleanup");
+        AssertEqual(1d, result.Confidence, "confidence");
+    }
+
+    private static void TestCleanupTemplatePathGuard() {
+        var previous = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        var root = Path.Combine(Path.GetTempPath(), "ix-tests-" + Guid.NewGuid().ToString("N"));
+        var outsideRoot = Path.Combine(Path.GetTempPath(), "ix-tests-outside-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(outsideRoot);
+
+        var insidePath = Path.Combine(root, "template.md");
+        var outsidePath = Path.Combine(outsideRoot, "template.md");
+        File.WriteAllText(insidePath, "inside");
+        File.WriteAllText(outsidePath, "outside");
+
+        try {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", root);
+            var settings = new CleanupSettings { TemplatePath = "template.md" };
+            AssertEqual("inside", settings.ResolveTemplate(), "inside template");
+
+            settings.TemplatePath = outsidePath;
+            AssertEqual<string?>(null, settings.ResolveTemplate(), "outside template");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previous);
+            if (Directory.Exists(root)) {
+                Directory.Delete(root, true);
+            }
+            if (Directory.Exists(outsideRoot)) {
+                Directory.Delete(outsideRoot, true);
+            }
+        }
+    }
+
+    private static void TestInlineCommentsExtract() {
+        var text = string.Join("\n", new[] {
+            "Summary",
+            "- ok",
+            "",
+            "Inline Comments (max 2)",
+            "1) src/Foo.cs:42",
+            "Use null-guard here.",
+            "",
+            "2) `src/Bar.cs:10`",
+            "Nit: spacing.",
+            "",
+            "Tests / Coverage",
+            "N/A"
+        });
+
+        var result = ReviewInlineParser.Extract(text, 5);
+        AssertEqual(2, result.Comments.Count, "inline count");
+        AssertEqual("src/Foo.cs", result.Comments[0].Path, "inline path 1");
+        AssertEqual(42, result.Comments[0].Line, "inline line 1");
+        AssertContains(result.Body.Split('\n'), "Summary", "inline strip summary");
+        if (result.Body.Contains("Inline Comments", StringComparison.OrdinalIgnoreCase)) {
+            throw new InvalidOperationException("Inline section was not stripped.");
+        }
+    }
+#endif
+
     private static void AssertEqual<T>(T expected, T? actual, string name) {
         if (!Equals(expected, actual)) {
             throw new InvalidOperationException($"Expected {name} to be '{expected}', got '{actual}'.");
         }
+    }
+
+    private static void AssertSequenceEqual(IReadOnlyList<string> expected, IReadOnlyList<string> actual, string name) {
+        if (expected.Count != actual.Count) {
+            throw new InvalidOperationException($"Expected {name} length {expected.Count}, got {actual.Count}.");
+        }
+        for (var i = 0; i < expected.Count; i++) {
+            if (!string.Equals(expected[i], actual[i], StringComparison.Ordinal)) {
+                throw new InvalidOperationException($"Expected {name}[{i}] to be '{expected[i]}', got '{actual[i]}'.");
+            }
+        }
+    }
+
+    private static void AssertContains(IReadOnlyList<string> values, string expected, string name) {
+        foreach (var value in values) {
+            if (string.Equals(value, expected, StringComparison.OrdinalIgnoreCase)) {
+                return;
+            }
+        }
+        throw new InvalidOperationException($"Expected {name} to contain '{expected}'.");
     }
 
     private static void AssertNotNull(object? value, string name) {

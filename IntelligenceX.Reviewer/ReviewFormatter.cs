@@ -5,6 +5,7 @@ namespace IntelligenceX.Reviewer;
 
 internal static class ReviewFormatter {
     public const string SummaryMarker = "<!-- intelligencex:summary -->";
+    public const string InlineMarker = "<!-- intelligencex:inline -->";
     private const string ProgressTemplateName = "ReviewProgress.md";
 
     public static string BuildComment(PullRequestContext context, string reviewBody, ReviewSettings settings, bool inlineSupported) {

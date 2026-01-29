@@ -1,0 +1,153 @@
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace IntelligenceX.Reviewer;
+
+internal static class CleanupService {
+    public static async Task<PullRequestContext> RunAsync(GitHubClient github, PullRequestContext context,
+        ReviewSettings settings, CancellationToken cancellationToken) {
+        var cleanup = settings.Cleanup;
+        if (!cleanup.Enabled || !cleanup.AllowsPr) {
+            return context;
+        }
+        if (cleanup.RequiresLabel && !cleanup.HasLabel(context.Labels)) {
+            return context;
+        }
+        if (!cleanup.AllowsTitleEdit && !cleanup.AllowsBodyEdit) {
+            return context;
+        }
+
+        var prompt = CleanupPromptBuilder.Build(context, cleanup);
+        if (settings.RedactPii) {
+            prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
+        }
+        var runner = new ReviewRunner(settings);
+        var response = await runner.RunAsync(prompt, null, null, cancellationToken).ConfigureAwait(false);
+        var result = CleanupResult.TryParse(response);
+        if (result is null) {
+            if (!string.IsNullOrWhiteSpace(response)) {
+                Console.WriteLine("Cleanup response parsing failed; skipping cleanup.");
+            }
+            return context;
+        }
+        if (!result.NeedsCleanup) {
+            return context;
+        }
+
+        var normalizedTitle = Normalize(result.Title);
+        var normalizedBody = Normalize(result.Body);
+        if (!cleanup.AllowsTitleEdit) {
+            normalizedTitle = context.Title;
+        }
+        if (!cleanup.AllowsBodyEdit) {
+            normalizedBody = context.Body ?? string.Empty;
+        }
+
+        var newTitle = string.IsNullOrWhiteSpace(normalizedTitle) ? context.Title : normalizedTitle!;
+        var newBody = normalizedBody;
+        if (string.IsNullOrWhiteSpace(newBody)) {
+            newBody = context.Body ?? string.Empty;
+        }
+
+        var titleChanged = !string.Equals(context.Title, newTitle, StringComparison.Ordinal);
+        var bodyChanged = !string.Equals(context.Body ?? string.Empty, newBody, StringComparison.Ordinal);
+        if (!titleChanged && !bodyChanged) {
+            return context;
+        }
+
+        var canEdit = (cleanup.Mode == CleanupMode.Edit || cleanup.Mode == CleanupMode.Hybrid) &&
+            result.Confidence >= cleanup.MinConfidence;
+        var commentSearchLimit = Math.Max(0, settings.CommentSearchLimit);
+
+        if (canEdit) {
+            await ApplyEditAsync(github, context, result, newTitle, newBody, cleanup, commentSearchLimit, cancellationToken)
+                .ConfigureAwait(false);
+            return new PullRequestContext(context.RepoFullName, context.Owner, context.Repo, context.Number,
+                newTitle, newBody, context.Draft, context.HeadSha, context.Labels);
+        }
+
+        if (cleanup.Mode == CleanupMode.Comment || cleanup.Mode == CleanupMode.Hybrid) {
+            var suggestion = BuildSuggestionResult(result, normalizedTitle, normalizedBody, cleanup);
+            await PostSuggestionAsync(github, context, suggestion, commentSearchLimit, cancellationToken).ConfigureAwait(false);
+        }
+        return context;
+    }
+
+    private static async Task PostSuggestionAsync(GitHubClient github, PullRequestContext context, CleanupResult result,
+        int commentSearchLimit, CancellationToken cancellationToken) {
+        var body = CleanupFormatter.BuildSuggestionComment(context, result);
+        var existing = await FindExistingCleanupCommentAsync(github, context, commentSearchLimit, cancellationToken)
+            .ConfigureAwait(false);
+        if (existing is not null) {
+            await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, body, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+        await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task ApplyEditAsync(GitHubClient github, PullRequestContext context, CleanupResult result,
+        string title, string body, CleanupSettings settings, int commentSearchLimit, CancellationToken cancellationToken) {
+        await github.UpdatePullRequestAsync(context.Owner, context.Repo, context.Number, title, body, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (settings.PostEditComment) {
+            var comment = CleanupFormatter.BuildEditComment(context, result);
+            var existing = await FindExistingCleanupCommentAsync(github, context, commentSearchLimit, cancellationToken)
+                .ConfigureAwait(false);
+            if (existing is not null) {
+                await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, comment, cancellationToken)
+                    .ConfigureAwait(false);
+            } else {
+                await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, comment, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static string? Normalize(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+        return value.Trim();
+    }
+
+    private static CleanupResult BuildSuggestionResult(CleanupResult result, string? normalizedTitle, string? normalizedBody,
+        CleanupSettings settings) {
+        return new CleanupResult {
+            NeedsCleanup = result.NeedsCleanup,
+            Confidence = result.Confidence,
+            Title = settings.AllowsTitleEdit ? normalizedTitle : null,
+            Body = settings.AllowsBodyEdit ? normalizedBody : null,
+            Notes = result.Notes
+        };
+    }
+
+    private static async Task<IssueComment?> FindExistingCleanupCommentAsync(GitHubClient github, PullRequestContext context,
+        int commentSearchLimit, CancellationToken cancellationToken) {
+        var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, commentSearchLimit, cancellationToken)
+            .ConfigureAwait(false);
+        foreach (var comment in comments) {
+            if (!comment.Body.Contains(CleanupFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (IsOwnCleanupComment(comment)) {
+                return comment;
+            }
+        }
+        return null;
+    }
+
+    private static bool IsOwnCleanupComment(IssueComment comment) {
+        if (string.IsNullOrWhiteSpace(comment.Author)) {
+            return false;
+        }
+        if (comment.Author.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase) ||
+            comment.Author.EndsWith("bot", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+        return comment.Author.Equals("intelligencex-review", StringComparison.OrdinalIgnoreCase);
+    }
+}

@@ -9,7 +9,4 @@ Reviewing PR #{{Number}}: **{{Title}}**
 
 {{InlineNote}}
 
-### Preliminary Analysis
-{{PreliminaryBlock}}
-
 _Model: {{Model}} · Length: {{Length}} · Mode: {{Mode}}_
