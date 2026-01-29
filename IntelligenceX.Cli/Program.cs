@@ -23,6 +23,7 @@ internal static class Program {
             "auth" => await RunAuthAsync(rest).ConfigureAwait(false),
             "reviewer" => await RunReviewerAsync(rest).ConfigureAwait(false),
             "setup" => await RunSetupAsync(rest).ConfigureAwait(false),
+            "release" => await RunReleaseAsync(rest).ConfigureAwait(false),
             "help" or "-h" or "--help" => PrintHelpReturn(),
             _ => PrintHelpReturn()
         };
@@ -40,6 +41,7 @@ internal static class Program {
         Console.WriteLine("  intelligencex auth <command>");
         Console.WriteLine("  intelligencex reviewer run");
         Console.WriteLine("  intelligencex setup [options]");
+        Console.WriteLine("  intelligencex release <command>");
         Console.WriteLine();
         Console.WriteLine("Auth commands:");
         Console.WriteLine("  auth login       Start OAuth login flow and store credentials");
@@ -51,6 +53,9 @@ internal static class Program {
         Console.WriteLine();
         Console.WriteLine("Setup:");
         Console.WriteLine("  setup            Configure GitHub Actions workflow and secrets");
+        Console.WriteLine();
+        Console.WriteLine("Release commands:");
+        Console.WriteLine("  release notes    Generate release notes from git tags/commits");
         Console.WriteLine();
         Console.WriteLine("Environment variables (optional overrides):");
         Console.WriteLine("  OPENAI_AUTH_AUTHORIZE_URL, OPENAI_AUTH_TOKEN_URL, OPENAI_AUTH_CLIENT_ID");
@@ -111,6 +116,21 @@ internal static class Program {
 
     private static async Task<int> RunSetupAsync(string[] args) {
         return await Setup.SetupRunner.RunAsync(args).ConfigureAwait(false);
+    }
+
+    private static async Task<int> RunReleaseAsync(string[] args) {
+        if (args.Length == 0) {
+            Release.ReleaseNotesRunner.PrintHelp();
+            return 1;
+        }
+
+        var command = args[0].ToLowerInvariant();
+        var rest = args.Skip(1).ToArray();
+        return command switch {
+            "notes" => await Release.ReleaseNotesRunner.RunAsync(rest).ConfigureAwait(false),
+            "help" or "-h" or "--help" => Release.ReleaseNotesRunner.PrintHelpReturn(),
+            _ => Release.ReleaseNotesRunner.PrintHelpReturn()
+        };
     }
 
     private static bool IsLegacyAuthCommand(string command) {

@@ -524,6 +524,7 @@ Commands:
 - `intelligencex auth export`
 - `intelligencex auth sync-codex`
 - `intelligencex reviewer run`
+- `intelligencex release notes`
 Legacy aliases are supported: `login`, `export`, `sync-codex`.
 Defaults are built in; environment variables only override them.
 
@@ -569,6 +570,12 @@ Write Codex auth.json (for app-server/CLI reuse):
 
 ```bash
 dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- auth sync-codex
+```
+
+Generate release notes between tags (and update CHANGELOG.md):
+
+```bash
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release notes --from v1.2.3 --to v1.2.4 --version v1.2.4 --update-changelog
 ```
 
 ## Copilot CLI (GitHub)
