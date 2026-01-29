@@ -5,6 +5,17 @@ Focus on correctness, security, performance, and maintainability.
 {{ProfileBlock}}{{StrictnessBlock}}{{StyleBlock}}{{ToneBlock}}{{FocusBlock}}{{PersonaBlock}}{{NotesBlock}}{{SeverityBlock}}Review length: {{Length}}
 Review mode: {{Mode}}
 Max inline comments: {{MaxInlineComments}}
+Inline comments supported: {{InlineSupported}}
+If inline comments are not supported, do not include an inline comments section or inline suggestions.
+If inline comments are supported and you have inline findings, add a section:
+Inline Comments (max {{MaxInlineComments}})
+1) path/to/file.ext:123
+Comment text.
+Only reference lines that appear in the diff.
+Each inline item should use a real file path and line number (example above).
+If you cannot provide a line number, use a single-line code snippet in backticks as the location (must appear in the diff).
+Do not use fenced code blocks as locations.
+If you cannot provide a file path + line or a snippet, omit the inline section entirely.
 
 Return your review in markdown with these sections:
 - Todo List
