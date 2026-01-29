@@ -82,6 +82,22 @@ jobs:
           pr_branch="${pr_branch_input:-release-notes/${version_label}}"
           pr_title="${pr_title_input:-Release notes for ${version_label}}"
           pr_body="${pr_body_input:-Automated release notes update.}"
+          sanitize_branch() {
+            local raw="${1}"
+            local sanitized
+            sanitized=$(echo "${raw}" \
+              | tr '[:upper:]' '[:lower:]' \
+              | sed -E 's/[^a-z0-9._\/-]+/-/g' \
+              | sed -E 's/\/+/-/g' \
+              | sed -E 's/\.\.+/./g' \
+              | sed -E 's/@\{/-/g' \
+              | sed -E 's/^-+//; s/[\/.-]+$//')
+            if [ -z "${sanitized}" ]; then
+              sanitized="release-notes/${GITHUB_RUN_ID}"
+            fi
+            echo "${sanitized}"
+          }
+          pr_branch="$(sanitize_branch "${pr_branch}")"
           echo "current_ref=${current_ref}" >> "$GITHUB_OUTPUT"
           echo "version_label=${version_label}" >> "$GITHUB_OUTPUT"
           echo "pr_branch=${pr_branch}" >> "$GITHUB_OUTPUT"
