@@ -156,10 +156,11 @@ internal sealed class GitHubClient : IDisposable {
 
     public async Task<IReadOnlyList<PullRequestReviewThread>> ListPullRequestReviewThreadsAsync(string owner, string repo, int number,
         int maxThreads, int maxComments, CancellationToken cancellationToken) {
-        if (maxThreads <= 0 || maxComments <= 0) {
+        if (maxThreads <= 0) {
             return Array.Empty<PullRequestReviewThread>();
         }
 
+        maxComments = Math.Max(1, maxComments);
         var threads = new List<PullRequestReviewThread>();
         var commentLimit = Math.Min(Math.Max(1, maxComments), 100);
         string? cursor = null;
