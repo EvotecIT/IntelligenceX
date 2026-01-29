@@ -209,7 +209,7 @@ internal static class ReviewConfigLoader {
         }
         var allowedEdits = ReadStringList(cleanup, "allowedEdits");
         if (allowedEdits is not null) {
-            settings.Cleanup.AllowedEdits = allowedEdits;
+            settings.Cleanup.AllowedEdits = CleanupSettings.NormalizeAllowedEdits(allowedEdits);
         }
         settings.Cleanup.Template = cleanup.GetString("template") ?? settings.Cleanup.Template;
         settings.Cleanup.TemplatePath = cleanup.GetString("templatePath") ?? settings.Cleanup.TemplatePath;

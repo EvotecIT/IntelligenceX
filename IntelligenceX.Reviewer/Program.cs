@@ -226,7 +226,15 @@ public static class ReviewerApp {
             }
             var patch = file.Patch;
             if (!string.IsNullOrWhiteSpace(patch) && patch.Length > maxPatchChars) {
-                patch = patch.Substring(0, maxPatchChars) + "\n... (truncated)";
+                var headSize = Math.Max(0, maxPatchChars / 2);
+                var tailSize = Math.Max(0, maxPatchChars - headSize);
+                if (headSize + tailSize > patch.Length) {
+                    patch = patch.Substring(0, maxPatchChars) + "\n... (truncated)";
+                } else {
+                    var head = patch.Substring(0, headSize);
+                    var tail = patch.Substring(patch.Length - tailSize);
+                    patch = head + "\n... (truncated) ...\n" + tail;
+                }
             }
             list.Add(new PullRequestFile(file.Filename, file.Status, patch));
             count++;

@@ -13,6 +13,7 @@ internal enum CleanupMode {
 }
 
 internal sealed class CleanupSettings {
+    private static readonly string[] AllowedEditTokens = { "formatting", "grammar", "title", "sections", "body" };
     public bool Enabled { get; set; }
     public string Scope { get; set; } = "pr";
     public CleanupMode Mode { get; set; } = CleanupMode.Comment;
@@ -123,5 +124,31 @@ internal sealed class CleanupSettings {
             return 1;
         }
         return value;
+    }
+
+    public static IReadOnlyList<string> NormalizeAllowedEdits(IReadOnlyList<string>? values) {
+        if (values is null || values.Count == 0) {
+            return new[] { "formatting", "grammar", "title", "sections" };
+        }
+
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var token in AllowedEditTokens) {
+            allowed.Add(token);
+        }
+
+        var normalized = new List<string>();
+        foreach (var value in values) {
+            if (string.IsNullOrWhiteSpace(value)) {
+                continue;
+            }
+            var trimmed = value.Trim();
+            if (allowed.Contains(trimmed)) {
+                normalized.Add(trimmed.ToLowerInvariant());
+            }
+        }
+
+        return normalized.Count == 0
+            ? new[] { "formatting", "grammar", "title", "sections" }
+            : normalized;
     }
 }

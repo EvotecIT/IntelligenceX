@@ -369,7 +369,7 @@ internal sealed class ReviewSettings {
         }
         var cleanupAllowedEdits = GetInput("cleanup_allowed_edits", "REVIEW_CLEANUP_ALLOWED_EDITS");
         if (!string.IsNullOrWhiteSpace(cleanupAllowedEdits)) {
-            settings.Cleanup.AllowedEdits = ParseList(cleanupAllowedEdits);
+            settings.Cleanup.AllowedEdits = CleanupSettings.NormalizeAllowedEdits(ParseList(cleanupAllowedEdits));
         }
         var cleanupMinConfidence = GetInput("cleanup_min_confidence", "REVIEW_CLEANUP_MIN_CONFIDENCE");
         if (!string.IsNullOrWhiteSpace(cleanupMinConfidence)) {
