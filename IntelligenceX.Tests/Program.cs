@@ -314,7 +314,7 @@ internal static class Program {
                 return Task.FromResult("ok");
             },
             ex => ex is IOException,
-            retryCount: 3,
+            maxAttempts: 3,
             retryDelaySeconds: 1,
             retryMaxDelaySeconds: 1,
             CancellationToken.None).GetAwaiter().GetResult();
@@ -332,7 +332,7 @@ internal static class Program {
                     throw new InvalidOperationException("nope");
                 },
                 ex => ex is IOException,
-                retryCount: 3,
+                maxAttempts: 3,
                 retryDelaySeconds: 1,
                 retryMaxDelaySeconds: 1,
                 CancellationToken.None).GetAwaiter().GetResult();
@@ -353,7 +353,7 @@ internal static class Program {
                     throw ex;
                 },
                 _ => true,
-                retryCount: 2,
+                maxAttempts: 2,
                 retryDelaySeconds: 1,
                 retryMaxDelaySeconds: 1,
                 CancellationToken.None).GetAwaiter().GetResult();
