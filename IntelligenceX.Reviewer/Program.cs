@@ -125,7 +125,7 @@ public static class ReviewerApp {
                     .ConfigureAwait(false);
                 Console.WriteLine("Updated review comment.");
             } else if (settings.OverwriteSummary && settings.CommentMode == ReviewCommentMode.Sticky) {
-                var existing = await FindExistingSummaryAsync(github, context, CancellationToken.None).ConfigureAwait(false);
+                var existing = await FindExistingSummaryAsync(github, context, settings, CancellationToken.None).ConfigureAwait(false);
                 if (existing is not null) {
                     await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, commentBody, CancellationToken.None)
                         .ConfigureAwait(false);
@@ -402,8 +402,9 @@ public static class ReviewerApp {
     }
 
     private static async Task<IssueComment?> FindExistingSummaryAsync(GitHubClient github, PullRequestContext context,
-        CancellationToken cancellationToken) {
-        var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, 200, cancellationToken)
+        ReviewSettings settings, CancellationToken cancellationToken) {
+        var limit = Math.Max(0, settings.CommentSearchLimit);
+        var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, limit, cancellationToken)
             .ConfigureAwait(false);
         foreach (var comment in comments) {
             if (comment.Body.Contains(ReviewFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase)) {
@@ -417,7 +418,7 @@ public static class ReviewerApp {
         ReviewSettings settings, string body, CancellationToken cancellationToken) {
         IssueComment? existing = null;
         if (settings.CommentMode == ReviewCommentMode.Sticky) {
-            existing = await FindExistingSummaryAsync(github, context, cancellationToken).ConfigureAwait(false);
+            existing = await FindExistingSummaryAsync(github, context, settings, cancellationToken).ConfigureAwait(false);
         }
 
         if (existing is not null) {

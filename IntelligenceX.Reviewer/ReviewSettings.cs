@@ -64,6 +64,7 @@ internal sealed class ReviewSettings {
     public bool IncludeReviewComments { get; set; }
     public int MaxCommentChars { get; set; } = 4000;
     public int MaxComments { get; set; } = 20;
+    public int CommentSearchLimit { get; set; } = 500;
     public bool IncludeRelatedPrs { get; set; }
     public string? RelatedPrsQuery { get; set; }
     public int MaxRelatedPrs { get; set; } = 5;
@@ -337,6 +338,10 @@ internal sealed class ReviewSettings {
         var maxComments = GetInput("max_comments", "REVIEW_MAX_COMMENTS");
         if (!string.IsNullOrWhiteSpace(maxComments)) {
             settings.MaxComments = ParsePositiveInt(maxComments, settings.MaxComments);
+        }
+        var commentSearchLimit = GetInput("comment_search_limit", "REVIEW_COMMENT_SEARCH_LIMIT");
+        if (!string.IsNullOrWhiteSpace(commentSearchLimit)) {
+            settings.CommentSearchLimit = ParsePositiveInt(commentSearchLimit, settings.CommentSearchLimit);
         }
         var includeRelatedPrs = GetInput("include_related_prs", "REVIEW_INCLUDE_RELATED_PRS");
         if (!string.IsNullOrWhiteSpace(includeRelatedPrs)) {

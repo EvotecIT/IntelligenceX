@@ -66,7 +66,7 @@ $proj = Join-Path $repo 'IntelligenceX.Cli/IntelligenceX.Cli.csproj'
 
 if (-not (Test-Path $proj)) { throw "Project not found: $proj" }
 
-if (-not $OutDir) {
+if ([string]::IsNullOrWhiteSpace($OutDir)) {
     $OutDir = Join-Path $repo ("Artifacts/IntelligenceX.Cli/{0}" -f $Runtime)
 }
 

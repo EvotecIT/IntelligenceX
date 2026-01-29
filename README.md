@@ -173,6 +173,7 @@ Example `.intelligencex/reviewer.json`:
     "focus": ["bugs", "security", "tests"],
     "progressUpdates": true,
     "progressUpdateSeconds": 30,
+    "commentSearchLimit": 500,
     "commentMode": "sticky"
   },
   "cleanup": {

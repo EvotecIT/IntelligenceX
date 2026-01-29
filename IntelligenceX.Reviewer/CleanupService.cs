@@ -58,9 +58,10 @@ internal static class CleanupService {
 
         var canEdit = (cleanup.Mode == CleanupMode.Edit || cleanup.Mode == CleanupMode.Hybrid) &&
             result.Confidence >= cleanup.MinConfidence;
+        var commentSearchLimit = Math.Max(0, settings.CommentSearchLimit);
 
         if (canEdit) {
-            await ApplyEditAsync(github, context, result, newTitle, newBody, cleanup, cancellationToken)
+            await ApplyEditAsync(github, context, result, newTitle, newBody, cleanup, commentSearchLimit, cancellationToken)
                 .ConfigureAwait(false);
             return new PullRequestContext(context.RepoFullName, context.Owner, context.Repo, context.Number,
                 newTitle, newBody, context.Draft, context.HeadSha, context.Labels);
@@ -68,15 +69,16 @@ internal static class CleanupService {
 
         if (cleanup.Mode == CleanupMode.Comment || cleanup.Mode == CleanupMode.Hybrid) {
             var suggestion = BuildSuggestionResult(result, normalizedTitle, normalizedBody, cleanup);
-            await PostSuggestionAsync(github, context, suggestion, cancellationToken).ConfigureAwait(false);
+            await PostSuggestionAsync(github, context, suggestion, commentSearchLimit, cancellationToken).ConfigureAwait(false);
         }
         return context;
     }
 
     private static async Task PostSuggestionAsync(GitHubClient github, PullRequestContext context, CleanupResult result,
-        CancellationToken cancellationToken) {
+        int commentSearchLimit, CancellationToken cancellationToken) {
         var body = CleanupFormatter.BuildSuggestionComment(context, result);
-        var existing = await FindExistingCleanupCommentAsync(github, context, cancellationToken).ConfigureAwait(false);
+        var existing = await FindExistingCleanupCommentAsync(github, context, commentSearchLimit, cancellationToken)
+            .ConfigureAwait(false);
         if (existing is not null) {
             await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, body, cancellationToken)
                 .ConfigureAwait(false);
@@ -87,13 +89,14 @@ internal static class CleanupService {
     }
 
     private static async Task ApplyEditAsync(GitHubClient github, PullRequestContext context, CleanupResult result,
-        string title, string body, CleanupSettings settings, CancellationToken cancellationToken) {
+        string title, string body, CleanupSettings settings, int commentSearchLimit, CancellationToken cancellationToken) {
         await github.UpdatePullRequestAsync(context.Owner, context.Repo, context.Number, title, body, cancellationToken)
             .ConfigureAwait(false);
 
         if (settings.PostEditComment) {
             var comment = CleanupFormatter.BuildEditComment(context, result);
-            var existing = await FindExistingCleanupCommentAsync(github, context, cancellationToken).ConfigureAwait(false);
+            var existing = await FindExistingCleanupCommentAsync(github, context, commentSearchLimit, cancellationToken)
+                .ConfigureAwait(false);
             if (existing is not null) {
                 await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, comment, cancellationToken)
                     .ConfigureAwait(false);
@@ -123,8 +126,8 @@ internal static class CleanupService {
     }
 
     private static async Task<IssueComment?> FindExistingCleanupCommentAsync(GitHubClient github, PullRequestContext context,
-        CancellationToken cancellationToken) {
-        var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, 200, cancellationToken)
+        int commentSearchLimit, CancellationToken cancellationToken) {
+        var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, commentSearchLimit, cancellationToken)
             .ConfigureAwait(false);
         foreach (var comment in comments) {
             if (!comment.Body.Contains(CleanupFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase)) {
