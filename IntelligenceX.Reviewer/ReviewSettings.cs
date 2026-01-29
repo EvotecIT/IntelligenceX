@@ -37,6 +37,9 @@ internal sealed class ReviewSettings {
     public ReasoningEffort? ReasoningEffort { get; set; }
     public ReasoningSummary? ReasoningSummary { get; set; }
     public OpenAITransportKind OpenAITransport { get; set; } = OpenAITransportKind.AppServer;
+    public int RetryCount { get; set; } = 3;
+    public int RetryDelaySeconds { get; set; } = 5;
+    public int RetryMaxDelaySeconds { get; set; } = 30;
     public ReviewLength Length { get; set; } = ReviewLength.Long;
     public bool IncludeNextSteps { get; set; } = true;
     public string? PromptTemplate { get; set; }
@@ -263,6 +266,19 @@ internal sealed class ReviewSettings {
         var idleSeconds = GetInput("idle_seconds", "REVIEW_IDLE_SECONDS");
         if (!string.IsNullOrWhiteSpace(idleSeconds)) {
             settings.IdleSeconds = ParsePositiveInt(idleSeconds, settings.IdleSeconds);
+        }
+
+        var retryCount = GetInput("retry_count", "REVIEW_RETRY_COUNT");
+        if (!string.IsNullOrWhiteSpace(retryCount)) {
+            settings.RetryCount = ParsePositiveInt(retryCount, settings.RetryCount);
+        }
+        var retryDelaySeconds = GetInput("retry_delay_seconds", "REVIEW_RETRY_DELAY_SECONDS");
+        if (!string.IsNullOrWhiteSpace(retryDelaySeconds)) {
+            settings.RetryDelaySeconds = ParsePositiveInt(retryDelaySeconds, settings.RetryDelaySeconds);
+        }
+        var retryMaxDelaySeconds = GetInput("retry_max_delay_seconds", "REVIEW_RETRY_MAX_DELAY_SECONDS");
+        if (!string.IsNullOrWhiteSpace(retryMaxDelaySeconds)) {
+            settings.RetryMaxDelaySeconds = ParsePositiveInt(retryMaxDelaySeconds, settings.RetryMaxDelaySeconds);
         }
 
         var progressUpdates = GetInput("progress_updates", "REVIEW_PROGRESS_UPDATES");

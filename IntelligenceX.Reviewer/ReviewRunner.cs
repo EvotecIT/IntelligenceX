@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,10 +24,38 @@ internal sealed class ReviewRunner {
         CancellationToken cancellationToken) {
         return _settings.Provider == ReviewProvider.Copilot
             ? await RunCopilotAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false)
-            : await RunOpenAiAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false);
+            : await RunOpenAiWithRetryAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<string> RunOpenAiAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
+    private async Task<string> RunOpenAiWithRetryAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
+        CancellationToken cancellationToken) {
+        var attempts = Math.Max(1, _settings.RetryCount);
+        var delaySeconds = Math.Max(1, _settings.RetryDelaySeconds);
+        var maxDelaySeconds = Math.Max(delaySeconds, _settings.RetryMaxDelaySeconds);
+        var delay = TimeSpan.FromSeconds(delaySeconds);
+
+        Exception? lastError = null;
+        for (var attempt = 1; attempt <= attempts; attempt++) {
+            try {
+                return await RunOpenAiOnceAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false);
+            } catch (Exception ex) when (IsTransient(ex) && attempt < attempts && !cancellationToken.IsCancellationRequested) {
+                lastError = ex;
+                var jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(200, 800));
+                var wait = delay + jitter;
+                Console.Error.WriteLine($"OpenAI request failed (attempt {attempt}/{attempts}): {ex.Message}. Retrying in {wait.TotalSeconds:0.0}s.");
+                await Task.Delay(wait, cancellationToken).ConfigureAwait(false);
+                var nextDelaySeconds = Math.Min(maxDelaySeconds, delay.TotalSeconds * 2);
+                delay = TimeSpan.FromSeconds(nextDelaySeconds);
+            }
+        }
+
+        if (lastError is not null) {
+            throw lastError;
+        }
+        return string.Empty;
+    }
+
+    private async Task<string> RunOpenAiOnceAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
         CancellationToken cancellationToken) {
         var options = new IntelligenceXClientOptions {
             DefaultModel = _settings.Model,
@@ -95,6 +125,16 @@ internal sealed class ReviewRunner {
         }
 
         return await WaitForDeltasAsync(deltas, () => lastDelta, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static bool IsTransient(Exception ex) {
+        if (ex is OperationCanceledException) {
+            return false;
+        }
+        if (ex is HttpRequestException || ex is IOException || ex is TimeoutException) {
+            return true;
+        }
+        return ex.InnerException is not null && IsTransient(ex.InnerException);
     }
 
     private async Task<string> RunCopilotAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
