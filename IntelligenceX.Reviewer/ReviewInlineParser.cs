@@ -40,7 +40,17 @@ internal static class ReviewInlineParser {
         "tests/coverage",
         "tests & coverage",
         "next steps",
-        "recommendations"
+        "recommendations",
+        "inline comments",
+        "todo list",
+        "review summary",
+        "code quality assessment",
+        "excellent aspects",
+        "security & performance",
+        "test quality",
+        "documentation",
+        "backward compatibility",
+        "backwards compatibility"
     };
 
     private static readonly Regex ListPrefix = new(@"^\s*(?:\d+[\)\.\:]\s*|\-\s*|\*\s*)",
