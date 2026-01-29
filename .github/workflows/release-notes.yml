@@ -66,7 +66,15 @@ jobs:
             exit 0
           fi
           tags=$(git tag --sort=-v:refname)
-          prev=$(echo "$tags" | grep -v "^${current_ref}$" | head -n 1 || true)
+          if [ -z "${tags}" ]; then
+            echo "from_tag=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if echo "$tags" | grep -Fxq "${current_ref}"; then
+            prev=$(echo "$tags" | grep -Fxv "${current_ref}" | head -n 1 || true)
+          else
+            prev=$(echo "$tags" | head -n 1 || true)
+          fi
           echo "from_tag=${prev}" >> "$GITHUB_OUTPUT"
 
       - name: Generate release notes

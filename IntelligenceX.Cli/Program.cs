@@ -120,16 +120,16 @@ internal static class Program {
 
     private static async Task<int> RunReleaseAsync(string[] args) {
         if (args.Length == 0) {
-            Release.ReleaseNotesRunner.PrintHelp();
+            ReleaseNotes.ReleaseNotesRunner.PrintHelp();
             return 1;
         }
 
         var command = args[0].ToLowerInvariant();
         var rest = args.Skip(1).ToArray();
         return command switch {
-            "notes" => await Release.ReleaseNotesRunner.RunAsync(rest).ConfigureAwait(false),
-            "help" or "-h" or "--help" => Release.ReleaseNotesRunner.PrintHelpReturn(),
-            _ => Release.ReleaseNotesRunner.PrintHelpReturn()
+            "notes" => await ReleaseNotes.ReleaseNotesRunner.RunAsync(rest).ConfigureAwait(false),
+            "help" or "-h" or "--help" => ReleaseNotes.ReleaseNotesRunner.PrintHelpReturn(),
+            _ => ReleaseNotes.ReleaseNotesRunner.PrintHelpReturn()
         };
     }
 

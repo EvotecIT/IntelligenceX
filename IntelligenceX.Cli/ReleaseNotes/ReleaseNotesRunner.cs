@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI;
@@ -12,7 +13,7 @@ using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Auth;
 using IntelligenceX.OpenAI.Chat;
 
-namespace IntelligenceX.Cli.Release;
+namespace IntelligenceX.Cli.ReleaseNotes;
 
 internal static class ReleaseNotesRunner {
     public static int PrintHelpReturn() {
@@ -31,11 +32,15 @@ internal static class ReleaseNotesRunner {
         Console.WriteLine("  --output <path>         Write release notes to file");
         Console.WriteLine("  --changelog <path>      Update changelog at path");
         Console.WriteLine("  --update-changelog      Update CHANGELOG.md in repo root");
+        Console.WriteLine("  --repo <path>           Repository path (default: current directory)");
         Console.WriteLine("  --max-commits <n>       Max commit subjects to include (default 200)");
         Console.WriteLine("  --model <model>         OpenAI model (default from OPENAI_MODEL)");
         Console.WriteLine("  --transport <kind>      native or appserver (default from OPENAI_TRANSPORT)");
         Console.WriteLine("  --reasoning-effort <v>  minimal|low|medium|high|xhigh");
         Console.WriteLine("  --reasoning-summary <v> auto|concise|detailed|off");
+        Console.WriteLine("  --retry-count <n>       Retry OpenAI requests (default 3)");
+        Console.WriteLine("  --retry-delay-seconds   Initial retry delay (default 5)");
+        Console.WriteLine("  --retry-max-delay-seconds Max retry delay (default 30)");
         Console.WriteLine("  --dry-run               Show output but don't write files");
     }
 
@@ -53,18 +58,28 @@ internal static class ReleaseNotesRunner {
                 Console.Error.WriteLine($"Repository path not found: {repoPath}");
                 return 1;
             }
-
-            var fromTag = options.FromTag ?? ResolveLatestTag(repoPath);
-            var toRef = options.ToRef ?? "HEAD";
-            var range = !string.IsNullOrWhiteSpace(fromTag) ? $"{fromTag}..{toRef}" : toRef;
-
-            var commitSubjects = ReadCommitSubjects(repoPath, range, options.MaxCommits);
-            if (commitSubjects.Count == 0) {
-                Console.Error.WriteLine("No commits found for the specified range.");
+            if (!Directory.Exists(Path.Combine(repoPath, ".git"))) {
+                Console.Error.WriteLine($"Not a git repository: {repoPath}");
                 return 1;
             }
 
-            var areaSummary = BuildAreaSummary(repoPath, range);
+            var fromTag = NormalizeRef(options.FromTag ?? ResolveLatestTag(repoPath));
+            var toRef = NormalizeRef(options.ToRef) ?? "HEAD";
+            ValidateRef(fromTag, "--from");
+            ValidateRef(toRef, "--to");
+            EnsureRefExists(repoPath, toRef, "--to");
+            if (!string.IsNullOrWhiteSpace(fromTag)) {
+                EnsureRefExists(repoPath, fromTag, "--from");
+            }
+
+            var ranges = ResolveRanges(repoPath, fromTag, toRef);
+            var commitSubjects = ReadCommitSubjects(repoPath, ranges.CommitRange, options.MaxCommits);
+            if (commitSubjects.Count == 0) {
+                Console.WriteLine("No commits found for the specified range. Skipping release notes.");
+                return 0;
+            }
+
+            var areaSummary = BuildAreaSummary(repoPath, ranges.DiffRange);
             var prompt = BuildPrompt(fromTag, toRef, commitSubjects, areaSummary);
 
             var output = await OpenAiReleaseNotesClient.GenerateAsync(prompt, options, CancellationToken.None)
@@ -74,16 +89,26 @@ internal static class ReleaseNotesRunner {
                 return 1;
             }
 
-            Console.WriteLine(output);
+            var normalized = NormalizeReleaseNotes(output, out var hasChanges);
+            if (string.IsNullOrWhiteSpace(normalized)) {
+                Console.Error.WriteLine("Release notes output was empty after normalization.");
+                return 1;
+            }
+
+            Console.WriteLine(normalized);
 
             if (!options.DryRun) {
                 if (!string.IsNullOrWhiteSpace(options.OutputPath)) {
-                    File.WriteAllText(options.OutputPath!, output.TrimEnd() + Environment.NewLine);
+                    File.WriteAllText(options.OutputPath!, normalized.TrimEnd() + Environment.NewLine);
                 }
 
                 var changelogPath = ResolveChangelogPath(options, repoPath);
                 if (!string.IsNullOrWhiteSpace(changelogPath)) {
-                    UpdateChangelog(changelogPath!, output, options.Version ?? toRef);
+                    if (!hasChanges) {
+                        Console.Error.WriteLine("No change items detected; skipping changelog update.");
+                    } else {
+                        UpdateChangelog(changelogPath!, normalized, options.Version ?? toRef);
+                    }
                 }
             }
 
@@ -96,8 +121,100 @@ internal static class ReleaseNotesRunner {
 
     private static string? ResolveLatestTag(string repoPath) {
         try {
-            var tag = RunGit(repoPath, "describe --tags --abbrev=0");
+            var tag = RunGit(repoPath, "describe", "--tags", "--abbrev=0");
             return string.IsNullOrWhiteSpace(tag) ? null : tag.Trim();
+        } catch {
+            return null;
+        }
+    }
+
+    private static string? NormalizeRef(string? value) {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static void ValidateRef(string? value, string argName) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return;
+        }
+        if (!IsAllowedRef(value)) {
+            throw new InvalidOperationException($"Invalid {argName} value: {value}");
+        }
+    }
+
+    private static void EnsureRefExists(string repoPath, string refName, string argName) {
+        if (string.IsNullOrWhiteSpace(refName)) {
+            return;
+        }
+        try {
+            RunGit(repoPath, "rev-parse", "--verify", $"{refName}^{{}}");
+        } catch {
+            throw new InvalidOperationException($"{argName} not found: {refName}");
+        }
+    }
+
+    private static bool IsAllowedRef(string value) {
+        if (IsHeadExpression(value) || IsSha(value)) {
+            return true;
+        }
+        return IsSafeRefName(value);
+    }
+
+    private static bool IsHeadExpression(string value) {
+        return Regex.IsMatch(value, "^HEAD([~^][0-9]+)*$", RegexOptions.IgnoreCase);
+    }
+
+    private static bool IsSha(string value) {
+        return Regex.IsMatch(value, "^[0-9a-fA-F]{7,40}$", RegexOptions.CultureInvariant);
+    }
+
+    private static bool IsSafeRefName(string value) {
+        if (value.Length == 0) {
+            return false;
+        }
+        if (value.StartsWith("-", StringComparison.Ordinal) || value.StartsWith("/", StringComparison.Ordinal)) {
+            return false;
+        }
+        if (value.EndsWith("/", StringComparison.Ordinal) || value.EndsWith(".", StringComparison.Ordinal)) {
+            return false;
+        }
+        if (value.Contains("..", StringComparison.Ordinal) || value.Contains("@{", StringComparison.Ordinal)) {
+            return false;
+        }
+        if (value.Contains("//", StringComparison.Ordinal)) {
+            return false;
+        }
+        foreach (var ch in value) {
+            if (char.IsWhiteSpace(ch)) {
+                return false;
+            }
+            if (ch is '~' or '^' or ':' or '?' or '*' or '[' or '\\') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static (string CommitRange, string DiffRange) ResolveRanges(string repoPath, string? fromTag, string toRef) {
+        if (!string.IsNullOrWhiteSpace(fromTag)) {
+            var range = $"{fromTag}..{toRef}";
+            return (range, range);
+        }
+
+        var root = ResolveRootCommit(repoPath, toRef);
+        if (string.IsNullOrWhiteSpace(root)) {
+            return (toRef, toRef);
+        }
+
+        return (toRef, $"{root}..{toRef}");
+    }
+
+    private static string? ResolveRootCommit(string repoPath, string toRef) {
+        try {
+            var output = RunGit(repoPath, "rev-list", "--max-parents=0", toRef);
+            var first = output
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .FirstOrDefault();
+            return string.IsNullOrWhiteSpace(first) ? null : first;
         } catch {
             return null;
         }
@@ -105,7 +222,7 @@ internal static class ReleaseNotesRunner {
 
     private static IReadOnlyList<string> ReadCommitSubjects(string repoPath, string range, int maxCommits) {
         var limit = Math.Max(1, maxCommits);
-        var output = RunGit(repoPath, $"log {range} --pretty=format:%s --max-count {limit}");
+        var output = RunGit(repoPath, "log", range, "--pretty=format:%s", $"--max-count={limit}");
         return output
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(line => !string.IsNullOrWhiteSpace(line))
@@ -113,7 +230,7 @@ internal static class ReleaseNotesRunner {
     }
 
     private static string BuildAreaSummary(string repoPath, string range) {
-        var output = RunGit(repoPath, $"diff --name-only {range}");
+        var output = RunGit(repoPath, "diff", "--name-only", range);
         var files = output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (files.Length == 0) {
             return "No files changed.";
@@ -169,6 +286,138 @@ internal static class ReleaseNotesRunner {
         return sb.ToString();
     }
 
+    private enum ReleaseSection {
+        None,
+        Summary,
+        Changes
+    }
+
+    private enum ChangeSection {
+        None,
+        Added,
+        Changed,
+        Fixed
+    }
+
+    private static string NormalizeReleaseNotes(string raw, out bool hasChanges) {
+        var summary = new List<string>();
+        var added = new List<string>();
+        var changed = new List<string>();
+        var fixedItems = new List<string>();
+
+        var section = ReleaseSection.None;
+        var changeSection = ChangeSection.None;
+
+        var lines = raw.Replace("\r\n", "\n").Split('\n');
+        foreach (var line in lines) {
+            var trimmed = line.Trim();
+            if (string.IsNullOrWhiteSpace(trimmed)) {
+                continue;
+            }
+
+            if (IsSummaryHeading(trimmed)) {
+                section = ReleaseSection.Summary;
+                changeSection = ChangeSection.None;
+                continue;
+            }
+            if (IsChangesHeading(trimmed)) {
+                section = ReleaseSection.Changes;
+                changeSection = ChangeSection.None;
+                continue;
+            }
+
+            if (section == ReleaseSection.Changes) {
+                var parsed = TryParseChangeSection(trimmed);
+                if (parsed.HasValue) {
+                    changeSection = parsed.Value;
+                    continue;
+                }
+            }
+
+            if (!IsBullet(trimmed)) {
+                continue;
+            }
+
+            var item = trimmed.TrimStart('-', '*').Trim();
+            if (string.IsNullOrWhiteSpace(item)) {
+                continue;
+            }
+
+            if (section == ReleaseSection.Summary) {
+                summary.Add(item);
+            } else if (section == ReleaseSection.Changes && changeSection != ChangeSection.None) {
+                GetBucket(changeSection, added, changed, fixedItems).Add(item);
+            }
+        }
+
+        hasChanges = added.Count > 0 || changed.Count > 0 || fixedItems.Count > 0;
+
+        var output = new StringBuilder();
+        output.AppendLine("## Summary");
+        if (summary.Count == 0) {
+            output.AppendLine("- No summary provided.");
+        } else {
+            foreach (var item in summary) {
+                output.AppendLine($"- {item}");
+            }
+        }
+
+        output.AppendLine("## Changes");
+        AppendChangeSection(output, "Added", added);
+        AppendChangeSection(output, "Changed", changed);
+        AppendChangeSection(output, "Fixed", fixedItems);
+
+        return output.ToString().TrimEnd();
+    }
+
+    private static void AppendChangeSection(StringBuilder output, string label, List<string> items) {
+        output.AppendLine($"- {label}:");
+        if (items.Count == 0) {
+            output.AppendLine("  - None.");
+            return;
+        }
+        foreach (var item in items) {
+            output.AppendLine($"  - {item}");
+        }
+    }
+
+    private static bool IsSummaryHeading(string line) {
+        return Regex.IsMatch(line, "^#{1,6}\\s*Summary\\b", RegexOptions.IgnoreCase);
+    }
+
+    private static bool IsChangesHeading(string line) {
+        return Regex.IsMatch(line, "^#{1,6}\\s*Changes\\b", RegexOptions.IgnoreCase);
+    }
+
+    private static ChangeSection? TryParseChangeSection(string line) {
+        if (Regex.IsMatch(line, "^(?:#{1,6}\\s*)?Added\\b", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(line, "^[-*]\\s*Added\\s*:", RegexOptions.IgnoreCase)) {
+            return ChangeSection.Added;
+        }
+        if (Regex.IsMatch(line, "^(?:#{1,6}\\s*)?Changed\\b", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(line, "^[-*]\\s*Changed\\s*:", RegexOptions.IgnoreCase)) {
+            return ChangeSection.Changed;
+        }
+        if (Regex.IsMatch(line, "^(?:#{1,6}\\s*)?Fixed\\b", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(line, "^[-*]\\s*Fixed\\s*:", RegexOptions.IgnoreCase)) {
+            return ChangeSection.Fixed;
+        }
+        return null;
+    }
+
+    private static bool IsBullet(string line) {
+        return line.StartsWith("-", StringComparison.Ordinal) || line.StartsWith("*", StringComparison.Ordinal);
+    }
+
+    private static List<string> GetBucket(ChangeSection section, List<string> added, List<string> changed, List<string> fixedItems) {
+        return section switch {
+            ChangeSection.Added => added,
+            ChangeSection.Changed => changed,
+            ChangeSection.Fixed => fixedItems,
+            _ => added
+        };
+    }
+
     private static string? ResolveChangelogPath(ReleaseNotesOptions options, string repoPath) {
         if (!string.IsNullOrWhiteSpace(options.ChangelogPath)) {
             return options.ChangelogPath;
@@ -203,7 +452,7 @@ internal static class ReleaseNotesRunner {
             var firstLineEnd = existing.IndexOf(newline, StringComparison.Ordinal);
             if (firstLineEnd >= 0) {
                 var insertAt = firstLineEnd + newline.Length;
-                if (insertAt < existing.Length && existing.Substring(insertAt).StartsWith(newline, StringComparison.Ordinal)) {
+                if (insertAt < existing.Length && existing.AsSpan(insertAt).StartsWith(newline, StringComparison.Ordinal)) {
                     insertAt += newline.Length;
                 }
                 var updated = existing.Insert(insertAt, normalizedSection);
@@ -215,16 +464,18 @@ internal static class ReleaseNotesRunner {
         File.WriteAllText(path, normalizedSection + existing);
     }
 
-    private static string RunGit(string repoPath, string arguments) {
+    private static string RunGit(string repoPath, params string[] arguments) {
         var psi = new ProcessStartInfo {
             FileName = "git",
-            Arguments = arguments,
             WorkingDirectory = repoPath,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        foreach (var arg in arguments) {
+            psi.ArgumentList.Add(arg);
+        }
 
         using var process = Process.Start(psi);
         if (process is null) {
@@ -322,7 +573,7 @@ internal sealed class ReleaseNotesOptions {
                     options.Model = ReadValue(args, ref i);
                     break;
                 case "--transport":
-                    options.Transport = ParseTransport(ReadValue(args, ref i));
+                    options.Transport = ParseTransportValue(ReadValue(args, ref i));
                     break;
                 case "--reasoning-effort":
                     options.ReasoningEffort = ChatEnumParser.ParseReasoningEffort(ReadValue(args, ref i));
@@ -364,7 +615,7 @@ internal sealed class ReleaseNotesOptions {
         return int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
     }
 
-    private static OpenAITransportKind? ParseTransport(string? value) {
+    internal static OpenAITransportKind? ParseTransportValue(string? value) {
         if (string.IsNullOrWhiteSpace(value)) {
             return null;
         }
@@ -410,7 +661,7 @@ internal static class OpenAiReleaseNotesClient {
                     ?? Environment.GetEnvironmentVariable("OPENAI_MODEL")
                     ?? "gpt-5.2-codex";
         var transport = options.Transport
-                        ?? ParseTransport(Environment.GetEnvironmentVariable("OPENAI_TRANSPORT"))
+                        ?? ReleaseNotesOptions.ParseTransportValue(Environment.GetEnvironmentVariable("OPENAI_TRANSPORT"))
                         ?? OpenAITransportKind.AppServer;
 
         var clientOptions = new IntelligenceXClientOptions {
@@ -464,18 +715,6 @@ internal static class OpenAiReleaseNotesClient {
         return await WaitForDeltasAsync(deltas, () => lastDelta, cancellationToken).ConfigureAwait(false);
     }
 
-    private static OpenAITransportKind? ParseTransport(string? value) {
-        if (string.IsNullOrWhiteSpace(value)) {
-            return null;
-        }
-        var normalized = value.Trim().ToLowerInvariant();
-        return normalized switch {
-            "native" => OpenAITransportKind.Native,
-            "appserver" or "app-server" or "codex" => OpenAITransportKind.AppServer,
-            _ => null
-        };
-    }
-
     private static async Task<string> WaitForDeltasAsync(StringBuilder deltas, Func<DateTimeOffset> getLastDelta,
         CancellationToken cancellationToken) {
         var start = DateTimeOffset.UtcNow;
@@ -500,10 +739,8 @@ internal static class OpenAiReleaseNotesClient {
             return string.Empty;
         }
         var builder = new StringBuilder();
-        foreach (var output in outputs.Where(o => o.IsText)) {
-            if (!string.IsNullOrWhiteSpace(output.Text)) {
-                builder.AppendLine(output.Text);
-            }
+        foreach (var output in outputs.Where(o => o.IsText && !string.IsNullOrWhiteSpace(o.Text))) {
+            builder.AppendLine(output.Text);
         }
         return builder.ToString().Trim();
     }
