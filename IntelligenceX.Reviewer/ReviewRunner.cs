@@ -128,8 +128,9 @@ internal sealed class ReviewRunner {
 
     internal static class ReviewRetryPolicy {
         public static async Task<string> RunAsync(Func<Task<string>> action, Func<Exception, bool> isTransient,
-            int retryCount, int retryDelaySeconds, int retryMaxDelaySeconds, CancellationToken cancellationToken) {
-            var attempts = Math.Max(1, retryCount);
+            int maxAttempts, int retryDelaySeconds, int retryMaxDelaySeconds, CancellationToken cancellationToken) {
+            // maxAttempts includes the initial attempt.
+            var attempts = Math.Max(1, maxAttempts);
             var delaySeconds = Math.Max(1, retryDelaySeconds);
             var maxDelaySeconds = Math.Max(delaySeconds, retryMaxDelaySeconds);
             var delay = TimeSpan.FromSeconds(delaySeconds);
