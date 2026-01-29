@@ -154,6 +154,100 @@ internal sealed class GitHubClient : IDisposable {
         return comments;
     }
 
+    public async Task<IReadOnlyList<PullRequestReviewThread>> ListPullRequestReviewThreadsAsync(string owner, string repo, int number,
+        int maxThreads, int maxComments, CancellationToken cancellationToken) {
+        if (maxThreads <= 0) {
+            return Array.Empty<PullRequestReviewThread>();
+        }
+
+        var threads = new List<PullRequestReviewThread>();
+        string? cursor = null;
+        while (threads.Count < maxThreads) {
+            var payload = new JsonObject()
+                .Add("query", @"query($owner:String!,$name:String!,$number:Int!,$cursor:String){
+  repository(owner:$owner,name:$name){
+    pullRequest(number:$number){
+      reviewThreads(first:50, after:$cursor){
+        nodes{
+          isResolved
+          isOutdated
+          comments(first:10){
+            nodes{
+              body
+              path
+              line
+              author{ login }
+            }
+          }
+        }
+        pageInfo{ hasNextPage endCursor }
+      }
+    }
+  }
+}")
+                .Add("variables", new JsonObject()
+                    .Add("owner", owner)
+                    .Add("name", repo)
+                    .Add("number", number)
+                    .Add("cursor", cursor));
+
+            var response = await PostGraphQlAsync(payload, cancellationToken).ConfigureAwait(false);
+            var root = response.AsObject();
+            var data = root?.GetObject("data");
+            var repoObj = data?.GetObject("repository");
+            var prObj = repoObj?.GetObject("pullRequest");
+            var threadsObj = prObj?.GetObject("reviewThreads");
+            var nodes = threadsObj?.GetArray("nodes");
+            if (nodes is null || nodes.Count == 0) {
+                break;
+            }
+
+            foreach (var node in nodes) {
+                if (threads.Count >= maxThreads) {
+                    break;
+                }
+                var obj = node.AsObject();
+                if (obj is null) {
+                    continue;
+                }
+                var isResolved = obj.GetBoolean("isResolved");
+                var isOutdated = obj.GetBoolean("isOutdated");
+                var commentsObj = obj.GetObject("comments");
+                var commentNodes = commentsObj?.GetArray("nodes");
+                var comments = new List<PullRequestReviewThreadComment>();
+                if (commentNodes is not null) {
+                    foreach (var comment in commentNodes) {
+                        if (maxComments > 0 && comments.Count >= maxComments) {
+                            break;
+                        }
+                        var commentObj = comment.AsObject();
+                        if (commentObj is null) {
+                            continue;
+                        }
+                        var body = commentObj.GetString("body") ?? string.Empty;
+                        var author = commentObj.GetObject("author")?.GetString("login");
+                        var path = commentObj.GetString("path");
+                        var line = commentObj.GetInt64("line");
+                        comments.Add(new PullRequestReviewThreadComment(body, author, path, line.HasValue ? (int?)line.Value : null));
+                    }
+                }
+                threads.Add(new PullRequestReviewThread(isResolved, isOutdated, comments));
+            }
+
+            var pageInfo = threadsObj?.GetObject("pageInfo");
+            var hasNext = pageInfo?.GetBoolean("hasNextPage") ?? false;
+            if (!hasNext) {
+                break;
+            }
+            cursor = pageInfo?.GetString("endCursor");
+            if (string.IsNullOrWhiteSpace(cursor)) {
+                break;
+            }
+        }
+
+        return threads;
+    }
+
     public async Task<IReadOnlyList<RelatedPullRequest>> SearchPullRequestsAsync(string query, int maxResults,
         CancellationToken cancellationToken) {
         if (string.IsNullOrWhiteSpace(query) || maxResults <= 0) {
@@ -258,6 +352,22 @@ internal sealed class GitHubClient : IDisposable {
             throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {responseText}");
         }
         return JsonLite.Parse(responseText) ?? JsonValue.Null;
+    }
+
+    private async Task<JsonValue> PostGraphQlAsync(JsonObject payload, CancellationToken cancellationToken) {
+        var json = JsonLite.Serialize(JsonValue.From(payload));
+        using var content = new StringContent(json, Encoding.UTF8, "application/json");
+        using var response = await _http.PostAsync("/graphql", content, cancellationToken).ConfigureAwait(false);
+        var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode) {
+            throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {responseText}");
+        }
+        var parsed = JsonLite.Parse(responseText) ?? JsonValue.Null;
+        var errors = parsed.AsObject()?.GetArray("errors");
+        if (errors is not null && errors.Count > 0) {
+            throw new InvalidOperationException($"GitHub GraphQL request returned errors: {responseText}");
+        }
+        return parsed;
     }
 
     private async Task PatchJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken) {

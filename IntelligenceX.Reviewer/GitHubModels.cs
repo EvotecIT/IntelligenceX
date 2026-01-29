@@ -78,3 +78,29 @@ internal sealed class RelatedPullRequest {
     public string RepoFullName { get; }
     public int Number { get; }
 }
+
+internal sealed class PullRequestReviewThread {
+    public PullRequestReviewThread(bool isResolved, bool isOutdated, IReadOnlyList<PullRequestReviewThreadComment> comments) {
+        IsResolved = isResolved;
+        IsOutdated = isOutdated;
+        Comments = comments;
+    }
+
+    public bool IsResolved { get; }
+    public bool IsOutdated { get; }
+    public IReadOnlyList<PullRequestReviewThreadComment> Comments { get; }
+}
+
+internal sealed class PullRequestReviewThreadComment {
+    public PullRequestReviewThreadComment(string body, string? author, string? path, int? line) {
+        Body = body;
+        Author = author;
+        Path = path;
+        Line = line;
+    }
+
+    public string Body { get; }
+    public string? Author { get; }
+    public string? Path { get; }
+    public int? Line { get; }
+}

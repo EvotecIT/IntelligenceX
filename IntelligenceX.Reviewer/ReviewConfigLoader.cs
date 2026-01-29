@@ -170,6 +170,12 @@ internal static class ReviewConfigLoader {
     private static void ApplyContext(JsonObject obj, ReviewSettings settings) {
         settings.IncludeIssueComments = ReadBool(obj, "includeIssueComments", settings.IncludeIssueComments);
         settings.IncludeReviewComments = ReadBool(obj, "includeReviewComments", settings.IncludeReviewComments);
+        settings.IncludeReviewThreads = ReadBool(obj, "includeReviewThreads", settings.IncludeReviewThreads);
+        settings.ReviewThreadsIncludeBots = ReadBool(obj, "reviewThreadsIncludeBots", settings.ReviewThreadsIncludeBots);
+        settings.ReviewThreadsIncludeResolved = ReadBool(obj, "reviewThreadsIncludeResolved", settings.ReviewThreadsIncludeResolved);
+        settings.ReviewThreadsIncludeOutdated = ReadBool(obj, "reviewThreadsIncludeOutdated", settings.ReviewThreadsIncludeOutdated);
+        settings.ReviewThreadsMax = ReadInt(obj, "reviewThreadsMax", settings.ReviewThreadsMax);
+        settings.ReviewThreadsMaxComments = ReadInt(obj, "reviewThreadsMaxComments", settings.ReviewThreadsMaxComments);
         settings.MaxCommentChars = ReadInt(obj, "maxCommentChars", settings.MaxCommentChars);
         settings.MaxComments = ReadInt(obj, "maxComments", settings.MaxComments);
         settings.CommentSearchLimit = ReadInt(obj, "commentSearchLimit", settings.CommentSearchLimit);
