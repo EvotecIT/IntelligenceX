@@ -72,7 +72,9 @@ internal sealed class ReviewRunner {
 
         var chatOptions = new ChatOptions {
             Model = _settings.Model,
-            NewThread = true
+            NewThread = true,
+            ReasoningEffort = _settings.ReasoningEffort,
+            ReasoningSummary = _settings.ReasoningSummary
         };
         var input = ChatInput.FromText(prompt);
         var turn = await client.ChatAsync(input, chatOptions, cancellationToken).ConfigureAwait(false);

@@ -32,6 +32,7 @@ internal static class Program {
         failed += Run("Cleanup result parse fenced", TestCleanupResultParseFenced);
         failed += Run("Cleanup result parse embedded", TestCleanupResultParseEmbedded);
         failed += Run("Cleanup template path guard", TestCleanupTemplatePathGuard);
+        failed += Run("Inline comments extract", TestInlineCommentsExtract);
 #endif
 
         Console.WriteLine(failed == 0 ? "All tests passed." : $"{failed} test(s) failed.");
@@ -233,6 +234,32 @@ internal static class Program {
             if (Directory.Exists(outsideRoot)) {
                 Directory.Delete(outsideRoot, true);
             }
+        }
+    }
+
+    private static void TestInlineCommentsExtract() {
+        var text = string.Join("\n", new[] {
+            "Summary",
+            "- ok",
+            "",
+            "Inline Comments (max 2)",
+            "1) src/Foo.cs:42",
+            "Use null-guard here.",
+            "",
+            "2) `src/Bar.cs:10`",
+            "Nit: spacing.",
+            "",
+            "Tests / Coverage",
+            "N/A"
+        });
+
+        var result = ReviewInlineParser.Extract(text, 5);
+        AssertEqual(2, result.Comments.Count, "inline count");
+        AssertEqual("src/Foo.cs", result.Comments[0].Path, "inline path 1");
+        AssertEqual(42, result.Comments[0].Line, "inline line 1");
+        AssertContains(result.Body.Split('\n'), "Summary", "inline strip summary");
+        if (result.Body.Contains("Inline Comments", StringComparison.OrdinalIgnoreCase)) {
+            throw new InvalidOperationException("Inline section was not stripped.");
         }
     }
 #endif

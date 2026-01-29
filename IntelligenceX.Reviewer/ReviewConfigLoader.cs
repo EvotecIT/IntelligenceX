@@ -78,6 +78,20 @@ internal static class ReviewConfigLoader {
         settings.Persona = obj.GetString("persona") ?? settings.Persona;
         settings.Notes = obj.GetString("notes") ?? settings.Notes;
         settings.Model = obj.GetString("model") ?? settings.Model;
+        var reasoningEffort = obj.GetString("reasoningEffort");
+        if (!string.IsNullOrWhiteSpace(reasoningEffort)) {
+            var parsed = IntelligenceX.OpenAI.Chat.ChatEnumParser.ParseReasoningEffort(reasoningEffort);
+            if (parsed.HasValue) {
+                settings.ReasoningEffort = parsed;
+            }
+        }
+        var reasoningSummary = obj.GetString("reasoningSummary");
+        if (!string.IsNullOrWhiteSpace(reasoningSummary)) {
+            var parsed = IntelligenceX.OpenAI.Chat.ChatEnumParser.ParseReasoningSummary(reasoningSummary);
+            if (parsed.HasValue) {
+                settings.ReasoningSummary = parsed;
+            }
+        }
         settings.SeverityThreshold = obj.GetString("severityThreshold") ?? settings.SeverityThreshold;
         settings.RedactionReplacement = obj.GetString("redactionReplacement") ?? settings.RedactionReplacement;
         settings.PromptTemplate = obj.GetString("promptTemplate") ?? settings.PromptTemplate;

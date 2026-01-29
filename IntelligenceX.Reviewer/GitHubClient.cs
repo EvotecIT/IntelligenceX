@@ -221,6 +221,23 @@ internal sealed class GitHubClient : IDisposable {
             .ConfigureAwait(false);
     }
 
+    public async Task<PullRequestReviewComment> CreatePullRequestReviewCommentAsync(string owner, string repo, int number,
+        string body, string commitId, string path, int line, CancellationToken cancellationToken) {
+        var payload = new JsonObject()
+            .Add("body", body)
+            .Add("commit_id", commitId)
+            .Add("path", path)
+            .Add("line", line)
+            .Add("side", "RIGHT");
+        var response = await PostJsonAsync($"/repos/{owner}/{repo}/pulls/{number}/comments", payload, cancellationToken)
+            .ConfigureAwait(false);
+        var obj = response.AsObject();
+        var author = obj?.GetObject("user")?.GetString("login");
+        var responsePath = obj?.GetString("path") ?? path;
+        var responseLine = obj?.GetInt64("line");
+        return new PullRequestReviewComment(body, author, responsePath, responseLine.HasValue ? (int?)responseLine.Value : line);
+    }
+
     public void Dispose() => _http.Dispose();
 
     private async Task<JsonValue> GetJsonAsync(string url, CancellationToken cancellationToken) {

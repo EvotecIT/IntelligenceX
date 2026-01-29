@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
@@ -86,15 +87,18 @@ public static class ReviewerApp {
 
             var extras = await BuildExtrasAsync(github, context, settings, CancellationToken.None)
                 .ConfigureAwait(false);
+            var inlineSupported = !string.Equals(settings.Mode, "summary", StringComparison.OrdinalIgnoreCase) &&
+                                  settings.MaxInlineComments > 0 &&
+                                  !string.IsNullOrWhiteSpace(context.HeadSha);
             var limitedFiles = PrepareFiles(files, settings.MaxFiles, settings.MaxPatchChars);
-            var prompt = PromptBuilder.Build(context, limitedFiles, settings, extras, inlineSupported: false);
+            var prompt = PromptBuilder.Build(context, limitedFiles, settings, extras, inlineSupported);
             if (settings.RedactPii) {
                 prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
             }
 
             long? commentId = null;
             if (settings.ProgressUpdates) {
-                var progressBody = ReviewFormatter.BuildProgressComment(context, settings, progress, null, inlineSupported: false);
+                var progressBody = ReviewFormatter.BuildProgressComment(context, settings, progress, null, inlineSupported);
                 commentId = await CreateOrUpdateProgressCommentAsync(github, context, settings, progressBody, CancellationToken.None)
                     .ConfigureAwait(false);
             }
@@ -106,7 +110,7 @@ public static class ReviewerApp {
             Func<string, Task>? onPartial = null;
             if (settings.ProgressUpdates && commentId.HasValue) {
                 onPartial = async partial => {
-                    var body = ReviewFormatter.BuildProgressComment(context, settings, progress, partial, inlineSupported: false);
+                    var body = ReviewFormatter.BuildProgressComment(context, settings, progress, partial, inlineSupported);
                     await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, body, CancellationToken.None)
                         .ConfigureAwait(false);
                 };
@@ -115,7 +119,22 @@ public static class ReviewerApp {
             var reviewBody = await runner.RunAsync(prompt, onPartial, TimeSpan.FromSeconds(settings.ProgressUpdateSeconds),
                 CancellationToken.None).ConfigureAwait(false);
 
-            var commentBody = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: false);
+            var inlineComments = Array.Empty<InlineReviewComment>();
+            var summaryBody = reviewBody;
+            if (inlineSupported) {
+                var inlineResult = ReviewInlineParser.Extract(reviewBody, settings.MaxInlineComments);
+                inlineComments = inlineResult.Comments as InlineReviewComment[] ?? inlineResult.Comments.ToArray();
+                if (inlineResult.HadInlineSection && !string.IsNullOrWhiteSpace(inlineResult.Body)) {
+                    summaryBody = inlineResult.Body;
+                }
+            }
+
+            if (inlineSupported && inlineComments.Length > 0) {
+                await PostInlineCommentsAsync(github, context, files, settings, inlineComments, CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+
+            var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported);
             progress.Review = ReviewProgressState.Complete;
             progress.Finalize = ReviewProgressState.InProgress;
             progress.StatusLine = "Finalizing summary.";
@@ -399,6 +418,127 @@ public static class ReviewerApp {
         }
         return author.Equals("github-actions", StringComparison.OrdinalIgnoreCase) ||
             author.Equals("intelligencex-review", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static async Task PostInlineCommentsAsync(GitHubClient github, PullRequestContext context,
+        IReadOnlyList<PullRequestFile> files, ReviewSettings settings, IReadOnlyList<InlineReviewComment> inlineComments,
+        CancellationToken cancellationToken) {
+        if (inlineComments.Count == 0 || string.IsNullOrWhiteSpace(context.HeadSha)) {
+            return;
+        }
+
+        var lineMap = BuildInlineLineMap(files);
+        if (lineMap.Count == 0) {
+            return;
+        }
+
+        var limit = Math.Max(0, settings.CommentSearchLimit);
+        var existing = await github.ListPullRequestReviewCommentsAsync(context.Owner, context.Repo, context.Number, limit, cancellationToken)
+            .ConfigureAwait(false);
+        var existingKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var comment in existing) {
+            if (string.IsNullOrWhiteSpace(comment.Path) || !comment.Line.HasValue) {
+                continue;
+            }
+            if (!comment.Body.Contains(ReviewFormatter.InlineMarker, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            existingKeys.Add(BuildInlineKey(comment.Path!, comment.Line.Value));
+        }
+
+        var posted = 0;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var inline in inlineComments) {
+            if (posted >= settings.MaxInlineComments) {
+                break;
+            }
+            var normalizedPath = NormalizePath(inline.Path);
+            if (!lineMap.TryGetValue(normalizedPath, out var allowedLines) ||
+                !allowedLines.Contains(inline.Line)) {
+                continue;
+            }
+            var key = BuildInlineKey(normalizedPath, inline.Line);
+            if (existingKeys.Contains(key) || !seen.Add(key)) {
+                continue;
+            }
+
+            var body = inline.Body.Trim();
+            if (string.IsNullOrWhiteSpace(body)) {
+                continue;
+            }
+            body = $"{ReviewFormatter.InlineMarker}\n{body}";
+
+            try {
+                await github.CreatePullRequestReviewCommentAsync(context.Owner, context.Repo, context.Number, body,
+                        context.HeadSha!, normalizedPath, inline.Line, cancellationToken)
+                    .ConfigureAwait(false);
+                posted++;
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Inline comment failed for {normalizedPath}:{inline.Line} - {ex.Message}");
+            }
+        }
+    }
+
+    private static Dictionary<string, HashSet<int>> BuildInlineLineMap(IReadOnlyList<PullRequestFile> files) {
+        var map = new Dictionary<string, HashSet<int>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in files) {
+            if (string.IsNullOrWhiteSpace(file.Patch)) {
+                continue;
+            }
+            var normalizedPath = NormalizePath(file.Filename);
+            if (string.IsNullOrWhiteSpace(normalizedPath)) {
+                continue;
+            }
+            var allowed = ParsePatchLines(file.Patch!);
+            if (allowed.Count > 0) {
+                map[normalizedPath] = allowed;
+            }
+        }
+        return map;
+    }
+
+    private static HashSet<int> ParsePatchLines(string patch) {
+        var allowed = new HashSet<int>();
+        var lines = patch.Replace("\r\n", "\n").Split('\n');
+        var oldLine = 0;
+        var newLine = 0;
+        foreach (var line in lines) {
+            if (line.StartsWith("@@", StringComparison.Ordinal)) {
+                var match = Regex.Match(line, @"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@");
+                if (match.Success) {
+                    oldLine = int.Parse(match.Groups[1].Value);
+                    newLine = int.Parse(match.Groups[2].Value);
+                }
+                continue;
+            }
+            if (line.StartsWith("+", StringComparison.Ordinal) && !line.StartsWith("+++", StringComparison.Ordinal)) {
+                newLine++;
+                allowed.Add(newLine);
+                continue;
+            }
+            if (line.StartsWith("-", StringComparison.Ordinal) && !line.StartsWith("---", StringComparison.Ordinal)) {
+                oldLine++;
+                continue;
+            }
+            if (line.StartsWith(" ", StringComparison.Ordinal)) {
+                oldLine++;
+                newLine++;
+                allowed.Add(newLine);
+            }
+        }
+        return allowed;
+    }
+
+    private static string NormalizePath(string path) {
+        var normalized = path.Replace('\\', '/').Trim();
+        if (normalized.StartsWith("./", StringComparison.Ordinal)) {
+            normalized = normalized.Substring(2);
+        }
+        return normalized;
+    }
+
+    private static string BuildInlineKey(string path, int line) {
+        return $"{NormalizePath(path)}:{line}";
     }
 
     private static async Task<IssueComment?> FindExistingSummaryAsync(GitHubClient github, PullRequestContext context,

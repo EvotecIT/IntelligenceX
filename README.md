@@ -169,8 +169,11 @@ Example `.intelligencex/reviewer.json`:
     "profile": "picky",
     "style": "direct",
     "outputStyle": "claude",
+    "reasoningEffort": "high",
+    "reasoningSummary": "auto",
     "length": "long",
     "focus": ["bugs", "security", "tests"],
+    "maxInlineComments": 10,
     "progressUpdates": true,
     "progressUpdateSeconds": 30,
     "commentSearchLimit": 500,
@@ -192,6 +195,10 @@ Example `.intelligencex/reviewer.json`:
 ```
 
 Schema: `Schemas/reviewer.schema.json`
+
+Notes:
+- Set `maxInlineComments` to `0` to disable inline review comments.
+- `reasoningEffort`/`reasoningSummary` map to Codex reasoning controls.
 
 ## CLI setup (GitHub Actions)
 

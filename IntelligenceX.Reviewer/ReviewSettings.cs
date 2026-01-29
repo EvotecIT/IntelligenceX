@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.Chat;
 
 namespace IntelligenceX.Reviewer;
 
@@ -33,6 +34,8 @@ internal sealed class ReviewSettings {
     public string? Persona { get; set; }
     public string? Notes { get; set; }
     public string Model { get; set; } = "gpt-5.2-codex";
+    public ReasoningEffort? ReasoningEffort { get; set; }
+    public ReasoningSummary? ReasoningSummary { get; set; }
     public OpenAITransportKind OpenAITransport { get; set; } = OpenAITransportKind.AppServer;
     public ReviewLength Length { get; set; } = ReviewLength.Long;
     public bool IncludeNextSteps { get; set; } = true;
@@ -149,6 +152,22 @@ internal sealed class ReviewSettings {
         var model = GetInput("model", "OPENAI_MODEL");
         if (!string.IsNullOrWhiteSpace(model)) {
             settings.Model = model!;
+        }
+
+        var reasoningEffort = GetInput("reasoning_effort", "OPENAI_REASONING_EFFORT");
+        if (!string.IsNullOrWhiteSpace(reasoningEffort)) {
+            var parsed = ChatEnumParser.ParseReasoningEffort(reasoningEffort);
+            if (parsed.HasValue) {
+                settings.ReasoningEffort = parsed;
+            }
+        }
+
+        var reasoningSummary = GetInput("reasoning_summary", "OPENAI_REASONING_SUMMARY");
+        if (!string.IsNullOrWhiteSpace(reasoningSummary)) {
+            var parsed = ChatEnumParser.ParseReasoningSummary(reasoningSummary);
+            if (parsed.HasValue) {
+                settings.ReasoningSummary = parsed;
+            }
         }
 
         var transport = GetInput("openai_transport", "OPENAI_TRANSPORT");

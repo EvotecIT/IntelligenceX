@@ -5,6 +5,11 @@ Review mode: {{Mode}}
 Max inline comments: {{MaxInlineComments}}
 Inline comments supported: {{InlineSupported}}
 If inline comments are not supported, do not include an inline comments section or inline suggestions.
+If inline comments are supported and you have inline findings, add a section:
+Inline Comments (max {{MaxInlineComments}})
+1) path/to/file.ext:123
+Comment text.
+Only reference lines that appear in the diff.
 
 Return your review in markdown with these sections:
 - Summary
