@@ -223,6 +223,9 @@ You can configure the reviewer with environment variables **or** a repo-local fi
     "reviewThreadsIncludeOutdated": true,
     "reviewThreadsMax": 10,
     "reviewThreadsMaxComments": 3,
+    "reviewThreadsAutoResolveStale": false,
+    "reviewThreadsAutoResolveBotsOnly": true,
+    "reviewThreadsAutoResolveMax": 10,
     "commentMode": "sticky",
     "contextDenyEnabled": true,
     "contextDenyPatterns": [
@@ -252,6 +255,7 @@ Notes:
 - `reasoningEffort`/`reasoningSummary` map to Codex reasoning controls.
 - Context deny patterns are regex with a short timeout; invalid patterns are ignored with a warning.
 - `includeReviewThreads` adds an "Other Reviews" section that triages existing review threads.
+- `reviewThreadsAutoResolveStale` can auto-resolve stale threads (requires `pull-requests: write`).
 
 ## CLI setup (GitHub Actions)
 
@@ -294,6 +298,7 @@ Common inputs/env:
 - `context_deny_enabled`, `context_deny_patterns`
 - `include_review_threads`, `review_threads_include_bots`, `review_threads_include_resolved`, `review_threads_include_outdated`
 - `review_threads_max`, `review_threads_max_comments`
+- `review_threads_auto_resolve_stale`, `review_threads_auto_resolve_bots_only`, `review_threads_auto_resolve_max`
 - `redact_pii`, `redaction_patterns`, `redaction_replacement`
 - `prompt_template` / `prompt_template_path`
 - `summary_template` / `summary_template_path`

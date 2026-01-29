@@ -169,6 +169,7 @@ internal sealed class GitHubClient : IDisposable {
     pullRequest(number:$number){
       reviewThreads(first:50, after:$cursor){
         nodes{
+          id
           isResolved
           isOutdated
           comments(first:10){
@@ -210,6 +211,7 @@ internal sealed class GitHubClient : IDisposable {
                 if (obj is null) {
                     continue;
                 }
+                var id = obj.GetString("id") ?? string.Empty;
                 var isResolved = obj.GetBoolean("isResolved");
                 var isOutdated = obj.GetBoolean("isOutdated");
                 var commentsObj = obj.GetObject("comments");
@@ -231,7 +233,7 @@ internal sealed class GitHubClient : IDisposable {
                         comments.Add(new PullRequestReviewThreadComment(body, author, path, line.HasValue ? (int?)line.Value : null));
                     }
                 }
-                threads.Add(new PullRequestReviewThread(isResolved, isOutdated, comments));
+                threads.Add(new PullRequestReviewThread(id, isResolved, isOutdated, comments));
             }
 
             var pageInfo = threadsObj?.GetObject("pageInfo");
@@ -246,6 +248,20 @@ internal sealed class GitHubClient : IDisposable {
         }
 
         return threads;
+    }
+
+    public async Task ResolveReviewThreadAsync(string threadId, CancellationToken cancellationToken) {
+        if (string.IsNullOrWhiteSpace(threadId)) {
+            return;
+        }
+        var payload = new JsonObject()
+            .Add("query", @"mutation($id:ID!){
+  resolveReviewThread(input:{threadId:$id}){
+    thread{ id isResolved }
+  }
+}")
+            .Add("variables", new JsonObject().Add("id", threadId));
+        await PostGraphQlAsync(payload, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<RelatedPullRequest>> SearchPullRequestsAsync(string query, int maxResults,

@@ -94,6 +94,9 @@ internal sealed class ReviewSettings {
     public bool ReviewThreadsIncludeOutdated { get; set; } = true;
     public int ReviewThreadsMax { get; set; } = 10;
     public int ReviewThreadsMaxComments { get; set; } = 3;
+    public bool ReviewThreadsAutoResolveStale { get; set; }
+    public bool ReviewThreadsAutoResolveBotsOnly { get; set; } = true;
+    public int ReviewThreadsAutoResolveMax { get; set; } = 10;
     public int MaxCommentChars { get; set; } = 4000;
     public int MaxComments { get; set; } = 20;
     public int CommentSearchLimit { get; set; } = 500;
@@ -417,6 +420,18 @@ internal sealed class ReviewSettings {
         var reviewThreadsMaxComments = GetInput("review_threads_max_comments", "REVIEW_REVIEW_THREADS_MAX_COMMENTS");
         if (!string.IsNullOrWhiteSpace(reviewThreadsMaxComments)) {
             settings.ReviewThreadsMaxComments = ParsePositiveInt(reviewThreadsMaxComments, settings.ReviewThreadsMaxComments);
+        }
+        var reviewThreadsAutoResolveStale = GetInput("review_threads_auto_resolve_stale", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_STALE");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveStale)) {
+            settings.ReviewThreadsAutoResolveStale = ParseBoolean(reviewThreadsAutoResolveStale, settings.ReviewThreadsAutoResolveStale);
+        }
+        var reviewThreadsAutoResolveBotsOnly = GetInput("review_threads_auto_resolve_bots_only", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_BOTS_ONLY");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveBotsOnly)) {
+            settings.ReviewThreadsAutoResolveBotsOnly = ParseBoolean(reviewThreadsAutoResolveBotsOnly, settings.ReviewThreadsAutoResolveBotsOnly);
+        }
+        var reviewThreadsAutoResolveMax = GetInput("review_threads_auto_resolve_max", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_MAX");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveMax)) {
+            settings.ReviewThreadsAutoResolveMax = ParsePositiveInt(reviewThreadsAutoResolveMax, settings.ReviewThreadsAutoResolveMax);
         }
         var contextDenyEnabled = GetInput("context_deny_enabled", "REVIEW_CONTEXT_DENY_ENABLED");
         if (!string.IsNullOrWhiteSpace(contextDenyEnabled)) {

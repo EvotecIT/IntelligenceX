@@ -278,6 +278,9 @@ public static class ReviewerApp {
             var threads = await github.ListPullRequestReviewThreadsAsync(context.Owner, context.Repo, context.Number,
                     settings.ReviewThreadsMax, settings.ReviewThreadsMaxComments, cancellationToken)
                 .ConfigureAwait(false);
+            if (settings.ReviewThreadsAutoResolveStale) {
+                await AutoResolveStaleThreadsAsync(github, threads, settings, cancellationToken).ConfigureAwait(false);
+            }
             extras.ReviewThreadsSection = BuildReviewThreadsSection(threads, settings);
         }
         if (settings.IncludeRelatedPrs) {
@@ -402,6 +405,44 @@ public static class ReviewerApp {
         }
         sb.AppendLine();
         return sb.ToString();
+    }
+
+    private static async Task AutoResolveStaleThreadsAsync(GitHubClient github, IReadOnlyList<PullRequestReviewThread> threads,
+        ReviewSettings settings, CancellationToken cancellationToken) {
+        var resolved = 0;
+        foreach (var thread in threads) {
+            if (resolved >= settings.ReviewThreadsAutoResolveMax) {
+                break;
+            }
+            if (thread.IsResolved || !thread.IsOutdated) {
+                continue;
+            }
+            if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread)) {
+                continue;
+            }
+
+            try {
+                await github.ResolveReviewThreadAsync(thread.Id, cancellationToken).ConfigureAwait(false);
+                resolved++;
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {ex.Message}");
+            }
+        }
+    }
+
+    private static bool ThreadHasOnlyBotComments(PullRequestReviewThread thread) {
+        if (thread.Comments.Count == 0) {
+            return false;
+        }
+        foreach (var comment in thread.Comments) {
+            if (string.IsNullOrWhiteSpace(comment.Author)) {
+                return false;
+            }
+            if (!IsBotAuthor(comment.Author)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static string BuildRelatedPrsSection(PullRequestContext context, IReadOnlyList<RelatedPullRequest> related) {
