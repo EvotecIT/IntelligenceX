@@ -23,6 +23,26 @@ internal enum ReviewProvider {
 }
 
 internal sealed class ReviewSettings {
+    private static readonly IReadOnlyList<string> DefaultContextDenyPatterns = new[] {
+        "\\bpoem(s)?\\b",
+        "\\bpoetry\\b",
+        "\\bhaiku\\b",
+        "\\blyrics\\b",
+        "\\bsong\\b",
+        "\\bjoke\\b",
+        "\\blife advice\\b",
+        "\\brelationship\\b",
+        "\\bdating\\b",
+        "\\bmedical\\b",
+        "\\bdiagnos(e|is)\\b",
+        "\\btherapy\\b",
+        "\\blegal\\b",
+        "\\blawsuit\\b",
+        "\\bfinancial\\b",
+        "\\binvestment\\b",
+        "\\btax\\b"
+    };
+
     public string Mode { get; set; } = "hybrid";
     public ReviewProvider Provider { get; set; } = ReviewProvider.OpenAI;
     public string? Profile { get; set; }
@@ -71,6 +91,8 @@ internal sealed class ReviewSettings {
     public int MaxCommentChars { get; set; } = 4000;
     public int MaxComments { get; set; } = 20;
     public int CommentSearchLimit { get; set; } = 500;
+    public bool ContextDenyEnabled { get; set; } = true;
+    public IReadOnlyList<string> ContextDenyPatterns { get; set; } = DefaultContextDenyPatterns;
     public bool IncludeRelatedPrs { get; set; }
     public string? RelatedPrsQuery { get; set; }
     public int MaxRelatedPrs { get; set; } = 5;
@@ -365,6 +387,14 @@ internal sealed class ReviewSettings {
         var includeReviewComments = GetInput("include_review_comments", "REVIEW_INCLUDE_REVIEW_COMMENTS");
         if (!string.IsNullOrWhiteSpace(includeReviewComments)) {
             settings.IncludeReviewComments = ParseBoolean(includeReviewComments, settings.IncludeReviewComments);
+        }
+        var contextDenyEnabled = GetInput("context_deny_enabled", "REVIEW_CONTEXT_DENY_ENABLED");
+        if (!string.IsNullOrWhiteSpace(contextDenyEnabled)) {
+            settings.ContextDenyEnabled = ParseBoolean(contextDenyEnabled, settings.ContextDenyEnabled);
+        }
+        var contextDenyPatterns = GetInput("context_deny_patterns", "REVIEW_CONTEXT_DENY_PATTERNS");
+        if (!string.IsNullOrWhiteSpace(contextDenyPatterns)) {
+            settings.ContextDenyPatterns = ParseList(contextDenyPatterns, settings.ContextDenyPatterns);
         }
         var maxCommentChars = GetInput("max_comment_chars", "REVIEW_MAX_COMMENT_CHARS");
         if (!string.IsNullOrWhiteSpace(maxCommentChars)) {

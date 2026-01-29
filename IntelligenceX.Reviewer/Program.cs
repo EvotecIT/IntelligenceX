@@ -12,6 +12,10 @@ using IntelligenceX.OpenAI.Auth;
 namespace IntelligenceX.Reviewer;
 
 public static class ReviewerApp {
+    private static readonly TimeSpan DenyPatternTimeout = TimeSpan.FromMilliseconds(200);
+    private static readonly object DenyPatternLock = new();
+    private static readonly HashSet<string> DenyPatternFailures = new(StringComparer.OrdinalIgnoreCase);
+
     public static async Task<int> RunAsync(string[] args) {
         try {
             TryWriteAuthFromEnv();
@@ -295,7 +299,7 @@ public static class ReviewerApp {
                 comment.Body.Contains(CleanupFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
-            if (!ShouldIncludeComment(comment.Author, comment.Body)) {
+            if (!ShouldIncludeComment(comment.Author, comment.Body, settings)) {
                 continue;
             }
             filtered.Add(comment);
@@ -324,7 +328,7 @@ public static class ReviewerApp {
             if (string.IsNullOrWhiteSpace(comment.Body)) {
                 continue;
             }
-            if (!ShouldIncludeComment(comment.Author, comment.Body)) {
+            if (!ShouldIncludeComment(comment.Author, comment.Body, settings)) {
                 continue;
             }
             filtered.Add(comment);
@@ -396,9 +400,14 @@ public static class ReviewerApp {
         return text.Substring(0, maxChars) + "...";
     }
 
-    private static bool ShouldIncludeComment(string? author, string body) {
+    private static bool ShouldIncludeComment(string? author, string body, ReviewSettings settings) {
         if (string.IsNullOrWhiteSpace(body)) {
             return false;
+        }
+        if (settings.ContextDenyEnabled && settings.ContextDenyPatterns.Count > 0) {
+            if (MatchesDenyPatterns(body, settings.ContextDenyPatterns)) {
+                return false;
+            }
         }
         if (!string.IsNullOrWhiteSpace(author)) {
             if (IsBotAuthor(author)) {
@@ -409,6 +418,33 @@ public static class ReviewerApp {
             return false;
         }
         return true;
+    }
+
+    private static bool MatchesDenyPatterns(string body, IReadOnlyList<string> patterns) {
+        foreach (var pattern in patterns) {
+            if (string.IsNullOrWhiteSpace(pattern)) {
+                continue;
+            }
+            try {
+                if (Regex.IsMatch(body, pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, DenyPatternTimeout)) {
+                    return true;
+                }
+            } catch (RegexMatchTimeoutException ex) {
+                LogDenyPatternOnce(pattern, $"Context deny regex timed out: '{pattern}'. {ex.Message}");
+            } catch (ArgumentException ex) {
+                LogDenyPatternOnce(pattern, $"Invalid context deny regex: '{pattern}'. {ex.Message}");
+            }
+        }
+        return false;
+    }
+
+    private static void LogDenyPatternOnce(string pattern, string message) {
+        lock (DenyPatternLock) {
+            if (!DenyPatternFailures.Add(pattern)) {
+                return;
+            }
+        }
+        Console.Error.WriteLine(message);
     }
 
     private static bool IsBotAuthor(string author) {
