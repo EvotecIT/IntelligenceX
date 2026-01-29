@@ -16,6 +16,7 @@ Each inline item should use a real file path and line number (example above).
 If you cannot provide a line number, use a single-line code snippet in backticks as the location (must appear in the diff).
 Do not use fenced code blocks as locations.
 If you cannot provide a file path + line or a snippet, omit the inline section entirely.
+If inline comments are supported and you mention any code-level issue or todo, you must include an Inline Comments section and map each issue to a location (path+line or snippet).
 
 Return your review in markdown with these sections:
 - Todo List
