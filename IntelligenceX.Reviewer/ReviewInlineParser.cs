@@ -202,7 +202,8 @@ internal static class ReviewInlineParser {
 
     private static bool IsInlineHeader(string line) {
         var header = NormalizeHeader(line);
-        return header.StartsWith("inline comments", StringComparison.OrdinalIgnoreCase);
+        return header.StartsWith("inline comments", StringComparison.OrdinalIgnoreCase) ||
+               header.StartsWith("inline comment", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsSectionHeader(string line) {
@@ -210,7 +211,8 @@ internal static class ReviewInlineParser {
         if (string.IsNullOrWhiteSpace(header)) {
             return false;
         }
-        if (header.StartsWith("inline comments", StringComparison.OrdinalIgnoreCase)) {
+        if (header.StartsWith("inline comments", StringComparison.OrdinalIgnoreCase) ||
+            header.StartsWith("inline comment", StringComparison.OrdinalIgnoreCase)) {
             return true;
         }
         return KnownSections.Contains(header);
