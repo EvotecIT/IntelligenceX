@@ -598,6 +598,7 @@ It updates `CHANGELOG.md` on the default branch.
 Optional PR mode:
 - Set `create_pr: 'true'` to open/update a PR instead of pushing directly.
 - Optional inputs: `pr_branch`, `pr_title`, `pr_body`.
+Requires workflow permissions: `contents: write` + `pull-requests: write`.
 
 Required secret:
 - `INTELLIGENCEX_AUTH_B64` (Auth store base64 from `intelligencex auth export --format store-base64`)

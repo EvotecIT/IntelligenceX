@@ -275,7 +275,12 @@ internal static class ReviewInlineParser {
             header.StartsWith("inline comment", StringComparison.OrdinalIgnoreCase)) {
             return true;
         }
-        return KnownSections.Contains(header);
+        foreach (var section in KnownSections) {
+            if (header.StartsWith(section, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static string NormalizeHeader(string line) {

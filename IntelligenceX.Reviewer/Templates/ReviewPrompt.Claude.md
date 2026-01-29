@@ -24,18 +24,19 @@ replacement text
 ```
 Only use suggestions when you are confident the replacement is correct and limited to the referenced lines.
 
-Return your review in markdown with these sections in this exact order, using markdown headings:
-- Inline Comments
-- Todo List
-- Review Summary
-- Code Quality Assessment (include a 1-5 star rating)
-- Excellent Aspects
-- Security & Performance
-- Test Quality
-- Documentation
-- Backward Compatibility
-- Recommendations
+Return your review in markdown with these sections in this exact order, using markdown headings (use the emoji shown):
+- Inline Comments 🔍
+- Todo List ✅
+- Review Summary 📝
+- Code Quality Assessment ⭐
+- Excellent Aspects ✨
+- Security & Performance 🔐⚡
+- Test Quality 🧪
+- Documentation 📚
+- Backward Compatibility 🔄
+- Recommendations 💡
 {{NextStepsSection}}
+In Code Quality Assessment, include a 1-5 star rating as the first bullet (e.g., ⭐⭐⭐⭐☆).
 If there are no inline comments, write "None." under Inline Comments.
 Keep each section to a maximum of 8 bullet points.
 
