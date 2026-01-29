@@ -69,7 +69,7 @@ internal static class Program {
         var command = args[0].ToLowerInvariant();
         return command switch {
             "login" => await RunLoginAsync().ConfigureAwait(false),
-            "export" => await RunExportAsync().ConfigureAwait(false),
+            "export" => await RunExportAsync(args.Skip(1).ToArray()).ConfigureAwait(false),
             "sync-codex" => await RunSyncCodexAsync().ConfigureAwait(false),
             "help" or "-h" or "--help" => PrintAuthHelpReturn(),
             _ => PrintAuthHelpReturn()
@@ -151,9 +151,16 @@ internal static class Program {
         }
     }
 
-    private static async Task<int> RunExportAsync() {
+    private static async Task<int> RunExportAsync(string[] args) {
         try {
-            var format = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_EXPORT_FORMAT") ?? "json";
+            var format = ResolveExportFormat(args)
+                         ?? Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_EXPORT_FORMAT")
+                         ?? "json";
+            var normalized = format.Trim().ToLowerInvariant();
+            if (normalized is "store" or "store-base64" or "store_b64") {
+                return await ExportAuthStoreAsync(normalized).ConfigureAwait(false);
+            }
+
             var store = new FileAuthBundleStore();
             var bundle = await store.GetAsync("openai-codex").ConfigureAwait(false);
             if (bundle is null) {
@@ -161,7 +168,7 @@ internal static class Program {
                 return 1;
             }
             var json = AuthBundleSerializer.Serialize(bundle);
-            if (format.Equals("base64", StringComparison.OrdinalIgnoreCase)) {
+            if (normalized == "base64") {
                 var bytes = Encoding.UTF8.GetBytes(json);
                 Console.WriteLine(Convert.ToBase64String(bytes));
             } else {
@@ -189,6 +196,43 @@ internal static class Program {
             Console.Error.WriteLine(ex.Message);
             return 1;
         }
+    }
+
+    private static string? ResolveExportFormat(string[] args) {
+        for (var i = 0; i < args.Length; i++) {
+            var arg = args[i];
+            if (arg.Equals("--format", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length) {
+                return args[i + 1];
+            }
+            if (arg.Equals("--store", StringComparison.OrdinalIgnoreCase)) {
+                return "store";
+            }
+            if (arg.Equals("--store-base64", StringComparison.OrdinalIgnoreCase) ||
+                arg.Equals("--store-b64", StringComparison.OrdinalIgnoreCase)) {
+                return "store-base64";
+            }
+        }
+        return null;
+    }
+
+    private static async Task<int> ExportAuthStoreAsync(string format) {
+        var path = AuthPaths.ResolveAuthPath();
+        if (!File.Exists(path)) {
+            Console.Error.WriteLine("No auth store found.");
+            return 1;
+        }
+        var content = await File.ReadAllTextAsync(path).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(content)) {
+            Console.Error.WriteLine("Auth store is empty.");
+            return 1;
+        }
+        if (format is "store-base64" or "store_b64") {
+            var bytes = Encoding.UTF8.GetBytes(content);
+            Console.WriteLine(Convert.ToBase64String(bytes));
+        } else {
+            Console.WriteLine(content);
+        }
+        return 0;
     }
 
     private static void TryOpenBrowser(string url) {

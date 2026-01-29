@@ -11,8 +11,8 @@ internal static class PromptBuilder {
         var template = ResolveTemplate(settings);
         var profileBlock = string.IsNullOrWhiteSpace(settings.Profile) ? string.Empty : $"Profile: {settings.Profile}\n";
         var strictnessBlock = string.IsNullOrWhiteSpace(settings.Strictness) ? string.Empty : $"Strictness: {settings.Strictness}\n";
-        var toneBlock = string.IsNullOrWhiteSpace(settings.Tone) ? string.Empty : $"Tone: {settings.Tone}\n";
         var styleBlock = string.IsNullOrWhiteSpace(settings.Style) ? string.Empty : $"Style: {settings.Style}\n";
+        var toneBlock = string.IsNullOrWhiteSpace(settings.Tone) ? string.Empty : $"Tone: {settings.Tone}\n";
         var outputStyleBlock = string.IsNullOrWhiteSpace(settings.OutputStyle) ? string.Empty : $"Output style: {settings.OutputStyle}\n";
         var focusBlock = settings.Focus.Count == 0 ? string.Empty : $"Focus areas: {string.Join(", ", settings.Focus)}\n";
         var personaBlock = string.IsNullOrWhiteSpace(settings.Persona) ? string.Empty : $"Persona: {settings.Persona}\n";
@@ -25,8 +25,8 @@ internal static class PromptBuilder {
         var tokens = new Dictionary<string, string> {
             ["ProfileBlock"] = profileBlock,
             ["StrictnessBlock"] = strictnessBlock,
-            ["ToneBlock"] = toneBlock,
             ["StyleBlock"] = styleBlock,
+            ["ToneBlock"] = toneBlock,
             ["OutputStyleBlock"] = outputStyleBlock,
             ["FocusBlock"] = focusBlock,
             ["PersonaBlock"] = personaBlock,
@@ -54,6 +54,12 @@ internal static class PromptBuilder {
         }
         if (!string.IsNullOrWhiteSpace(settings.PromptTemplatePath)) {
             return File.ReadAllText(settings.PromptTemplatePath!);
+        }
+        if (!string.IsNullOrWhiteSpace(settings.OutputStyle)) {
+            var key = settings.OutputStyle.Trim().ToLowerInvariant();
+            if (key is "claude" or "claude-like" or "claude_style" or "claude-style") {
+                return TemplateLoader.Load("ReviewPrompt.Claude.md");
+            }
         }
         var name = settings.Length switch {
             ReviewLength.Short => "ReviewPrompt.Short.md",
