@@ -54,8 +54,8 @@ Status: In progress
 - [x] Update-secret support in web UI
 
 ## Phase 6 — Reviewer improvements
-- [ ] Early auth validation with actionable errors
-- [ ] Safer auth store handling in reviewer
+- [x] Early auth validation with actionable errors
+- [x] Safer auth store handling in reviewer
 - [x] Explicit secrets in workflow (no secrets: inherit)
 
 ## Phase 7 — Docs & README
