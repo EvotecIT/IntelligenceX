@@ -11,7 +11,7 @@ internal static class GitHubAuth {
     public static async Task<string?> DeviceFlowAsync(string clientId, string authBaseUrl, string scopes) {
         using var http = new HttpClient();
         var deviceUri = new Uri(new Uri(authBaseUrl), "/login/device/code");
-        var request = new HttpRequestMessage(HttpMethod.Post, deviceUri) {
+        using var request = new HttpRequestMessage(HttpMethod.Post, deviceUri) {
             Content = new FormUrlEncodedContent(new Dictionary<string, string> {
                 ["client_id"] = clientId,
                 ["scope"] = scopes
@@ -41,7 +41,7 @@ internal static class GitHubAuth {
         var deadline = DateTimeOffset.UtcNow.AddSeconds(expiresIn);
         while (DateTimeOffset.UtcNow < deadline) {
             await Task.Delay(TimeSpan.FromSeconds(interval)).ConfigureAwait(false);
-            var pollRequest = new HttpRequestMessage(HttpMethod.Post, tokenUri) {
+            using var pollRequest = new HttpRequestMessage(HttpMethod.Post, tokenUri) {
                 Content = new FormUrlEncodedContent(new Dictionary<string, string> {
                     ["client_id"] = clientId,
                     ["device_code"] = deviceCode!,

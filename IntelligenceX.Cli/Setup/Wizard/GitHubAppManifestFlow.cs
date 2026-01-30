@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -28,6 +29,14 @@ internal static class GitHubAppManifestFlow {
         var manifestPageUrl = new Uri(new Uri(baseUri), "manifest?state=" + state);
 
         var tcs = new TaskCompletionSource<GitHubAppManifestResult?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        using var registration = cancellationToken.Register(() => {
+            try {
+                listener.Stop();
+            } catch {
+                // Best effort.
+            }
+        });
 
         _ = Task.Run(async () => {
             try {
@@ -71,7 +80,7 @@ internal static class GitHubAppManifestFlow {
             } finally {
                 listener.Close();
             }
-        }, cancellationToken);
+        });
 
         TryOpenUrl(manifestPageUrl.ToString());
         return await tcs.Task.ConfigureAwait(false);
@@ -79,8 +88,7 @@ internal static class GitHubAppManifestFlow {
 
     private static async Task<HttpListener?> TryStartListenerAsync() {
         var ports = new[] { 1456, 1457, 1458, 1459, 1460 };
-        foreach (var port in ports) {
-            var prefix = $"http://127.0.0.1:{port}/";
+        foreach (var prefix in ports.Select(port => $"http://127.0.0.1:{port}/")) {
             var listener = new HttpListener();
             listener.Prefixes.Add(prefix);
             try {
@@ -136,7 +144,8 @@ internal static class GitHubAppManifestFlow {
         using var http = new HttpClient { BaseAddress = new Uri(apiBaseUrl) };
         http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("IntelligenceX.Cli", "1.0"));
         http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-        var response = await http.PostAsync($"/app-manifests/{code}/conversions", new StringContent("{}", Encoding.UTF8, "application/json"))
+        using var content = new StringContent("{}", Encoding.UTF8, "application/json");
+        var response = await http.PostAsync($"/app-manifests/{code}/conversions", content)
             .ConfigureAwait(false);
         var payload = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
         if (!response.IsSuccessStatusCode) {

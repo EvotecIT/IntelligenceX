@@ -36,10 +36,10 @@ internal sealed class GitHubRepoClient : IDisposable {
                 var fullName = item.GetProperty("full_name").GetString() ?? string.Empty;
                 var isPrivate = item.GetProperty("private").GetBoolean();
                 DateTimeOffset? updatedAt = null;
-                if (item.TryGetProperty("updated_at", out var updatedProperty) && updatedProperty.ValueKind == JsonValueKind.String) {
-                    if (DateTimeOffset.TryParse(updatedProperty.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)) {
-                        updatedAt = parsed;
-                    }
+                if (item.TryGetProperty("updated_at", out var updatedProperty)
+                    && updatedProperty.ValueKind == JsonValueKind.String
+                    && DateTimeOffset.TryParse(updatedProperty.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)) {
+                    updatedAt = parsed;
                 }
                 if (!string.IsNullOrWhiteSpace(fullName)) {
                     repos.Add(new RepositoryInfo(fullName, isPrivate, updatedAt));
@@ -64,10 +64,10 @@ internal sealed class GitHubRepoClient : IDisposable {
             var fullName = item.GetProperty("full_name").GetString() ?? string.Empty;
             var isPrivate = item.GetProperty("private").GetBoolean();
             DateTimeOffset? updatedAt = null;
-            if (item.TryGetProperty("updated_at", out var updatedProperty) && updatedProperty.ValueKind == JsonValueKind.String) {
-                if (DateTimeOffset.TryParse(updatedProperty.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)) {
-                    updatedAt = parsed;
-                }
+            if (item.TryGetProperty("updated_at", out var updatedProperty)
+                && updatedProperty.ValueKind == JsonValueKind.String
+                && DateTimeOffset.TryParse(updatedProperty.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)) {
+                updatedAt = parsed;
             }
             if (!string.IsNullOrWhiteSpace(fullName)) {
                 repos.Add(new RepositoryInfo(fullName, isPrivate, updatedAt));

@@ -12,7 +12,7 @@ internal static class GitHubDeviceFlowClient {
         var baseUrl = string.IsNullOrWhiteSpace(authBaseUrl) ? "https://github.com" : authBaseUrl;
         using var http = new HttpClient();
         var deviceUri = new Uri(new Uri(baseUrl), "/login/device/code");
-        var request = new HttpRequestMessage(HttpMethod.Post, deviceUri) {
+        using var request = new HttpRequestMessage(HttpMethod.Post, deviceUri) {
             Content = new FormUrlEncodedContent(new Dictionary<string, string> {
                 ["client_id"] = clientId,
                 ["scope"] = scopes ?? "repo workflow read:org"
@@ -34,14 +34,16 @@ internal static class GitHubDeviceFlowClient {
         };
     }
 
-    public static async Task<string?> PollTokenAsync(string clientId, string deviceCode, string? authBaseUrl, int intervalSeconds) {
+    public static async Task<string?> PollTokenAsync(string clientId, string deviceCode, string? authBaseUrl, int intervalSeconds, int expiresInSeconds) {
         var baseUrl = string.IsNullOrWhiteSpace(authBaseUrl) ? "https://github.com" : authBaseUrl;
         using var http = new HttpClient();
         var tokenUri = new Uri(new Uri(baseUrl), "/login/oauth/access_token");
         var interval = Math.Max(1, intervalSeconds);
-        while (true) {
+        var timeoutSeconds = expiresInSeconds > 0 ? expiresInSeconds : 600;
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(timeoutSeconds);
+        while (DateTimeOffset.UtcNow < deadline) {
             await Task.Delay(TimeSpan.FromSeconds(interval)).ConfigureAwait(false);
-            var pollRequest = new HttpRequestMessage(HttpMethod.Post, tokenUri) {
+            using var pollRequest = new HttpRequestMessage(HttpMethod.Post, tokenUri) {
                 Content = new FormUrlEncodedContent(new Dictionary<string, string> {
                     ["client_id"] = clientId,
                     ["device_code"] = deviceCode,
@@ -70,6 +72,7 @@ internal static class GitHubDeviceFlowClient {
                 throw new InvalidOperationException($"GitHub device flow error: {code}");
             }
         }
+        return null;
     }
 }
 

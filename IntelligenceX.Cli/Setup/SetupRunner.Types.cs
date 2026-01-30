@@ -197,9 +197,11 @@ internal static partial class SetupRunner {
                         break;
                     case "config-path":
                         options.ConfigPath = value;
+                        options.WithConfig = true;
                         break;
                     case "config-json":
                         options.ConfigJson = value;
+                        options.WithConfig = true;
                         break;
                     case "cleanup-enabled":
                         options.CleanupEnabled = ParseBool(value, options.CleanupEnabled);

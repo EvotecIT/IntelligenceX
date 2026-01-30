@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.Setup.Wizard;
 
@@ -114,8 +115,13 @@ internal sealed class WebApi {
         }
 
         try {
-            var token = await GitHubDeviceFlowClient.PollTokenAsync(request.ClientId!, request.DeviceCode!, request.AuthBaseUrl, request.IntervalSeconds)
+            var token = await GitHubDeviceFlowClient.PollTokenAsync(request.ClientId!, request.DeviceCode!, request.AuthBaseUrl, request.IntervalSeconds, request.ExpiresIn)
                 .ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(token)) {
+                context.Response.StatusCode = 408;
+                await WriteJsonAsync(context, new { error = "Device flow expired. Please start again." }).ConfigureAwait(false);
+                return;
+            }
             await WriteJsonAsync(context, new { token }).ConfigureAwait(false);
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
@@ -276,18 +282,19 @@ internal sealed class WebApi {
         return args.ToArray();
     }
 
-    private static readonly object ConsoleLock = new();
+    private static readonly SemaphoreSlim ConsoleLock = new(1, 1);
 
     private async Task<SetupResponse> RunSetupAsync(string[] args) {
-        lock (ConsoleLock) {
-            var output = new StringWriter();
-            var error = new StringWriter();
+        await ConsoleLock.WaitAsync().ConfigureAwait(false);
+        try {
+            using var output = new StringWriter();
+            using var error = new StringWriter();
             var originalOut = Console.Out;
             var originalErr = Console.Error;
             try {
                 Console.SetOut(output);
                 Console.SetError(error);
-                var code = SetupRunner.RunAsync(args).GetAwaiter().GetResult();
+                var code = await SetupRunner.RunAsync(args).ConfigureAwait(false);
                 return new SetupResponse {
                     ExitCode = code,
                     Output = output.ToString(),
@@ -297,6 +304,8 @@ internal sealed class WebApi {
                 Console.SetOut(originalOut);
                 Console.SetError(originalErr);
             }
+        } finally {
+            ConsoleLock.Release();
         }
     }
 
@@ -334,6 +343,7 @@ internal sealed class WebApi {
         public string? DeviceCode { get; set; }
         public string? AuthBaseUrl { get; set; } = "https://github.com";
         public int IntervalSeconds { get; set; } = 5;
+        public int ExpiresIn { get; set; }
     }
 
     private sealed class AppManifestRequest {

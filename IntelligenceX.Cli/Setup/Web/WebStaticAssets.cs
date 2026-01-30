@@ -228,7 +228,8 @@ devicePoll.addEventListener('click', async () => {
     body: JSON.stringify({
       clientId: clientId.value,
       deviceCode: deviceState.deviceCode,
-      intervalSeconds: deviceState.intervalSeconds
+      intervalSeconds: deviceState.intervalSeconds,
+      expiresIn: deviceState.expiresIn
     })
   });
   const data = await res.json();

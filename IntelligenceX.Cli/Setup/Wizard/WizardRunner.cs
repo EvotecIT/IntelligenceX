@@ -74,7 +74,7 @@ internal static class WizardRunner {
         }
         if (state.Operation == WizardOperation.UpdateSecret) {
             state.SkipSecret = false;
-            state.ManualSecret = WizardPrompts.PromptManualSecret(state.ManualSecret);
+            state.ManualSecret = false;
         }
         state.DryRun = WizardPrompts.PromptDryRun(state.DryRun);
         state.BranchName = WizardPrompts.PromptBranchName(state.BranchName);
@@ -92,8 +92,7 @@ internal static class WizardRunner {
         await AnsiConsole.Status()
             .Spinner(Spinner.Known.Dots)
             .StartAsync("Applying setup...", async _ => {
-                foreach (var repo in state.SelectedRepos) {
-                    var repoPlan = BuildPlan(state, repo);
+                foreach (var repoPlan in state.SelectedRepos.Select(repo => BuildPlan(state, repo))) {
                     var result = await host.ApplyAsync(repoPlan).ConfigureAwait(false);
                     if (result != 0) {
                         failures++;
@@ -163,21 +162,19 @@ internal static class WizardRunner {
                 }
             }
 
-            if (!state.GitHubAppId.HasValue) {
-                if (WizardPrompts.PromptCreateAppFromManifest()) {
-                    var appName = WizardPrompts.PromptAppName("IntelligenceX Reviewer");
-                    var owner = WizardPrompts.PromptAppOwner();
-                    var result = await GitHubAppManifestFlow.RunAsync(new GitHubAppManifestOptions {
-                        AppName = appName,
-                        Owner = owner,
-                        AuthBaseUrl = DefaultGitHubAuth,
-                        ApiBaseUrl = DefaultGitHubApi
-                    }, CancellationToken.None).ConfigureAwait(false);
-                    if (result is not null) {
-                        state.GitHubAppId = result.AppId;
-                        state.GitHubAppKeyPem = result.Pem;
-                        state.GitHubAppKeyPath = SavePemToDisk(result.Pem);
-                    }
+            if (!state.GitHubAppId.HasValue && WizardPrompts.PromptCreateAppFromManifest()) {
+                var appName = WizardPrompts.PromptAppName("IntelligenceX Reviewer");
+                var owner = WizardPrompts.PromptAppOwner();
+                var result = await GitHubAppManifestFlow.RunAsync(new GitHubAppManifestOptions {
+                    AppName = appName,
+                    Owner = owner,
+                    AuthBaseUrl = DefaultGitHubAuth,
+                    ApiBaseUrl = DefaultGitHubApi
+                }, CancellationToken.None).ConfigureAwait(false);
+                if (result is not null) {
+                    state.GitHubAppId = result.AppId;
+                    state.GitHubAppKeyPem = result.Pem;
+                    state.GitHubAppKeyPath = SavePemToDisk(result.Pem);
                 }
             }
             if (!state.GitHubAppId.HasValue) {
@@ -254,7 +251,8 @@ internal static class WizardRunner {
         }
         var dir = System.IO.Path.Combine(home, ".intelligencex");
         System.IO.Directory.CreateDirectory(dir);
-        var path = System.IO.Path.Combine(dir, "github-app-private-key.pem");
+        var uniqueFileName = $"github-app-private-key-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}-{Guid.NewGuid():N}.pem";
+        var path = System.IO.Path.Combine(dir, uniqueFileName);
         System.IO.File.WriteAllText(path, pem);
         return path;
     }

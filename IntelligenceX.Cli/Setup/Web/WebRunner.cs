@@ -5,12 +5,22 @@ using System.Threading.Tasks;
 namespace IntelligenceX.Cli.Setup.Web;
 
 internal static class WebRunner {
-    private const string DefaultUrl = "http://127.0.0.1:1459/";
+    private const string DefaultUrl = "http://127.0.0.1:1461/";
 
     public static async Task<int> RunAsync(string[] args) {
-        var url = args.Length > 0 && args[0].StartsWith("http", StringComparison.OrdinalIgnoreCase)
-            ? args[0]
-            : DefaultUrl;
+        var url = DefaultUrl;
+        if (args.Length > 0 && args[0].StartsWith("http", StringComparison.OrdinalIgnoreCase)) {
+            if (Uri.TryCreate(args[0], UriKind.Absolute, out var parsed)
+                && (parsed.Scheme == Uri.UriSchemeHttp || parsed.Scheme == Uri.UriSchemeHttps)) {
+                if (parsed.IsLoopback) {
+                    url = parsed.ToString();
+                } else {
+                    Console.WriteLine("Non-loopback hosts are not allowed for setup UI. Using localhost instead.");
+                }
+            } else {
+                Console.WriteLine("Invalid URL specified. Using localhost instead.");
+            }
+        }
 
         using var server = new WebServer(url);
         Console.WriteLine($"Starting setup UI at {url}");
