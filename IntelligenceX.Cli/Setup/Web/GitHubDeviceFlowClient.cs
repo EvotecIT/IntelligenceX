@@ -8,7 +8,13 @@ using System.Threading.Tasks;
 namespace IntelligenceX.Cli.Setup.Web;
 
 internal static class GitHubDeviceFlowClient {
-    private static readonly HttpClient Http = new();
+    private static readonly HttpClient Http = CreateClient();
+
+    private static HttpClient CreateClient() {
+        var http = new HttpClient();
+        http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("IntelligenceX.Cli", "1.0"));
+        return http;
+    }
 
     public static async Task<DeviceCodeResponse> RequestCodeAsync(string clientId, string? authBaseUrl, string? scopes) {
         var baseUrl = string.IsNullOrWhiteSpace(authBaseUrl) ? "https://github.com" : authBaseUrl;

@@ -6,6 +6,14 @@ internal static class SetupArgsBuilder {
     public static string[] FromPlan(SetupPlan plan) {
         var args = new List<string>();
 
+        if (!string.IsNullOrWhiteSpace(plan.ConfigPath) && !string.IsNullOrWhiteSpace(plan.ConfigJson)) {
+            throw new InvalidOperationException("Choose only one of --config-path or --config-json.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(plan.AuthB64) && !string.IsNullOrWhiteSpace(plan.AuthB64Path)) {
+            throw new InvalidOperationException("Choose only one of --auth-b64 or --auth-b64-path.");
+        }
+
         if (!string.IsNullOrWhiteSpace(plan.RepoFullName)) {
             args.Add("--repo");
             args.Add(plan.RepoFullName);
