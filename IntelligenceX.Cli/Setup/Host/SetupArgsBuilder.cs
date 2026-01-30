@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace IntelligenceX.Cli.Setup.Host;
@@ -117,3 +118,4 @@ internal static class SetupArgsBuilder {
         return args.ToArray();
     }
 }
+

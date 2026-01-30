@@ -38,7 +38,7 @@ internal sealed class GitHubSecretsClient : IDisposable {
         var key = await GetPublicKeyAsync($"/orgs/{org}/actions/secrets/public-key").ConfigureAwait(false);
         var normalizedVisibility = NormalizeVisibility(visibility);
         if (normalizedVisibility == "selected" && (selectedRepositoryIds is null || selectedRepositoryIds.Count == 0)) {
-            throw new InvalidOperationException("Selected visibility requires repository IDs. Use all/private or provide selected repository IDs.");
+            throw new InvalidOperationException("Selected visibility requires repository IDs. Use all/private/selected or provide selected repository IDs.");
         }
         var payload = new Dictionary<string, object?> {
             ["encrypted_value"] = Encrypt(value, key.PublicKey),
@@ -60,7 +60,7 @@ internal sealed class GitHubSecretsClient : IDisposable {
             "private" => "private",
             "selected" => "selected",
             "all" => "all",
-            _ => throw new InvalidOperationException("Invalid visibility. Use all or private.")
+            _ => throw new InvalidOperationException("Invalid visibility. Use all, private, or selected.")
         };
     }
 
@@ -98,3 +98,4 @@ internal sealed class GitHubSecretsClient : IDisposable {
 
     private readonly record struct PublicKeyInfo(string PublicKey, string KeyId);
 }
+

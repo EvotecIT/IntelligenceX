@@ -118,7 +118,7 @@ internal static class Program {
         Console.WriteLine("  --set-github-secret [name]     Upload export to GitHub Actions secret (default name: INTELLIGENCEX_AUTH_B64)");
         Console.WriteLine("  --repo <owner/name>            Target repository secret");
         Console.WriteLine("  --org <org>                    Target organization secret (visibility defaults to all)");
-        Console.WriteLine("  --visibility <all|private>     Org secret visibility");
+        Console.WriteLine("  --visibility <all|private|selected>     Org secret visibility");
         Console.WriteLine("  --github-token <token>         Token for GitHub API (or set INTELLIGENCEX_GITHUB_TOKEN/GITHUB_TOKEN/GH_TOKEN)");
     }
 
@@ -666,3 +666,4 @@ internal static class Program {
         }
     }
 }
+
