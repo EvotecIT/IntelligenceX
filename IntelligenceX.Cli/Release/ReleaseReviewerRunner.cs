@@ -11,6 +11,7 @@ namespace IntelligenceX.Cli.Release;
 internal static class ReleaseReviewerRunner {
     public static async Task<int> RunAsync(string[] args) {
         var options = ReleaseReviewerOptions.Parse(args);
+        ReleaseReviewerOptions.ApplyEnvDefaults(options);
         if (options.ShowHelp) {
             PrintHelp();
             return 1;
@@ -215,6 +216,32 @@ internal sealed class ReleaseReviewerOptions {
         }
 
         return options;
+    }
+
+    public static void ApplyEnvDefaults(ReleaseReviewerOptions options) {
+        if (options is null) {
+            return;
+        }
+
+        options.Tag ??= ReadEnv("INTELLIGENCEX_REVIEWER_TAG");
+        options.Title ??= ReadEnv("INTELLIGENCEX_REVIEWER_TITLE");
+        options.Notes ??= ReadEnv("INTELLIGENCEX_REVIEWER_NOTES");
+        options.ReleaseRepoSlug ??= ReadEnv("INTELLIGENCEX_REVIEWER_REPO_SLUG");
+        options.Token ??= ReadEnv("INTELLIGENCEX_REVIEWER_TOKEN");
+        options.RepoPath ??= ReadEnv("INTELLIGENCEX_REVIEWER_REPO");
+        options.Framework ??= ReadEnv("INTELLIGENCEX_REVIEWER_FRAMEWORK");
+        options.Configuration ??= ReadEnv("INTELLIGENCEX_REVIEWER_CONFIGURATION");
+        if (options.Rids.Count == 0) {
+            var rids = ReadEnv("INTELLIGENCEX_REVIEWER_RIDS");
+            if (!string.IsNullOrWhiteSpace(rids)) {
+                options.Rids.AddRange(rids.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            }
+        }
+    }
+
+    private static string? ReadEnv(string name) {
+        var value = Environment.GetEnvironmentVariable(name);
+        return string.IsNullOrWhiteSpace(value) ? null : value;
     }
 
     private static string ReadValue(string[] args, ref int index) {

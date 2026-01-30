@@ -18,6 +18,10 @@ on:
         description: 'Version label for changelog section (default: current ref)'
         required: false
         default: ''
+      repo_slug:
+        description: 'GitHub repo slug for PR creation (owner/name)'
+        required: false
+        default: ''
       create_pr:
         description: 'Create a PR instead of pushing directly'
         required: false
@@ -67,20 +71,20 @@ jobs:
         env:
           INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INTELLIGENCEX_RELEASE_FROM: ${{ inputs.from }}
+          INTELLIGENCEX_RELEASE_TO: ${{ inputs.to }}
+          INTELLIGENCEX_RELEASE_VERSION: ${{ inputs.version }}
+          INTELLIGENCEX_RELEASE_CREATE_PR: ${{ inputs.create_pr }}
+          INTELLIGENCEX_RELEASE_COMMIT: ${{ inputs.create_pr != 'true' }}
+          INTELLIGENCEX_RELEASE_SKIP_REVIEW: ${{ inputs.skip_review }}
+          INTELLIGENCEX_RELEASE_PR_BRANCH: ${{ inputs.pr_branch }}
+          INTELLIGENCEX_RELEASE_PR_TITLE: ${{ inputs.pr_title }}
+          INTELLIGENCEX_RELEASE_PR_BODY: ${{ inputs.pr_body }}
+          INTELLIGENCEX_RELEASE_PR_LABELS: ${{ inputs.pr_labels }}
+          INTELLIGENCEX_RELEASE_REPO_SLUG: ${{ inputs.repo_slug || github.repository }}
           OPENAI_MODEL: gpt-5.2-codex
           OPENAI_TRANSPORT: native
         shell: bash
         run: |
           set -euo pipefail
-          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release notes \
-            --update-changelog \
-            --from "${{ inputs.from }}" \
-            --to "${{ inputs.to }}" \
-            --version "${{ inputs.version }}" \
-            --commit \
-            --create-pr "${{ inputs.create_pr }}" \
-            --skip-review "${{ inputs.skip_review }}" \
-            --pr-branch "${{ inputs.pr_branch }}" \
-            --pr-title "${{ inputs.pr_title }}" \
-            --pr-body "${{ inputs.pr_body }}" \
-            --pr-labels "${{ inputs.pr_labels }}"
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release notes --update-changelog

@@ -54,6 +54,7 @@ internal static class ReleaseNotesRunner {
 
     public static async Task<int> RunAsync(string[] args) {
         var options = ReleaseNotesOptions.Parse(args);
+        ReleaseNotesOptions.ApplyEnvDefaults(options);
         if (options.ShowHelp) {
             PrintHelp();
             return 1;
@@ -789,7 +790,9 @@ internal sealed class ReleaseNotesOptions {
     public int RetryDelaySeconds { get; set; } = 5;
     public int RetryMaxDelaySeconds { get; set; } = 30;
     public bool Commit { get; set; }
+    public bool CommitSet { get; set; }
     public bool CreatePr { get; set; }
+    public bool CreatePrSet { get; set; }
     public string? PrBranch { get; set; }
     public string? PrTitle { get; set; }
     public string? PrBody { get; set; }
@@ -853,9 +856,11 @@ internal sealed class ReleaseNotesOptions {
                     options.RetryMaxDelaySeconds = ReadIntValue(args, ref i, options.RetryMaxDelaySeconds);
                     break;
                 case "--commit":
+                    options.CommitSet = true;
                     options.Commit = ReadBoolFlag(args, ref i, "--commit", true);
                     break;
                 case "--create-pr":
+                    options.CreatePrSet = true;
                     options.CreatePr = ReadBoolFlag(args, ref i, "--create-pr", true);
                     break;
                 case "--pr-branch":
@@ -926,6 +931,59 @@ internal sealed class ReleaseNotesOptions {
             "appserver" or "app-server" or "codex" => OpenAITransportKind.AppServer,
             _ => null
         };
+    }
+
+    public static void ApplyEnvDefaults(ReleaseNotesOptions options) {
+        if (options is null) {
+            return;
+        }
+
+        options.FromTag ??= ReadEnv("INTELLIGENCEX_RELEASE_FROM");
+        options.ToRef ??= ReadEnv("INTELLIGENCEX_RELEASE_TO");
+        options.Version ??= ReadEnv("INTELLIGENCEX_RELEASE_VERSION");
+        options.OutputPath ??= ReadEnv("INTELLIGENCEX_RELEASE_OUTPUT");
+        options.ChangelogPath ??= ReadEnv("INTELLIGENCEX_RELEASE_CHANGELOG");
+        if (!options.UpdateChangelog) {
+            options.UpdateChangelog = ReadEnvBool("INTELLIGENCEX_RELEASE_UPDATE_CHANGELOG") ?? options.UpdateChangelog;
+        }
+        options.PrBranch ??= ReadEnv("INTELLIGENCEX_RELEASE_PR_BRANCH");
+        options.PrTitle ??= ReadEnv("INTELLIGENCEX_RELEASE_PR_TITLE");
+        options.PrBody ??= ReadEnv("INTELLIGENCEX_RELEASE_PR_BODY");
+        options.PrLabels ??= ReadEnv("INTELLIGENCEX_RELEASE_PR_LABELS");
+        options.RepoSlug ??= ReadEnv("INTELLIGENCEX_RELEASE_REPO_SLUG");
+
+        if (!options.CommitSet) {
+            var commit = ReadEnvBool("INTELLIGENCEX_RELEASE_COMMIT");
+            if (commit.HasValue) {
+                options.Commit = commit.Value;
+            }
+        }
+        if (!options.CreatePrSet) {
+            var create = ReadEnvBool("INTELLIGENCEX_RELEASE_CREATE_PR");
+            if (create.HasValue) {
+                options.CreatePr = create.Value;
+            }
+        }
+        if (!options.SkipReviewSet) {
+            var skip = ReadEnvBool("INTELLIGENCEX_RELEASE_SKIP_REVIEW");
+            if (skip.HasValue) {
+                options.SkipReview = skip.Value;
+                options.SkipReviewSet = true;
+            }
+        }
+    }
+
+    private static string? ReadEnv(string name) {
+        var value = Environment.GetEnvironmentVariable(name);
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static bool? ReadEnvBool(string name) {
+        var value = Environment.GetEnvironmentVariable(name);
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+        return bool.TryParse(value, out var parsed) ? parsed : null;
     }
 }
 
