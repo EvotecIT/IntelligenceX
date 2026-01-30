@@ -24,6 +24,14 @@ intelligencex setup --repo owner/name --with-config
 intelligencex setup --repo owner/name --update-secret
 ```
 
+## One-step ChatGPT auth login + GitHub secret sync
+
+```powershell
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -- auth login --set-github-secret
+```
+
+The command auto-detects repo/org + token if available (see README for details).
+
 ## Manual secret flow
 
 ```powershell

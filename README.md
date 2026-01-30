@@ -648,6 +648,17 @@ Login + export + set GitHub secret (repo or org):
 dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- auth login --set-github-secret --repo owner/name --github-token $TOKEN
 ```
 
+Auto-detect repo/org + token:
+
+```bash
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- auth login --set-github-secret
+```
+
+Auto-detect sources:
+- Repo: `INTELLIGENCEX_GITHUB_REPO` → `GITHUB_REPOSITORY` → git `origin` remote
+- Org: `INTELLIGENCEX_GITHUB_ORG` → `GITHUB_ORG` → `GITHUB_OWNER`
+- Token: `INTELLIGENCEX_GITHUB_TOKEN` → `GITHUB_TOKEN` → `GH_TOKEN` → `gh auth token`
+
 Export (store-base64 for GitHub Secrets):
 
 ```bash
