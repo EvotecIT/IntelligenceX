@@ -55,6 +55,7 @@ internal sealed class WizardState {
     public bool KeepSecret { get; set; }
     public bool DryRun { get; set; }
     public string? BranchName { get; set; }
+    public string Provider { get; set; } = "openai";
     public GitHubAuthMode AuthMode { get; set; } = GitHubAuthMode.DeviceFlow;
     public SetupScope Scope { get; set; } = SetupScope.SingleRepo;
     public ConfigMode ConfigMode { get; set; } = ConfigMode.Preset;

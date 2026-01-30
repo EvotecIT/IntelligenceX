@@ -308,6 +308,10 @@ internal sealed class WebApi {
             args.Add("--config-path");
             args.Add(request.ConfigPath!);
         }
+        if (!string.IsNullOrWhiteSpace(request.Provider)) {
+            args.Add("--provider");
+            args.Add(request.Provider!);
+        }
         if (!string.IsNullOrWhiteSpace(request.ReviewProfile)) {
             args.Add("--review-profile");
             args.Add(request.ReviewProfile!);
@@ -436,6 +440,7 @@ internal sealed class WebApi {
         public bool WithConfig { get; set; }
         public string? AuthB64 { get; set; }
         public string? AuthB64Path { get; set; }
+        public string? Provider { get; set; }
         public string? ConfigJson { get; set; }
         public string? ConfigPath { get; set; }
         public string? ReviewProfile { get; set; }

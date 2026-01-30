@@ -66,4 +66,4 @@ Status: In progress
 ## Phase 8 — Copilot (experimental)
 - [ ] Keep CLI Copilot optional provider
 - [ ] Research native Copilot feasibility
-- [ ] Add provider toggle in wizard
+- [x] Add provider toggle in wizard

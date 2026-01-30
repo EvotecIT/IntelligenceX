@@ -19,6 +19,7 @@ internal sealed class SetupPlan {
     public string? ConfigJson { get; init; }
     public string? AuthB64 { get; init; }
     public string? AuthB64Path { get; init; }
+    public string? Provider { get; init; }
     public string? ReviewProfile { get; init; }
     public string? ReviewMode { get; init; }
     public string? ReviewCommentMode { get; init; }

@@ -64,6 +64,11 @@ internal static class WizardRunner {
             state.WithConfig = false;
         }
         if (state.Operation == WizardOperation.Setup) {
+            state.Provider = WizardPrompts.PromptProvider(state.Provider);
+            if (string.Equals(state.Provider, "copilot", StringComparison.OrdinalIgnoreCase)) {
+                state.SkipSecret = true;
+                state.ManualSecret = false;
+            }
             state.SkipSecret = WizardPrompts.PromptSkipSecret(state.SkipSecret);
             if (!state.SkipSecret) {
                 state.ManualSecret = WizardPrompts.PromptManualSecret(state.ManualSecret);
@@ -129,6 +134,7 @@ internal static class WizardRunner {
             WithConfig = state.WithConfig,
             ConfigPath = state.ConfigPath,
             ConfigJson = state.ConfigJson,
+            Provider = state.Provider,
             ReviewProfile = ResolveProfile(state),
             ReviewMode = ResolveMode(state),
             SkipSecret = state.SkipSecret,

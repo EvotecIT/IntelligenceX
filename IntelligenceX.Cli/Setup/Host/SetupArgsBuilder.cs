@@ -45,6 +45,11 @@ internal static class SetupArgsBuilder {
             args.Add(plan.AuthB64Path);
         }
 
+        if (!string.IsNullOrWhiteSpace(plan.Provider)) {
+            args.Add("--provider");
+            args.Add(plan.Provider);
+        }
+
         if (!string.IsNullOrWhiteSpace(plan.ReviewProfile)) {
             args.Add("--review-profile");
             args.Add(plan.ReviewProfile);

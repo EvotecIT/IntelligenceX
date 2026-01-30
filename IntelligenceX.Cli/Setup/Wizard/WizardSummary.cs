@@ -14,6 +14,9 @@ internal static class WizardSummary {
         table.AddRow("Operation", DescribeOperation(plan));
         table.AddRow("With config", plan.WithConfig ? "yes" : "no");
         table.AddRow("Config detail", DescribeConfig(plan));
+        if (!string.IsNullOrWhiteSpace(plan.Provider)) {
+            table.AddRow("Provider", plan.Provider);
+        }
         table.AddRow("Skip secret", plan.SkipSecret ? "yes" : "no");
         table.AddRow("Manual secret", plan.ManualSecret ? "yes" : "no");
         table.AddRow("Explicit secrets", plan.ExplicitSecrets ? "yes" : "no");

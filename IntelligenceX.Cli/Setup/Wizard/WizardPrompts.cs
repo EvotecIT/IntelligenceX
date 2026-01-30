@@ -214,6 +214,18 @@ internal static class WizardPrompts {
         return AnsiConsole.Confirm("Use explicit secrets block in workflow?", current);
     }
 
+    public static string PromptProvider(string current) {
+        var prompt = new SelectionPrompt<string>()
+            .Title("Review provider:")
+            .AddChoices("openai", "copilot")
+            .UseConverter(value => value switch {
+                "copilot" => "Copilot (uses GitHub Copilot CLI)",
+                _ => "OpenAI (Codex app-server)"
+            });
+        var selection = AnsiConsole.Prompt(prompt);
+        return string.IsNullOrWhiteSpace(selection) ? current : selection;
+    }
+
     public static bool PromptForceOverwrite(bool current) {
         return AnsiConsole.Confirm("Force overwrite existing workflow/config?", current);
     }

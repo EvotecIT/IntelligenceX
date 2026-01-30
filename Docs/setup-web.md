@@ -13,6 +13,9 @@ Operations available:
 - Update OpenAI secret only (requires auth bundle)
 - Cleanup (remove workflow/config)
 
+Advanced options:
+- Provider toggle (openai | copilot)
+
 ## Current limitations
 
 - OpenAI login is not wired into the web UI yet.

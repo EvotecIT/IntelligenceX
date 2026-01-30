@@ -77,6 +77,12 @@ internal static class WebStaticAssets {
 
         <details>
           <summary>Advanced options</summary>
+          <label>Provider</label>
+          <select id=""provider"">
+            <option value=""openai"">openai</option>
+            <option value=""copilot"">copilot</option>
+          </select>
+
           <label>Review profile</label>
           <select id=""reviewProfile"">
             <option value="""">default</option>
@@ -171,6 +177,7 @@ const configJson = document.getElementById('configJson');
 const configPath = document.getElementById('configPath');
 const authB64 = document.getElementById('authB64');
 const authB64Path = document.getElementById('authB64Path');
+const provider = document.getElementById('provider');
 const reviewProfile = document.getElementById('reviewProfile');
 const reviewMode = document.getElementById('reviewMode');
 const reviewCommentMode = document.getElementById('reviewCommentMode');
@@ -231,6 +238,12 @@ function updateOperationHint() {
   if (operation.value === 'update-secret') {
     operationHint.textContent = 'Update-secret only updates INTELLIGENCEX_AUTH_B64. Requires auth bundle.';
     skipSecret.checked = false;
+    skipSecret.disabled = true;
+    return;
+  }
+  if (provider.value === 'copilot') {
+    operationHint.textContent = 'Copilot provider does not require OpenAI secret.';
+    skipSecret.checked = true;
     skipSecret.disabled = true;
     return;
   }
@@ -500,6 +513,10 @@ operation.addEventListener('change', () => {
   updateOperationHint();
 });
 
+provider.addEventListener('change', () => {
+  updateOperationHint();
+});
+
 configJson.addEventListener('input', () => {
   if (configJson.value.trim()) {
     withConfig.checked = true;
@@ -544,6 +561,7 @@ document.getElementById('plan').addEventListener('click', async () => {
       configPath: configPath.value.trim(),
       authB64: authB64.value.trim(),
       authB64Path: authB64Path.value.trim(),
+      provider: provider.value,
       reviewProfile: reviewProfile.value,
       reviewMode: reviewMode.value,
       reviewCommentMode: reviewCommentMode.value,
@@ -595,6 +613,7 @@ document.getElementById('apply').addEventListener('click', async () => {
       configPath: configPath.value.trim(),
       authB64: authB64.value.trim(),
       authB64Path: authB64Path.value.trim(),
+      provider: provider.value,
       reviewProfile: reviewProfile.value,
       reviewMode: reviewMode.value,
       reviewCommentMode: reviewCommentMode.value,
