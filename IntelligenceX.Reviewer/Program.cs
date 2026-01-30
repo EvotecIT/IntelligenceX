@@ -133,7 +133,7 @@ public static class ReviewerApp {
             if (inlineSupported) {
                 inlineKeys = await PostInlineCommentsAsync(github, context, files, settings, inlineComments, CancellationToken.None)
                     .ConfigureAwait(false);
-                if (settings.ReviewThreadsAutoResolveMissingInline) {
+                if (settings.ReviewThreadsAutoResolveMissingInline && !string.IsNullOrWhiteSpace(context.HeadSha)) {
                     await AutoResolveMissingInlineThreadsAsync(github, context, inlineKeys, settings, CancellationToken.None)
                         .ConfigureAwait(false);
                 }
@@ -514,13 +514,8 @@ public static class ReviewerApp {
             return false;
         }
 
-        PullRequestReviewThreadComment? marker = null;
-        foreach (var comment in thread.Comments) {
-            if (comment.Body.Contains(ReviewFormatter.InlineMarker, StringComparison.OrdinalIgnoreCase)) {
-                marker = comment;
-                break;
-            }
-        }
+        var marker = thread.Comments.FirstOrDefault(comment =>
+            comment.Body.Contains(ReviewFormatter.InlineMarker, StringComparison.OrdinalIgnoreCase));
         if (marker is null || string.IsNullOrWhiteSpace(marker.Path) || !marker.Line.HasValue) {
             return false;
         }
@@ -656,9 +651,7 @@ public static class ReviewerApp {
         var posted = 0;
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var inline in inlineComments) {
-            if (posted >= settings.MaxInlineComments) {
-                break;
-            }
+            var allowPost = posted < settings.MaxInlineComments;
             var normalizedPath = NormalizePath(inline.Path);
             var lineNumber = inline.Line;
             if ((string.IsNullOrWhiteSpace(normalizedPath) || lineNumber <= 0) &&
@@ -680,7 +673,7 @@ public static class ReviewerApp {
             }
             var key = BuildInlineKey(normalizedPath, lineNumber);
             expectedKeys.Add(key);
-            if (existingKeys.Contains(key) || !seen.Add(key)) {
+            if (!allowPost || existingKeys.Contains(key) || !seen.Add(key)) {
                 continue;
             }
             body = $"{ReviewFormatter.InlineMarker}\n{body}";
