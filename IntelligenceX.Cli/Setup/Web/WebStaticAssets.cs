@@ -60,8 +60,10 @@ internal static class WebStaticAssets {
         <label>Operation</label>
         <select id=""operation"">
           <option value=""setup"">Setup (create/update workflow)</option>
+          <option value=""update-secret"">Update secret only</option>
           <option value=""cleanup"">Cleanup (remove workflow/config)</option>
         </select>
+        <p id=""operationHint"" class=""hint""></p>
 
         <div class=""row"">
           <label><input type=""checkbox"" id=""withConfig"" /> Create config</label>
@@ -181,6 +183,7 @@ const inspect = document.getElementById('inspect');
 const recommend = document.getElementById('recommend');
 const summary = document.getElementById('summary');
 const progress = document.getElementById('progress');
+const operationHint = document.getElementById('operationHint');
 const deviceStart = document.getElementById('deviceStart');
 const devicePoll = document.getElementById('devicePoll');
 const deviceInfo = document.getElementById('deviceInfo');
@@ -216,6 +219,23 @@ function refreshProgress() {
   if (selectedRepos().length > 0) {
     setStep('repos', 'done');
   }
+}
+
+function updateOperationHint() {
+  if (operation.value === 'cleanup') {
+    operationHint.textContent = 'Cleanup removes workflow/config; secrets are optional.';
+    skipSecret.checked = true;
+    skipSecret.disabled = true;
+    return;
+  }
+  if (operation.value === 'update-secret') {
+    operationHint.textContent = 'Update-secret only updates INTELLIGENCEX_AUTH_B64. Requires auth bundle.';
+    skipSecret.checked = false;
+    skipSecret.disabled = true;
+    return;
+  }
+  operationHint.textContent = 'Setup creates/updates workflow/config. Provide auth bundle or skip secret.';
+  skipSecret.disabled = false;
 }
 
 function formatResults(data) {
@@ -477,9 +497,7 @@ function resolveWithConfig() {
 }
 
 operation.addEventListener('change', () => {
-  if (operation.value === 'cleanup') {
-    skipSecret.checked = true;
-  }
+  updateOperationHint();
 });
 
 configJson.addEventListener('input', () => {
@@ -501,6 +519,17 @@ document.getElementById('plan').addEventListener('click', async () => {
   if (repos.length === 0) {
     write('Select or enter a repository.');
     setStep('repos', 'error');
+    return;
+  }
+  const hasAuthBundle = authB64.value.trim() || authB64Path.value.trim();
+  if (operation.value === 'update-secret' && !hasAuthBundle) {
+    write('Update-secret requires auth bundle or path.');
+    setStep('plan', 'error');
+    return;
+  }
+  if (operation.value === 'setup' && !skipSecret.checked && !hasAuthBundle) {
+    write('Provide auth bundle or enable Skip OpenAI secret.');
+    setStep('plan', 'error');
     return;
   }
   const res = await fetch('/api/setup/plan', {
@@ -525,6 +554,7 @@ document.getElementById('plan').addEventListener('click', async () => {
       force: force.checked,
       branchName: branchName.value.trim(),
       cleanup: operation.value === 'cleanup',
+      updateSecret: operation.value === 'update-secret',
       keepSecret: keepSecret.checked
     })
   });
@@ -540,6 +570,17 @@ document.getElementById('apply').addEventListener('click', async () => {
   if (repos.length === 0) {
     write('Select or enter a repository.');
     setStep('repos', 'error');
+    return;
+  }
+  const hasAuthBundle = authB64.value.trim() || authB64Path.value.trim();
+  if (operation.value === 'update-secret' && !hasAuthBundle) {
+    write('Update-secret requires auth bundle or path.');
+    setStep('apply', 'error');
+    return;
+  }
+  if (operation.value === 'setup' && !skipSecret.checked && !hasAuthBundle) {
+    write('Provide auth bundle or enable Skip OpenAI secret.');
+    setStep('apply', 'error');
     return;
   }
   const res = await fetch('/api/setup/apply', {
@@ -564,13 +605,16 @@ document.getElementById('apply').addEventListener('click', async () => {
       force: force.checked,
       branchName: branchName.value.trim(),
       cleanup: operation.value === 'cleanup',
+      updateSecret: operation.value === 'update-secret',
       keepSecret: keepSecret.checked
     })
   });
   const data = await res.json();
   setStep('apply', data.error ? 'error' : 'done');
   write(formatResults(data));
-});";
+});
+
+updateOperationHint();";
 
     private const string StylesCss = @"body {
   margin: 0;

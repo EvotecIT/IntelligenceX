@@ -8,6 +8,11 @@ intelligencex setup web
 
 This starts a local web server and opens the wizard in your browser (http://127.0.0.1 only).
 
+Operations available:
+- Setup / update workflow + config
+- Update OpenAI secret only (requires auth bundle)
+- Cleanup (remove workflow/config)
+
 ## Current limitations
 
 - OpenAI login is not wired into the web UI yet.

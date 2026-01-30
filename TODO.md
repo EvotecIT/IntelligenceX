@@ -51,6 +51,7 @@ Status: In progress
 - [x] Detect existing workflow/config (repo inspection)
 - [x] Recommend setup actions based on inspection
 - [x] Support auth bundle input for secrets (web UI)
+- [x] Update-secret support in web UI
 
 ## Phase 6 — Reviewer improvements
 - [ ] Early auth validation with actionable errors
