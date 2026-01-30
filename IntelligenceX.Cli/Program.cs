@@ -58,6 +58,7 @@ internal static class Program {
         Console.WriteLine();
         Console.WriteLine("Release commands:");
         Console.WriteLine("  release notes    Generate release notes from git tags/commits");
+        Console.WriteLine("  release reviewer Build and publish reviewer release assets");
         Console.WriteLine();
         Console.WriteLine("Environment variables (optional overrides):");
         Console.WriteLine("  OPENAI_AUTH_AUTHORIZE_URL, OPENAI_AUTH_TOKEN_URL, OPENAI_AUTH_CLIENT_ID");
@@ -140,7 +141,7 @@ internal static class Program {
 
     private static async Task<int> RunReleaseAsync(string[] args) {
         if (args.Length == 0) {
-            ReleaseNotes.ReleaseNotesRunner.PrintHelp();
+            PrintReleaseHelp();
             return 1;
         }
 
@@ -148,9 +149,22 @@ internal static class Program {
         var rest = args.Skip(1).ToArray();
         return command switch {
             "notes" => await ReleaseNotes.ReleaseNotesRunner.RunAsync(rest).ConfigureAwait(false),
-            "help" or "-h" or "--help" => ReleaseNotes.ReleaseNotesRunner.PrintHelpReturn(),
-            _ => ReleaseNotes.ReleaseNotesRunner.PrintHelpReturn()
+            "reviewer" => await Release.ReleaseReviewerRunner.RunAsync(rest).ConfigureAwait(false),
+            "help" or "-h" or "--help" => PrintReleaseHelpReturn(),
+            _ => PrintReleaseHelpReturn()
         };
+    }
+
+    private static int PrintReleaseHelpReturn() {
+        PrintReleaseHelp();
+        return 1;
+    }
+
+    private static void PrintReleaseHelp() {
+        Console.WriteLine("Release commands:");
+        Console.WriteLine("  release notes    Generate release notes from git tags/commits");
+        Console.WriteLine("  release reviewer Build and publish reviewer release assets");
+        Console.WriteLine("  release help");
     }
 
     private static bool IsLegacyAuthCommand(string command) {
