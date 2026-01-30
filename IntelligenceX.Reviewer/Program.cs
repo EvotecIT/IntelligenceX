@@ -269,7 +269,8 @@ public static class ReviewerApp {
 
         try {
             var store = new FileAuthBundleStore();
-            var bundle = await store.GetAsync("openai").ConfigureAwait(false)
+            var bundle = await store.GetAsync("openai-codex").ConfigureAwait(false)
+                         ?? await store.GetAsync("openai").ConfigureAwait(false)
                          ?? await store.GetAsync("chatgpt").ConfigureAwait(false);
             if (bundle is null) {
                 Console.Error.WriteLine($"No OpenAI auth bundle found in {authPath}.");
