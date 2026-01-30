@@ -56,162 +56,31 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+          ref: ${{ github.event.repository.default_branch }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
 
-      - name: Ensure auth secret
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -z "${INTELLIGENCEX_AUTH_B64:-}" ]; then
-            echo "Missing INTELLIGENCEX_AUTH_B64. Generate it with: intelligencex auth export --format store-base64" >&2
-            exit 1
-          fi
-        env:
-          INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
-
-      - name: Resolve tag range
-        id: tags
-        shell: bash
-        run: |
-          set -euo pipefail
-          from_input="${{ inputs.from }}"
-          to_input="${{ inputs.to }}"
-          version_input="${{ inputs.version }}"
-          pr_branch_input="${{ inputs.pr_branch }}"
-          pr_title_input="${{ inputs.pr_title }}"
-          pr_body_input="${{ inputs.pr_body }}"
-          pr_labels_input="${{ inputs.pr_labels }}"
-          skip_review_input="${{ inputs.skip_review }}"
-          default_ref="${GITHUB_REF_NAME}"
-          current_ref="${to_input:-${default_ref}}"
-          version_label="${version_input:-${current_ref}}"
-          pr_branch="${pr_branch_input:-release-notes/${version_label}}"
-          pr_title="${pr_title_input:-Release notes for ${version_label}}"
-          pr_body="${pr_body_input:-Automated release notes update.}"
-          pr_labels="${pr_labels_input}"
-          sanitize_branch() {
-            local raw="${1}"
-            local sanitized
-            sanitized=$(echo "${raw}" \
-              | tr '[:upper:]' '[:lower:]' \
-              | sed -E 's/[^a-z0-9._\/-]+/-/g' \
-              | sed -E 's/\/+/-/g' \
-              | sed -E 's/\.\.+/./g' \
-              | sed -E 's/@\{/-/g' \
-              | sed -E 's/^-+//; s/[\/.-]+$//')
-            if [ -z "${sanitized}" ]; then
-              sanitized="release-notes/${GITHUB_RUN_ID}"
-            fi
-            echo "${sanitized}"
-          }
-          normalize_labels() {
-            local labels="${1}"
-            labels="${labels//$'\r'/}"
-            labels="${labels//$'\n'/,}"
-            local out=""
-            IFS=',' read -r -a parts <<< "${labels}"
-            for part in "${parts[@]}"; do
-              part="$(echo "${part}" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
-              if [ -n "${part}" ]; then
-                if [ -n "${out}" ]; then
-                  out="${out},${part}"
-                else
-                  out="${part}"
-                fi
-              fi
-            done
-            echo "${out}"
-          }
-          has_label() {
-            local labels_lc
-            labels_lc="$(echo ",${1}," | tr '[:upper:]' '[:lower:]')"
-            local needle
-            needle="$(echo "${2}" | tr '[:upper:]' '[:lower:]')"
-            echo "${labels_lc}" | grep -Fq ",${needle},"
-          }
-          pr_branch="$(sanitize_branch "${pr_branch}")"
-          pr_labels="$(normalize_labels "${pr_labels}")"
-          skip_review_input="$(echo "${skip_review_input}" | tr '[:upper:]' '[:lower:]')"
-          if [ "${skip_review_input}" = "true" ]; then
-            if ! echo "${pr_title}" | grep -qi "\\[skip-review\\]"; then
-              pr_title="[skip-review] ${pr_title}"
-            fi
-            if ! has_label "${pr_labels}" "skip-review"; then
-              if [ -n "${pr_labels}" ]; then
-                pr_labels="${pr_labels},skip-review"
-              else
-                pr_labels="skip-review"
-              fi
-            fi
-          fi
-          echo "current_ref=${current_ref}" >> "$GITHUB_OUTPUT"
-          echo "version_label=${version_label}" >> "$GITHUB_OUTPUT"
-          echo "pr_branch=${pr_branch}" >> "$GITHUB_OUTPUT"
-          echo "pr_title=${pr_title}" >> "$GITHUB_OUTPUT"
-          echo "pr_body=${pr_body}" >> "$GITHUB_OUTPUT"
-          echo "pr_labels=${pr_labels}" >> "$GITHUB_OUTPUT"
-          if [ -n "${from_input}" ]; then
-            echo "from_tag=${from_input}" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          tags=$(git tag --sort=-v:refname)
-          if [ -z "${tags}" ]; then
-            echo "from_tag=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if echo "$tags" | grep -Fxq "${current_ref}"; then
-            prev=$(echo "$tags" | grep -Fxv "${current_ref}" | head -n 1 || true)
-          else
-            prev=$(echo "$tags" | head -n 1 || true)
-          fi
-          echo "from_tag=${prev}" >> "$GITHUB_OUTPUT"
-
       - name: Generate release notes
         env:
           INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENAI_MODEL: gpt-5.2-codex
           OPENAI_TRANSPORT: native
         shell: bash
         run: |
           set -euo pipefail
-          args=("release" "notes" "--to" "${{ steps.tags.outputs.current_ref }}" "--version" "${{ steps.tags.outputs.version_label }}" "--update-changelog")
-          if [ -n "${{ steps.tags.outputs.from_tag }}" ]; then
-            args+=("--from" "${{ steps.tags.outputs.from_tag }}")
-          fi
-          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- "${args[@]}"
-
-      - name: Check changelog changes
-        id: changes
-        shell: bash
-        run: |
-          set -euo pipefail
-          if git diff --quiet; then
-            echo "has_changes=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_changes=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Commit changelog
-        if: ${{ steps.changes.outputs.has_changes == 'true' && inputs.create_pr != 'true' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md
-          git commit -m "Release notes for ${{ steps.tags.outputs.version_label }}"
-          git push
-
-      - name: Create pull request
-        if: ${{ steps.changes.outputs.has_changes == 'true' && inputs.create_pr == 'true' }}
-        uses: peter-evans/create-pull-request@v6
-        with:
-          branch: ${{ steps.tags.outputs.pr_branch }}
-          commit-message: "Release notes for ${{ steps.tags.outputs.version_label }}"
-          title: ${{ steps.tags.outputs.pr_title }}
-          body: ${{ steps.tags.outputs.pr_body }}
-          labels: ${{ steps.tags.outputs.pr_labels }}
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release notes \
+            --update-changelog \
+            --from "${{ inputs.from }}" \
+            --to "${{ inputs.to }}" \
+            --version "${{ inputs.version }}" \
+            --commit \
+            --create-pr "${{ inputs.create_pr }}" \
+            --skip-review "${{ inputs.skip_review }}" \
+            --pr-branch "${{ inputs.pr_branch }}" \
+            --pr-title "${{ inputs.pr_title }}" \
+            --pr-body "${{ inputs.pr_body }}" \
+            --pr-labels "${{ inputs.pr_labels }}"

@@ -41,6 +41,14 @@ internal static class ReleaseNotesRunner {
         Console.WriteLine("  --retry-count <n>       Retry OpenAI requests (default 3)");
         Console.WriteLine("  --retry-delay-seconds   Initial retry delay (default 5)");
         Console.WriteLine("  --retry-max-delay-seconds Max retry delay (default 30)");
+        Console.WriteLine("  --commit               Commit changelog changes (uses git)");
+        Console.WriteLine("  --create-pr [true|false] Create a PR with changelog changes");
+        Console.WriteLine("  --pr-branch <name>      Branch name for PR (default: release-notes/<version>)");
+        Console.WriteLine("  --pr-title <text>       PR title");
+        Console.WriteLine("  --pr-body <text>        PR body");
+        Console.WriteLine("  --pr-labels <list>      Comma-separated PR labels");
+        Console.WriteLine("  --skip-review [true|false] Add skip-review label/title prefix");
+        Console.WriteLine("  --repo-slug <owner/name> GitHub repository for PR creation");
         Console.WriteLine("  --dry-run               Show output but don't write files");
     }
 
@@ -63,8 +71,10 @@ internal static class ReleaseNotesRunner {
                 return 1;
             }
 
-            var fromTag = NormalizeRef(options.FromTag ?? ResolveLatestTag(repoPath));
-            var toRef = NormalizeRef(options.ToRef) ?? "HEAD";
+            var defaults = ResolveDefaultRefs(options, repoPath);
+            var fromTag = defaults.FromTag;
+            var toRef = defaults.ToRef;
+            var versionLabel = defaults.VersionLabel;
             ValidateRef(fromTag, "--from");
             ValidateRef(toRef, "--to");
             EnsureRefExists(repoPath, toRef, "--to");
@@ -97,19 +107,24 @@ internal static class ReleaseNotesRunner {
 
             Console.WriteLine(normalized);
 
+            string? changelogPath = null;
             if (!options.DryRun) {
                 if (!string.IsNullOrWhiteSpace(options.OutputPath)) {
                     File.WriteAllText(options.OutputPath!, normalized.TrimEnd() + Environment.NewLine);
                 }
 
-                var changelogPath = ResolveChangelogPath(options, repoPath);
+                changelogPath = ResolveChangelogPath(options, repoPath);
                 if (!string.IsNullOrWhiteSpace(changelogPath)) {
                     if (!hasChanges) {
                         Console.Error.WriteLine("No change items detected; skipping changelog update.");
                     } else {
-                        UpdateChangelog(changelogPath!, normalized, options.Version ?? toRef);
+                        UpdateChangelog(changelogPath!, normalized, versionLabel);
                     }
                 }
+            }
+
+            if (!options.DryRun && (options.Commit || options.CreatePr)) {
+                await HandleGitOutputAsync(repoPath, changelogPath, versionLabel, options).ConfigureAwait(false);
             }
 
             return 0;
@@ -121,8 +136,70 @@ internal static class ReleaseNotesRunner {
 
     private static string? ResolveLatestTag(string repoPath) {
         try {
-            var tag = RunGit(repoPath, "describe", "--tags", "--abbrev=0");
-            return string.IsNullOrWhiteSpace(tag) ? null : tag.Trim();
+            return ResolveLatestTagByVersion(repoPath);
+        } catch {
+            return null;
+        }
+    }
+
+    private static (string? FromTag, string ToRef, string VersionLabel) ResolveDefaultRefs(ReleaseNotesOptions options, string repoPath) {
+        var toRef = NormalizeRef(options.ToRef);
+        if (string.IsNullOrWhiteSpace(toRef)) {
+            var envRef = Environment.GetEnvironmentVariable("GITHUB_REF_NAME");
+            toRef = string.IsNullOrWhiteSpace(envRef) ? "HEAD" : envRef.Trim();
+        }
+
+        var versionLabel = !string.IsNullOrWhiteSpace(options.Version)
+            ? options.Version!.Trim()
+            : toRef;
+
+        var fromTag = NormalizeRef(options.FromTag);
+        if (string.IsNullOrWhiteSpace(fromTag)) {
+            if (IsGitHubTagRef()) {
+                fromTag = ResolvePreviousTag(repoPath, toRef);
+            } else {
+                fromTag = ResolveLatestTagByVersion(repoPath);
+            }
+        }
+
+        return (fromTag, toRef, versionLabel);
+    }
+
+    private static bool IsGitHubTagRef() {
+        var refType = Environment.GetEnvironmentVariable("GITHUB_REF_TYPE");
+        if (string.Equals(refType, "tag", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+        var fullRef = Environment.GetEnvironmentVariable("GITHUB_REF");
+        return !string.IsNullOrWhiteSpace(fullRef) && fullRef.StartsWith("refs/tags/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ResolveLatestTagByVersion(string repoPath) {
+        try {
+            var output = RunGit(repoPath, "tag", "--sort=-v:refname");
+            return output
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .FirstOrDefault();
+        } catch {
+            return null;
+        }
+    }
+
+    private static string? ResolvePreviousTag(string repoPath, string currentTag) {
+        try {
+            var output = RunGit(repoPath, "tag", "--sort=-v:refname");
+            var tags = output
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+            if (tags.Count == 0) {
+                return null;
+            }
+            foreach (var tag in tags) {
+                if (!string.Equals(tag, currentTag, StringComparison.OrdinalIgnoreCase)) {
+                    return tag;
+                }
+            }
+            return null;
         } catch {
             return null;
         }
@@ -464,6 +541,174 @@ internal static class ReleaseNotesRunner {
         File.WriteAllText(path, normalizedSection + existing);
     }
 
+    private static async Task HandleGitOutputAsync(string repoPath, string? changelogPath, string versionLabel, ReleaseNotesOptions options) {
+        if (!HasGitChanges(repoPath)) {
+            Console.WriteLine("No git changes detected. Skipping commit/PR.");
+            return;
+        }
+
+        EnsureGitIdentity(repoPath);
+        var commitMessage = $"Release notes for {versionLabel}";
+
+        if (options.CreatePr) {
+            var repoSlug = ResolveRepoSlug(options);
+            if (!TryParseRepoSlug(repoSlug, out var owner, out var repo)) {
+                throw new InvalidOperationException("Missing or invalid --repo-slug (expected owner/name).");
+            }
+            var token = ResolveGitHubToken();
+            if (string.IsNullOrWhiteSpace(token)) {
+                throw new InvalidOperationException("Missing GitHub token. Set GITHUB_TOKEN or INTELLIGENCEX_GITHUB_TOKEN.");
+            }
+
+            using var client = new GitHubReleaseClient(token!);
+            var baseBranch = ResolveCurrentBranch(repoPath);
+            if (string.IsNullOrWhiteSpace(baseBranch) || string.Equals(baseBranch, "HEAD", StringComparison.OrdinalIgnoreCase)) {
+                baseBranch = await client.GetDefaultBranchAsync(owner, repo).ConfigureAwait(false);
+                if (string.IsNullOrWhiteSpace(baseBranch)) {
+                    throw new InvalidOperationException("Unable to resolve default branch for PR creation.");
+                }
+            }
+
+            RunGit(repoPath, "checkout", baseBranch!);
+            var branchName = BuildPrBranch(options.PrBranch, versionLabel);
+            RunGit(repoPath, "checkout", "-B", branchName);
+            RunGit(repoPath, "add", "-A");
+            RunGit(repoPath, "commit", "-m", commitMessage);
+            RunGit(repoPath, "push", "-u", "origin", branchName);
+
+            var skipReview = options.SkipReviewSet ? options.SkipReview : false;
+            var title = ResolvePrTitle(options.PrTitle, versionLabel, skipReview);
+            var body = ResolvePrBody(options.PrBody);
+            var labels = ResolvePrLabels(options.PrLabels, skipReview);
+
+            var pr = await client.CreatePullRequestAsync(owner, repo, title, branchName, baseBranch!, body)
+                .ConfigureAwait(false);
+            if (pr is null) {
+                Console.WriteLine("PR already exists or could not be created.");
+                return;
+            }
+            Console.WriteLine($"PR created: {pr.Value.Url}");
+            await client.AddLabelsAsync(owner, repo, pr.Value.Number, labels).ConfigureAwait(false);
+            return;
+        }
+
+        if (options.Commit) {
+            var branch = ResolveCurrentBranch(repoPath);
+            if (string.IsNullOrWhiteSpace(branch) || string.Equals(branch, "HEAD", StringComparison.OrdinalIgnoreCase)) {
+                throw new InvalidOperationException("Cannot commit in detached HEAD. Checkout a branch or use --create-pr.");
+            }
+            RunGit(repoPath, "add", "-A");
+            RunGit(repoPath, "commit", "-m", commitMessage);
+            RunGit(repoPath, "push", "origin", branch!);
+        }
+    }
+
+    private static bool HasGitChanges(string repoPath) {
+        try {
+            var output = RunGit(repoPath, "status", "--porcelain");
+            return !string.IsNullOrWhiteSpace(output);
+        } catch {
+            return false;
+        }
+    }
+
+    private static void EnsureGitIdentity(string repoPath) {
+        var name = TryRunGit(repoPath, "config", "--get", "user.name");
+        var email = TryRunGit(repoPath, "config", "--get", "user.email");
+        if (string.IsNullOrWhiteSpace(name)) {
+            RunGit(repoPath, "config", "user.name", "github-actions[bot]");
+        }
+        if (string.IsNullOrWhiteSpace(email)) {
+            RunGit(repoPath, "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com");
+        }
+    }
+
+    private static string? ResolveCurrentBranch(string repoPath) {
+        try {
+            var branch = RunGit(repoPath, "rev-parse", "--abbrev-ref", "HEAD");
+            return string.IsNullOrWhiteSpace(branch) ? null : branch.Trim();
+        } catch {
+            return null;
+        }
+    }
+
+    private static string? ResolveRepoSlug(ReleaseNotesOptions options) {
+        if (!string.IsNullOrWhiteSpace(options.RepoSlug)) {
+            return options.RepoSlug;
+        }
+        return Environment.GetEnvironmentVariable("GITHUB_REPOSITORY");
+    }
+
+    private static bool TryParseRepoSlug(string? value, out string owner, out string repo) {
+        owner = string.Empty;
+        repo = string.Empty;
+        if (string.IsNullOrWhiteSpace(value)) {
+            return false;
+        }
+        var parts = value.Split('/', 2, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2) {
+            return false;
+        }
+        owner = parts[0];
+        repo = parts[1];
+        return !string.IsNullOrWhiteSpace(owner) && !string.IsNullOrWhiteSpace(repo);
+    }
+
+    private static string? ResolveGitHubToken() {
+        return Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN")
+               ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN")
+               ?? Environment.GetEnvironmentVariable("GH_TOKEN");
+    }
+
+    private static string BuildPrBranch(string? proposed, string versionLabel) {
+        var raw = string.IsNullOrWhiteSpace(proposed) ? $"release-notes/{versionLabel}" : proposed!;
+        var fallback = $"release-notes/{DateTimeOffset.UtcNow:yyyyMMddHHmmss}";
+        return SanitizeBranchName(raw, fallback);
+    }
+
+    private static string SanitizeBranchName(string raw, string fallback) {
+        var sanitized = raw.Trim().ToLowerInvariant();
+        sanitized = Regex.Replace(sanitized, "[^a-z0-9._/-]+", "-");
+        sanitized = Regex.Replace(sanitized, "/+", "-");
+        sanitized = Regex.Replace(sanitized, "\\.\\.+", ".");
+        sanitized = sanitized.Replace("@{", "-");
+        sanitized = sanitized.Trim('-');
+        sanitized = sanitized.Trim('/', '.', '-');
+        return string.IsNullOrWhiteSpace(sanitized) ? fallback : sanitized;
+    }
+
+    private static string ResolvePrTitle(string? title, string versionLabel, bool skipReview) {
+        var resolved = string.IsNullOrWhiteSpace(title) ? $"Release notes for {versionLabel}" : title!.Trim();
+        if (skipReview && !resolved.Contains("[skip-review]", StringComparison.OrdinalIgnoreCase)) {
+            resolved = $"[skip-review] {resolved}";
+        }
+        return resolved;
+    }
+
+    private static string ResolvePrBody(string? body) {
+        return string.IsNullOrWhiteSpace(body) ? "Automated release notes update." : body!;
+    }
+
+    private static List<string> ResolvePrLabels(string? labels, bool skipReview) {
+        var result = new List<string>();
+        if (!string.IsNullOrWhiteSpace(labels)) {
+            var parts = labels.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (var part in parts) {
+                var value = part.Trim();
+                if (string.IsNullOrWhiteSpace(value)) {
+                    continue;
+                }
+                if (!result.Any(existing => string.Equals(existing, value, StringComparison.OrdinalIgnoreCase))) {
+                    result.Add(value);
+                }
+            }
+        }
+        if (skipReview && !result.Any(existing => string.Equals(existing, "skip-review", StringComparison.OrdinalIgnoreCase))) {
+            result.Add("skip-review");
+        }
+        return result;
+    }
+
     private static string RunGit(string repoPath, params string[] arguments) {
         var psi = new ProcessStartInfo {
             FileName = "git",
@@ -489,6 +734,14 @@ internal static class ReleaseNotesRunner {
             throw new InvalidOperationException(string.IsNullOrWhiteSpace(error) ? "Git command failed." : error.Trim());
         }
         return output.Trim();
+    }
+
+    private static string? TryRunGit(string repoPath, params string[] arguments) {
+        try {
+            return RunGit(repoPath, arguments);
+        } catch {
+            return null;
+        }
     }
 
     private static void TryWriteAuthFromEnv() {
@@ -535,6 +788,15 @@ internal sealed class ReleaseNotesOptions {
     public int RetryCount { get; set; } = 3;
     public int RetryDelaySeconds { get; set; } = 5;
     public int RetryMaxDelaySeconds { get; set; } = 30;
+    public bool Commit { get; set; }
+    public bool CreatePr { get; set; }
+    public string? PrBranch { get; set; }
+    public string? PrTitle { get; set; }
+    public string? PrBody { get; set; }
+    public string? PrLabels { get; set; }
+    public bool SkipReview { get; set; }
+    public bool SkipReviewSet { get; set; }
+    public string? RepoSlug { get; set; }
     public bool DryRun { get; set; }
     public bool ShowHelp { get; set; }
     public string? RepoPath { get; set; }
@@ -590,6 +852,31 @@ internal sealed class ReleaseNotesOptions {
                 case "--retry-max-delay-seconds":
                     options.RetryMaxDelaySeconds = ReadIntValue(args, ref i, options.RetryMaxDelaySeconds);
                     break;
+                case "--commit":
+                    options.Commit = ReadBoolFlag(args, ref i, "--commit", true);
+                    break;
+                case "--create-pr":
+                    options.CreatePr = ReadBoolFlag(args, ref i, "--create-pr", true);
+                    break;
+                case "--pr-branch":
+                    options.PrBranch = ReadValue(args, ref i);
+                    break;
+                case "--pr-title":
+                    options.PrTitle = ReadValue(args, ref i);
+                    break;
+                case "--pr-body":
+                    options.PrBody = ReadValue(args, ref i);
+                    break;
+                case "--pr-labels":
+                    options.PrLabels = ReadValue(args, ref i);
+                    break;
+                case "--skip-review":
+                    options.SkipReviewSet = true;
+                    options.SkipReview = ReadBoolFlag(args, ref i, "--skip-review", true);
+                    break;
+                case "--repo-slug":
+                    options.RepoSlug = ReadValue(args, ref i);
+                    break;
                 case "--repo":
                     options.RepoPath = ReadValue(args, ref i);
                     break;
@@ -613,6 +900,20 @@ internal sealed class ReleaseNotesOptions {
     private static int ReadIntValue(string[] args, ref int index, int fallback) {
         var value = ReadValue(args, ref index);
         return int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
+    }
+
+    private static bool ReadBoolFlag(string[] args, ref int index, string flagName, bool defaultValue) {
+        if (index + 1 < args.Length && !args[index + 1].StartsWith("--", StringComparison.Ordinal)) {
+            var raw = args[++index];
+            if (string.IsNullOrWhiteSpace(raw)) {
+                return defaultValue;
+            }
+            if (bool.TryParse(raw, out var parsed)) {
+                return parsed;
+            }
+            throw new InvalidOperationException($"Invalid value for {flagName}: {raw}");
+        }
+        return defaultValue;
     }
 
     internal static OpenAITransportKind? ParseTransportValue(string? value) {
