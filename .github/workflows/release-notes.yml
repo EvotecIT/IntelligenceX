@@ -60,7 +60,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ inputs.to || github.ref || github.event.repository.default_branch }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4

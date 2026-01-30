@@ -47,6 +47,7 @@ jobs:
 
       - name: Publish reviewer
         env:
+          INTELLIGENCEX_REVIEWER_TOKEN: ${{ secrets.INTELLIGENCEX_RELEASE_TOKEN }}
           INTELLIGENCEX_RELEASE_TOKEN: ${{ secrets.INTELLIGENCEX_RELEASE_TOKEN }}
           INTELLIGENCEX_REVIEWER_TAG: ${{ inputs.release_tag }}
           INTELLIGENCEX_REVIEWER_TITLE: ${{ inputs.release_title }}

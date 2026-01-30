@@ -596,7 +596,12 @@ internal static class ReleaseNotesRunner {
         if (options.Commit) {
             var branch = ResolveCurrentBranch(repoPath);
             if (string.IsNullOrWhiteSpace(branch) || string.Equals(branch, "HEAD", StringComparison.OrdinalIgnoreCase)) {
-                throw new InvalidOperationException("Cannot commit in detached HEAD. Checkout a branch or use --create-pr.");
+                var defaultBranch = ResolveDefaultBranch(repoPath);
+                if (string.IsNullOrWhiteSpace(defaultBranch)) {
+                    throw new InvalidOperationException("Cannot resolve default branch for commit.");
+                }
+                EnsureLocalBranch(repoPath, defaultBranch);
+                branch = defaultBranch;
             }
             RunGit(repoPath, "add", "-A");
             RunGit(repoPath, "commit", "-m", commitMessage);
@@ -631,6 +636,34 @@ internal static class ReleaseNotesRunner {
         } catch {
             return null;
         }
+    }
+
+    private static string? ResolveDefaultBranch(string repoPath) {
+        var fromEnv = Environment.GetEnvironmentVariable("GITHUB_REF_NAME");
+        var refType = Environment.GetEnvironmentVariable("GITHUB_REF_TYPE");
+        if (!string.IsNullOrWhiteSpace(fromEnv) && string.Equals(refType, "branch", StringComparison.OrdinalIgnoreCase)) {
+            return fromEnv.Trim();
+        }
+
+        var symbolic = TryRunGit(repoPath, "symbolic-ref", "--short", "refs/remotes/origin/HEAD");
+        if (!string.IsNullOrWhiteSpace(symbolic)) {
+            var name = symbolic.Trim();
+            if (name.StartsWith("origin/", StringComparison.OrdinalIgnoreCase)) {
+                return name.Substring("origin/".Length);
+            }
+            return name;
+        }
+
+        return "main";
+    }
+
+    private static void EnsureLocalBranch(string repoPath, string branch) {
+        var existing = TryRunGit(repoPath, "show-ref", "--verify", $"refs/heads/{branch}");
+        if (string.IsNullOrWhiteSpace(existing)) {
+            RunGit(repoPath, "checkout", "-B", branch, $"origin/{branch}");
+            return;
+        }
+        RunGit(repoPath, "checkout", branch);
     }
 
     private static string? ResolveRepoSlug(ReleaseNotesOptions options) {

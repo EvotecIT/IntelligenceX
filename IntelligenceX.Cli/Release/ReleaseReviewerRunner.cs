@@ -142,7 +142,8 @@ internal static class ReleaseReviewerRunner {
         if (!string.IsNullOrWhiteSpace(token)) {
             return token;
         }
-        return Environment.GetEnvironmentVariable("INTELLIGENCEX_RELEASE_TOKEN")
+        return Environment.GetEnvironmentVariable("INTELLIGENCEX_REVIEWER_TOKEN")
+               ?? Environment.GetEnvironmentVariable("INTELLIGENCEX_RELEASE_TOKEN")
                ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN")
                ?? Environment.GetEnvironmentVariable("GH_TOKEN");
     }
