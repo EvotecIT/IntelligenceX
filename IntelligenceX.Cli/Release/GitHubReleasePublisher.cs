@@ -45,17 +45,17 @@ internal sealed class GitHubReleasePublisher : IDisposable {
         return ParseRelease(doc.RootElement);
     }
 
-    public async Task UploadAssetAsync(string owner, string repo, long releaseId, string assetPath) {
+    public async Task UploadAssetAsync(string owner, string repo, ReleaseInfo release, string assetPath) {
         if (!File.Exists(assetPath)) {
             throw new InvalidOperationException($"Asset not found: {assetPath}");
         }
 
-        await DeleteAssetIfExistsAsync(owner, repo, releaseId, Path.GetFileName(assetPath))
+        await DeleteAssetIfExistsAsync(owner, repo, release.Id, Path.GetFileName(assetPath))
             .ConfigureAwait(false);
 
         using var content = new StreamContent(File.OpenRead(assetPath));
         content.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
-        var uploadUrl = $"https://uploads.github.com/repos/{owner}/{repo}/releases/{releaseId}/assets?name={Uri.EscapeDataString(Path.GetFileName(assetPath))}";
+        var uploadUrl = BuildUploadUrl(release, owner, repo, Path.GetFileName(assetPath));
         using var request = new HttpRequestMessage(HttpMethod.Post, uploadUrl) {
             Content = content
         };
@@ -112,13 +112,29 @@ internal sealed class GitHubReleasePublisher : IDisposable {
     private static ReleaseInfo ParseRelease(JsonElement root) {
         var id = root.GetProperty("id").GetInt64();
         var uploadUrl = root.TryGetProperty("upload_url", out var upload) ? upload.GetString() : null;
-        return new ReleaseInfo(id, uploadUrl ?? string.Empty);
+        return new ReleaseInfo(id, SanitizeUploadUrl(uploadUrl));
     }
 
     private async Task<HttpResponseMessage> PostJsonAsync(string url, object payload) {
         var json = JsonSerializer.Serialize(payload);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
         return await _api.PostAsync(url, content).ConfigureAwait(false);
+    }
+
+    private static string BuildUploadUrl(ReleaseInfo release, string owner, string repo, string assetName) {
+        var baseUrl = string.IsNullOrWhiteSpace(release.UploadUrl)
+            ? $"https://uploads.github.com/repos/{owner}/{repo}/releases/{release.Id}/assets"
+            : release.UploadUrl;
+        var separator = baseUrl.Contains("?", StringComparison.Ordinal) ? "&" : "?";
+        return $"{baseUrl}{separator}name={Uri.EscapeDataString(assetName)}";
+    }
+
+    private static string SanitizeUploadUrl(string? uploadUrl) {
+        if (string.IsNullOrWhiteSpace(uploadUrl)) {
+            return string.Empty;
+        }
+        var idx = uploadUrl.IndexOf('{');
+        return idx >= 0 ? uploadUrl.Substring(0, idx) : uploadUrl;
     }
 }
 

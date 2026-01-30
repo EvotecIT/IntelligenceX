@@ -44,7 +44,7 @@ internal static class ReleaseReviewerRunner {
 
             var token = ResolveToken(options.Token);
             if (string.IsNullOrWhiteSpace(token)) {
-                Console.Error.WriteLine("Missing GitHub token. Set INTELLIGENCEX_RELEASE_TOKEN or GITHUB_TOKEN.");
+                Console.Error.WriteLine("Missing GitHub token. Set INTELLIGENCEX_REVIEWER_TOKEN, INTELLIGENCEX_RELEASE_TOKEN, or GITHUB_TOKEN.");
                 return 1;
             }
 
@@ -82,7 +82,7 @@ internal static class ReleaseReviewerRunner {
             using var publisher = new GitHubReleasePublisher(token!);
             var release = await publisher.GetOrCreateReleaseAsync(owner, repo, tag, title, notes).ConfigureAwait(false);
             foreach (var assetPath in assets) {
-                await publisher.UploadAssetAsync(owner, repo, release.Id, assetPath).ConfigureAwait(false);
+                await publisher.UploadAssetAsync(owner, repo, release, assetPath).ConfigureAwait(false);
             }
 
             Console.WriteLine($"Published {assets.Count} asset(s) to {owner}/{repo} tag {tag}.");

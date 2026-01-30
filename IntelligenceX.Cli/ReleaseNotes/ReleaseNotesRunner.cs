@@ -558,7 +558,7 @@ internal static class ReleaseNotesRunner {
             }
             var token = ResolveGitHubToken();
             if (string.IsNullOrWhiteSpace(token)) {
-                throw new InvalidOperationException("Missing GitHub token. Set GITHUB_TOKEN or INTELLIGENCEX_GITHUB_TOKEN.");
+                throw new InvalidOperationException("Missing GitHub token. Set INTELLIGENCEX_GITHUB_TOKEN, GITHUB_TOKEN, or GH_TOKEN.");
             }
 
             using var client = new GitHubReleaseClient(token!);

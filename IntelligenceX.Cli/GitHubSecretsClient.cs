@@ -59,7 +59,8 @@ internal sealed class GitHubSecretsClient : IDisposable {
         return normalized switch {
             "private" => "private",
             "selected" => "selected",
-            _ => "all"
+            "all" => "all",
+            _ => throw new InvalidOperationException("Invalid visibility. Use all or private.")
         };
     }
 

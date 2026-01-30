@@ -43,7 +43,10 @@ internal sealed class GitHubReleaseClient : IDisposable {
         using var response = await PostJsonAsync($"/repos/{owner}/{repo}/pulls", payload).ConfigureAwait(false);
         var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
         if (response.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity) {
-            return null;
+            if (IsPullRequestAlreadyExists(json)) {
+                return null;
+            }
+            throw new InvalidOperationException($"GitHub API request failed (422): {json}");
         }
         if (!response.IsSuccessStatusCode) {
             throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {json}");
@@ -53,6 +56,34 @@ internal sealed class GitHubReleaseClient : IDisposable {
         var url = root.GetProperty("html_url").GetString() ?? string.Empty;
         var number = root.GetProperty("number").GetInt32();
         return new PullRequestInfo(number, url);
+    }
+
+    private static bool IsPullRequestAlreadyExists(string json) {
+        try {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Array) {
+                foreach (var error in errors.EnumerateArray()) {
+                    if (error.TryGetProperty("message", out var messageProp)) {
+                        var message = messageProp.GetString();
+                        if (!string.IsNullOrWhiteSpace(message) &&
+                            message.Contains("already exists", StringComparison.OrdinalIgnoreCase)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            if (root.TryGetProperty("message", out var rootMessage)) {
+                var message = rootMessage.GetString();
+                if (!string.IsNullOrWhiteSpace(message) &&
+                    message.Contains("already exists", StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+        } catch {
+            return false;
+        }
+        return false;
     }
 
     public async Task AddLabelsAsync(string owner, string repo, int number, IReadOnlyList<string> labels) {
