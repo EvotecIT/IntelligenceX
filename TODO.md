@@ -26,6 +26,7 @@ Status: In progress
   - [ ] Apply (PR creation pending)
 - [ ] Non-interactive fallback (--plain, redirected input)
 - [ ] Summary table + PR links
+- [x] Keep-secret propagation for cleanup
 
 ## Phase 3 — GitHub App Manifest (BYO App)
 - [x] Manifest generation (pre-filled app definition)
@@ -45,6 +46,8 @@ Status: In progress
 - [x] Advanced JSON editor panel
 - [ ] Progress checklist + success summary
 - [ ] "Manage existing setup" flow
+- [x] Enforce loopback + HTTP-only binding
+- [x] Device flow timeout + expiry messaging
 
 ## Phase 6 — Reviewer improvements
 - [ ] Early auth validation with actionable errors
