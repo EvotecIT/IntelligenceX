@@ -1,6 +1,6 @@
 # IntelligenceX Onboarding Roadmap (Wizard + CLI)
 
-Status: Planning (not started)
+Status: In progress
 
 ## Phase 0 — Goals & constraints
 - [ ] Confirm onboarding goals (wizard + PR-only path + upgrade path)
@@ -9,54 +9,69 @@ Status: Planning (not started)
 - [ ] Confirm UI choice (local web UI + Spectre.Console wizard)
 
 ## Phase 1 — Core setup architecture (shared by CLI + UI)
-- [ ] Add SetupHost orchestration layer (single source of truth)
-- [ ] Add wizard state model (repos, config, auth, apply mode)
-- [ ] Implement Plan → Apply flow with dry-run output
-- [ ] Implement upgrade/modify detection (existing workflow/config)
+- [x] Add SetupHost orchestration layer (single source of truth)
+- [x] Add wizard state model (repos, config, auth, apply mode)
+- [x] Implement Plan → Apply flow with dry-run output
+- [x] Implement upgrade/modify detection (existing workflow/config)
 
 ## Phase 2 — CLI Wizard (Spectre.Console)
-- [ ] Add Spectre.Console dependency (CLI project only)
+- [x] Add Spectre.Console dependency (CLI project only)
 - [ ] Implement interactive steps:
-  - [ ] Auth mode selection
-  - [ ] GitHub auth flow
-  - [ ] Org vs repo selection
-  - [ ] Repo multi-select
-  - [ ] Config presets + advanced JSON editor
-  - [ ] OpenAI login (reuse if present)
-  - [ ] Apply (PR vs direct)
-- [ ] Non-interactive fallback (--plain, redirected input)
-- [ ] Summary table + PR links
+  - [x] Auth mode selection
+  - [x] GitHub auth flow
+  - [x] Org vs repo selection
+  - [x] Repo multi-select
+  - [x] Config presets + advanced JSON editor
+  - [x] OpenAI login (reuse if present)
+  - [x] Apply (PR creation)
+- [x] Non-interactive fallback (--plain, redirected input)
+- [x] Summary table + PR links
+- [x] Keep-secret propagation for cleanup
 
 ## Phase 3 — GitHub App Manifest (BYO App)
-- [ ] Manifest generation (pre-filled app definition)
-- [ ] Open GitHub "Create App from Manifest"
-- [ ] Handle callback and exchange code for app id + PEM
-- [ ] App install flow (select repos / all repos)
-- [ ] Store app credentials locally for reuse
+- [x] Manifest generation (pre-filled app definition)
+- [x] Open GitHub "Create App from Manifest"
+- [x] Handle callback and exchange code for app id + PEM
+- [x] App install flow (select repos / all repos)
+- [x] Store app credentials locally for reuse
 
 ## Phase 4 — Secrets handling
-- [ ] Auto-encrypt and upload secrets when Sodium available
-- [ ] Manual secret fallback (print export + instructions)
-- [ ] Support INTELLIGENCEX_AUTH_KEY for encrypted store
+- [x] Auto-encrypt and upload secrets when Sodium available
+- [x] Manual secret fallback (print export + instructions)
+- [x] Support INTELLIGENCEX_AUTH_KEY for encrypted store
 
 ## Phase 5 — Local Web UI Wizard
-- [ ] Local web host (Kestrel) + static assets
+- [x] Local web host (Kestrel) + static assets
 - [ ] Wizard screens (same steps as CLI)
-- [ ] Advanced JSON editor panel
-- [ ] Progress checklist + success summary
-- [ ] "Manage existing setup" flow
+- [x] Advanced JSON editor panel
+- [x] Progress checklist + success summary
+- [x] "Manage existing setup" flow (load config from repo)
+- [x] Workflow preview in web UI
+- [x] Config presets (local storage)
+- [x] Preset export/import (web UI)
+- [x] Status badges (auth/repo/secret)
+- [x] Enforce loopback + HTTP-only binding
+- [x] Device flow timeout + expiry messaging
+- [x] GitHub App manifest flow in web UI
+- [x] Detect existing workflow/config (repo inspection)
+- [x] Recommend setup actions based on inspection
+- [x] Support auth bundle input for secrets (web UI)
+- [x] Update-secret support in web UI
 
 ## Phase 6 — Reviewer improvements
-- [ ] Early auth validation with actionable errors
-- [ ] Safer auth store handling in reviewer
-- [ ] Explicit secrets in workflow (no secrets: inherit)
+- [x] Early auth validation with actionable errors
+- [x] Safer auth store handling in reviewer
+- [x] Explicit secrets in workflow (no secrets: inherit)
 
 ## Phase 7 — Docs & README
-- [ ] README rewrite (what it is, trust model, quickstart)
-- [ ] Docs: wizard onboarding, CLI quickstart, security/trust
-- [ ] Screenshot placeholders + asset folder
+- [x] README rewrite (what it is, trust model, quickstart)
+- [x] Docs: wizard onboarding, CLI quickstart, security/trust
+- [x] Screenshot placeholders + asset folder
 
 ## Phase 8 — Copilot (experimental)
 - [ ] Keep CLI Copilot optional provider
 - [ ] Research native Copilot feasibility
-- [ ] Add provider toggle in wizard
+- [x] Add provider toggle in wizard
+
+## Phase 9 — DevEx automation
+- [ ] Auto-resolve IntelligenceX bot review threads after fixes (CLI command or GitHub App action)

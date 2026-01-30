@@ -32,6 +32,22 @@ internal static partial class SetupRunner {
                 Console.Error.WriteLine("Choose only one of --cleanup or --update-secret.");
                 return 1;
             }
+            if (options.ManualSecret && options.SkipSecret) {
+                Console.Error.WriteLine("Choose only one of --manual-secret or --skip-secret.");
+                return 1;
+            }
+            if (options.ManualSecret && options.UpdateSecret) {
+                Console.Error.WriteLine("Choose only one of --manual-secret or --update-secret.");
+                return 1;
+            }
+            if (!string.IsNullOrWhiteSpace(options.ConfigJson) && !string.IsNullOrWhiteSpace(options.ConfigPath)) {
+                Console.Error.WriteLine("Choose only one of --config-json or --config-path.");
+                return 1;
+            }
+            if (!string.IsNullOrWhiteSpace(options.AuthB64) && !string.IsNullOrWhiteSpace(options.AuthB64Path)) {
+                Console.Error.WriteLine("Choose only one of --auth-b64 or --auth-b64-path.");
+                return 1;
+            }
 
             var state = new SetupState(options);
             await ResolveGitHubAuthAsync(state).ConfigureAwait(false);
@@ -80,13 +96,22 @@ internal static partial class SetupRunner {
                 return 0;
             }
 
-            if (!options.SkipSecret) {
+        if (!options.SkipSecret) {
+            var authB64 = ResolveAuthB64(options);
+            if (string.IsNullOrWhiteSpace(authB64)) {
                 state.OpenAI.AuthBundle = await LoginOpenAiAsync(options).ConfigureAwait(false);
                 state.OpenAI.AuthJson = AuthBundleSerializer.Serialize(state.OpenAI.AuthBundle);
                 state.OpenAI.AuthB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(state.OpenAI.AuthJson));
+            } else {
+                state.OpenAI.AuthB64 = authB64;
+            }
 
-                await github.SetSecretAsync(owner, repo, "INTELLIGENCEX_AUTH_B64", state.OpenAI.AuthB64)
-                    .ConfigureAwait(false);
+            if (options.ManualSecret) {
+                PrintManualSecret(state.OpenAI.AuthB64);
+            } else {
+                    await github.SetSecretAsync(owner, repo, "INTELLIGENCEX_AUTH_B64", state.OpenAI.AuthB64)
+                        .ConfigureAwait(false);
+                }
             }
 
             var hasFileChanges = workflowPlan.IsWrite || configPlan.IsWrite;
@@ -273,9 +298,14 @@ internal static partial class SetupRunner {
             return 0;
         }
 
-        state.OpenAI.AuthBundle = await LoginOpenAiAsync(options).ConfigureAwait(false);
-        state.OpenAI.AuthJson = AuthBundleSerializer.Serialize(state.OpenAI.AuthBundle);
-        state.OpenAI.AuthB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(state.OpenAI.AuthJson));
+        var authB64 = ResolveAuthB64(options);
+        if (string.IsNullOrWhiteSpace(authB64)) {
+            state.OpenAI.AuthBundle = await LoginOpenAiAsync(options).ConfigureAwait(false);
+            state.OpenAI.AuthJson = AuthBundleSerializer.Serialize(state.OpenAI.AuthBundle);
+            state.OpenAI.AuthB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(state.OpenAI.AuthJson));
+        } else {
+            state.OpenAI.AuthB64 = authB64;
+        }
 
         await github.SetSecretAsync(owner, repo, "INTELLIGENCEX_AUTH_B64", state.OpenAI.AuthB64)
             .ConfigureAwait(false);
@@ -317,7 +347,31 @@ internal static partial class SetupRunner {
         if (options.Cleanup) {
             return options.KeepSecret ? "keep" : "delete";
         }
+        if (options.ManualSecret) {
+            return "manual";
+        }
         return options.SkipSecret ? "skip" : "create/update";
+    }
+
+    private static void PrintManualSecret(string secret) {
+        Console.WriteLine("Manual secret mode enabled.");
+        Console.WriteLine("Set INTELLIGENCEX_AUTH_B64 in your repo/org secrets with the following value:");
+        Console.WriteLine(secret);
+        Console.WriteLine("Warning: this value is sensitive. Avoid sharing logs.");
+    }
+
+    private static string? ResolveAuthB64(SetupOptions options) {
+        if (!string.IsNullOrWhiteSpace(options.AuthB64)) {
+            return options.AuthB64;
+        }
+        if (!string.IsNullOrWhiteSpace(options.AuthB64Path)) {
+            try {
+                return File.ReadAllText(options.AuthB64Path);
+            } catch {
+                return null;
+            }
+        }
+        return null;
     }
 
     private static async Task<AuthBundle> LoginOpenAiAsync(SetupOptions options) {
@@ -388,6 +442,10 @@ internal static partial class SetupRunner {
 
     private static FilePlan PlanConfigChange(SetupOptions options, string? existingContent) {
         var path = ".intelligencex/config.json";
+        var overrideContent = ReadConfigOverride(options);
+        if (!string.IsNullOrWhiteSpace(overrideContent)) {
+            return PlanWrite(path, existingContent, overrideContent, options.Force);
+        }
         var settings = ResolveConfigSettings(options, existingContent, out var parsed);
         if (!parsed && !options.Force && !string.IsNullOrWhiteSpace(existingContent)) {
             return FilePlan.Skip(path, "Config exists but could not be parsed (use --force to overwrite)");
@@ -397,6 +455,20 @@ internal static partial class SetupRunner {
             ? MergeConfigJson(existingContent, settings)
             : BuildConfigJson(settings);
         return PlanWrite(path, existingContent, content, options.Force);
+    }
+
+    private static string? ReadConfigOverride(SetupOptions options) {
+        if (!string.IsNullOrWhiteSpace(options.ConfigJson)) {
+            return options.ConfigJson;
+        }
+        if (!string.IsNullOrWhiteSpace(options.ConfigPath)) {
+            try {
+                return File.ReadAllText(options.ConfigPath);
+            } catch {
+                return null;
+            }
+        }
+        return null;
     }
 
     private static FilePlan PlanWrite(string path, string? existingContent, string content, bool force) {
@@ -517,13 +589,13 @@ internal static partial class SetupRunner {
         if (!options.OpenAIModelSet && !string.IsNullOrWhiteSpace(snapshot.OpenAIModel)) {
             settings.OpenAIModel = snapshot.OpenAIModel!;
         }
-        if (!string.IsNullOrWhiteSpace(snapshot.Profile)) {
+        if (!options.ReviewProfileSet && !string.IsNullOrWhiteSpace(snapshot.Profile)) {
             settings.Profile = snapshot.Profile!;
         }
-        if (!string.IsNullOrWhiteSpace(snapshot.Mode)) {
+        if (!options.ReviewModeSet && !string.IsNullOrWhiteSpace(snapshot.Mode)) {
             settings.Mode = snapshot.Mode!;
         }
-        if (!string.IsNullOrWhiteSpace(snapshot.CommentMode)) {
+        if (!options.ReviewCommentModeSet && !string.IsNullOrWhiteSpace(snapshot.CommentMode)) {
             settings.CommentMode = snapshot.CommentMode!;
         }
         if (!options.IncludeIssueCommentsSet && snapshot.IncludeIssueComments.HasValue) {
@@ -600,7 +672,9 @@ internal static partial class SetupRunner {
     }
 
     private static string BuildManagedWorkflowBlock(WorkflowSettings settings, int indent) {
-        var template = ReadEmbeddedResource("review-intelligencex.managed.yml");
+        var template = settings.ExplicitSecrets
+            ? ReadEmbeddedResource("review-intelligencex.managed.explicit.yml")
+            : ReadEmbeddedResource("review-intelligencex.managed.yml");
         var tokens = new Dictionary<string, string> {
             ["ActionsRepo"] = settings.ActionsRepo,
             ["ActionsRef"] = settings.ActionsRef,
@@ -893,6 +967,13 @@ internal static partial class SetupRunner {
         Console.WriteLine("  --include-review-comments <true|false>");
         Console.WriteLine("  --include-related-prs <true|false>");
         Console.WriteLine("  --progress-updates <true|false>");
+        Console.WriteLine("  --review-profile <balanced|picky|highlevel|security|performance|tests|minimal>");
+        Console.WriteLine("  --review-mode <hybrid|summary|inline>");
+        Console.WriteLine("  --review-comment-mode <sticky|fresh>");
+        Console.WriteLine("  --config-path <path> (use custom config.json content)");
+        Console.WriteLine("  --config-json <json> (use inline config.json content)");
+        Console.WriteLine("  --auth-b64 <value> (use pre-exported auth bundle)");
+        Console.WriteLine("  --auth-b64-path <path> (read pre-exported auth bundle)");
         Console.WriteLine("  --diagnostics <true|false>");
         Console.WriteLine("  --preflight <true|false>");
         Console.WriteLine("  --preflight-timeout-seconds <number>");
@@ -907,11 +988,13 @@ internal static partial class SetupRunner {
         Console.WriteLine("  --upgrade (update managed sections instead of skipping)");
         Console.WriteLine("  --update-secret (refresh INTELLIGENCEX_AUTH_B64 only)");
         Console.WriteLine("  --skip-secret (skip secret update during setup)");
+        Console.WriteLine("  --manual-secret (print secret instead of uploading)");
         Console.WriteLine("  --cleanup (remove workflow/config and optionally secret)");
         Console.WriteLine("  --keep-secret (do not delete secret during cleanup)");
         Console.WriteLine("  --branch <name>");
         Console.WriteLine("  --force (overwrite existing files)");
         Console.WriteLine("  --dry-run (show changes only)");
+        Console.WriteLine("  --explicit-secrets (use explicit secrets block in workflow)");
         Console.WriteLine("  --help");
         Console.WriteLine();
         Console.WriteLine("Environment:");
@@ -952,3 +1035,4 @@ internal static partial class SetupRunner {
         return fallback;
     }
 }
+

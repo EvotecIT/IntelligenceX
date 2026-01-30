@@ -1,7 +1,8 @@
 # IntelligenceX
 
-IntelligenceX is a lightweight .NET client for the Codex app-server protocol. It manages the app-server
-process, speaks JSON-RPC over JSONL, and exposes simple methods for authentication and conversations.
+IntelligenceX is a .NET toolkit for the Codex app-server protocol and a GitHub Actions reviewer.
+It manages the app-server process, speaks JSON-RPC over JSONL, and ships a CLI/web wizard to onboard
+review automation quickly and safely.
 
 Status: Active development | APIs in flux | Actions in beta
 
@@ -29,6 +30,30 @@ Status: Active development | APIs in flux | Actions in beta
 - `IntelligenceX.Cli` — CLI (`intelligencex`) for auth, setup, and reviewer
 - `IntelligenceX.Reviewer` — GitHub Actions reviewer runner
 - `IntelligenceX.PowerShell` — PowerShell module (binary cmdlets)
+
+## Get started (Reviewer)
+
+Recommended onboarding:
+
+```powershell
+intelligencex setup wizard
+```
+
+Local web UI (preview):
+
+```powershell
+intelligencex setup web
+```
+
+Docs:
+- `Docs/onboarding-wizard.md`
+- `Docs/setup-web.md`
+- `Docs/security-trust.md`
+
+Trust model (short version):
+- BYO GitHub App is supported for branded bot identity.
+- Secrets are stored in GitHub Actions (you control access).
+- Web UI binds to localhost only; tokens never leave your machine.
 
 ## Library (.NET)
 
@@ -162,6 +187,33 @@ client.StandardErrorReceived += (_, line) => Console.WriteLine($"STDERR: {line}"
 `IntelligenceX.Reviewer` is the console tool behind the review workflow. It reads PR context, generates
 review feedback, and posts a sticky comment.
 
+### Onboarding (recommended)
+
+Use the interactive wizard for the fastest setup across one or more repositories.
+
+CLI wizard:
+
+```powershell
+intelligencex setup wizard
+```
+
+Web UI (preview):
+
+```powershell
+intelligencex setup web
+```
+
+Docs:
+- `Docs/onboarding-wizard.md`
+- `Docs/cli-quickstart.md`
+- `Docs/security-trust.md`
+- `Docs/setup-web.md`
+
+Wizard operations:
+- Setup / update workflow + config (default)
+- Update OpenAI secret only
+- Cleanup (remove workflow/config)
+
 ### Quick start
 
 Use the reusable workflow from `evotecit/github-actions`:
@@ -270,7 +322,8 @@ Notes:
 
 ## CLI setup (GitHub Actions)
 
-Use the CLI to add or update the review workflow and secrets.
+Use the CLI to add or update the review workflow and secrets (best for scripted or headless flows).
+For interactive onboarding, prefer `intelligencex setup wizard` or `intelligencex setup web`.
 
 ```powershell
 # Interactive setup (uses GitHub device flow)
@@ -597,6 +650,23 @@ Login:
 dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- auth login
 ```
 
+Login + export + set GitHub secret (repo or org):
+
+```bash
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- auth login --set-github-secret --repo owner/name --github-token $TOKEN
+```
+
+Auto-detect repo/org + token:
+
+```bash
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- auth login --set-github-secret
+```
+
+Auto-detect sources:
+- Repo: `INTELLIGENCEX_GITHUB_REPO` → `GITHUB_REPOSITORY` → git `origin` remote
+- Org: `INTELLIGENCEX_GITHUB_ORG` → `GITHUB_ORG` → `GITHUB_OWNER`
+- Token: `INTELLIGENCEX_GITHUB_TOKEN` → `GITHUB_TOKEN` → `GH_TOKEN` → `gh auth token`
+
 Export (store-base64 for GitHub Secrets):
 
 ```bash
@@ -616,15 +686,21 @@ Generate release notes between tags (and update CHANGELOG.md):
 dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release notes --from v1.2.3 --to v1.2.4 --version v1.2.4 --update-changelog
 ```
 
+One-liner (default range, update changelog):
+
+```bash
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release notes --update-changelog
+```
+
 ### Release notes automation (direct to default branch)
 
 Template workflow is available at `IntelligenceX.Cli/Templates/release-notes.yml`.
 It runs on tag push (any tag) and supports manual runs with `from`/`to`/`version` inputs.
-It updates `CHANGELOG.md` on the default branch.
+It updates `CHANGELOG.md` on the default branch and keeps the workflow YAML minimal by passing inputs through env vars.
 
 Optional PR mode:
 - Set `create_pr: 'true'` to open/update a PR instead of pushing directly.
-- Optional inputs: `pr_branch`, `pr_title`, `pr_body`, `pr_labels`, `skip_review`.
+- Optional inputs: `pr_branch`, `pr_title`, `pr_body`, `pr_labels`, `skip_review`, `repo_slug`.
 - When `skip_review: 'true'` (default), the workflow prefixes `[skip-review]` to the PR title
   and applies the `skip-review` label (so IntelligenceX can skip its own release-notes PRs).
 Requires workflow permissions: `contents: write` + `pull-requests: write`.
@@ -636,6 +712,37 @@ Required secret:
 Optional overrides:
 - `OPENAI_MODEL`
 - `OPENAI_TRANSPORT`
+
+Advanced environment overrides (optional):
+- `INTELLIGENCEX_RELEASE_FROM`, `INTELLIGENCEX_RELEASE_TO`, `INTELLIGENCEX_RELEASE_VERSION`
+- `INTELLIGENCEX_RELEASE_CREATE_PR`, `INTELLIGENCEX_RELEASE_COMMIT`, `INTELLIGENCEX_RELEASE_SKIP_REVIEW`
+- `INTELLIGENCEX_RELEASE_PR_BRANCH`, `INTELLIGENCEX_RELEASE_PR_TITLE`, `INTELLIGENCEX_RELEASE_PR_BODY`, `INTELLIGENCEX_RELEASE_PR_LABELS`
+- `INTELLIGENCEX_RELEASE_REPO_SLUG`
+
+### Release reviewer automation
+
+Workflow: `.github/workflows/release-reviewer.yml`
+This builds the reviewer for linux/win/osx, zips assets, and publishes to GitHub Releases.
+Inputs:
+- `release_tag` (optional, defaults to timestamp)
+- `release_title` (optional)
+- `release_notes` (optional)
+- `release_repo` (owner/name, default `EvotecIT/github-actions`)
+- `rids` (comma-separated, optional)
+- `framework` (optional)
+- `configuration` (optional)
+
+Environment overrides (optional):
+- `INTELLIGENCEX_REVIEWER_TAG`, `INTELLIGENCEX_REVIEWER_TITLE`, `INTELLIGENCEX_REVIEWER_NOTES`
+- `INTELLIGENCEX_REVIEWER_REPO_SLUG`, `INTELLIGENCEX_REVIEWER_RIDS`
+- `INTELLIGENCEX_REVIEWER_FRAMEWORK`, `INTELLIGENCEX_REVIEWER_CONFIGURATION`
+- `INTELLIGENCEX_REVIEWER_TOKEN` (fallback: `INTELLIGENCEX_RELEASE_TOKEN`, `GITHUB_TOKEN`)
+
+One-liner (CLI):
+
+```bash
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release reviewer
+```
 
 ## Copilot CLI (GitHub)
 

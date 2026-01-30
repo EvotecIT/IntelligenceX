@@ -39,6 +39,13 @@ internal static partial class SetupRunner {
         public bool IncludeReviewComments { get; set; } = true;
         public bool IncludeRelatedPullRequests { get; set; } = true;
         public bool ProgressUpdates { get; set; } = true;
+        public string? ReviewProfile { get; set; }
+        public string? ReviewMode { get; set; }
+        public string? ReviewCommentMode { get; set; }
+        public string? ConfigPath { get; set; }
+        public string? ConfigJson { get; set; }
+        public string? AuthB64 { get; set; }
+        public string? AuthB64Path { get; set; }
         public bool Diagnostics { get; set; }
         public bool Preflight { get; set; }
         public int PreflightTimeoutSeconds { get; set; } = 15;
@@ -55,6 +62,7 @@ internal static partial class SetupRunner {
         public bool Cleanup { get; set; }
         public bool UpdateSecret { get; set; }
         public bool SkipSecret { get; set; }
+        public bool ManualSecret { get; set; }
         public bool KeepSecret { get; set; }
         public bool Force { get; set; }
         public bool DryRun { get; set; }
@@ -74,6 +82,9 @@ internal static partial class SetupRunner {
         public bool IncludeReviewCommentsSet { get; set; }
         public bool IncludeRelatedPullRequestsSet { get; set; }
         public bool ProgressUpdatesSet { get; set; }
+        public bool ReviewProfileSet { get; set; }
+        public bool ReviewModeSet { get; set; }
+        public bool ReviewCommentModeSet { get; set; }
         public bool DiagnosticsSet { get; set; }
         public bool PreflightSet { get; set; }
         public bool PreflightTimeoutSecondsSet { get; set; }
@@ -84,6 +95,7 @@ internal static partial class SetupRunner {
         public bool CleanupMinConfidenceSet { get; set; }
         public bool CleanupAllowedEditsSet { get; set; }
         public bool CleanupPostEditCommentSet { get; set; }
+        public bool ExplicitSecrets { get; set; }
 
         public static SetupOptions Parse(string[] args) {
             var options = new SetupOptions {
@@ -179,17 +191,31 @@ internal static partial class SetupRunner {
                         options.ProgressUpdates = ParseBool(value, options.ProgressUpdates);
                         options.ProgressUpdatesSet = true;
                         break;
-                    case "diagnostics":
-                        options.Diagnostics = ParseBool(value, options.Diagnostics);
-                        options.DiagnosticsSet = true;
+                    case "review-profile":
+                        options.ReviewProfile = value;
+                        options.ReviewProfileSet = true;
                         break;
-                    case "preflight":
-                        options.Preflight = ParseBool(value, options.Preflight);
-                        options.PreflightSet = true;
+                    case "review-mode":
+                        options.ReviewMode = value;
+                        options.ReviewModeSet = true;
                         break;
-                    case "preflight-timeout-seconds":
-                        options.PreflightTimeoutSeconds = ParseInt(value, options.PreflightTimeoutSeconds);
-                        options.PreflightTimeoutSecondsSet = true;
+                    case "review-comment-mode":
+                        options.ReviewCommentMode = value;
+                        options.ReviewCommentModeSet = true;
+                        break;
+                    case "config-path":
+                        options.ConfigPath = value;
+                        options.WithConfig = true;
+                        break;
+                    case "config-json":
+                        options.ConfigJson = value;
+                        options.WithConfig = true;
+                        break;
+                    case "auth-b64":
+                        options.AuthB64 = value;
+                        break;
+                    case "auth-b64-path":
+                        options.AuthB64Path = value;
                         break;
                     case "cleanup-enabled":
                         options.CleanupEnabled = ParseBool(value, options.CleanupEnabled);
@@ -234,6 +260,9 @@ internal static partial class SetupRunner {
                     case "skip-secret":
                         options.SkipSecret = ParseBool(value, true);
                         break;
+                    case "manual-secret":
+                        options.ManualSecret = ParseBool(value, true);
+                        break;
                     case "keep-secret":
                         options.KeepSecret = ParseBool(value, true);
                         break;
@@ -245,6 +274,9 @@ internal static partial class SetupRunner {
                         break;
                     case "dry-run":
                         options.DryRun = ParseBool(value, true);
+                        break;
+                    case "explicit-secrets":
+                        options.ExplicitSecrets = ParseBool(value, true);
                         break;
                     case "help":
                         options.ShowHelp = true;
@@ -299,6 +331,7 @@ internal static partial class SetupRunner {
         public bool IncludeReviewComments { get; set; } = true;
         public bool IncludeRelatedPullRequests { get; set; } = true;
         public bool ProgressUpdates { get; set; } = true;
+        public bool ExplicitSecrets { get; set; }
         public bool Diagnostics { get; set; }
         public bool Preflight { get; set; }
         public int PreflightTimeoutSeconds { get; set; } = 15;
@@ -327,6 +360,7 @@ internal static partial class SetupRunner {
                 IncludeReviewComments = options.IncludeReviewComments,
                 IncludeRelatedPullRequests = options.IncludeRelatedPullRequests,
                 ProgressUpdates = options.ProgressUpdates,
+                ExplicitSecrets = options.ExplicitSecrets,
                 Diagnostics = options.Diagnostics,
                 Preflight = options.Preflight,
                 PreflightTimeoutSeconds = options.PreflightTimeoutSeconds,
@@ -361,6 +395,9 @@ internal static partial class SetupRunner {
                 Provider = options.Provider ?? "openai",
                 OpenAITransport = options.OpenAITransport ?? "native",
                 OpenAIModel = options.OpenAIModel ?? "gpt-5.2-codex",
+                Profile = options.ReviewProfile ?? "balanced",
+                Mode = options.ReviewMode ?? "hybrid",
+                CommentMode = options.ReviewCommentMode ?? "sticky",
                 IncludeIssueComments = options.IncludeIssueComments,
                 IncludeReviewComments = options.IncludeReviewComments,
                 IncludeRelatedPullRequests = options.IncludeRelatedPullRequests,
@@ -795,3 +832,10 @@ internal static partial class SetupRunner {
         }
     }
 }
+
+
+
+
+
+
+

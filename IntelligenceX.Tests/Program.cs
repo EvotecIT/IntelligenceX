@@ -5,6 +5,11 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+#if !NET472
+using IntelligenceX.Cli;
+using IntelligenceX.Cli.Release;
+using IntelligenceX.Cli.Setup.Host;
+#endif
 using IntelligenceX.Copilot;
 using IntelligenceX.Json;
 using IntelligenceX.Rpc;
@@ -27,6 +32,11 @@ internal static class Program {
         failed += Run("Header transport message", TestHeaderTransportMessage);
         failed += Run("Header transport truncated", TestHeaderTransportTruncated);
         failed += Run("Copilot idle event", TestCopilotIdleEvent);
+#if !NET472
+        failed += Run("Setup args reject skip+update", TestSetupArgsRejectSkipUpdate);
+        failed += Run("GitHub secrets reject empty value", TestGitHubSecretsRejectEmptyValue);
+        failed += Run("Release reviewer env token", TestReleaseReviewerEnvToken);
+#endif
 #if INTELLIGENCEX_REVIEWER
         failed += Run("Cleanup normalize allowed edits", TestCleanupNormalizeAllowedEdits);
         failed += Run("Cleanup clamp confidence", TestCleanupClampConfidence);
@@ -49,6 +59,38 @@ internal static class Program {
         Console.WriteLine(failed == 0 ? "All tests passed." : $"{failed} test(s) failed.");
         return failed == 0 ? 0 : 1;
     }
+
+#if !NET472
+    private static void TestSetupArgsRejectSkipUpdate() {
+        var plan = new SetupPlan("owner/repo") {
+            SkipSecret = true,
+            UpdateSecret = true
+        };
+        AssertThrows<InvalidOperationException>(() => SetupArgsBuilder.FromPlan(plan), "skip+update");
+    }
+
+    private static void TestGitHubSecretsRejectEmptyValue() {
+        using var client = new GitHubSecretsClient("token");
+        AssertThrows<InvalidOperationException>(() =>
+            client.SetRepoSecretAsync("owner", "repo", "SECRET_NAME", "").GetAwaiter().GetResult(),
+            "repo secret empty");
+        AssertThrows<InvalidOperationException>(() =>
+            client.SetOrgSecretAsync("org", "SECRET_NAME", " ").GetAwaiter().GetResult(),
+            "org secret empty");
+    }
+
+    private static void TestReleaseReviewerEnvToken() {
+        var previous = Environment.GetEnvironmentVariable("INTELLIGENCEX_REVIEWER_TOKEN");
+        try {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_REVIEWER_TOKEN", "token-value");
+            var options = new ReleaseReviewerOptions();
+            ReleaseReviewerOptions.ApplyEnvDefaults(options);
+            AssertEqual("token-value", options.Token, "reviewer token");
+        } finally {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_REVIEWER_TOKEN", previous);
+        }
+    }
+#endif
 
     private static int Run(string name, Action test) {
         try {
@@ -461,5 +503,14 @@ internal static class Program {
         if (value is null) {
             throw new InvalidOperationException($"Expected {name} to be non-null.");
         }
+    }
+
+    private static void AssertThrows<T>(Action action, string name) where T : Exception {
+        try {
+            action();
+        } catch (T) {
+            return;
+        }
+        throw new InvalidOperationException($"Expected {name} to throw {typeof(T).Name}.");
     }
 }

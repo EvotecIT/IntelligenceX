@@ -11,10 +11,30 @@ on:
         description: 'Release title (optional)'
         required: false
         default: ''
+      release_notes:
+        description: 'Release notes body (optional)'
+        required: false
+        default: ''
+      release_repo:
+        description: 'Release repo slug (owner/name)'
+        required: false
+        default: 'EvotecIT/github-actions'
+      rids:
+        description: 'Comma-separated runtime IDs (optional)'
+        required: false
+        default: ''
+      framework:
+        description: 'Target framework (optional)'
+        required: false
+        default: ''
+      configuration:
+        description: 'Build configuration (optional)'
+        required: false
+        default: ''
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ubuntu]
     permissions:
       contents: read
     steps:
@@ -26,35 +46,20 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Publish reviewer
-        shell: bash
-        run: |
-          set -euo pipefail
-          dotnet publish IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0 -r linux-x64 --self-contained false -o out/linux-x64
-          dotnet publish IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0 -r win-x64 --self-contained false -o out/win-x64
-          dotnet publish IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0 -r osx-x64 --self-contained false -o out/osx-x64
-          (cd out && zip -r ../IntelligenceX.Reviewer-linux-x64.zip linux-x64)
-          (cd out && zip -r ../IntelligenceX.Reviewer-win-x64.zip win-x64)
-          (cd out && zip -r ../IntelligenceX.Reviewer-osx-x64.zip osx-x64)
-
-      - name: Publish release assets to EvotecIT/github-actions
         env:
-          GH_TOKEN: ${{ secrets.INTELLIGENCEX_RELEASE_TOKEN }}
+          INTELLIGENCEX_REVIEWER_TOKEN: ${{ secrets.INTELLIGENCEX_RELEASE_TOKEN }}
+          INTELLIGENCEX_RELEASE_TOKEN: ${{ secrets.INTELLIGENCEX_RELEASE_TOKEN }}
+          GITHUB_TOKEN: ''
+          GH_TOKEN: ''
+          INTELLIGENCEX_REVIEWER_TAG: ${{ inputs.release_tag }}
+          INTELLIGENCEX_REVIEWER_TITLE: ${{ inputs.release_title }}
+          INTELLIGENCEX_REVIEWER_NOTES: ${{ inputs.release_notes }}
+          INTELLIGENCEX_REVIEWER_REPO_SLUG: ${{ inputs.release_repo }}
+          INTELLIGENCEX_REVIEWER_RIDS: ${{ inputs.rids }}
+          INTELLIGENCEX_REVIEWER_FRAMEWORK: ${{ inputs.framework }}
+          INTELLIGENCEX_REVIEWER_CONFIGURATION: ${{ inputs.configuration }}
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${GH_TOKEN:-}" ]; then
-            echo "Missing secret INTELLIGENCEX_RELEASE_TOKEN"
-            exit 1
-          fi
-          tag="${{ inputs.release_tag }}"
-          if [ -z "$tag" ]; then
-            tag="reviewer-$(date +%Y%m%d%H%M%S)"
-          fi
-          title="${{ inputs.release_title }}"
-          if [ -z "$title" ]; then
-            title="IntelligenceX Reviewer $tag"
-          fi
-          if ! gh release view "$tag" --repo EvotecIT/github-actions >/dev/null 2>&1; then
-            gh release create "$tag" --repo EvotecIT/github-actions --title "$title" --notes "Automated build from EvotecIT/IntelligenceX."
-          fi
-          gh release upload "$tag" --repo EvotecIT/github-actions IntelligenceX.Reviewer-*.zip --clobber
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release reviewer
+

@@ -14,8 +14,13 @@ namespace IntelligenceX.Reviewer;
 public static class ReviewerApp {
     public static async Task<int> RunAsync(string[] args) {
         try {
-            TryWriteAuthFromEnv();
+            if (!await TryWriteAuthFromEnvAsync().ConfigureAwait(false)) {
+                return 1;
+            }
             var settings = ReviewSettings.Load();
+            if (!await ValidateAuthAsync(settings).ConfigureAwait(false)) {
+                return 1;
+            }
             var token = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN")
                 ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN");
 
@@ -181,11 +186,11 @@ public static class ReviewerApp {
         }
     }
 
-    private static void TryWriteAuthFromEnv() {
+    private static async Task<bool> TryWriteAuthFromEnvAsync() {
         var authJson = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_JSON");
         var authB64 = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_B64");
         if (string.IsNullOrWhiteSpace(authJson) && string.IsNullOrWhiteSpace(authB64)) {
-            return;
+            return true;
         }
 
         string content;
@@ -197,16 +202,97 @@ public static class ReviewerApp {
                 content = Encoding.UTF8.GetString(bytes);
             } catch {
                 Console.Error.WriteLine("Failed to decode INTELLIGENCEX_AUTH_B64.");
-                return;
+                return false;
             }
         }
 
+        if (IsEncryptedStore(content) && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_KEY"))) {
+            Console.Error.WriteLine("Auth store is encrypted but INTELLIGENCEX_AUTH_KEY is not set.");
+            return false;
+        }
+
+        if (HasAuthStoreBundles(content)) {
+            WriteAuthStoreContent(content);
+            return true;
+        }
+
+        var bundle = AuthBundleSerializer.Deserialize(content);
+        if (bundle is not null) {
+            try {
+                var store = new FileAuthBundleStore();
+                await store.SaveAsync(bundle).ConfigureAwait(false);
+                return true;
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Failed to write auth bundle: {ex.Message}");
+                return false;
+            }
+        }
+
+        Console.Error.WriteLine("Auth bundle content is invalid.");
+        return false;
+    }
+
+    private static void WriteAuthStoreContent(string content) {
         var path = AuthPaths.ResolveAuthPath();
         var dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrWhiteSpace(dir)) {
             Directory.CreateDirectory(dir);
         }
         File.WriteAllText(path, content);
+    }
+
+    private static bool IsEncryptedStore(string content) {
+        return content.TrimStart().StartsWith("{\"encrypted\":", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasAuthStoreBundles(string content) {
+        var value = JsonLite.Parse(content);
+        var obj = value?.AsObject();
+        if (obj is null) {
+            return false;
+        }
+        var bundles = obj.GetObject("bundles");
+        if (bundles is null) {
+            return false;
+        }
+        foreach (var entry in bundles) {
+            if (entry.Value?.AsObject() is not null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static async Task<bool> ValidateAuthAsync(ReviewSettings settings) {
+        if (settings.Provider == ReviewProvider.Copilot) {
+            return true;
+        }
+
+        var authPath = AuthPaths.ResolveAuthPath();
+        if (!File.Exists(authPath)) {
+            Console.Error.WriteLine("Missing OpenAI auth store.");
+            Console.Error.WriteLine("Set INTELLIGENCEX_AUTH_B64 (store export) or run `intelligencex auth login`.");
+            return false;
+        }
+
+        try {
+            var store = new FileAuthBundleStore();
+            var bundle = await store.GetAsync("openai-codex").ConfigureAwait(false)
+                         ?? await store.GetAsync("openai").ConfigureAwait(false)
+                         ?? await store.GetAsync("chatgpt").ConfigureAwait(false);
+            if (bundle is null) {
+                Console.Error.WriteLine($"No OpenAI auth bundle found in {authPath}.");
+                Console.Error.WriteLine("Export a store bundle with `intelligencex auth export --format store-base64`.");
+                return false;
+            }
+            return true;
+        } catch (Exception ex) {
+            Console.Error.WriteLine($"Failed to load auth store: {ex.Message}");
+            if (ex.Message.Contains("INTELLIGENCEX_AUTH_KEY", StringComparison.OrdinalIgnoreCase)) {
+                Console.Error.WriteLine("Set INTELLIGENCEX_AUTH_KEY to decrypt the auth store.");
+            }
+            return false;
+        }
     }
 
     private static bool ShouldSkipByTitle(string title, IReadOnlyList<string> skipTitles) {
