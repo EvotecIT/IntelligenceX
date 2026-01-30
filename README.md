@@ -216,6 +216,9 @@ You can configure the reviewer with environment variables **or** a repo-local fi
     "retryCount": 3,
     "retryDelaySeconds": 5,
     "retryMaxDelaySeconds": 30,
+    "diagnostics": false,
+    "preflight": false,
+    "preflightTimeoutSeconds": 15,
     "commentSearchLimit": 500,
     "includeReviewThreads": false,
     "reviewThreadsIncludeBots": false,
@@ -256,6 +259,8 @@ Notes:
 - `reasoningEffort`/`reasoningSummary` map to Codex reasoning controls.
 - `overwriteSummaryOnNewCommit` forces updating sticky summaries when the PR head SHA changes (prevents stale reviews).
 - Context deny patterns are regex with a short timeout; invalid patterns are ignored with a warning.
+- `diagnostics` enables extra transport logging (stderr + RPC failures) to debug OpenAI connectivity.
+- `preflight` runs a health check before the review request (useful for early auth/transport failures).
 - `includeReviewThreads` adds an "Other Reviews" section that triages existing review threads.
 - `reviewThreadsAutoResolveStale` can auto-resolve stale threads (requires `pull-requests: write`).
 - Set `reviewThreadsMax` or `reviewThreadsMaxComments` to `0` to disable review-thread context.
@@ -300,6 +305,7 @@ Common inputs/env:
 - `comment_mode`, `overwrite_summary`, `overwrite_summary_on_new_commit`
 - `skip_titles`, `skip_labels`, `skip_paths`, `skip_draft`
 - `retry_count`, `retry_delay_seconds`, `retry_max_delay_seconds`
+- `diagnostics`, `preflight`, `preflight_timeout_seconds`
 - `context_deny_enabled`, `context_deny_patterns`
 - `include_review_threads`, `review_threads_include_bots`, `review_threads_include_resolved`, `review_threads_include_outdated`
 - `review_threads_max`, `review_threads_max_comments`

@@ -39,6 +39,9 @@ internal static partial class SetupRunner {
         public bool IncludeReviewComments { get; set; } = true;
         public bool IncludeRelatedPullRequests { get; set; } = true;
         public bool ProgressUpdates { get; set; } = true;
+        public bool Diagnostics { get; set; }
+        public bool Preflight { get; set; }
+        public int PreflightTimeoutSeconds { get; set; } = 15;
         public bool CleanupEnabled { get; set; }
         public string? CleanupMode { get; set; } = "comment";
         public string? CleanupScope { get; set; } = "pr";
@@ -71,6 +74,9 @@ internal static partial class SetupRunner {
         public bool IncludeReviewCommentsSet { get; set; }
         public bool IncludeRelatedPullRequestsSet { get; set; }
         public bool ProgressUpdatesSet { get; set; }
+        public bool DiagnosticsSet { get; set; }
+        public bool PreflightSet { get; set; }
+        public bool PreflightTimeoutSecondsSet { get; set; }
         public bool CleanupEnabledSet { get; set; }
         public bool CleanupModeSet { get; set; }
         public bool CleanupScopeSet { get; set; }
@@ -172,6 +178,18 @@ internal static partial class SetupRunner {
                     case "progress-updates":
                         options.ProgressUpdates = ParseBool(value, options.ProgressUpdates);
                         options.ProgressUpdatesSet = true;
+                        break;
+                    case "diagnostics":
+                        options.Diagnostics = ParseBool(value, options.Diagnostics);
+                        options.DiagnosticsSet = true;
+                        break;
+                    case "preflight":
+                        options.Preflight = ParseBool(value, options.Preflight);
+                        options.PreflightSet = true;
+                        break;
+                    case "preflight-timeout-seconds":
+                        options.PreflightTimeoutSeconds = ParseInt(value, options.PreflightTimeoutSeconds);
+                        options.PreflightTimeoutSecondsSet = true;
                         break;
                     case "cleanup-enabled":
                         options.CleanupEnabled = ParseBool(value, options.CleanupEnabled);
@@ -281,6 +299,9 @@ internal static partial class SetupRunner {
         public bool IncludeReviewComments { get; set; } = true;
         public bool IncludeRelatedPullRequests { get; set; } = true;
         public bool ProgressUpdates { get; set; } = true;
+        public bool Diagnostics { get; set; }
+        public bool Preflight { get; set; }
+        public int PreflightTimeoutSeconds { get; set; } = 15;
         public bool CleanupEnabled { get; set; }
         public string CleanupMode { get; set; } = "comment";
         public string CleanupScope { get; set; } = "pr";
@@ -306,6 +327,9 @@ internal static partial class SetupRunner {
                 IncludeReviewComments = options.IncludeReviewComments,
                 IncludeRelatedPullRequests = options.IncludeRelatedPullRequests,
                 ProgressUpdates = options.ProgressUpdates,
+                Diagnostics = options.Diagnostics,
+                Preflight = options.Preflight,
+                PreflightTimeoutSeconds = options.PreflightTimeoutSeconds,
                 CleanupEnabled = options.CleanupEnabled,
                 CleanupMode = options.CleanupMode ?? "comment",
                 CleanupScope = options.CleanupScope ?? "pr",
@@ -328,6 +352,9 @@ internal static partial class SetupRunner {
         public bool IncludeReviewComments { get; set; } = true;
         public bool IncludeRelatedPullRequests { get; set; } = true;
         public bool ProgressUpdates { get; set; } = true;
+        public bool Diagnostics { get; set; }
+        public bool Preflight { get; set; }
+        public int PreflightTimeoutSeconds { get; set; } = 15;
 
         public static ConfigSettings FromOptions(SetupOptions options) {
             return new ConfigSettings {
@@ -337,7 +364,10 @@ internal static partial class SetupRunner {
                 IncludeIssueComments = options.IncludeIssueComments,
                 IncludeReviewComments = options.IncludeReviewComments,
                 IncludeRelatedPullRequests = options.IncludeRelatedPullRequests,
-                ProgressUpdates = options.ProgressUpdates
+                ProgressUpdates = options.ProgressUpdates,
+                Diagnostics = options.Diagnostics,
+                Preflight = options.Preflight,
+                PreflightTimeoutSeconds = options.PreflightTimeoutSeconds
             };
         }
     }
@@ -358,6 +388,9 @@ internal static partial class SetupRunner {
         public bool? IncludeReviewComments { get; set; }
         public bool? IncludeRelatedPullRequests { get; set; }
         public bool? ProgressUpdates { get; set; }
+        public bool? Diagnostics { get; set; }
+        public bool? Preflight { get; set; }
+        public int? PreflightTimeoutSeconds { get; set; }
         public bool? CleanupEnabled { get; set; }
         public string? CleanupMode { get; set; }
         public string? CleanupScope { get; set; }
@@ -382,6 +415,9 @@ internal static partial class SetupRunner {
             IncludeReviewComments.HasValue ||
             IncludeRelatedPullRequests.HasValue ||
             ProgressUpdates.HasValue ||
+            Diagnostics.HasValue ||
+            Preflight.HasValue ||
+            PreflightTimeoutSeconds.HasValue ||
             CleanupEnabled.HasValue ||
             CleanupMode is not null ||
             CleanupScope is not null ||
@@ -402,6 +438,9 @@ internal static partial class SetupRunner {
         public bool? IncludeReviewComments { get; set; }
         public bool? IncludeRelatedPullRequests { get; set; }
         public bool? ProgressUpdates { get; set; }
+        public bool? Diagnostics { get; set; }
+        public bool? Preflight { get; set; }
+        public int? PreflightTimeoutSeconds { get; set; }
 
         public bool HasAny =>
             Provider is not null ||
@@ -413,7 +452,10 @@ internal static partial class SetupRunner {
             IncludeIssueComments.HasValue ||
             IncludeReviewComments.HasValue ||
             IncludeRelatedPullRequests.HasValue ||
-            ProgressUpdates.HasValue;
+            ProgressUpdates.HasValue ||
+            Diagnostics.HasValue ||
+            Preflight.HasValue ||
+            PreflightTimeoutSeconds.HasValue;
     }
 
     private sealed class SetupState {

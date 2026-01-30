@@ -22,6 +22,9 @@ review:
     include_review_comments: {{IncludeReviewComments}}
     include_related_prs: {{IncludeRelatedPullRequests}}
     progress_updates: {{ProgressUpdates}}
+    diagnostics: {{Diagnostics}}
+    preflight: {{Preflight}}
+    preflight_timeout_seconds: {{PreflightTimeoutSeconds}}
     cleanup_enabled: {{CleanupEnabled}}
     cleanup_mode: {{CleanupMode}}
     cleanup_scope: {{CleanupScope}}

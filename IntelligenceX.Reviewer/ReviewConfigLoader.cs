@@ -134,6 +134,7 @@ internal static class ReviewConfigLoader {
         settings.RetryCount = ReadInt(obj, "retryCount", settings.RetryCount);
         settings.RetryDelaySeconds = ReadInt(obj, "retryDelaySeconds", settings.RetryDelaySeconds);
         settings.RetryMaxDelaySeconds = ReadInt(obj, "retryMaxDelaySeconds", settings.RetryMaxDelaySeconds);
+        settings.PreflightTimeoutSeconds = ReadInt(obj, "preflightTimeoutSeconds", settings.PreflightTimeoutSeconds);
     }
 
     private static void ApplyBooleans(JsonObject obj, ReviewSettings settings) {
@@ -143,6 +144,8 @@ internal static class ReviewConfigLoader {
         settings.SkipDraft = ReadBool(obj, "skipDraft", settings.SkipDraft);
         settings.RedactPii = ReadBool(obj, "redactPii", settings.RedactPii);
         settings.ProgressUpdates = ReadBool(obj, "progressUpdates", settings.ProgressUpdates);
+        settings.Diagnostics = ReadBool(obj, "diagnostics", settings.Diagnostics);
+        settings.Preflight = ReadBool(obj, "preflight", settings.Preflight);
     }
 
     private static void ApplyCommentMode(JsonObject obj, ReviewSettings settings) {

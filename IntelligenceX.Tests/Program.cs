@@ -318,7 +318,8 @@ internal static class Program {
             maxAttempts: 3,
             retryDelaySeconds: 1,
             retryMaxDelaySeconds: 1,
-            CancellationToken.None).GetAwaiter().GetResult();
+            CancellationToken.None,
+            describeError: null).GetAwaiter().GetResult();
 
         AssertEqual("ok", result, "retry result");
         AssertEqual(3, attempts, "retry attempts");
@@ -336,7 +337,8 @@ internal static class Program {
                 maxAttempts: 3,
                 retryDelaySeconds: 1,
                 retryMaxDelaySeconds: 1,
-                CancellationToken.None).GetAwaiter().GetResult();
+                CancellationToken.None,
+                describeError: null).GetAwaiter().GetResult();
         } catch (InvalidOperationException) {
             thrown = true;
         }
@@ -357,7 +359,8 @@ internal static class Program {
                 maxAttempts: 2,
                 retryDelaySeconds: 1,
                 retryMaxDelaySeconds: 1,
-                CancellationToken.None).GetAwaiter().GetResult();
+                CancellationToken.None,
+                describeError: null).GetAwaiter().GetResult();
             throw new InvalidOperationException("Expected exception.");
         } catch (IOException caught) {
             AssertEqual(true, ReferenceEquals(ex, caught), "retry exception instance");

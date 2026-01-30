@@ -30,22 +30,31 @@ internal sealed class ReviewRunner {
 
     private async Task<string> RunOpenAiWithRetryAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
         CancellationToken cancellationToken) {
-        return await ReviewRetryPolicy.RunAsync(async () => {
-                var output = await RunOpenAiOnceAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false);
-                if (string.IsNullOrWhiteSpace(output)) {
-                    throw new InvalidOperationException("OpenAI response was empty.");
-                }
-                return output;
-            },
-            IsTransient,
-            _settings.RetryCount,
-            _settings.RetryDelaySeconds,
-            _settings.RetryMaxDelaySeconds,
-            cancellationToken).ConfigureAwait(false);
+        ReviewDiagnosticsSnapshot? snapshot = null;
+        try {
+            return await ReviewRetryPolicy.RunAsync(async () => {
+                    var output = await RunOpenAiOnceAsync(prompt, onPartial, updateInterval, cancellationToken,
+                            latest => snapshot = latest)
+                        .ConfigureAwait(false);
+                    if (string.IsNullOrWhiteSpace(output)) {
+                        throw new InvalidOperationException("OpenAI response was empty.");
+                    }
+                    return output;
+                },
+                IsTransient,
+                _settings.RetryCount,
+                _settings.RetryDelaySeconds,
+                _settings.RetryMaxDelaySeconds,
+                cancellationToken,
+                ex => ReviewDiagnostics.FormatExceptionSummary(ex, _settings.Diagnostics)).ConfigureAwait(false);
+        } catch (Exception ex) {
+            ReviewDiagnostics.LogFailure(ex, _settings, snapshot);
+            throw;
+        }
     }
 
     private async Task<string> RunOpenAiOnceAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
-        CancellationToken cancellationToken) {
+        CancellationToken cancellationToken, Action<ReviewDiagnosticsSnapshot?>? captureSnapshot) {
         var options = new IntelligenceXClientOptions {
             DefaultModel = _settings.Model,
             TransportKind = _settings.OpenAITransport
@@ -64,6 +73,20 @@ internal sealed class ReviewRunner {
 
         await using var client = await IntelligenceXClient.ConnectAsync(options, cancellationToken)
             .ConfigureAwait(false);
+        using var diagnostics = ReviewDiagnosticsSession.TryStart(_settings, client);
+
+        if (_settings.Preflight) {
+            var timeout = _settings.PreflightTimeoutSeconds > 0
+                ? TimeSpan.FromSeconds(_settings.PreflightTimeoutSeconds)
+                : TimeSpan.FromSeconds(15);
+            var check = await client.HealthCheckAsync(null, timeout, cancellationToken).ConfigureAwait(false);
+            if (!check.Ok) {
+                if (check.Error is not null) {
+                    throw check.Error;
+                }
+                throw new InvalidOperationException(check.Message ?? "OpenAI preflight check failed.");
+            }
+        }
 
         var deltas = new StringBuilder();
         var lastDelta = DateTimeOffset.UtcNow;
@@ -95,25 +118,32 @@ internal sealed class ReviewRunner {
             ReasoningEffort = _settings.ReasoningEffort,
             ReasoningSummary = _settings.ReasoningSummary
         };
-        var input = ChatInput.FromText(prompt);
-        var turn = await client.ChatAsync(input, chatOptions, cancellationToken).ConfigureAwait(false);
+        try {
+            var input = ChatInput.FromText(prompt);
+            var turn = await client.ChatAsync(input, chatOptions, cancellationToken).ConfigureAwait(false);
 
-        var output = ExtractOutputs(turn.Outputs);
-        if (progressTask is not null && progressCts is not null) {
-            progressCts.Cancel();
-            try {
-                await progressTask.ConfigureAwait(false);
-            } catch (OperationCanceledException) {
-                // Expected when stopping progress updates.
+            var output = ExtractOutputs(turn.Outputs);
+            if (!string.IsNullOrWhiteSpace(output)) {
+                return output;
             }
-            progressCts.Dispose();
-        }
 
-        if (!string.IsNullOrWhiteSpace(output)) {
-            return output;
+            return await WaitForDeltasAsync(deltas, () => lastDelta, cancellationToken).ConfigureAwait(false);
+        } catch {
+            if (captureSnapshot is not null && diagnostics is not null) {
+                captureSnapshot(diagnostics.Snapshot());
+            }
+            throw;
+        } finally {
+            if (progressTask is not null && progressCts is not null) {
+                progressCts.Cancel();
+                try {
+                    await progressTask.ConfigureAwait(false);
+                } catch (OperationCanceledException) {
+                    // Expected when stopping progress updates.
+                }
+                progressCts.Dispose();
+            }
         }
-
-        return await WaitForDeltasAsync(deltas, () => lastDelta, cancellationToken).ConfigureAwait(false);
     }
 
     private static bool IsTransient(Exception ex) {
@@ -128,7 +158,8 @@ internal sealed class ReviewRunner {
 
     internal static class ReviewRetryPolicy {
         public static async Task<string> RunAsync(Func<Task<string>> action, Func<Exception, bool> isTransient,
-            int maxAttempts, int retryDelaySeconds, int retryMaxDelaySeconds, CancellationToken cancellationToken) {
+            int maxAttempts, int retryDelaySeconds, int retryMaxDelaySeconds, CancellationToken cancellationToken,
+            Func<Exception, string>? describeError) {
             // maxAttempts includes the initial attempt.
             var attempts = Math.Max(1, maxAttempts);
             var delaySeconds = Math.Max(1, retryDelaySeconds);
@@ -143,7 +174,8 @@ internal sealed class ReviewRunner {
                     lastError = ex;
                     var jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(200, 800));
                     var wait = delay + jitter;
-                    Console.Error.WriteLine($"OpenAI request failed (attempt {attempt}/{attempts}): {ex.Message}. Retrying in {wait.TotalSeconds:0.0}s.");
+                    var summary = describeError is not null ? describeError(ex) : ex.Message;
+                    Console.Error.WriteLine($"OpenAI request failed (attempt {attempt}/{attempts}): {summary}. Retrying in {wait.TotalSeconds:0.0}s.");
                     await Task.Delay(wait, cancellationToken).ConfigureAwait(false);
                     var nextDelaySeconds = Math.Min(maxDelaySeconds, delay.TotalSeconds * 2);
                     delay = TimeSpan.FromSeconds(nextDelaySeconds);
