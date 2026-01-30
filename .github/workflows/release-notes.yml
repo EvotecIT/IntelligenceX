@@ -135,6 +135,7 @@ jobs:
           }
           pr_branch="$(sanitize_branch "${pr_branch}")"
           pr_labels="$(normalize_labels "${pr_labels}")"
+          skip_review_input="$(echo "${skip_review_input}" | tr '[:upper:]' '[:lower:]')"
           if [ "${skip_review_input}" = "true" ]; then
             if ! echo "${pr_title}" | grep -qi "\\[skip-review\\]"; then
               pr_title="[skip-review] ${pr_title}"
