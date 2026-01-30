@@ -48,6 +48,7 @@ Status: In progress
 - [ ] "Manage existing setup" flow
 - [x] Enforce loopback + HTTP-only binding
 - [x] Device flow timeout + expiry messaging
+- [x] Detect existing workflow/config (repo inspection)
 
 ## Phase 6 — Reviewer improvements
 - [ ] Early auth validation with actionable errors

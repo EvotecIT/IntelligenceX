@@ -12,7 +12,7 @@ This starts a local web server and opens the wizard in your browser (http://127.
 
 - OpenAI login is not wired into the web UI yet.
   Keep “Skip OpenAI secret” enabled and set secrets manually or via CLI.
-- The UI currently supports multi-repo setup (plan/apply).
+- The UI supports multi-repo setup (plan/apply) and repo inspection.
 
 ## Security notes
 

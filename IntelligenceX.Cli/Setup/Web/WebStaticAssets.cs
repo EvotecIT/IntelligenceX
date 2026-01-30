@@ -118,6 +118,7 @@ internal static class WebStaticAssets {
         </details>
 
         <div class=""row"">
+          <button id=""inspect"">Check existing setup</button>
           <button id=""plan"">Plan</button>
           <button id=""apply"">Apply</button>
         </div>
@@ -153,6 +154,7 @@ const upgrade = document.getElementById('upgrade');
 const force = document.getElementById('force');
 const keepSecret = document.getElementById('keepSecret');
 const output = document.getElementById('output');
+const inspect = document.getElementById('inspect');
 const deviceStart = document.getElementById('deviceStart');
 const devicePoll = document.getElementById('devicePoll');
 const deviceInfo = document.getElementById('deviceInfo');
@@ -197,6 +199,30 @@ function formatResults(data) {
     return `Error: ${data.error}`;
   }
   return JSON.stringify(data, null, 2);
+}
+
+function formatStatus(data) {
+  if (!data || !Array.isArray(data.status)) {
+    return formatResults(data);
+  }
+  const lines = [];
+  data.status.forEach(item => {
+    lines.push(`== ${item.repo} ==`);
+    if (item.error) {
+      lines.push(`error: ${item.error}`);
+      lines.push('');
+      return;
+    }
+    lines.push(`default branch: ${item.defaultBranch || 'unknown'}`);
+    if (item.workflowExists) {
+      lines.push(`workflow: present${item.workflowManaged ? ' (managed)' : ''}`);
+    } else {
+      lines.push('workflow: missing');
+    }
+    lines.push(`config: ${item.configExists ? 'present' : 'missing'}`);
+    lines.push('');
+  });
+  return lines.join('\n');
 }
 
 deviceStart.addEventListener('click', async () => {
@@ -283,6 +309,29 @@ function selectedRepos() {
   }
   return [];
 }
+
+inspect.addEventListener('click', async () => {
+  write('Checking existing setup...');
+  const repos = selectedRepos();
+  if (repos.length === 0) {
+    write('Select or enter a repository.');
+    return;
+  }
+  if (!token.value) {
+    write('GitHub token required to inspect repositories.');
+    return;
+  }
+  const res = await fetch('/api/repo-status', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      repos,
+      token: token.value
+    })
+  });
+  const data = await res.json();
+  write(formatStatus(data));
+});
 
 function resolveWithConfig() {
   return withConfig.checked

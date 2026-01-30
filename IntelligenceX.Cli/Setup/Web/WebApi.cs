@@ -18,6 +18,10 @@ internal sealed class WebApi {
             await HandleReposAsync(context).ConfigureAwait(false);
             return;
         }
+        if (path.StartsWith("/api/repo-status", StringComparison.OrdinalIgnoreCase)) {
+            await HandleRepoStatusAsync(context).ConfigureAwait(false);
+            return;
+        }
         if (path.StartsWith("/api/device-code", StringComparison.OrdinalIgnoreCase)) {
             await HandleDeviceCodeAsync(context).ConfigureAwait(false);
             return;
@@ -72,6 +76,62 @@ internal sealed class WebApi {
             context.Response.StatusCode = 500;
             await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
         }
+    }
+
+    private async Task HandleRepoStatusAsync(System.Net.HttpListenerContext context) {
+        if (context.Request.HttpMethod != "POST") {
+            context.Response.StatusCode = 405;
+            await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+            return;
+        }
+
+        var body = await ReadBodyAsync(context).ConfigureAwait(false);
+        var request = JsonSerializer.Deserialize<RepoStatusRequest>(body, _jsonOptions) ?? new RepoStatusRequest();
+        if (string.IsNullOrWhiteSpace(request.Token)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Missing token" }).ConfigureAwait(false);
+            return;
+        }
+        if (request.Repos is null || request.Repos.Count == 0) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Missing repos" }).ConfigureAwait(false);
+            return;
+        }
+
+        var results = new List<RepoStatusResponse>();
+        try {
+            using var client = new GitHubRepoClient(request.Token!, request.ApiBaseUrl ?? "https://api.github.com");
+            foreach (var repo in request.Repos) {
+                if (!TryParseRepo(repo, out var owner, out var name)) {
+                    results.Add(new RepoStatusResponse { Repo = repo, Error = "Invalid repo name (expected owner/name)." });
+                    continue;
+                }
+                try {
+                    var defaultBranch = await client.GetDefaultBranchAsync(owner, name).ConfigureAwait(false);
+                    var workflow = await client.TryGetFileAsync(owner, name, ".github/workflows/review-intelligencex.yml", defaultBranch)
+                        .ConfigureAwait(false);
+                    var config = await client.TryGetFileAsync(owner, name, ".intelligencex/config.json", defaultBranch)
+                        .ConfigureAwait(false);
+
+                    var managed = workflow?.Content?.Contains("INTELLIGENCEX:BEGIN", StringComparison.Ordinal) ?? false;
+                    results.Add(new RepoStatusResponse {
+                        Repo = repo,
+                        DefaultBranch = defaultBranch,
+                        WorkflowExists = workflow is not null,
+                        WorkflowManaged = managed,
+                        ConfigExists = config is not null
+                    });
+                } catch (Exception ex) {
+                    results.Add(new RepoStatusResponse { Repo = repo, Error = ex.Message });
+                }
+            }
+        } catch (Exception ex) {
+            context.Response.StatusCode = 500;
+            await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+            return;
+        }
+
+        await WriteJsonAsync(context, new { status = results }).ConfigureAwait(false);
     }
 
     private async Task HandleDeviceCodeAsync(System.Net.HttpListenerContext context) {
@@ -332,6 +392,12 @@ internal sealed class WebApi {
         public string? ApiBaseUrl { get; set; }
     }
 
+    private sealed class RepoStatusRequest {
+        public string? Token { get; set; }
+        public string? ApiBaseUrl { get; set; }
+        public List<string>? Repos { get; set; }
+    }
+
     private sealed class DeviceCodeRequest {
         public string? ClientId { get; set; }
         public string? AuthBaseUrl { get; set; } = "https://github.com";
@@ -381,5 +447,29 @@ internal sealed class WebApi {
         public int ExitCode { get; set; }
         public string Output { get; set; } = string.Empty;
         public string Error { get; set; } = string.Empty;
+    }
+
+    private sealed class RepoStatusResponse {
+        public string Repo { get; set; } = string.Empty;
+        public string? DefaultBranch { get; set; }
+        public bool WorkflowExists { get; set; }
+        public bool WorkflowManaged { get; set; }
+        public bool ConfigExists { get; set; }
+        public string? Error { get; set; }
+    }
+
+    private static bool TryParseRepo(string repo, out string owner, out string name) {
+        owner = string.Empty;
+        name = string.Empty;
+        if (string.IsNullOrWhiteSpace(repo)) {
+            return false;
+        }
+        var parts = repo.Split('/', 2, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2) {
+            return false;
+        }
+        owner = parts[0];
+        name = parts[1];
+        return !string.IsNullOrWhiteSpace(owner) && !string.IsNullOrWhiteSpace(name);
     }
 }

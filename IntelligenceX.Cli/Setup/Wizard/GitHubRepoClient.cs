@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
@@ -60,6 +61,33 @@ internal sealed class GitHubRepoClient : IDisposable {
         return repos;
     }
 
+    public async Task<string> GetDefaultBranchAsync(string owner, string repo) {
+        var json = await GetJsonAsync($"/repos/{owner}/{repo}").ConfigureAwait(false);
+        return json.GetProperty("default_branch").GetString() ?? "main";
+    }
+
+    public async Task<RepoFile?> TryGetFileAsync(string owner, string repo, string path, string branch) {
+        try {
+            var json = await GetJsonAsync($"/repos/{owner}/{repo}/contents/{path}?ref={branch}")
+                .ConfigureAwait(false);
+            if (!json.TryGetProperty("content", out var contentProperty)) {
+                return null;
+            }
+            var content = contentProperty.GetString();
+            var sha = json.GetProperty("sha").GetString();
+            if (string.IsNullOrWhiteSpace(content) || string.IsNullOrWhiteSpace(sha)) {
+                return null;
+            }
+
+            var normalized = content.Replace("\n", string.Empty).Replace("\r", string.Empty);
+            var bytes = Convert.FromBase64String(normalized);
+            var text = Encoding.UTF8.GetString(bytes);
+            return new RepoFile(sha, text);
+        } catch {
+            return null;
+        }
+    }
+
     private async Task<JsonElement> GetJsonAsync(string url) {
         using var response = await _http.GetAsync(url).ConfigureAwait(false);
         var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -99,5 +127,15 @@ internal sealed class GitHubRepoClient : IDisposable {
         public string FullName { get; }
         public bool Private { get; }
         public DateTimeOffset? UpdatedAt { get; }
+    }
+
+    public sealed class RepoFile {
+        public RepoFile(string sha, string content) {
+            Sha = sha;
+            Content = content;
+        }
+
+        public string Sha { get; }
+        public string Content { get; }
     }
 }
