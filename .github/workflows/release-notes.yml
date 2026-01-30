@@ -128,7 +128,7 @@ jobs:
           has_label() {
             local labels_lc
             labels_lc="$(echo ",${1}," | tr '[:upper:]' '[:lower:]')"
-            echo "${labels_lc}" | grep -q ",${2},"
+            echo "${labels_lc}" | grep -Fq ",${2},"
           }
           pr_branch="$(sanitize_branch "${pr_branch}")"
           pr_labels="$(normalize_labels "${pr_labels}")"
