@@ -138,6 +138,16 @@ internal static class WebStaticAssets {
 
           <label>Config JSON</label>
           <textarea id=""configJson"" rows=""6"" placeholder=""{ ... }""></textarea>
+          <label>Config preset name</label>
+          <input id=""presetName"" placeholder=""my preset"" />
+          <div class=""row"">
+            <button id=""savePreset"">Save preset</button>
+            <button id=""loadPreset"">Load preset</button>
+            <button id=""deletePreset"">Delete preset</button>
+          </div>
+          <label>Saved presets</label>
+          <select id=""presetList""></select>
+          <p class=""hint"">Presets are stored locally in your browser.</p>
           <label>Workflow preview</label>
           <textarea id=""workflowPreview"" rows=""6"" readonly placeholder=""Load workflow preview to inspect the file.""></textarea>
           <label>Config path</label>
@@ -196,6 +206,11 @@ const skipSecret = document.getElementById('skipSecret');
 const explicitSecrets = document.getElementById('explicitSecrets');
 const dryRun = document.getElementById('dryRun');
 const configJson = document.getElementById('configJson');
+const presetName = document.getElementById('presetName');
+const presetList = document.getElementById('presetList');
+const savePreset = document.getElementById('savePreset');
+const loadPreset = document.getElementById('loadPreset');
+const deletePreset = document.getElementById('deletePreset');
 const workflowPreview = document.getElementById('workflowPreview');
 const configPath = document.getElementById('configPath');
 const authB64 = document.getElementById('authB64');
@@ -268,6 +283,9 @@ function updateControls() {
   const hasAuthBundle = authB64.value.trim().length > 0 || authB64Path.value.trim().length > 0;
   const needsAuthBundle = operation.value === 'update-secret'
     || (operation.value === 'setup' && !skipSecret.checked);
+  const hasConfigJson = configJson.value.trim().length > 0;
+  const hasPresetName = presetName.value.trim().length > 0;
+  const hasPresetSelected = !!presetList.value;
 
   loadRepos.disabled = !hasToken;
   inspect.disabled = !hasRepo || !hasToken;
@@ -281,6 +299,10 @@ function updateControls() {
   const allowPlanApply = hasRepo && hasToken && (!needsAuthBundle || hasAuthBundle);
   document.getElementById('plan').disabled = !allowPlanApply;
   document.getElementById('apply').disabled = !allowPlanApply;
+
+  savePreset.disabled = !hasPresetName || !hasConfigJson;
+  loadPreset.disabled = !hasPresetSelected;
+  deletePreset.disabled = !hasPresetSelected;
 }
 
 function updateOperationHint() {
@@ -452,6 +474,35 @@ function addInstallationOption(id, login) {
   option.value = id;
   option.textContent = `${login} (id ${id})`;
   installation.appendChild(option);
+}
+
+function readPresets() {
+  try {
+    const raw = localStorage.getItem('ix.setup.presets');
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePresets(presets) {
+  localStorage.setItem('ix.setup.presets', JSON.stringify(presets));
+}
+
+function refreshPresets() {
+  const presets = readPresets().slice().sort((a, b) => a.name.localeCompare(b.name));
+  presetList.innerHTML = '';
+  presets.forEach(item => {
+    const option = document.createElement('option');
+    option.value = item.name;
+    option.textContent = item.name;
+    presetList.appendChild(option);
+  });
+  updateControls();
 }
 
 deviceStart.addEventListener('click', async () => {
@@ -738,6 +789,56 @@ loadWorkflow.addEventListener('click', async () => {
   updateControls();
 });
 
+savePreset.addEventListener('click', () => {
+  const name = presetName.value.trim();
+  const content = configJson.value.trim();
+  if (!name || !content) {
+    write('Provide preset name and config JSON.');
+    return;
+  }
+  const presets = readPresets();
+  const existing = presets.find(item => item.name === name);
+  if (existing) {
+    existing.content = content;
+  } else {
+    presets.push({ name, content });
+  }
+  writePresets(presets);
+  refreshPresets();
+  setSummary(`Saved preset '${name}'.`);
+});
+
+loadPreset.addEventListener('click', () => {
+  const name = presetList.value;
+  if (!name) {
+    write('Select a preset to load.');
+    return;
+  }
+  const presets = readPresets();
+  const preset = presets.find(item => item.name === name);
+  if (!preset) {
+    write('Preset not found.');
+    refreshPresets();
+    return;
+  }
+  configJson.value = preset.content || '';
+  withConfig.checked = true;
+  setSummary(`Loaded preset '${name}'.`);
+  updateControls();
+});
+
+deletePreset.addEventListener('click', () => {
+  const name = presetList.value;
+  if (!name) {
+    write('Select a preset to delete.');
+    return;
+  }
+  const presets = readPresets().filter(item => item.name !== name);
+  writePresets(presets);
+  refreshPresets();
+  setSummary(`Deleted preset '${name}'.`);
+});
+
 function resolveWithConfig() {
   return withConfig.checked
     || configJson.value.trim().length > 0
@@ -776,6 +877,8 @@ skipSecret.addEventListener('change', () => updateControls());
 appId.addEventListener('input', () => updateControls());
 appPem.addEventListener('input', () => updateControls());
 installation.addEventListener('change', () => updateControls());
+presetName.addEventListener('input', () => updateControls());
+presetList.addEventListener('change', () => updateControls());
 
 document.getElementById('plan').addEventListener('click', async () => {
   write('Planning...');
@@ -882,6 +985,7 @@ document.getElementById('apply').addEventListener('click', async () => {
 });
 
 updateOperationHint();
+refreshPresets();
 updateControls();";
 
     private const string StylesCss = @"body {

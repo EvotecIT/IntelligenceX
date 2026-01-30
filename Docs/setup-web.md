@@ -15,6 +15,7 @@ Operations available:
 - Optional GitHub App manifest flow (create app + installation token)
 - Load existing config from a repo (manage existing setup)
 - Load workflow preview for the managed workflow
+- Save/load config presets in the browser
 
 Advanced options:
 - Provider toggle (openai | copilot)
