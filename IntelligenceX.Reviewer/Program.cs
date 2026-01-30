@@ -269,11 +269,6 @@ public static class ReviewerApp {
                 .ConfigureAwait(false);
             extras.IssueCommentsSection = BuildIssueCommentsSection(comments, settings);
         }
-        if (settings.IncludeReviewComments) {
-            var comments = await github.ListPullRequestReviewCommentsAsync(context.Owner, context.Repo, context.Number, settings.MaxComments, cancellationToken)
-                .ConfigureAwait(false);
-            extras.ReviewCommentsSection = BuildReviewCommentsSection(comments, settings);
-        }
         if (settings.IncludeReviewThreads) {
             var threads = await github.ListPullRequestReviewThreadsAsync(context.Owner, context.Repo, context.Number,
                     settings.ReviewThreadsMax, settings.ReviewThreadsMaxComments, cancellationToken)
@@ -282,6 +277,11 @@ public static class ReviewerApp {
                 await AutoResolveStaleThreadsAsync(github, threads, settings, cancellationToken).ConfigureAwait(false);
             }
             extras.ReviewThreadsSection = BuildReviewThreadsSection(threads, settings);
+        }
+        if (settings.IncludeReviewComments && string.IsNullOrEmpty(extras.ReviewThreadsSection)) {
+            var comments = await github.ListPullRequestReviewCommentsAsync(context.Owner, context.Repo, context.Number, settings.MaxComments, cancellationToken)
+                .ConfigureAwait(false);
+            extras.ReviewCommentsSection = BuildReviewCommentsSection(comments, settings);
         }
         if (settings.IncludeRelatedPrs) {
             var query = ResolveRelatedPrsQuery(context, settings);
@@ -359,7 +359,7 @@ public static class ReviewerApp {
     }
 
     private static string BuildReviewThreadsSection(IReadOnlyList<PullRequestReviewThread> threads, ReviewSettings settings) {
-        if (threads.Count == 0) {
+        if (threads.Count == 0 || settings.ReviewThreadsMaxComments <= 0) {
             return string.Empty;
         }
 

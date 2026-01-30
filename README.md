@@ -257,6 +257,7 @@ Notes:
 - `includeReviewThreads` adds an "Other Reviews" section that triages existing review threads.
 - `reviewThreadsAutoResolveStale` can auto-resolve stale threads (requires `pull-requests: write`).
 - Set `reviewThreadsMax` or `reviewThreadsMaxComments` to `0` to disable review-thread context.
+- When review-thread context is included, the reviewer suppresses the separate "Review comments" block to avoid duplicate content.
 
 ## CLI setup (GitHub Actions)
 

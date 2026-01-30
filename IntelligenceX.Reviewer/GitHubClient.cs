@@ -223,7 +223,7 @@ internal sealed class GitHubClient : IDisposable {
                 var comments = new List<PullRequestReviewThreadComment>();
                 if (commentNodes is not null) {
                     foreach (var comment in commentNodes) {
-                        if (comments.Count >= maxComments) {
+                        if (comments.Count >= commentLimit) {
                             break;
                         }
                         var commentObj = comment.AsObject();
