@@ -44,6 +44,7 @@ internal static class ReviewInlineParser {
         "inline comments",
         "todo list",
         "review summary",
+        "other reviews",
         "code quality assessment",
         "excellent aspects",
         "security & performance",

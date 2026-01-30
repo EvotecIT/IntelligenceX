@@ -217,6 +217,15 @@ You can configure the reviewer with environment variables **or** a repo-local fi
     "retryDelaySeconds": 5,
     "retryMaxDelaySeconds": 30,
     "commentSearchLimit": 500,
+    "includeReviewThreads": false,
+    "reviewThreadsIncludeBots": false,
+    "reviewThreadsIncludeResolved": false,
+    "reviewThreadsIncludeOutdated": true,
+    "reviewThreadsMax": 10,
+    "reviewThreadsMaxComments": 3,
+    "reviewThreadsAutoResolveStale": false,
+    "reviewThreadsAutoResolveBotsOnly": true,
+    "reviewThreadsAutoResolveMax": 10,
     "commentMode": "sticky",
     "contextDenyEnabled": true,
     "contextDenyPatterns": [
@@ -245,6 +254,10 @@ Notes:
 - Set `maxInlineComments` to `0` to disable inline review comments.
 - `reasoningEffort`/`reasoningSummary` map to Codex reasoning controls.
 - Context deny patterns are regex with a short timeout; invalid patterns are ignored with a warning.
+- `includeReviewThreads` adds an "Other Reviews" section that triages existing review threads.
+- `reviewThreadsAutoResolveStale` can auto-resolve stale threads (requires `pull-requests: write`).
+- Set `reviewThreadsMax` or `reviewThreadsMaxComments` to `0` to disable review-thread context.
+- When review-thread context is included, the reviewer suppresses the separate "Review comments" block to avoid duplicate content.
 
 ## CLI setup (GitHub Actions)
 
@@ -285,6 +298,9 @@ Common inputs/env:
 - `skip_titles`, `skip_labels`, `skip_paths`, `skip_draft`
 - `retry_count`, `retry_delay_seconds`, `retry_max_delay_seconds`
 - `context_deny_enabled`, `context_deny_patterns`
+- `include_review_threads`, `review_threads_include_bots`, `review_threads_include_resolved`, `review_threads_include_outdated`
+- `review_threads_max`, `review_threads_max_comments`
+- `review_threads_auto_resolve_stale`, `review_threads_auto_resolve_bots_only`, `review_threads_auto_resolve_max`
 - `redact_pii`, `redaction_patterns`, `redaction_replacement`
 - `prompt_template` / `prompt_template_path`
 - `summary_template` / `summary_template_path`

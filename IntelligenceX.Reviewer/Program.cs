@@ -269,7 +269,16 @@ public static class ReviewerApp {
                 .ConfigureAwait(false);
             extras.IssueCommentsSection = BuildIssueCommentsSection(comments, settings);
         }
-        if (settings.IncludeReviewComments) {
+        if (settings.IncludeReviewThreads) {
+            var threads = await github.ListPullRequestReviewThreadsAsync(context.Owner, context.Repo, context.Number,
+                    settings.ReviewThreadsMax, settings.ReviewThreadsMaxComments, cancellationToken)
+                .ConfigureAwait(false);
+            if (settings.ReviewThreadsAutoResolveStale) {
+                await AutoResolveStaleThreadsAsync(github, threads, settings, cancellationToken).ConfigureAwait(false);
+            }
+            extras.ReviewThreadsSection = BuildReviewThreadsSection(threads, settings);
+        }
+        if (settings.IncludeReviewComments && string.IsNullOrEmpty(extras.ReviewThreadsSection)) {
             var comments = await github.ListPullRequestReviewCommentsAsync(context.Owner, context.Repo, context.Number, settings.MaxComments, cancellationToken)
                 .ConfigureAwait(false);
             extras.ReviewCommentsSection = BuildReviewCommentsSection(comments, settings);
@@ -349,6 +358,102 @@ public static class ReviewerApp {
         return sb.ToString();
     }
 
+    private static string BuildReviewThreadsSection(IReadOnlyList<PullRequestReviewThread> threads, ReviewSettings settings) {
+        if (threads.Count == 0 || settings.ReviewThreadsMaxComments <= 0) {
+            return string.Empty;
+        }
+
+        var lines = new List<string>();
+        foreach (var thread in threads) {
+            if (!settings.ReviewThreadsIncludeResolved && thread.IsResolved) {
+                continue;
+            }
+            if (!settings.ReviewThreadsIncludeOutdated && thread.IsOutdated) {
+                continue;
+            }
+
+            var status = thread.IsResolved && thread.IsOutdated
+                ? "resolved (stale)"
+                : thread.IsResolved
+                    ? "resolved"
+                    : thread.IsOutdated
+                        ? "stale"
+                        : "active";
+            var perThread = 0;
+            foreach (var comment in thread.Comments) {
+                if (perThread >= settings.ReviewThreadsMaxComments) {
+                    break;
+                }
+                if (!ShouldIncludeThreadComment(comment.Author, comment.Body, settings)) {
+                    continue;
+                }
+                var author = string.IsNullOrWhiteSpace(comment.Author) ? "unknown" : comment.Author!;
+                var body = TrimComment(comment.Body, settings.MaxCommentChars);
+                var location = string.IsNullOrWhiteSpace(comment.Path)
+                    ? string.Empty
+                    : comment.Line.HasValue
+                        ? $" ({comment.Path}:{comment.Line.Value})"
+                        : $" ({comment.Path})";
+                lines.Add($"- [{status}] {author}{location}: {body}");
+                perThread++;
+            }
+        }
+
+        if (lines.Count == 0) {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine();
+        sb.AppendLine("Other reviewer threads (status: active/resolved/stale):");
+        foreach (var line in lines) {
+            sb.AppendLine(line);
+        }
+        sb.AppendLine();
+        return sb.ToString();
+    }
+
+    private static async Task AutoResolveStaleThreadsAsync(GitHubClient github, IReadOnlyList<PullRequestReviewThread> threads,
+        ReviewSettings settings, CancellationToken cancellationToken) {
+        var resolved = 0;
+        foreach (var thread in threads) {
+            if (resolved >= settings.ReviewThreadsAutoResolveMax) {
+                break;
+            }
+            if (thread.IsResolved || !thread.IsOutdated) {
+                continue;
+            }
+            if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread)) {
+                continue;
+            }
+            if (settings.ReviewThreadsAutoResolveBotsOnly && thread.TotalComments > thread.Comments.Count) {
+                continue;
+            }
+
+            try {
+                await github.ResolveReviewThreadAsync(thread.Id, cancellationToken).ConfigureAwait(false);
+                resolved++;
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {ex.Message}");
+            }
+        }
+    }
+
+    private static bool ThreadHasOnlyBotComments(PullRequestReviewThread thread) {
+        if (thread.Comments.Count == 0) {
+            return false;
+        }
+        foreach (var comment in thread.Comments) {
+            if (string.IsNullOrWhiteSpace(comment.Author)) {
+                return false;
+            }
+            if (!IsBotAuthor(comment.Author)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static string BuildRelatedPrsSection(PullRequestContext context, IReadOnlyList<RelatedPullRequest> related) {
         if (related.Count == 0) {
             return string.Empty;
@@ -406,6 +511,26 @@ public static class ReviewerApp {
             }
         }
         if (!string.IsNullOrWhiteSpace(author)) {
+            if (IsBotAuthor(author)) {
+                return false;
+            }
+        }
+        if (body.Contains("<!-- intelligencex", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+        return true;
+    }
+
+    private static bool ShouldIncludeThreadComment(string? author, string body, ReviewSettings settings) {
+        if (string.IsNullOrWhiteSpace(body)) {
+            return false;
+        }
+        if (settings.ContextDenyEnabled && settings.ContextDenyPatterns.Count > 0) {
+            if (ContextDenyMatcher.Matches(body, settings.ContextDenyPatterns)) {
+                return false;
+            }
+        }
+        if (!settings.ReviewThreadsIncludeBots && !string.IsNullOrWhiteSpace(author)) {
             if (IsBotAuthor(author)) {
                 return false;
             }

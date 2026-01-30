@@ -28,6 +28,7 @@ Return your review in markdown with these sections in this exact order, using ma
 - Inline Comments 🔍
 - Todo List ✅
 - Review Summary 📝
+- Other Reviews 🧩
 - Code Quality Assessment ⭐
 - Excellent Aspects ✨
 - Security & Performance 🔐⚡
@@ -38,6 +39,8 @@ Return your review in markdown with these sections in this exact order, using ma
 {{NextStepsSection}}
 In Code Quality Assessment, include a 1-5 star rating as the first bullet (e.g., ⭐⭐⭐⭐☆).
 If there are no inline comments, write "None." under Inline Comments.
+If no reviewer thread context is provided, omit the Other Reviews section.
+If reviewer thread context is provided, label each item as stale, resolved, actionable, or noise.
 Keep each section to a maximum of 8 bullet points.
 
 PR Context:
@@ -47,3 +50,4 @@ Description:
 
 Changed files:
 {{Files}}
+{{ReviewThreadsSection}}
