@@ -41,6 +41,7 @@ internal static class Program {
         failed += Run("Review retry rethrows", TestReviewRetryRethrows);
         failed += Run("Context deny invalid regex", TestContextDenyInvalidRegex);
         failed += Run("Context deny timeout", TestContextDenyTimeout);
+        failed += Run("Review summary parser", TestReviewSummaryParser);
 #endif
 
         Console.WriteLine(failed == 0 ? "All tests passed." : $"{failed} test(s) failed.");
@@ -376,6 +377,27 @@ internal static class Program {
         var input = new string('a', 20000) + "!";
         var matched = ContextDenyMatcher.Matches(input, new[] { "(a+)+$" });
         AssertEqual(false, matched, "timeout match");
+    }
+
+    private static void TestReviewSummaryParser() {
+        var body = string.Join("\n", new[] {
+            "## IntelligenceX Review",
+            $"Reviewing PR #1: **Test**",
+            $"{ReviewFormatter.ReviewedCommitMarker} `abc1234`",
+            "",
+            "Summary text"
+        });
+
+        var ok = ReviewSummaryParser.TryGetReviewedCommit(body, out var commit);
+        AssertEqual(true, ok, "commit parse ok");
+        AssertEqual("abc1234", commit, "commit value");
+
+        var noBacktick = $"{ReviewFormatter.ReviewedCommitMarker} abc1234";
+        ok = ReviewSummaryParser.TryGetReviewedCommit(noBacktick, out _);
+        AssertEqual(false, ok, "no backtick");
+
+        ok = ReviewSummaryParser.TryGetReviewedCommit("No marker here", out _);
+        AssertEqual(false, ok, "missing marker");
     }
 #endif
 

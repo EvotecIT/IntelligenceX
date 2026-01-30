@@ -871,31 +871,7 @@ public static class ReviewerApp {
     }
 
     private static string? ExtractReviewedCommit(string body) {
-        if (string.IsNullOrWhiteSpace(body)) {
-            return null;
-        }
-        var marker = ReviewFormatter.ReviewedCommitMarker;
-        using var reader = new StringReader(body);
-        string? line;
-        while ((line = reader.ReadLine()) is not null) {
-            var index = line.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-            if (index < 0) {
-                continue;
-            }
-            var slice = line.Substring(index + marker.Length);
-            var start = slice.IndexOf('`');
-            if (start < 0) {
-                return null;
-            }
-            slice = slice.Substring(start + 1);
-            var end = slice.IndexOf('`');
-            if (end < 0) {
-                return null;
-            }
-            var token = slice.Substring(0, end).Trim();
-            return token.Length == 0 ? null : token;
-        }
-        return null;
+        return ReviewSummaryParser.TryGetReviewedCommit(body, out var commit) ? commit : null;
     }
 
     private static async Task<long?> CreateOrUpdateProgressCommentAsync(GitHubClient github, PullRequestContext context,
