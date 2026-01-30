@@ -59,7 +59,10 @@ internal static class WizardRunner {
 
         if (state.Operation == WizardOperation.Setup) {
             state.ConfigMode = WizardPrompts.PromptConfigMode();
-            ApplyConfigSelection(state);
+            await ApplyConfigSelectionAsync(state).ConfigureAwait(false);
+            if (WizardPrompts.PromptViewWorkflowPreview()) {
+                await ShowWorkflowPreviewAsync(state).ConfigureAwait(false);
+            }
         } else {
             state.WithConfig = false;
         }
@@ -333,7 +336,7 @@ internal static class WizardRunner {
         state.SelectedRepos.AddRange(selectedRepos);
     }
 
-    private static void ApplyConfigSelection(WizardState state) {
+    private static async Task ApplyConfigSelectionAsync(WizardState state) {
         if (state.ConfigMode == ConfigMode.None) {
             state.WithConfig = false;
             return;
@@ -342,6 +345,36 @@ internal static class WizardRunner {
         if (state.ConfigMode == ConfigMode.Preset) {
             state.Preset = WizardPrompts.PromptPreset();
             state.WithConfig = true;
+            return;
+        }
+
+        if (state.ConfigMode == ConfigMode.Existing) {
+            state.WithConfig = true;
+            var repo = SelectRepoForInspection(state, "Select repository to load config from:");
+            if (string.IsNullOrWhiteSpace(repo)) {
+                state.WithConfig = false;
+                return;
+            }
+            var (content, branch) = await TryLoadRepoFileAsync(state, repo, ".intelligencex/config.json")
+                .ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(content)) {
+                AnsiConsole.MarkupLine("[yellow]Config not found in default branch.[/]");
+                state.WithConfig = false;
+                return;
+            }
+            if (!WizardConfigEditor.IsValidJson(content)) {
+                AnsiConsole.MarkupLine("[red]Config JSON is invalid. Skipping config.[/]");
+                state.WithConfig = false;
+                return;
+            }
+            state.ConfigJson = content;
+            AnsiConsole.MarkupLine($"[green]Loaded config from {repo} ({branch ?? "default"}).[/]");
+            if (WizardPrompts.PromptEditLoadedConfig()) {
+                var edited = WizardConfigEditor.EditInEditor(state.ConfigJson);
+                if (!string.IsNullOrWhiteSpace(edited)) {
+                    state.ConfigJson = edited;
+                }
+            }
             return;
         }
 
@@ -407,6 +440,32 @@ internal static class WizardRunner {
         return state.Preset == ConfigPreset.Minimal ? "summary" : "hybrid";
     }
 
+    private static async Task ShowWorkflowPreviewAsync(WizardState state) {
+        if (string.IsNullOrWhiteSpace(state.GitHubToken)) {
+            AnsiConsole.MarkupLine("[yellow]GitHub token is required to load workflow.[/]");
+            return;
+        }
+        var repo = SelectRepoForInspection(state, "Select repository to preview workflow:");
+        if (string.IsNullOrWhiteSpace(repo)) {
+            return;
+        }
+        var (content, branch) = await TryLoadRepoFileAsync(state, repo, ".github/workflows/review-intelligencex.yml")
+            .ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(content)) {
+            AnsiConsole.MarkupLine("[yellow]Workflow not found in default branch.[/]");
+            return;
+        }
+        var managed = content.Contains("INTELLIGENCEX:BEGIN", StringComparison.Ordinal);
+        var header = $"Workflow preview ({(managed ? "managed" : "unmanaged")})";
+        AnsiConsole.Write(new Panel(new Text(content)) {
+            Header = new PanelHeader(header),
+            Border = BoxBorder.Rounded
+        });
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine($"[grey]Loaded from {repo} ({branch ?? "default"}).[/]");
+        AnsiConsole.WriteLine();
+    }
+
     private static async Task<List<string>> LoadRepositoriesAsync(WizardState state) {
         if (string.IsNullOrWhiteSpace(state.GitHubToken)) {
             return new List<string>();
@@ -434,6 +493,48 @@ internal static class WizardRunner {
         return repos
             .Where(repo => repo.Contains(filter, StringComparison.OrdinalIgnoreCase))
             .ToList();
+    }
+
+    private static string? SelectRepoForInspection(WizardState state, string title) {
+        if (state.SelectedRepos.Count == 0) {
+            return null;
+        }
+        if (state.SelectedRepos.Count == 1) {
+            return state.SelectedRepos[0];
+        }
+        return WizardPrompts.PromptRepoForInspection(state.SelectedRepos, title);
+    }
+
+    private static async Task<(string? Content, string? Branch)> TryLoadRepoFileAsync(WizardState state, string repo, string path) {
+        if (string.IsNullOrWhiteSpace(state.GitHubToken)) {
+            return (null, null);
+        }
+        if (!TryParseRepo(repo, out var owner, out var name)) {
+            return (null, null);
+        }
+        try {
+            using var client = new GitHubRepoClient(state.GitHubToken, DefaultGitHubApi);
+            var defaultBranch = await client.GetDefaultBranchAsync(owner, name).ConfigureAwait(false);
+            var file = await client.TryGetFileAsync(owner, name, path, defaultBranch).ConfigureAwait(false);
+            return (file?.Content, defaultBranch);
+        } catch {
+            return (null, null);
+        }
+    }
+
+    private static bool TryParseRepo(string repo, out string owner, out string name) {
+        owner = string.Empty;
+        name = string.Empty;
+        if (string.IsNullOrWhiteSpace(repo)) {
+            return false;
+        }
+        var parts = repo.Split('/', 2, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2) {
+            return false;
+        }
+        owner = parts[0];
+        name = parts[1];
+        return !string.IsNullOrWhiteSpace(owner) && !string.IsNullOrWhiteSpace(name);
     }
 
     private static void WriteHelp() {

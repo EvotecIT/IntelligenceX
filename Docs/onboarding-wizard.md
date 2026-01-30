@@ -22,6 +22,7 @@ See `Docs/setup-web.md` for limitations and security notes.
 - Authenticates GitHub (device flow, PAT, or GitHub App)
 - Lets you pick single or multiple repos
 - Builds reviewer config via presets or custom JSON
+- Can load existing config from a repo and preview the workflow
 - Logs into ChatGPT (native transport) if secrets are needed
 - Creates PRs with workflow/config updates
 
@@ -48,6 +49,7 @@ See `Docs/setup-web.md` for limitations and security notes.
 
 - Workflow only (no config)
 - Presets (balanced, picky, security, performance, tests, minimal)
+- Load existing config from a repo
 - Custom JSON (editor, path, or paste)
 
 ## Manual secret mode

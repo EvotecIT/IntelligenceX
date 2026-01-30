@@ -22,9 +22,13 @@ internal static class WizardConfigEditor {
 }";
 
     public static string? EditInEditor() {
+        return EditInEditor(Template);
+    }
+
+    public static string? EditInEditor(string? initialContent) {
         var tempPath = CreateTempFile();
         try {
-            File.WriteAllText(tempPath, Template);
+            File.WriteAllText(tempPath, string.IsNullOrWhiteSpace(initialContent) ? Template : initialContent);
             OpenEditor(tempPath);
             AnsiConsole.MarkupLine("[grey]Edit the file, save it, then press Enter to continue.[/]");
             Console.ReadLine();

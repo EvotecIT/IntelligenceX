@@ -15,6 +15,7 @@ internal enum SetupScope {
 internal enum ConfigMode {
     None,
     Preset,
+    Existing,
     CustomJson
 }
 

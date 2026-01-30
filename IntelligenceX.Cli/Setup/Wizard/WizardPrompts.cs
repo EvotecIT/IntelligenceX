@@ -242,12 +242,29 @@ internal static class WizardPrompts {
         return AnsiConsole.Prompt(
             new SelectionPrompt<ConfigMode>()
                 .Title("Configuration:")
-                .AddChoices(ConfigMode.None, ConfigMode.Preset, ConfigMode.CustomJson)
+                .AddChoices(ConfigMode.None, ConfigMode.Preset, ConfigMode.Existing, ConfigMode.CustomJson)
                 .UseConverter(mode => mode switch {
                     ConfigMode.None => "Workflow only (no config)",
                     ConfigMode.Preset => "Preset (recommended)",
+                    ConfigMode.Existing => "Load existing config from repo",
                     _ => "Custom JSON"
                 }));
+    }
+
+    public static string PromptRepoForInspection(IReadOnlyList<string> repos, string title) {
+        return AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title(title)
+                .PageSize(12)
+                .AddChoices(repos));
+    }
+
+    public static bool PromptViewWorkflowPreview() {
+        return AnsiConsole.Confirm("View existing workflow preview?", false);
+    }
+
+    public static bool PromptEditLoadedConfig() {
+        return AnsiConsole.Confirm("Edit loaded config in editor?", false);
     }
 
     public static ConfigSource PromptConfigSource() {
