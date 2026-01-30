@@ -682,11 +682,11 @@ dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release notes
 
 Template workflow is available at `IntelligenceX.Cli/Templates/release-notes.yml`.
 It runs on tag push (any tag) and supports manual runs with `from`/`to`/`version` inputs.
-It updates `CHANGELOG.md` on the default branch.
+It updates `CHANGELOG.md` on the default branch and keeps the workflow YAML minimal by passing inputs through env vars.
 
 Optional PR mode:
 - Set `create_pr: 'true'` to open/update a PR instead of pushing directly.
-- Optional inputs: `pr_branch`, `pr_title`, `pr_body`, `pr_labels`, `skip_review`.
+- Optional inputs: `pr_branch`, `pr_title`, `pr_body`, `pr_labels`, `skip_review`, `repo_slug`.
 - When `skip_review: 'true'` (default), the workflow prefixes `[skip-review]` to the PR title
   and applies the `skip-review` label (so IntelligenceX can skip its own release-notes PRs).
 Requires workflow permissions: `contents: write` + `pull-requests: write`.
@@ -698,6 +698,30 @@ Required secret:
 Optional overrides:
 - `OPENAI_MODEL`
 - `OPENAI_TRANSPORT`
+
+Advanced environment overrides (optional):
+- `INTELLIGENCEX_RELEASE_FROM`, `INTELLIGENCEX_RELEASE_TO`, `INTELLIGENCEX_RELEASE_VERSION`
+- `INTELLIGENCEX_RELEASE_CREATE_PR`, `INTELLIGENCEX_RELEASE_COMMIT`, `INTELLIGENCEX_RELEASE_SKIP_REVIEW`
+- `INTELLIGENCEX_RELEASE_PR_BRANCH`, `INTELLIGENCEX_RELEASE_PR_TITLE`, `INTELLIGENCEX_RELEASE_PR_BODY`, `INTELLIGENCEX_RELEASE_PR_LABELS`
+- `INTELLIGENCEX_RELEASE_REPO_SLUG`
+
+### Release reviewer automation
+
+Workflow: `.github/workflows/release-reviewer.yml`
+This builds the reviewer for linux/win/osx, zips assets, and publishes to GitHub Releases.
+Inputs:
+- `release_tag` (optional, defaults to timestamp)
+- `release_title` (optional)
+- `release_notes` (optional)
+- `release_repo` (owner/name, default `EvotecIT/github-actions`)
+- `rids` (comma-separated, optional)
+- `framework` (optional)
+- `configuration` (optional)
+
+Environment overrides (optional):
+- `INTELLIGENCEX_REVIEWER_TAG`, `INTELLIGENCEX_REVIEWER_TITLE`, `INTELLIGENCEX_REVIEWER_NOTES`
+- `INTELLIGENCEX_REVIEWER_REPO_SLUG`, `INTELLIGENCEX_REVIEWER_RIDS`
+- `INTELLIGENCEX_REVIEWER_FRAMEWORK`, `INTELLIGENCEX_REVIEWER_CONFIGURATION`
 
 ## Copilot CLI (GitHub)
 
