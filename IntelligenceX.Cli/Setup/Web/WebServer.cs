@@ -52,6 +52,14 @@ internal sealed class WebServer : IDisposable {
                     await HandleAsync(context).ConfigureAwait(false);
                 } catch (Exception ex) {
                     try {
+                        if (context.Response.OutputStream.CanWrite) {
+                            context.Response.StatusCode = 500;
+                            await WriteTextAsync(context.Response, "Internal server error.").ConfigureAwait(false);
+                        }
+                    } catch {
+                        // Best effort response.
+                    }
+                    try {
                         Console.Error.WriteLine($"Web request failed: {ex.Message}");
                     } catch {
                         // Best effort logging.

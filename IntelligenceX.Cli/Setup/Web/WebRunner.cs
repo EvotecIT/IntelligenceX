@@ -32,7 +32,13 @@ internal static class WebRunner {
 
         using var server = new WebServer(url);
         Console.WriteLine($"Starting setup UI at {url}");
-        server.Start();
+        try {
+            server.Start();
+        } catch (Exception ex) {
+            Console.Error.WriteLine($"Failed to start setup UI at {url}: {ex.Message}");
+            Console.Error.WriteLine("Ensure the port is free and you have permission to bind the URL.");
+            return 1;
+        }
         TryOpenUrl(url);
 
         Console.WriteLine("Press Ctrl+C to stop.");

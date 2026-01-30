@@ -13,7 +13,6 @@ internal sealed class SetupPlan {
     public string RepoFullName { get; }
     public string? GitHubClientId { get; init; }
     public string? GitHubToken { get; init; }
-    public string? GitHubAuthLabel { get; init; }
     public bool WithConfig { get; init; }
     public string? ConfigPath { get; init; }
     public string? ConfigJson { get; init; }

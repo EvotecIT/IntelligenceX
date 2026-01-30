@@ -92,7 +92,7 @@ internal static class WizardRunner {
 
         var plan = BuildPlan(state, state.SelectedRepos[0]);
         var workflowStatus = await GetWorkflowStatusAsync(state).ConfigureAwait(false);
-        WizardSummary.Render(plan, state.SelectedRepos, workflowStatus, state.ConfigSourceLabel);
+        WizardSummary.Render(plan, state.SelectedRepos, workflowStatus, state.ConfigSourceLabel, DescribeAuth(state));
 
         if (!WizardPrompts.PromptConfirmApply()) {
             AnsiConsole.MarkupLine("[yellow]Cancelled.[/]");
@@ -134,7 +134,6 @@ internal static class WizardRunner {
         var plan = new SetupPlan(repo) {
             GitHubClientId = state.GitHubClientId,
             GitHubToken = state.GitHubToken,
-            GitHubAuthLabel = DescribeAuth(state),
             WithConfig = state.WithConfig,
             ConfigPath = state.ConfigPath,
             ConfigJson = state.ConfigJson,

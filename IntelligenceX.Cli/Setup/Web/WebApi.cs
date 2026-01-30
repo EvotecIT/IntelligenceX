@@ -58,19 +58,13 @@ internal sealed class WebApi {
             await HandleSetupAsync(context, dryRun: false).ConfigureAwait(false);
             return;
         }
-        if (path.StartsWith("/api/echo", StringComparison.OrdinalIgnoreCase)) {
-            await HandleEchoAsync(context).ConfigureAwait(false);
-            return;
-        }
 
         context.Response.StatusCode = 404;
         await WriteJsonAsync(context, new { error = "Not found" }).ConfigureAwait(false);
     }
 
     private async Task HandleReposAsync(System.Net.HttpListenerContext context) {
-        if (context.Request.HttpMethod != "POST") {
-            context.Response.StatusCode = 405;
-            await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
             return;
         }
 
@@ -119,9 +113,7 @@ internal sealed class WebApi {
     }
 
     private async Task HandleRepoStatusAsync(System.Net.HttpListenerContext context) {
-        if (context.Request.HttpMethod != "POST") {
-            context.Response.StatusCode = 405;
-            await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
             return;
         }
 
@@ -175,9 +167,7 @@ internal sealed class WebApi {
     }
 
     private async Task HandleRepoConfigAsync(System.Net.HttpListenerContext context) {
-        if (context.Request.HttpMethod != "POST") {
-            context.Response.StatusCode = 405;
-            await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
             return;
         }
 
@@ -216,9 +206,7 @@ internal sealed class WebApi {
     }
 
     private async Task HandleRepoWorkflowAsync(System.Net.HttpListenerContext context) {
-        if (context.Request.HttpMethod != "POST") {
-            context.Response.StatusCode = 405;
-            await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
             return;
         }
 
@@ -258,9 +246,7 @@ internal sealed class WebApi {
     }
 
     private async Task HandleDeviceCodeAsync(System.Net.HttpListenerContext context) {
-        if (context.Request.HttpMethod != "POST") {
-            context.Response.StatusCode = 405;
-            await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
             return;
         }
 
@@ -283,9 +269,7 @@ internal sealed class WebApi {
     }
 
     private async Task HandleDevicePollAsync(System.Net.HttpListenerContext context) {
-        if (context.Request.HttpMethod != "POST") {
-            context.Response.StatusCode = 405;
-            await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
             return;
         }
 
@@ -313,9 +297,7 @@ internal sealed class WebApi {
     }
 
     private async Task HandleAppManifestAsync(System.Net.HttpListenerContext context) {
-        if (context.Request.HttpMethod != "POST") {
-            context.Response.StatusCode = 405;
-            await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
             return;
         }
 
@@ -350,9 +332,7 @@ internal sealed class WebApi {
     }
 
     private async Task HandleAppInstallationsAsync(System.Net.HttpListenerContext context) {
-        if (context.Request.HttpMethod != "POST") {
-            context.Response.StatusCode = 405;
-            await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
             return;
         }
 
@@ -377,9 +357,7 @@ internal sealed class WebApi {
     }
 
     private async Task HandleAppTokenAsync(System.Net.HttpListenerContext context) {
-        if (context.Request.HttpMethod != "POST") {
-            context.Response.StatusCode = 405;
-            await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
             return;
         }
 
@@ -402,9 +380,7 @@ internal sealed class WebApi {
     }
 
     private async Task HandleSetupAsync(System.Net.HttpListenerContext context, bool dryRun) {
-        if (context.Request.HttpMethod != "POST") {
-            context.Response.StatusCode = 405;
-            await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
             return;
         }
 
@@ -567,22 +543,43 @@ internal sealed class WebApi {
         }
     }
 
-    private async Task HandleEchoAsync(System.Net.HttpListenerContext context) {
-        var body = await ReadBodyAsync(context).ConfigureAwait(false);
-        await WriteJsonAsync(context, new { ok = true, body }).ConfigureAwait(false);
-    }
-
     private async Task<string> ReadBodyAsync(System.Net.HttpListenerContext context) {
         using var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding ?? Encoding.UTF8);
         return await reader.ReadToEndAsync().ConfigureAwait(false);
     }
 
-    private Task WriteJsonAsync(System.Net.HttpListenerContext context, object payload) {
+    private async Task WriteJsonAsync(System.Net.HttpListenerContext context, object payload) {
         var json = JsonSerializer.Serialize(payload, _jsonOptions);
         var bytes = Encoding.UTF8.GetBytes(json);
         context.Response.ContentType = "application/json; charset=utf-8";
         context.Response.ContentLength64 = bytes.Length;
-        return context.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+        await context.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
+        context.Response.Close();
+    }
+
+    private async Task<bool> RequirePostJsonAsync(System.Net.HttpListenerContext context) {
+        if (!string.Equals(context.Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase)) {
+            context.Response.StatusCode = 405;
+            await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+            return false;
+        }
+        if (!IsJsonContentType(context.Request.ContentType)) {
+            context.Response.StatusCode = 415;
+            await WriteJsonAsync(context, new { error = "Content-Type must be application/json." }).ConfigureAwait(false);
+            return false;
+        }
+        return true;
+    }
+
+    private static bool IsJsonContentType(string? contentType) {
+        if (string.IsNullOrWhiteSpace(contentType)) {
+            return false;
+        }
+        var type = contentType.Split(';', 2)[0].Trim();
+        if (type.Equals("application/json", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+        return type.EndsWith("+json", StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class RepoListRequest {

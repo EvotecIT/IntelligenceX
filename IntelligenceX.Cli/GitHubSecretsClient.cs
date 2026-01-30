@@ -34,13 +34,20 @@ internal sealed class GitHubSecretsClient : IDisposable {
         await PutJsonAsync($"/repos/{owner}/{repo}/actions/secrets/{name}", payload).ConfigureAwait(false);
     }
 
-    public async Task SetOrgSecretAsync(string org, string name, string value, string visibility = "all") {
+    public async Task SetOrgSecretAsync(string org, string name, string value, string visibility = "all", IReadOnlyList<long>? selectedRepositoryIds = null) {
         var key = await GetPublicKeyAsync($"/orgs/{org}/actions/secrets/public-key").ConfigureAwait(false);
+        var normalizedVisibility = NormalizeVisibility(visibility);
+        if (normalizedVisibility == "selected" && (selectedRepositoryIds is null || selectedRepositoryIds.Count == 0)) {
+            throw new InvalidOperationException("Selected visibility requires repository IDs. Use all/private or provide selected repository IDs.");
+        }
         var payload = new Dictionary<string, object?> {
             ["encrypted_value"] = Encrypt(value, key.PublicKey),
             ["key_id"] = key.KeyId,
-            ["visibility"] = NormalizeVisibility(visibility)
+            ["visibility"] = normalizedVisibility
         };
+        if (normalizedVisibility == "selected") {
+            payload["selected_repository_ids"] = selectedRepositoryIds;
+        }
         await PutJsonAsync($"/orgs/{org}/actions/secrets/{name}", payload).ConfigureAwait(false);
     }
 
