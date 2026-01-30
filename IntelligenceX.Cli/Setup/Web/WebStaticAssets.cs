@@ -138,6 +138,8 @@ internal static class WebStaticAssets {
 
           <label>Config JSON</label>
           <textarea id=""configJson"" rows=""6"" placeholder=""{ ... }""></textarea>
+          <label>Workflow preview</label>
+          <textarea id=""workflowPreview"" rows=""6"" readonly placeholder=""Load workflow preview to inspect the file.""></textarea>
           <label>Config path</label>
           <input id=""configPath"" placeholder=""path to config.json"" />
           <p class=""hint"">Config JSON/path will auto-enable “Create config”.</p>
@@ -152,6 +154,7 @@ internal static class WebStaticAssets {
         <div class=""row"">
           <button id=""inspect"">Check existing setup</button>
           <button id=""loadConfig"">Load existing config</button>
+          <button id=""loadWorkflow"">Load workflow preview</button>
           <button id=""recommend"" disabled>Use recommendations</button>
           <button id=""plan"">Plan</button>
           <button id=""apply"">Apply</button>
@@ -193,6 +196,7 @@ const skipSecret = document.getElementById('skipSecret');
 const explicitSecrets = document.getElementById('explicitSecrets');
 const dryRun = document.getElementById('dryRun');
 const configJson = document.getElementById('configJson');
+const workflowPreview = document.getElementById('workflowPreview');
 const configPath = document.getElementById('configPath');
 const authB64 = document.getElementById('authB64');
 const authB64Path = document.getElementById('authB64Path');
@@ -207,6 +211,7 @@ const keepSecret = document.getElementById('keepSecret');
 const output = document.getElementById('output');
 const inspect = document.getElementById('inspect');
 const loadConfig = document.getElementById('loadConfig');
+const loadWorkflow = document.getElementById('loadWorkflow');
 const recommend = document.getElementById('recommend');
 const summary = document.getElementById('summary');
 const progress = document.getElementById('progress');
@@ -267,6 +272,7 @@ function updateControls() {
   loadRepos.disabled = !hasToken;
   inspect.disabled = !hasRepo || !hasToken;
   loadConfig.disabled = !hasToken || repoCount !== 1;
+  loadWorkflow.disabled = !hasToken || repoCount !== 1;
   devicePoll.disabled = deviceState === null;
 
   listInstalls.disabled = !appId.value.trim() || !appPem.value.trim();
@@ -691,6 +697,44 @@ loadConfig.addEventListener('click', async () => {
   withConfig.checked = true;
   setSummary(`Loaded config from ${repos[0]} (${data.branch || 'default'}). Review before applying.`);
   write('Config loaded.');
+  updateControls();
+});
+
+loadWorkflow.addEventListener('click', async () => {
+  write('Loading workflow...');
+  refreshProgress();
+  const repos = selectedRepos();
+  if (repos.length === 0) {
+    write('Select or enter a repository.');
+    setStep('repos', 'error');
+    return;
+  }
+  if (repos.length > 1) {
+    write('Select a single repository to load workflow.');
+    return;
+  }
+  if (!token.value) {
+    write('GitHub token required to load workflow.');
+    setStep('auth', 'error');
+    return;
+  }
+  const res = await fetch('/api/repo-workflow', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      repo: repos[0],
+      token: token.value
+    })
+  });
+  const data = await res.json();
+  if (data.error) {
+    write('Workflow error: ' + data.error);
+    return;
+  }
+  workflowPreview.value = data.workflow || '';
+  const managedLabel = data.managed ? 'managed' : 'unmanaged';
+  setSummary(`Loaded workflow from ${repos[0]} (${data.branch || 'default'}). Status: ${managedLabel}.`);
+  write('Workflow loaded.');
   updateControls();
 });
 

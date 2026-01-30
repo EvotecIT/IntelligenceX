@@ -46,6 +46,7 @@ Status: In progress
 - [x] Advanced JSON editor panel
 - [x] Progress checklist + success summary
 - [x] "Manage existing setup" flow (load config from repo)
+- [x] Workflow preview in web UI
 - [x] Enforce loopback + HTTP-only binding
 - [x] Device flow timeout + expiry messaging
 - [x] GitHub App manifest flow in web UI

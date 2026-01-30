@@ -26,6 +26,10 @@ internal sealed class WebApi {
             await HandleRepoConfigAsync(context).ConfigureAwait(false);
             return;
         }
+        if (path.StartsWith("/api/repo-workflow", StringComparison.OrdinalIgnoreCase)) {
+            await HandleRepoWorkflowAsync(context).ConfigureAwait(false);
+            return;
+        }
         if (path.StartsWith("/api/device-code", StringComparison.OrdinalIgnoreCase)) {
             await HandleDeviceCodeAsync(context).ConfigureAwait(false);
             return;
@@ -204,6 +208,48 @@ internal sealed class WebApi {
             await WriteJsonAsync(context, new {
                 config = config.Content,
                 branch = defaultBranch
+            }).ConfigureAwait(false);
+        } catch (Exception ex) {
+            context.Response.StatusCode = 500;
+            await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+        }
+    }
+
+    private async Task HandleRepoWorkflowAsync(System.Net.HttpListenerContext context) {
+        if (context.Request.HttpMethod != "POST") {
+            context.Response.StatusCode = 405;
+            await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+            return;
+        }
+
+        var body = await ReadBodyAsync(context).ConfigureAwait(false);
+        var request = JsonSerializer.Deserialize<RepoWorkflowRequest>(body, _jsonOptions) ?? new RepoWorkflowRequest();
+        if (string.IsNullOrWhiteSpace(request.Token) || string.IsNullOrWhiteSpace(request.Repo)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Missing token or repo" }).ConfigureAwait(false);
+            return;
+        }
+        if (!TryParseRepo(request.Repo, out var owner, out var name)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Invalid repo name (expected owner/name)." }).ConfigureAwait(false);
+            return;
+        }
+
+        try {
+            using var client = new GitHubRepoClient(request.Token!, request.ApiBaseUrl ?? "https://api.github.com");
+            var defaultBranch = await client.GetDefaultBranchAsync(owner, name).ConfigureAwait(false);
+            var workflow = await client.TryGetFileAsync(owner, name, ".github/workflows/review-intelligencex.yml", defaultBranch)
+                .ConfigureAwait(false);
+            if (workflow is null) {
+                context.Response.StatusCode = 404;
+                await WriteJsonAsync(context, new { error = "Workflow not found in default branch." }).ConfigureAwait(false);
+                return;
+            }
+            var managed = workflow.Content.Contains("INTELLIGENCEX:BEGIN", StringComparison.Ordinal);
+            await WriteJsonAsync(context, new {
+                workflow = workflow.Content,
+                branch = defaultBranch,
+                managed
             }).ConfigureAwait(false);
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
@@ -541,6 +587,12 @@ internal sealed class WebApi {
     }
 
     private sealed class RepoConfigRequest {
+        public string? Token { get; set; }
+        public string? ApiBaseUrl { get; set; }
+        public string? Repo { get; set; }
+    }
+
+    private sealed class RepoWorkflowRequest {
         public string? Token { get; set; }
         public string? ApiBaseUrl { get; set; }
         public string? Repo { get; set; }
