@@ -746,21 +746,27 @@ public static class ReviewerApp {
             return null;
         }
         const string marker = "Reviewed commit:";
-        var index = body.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-        if (index < 0) {
-            return null;
-        }
-        var slice = body.Substring(index + marker.Length);
-        var backtick = slice.IndexOf('`');
-        if (backtick >= 0) {
-            slice = slice.Substring(backtick + 1);
-            var end = slice.IndexOf('`');
-            if (end >= 0) {
-                slice = slice.Substring(0, end);
+        using var reader = new StringReader(body);
+        string? line;
+        while ((line = reader.ReadLine()) is not null) {
+            var index = line.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (index < 0) {
+                continue;
             }
+            var slice = line.Substring(index + marker.Length);
+            var start = slice.IndexOf('`');
+            if (start < 0) {
+                return null;
+            }
+            slice = slice.Substring(start + 1);
+            var end = slice.IndexOf('`');
+            if (end < 0) {
+                return null;
+            }
+            var token = slice.Substring(0, end).Trim();
+            return token.Length == 0 ? null : token;
         }
-        var token = slice.Trim();
-        return token.Length == 0 ? null : token;
+        return null;
     }
 
     private static async Task<long?> CreateOrUpdateProgressCommentAsync(GitHubClient github, PullRequestContext context,
