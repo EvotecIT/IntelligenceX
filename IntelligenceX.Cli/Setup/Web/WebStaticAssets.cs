@@ -119,6 +119,7 @@ internal static class WebStaticAssets {
 
         <div class=""row"">
           <button id=""inspect"">Check existing setup</button>
+          <button id=""recommend"" disabled>Use recommendations</button>
           <button id=""plan"">Plan</button>
           <button id=""apply"">Apply</button>
         </div>
@@ -169,12 +170,14 @@ const force = document.getElementById('force');
 const keepSecret = document.getElementById('keepSecret');
 const output = document.getElementById('output');
 const inspect = document.getElementById('inspect');
+const recommend = document.getElementById('recommend');
 const summary = document.getElementById('summary');
 const progress = document.getElementById('progress');
 const deviceStart = document.getElementById('deviceStart');
 const devicePoll = document.getElementById('devicePoll');
 const deviceInfo = document.getElementById('deviceInfo');
 let deviceState = null;
+let lastRecommendation = null;
 
 function write(text) {
   output.textContent = text;
@@ -252,7 +255,9 @@ function formatStatus(data) {
   const lines = [];
   const workflowCount = data.status.filter(item => item.workflowExists).length;
   const configCount = data.status.filter(item => item.configExists).length;
-  setSummary(`Inspection: workflow in ${workflowCount}/${data.status.length}, config in ${configCount}/${data.status.length}.`);
+  lastRecommendation = buildRecommendation(data.status);
+  recommend.disabled = false;
+  setSummary(`Inspection: workflow in ${workflowCount}/${data.status.length}, config in ${configCount}/${data.status.length}.\n${lastRecommendation.summary}`);
   data.status.forEach(item => {
     lines.push(`== ${item.repo} ==`);
     if (item.error) {
@@ -271,6 +276,76 @@ function formatStatus(data) {
   });
   return lines.join('\n');
 }
+
+function buildRecommendation(items) {
+  let missingWorkflow = 0;
+  let unmanaged = 0;
+  let missingConfig = 0;
+  let ok = 0;
+
+  items.forEach(item => {
+    if (item.error) {
+      return;
+    }
+    if (!item.workflowExists) {
+      missingWorkflow++;
+    } else if (!item.workflowManaged) {
+      unmanaged++;
+    }
+    if (!item.configExists) {
+      missingConfig++;
+    }
+    if (item.workflowExists && item.workflowManaged && item.configExists) {
+      ok++;
+    }
+  });
+
+  if (missingWorkflow === 0 && unmanaged === 0 && missingConfig === 0) {
+    return {
+      action: 'none',
+      force: false,
+      withConfig: false,
+      summary: 'Recommendation: no changes needed. Consider update-secret if you rotate auth.'
+    };
+  }
+
+  const summaryParts = [];
+  if (missingWorkflow > 0) {
+    summaryParts.push(`add workflow to ${missingWorkflow}`);
+  }
+  if (unmanaged > 0) {
+    summaryParts.push(`overwrite unmanaged workflow in ${unmanaged}`);
+  }
+  if (missingConfig > 0) {
+    summaryParts.push(`add config to ${missingConfig}`);
+  }
+
+  return {
+    action: 'setup',
+    force: unmanaged > 0,
+    withConfig: missingConfig > 0,
+    summary: `Recommendation: setup (${summaryParts.join(', ')}).`
+  };
+}
+
+recommend.addEventListener('click', () => {
+  if (!lastRecommendation) {
+    write('Run inspection first.');
+    return;
+  }
+  if (lastRecommendation.action === 'none') {
+    setSummary(lastRecommendation.summary);
+    return;
+  }
+  operation.value = 'setup';
+  if (lastRecommendation.force) {
+    force.checked = true;
+  }
+  if (lastRecommendation.withConfig) {
+    withConfig.checked = true;
+  }
+  setSummary(`Applied recommendations. ${lastRecommendation.summary}`);
+});
 
 deviceStart.addEventListener('click', async () => {
   write('Starting device flow...');
@@ -361,6 +436,8 @@ function selectedRepos() {
 inspect.addEventListener('click', async () => {
   write('Checking existing setup...');
   refreshProgress();
+  recommend.disabled = true;
+  lastRecommendation = null;
   const repos = selectedRepos();
   if (repos.length === 0) {
     write('Select or enter a repository.');
@@ -604,6 +681,7 @@ summary {
 .summary {
   font-size: 13px;
   color: #1f2937;
+  white-space: pre-line;
 }
 
 .hint {
