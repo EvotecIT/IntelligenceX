@@ -881,7 +881,7 @@ internal static partial class SetupRunner {
         Console.WriteLine("  --include-review-comments <true|false>");
         Console.WriteLine("  --include-related-prs <true|false>");
         Console.WriteLine("  --progress-updates <true|false>");
-        Console.WriteLine("  --review-profile <balanced|picky|highlevel|security|performance|tests>");
+        Console.WriteLine("  --review-profile <balanced|picky|highlevel|security|performance|tests|minimal>");
         Console.WriteLine("  --review-mode <hybrid|summary|inline>");
         Console.WriteLine("  --review-comment-mode <sticky|fresh>");
         Console.WriteLine("  --config-path <path> (use custom config.json content)");

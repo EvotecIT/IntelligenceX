@@ -75,10 +75,11 @@ internal sealed class WebServer : IDisposable {
         context.Response.OutputStream.Close();
     }
 
-    private static Task WriteTextAsync(HttpListenerResponse response, string text) {
+    private static async Task WriteTextAsync(HttpListenerResponse response, string text) {
         var bytes = Encoding.UTF8.GetBytes(text);
         response.ContentType = "text/plain; charset=utf-8";
         response.ContentLength64 = bytes.Length;
-        return response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+        await response.OutputStream.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
+        response.Close();
     }
 }
