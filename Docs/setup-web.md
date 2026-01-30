@@ -36,6 +36,7 @@ If you want to avoid personal access tokens, you can use the GitHub App manifest
 - Update-secret in the web UI requires a pre-exported auth bundle.
 - The UI supports multi-repo setup (plan/apply), repo inspection, and setup recommendations.
 - GitHub App installation tokens can only list repos the app is installed on.
+- Buttons are disabled until required inputs are provided (token, repo selection, auth bundle).
 
 ## Security notes
 

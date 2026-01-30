@@ -256,6 +256,27 @@ function refreshProgress() {
   }
 }
 
+function updateControls() {
+  const repoCount = selectedRepos().length;
+  const hasRepo = repoCount > 0;
+  const hasToken = token.value.trim().length > 0;
+  const hasAuthBundle = authB64.value.trim().length > 0 || authB64Path.value.trim().length > 0;
+  const needsAuthBundle = operation.value === 'update-secret'
+    || (operation.value === 'setup' && !skipSecret.checked);
+
+  loadRepos.disabled = !hasToken;
+  inspect.disabled = !hasRepo || !hasToken;
+  loadConfig.disabled = !hasToken || repoCount !== 1;
+  devicePoll.disabled = deviceState === null;
+
+  listInstalls.disabled = !appId.value.trim() || !appPem.value.trim();
+  useInstallationToken.disabled = !appId.value.trim() || !appPem.value.trim() || !installation.value;
+
+  const allowPlanApply = hasRepo && hasToken && (!needsAuthBundle || hasAuthBundle);
+  document.getElementById('plan').disabled = !allowPlanApply;
+  document.getElementById('apply').disabled = !allowPlanApply;
+}
+
 function updateOperationHint() {
   if (operation.value === 'cleanup') {
     operationHint.textContent = 'Cleanup removes workflow/config; secrets are optional.';
@@ -462,6 +483,7 @@ createApp.addEventListener('click', async () => {
   }
   appId.value = data.appId || '';
   appPem.value = data.pem || '';
+  updateControls();
   setSummary('GitHub App created. Install it in GitHub, then list installations.');
 });
 
@@ -487,6 +509,7 @@ listInstalls.addEventListener('click', async () => {
   }
   clearInstallations();
   (data.installations || []).forEach(item => addInstallationOption(item.id, item.login));
+  updateControls();
   if (!data.installations || data.installations.length === 0) {
     setSummary('No installations found. Install the app in your org/user.');
   } else {
@@ -518,6 +541,7 @@ useInstallationToken.addEventListener('click', async () => {
   }
   token.value = data.token || '';
   setStep('auth', 'done');
+  updateControls();
   setSummary('Installation token acquired. You can load repos now.');
 });
 
@@ -543,6 +567,7 @@ devicePoll.addEventListener('click', async () => {
   }
   token.value = data.token || '';
   setStep('auth', 'done');
+  updateControls();
   write('Token acquired.');
 });
 
@@ -573,6 +598,7 @@ loadRepos.addEventListener('click', async () => {
     setSummary('Loaded repositories available to the GitHub App installation.');
   }
   write(`Repos loaded (${source}).`);
+  updateControls();
 });
 
 repoFilter.addEventListener('input', () => {
@@ -580,6 +606,14 @@ repoFilter.addEventListener('input', () => {
   Array.from(repoList.options).forEach(opt => {
     opt.hidden = filter && !opt.value.toLowerCase().includes(filter);
   });
+});
+
+repoList.addEventListener('change', () => {
+  updateControls();
+});
+
+repo.addEventListener('input', () => {
+  updateControls();
 });
 
 function selectedRepos() {
@@ -657,6 +691,7 @@ loadConfig.addEventListener('click', async () => {
   withConfig.checked = true;
   setSummary(`Loaded config from ${repos[0]} (${data.branch || 'default'}). Review before applying.`);
   write('Config loaded.');
+  updateControls();
 });
 
 function resolveWithConfig() {
@@ -667,23 +702,36 @@ function resolveWithConfig() {
 
 operation.addEventListener('change', () => {
   updateOperationHint();
+  updateControls();
 });
 
 provider.addEventListener('change', () => {
   updateOperationHint();
+  updateControls();
 });
 
 configJson.addEventListener('input', () => {
   if (configJson.value.trim()) {
     withConfig.checked = true;
   }
+  updateControls();
 });
 
 configPath.addEventListener('input', () => {
   if (configPath.value.trim()) {
     withConfig.checked = true;
   }
+  updateControls();
 });
+
+token.addEventListener('input', () => updateControls());
+clientId.addEventListener('input', () => updateControls());
+authB64.addEventListener('input', () => updateControls());
+authB64Path.addEventListener('input', () => updateControls());
+skipSecret.addEventListener('change', () => updateControls());
+appId.addEventListener('input', () => updateControls());
+appPem.addEventListener('input', () => updateControls());
+installation.addEventListener('change', () => updateControls());
 
 document.getElementById('plan').addEventListener('click', async () => {
   write('Planning...');
@@ -789,7 +837,8 @@ document.getElementById('apply').addEventListener('click', async () => {
   write(formatResults(data));
 });
 
-updateOperationHint();";
+updateOperationHint();
+updateControls();";
 
     private const string StylesCss = @"body {
   margin: 0;
