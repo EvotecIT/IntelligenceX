@@ -129,9 +129,14 @@ public static class ReviewerApp {
                 }
             }
 
-            if (inlineSupported && inlineComments.Length > 0) {
-                await PostInlineCommentsAsync(github, context, files, settings, inlineComments, CancellationToken.None)
+            HashSet<string>? inlineKeys = null;
+            if (inlineSupported) {
+                inlineKeys = await PostInlineCommentsAsync(github, context, files, settings, inlineComments, CancellationToken.None)
                     .ConfigureAwait(false);
+                if (settings.ReviewThreadsAutoResolveMissingInline) {
+                    await AutoResolveMissingInlineThreadsAsync(github, context, inlineKeys, settings, CancellationToken.None)
+                        .ConfigureAwait(false);
+                }
             }
 
             var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported);
@@ -445,6 +450,46 @@ public static class ReviewerApp {
         }
     }
 
+    private static async Task AutoResolveMissingInlineThreadsAsync(GitHubClient github, PullRequestContext context,
+        HashSet<string>? expectedKeys, ReviewSettings settings, CancellationToken cancellationToken) {
+        if (settings.ReviewThreadsAutoResolveMax <= 0) {
+            return;
+        }
+
+        var keys = expectedKeys ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var maxThreads = Math.Max(settings.ReviewThreadsAutoResolveMax, settings.ReviewThreadsMax);
+        var maxComments = Math.Max(1, settings.ReviewThreadsMaxComments);
+        var threads = await github.ListPullRequestReviewThreadsAsync(context.Owner, context.Repo, context.Number,
+                maxThreads, maxComments, cancellationToken)
+            .ConfigureAwait(false);
+
+        var resolved = 0;
+        foreach (var thread in threads) {
+            if (resolved >= settings.ReviewThreadsAutoResolveMax) {
+                break;
+            }
+            if (thread.IsResolved) {
+                continue;
+            }
+            if (settings.ReviewThreadsAutoResolveBotsOnly && thread.TotalComments > thread.Comments.Count) {
+                continue;
+            }
+            if (!TryGetInlineThreadKey(thread, settings, out var key)) {
+                continue;
+            }
+            if (keys.Contains(key)) {
+                continue;
+            }
+
+            try {
+                await github.ResolveReviewThreadAsync(thread.Id, cancellationToken).ConfigureAwait(false);
+                resolved++;
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {ex.Message}");
+            }
+        }
+    }
+
     private static bool ThreadHasOnlyBotComments(PullRequestReviewThread thread) {
         if (thread.Comments.Count == 0) {
             return false;
@@ -457,6 +502,30 @@ public static class ReviewerApp {
                 return false;
             }
         }
+        return true;
+    }
+
+    internal static bool TryGetInlineThreadKey(PullRequestReviewThread thread, ReviewSettings settings, out string key) {
+        key = string.Empty;
+        if (thread.Comments.Count == 0) {
+            return false;
+        }
+        if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread)) {
+            return false;
+        }
+
+        PullRequestReviewThreadComment? marker = null;
+        foreach (var comment in thread.Comments) {
+            if (comment.Body.Contains(ReviewFormatter.InlineMarker, StringComparison.OrdinalIgnoreCase)) {
+                marker = comment;
+                break;
+            }
+        }
+        if (marker is null || string.IsNullOrWhiteSpace(marker.Path) || !marker.Line.HasValue) {
+            return false;
+        }
+
+        key = BuildInlineKey(marker.Path!, marker.Line.Value);
         return true;
     }
 
@@ -556,17 +625,18 @@ public static class ReviewerApp {
             author.Equals("intelligencex-review", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static async Task PostInlineCommentsAsync(GitHubClient github, PullRequestContext context,
+    private static async Task<HashSet<string>> PostInlineCommentsAsync(GitHubClient github, PullRequestContext context,
         IReadOnlyList<PullRequestFile> files, ReviewSettings settings, IReadOnlyList<InlineReviewComment> inlineComments,
         CancellationToken cancellationToken) {
+        var expectedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (inlineComments.Count == 0 || string.IsNullOrWhiteSpace(context.HeadSha)) {
-            return;
+            return expectedKeys;
         }
 
         var lineMap = BuildInlineLineMap(files);
         var patchIndex = BuildInlinePatchIndex(files);
         if (lineMap.Count == 0) {
-            return;
+            return expectedKeys;
         }
 
         var limit = Math.Max(0, settings.CommentSearchLimit);
@@ -604,13 +674,13 @@ public static class ReviewerApp {
                 !allowedLines.Contains(lineNumber)) {
                 continue;
             }
-            var key = BuildInlineKey(normalizedPath, lineNumber);
-            if (existingKeys.Contains(key) || !seen.Add(key)) {
-                continue;
-            }
-
             var body = inline.Body.Trim();
             if (string.IsNullOrWhiteSpace(body)) {
+                continue;
+            }
+            var key = BuildInlineKey(normalizedPath, lineNumber);
+            expectedKeys.Add(key);
+            if (existingKeys.Contains(key) || !seen.Add(key)) {
                 continue;
             }
             body = $"{ReviewFormatter.InlineMarker}\n{body}";
@@ -624,6 +694,7 @@ public static class ReviewerApp {
                 Console.Error.WriteLine($"Inline comment failed for {normalizedPath}:{lineNumber} - {ex.Message}");
             }
         }
+        return expectedKeys;
     }
 
     private static Dictionary<string, HashSet<int>> BuildInlineLineMap(IReadOnlyList<PullRequestFile> files) {

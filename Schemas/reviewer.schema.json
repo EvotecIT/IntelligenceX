@@ -33,6 +33,7 @@
         "reviewThreadsMax": { "type": "integer", "minimum": 0 },
         "reviewThreadsMaxComments": { "type": "integer", "minimum": 0 },
         "reviewThreadsAutoResolveStale": { "type": "boolean" },
+        "reviewThreadsAutoResolveMissingInline": { "type": "boolean" },
         "reviewThreadsAutoResolveBotsOnly": { "type": "boolean" },
         "reviewThreadsAutoResolveMax": { "type": "integer", "minimum": 0 },
         "includeRelatedPrs": { "type": "boolean" },

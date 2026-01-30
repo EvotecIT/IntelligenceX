@@ -36,6 +36,8 @@ internal static class Program {
         failed += Run("Inline comments extract", TestInlineCommentsExtract);
         failed += Run("Inline comments backticks", TestInlineCommentsBackticks);
         failed += Run("Inline comments snippet header", TestInlineCommentsSnippetHeader);
+        failed += Run("Review thread inline key", TestReviewThreadInlineKey);
+        failed += Run("Review thread inline key bots only", TestReviewThreadInlineKeyBotsOnly);
         failed += Run("Review retry transient", TestReviewRetryTransient);
         failed += Run("Review retry non-transient", TestReviewRetryNonTransient);
         failed += Run("Review retry rethrows", TestReviewRetryRethrows);
@@ -303,6 +305,23 @@ internal static class Program {
         AssertEqual(0, result.Comments[0].Line, "inline snippet line");
         AssertEqual("public string Slugify(string input)", result.Comments[0].Snippet, "inline snippet");
         AssertContains(result.Comments[0].Body.Split('\n'), "Add a null guard to avoid exceptions.", "inline snippet body");
+    }
+
+    private static void TestReviewThreadInlineKey() {
+        var settings = new ReviewSettings { ReviewThreadsAutoResolveBotsOnly = true };
+        var comment = new PullRequestReviewThreadComment($"{ReviewFormatter.InlineMarker}\nFix it.", "intelligencex-review", "src/Foo.cs", 10);
+        var thread = new PullRequestReviewThread("id", false, false, 1, new[] { comment });
+        var ok = ReviewerApp.TryGetInlineThreadKey(thread, settings, out var key);
+        AssertEqual(true, ok, "inline key ok");
+        AssertEqual("src/Foo.cs:10", key, "inline key value");
+    }
+
+    private static void TestReviewThreadInlineKeyBotsOnly() {
+        var settings = new ReviewSettings { ReviewThreadsAutoResolveBotsOnly = true };
+        var comment = new PullRequestReviewThreadComment($"{ReviewFormatter.InlineMarker}\nFix it.", "alice", "src/Foo.cs", 10);
+        var thread = new PullRequestReviewThread("id", false, false, 1, new[] { comment });
+        var ok = ReviewerApp.TryGetInlineThreadKey(thread, settings, out _);
+        AssertEqual(false, ok, "inline key bots only");
     }
 
     private static void TestReviewRetryTransient() {

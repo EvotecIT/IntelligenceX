@@ -99,6 +99,7 @@ internal sealed class ReviewSettings {
     public int ReviewThreadsMax { get; set; } = 10;
     public int ReviewThreadsMaxComments { get; set; } = 3;
     public bool ReviewThreadsAutoResolveStale { get; set; }
+    public bool ReviewThreadsAutoResolveMissingInline { get; set; }
     public bool ReviewThreadsAutoResolveBotsOnly { get; set; } = true;
     public int ReviewThreadsAutoResolveMax { get; set; } = 10;
     public int MaxCommentChars { get; set; } = 4000;
@@ -456,6 +457,10 @@ internal sealed class ReviewSettings {
         var reviewThreadsAutoResolveStale = GetInput("review_threads_auto_resolve_stale", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_STALE");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveStale)) {
             settings.ReviewThreadsAutoResolveStale = ParseBoolean(reviewThreadsAutoResolveStale, settings.ReviewThreadsAutoResolveStale);
+        }
+        var reviewThreadsAutoResolveMissingInline = GetInput("review_threads_auto_resolve_missing_inline", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_MISSING_INLINE");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveMissingInline)) {
+            settings.ReviewThreadsAutoResolveMissingInline = ParseBoolean(reviewThreadsAutoResolveMissingInline, settings.ReviewThreadsAutoResolveMissingInline);
         }
         var reviewThreadsAutoResolveBotsOnly = GetInput("review_threads_auto_resolve_bots_only", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_BOTS_ONLY");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveBotsOnly)) {

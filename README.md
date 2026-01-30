@@ -227,6 +227,7 @@ You can configure the reviewer with environment variables **or** a repo-local fi
     "reviewThreadsMax": 10,
     "reviewThreadsMaxComments": 3,
     "reviewThreadsAutoResolveStale": false,
+    "reviewThreadsAutoResolveMissingInline": false,
     "reviewThreadsAutoResolveBotsOnly": true,
     "reviewThreadsAutoResolveMax": 10,
     "commentMode": "sticky",
@@ -263,6 +264,7 @@ Notes:
 - `preflight` runs a health check before the review request (useful for early auth/transport failures).
 - `includeReviewThreads` adds an "Other Reviews" section that triages existing review threads.
 - `reviewThreadsAutoResolveStale` can auto-resolve stale threads (requires `pull-requests: write`).
+- `reviewThreadsAutoResolveMissingInline` resolves inline threads created by the bot when they no longer appear in the latest review (requires `pull-requests: write`).
 - Set `reviewThreadsMax` or `reviewThreadsMaxComments` to `0` to disable review-thread context.
 - When review-thread context is included, the reviewer suppresses the separate "Review comments" block to avoid duplicate content.
 
