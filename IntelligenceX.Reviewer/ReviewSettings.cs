@@ -67,6 +67,7 @@ internal sealed class ReviewSettings {
     public string? SummaryTemplate { get; set; }
     public string? SummaryTemplatePath { get; set; }
     public bool OverwriteSummary { get; set; } = true;
+    public bool OverwriteSummaryOnNewCommit { get; set; } = true;
     public bool SkipDraft { get; set; } = true;
     public IReadOnlyList<string> SkipTitles { get; set; } = new[] { "[WIP]", "[skip-review]" };
     public IReadOnlyList<string> SkipLabels { get; set; } = Array.Empty<string>();
@@ -212,6 +213,10 @@ internal sealed class ReviewSettings {
         var overwriteSummary = GetInput("overwrite_summary", "OVERWRITE_SUMMARY");
         if (!string.IsNullOrWhiteSpace(overwriteSummary)) {
             settings.OverwriteSummary = ParseBoolean(overwriteSummary, settings.OverwriteSummary);
+        }
+        var overwriteSummaryOnNewCommit = GetInput("overwrite_summary_on_new_commit", "OVERWRITE_SUMMARY_ON_NEW_COMMIT");
+        if (!string.IsNullOrWhiteSpace(overwriteSummaryOnNewCommit)) {
+            settings.OverwriteSummaryOnNewCommit = ParseBoolean(overwriteSummaryOnNewCommit, settings.OverwriteSummaryOnNewCommit);
         }
 
         var skipDraft = GetInput("skip_draft", "SKIP_DRAFT");

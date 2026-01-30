@@ -1,6 +1,7 @@
 {{SummaryMarker}}
 ## IntelligenceX Review
 Reviewing PR #{{Number}}: **{{Title}}**
+{{CommitLine}}
 
 {{InlineNote}}
 {{ReviewBody}}
