@@ -144,7 +144,11 @@ public static class ReviewerApp {
                     .ConfigureAwait(false);
                 Console.WriteLine("Updated review comment.");
             } else if (settings.CommentMode == ReviewCommentMode.Sticky) {
-                var existing = await FindExistingSummaryAsync(github, context, settings, CancellationToken.None).ConfigureAwait(false);
+                var shouldSearch = settings.OverwriteSummary || settings.OverwriteSummaryOnNewCommit;
+                IssueComment? existing = null;
+                if (shouldSearch) {
+                    existing = await FindExistingSummaryAsync(github, context, settings, CancellationToken.None).ConfigureAwait(false);
+                }
                 var shouldOverwrite = settings.OverwriteSummary ||
                                       (settings.OverwriteSummaryOnNewCommit && IsSummaryOutdated(existing, context.HeadSha));
                 if (existing is not null && shouldOverwrite) {
@@ -745,7 +749,7 @@ public static class ReviewerApp {
         if (string.IsNullOrWhiteSpace(body)) {
             return null;
         }
-        const string marker = "Reviewed commit:";
+        var marker = ReviewFormatter.ReviewedCommitMarker;
         using var reader = new StringReader(body);
         string? line;
         while ((line = reader.ReadLine()) is not null) {
