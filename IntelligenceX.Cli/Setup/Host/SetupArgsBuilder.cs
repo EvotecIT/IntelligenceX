@@ -7,6 +7,18 @@ internal static class SetupArgsBuilder {
     public static string[] FromPlan(SetupPlan plan) {
         var args = new List<string>();
 
+        if (plan.Cleanup && plan.UpdateSecret) {
+            throw new InvalidOperationException("Choose only one of --cleanup or --update-secret.");
+        }
+
+        if (plan.ManualSecret && plan.SkipSecret) {
+            throw new InvalidOperationException("Choose only one of --manual-secret or --skip-secret.");
+        }
+
+        if (plan.ManualSecret && plan.UpdateSecret) {
+            throw new InvalidOperationException("Choose only one of --manual-secret or --update-secret.");
+        }
+
         if (!string.IsNullOrWhiteSpace(plan.ConfigPath) && !string.IsNullOrWhiteSpace(plan.ConfigJson)) {
             throw new InvalidOperationException("Choose only one of --config-path or --config-json.");
         }
@@ -118,4 +130,5 @@ internal static class SetupArgsBuilder {
         return args.ToArray();
     }
 }
+
 

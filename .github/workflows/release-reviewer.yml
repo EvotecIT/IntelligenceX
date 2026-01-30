@@ -36,7 +36,7 @@ jobs:
   build:
     runs-on: [self-hosted, ubuntu]
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -49,6 +49,8 @@ jobs:
         env:
           INTELLIGENCEX_REVIEWER_TOKEN: ${{ secrets.INTELLIGENCEX_RELEASE_TOKEN }}
           INTELLIGENCEX_RELEASE_TOKEN: ${{ secrets.INTELLIGENCEX_RELEASE_TOKEN }}
+          GITHUB_TOKEN: ''
+          GH_TOKEN: ''
           INTELLIGENCEX_REVIEWER_TAG: ${{ inputs.release_tag }}
           INTELLIGENCEX_REVIEWER_TITLE: ${{ inputs.release_title }}
           INTELLIGENCEX_REVIEWER_NOTES: ${{ inputs.release_notes }}

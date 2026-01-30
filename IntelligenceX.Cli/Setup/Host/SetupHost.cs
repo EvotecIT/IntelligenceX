@@ -7,9 +7,14 @@ namespace IntelligenceX.Cli.Setup.Host;
 internal sealed class SetupHost {
     private static readonly SemaphoreSlim ConsoleLock = new(1, 1);
 
-    public Task<int> ApplyAsync(SetupPlan plan) {
+    public async Task<int> ApplyAsync(SetupPlan plan) {
         var args = SetupArgsBuilder.FromPlan(plan);
-        return SetupRunner.RunAsync(args);
+        await ConsoleLock.WaitAsync().ConfigureAwait(false);
+        try {
+            return await SetupRunner.RunAsync(args).ConfigureAwait(false);
+        } finally {
+            ConsoleLock.Release();
+        }
     }
 
     public async Task<SetupHostResult> ApplyWithOutputAsync(SetupPlan plan) {

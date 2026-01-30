@@ -26,6 +26,7 @@ internal sealed class GitHubSecretsClient : IDisposable {
     public void Dispose() => _http.Dispose();
 
     public async Task SetRepoSecretAsync(string owner, string repo, string name, string value) {
+        ValidateRepoInputs(owner, repo, name);
         var key = await GetPublicKeyAsync($"/repos/{owner}/{repo}/actions/secrets/public-key").ConfigureAwait(false);
         var payload = new Dictionary<string, object?> {
             ["encrypted_value"] = Encrypt(value, key.PublicKey),
@@ -35,6 +36,7 @@ internal sealed class GitHubSecretsClient : IDisposable {
     }
 
     public async Task SetOrgSecretAsync(string org, string name, string value, string visibility = "all", IReadOnlyList<long>? selectedRepositoryIds = null) {
+        ValidateOrgInputs(org, name);
         var key = await GetPublicKeyAsync($"/orgs/{org}/actions/secrets/public-key").ConfigureAwait(false);
         var normalizedVisibility = NormalizeVisibility(visibility);
         if (normalizedVisibility == "selected" && (selectedRepositoryIds is null || selectedRepositoryIds.Count == 0)) {
@@ -94,6 +96,52 @@ internal sealed class GitHubSecretsClient : IDisposable {
         var keyBytes = Convert.FromBase64String(publicKey);
         var encrypted = SealedPublicKeyBox.Create(Encoding.UTF8.GetBytes(value), keyBytes);
         return Convert.ToBase64String(encrypted);
+    }
+
+    private static void ValidateRepoInputs(string owner, string repo, string name) {
+        ValidateIdentifier(owner, "owner");
+        ValidateIdentifier(repo, "repo");
+        ValidateSecretName(name);
+    }
+
+    private static void ValidateOrgInputs(string org, string name) {
+        ValidateIdentifier(org, "org");
+        ValidateSecretName(name);
+    }
+
+    private static void ValidateIdentifier(string value, string label) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            throw new InvalidOperationException($"{label} is required.");
+        }
+        var trimmed = value.Trim();
+        if (!string.Equals(trimmed, value, StringComparison.Ordinal)) {
+            throw new InvalidOperationException($"{label} must not contain leading or trailing whitespace.");
+        }
+        for (var i = 0; i < trimmed.Length; i++) {
+            var ch = trimmed[i];
+            if (char.IsWhiteSpace(ch) || ch == '/' || ch == '\\') {
+                throw new InvalidOperationException($"{label} must not contain spaces or slashes.");
+            }
+        }
+    }
+
+    private static void ValidateSecretName(string name) {
+        if (string.IsNullOrWhiteSpace(name)) {
+            throw new InvalidOperationException("Secret name is required.");
+        }
+        var trimmed = name.Trim();
+        if (!string.Equals(trimmed, name, StringComparison.Ordinal)) {
+            throw new InvalidOperationException("Secret name must not contain leading or trailing whitespace.");
+        }
+        if (trimmed.StartsWith("GITHUB_", StringComparison.OrdinalIgnoreCase)) {
+            throw new InvalidOperationException("Secret name must not start with GITHUB_.");
+        }
+        for (var i = 0; i < trimmed.Length; i++) {
+            var ch = trimmed[i];
+            if (!(char.IsLetterOrDigit(ch) || ch == '_')) {
+                throw new InvalidOperationException("Secret name must contain only letters, numbers, or underscores.");
+            }
+        }
     }
 
     private readonly record struct PublicKeyInfo(string PublicKey, string KeyId);
