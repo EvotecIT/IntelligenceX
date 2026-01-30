@@ -110,6 +110,7 @@ jobs:
           }
           normalize_labels() {
             local labels="${1}"
+            labels="${labels//$'\r'/}"
             labels="${labels//$'\n'/,}"
             local out=""
             IFS=',' read -r -a parts <<< "${labels}"
@@ -128,7 +129,9 @@ jobs:
           has_label() {
             local labels_lc
             labels_lc="$(echo ",${1}," | tr '[:upper:]' '[:lower:]')"
-            echo "${labels_lc}" | grep -Fq ",${2},"
+            local needle
+            needle="$(echo "${2}" | tr '[:upper:]' '[:lower:]')"
+            echo "${labels_lc}" | grep -Fq ",${needle},"
           }
           pr_branch="$(sanitize_branch "${pr_branch}")"
           pr_labels="$(normalize_labels "${pr_labels}")"
