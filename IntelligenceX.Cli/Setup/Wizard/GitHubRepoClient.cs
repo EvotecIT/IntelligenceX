@@ -33,16 +33,8 @@ internal sealed class GitHubRepoClient : IDisposable {
                 break;
             }
             foreach (var item in json.EnumerateArray()) {
-                var fullName = item.GetProperty("full_name").GetString() ?? string.Empty;
-                var isPrivate = item.GetProperty("private").GetBoolean();
-                DateTimeOffset? updatedAt = null;
-                if (item.TryGetProperty("updated_at", out var updatedProperty)
-                    && updatedProperty.ValueKind == JsonValueKind.String
-                    && DateTimeOffset.TryParse(updatedProperty.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)) {
-                    updatedAt = parsed;
-                }
-                if (!string.IsNullOrWhiteSpace(fullName)) {
-                    repos.Add(new RepositoryInfo(fullName, isPrivate, updatedAt));
+                if (TryParseRepository(item, out var info)) {
+                    repos.Add(info);
                 }
             }
             if (json.GetArrayLength() < 100) {
@@ -61,16 +53,8 @@ internal sealed class GitHubRepoClient : IDisposable {
 
         var repos = new List<RepositoryInfo>();
         foreach (var item in repoArray.EnumerateArray()) {
-            var fullName = item.GetProperty("full_name").GetString() ?? string.Empty;
-            var isPrivate = item.GetProperty("private").GetBoolean();
-            DateTimeOffset? updatedAt = null;
-            if (item.TryGetProperty("updated_at", out var updatedProperty)
-                && updatedProperty.ValueKind == JsonValueKind.String
-                && DateTimeOffset.TryParse(updatedProperty.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)) {
-                updatedAt = parsed;
-            }
-            if (!string.IsNullOrWhiteSpace(fullName)) {
-                repos.Add(new RepositoryInfo(fullName, isPrivate, updatedAt));
+            if (TryParseRepository(item, out var info)) {
+                repos.Add(info);
             }
         }
         return repos;
@@ -84,6 +68,25 @@ internal sealed class GitHubRepoClient : IDisposable {
         }
         using var doc = JsonDocument.Parse(content);
         return doc.RootElement.Clone();
+    }
+
+    private static bool TryParseRepository(JsonElement item, out RepositoryInfo info) {
+        info = null!;
+        var fullName = item.GetProperty("full_name").GetString() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(fullName)) {
+            return false;
+        }
+
+        var isPrivate = item.GetProperty("private").GetBoolean();
+        DateTimeOffset? updatedAt = null;
+        if (item.TryGetProperty("updated_at", out var updatedProperty)
+            && updatedProperty.ValueKind == JsonValueKind.String
+            && DateTimeOffset.TryParse(updatedProperty.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)) {
+            updatedAt = parsed;
+        }
+
+        info = new RepositoryInfo(fullName, isPrivate, updatedAt);
+        return true;
     }
 
     public sealed class RepositoryInfo {
