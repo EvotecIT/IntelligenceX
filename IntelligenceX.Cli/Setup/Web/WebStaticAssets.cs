@@ -566,7 +566,11 @@ loadRepos.addEventListener('click', async () => {
       option.textContent = r.name;
       repoList.appendChild(option);
     });
-  write('Repos loaded.');
+  const source = data.source || 'user';
+  if (source === 'installation') {
+    setSummary('Loaded repositories available to the GitHub App installation.');
+  }
+  write(`Repos loaded (${source}).`);
 });
 
 repoFilter.addEventListener('input', () => {

@@ -34,6 +34,7 @@ If you want to avoid personal access tokens, you can use the GitHub App manifest
   Provide `authB64`/`authB64Path` (INTELLIGENCEX_AUTH_B64 export) or keep “Skip OpenAI secret” enabled.
 - Update-secret in the web UI requires a pre-exported auth bundle.
 - The UI supports multi-repo setup (plan/apply), repo inspection, and setup recommendations.
+- GitHub App installation tokens can only list repos the app is installed on.
 
 ## Security notes
 

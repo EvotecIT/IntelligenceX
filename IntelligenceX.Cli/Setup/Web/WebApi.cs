@@ -76,9 +76,33 @@ internal sealed class WebApi {
 
         try {
             using var client = new GitHubRepoClient(request.Token!, request.ApiBaseUrl ?? "https://api.github.com");
-            var repos = await client.ListRepositoriesAsync().ConfigureAwait(false);
+            Exception? userError = null;
+            Exception? installError = null;
+            List<GitHubRepoClient.RepositoryInfo>? repos = null;
+            var source = "user";
+
+            try {
+                repos = await client.ListRepositoriesAsync().ConfigureAwait(false);
+            } catch (Exception ex) {
+                userError = ex;
+                try {
+                    repos = await client.ListInstallationRepositoriesAsync().ConfigureAwait(false);
+                    source = "installation";
+                } catch (Exception installEx) {
+                    installError = installEx;
+                }
+            }
+
+            if (repos is null) {
+                var message = installError is null
+                    ? userError?.Message ?? "Failed to list repositories."
+                    : $"User repo list failed: {userError?.Message}. Installation repo list failed: {installError.Message}";
+                throw new InvalidOperationException(message);
+            }
+
             await WriteJsonAsync(context, new {
-                repos = repos.ConvertAll(r => new { name = r.FullName, updatedAt = r.UpdatedAt })
+                repos = repos.ConvertAll(r => new { name = r.FullName, updatedAt = r.UpdatedAt }),
+                source
             }).ConfigureAwait(false);
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
