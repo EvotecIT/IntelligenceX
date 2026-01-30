@@ -44,6 +44,24 @@ internal static class WebStaticAssets {
 
         <label>GitHub Token (optional)</label>
         <input id=""token"" placeholder=""token"" />
+
+        <h3>GitHub App (optional)</h3>
+        <label>App name</label>
+        <input id=""appName"" placeholder=""IntelligenceX Reviewer"" />
+        <label>App owner (org login)</label>
+        <input id=""appOwner"" placeholder=""org name"" />
+        <div class=""row"">
+          <button id=""createApp"">Create App (manifest)</button>
+          <button id=""listInstalls"">List installations</button>
+        </div>
+
+        <label>App ID</label>
+        <input id=""appId"" placeholder=""123456"" />
+        <label>App PEM</label>
+        <textarea id=""appPem"" rows=""4"" placeholder=""-----BEGIN PRIVATE KEY-----""></textarea>
+        <label>Installation</label>
+        <select id=""installation""></select>
+        <button id=""useInstallationToken"">Use installation token</button>
       </section>
 
       <section class=""card"">
@@ -194,6 +212,14 @@ const operationHint = document.getElementById('operationHint');
 const deviceStart = document.getElementById('deviceStart');
 const devicePoll = document.getElementById('devicePoll');
 const deviceInfo = document.getElementById('deviceInfo');
+const appName = document.getElementById('appName');
+const appOwner = document.getElementById('appOwner');
+const appId = document.getElementById('appId');
+const appPem = document.getElementById('appPem');
+const installation = document.getElementById('installation');
+const createApp = document.getElementById('createApp');
+const listInstalls = document.getElementById('listInstalls');
+const useInstallationToken = document.getElementById('useInstallationToken');
 let deviceState = null;
 let lastRecommendation = null;
 
@@ -388,6 +414,17 @@ recommend.addEventListener('click', () => {
   setSummary(`Applied recommendations. ${lastRecommendation.summary}`);
 });
 
+function clearInstallations() {
+  installation.innerHTML = '';
+}
+
+function addInstallationOption(id, login) {
+  const option = document.createElement('option');
+  option.value = id;
+  option.textContent = `${login} (id ${id})`;
+  installation.appendChild(option);
+}
+
 deviceStart.addEventListener('click', async () => {
   write('Starting device flow...');
   const res = await fetch('/api/device-code', {
@@ -404,6 +441,82 @@ deviceStart.addEventListener('click', async () => {
   deviceInfo.textContent = `Open ${data.verificationUri} and enter code ${data.userCode}`;
   devicePoll.disabled = false;
   window.open(data.verificationUri, '_blank');
+});
+
+createApp.addEventListener('click', async () => {
+  write('Starting GitHub App manifest flow...');
+  const res = await fetch('/api/app-manifest', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      appName: appName.value.trim() || 'IntelligenceX Reviewer',
+      owner: appOwner.value.trim()
+    })
+  });
+  const data = await res.json();
+  if (data.error) {
+    write('App error: ' + data.error);
+    return;
+  }
+  appId.value = data.appId || '';
+  appPem.value = data.pem || '';
+  setSummary('GitHub App created. Install it in GitHub, then list installations.');
+});
+
+listInstalls.addEventListener('click', async () => {
+  write('Loading installations...');
+  const id = parseInt(appId.value, 10);
+  if (!id || !appPem.value.trim()) {
+    write('Provide App ID and PEM first.');
+    return;
+  }
+  const res = await fetch('/api/app-installations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      appId: id,
+      pem: appPem.value
+    })
+  });
+  const data = await res.json();
+  if (data.error) {
+    write('Installations error: ' + data.error);
+    return;
+  }
+  clearInstallations();
+  (data.installations || []).forEach(item => addInstallationOption(item.id, item.login));
+  if (!data.installations || data.installations.length === 0) {
+    setSummary('No installations found. Install the app in your org/user.');
+  } else {
+    setSummary('Select an installation and generate a token.');
+  }
+});
+
+useInstallationToken.addEventListener('click', async () => {
+  write('Generating installation token...');
+  const id = parseInt(appId.value, 10);
+  const installId = parseInt(installation.value, 10);
+  if (!id || !installId || !appPem.value.trim()) {
+    write('Provide App ID, PEM, and installation.');
+    return;
+  }
+  const res = await fetch('/api/app-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      appId: id,
+      pem: appPem.value,
+      installationId: installId
+    })
+  });
+  const data = await res.json();
+  if (data.error) {
+    write('Token error: ' + data.error);
+    return;
+  }
+  token.value = data.token || '';
+  setStep('auth', 'done');
+  setSummary('Installation token acquired. You can load repos now.');
 });
 
 devicePoll.addEventListener('click', async () => {

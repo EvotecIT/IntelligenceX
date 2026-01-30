@@ -12,9 +12,21 @@ Operations available:
 - Setup / update workflow + config
 - Update OpenAI secret only (requires auth bundle)
 - Cleanup (remove workflow/config)
+- Optional GitHub App manifest flow (create app + installation token)
 
 Advanced options:
 - Provider toggle (openai | copilot)
+- Auth bundle input for secret updates (INTELLIGENCEX_AUTH_B64)
+
+## GitHub App flow (optional)
+
+If you want to avoid personal access tokens, you can use the GitHub App manifest flow:
+
+1. Enter App name + App owner (org login).
+2. Click “Create App (manifest)”. A browser window opens to create the app.
+3. Install the app in the org/user and return to the wizard.
+4. Click “List installations”, select the installation, then click “Use installation token”.
+5. The GitHub token field is populated with the installation token; proceed to load repos.
 
 ## Current limitations
 

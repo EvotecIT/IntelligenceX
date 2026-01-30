@@ -34,6 +34,14 @@ internal sealed class WebApi {
             await HandleAppManifestAsync(context).ConfigureAwait(false);
             return;
         }
+        if (path.StartsWith("/api/app-installations", StringComparison.OrdinalIgnoreCase)) {
+            await HandleAppInstallationsAsync(context).ConfigureAwait(false);
+            return;
+        }
+        if (path.StartsWith("/api/app-token", StringComparison.OrdinalIgnoreCase)) {
+            await HandleAppTokenAsync(context).ConfigureAwait(false);
+            return;
+        }
         if (path.StartsWith("/api/setup/plan", StringComparison.OrdinalIgnoreCase)) {
             await HandleSetupAsync(context, dryRun: true).ConfigureAwait(false);
             return;
@@ -220,6 +228,58 @@ internal sealed class WebApi {
                 appId = result.AppId,
                 pem = result.Pem
             }).ConfigureAwait(false);
+        } catch (Exception ex) {
+            context.Response.StatusCode = 500;
+            await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+        }
+    }
+
+    private async Task HandleAppInstallationsAsync(System.Net.HttpListenerContext context) {
+        if (context.Request.HttpMethod != "POST") {
+            context.Response.StatusCode = 405;
+            await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+            return;
+        }
+
+        var body = await ReadBodyAsync(context).ConfigureAwait(false);
+        var request = JsonSerializer.Deserialize<AppInstallationRequest>(body, _jsonOptions) ?? new AppInstallationRequest();
+        if (request.AppId <= 0 || string.IsNullOrWhiteSpace(request.Pem)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Missing appId or pem" }).ConfigureAwait(false);
+            return;
+        }
+
+        try {
+            using var client = new GitHubAppClient(request.AppId, request.Pem!, request.ApiBaseUrl ?? "https://api.github.com");
+            var installs = await client.ListInstallationsAsync().ConfigureAwait(false);
+            await WriteJsonAsync(context, new {
+                installations = installs.ConvertAll(i => new { id = i.Id, login = i.AccountLogin })
+            }).ConfigureAwait(false);
+        } catch (Exception ex) {
+            context.Response.StatusCode = 500;
+            await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+        }
+    }
+
+    private async Task HandleAppTokenAsync(System.Net.HttpListenerContext context) {
+        if (context.Request.HttpMethod != "POST") {
+            context.Response.StatusCode = 405;
+            await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+            return;
+        }
+
+        var body = await ReadBodyAsync(context).ConfigureAwait(false);
+        var request = JsonSerializer.Deserialize<AppTokenRequest>(body, _jsonOptions) ?? new AppTokenRequest();
+        if (request.AppId <= 0 || string.IsNullOrWhiteSpace(request.Pem) || request.InstallationId <= 0) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Missing appId, pem, or installationId" }).ConfigureAwait(false);
+            return;
+        }
+
+        try {
+            using var client = new GitHubAppClient(request.AppId, request.Pem!, request.ApiBaseUrl ?? "https://api.github.com");
+            var token = await client.CreateInstallationTokenAsync(request.InstallationId).ConfigureAwait(false);
+            await WriteJsonAsync(context, new { token }).ConfigureAwait(false);
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
             await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
@@ -429,6 +489,19 @@ internal sealed class WebApi {
         public string? AppName { get; set; }
         public string? Owner { get; set; }
         public string? AuthBaseUrl { get; set; }
+        public string? ApiBaseUrl { get; set; }
+    }
+
+    private sealed class AppInstallationRequest {
+        public long AppId { get; set; }
+        public string? Pem { get; set; }
+        public string? ApiBaseUrl { get; set; }
+    }
+
+    private sealed class AppTokenRequest {
+        public long AppId { get; set; }
+        public long InstallationId { get; set; }
+        public string? Pem { get; set; }
         public string? ApiBaseUrl { get; set; }
     }
 

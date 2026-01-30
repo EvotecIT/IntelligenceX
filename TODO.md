@@ -48,6 +48,7 @@ Status: In progress
 - [ ] "Manage existing setup" flow
 - [x] Enforce loopback + HTTP-only binding
 - [x] Device flow timeout + expiry messaging
+- [x] GitHub App manifest flow in web UI
 - [x] Detect existing workflow/config (repo inspection)
 - [x] Recommend setup actions based on inspection
 - [x] Support auth bundle input for secrets (web UI)
