@@ -11,14 +11,14 @@ internal static class WebRunner {
         var url = DefaultUrl;
         if (args.Length > 0 && args[0].StartsWith("http", StringComparison.OrdinalIgnoreCase)) {
             if (Uri.TryCreate(args[0], UriKind.Absolute, out var parsed)
-                && (parsed.Scheme == Uri.UriSchemeHttp || parsed.Scheme == Uri.UriSchemeHttps)) {
+                && parsed.Scheme == Uri.UriSchemeHttp) {
                 if (parsed.IsLoopback) {
                     url = parsed.ToString();
                 } else {
                     Console.WriteLine("Non-loopback hosts are not allowed for setup UI. Using localhost instead.");
                 }
             } else {
-                Console.WriteLine("Invalid URL specified. Using localhost instead.");
+                Console.WriteLine("Only http:// loopback URLs are supported. Using localhost instead.");
             }
         }
 

@@ -52,6 +52,7 @@ internal sealed class WizardState {
     public bool SkipSecret { get; set; }
     public bool ManualSecret { get; set; }
     public bool ExplicitSecrets { get; set; }
+    public bool KeepSecret { get; set; }
     public bool DryRun { get; set; }
     public string? BranchName { get; set; }
     public GitHubAuthMode AuthMode { get; set; } = GitHubAuthMode.DeviceFlow;

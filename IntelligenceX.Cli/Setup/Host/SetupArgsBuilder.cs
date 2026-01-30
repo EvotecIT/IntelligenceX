@@ -78,6 +78,10 @@ internal static class SetupArgsBuilder {
             args.Add("--cleanup");
         }
 
+        if (plan.KeepSecret) {
+            args.Add("--keep-secret");
+        }
+
         if (plan.DryRun) {
             args.Add("--dry-run");
         }

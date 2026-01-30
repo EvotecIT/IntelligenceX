@@ -206,6 +206,10 @@ internal static class WizardPrompts {
         return AnsiConsole.Confirm("Manual secret (print value instead of uploading)?", current);
     }
 
+    public static bool PromptKeepSecret(bool current) {
+        return AnsiConsole.Confirm("Keep existing OpenAI secret during cleanup?", current);
+    }
+
     public static bool PromptExplicitSecrets(bool current) {
         return AnsiConsole.Confirm("Use explicit secrets block in workflow?", current);
     }

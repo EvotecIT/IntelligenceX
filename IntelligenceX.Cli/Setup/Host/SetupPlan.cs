@@ -27,6 +27,7 @@ internal sealed class SetupPlan {
     public bool Force { get; init; }
     public bool UpdateSecret { get; init; }
     public bool Cleanup { get; init; }
+    public bool KeepSecret { get; init; }
     public bool DryRun { get; init; }
     public string? BranchName { get; init; }
 }

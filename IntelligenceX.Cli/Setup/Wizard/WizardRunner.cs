@@ -76,6 +76,9 @@ internal static class WizardRunner {
             state.SkipSecret = false;
             state.ManualSecret = false;
         }
+        if (state.Operation == WizardOperation.Cleanup) {
+            state.KeepSecret = WizardPrompts.PromptKeepSecret(state.KeepSecret);
+        }
         state.DryRun = WizardPrompts.PromptDryRun(state.DryRun);
         state.BranchName = WizardPrompts.PromptBranchName(state.BranchName);
 
@@ -126,6 +129,7 @@ internal static class WizardRunner {
             Force = state.Force,
             UpdateSecret = state.Operation == WizardOperation.UpdateSecret,
             Cleanup = state.Operation == WizardOperation.Cleanup,
+            KeepSecret = state.KeepSecret,
             DryRun = state.DryRun,
             BranchName = state.BranchName
         };

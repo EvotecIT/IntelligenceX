@@ -17,6 +17,9 @@ internal static class WizardSummary {
         table.AddRow("Skip secret", plan.SkipSecret ? "yes" : "no");
         table.AddRow("Manual secret", plan.ManualSecret ? "yes" : "no");
         table.AddRow("Explicit secrets", plan.ExplicitSecrets ? "yes" : "no");
+        if (plan.Cleanup) {
+            table.AddRow("Keep secret", plan.KeepSecret ? "yes" : "no");
+        }
         table.AddRow("Upgrade", plan.Upgrade ? "yes" : "no");
         table.AddRow("Force", plan.Force ? "yes" : "no");
         table.AddRow("Dry run", plan.DryRun ? "yes" : "no");
