@@ -57,7 +57,7 @@ Status: In progress
 - [x] Explicit secrets in workflow (no secrets: inherit)
 
 ## Phase 7 — Docs & README
-- [ ] README rewrite (what it is, trust model, quickstart)
+- [x] README rewrite (what it is, trust model, quickstart)
 - [x] Docs: wizard onboarding, CLI quickstart, security/trust
 - [x] Screenshot placeholders + asset folder
 

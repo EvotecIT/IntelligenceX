@@ -1,7 +1,8 @@
 # IntelligenceX
 
-IntelligenceX is a lightweight .NET client for the Codex app-server protocol. It manages the app-server
-process, speaks JSON-RPC over JSONL, and exposes simple methods for authentication and conversations.
+IntelligenceX is a .NET toolkit for the Codex app-server protocol and a GitHub Actions reviewer.
+It manages the app-server process, speaks JSON-RPC over JSONL, and ships a CLI/web wizard to onboard
+review automation quickly and safely.
 
 Status: Active development | APIs in flux | Actions in beta
 
@@ -29,6 +30,30 @@ Status: Active development | APIs in flux | Actions in beta
 - `IntelligenceX.Cli` — CLI (`intelligencex`) for auth, setup, and reviewer
 - `IntelligenceX.Reviewer` — GitHub Actions reviewer runner
 - `IntelligenceX.PowerShell` — PowerShell module (binary cmdlets)
+
+## Get started (Reviewer)
+
+Recommended onboarding:
+
+```powershell
+intelligencex setup wizard
+```
+
+Local web UI (preview):
+
+```powershell
+intelligencex setup web
+```
+
+Docs:
+- `Docs/onboarding-wizard.md`
+- `Docs/setup-web.md`
+- `Docs/security-trust.md`
+
+Trust model (short version):
+- BYO GitHub App is supported for branded bot identity.
+- Secrets are stored in GitHub Actions (you control access).
+- Web UI binds to localhost only; tokens never leave your machine.
 
 ## Library (.NET)
 
@@ -162,12 +187,20 @@ client.StandardErrorReceived += (_, line) => Console.WriteLine($"STDERR: {line}"
 `IntelligenceX.Reviewer` is the console tool behind the review workflow. It reads PR context, generates
 review feedback, and posts a sticky comment.
 
-### Onboarding wizard (CLI)
+### Onboarding (recommended)
 
-Use the interactive wizard for the fastest setup across one or more repositories:
+Use the interactive wizard for the fastest setup across one or more repositories.
+
+CLI wizard:
 
 ```powershell
 intelligencex setup wizard
+```
+
+Web UI (preview):
+
+```powershell
+intelligencex setup web
 ```
 
 Docs:
@@ -282,7 +315,8 @@ Notes:
 
 ## CLI setup (GitHub Actions)
 
-Use the CLI to add or update the review workflow and secrets.
+Use the CLI to add or update the review workflow and secrets (best for scripted or headless flows).
+For interactive onboarding, prefer `intelligencex setup wizard` or `intelligencex setup web`.
 
 ```powershell
 # Interactive setup (uses GitHub device flow)
