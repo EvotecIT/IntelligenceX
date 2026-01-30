@@ -72,3 +72,6 @@ Status: In progress
 - [ ] Keep CLI Copilot optional provider
 - [ ] Research native Copilot feasibility
 - [x] Add provider toggle in wizard
+
+## Phase 9 — DevEx automation
+- [ ] Auto-resolve IntelligenceX bot review threads after fixes (CLI command or GitHub App action)
