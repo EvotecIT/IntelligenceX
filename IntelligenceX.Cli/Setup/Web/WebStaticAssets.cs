@@ -83,6 +83,11 @@ internal static class WebStaticAssets {
         </select>
         <p id=""operationHint"" class=""hint""></p>
         <p id=""requirementsHint"" class=""hint""></p>
+        <div class=""status"">
+          <span id=""statusAuth"" class=""badge"">Auth: missing</span>
+          <span id=""statusRepos"" class=""badge"">Repos: missing</span>
+          <span id=""statusSecret"" class=""badge"">Auth bundle: optional</span>
+        </div>
 
         <div class=""row"">
           <label><input type=""checkbox"" id=""withConfig"" /> Create config</label>
@@ -239,6 +244,9 @@ const summary = document.getElementById('summary');
 const progress = document.getElementById('progress');
 const operationHint = document.getElementById('operationHint');
 const requirementsHint = document.getElementById('requirementsHint');
+const statusAuth = document.getElementById('statusAuth');
+const statusRepos = document.getElementById('statusRepos');
+const statusSecret = document.getElementById('statusSecret');
 const deviceStart = document.getElementById('deviceStart');
 const devicePoll = document.getElementById('devicePoll');
 const deviceInfo = document.getElementById('deviceInfo');
@@ -273,6 +281,20 @@ function setStep(step, state) {
   if (state === 'error') {
     item.classList.add('error');
   }
+}
+
+function setBadge(element, state, text) {
+  element.textContent = text;
+  element.classList.remove('badge-ok', 'badge-warn', 'badge-muted');
+  if (state === 'ok') {
+    element.classList.add('badge-ok');
+    return;
+  }
+  if (state === 'warn') {
+    element.classList.add('badge-warn');
+    return;
+  }
+  element.classList.add('badge-muted');
 }
 
 function refreshProgress() {
@@ -328,6 +350,14 @@ function updateControls() {
     requirementsHint.textContent = `Missing: ${missing.join(', ')}.`;
   } else {
     requirementsHint.textContent = '';
+  }
+
+  setBadge(statusAuth, hasToken ? 'ok' : 'warn', hasToken ? 'Auth: ready' : 'Auth: missing');
+  setBadge(statusRepos, hasRepo ? 'ok' : 'warn', hasRepo ? 'Repos: selected' : 'Repos: missing');
+  if (needsAuthBundle) {
+    setBadge(statusSecret, hasAuthBundle ? 'ok' : 'warn', hasAuthBundle ? 'Auth bundle: ready' : 'Auth bundle: missing');
+  } else {
+    setBadge(statusSecret, 'muted', 'Auth bundle: optional');
   }
 }
 
@@ -1206,5 +1236,37 @@ summary {
   font-size: 12px;
   color: #4b5563;
   margin-top: 8px;
+}
+
+.status {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.badge-ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.badge-warn {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.badge-muted {
+  background: #e5e7eb;
+  color: #374151;
 }";
 }

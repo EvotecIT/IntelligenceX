@@ -49,6 +49,7 @@ Status: In progress
 - [x] Workflow preview in web UI
 - [x] Config presets (local storage)
 - [x] Preset export/import (web UI)
+- [x] Status badges (auth/repo/secret)
 - [x] Enforce loopback + HTTP-only binding
 - [x] Device flow timeout + expiry messaging
 - [x] GitHub App manifest flow in web UI
