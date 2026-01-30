@@ -23,9 +23,9 @@ Status: In progress
   - [x] Repo multi-select
   - [x] Config presets + advanced JSON editor
   - [x] OpenAI login (reuse if present)
-  - [ ] Apply (PR creation pending)
-- [ ] Non-interactive fallback (--plain, redirected input)
-- [ ] Summary table + PR links
+  - [x] Apply (PR creation)
+- [x] Non-interactive fallback (--plain, redirected input)
+- [x] Summary table + PR links
 - [x] Keep-secret propagation for cleanup
 
 ## Phase 3 — GitHub App Manifest (BYO App)

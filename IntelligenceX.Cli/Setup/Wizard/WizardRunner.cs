@@ -91,14 +91,19 @@ internal static class WizardRunner {
         }
 
         var failures = 0;
+        var prLinks = new List<(string Repo, string Url)>();
         var host = new SetupHost();
         await AnsiConsole.Status()
             .Spinner(Spinner.Known.Dots)
             .StartAsync("Applying setup...", async _ => {
                 foreach (var repoPlan in state.SelectedRepos.Select(repo => BuildPlan(state, repo))) {
-                    var result = await host.ApplyAsync(repoPlan).ConfigureAwait(false);
-                    if (result != 0) {
+                    var result = await host.ApplyWithOutputAsync(repoPlan).ConfigureAwait(false);
+                    if (result.ExitCode != 0) {
                         failures++;
+                    }
+                    var prUrl = ExtractPullRequestUrl(result.Output);
+                    if (!string.IsNullOrWhiteSpace(prUrl)) {
+                        prLinks.Add((repoPlan.RepoFullName, prUrl!));
                     }
                 }
             }).ConfigureAwait(false);
@@ -106,6 +111,10 @@ internal static class WizardRunner {
         if (failures > 0) {
             AnsiConsole.MarkupLine($"[red]Setup completed with {failures} failure(s).[/]");
             return 1;
+        }
+
+        if (prLinks.Count > 0) {
+            RenderPullRequestSummary(prLinks);
         }
 
         AnsiConsole.MarkupLine("[green]Setup completed successfully.[/]");
@@ -143,6 +152,35 @@ internal static class WizardRunner {
             GitHubAuthMode.PersonalAccessToken => "personal access token",
             _ => "token"
         };
+    }
+
+    private static string? ExtractPullRequestUrl(string output) {
+        if (string.IsNullOrWhiteSpace(output)) {
+            return null;
+        }
+        foreach (var line in output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries)) {
+            var marker = "PR created:";
+            var idx = line.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) {
+                continue;
+            }
+            return line.Substring(idx + marker.Length).Trim();
+        }
+        return null;
+    }
+
+    private static void RenderPullRequestSummary(IReadOnlyList<(string Repo, string Url)> links) {
+        var table = new Table()
+            .RoundedBorder()
+            .AddColumn("Repository")
+            .AddColumn("PR URL");
+
+        foreach (var (repo, url) in links) {
+            table.AddRow(repo, url);
+        }
+
+        AnsiConsole.Write(table);
+        AnsiConsole.WriteLine();
     }
 
     private static async Task<bool> EnsureGitHubTokenAsync(WizardState state) {
