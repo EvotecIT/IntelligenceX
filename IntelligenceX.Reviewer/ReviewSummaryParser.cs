@@ -21,16 +21,16 @@ internal static class ReviewSummaryParser {
             var slice = line.Substring(index + marker.Length);
             var start = slice.IndexOf('`');
             if (start < 0) {
-                return false;
+                continue;
             }
             slice = slice.Substring(start + 1);
             var end = slice.IndexOf('`');
             if (end < 0) {
-                return false;
+                continue;
             }
             var token = slice.Substring(0, end).Trim();
             if (token.Length == 0) {
-                return false;
+                continue;
             }
             commit = token;
             return true;

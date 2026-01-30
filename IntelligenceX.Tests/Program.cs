@@ -398,6 +398,14 @@ internal static class Program {
 
         ok = ReviewSummaryParser.TryGetReviewedCommit("No marker here", out _);
         AssertEqual(false, ok, "missing marker");
+
+        var malformedThenValid = string.Join("\n", new[] {
+            $"{ReviewFormatter.ReviewedCommitMarker} abc1234",
+            $"{ReviewFormatter.ReviewedCommitMarker} `deadbeef`"
+        });
+        ok = ReviewSummaryParser.TryGetReviewedCommit(malformedThenValid, out commit);
+        AssertEqual(true, ok, "malformed then valid");
+        AssertEqual("deadbeef", commit, "malformed then valid commit");
     }
 #endif
 
