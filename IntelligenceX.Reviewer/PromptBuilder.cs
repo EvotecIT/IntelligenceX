@@ -42,6 +42,7 @@ internal static class PromptBuilder {
             ["Files"] = BuildFilesBlock(files),
             ["IssueCommentsSection"] = extras?.IssueCommentsSection ?? string.Empty,
             ["ReviewCommentsSection"] = extras?.ReviewCommentsSection ?? string.Empty,
+            ["ReviewThreadsSection"] = extras?.ReviewThreadsSection ?? string.Empty,
             ["RelatedPrsSection"] = extras?.RelatedPrsSection ?? string.Empty
         };
 
