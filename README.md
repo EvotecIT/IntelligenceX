@@ -272,7 +272,7 @@ You can configure the reviewer with environment variables **or** a repo-local fi
     "diagnostics": false,
     "preflight": false,
     "preflightTimeoutSeconds": 15,
-    "failOpen": false,
+    "failOpen": true,
     "commentSearchLimit": 500,
     "includeReviewThreads": false,
     "reviewThreadsIncludeBots": false,
@@ -619,6 +619,7 @@ Commands:
 - `intelligencex auth export`
 - `intelligencex auth sync-codex`
 - `intelligencex reviewer run`
+- `intelligencex reviewer resolve-threads`
 - `intelligencex release notes`
 Legacy aliases are supported: `login`, `export`, `sync-codex`.
 Defaults are built in; environment variables only override them.
@@ -694,6 +695,12 @@ One-liner (default range, update changelog):
 
 ```bash
 dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release notes --update-changelog
+```
+
+Auto-resolve IntelligenceX bot threads after fixes:
+
+```bash
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- reviewer resolve-threads --repo owner/name --pr 123 --dry-run
 ```
 
 ### Release notes automation (direct to default branch)

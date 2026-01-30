@@ -86,5 +86,4 @@ jobs:
           OPENAI_TRANSPORT: native
         shell: bash
         run: |
-          set -euo pipefail
-          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release notes --update-changelog
+          bash scripts/release-notes.sh

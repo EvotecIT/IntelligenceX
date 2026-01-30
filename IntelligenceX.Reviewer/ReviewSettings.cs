@@ -61,7 +61,7 @@ internal sealed class ReviewSettings {
     public int RetryDelaySeconds { get; set; } = 5;
     public int RetryMaxDelaySeconds { get; set; } = 30;
     public bool RetryExtraOnResponseEnded { get; set; } = true;
-    public bool FailOpen { get; set; }
+    public bool FailOpen { get; set; } = true;
     public bool Diagnostics { get; set; }
     public bool Preflight { get; set; }
     public int PreflightTimeoutSeconds { get; set; } = 15;
