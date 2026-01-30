@@ -146,6 +146,8 @@ internal static class ReviewConfigLoader {
         settings.ProgressUpdates = ReadBool(obj, "progressUpdates", settings.ProgressUpdates);
         settings.Diagnostics = ReadBool(obj, "diagnostics", settings.Diagnostics);
         settings.Preflight = ReadBool(obj, "preflight", settings.Preflight);
+        settings.RetryExtraOnResponseEnded = ReadBool(obj, "retryExtraResponseEnded", settings.RetryExtraOnResponseEnded);
+        settings.FailOpen = ReadBool(obj, "failOpen", settings.FailOpen);
     }
 
     private static void ApplyCommentMode(JsonObject obj, ReviewSettings settings) {

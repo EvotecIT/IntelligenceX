@@ -46,9 +46,14 @@ internal sealed class ReviewRunner {
                 _settings.RetryDelaySeconds,
                 _settings.RetryMaxDelaySeconds,
                 cancellationToken,
-                ex => ReviewDiagnostics.FormatExceptionSummary(ex, _settings.Diagnostics)).ConfigureAwait(false);
+                ex => ReviewDiagnostics.FormatExceptionSummary(ex, _settings.Diagnostics),
+                _settings.RetryExtraOnResponseEnded ? 1 : 0,
+                ReviewDiagnostics.IsResponseEnded).ConfigureAwait(false);
         } catch (Exception ex) {
             ReviewDiagnostics.LogFailure(ex, _settings, snapshot);
+            if (_settings.FailOpen) {
+                return ReviewDiagnostics.BuildFailureBody(ex, _settings, snapshot);
+            }
             throw;
         }
     }
@@ -159,9 +164,10 @@ internal sealed class ReviewRunner {
     internal static class ReviewRetryPolicy {
         public static async Task<string> RunAsync(Func<Task<string>> action, Func<Exception, bool> isTransient,
             int maxAttempts, int retryDelaySeconds, int retryMaxDelaySeconds, CancellationToken cancellationToken,
-            Func<Exception, string>? describeError) {
+            Func<Exception, string>? describeError, int extraAttempts, Func<Exception, bool>? extraRetryPredicate) {
             // maxAttempts includes the initial attempt.
             var attempts = Math.Max(1, maxAttempts);
+            var extraRemaining = Math.Max(0, extraAttempts);
             var delaySeconds = Math.Max(1, retryDelaySeconds);
             var maxDelaySeconds = Math.Max(delaySeconds, retryMaxDelaySeconds);
             var delay = TimeSpan.FromSeconds(delaySeconds);
@@ -170,8 +176,20 @@ internal sealed class ReviewRunner {
             for (var attempt = 1; attempt <= attempts; attempt++) {
                 try {
                     return await action().ConfigureAwait(false);
-                } catch (Exception ex) when (isTransient(ex) && attempt < attempts && !cancellationToken.IsCancellationRequested) {
+                } catch (Exception ex) when (isTransient(ex) && !cancellationToken.IsCancellationRequested) {
                     lastError = ex;
+                    var allowExtra = attempt >= attempts &&
+                                     extraRemaining > 0 &&
+                                     extraRetryPredicate is not null &&
+                                     extraRetryPredicate(ex);
+                    if (attempt >= attempts && !allowExtra) {
+                        break;
+                    }
+                    if (allowExtra) {
+                        attempts += extraRemaining;
+                        extraRemaining = 0;
+                    }
+
                     var jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(200, 800));
                     var wait = delay + jitter;
                     var summary = describeError is not null ? describeError(ex) : ex.Message;

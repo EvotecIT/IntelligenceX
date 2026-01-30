@@ -93,10 +93,44 @@ internal sealed class ReviewDiagnosticsSession : IDisposable {
 }
 
 internal static class ReviewDiagnostics {
+    public const string FailureMarker = "<!-- intelligencex:failure -->";
+
+    public static bool IsFailureBody(string? body) {
+        return !string.IsNullOrWhiteSpace(body) &&
+               body.Contains(FailureMarker, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsResponseEnded(Exception ex) {
+        if (ex.Message.Contains("ResponseEnded", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("response ended prematurely", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+        return ex.InnerException is not null && IsResponseEnded(ex.InnerException);
+    }
+
     public static string FormatExceptionSummary(Exception ex, bool includeInner) {
         var sb = new StringBuilder();
         AppendException(sb, ex, includeInner, 0);
         return sb.ToString();
+    }
+
+    public static string BuildFailureBody(Exception ex, ReviewSettings settings, ReviewDiagnosticsSnapshot? snapshot) {
+        var summary = FormatExceptionSummary(ex, settings.Diagnostics);
+        var sb = new StringBuilder();
+        sb.AppendLine(FailureMarker);
+        sb.AppendLine("WARNING: Review failed to complete due to an OpenAI request error.");
+        sb.AppendLine();
+        sb.AppendLine($"- Transport: {settings.OpenAITransport}");
+        sb.AppendLine($"- Model: {settings.Model}");
+        if (!string.IsNullOrWhiteSpace(summary)) {
+            sb.AppendLine($"- Error: {summary}");
+        }
+        if (settings.Diagnostics && snapshot is not null && !string.IsNullOrWhiteSpace(snapshot.LastRpcMethod)) {
+            sb.AppendLine($"- Last RPC: {snapshot.LastRpcMethod}");
+        }
+        sb.AppendLine();
+        sb.AppendLine("_Re-run the workflow once connectivity is restored. Set `REVIEW_FAIL_OPEN=false` to keep failures blocking._");
+        return sb.ToString().TrimEnd();
     }
 
     public static void LogFailure(Exception ex, ReviewSettings settings, ReviewDiagnosticsSnapshot? snapshot) {
@@ -105,6 +139,9 @@ internal static class ReviewDiagnostics {
         var summary = FormatExceptionSummary(ex, settings.Diagnostics);
         if (!string.IsNullOrWhiteSpace(summary)) {
             Console.Error.WriteLine($"Cause: {summary}");
+        }
+        if (IsResponseEnded(ex)) {
+            Console.Error.WriteLine("Hint: Response ended prematurely; network/proxy instability or HTTP/2 resets can cause this.");
         }
 
         if (settings.OpenAITransport == OpenAITransportKind.AppServer) {

@@ -268,9 +268,11 @@ You can configure the reviewer with environment variables **or** a repo-local fi
     "retryCount": 3,
     "retryDelaySeconds": 5,
     "retryMaxDelaySeconds": 30,
+    "retryExtraResponseEnded": true,
     "diagnostics": false,
     "preflight": false,
     "preflightTimeoutSeconds": 15,
+    "failOpen": false,
     "commentSearchLimit": 500,
     "includeReviewThreads": false,
     "reviewThreadsIncludeBots": false,
@@ -314,6 +316,8 @@ Notes:
 - Context deny patterns are regex with a short timeout; invalid patterns are ignored with a warning.
 - `diagnostics` enables extra transport logging (stderr + RPC failures) to debug OpenAI connectivity.
 - `preflight` runs a health check before the review request (useful for early auth/transport failures).
+- `retryExtraResponseEnded` adds one extra retry when the HTTP response ends prematurely.
+- `failOpen` posts a failure summary comment instead of failing the workflow.
 - `includeReviewThreads` adds an "Other Reviews" section that triages existing review threads.
 - `reviewThreadsAutoResolveStale` can auto-resolve stale threads (requires `pull-requests: write`).
 - `reviewThreadsAutoResolveMissingInline` resolves inline threads created by the bot when they no longer appear in the latest review (requires `pull-requests: write`).

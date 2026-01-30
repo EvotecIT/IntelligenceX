@@ -60,6 +60,8 @@ internal sealed class ReviewSettings {
     public int RetryCount { get; set; } = 3;
     public int RetryDelaySeconds { get; set; } = 5;
     public int RetryMaxDelaySeconds { get; set; } = 30;
+    public bool RetryExtraOnResponseEnded { get; set; } = true;
+    public bool FailOpen { get; set; }
     public bool Diagnostics { get; set; }
     public bool Preflight { get; set; }
     public int PreflightTimeoutSeconds { get; set; } = 15;
@@ -319,6 +321,14 @@ internal sealed class ReviewSettings {
         var retryMaxDelaySeconds = GetInput("retry_max_delay_seconds", "REVIEW_RETRY_MAX_DELAY_SECONDS");
         if (!string.IsNullOrWhiteSpace(retryMaxDelaySeconds)) {
             settings.RetryMaxDelaySeconds = ParsePositiveInt(retryMaxDelaySeconds, settings.RetryMaxDelaySeconds);
+        }
+        var retryExtraResponseEnded = GetInput("retry_extra_response_ended", "REVIEW_RETRY_EXTRA_RESPONSE_ENDED");
+        if (!string.IsNullOrWhiteSpace(retryExtraResponseEnded)) {
+            settings.RetryExtraOnResponseEnded = ParseBoolean(retryExtraResponseEnded, settings.RetryExtraOnResponseEnded);
+        }
+        var failOpen = GetInput("fail_open", "REVIEW_FAIL_OPEN");
+        if (!string.IsNullOrWhiteSpace(failOpen)) {
+            settings.FailOpen = ParseBoolean(failOpen, settings.FailOpen);
         }
 
         var diagnostics = GetInput("diagnostics", "REVIEW_DIAGNOSTICS");

@@ -70,6 +70,11 @@ internal sealed class WebServer : IDisposable {
     }
 
     private async Task HandleAsync(HttpListenerContext context) {
+        if (!context.Request.IsLocal) {
+            context.Response.StatusCode = 403;
+            await WriteTextAsync(context.Response, "Forbidden.").ConfigureAwait(false);
+            return;
+        }
         var path = context.Request.Url?.AbsolutePath ?? "/";
         if (path == "/") {
             path = "/index.html";

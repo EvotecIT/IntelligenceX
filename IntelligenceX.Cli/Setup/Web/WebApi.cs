@@ -450,7 +450,10 @@ internal sealed class WebApi {
             args.Add("--github-client-id");
             args.Add(request.GitHubClientId!);
         }
-        if (request.WithConfig) {
+        var withConfig = request.WithConfig ||
+                         !string.IsNullOrWhiteSpace(request.ConfigJson) ||
+                         !string.IsNullOrWhiteSpace(request.ConfigPath);
+        if (withConfig) {
             args.Add("--with-config");
         }
         if (!string.IsNullOrWhiteSpace(request.AuthB64)) {
@@ -488,7 +491,7 @@ internal sealed class WebApi {
         if (request.SkipSecret) {
             args.Add("--skip-secret");
         }
-        if (request.ManualSecret) {
+        if (request.ManualSecret && !request.UpdateSecret) {
             args.Add("--manual-secret");
         }
         if (request.ExplicitSecrets) {
@@ -499,6 +502,9 @@ internal sealed class WebApi {
         }
         if (request.Force) {
             args.Add("--force");
+        }
+        if (request.UpdateSecret) {
+            args.Add("--update-secret");
         }
         if (request.Cleanup) {
             args.Add("--cleanup");
@@ -566,6 +572,11 @@ internal sealed class WebApi {
         if (!IsJsonContentType(context.Request.ContentType)) {
             context.Response.StatusCode = 415;
             await WriteJsonAsync(context, new { error = "Content-Type must be application/json." }).ConfigureAwait(false);
+            return false;
+        }
+        if (!context.Request.HasEntityBody || context.Request.ContentLength64 == 0) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Request body required." }).ConfigureAwait(false);
             return false;
         }
         return true;

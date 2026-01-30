@@ -51,6 +51,8 @@ internal static class Program {
         failed += Run("Review retry transient", TestReviewRetryTransient);
         failed += Run("Review retry non-transient", TestReviewRetryNonTransient);
         failed += Run("Review retry rethrows", TestReviewRetryRethrows);
+        failed += Run("Review retry extra attempt", TestReviewRetryExtraAttempt);
+        failed += Run("Review failure marker", TestReviewFailureMarker);
         failed += Run("Context deny invalid regex", TestContextDenyInvalidRegex);
         failed += Run("Context deny timeout", TestContextDenyTimeout);
         failed += Run("Review summary parser", TestReviewSummaryParser);
@@ -380,7 +382,9 @@ internal static class Program {
             retryDelaySeconds: 1,
             retryMaxDelaySeconds: 1,
             CancellationToken.None,
-            describeError: null).GetAwaiter().GetResult();
+            describeError: null,
+            extraAttempts: 0,
+            extraRetryPredicate: null).GetAwaiter().GetResult();
 
         AssertEqual("ok", result, "retry result");
         AssertEqual(3, attempts, "retry attempts");
@@ -399,7 +403,9 @@ internal static class Program {
                 retryDelaySeconds: 1,
                 retryMaxDelaySeconds: 1,
                 CancellationToken.None,
-                describeError: null).GetAwaiter().GetResult();
+                describeError: null,
+                extraAttempts: 0,
+                extraRetryPredicate: null).GetAwaiter().GetResult();
         } catch (InvalidOperationException) {
             thrown = true;
         }
@@ -421,13 +427,43 @@ internal static class Program {
                 retryDelaySeconds: 1,
                 retryMaxDelaySeconds: 1,
                 CancellationToken.None,
-                describeError: null).GetAwaiter().GetResult();
+                describeError: null,
+                extraAttempts: 0,
+                extraRetryPredicate: null).GetAwaiter().GetResult();
             throw new InvalidOperationException("Expected exception.");
         } catch (IOException caught) {
             AssertEqual(true, ReferenceEquals(ex, caught), "retry exception instance");
         }
 
         AssertEqual(2, attempts, "retry attempts rethrow");
+    }
+
+    private static void TestReviewRetryExtraAttempt() {
+        var attempts = 0;
+        var result = ReviewRunner.ReviewRetryPolicy.RunAsync(() => {
+                attempts++;
+                if (attempts == 1) {
+                    throw new IOException("ResponseEnded");
+                }
+                return Task.FromResult("ok");
+            },
+            ex => ex is IOException,
+            maxAttempts: 1,
+            retryDelaySeconds: 1,
+            retryMaxDelaySeconds: 1,
+            CancellationToken.None,
+            describeError: null,
+            extraAttempts: 1,
+            extraRetryPredicate: ReviewDiagnostics.IsResponseEnded).GetAwaiter().GetResult();
+
+        AssertEqual("ok", result, "retry extra result");
+        AssertEqual(2, attempts, "retry extra attempts");
+    }
+
+    private static void TestReviewFailureMarker() {
+        var settings = new ReviewSettings { Diagnostics = true };
+        var body = ReviewDiagnostics.BuildFailureBody(new IOException("ResponseEnded"), settings, null);
+        AssertEqual(true, ReviewDiagnostics.IsFailureBody(body), "failure marker");
     }
 
     private static void TestContextDenyInvalidRegex() {

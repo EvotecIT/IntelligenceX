@@ -124,9 +124,11 @@ public static class ReviewerApp {
             var reviewBody = await runner.RunAsync(prompt, onPartial, TimeSpan.FromSeconds(settings.ProgressUpdateSeconds),
                 CancellationToken.None).ConfigureAwait(false);
 
+            var reviewFailed = ReviewDiagnostics.IsFailureBody(reviewBody);
+            var inlineAllowed = inlineSupported && !reviewFailed;
             var inlineComments = Array.Empty<InlineReviewComment>();
             var summaryBody = reviewBody;
-            if (inlineSupported) {
+            if (inlineAllowed) {
                 var inlineResult = ReviewInlineParser.Extract(reviewBody, settings.MaxInlineComments);
                 inlineComments = inlineResult.Comments as InlineReviewComment[] ?? inlineResult.Comments.ToArray();
                 if (inlineResult.HadInlineSection && !string.IsNullOrWhiteSpace(inlineResult.Body)) {
@@ -135,7 +137,7 @@ public static class ReviewerApp {
             }
 
             HashSet<string>? inlineKeys = null;
-            if (inlineSupported) {
+            if (inlineAllowed) {
                 inlineKeys = await PostInlineCommentsAsync(github, context, files, settings, inlineComments, CancellationToken.None)
                     .ConfigureAwait(false);
                 if (settings.ReviewThreadsAutoResolveMissingInline &&
@@ -147,7 +149,7 @@ public static class ReviewerApp {
                 }
             }
 
-            var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported);
+            var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineAllowed);
             progress.Review = ReviewProgressState.Complete;
             progress.Finalize = ReviewProgressState.InProgress;
             progress.StatusLine = "Finalizing summary.";
