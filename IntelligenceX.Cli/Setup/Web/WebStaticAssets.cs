@@ -82,6 +82,7 @@ internal static class WebStaticAssets {
           <option value=""cleanup"">Cleanup (remove workflow/config)</option>
         </select>
         <p id=""operationHint"" class=""hint""></p>
+        <p id=""requirementsHint"" class=""hint""></p>
 
         <div class=""row"">
           <label><input type=""checkbox"" id=""withConfig"" /> Create config</label>
@@ -231,6 +232,7 @@ const recommend = document.getElementById('recommend');
 const summary = document.getElementById('summary');
 const progress = document.getElementById('progress');
 const operationHint = document.getElementById('operationHint');
+const requirementsHint = document.getElementById('requirementsHint');
 const deviceStart = document.getElementById('deviceStart');
 const devicePoll = document.getElementById('devicePoll');
 const deviceInfo = document.getElementById('deviceInfo');
@@ -303,6 +305,24 @@ function updateControls() {
   savePreset.disabled = !hasPresetName || !hasConfigJson;
   loadPreset.disabled = !hasPresetSelected;
   deletePreset.disabled = !hasPresetSelected;
+
+  const missing = [];
+  if (!hasToken) {
+    missing.push('GitHub token');
+  }
+  if (!hasRepo) {
+    missing.push('repository selection');
+  }
+  if (needsAuthBundle && !hasAuthBundle) {
+    missing.push('auth bundle');
+  }
+  if (allowPlanApply) {
+    requirementsHint.textContent = 'Ready to plan/apply.';
+  } else if (missing.length > 0) {
+    requirementsHint.textContent = `Missing: ${missing.join(', ')}.`;
+  } else {
+    requirementsHint.textContent = '';
+  }
 }
 
 function updateOperationHint() {

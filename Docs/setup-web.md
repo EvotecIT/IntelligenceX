@@ -39,6 +39,7 @@ If you want to avoid personal access tokens, you can use the GitHub App manifest
 - The UI supports multi-repo setup (plan/apply), repo inspection, and setup recommendations.
 - GitHub App installation tokens can only list repos the app is installed on.
 - Buttons are disabled until required inputs are provided (token, repo selection, auth bundle).
+- Inline hints describe what is missing before plan/apply can run.
 
 ## Security notes
 
