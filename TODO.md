@@ -44,12 +44,13 @@ Status: In progress
 - [x] Local web host (Kestrel) + static assets
 - [ ] Wizard screens (same steps as CLI)
 - [x] Advanced JSON editor panel
- - [x] Progress checklist + success summary
+- [x] Progress checklist + success summary
 - [ ] "Manage existing setup" flow
 - [x] Enforce loopback + HTTP-only binding
 - [x] Device flow timeout + expiry messaging
 - [x] Detect existing workflow/config (repo inspection)
 - [x] Recommend setup actions based on inspection
+- [x] Support auth bundle input for secrets (web UI)
 
 ## Phase 6 — Reviewer improvements
 - [ ] Early auth validation with actionable errors

@@ -11,7 +11,8 @@ This starts a local web server and opens the wizard in your browser (http://127.
 ## Current limitations
 
 - OpenAI login is not wired into the web UI yet.
-  Keep “Skip OpenAI secret” enabled and set secrets manually or via CLI.
+  Provide `authB64`/`authB64Path` (INTELLIGENCEX_AUTH_B64 export) or keep “Skip OpenAI secret” enabled.
+- Update-secret in the web UI requires a pre-exported auth bundle.
 - The UI supports multi-repo setup (plan/apply), repo inspection, and setup recommendations.
 
 ## Security notes

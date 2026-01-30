@@ -115,6 +115,12 @@ internal static class WebStaticAssets {
           <label>Config path</label>
           <input id=""configPath"" placeholder=""path to config.json"" />
           <p class=""hint"">Config JSON/path will auto-enable “Create config”.</p>
+
+          <label>Auth bundle (INTELLIGENCEX_AUTH_B64)</label>
+          <textarea id=""authB64"" rows=""4"" placeholder=""paste auth bundle base64""></textarea>
+          <label>Auth bundle path</label>
+          <input id=""authB64Path"" placeholder=""path to auth bundle file"" />
+          <p class=""hint"">Provide this to update secrets without browser login.</p>
         </details>
 
         <div class=""row"">
@@ -161,6 +167,8 @@ const explicitSecrets = document.getElementById('explicitSecrets');
 const dryRun = document.getElementById('dryRun');
 const configJson = document.getElementById('configJson');
 const configPath = document.getElementById('configPath');
+const authB64 = document.getElementById('authB64');
+const authB64Path = document.getElementById('authB64Path');
 const reviewProfile = document.getElementById('reviewProfile');
 const reviewMode = document.getElementById('reviewMode');
 const reviewCommentMode = document.getElementById('reviewCommentMode');
@@ -505,6 +513,8 @@ document.getElementById('plan').addEventListener('click', async () => {
       withConfig: resolveWithConfig(),
       configJson: configJson.value.trim(),
       configPath: configPath.value.trim(),
+      authB64: authB64.value.trim(),
+      authB64Path: authB64Path.value.trim(),
       reviewProfile: reviewProfile.value,
       reviewMode: reviewMode.value,
       reviewCommentMode: reviewCommentMode.value,
@@ -542,6 +552,8 @@ document.getElementById('apply').addEventListener('click', async () => {
       withConfig: resolveWithConfig(),
       configJson: configJson.value.trim(),
       configPath: configPath.value.trim(),
+      authB64: authB64.value.trim(),
+      authB64Path: authB64Path.value.trim(),
       reviewProfile: reviewProfile.value,
       reviewMode: reviewMode.value,
       reviewCommentMode: reviewCommentMode.value,

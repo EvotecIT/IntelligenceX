@@ -44,6 +44,8 @@ internal static partial class SetupRunner {
         public string? ReviewCommentMode { get; set; }
         public string? ConfigPath { get; set; }
         public string? ConfigJson { get; set; }
+        public string? AuthB64 { get; set; }
+        public string? AuthB64Path { get; set; }
         public bool CleanupEnabled { get; set; }
         public string? CleanupMode { get; set; } = "comment";
         public string? CleanupScope { get; set; } = "pr";
@@ -202,6 +204,12 @@ internal static partial class SetupRunner {
                     case "config-json":
                         options.ConfigJson = value;
                         options.WithConfig = true;
+                        break;
+                    case "auth-b64":
+                        options.AuthB64 = value;
+                        break;
+                    case "auth-b64-path":
+                        options.AuthB64Path = value;
                         break;
                     case "cleanup-enabled":
                         options.CleanupEnabled = ParseBool(value, options.CleanupEnabled);

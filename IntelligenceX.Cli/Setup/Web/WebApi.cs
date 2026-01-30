@@ -246,17 +246,18 @@ internal sealed class WebApi {
             return;
         }
 
-        if (!request.SkipSecret && !request.Cleanup && !request.UpdateSecret) {
+        var hasAuthBundle = !string.IsNullOrWhiteSpace(request.AuthB64) || !string.IsNullOrWhiteSpace(request.AuthB64Path);
+        if (!request.SkipSecret && !request.Cleanup && !request.UpdateSecret && !hasAuthBundle) {
             context.Response.StatusCode = 400;
             await WriteJsonAsync(context, new {
-                error = "OpenAI login via web UI is not supported yet. Set skipSecret=true."
+                error = "Web UI cannot perform OpenAI login yet. Provide authB64/authB64Path or set skipSecret=true."
             }).ConfigureAwait(false);
             return;
         }
 
-        if (request.UpdateSecret) {
+        if (request.UpdateSecret && !hasAuthBundle) {
             context.Response.StatusCode = 400;
-            await WriteJsonAsync(context, new { error = "Update-secret is not supported via web UI yet." }).ConfigureAwait(false);
+            await WriteJsonAsync(context, new { error = "Update-secret requires authB64/authB64Path in the web UI." }).ConfigureAwait(false);
             return;
         }
 
@@ -290,6 +291,14 @@ internal sealed class WebApi {
         }
         if (request.WithConfig) {
             args.Add("--with-config");
+        }
+        if (!string.IsNullOrWhiteSpace(request.AuthB64)) {
+            args.Add("--auth-b64");
+            args.Add(request.AuthB64!);
+        }
+        if (!string.IsNullOrWhiteSpace(request.AuthB64Path)) {
+            args.Add("--auth-b64-path");
+            args.Add(request.AuthB64Path!);
         }
         if (!string.IsNullOrWhiteSpace(request.ConfigJson)) {
             args.Add("--config-json");
@@ -425,6 +434,8 @@ internal sealed class WebApi {
         public string? GitHubToken { get; set; }
         public string? GitHubClientId { get; set; }
         public bool WithConfig { get; set; }
+        public string? AuthB64 { get; set; }
+        public string? AuthB64Path { get; set; }
         public string? ConfigJson { get; set; }
         public string? ConfigPath { get; set; }
         public string? ReviewProfile { get; set; }

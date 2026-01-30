@@ -88,14 +88,19 @@ internal static partial class SetupRunner {
                 return 0;
             }
 
-            if (!options.SkipSecret) {
+        if (!options.SkipSecret) {
+            var authB64 = ResolveAuthB64(options);
+            if (string.IsNullOrWhiteSpace(authB64)) {
                 state.OpenAI.AuthBundle = await LoginOpenAiAsync(options).ConfigureAwait(false);
                 state.OpenAI.AuthJson = AuthBundleSerializer.Serialize(state.OpenAI.AuthBundle);
                 state.OpenAI.AuthB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(state.OpenAI.AuthJson));
+            } else {
+                state.OpenAI.AuthB64 = authB64;
+            }
 
-                if (options.ManualSecret) {
-                    PrintManualSecret(state.OpenAI.AuthB64);
-                } else {
+            if (options.ManualSecret) {
+                PrintManualSecret(state.OpenAI.AuthB64);
+            } else {
                     await github.SetSecretAsync(owner, repo, "INTELLIGENCEX_AUTH_B64", state.OpenAI.AuthB64)
                         .ConfigureAwait(false);
                 }
@@ -285,9 +290,14 @@ internal static partial class SetupRunner {
             return 0;
         }
 
-        state.OpenAI.AuthBundle = await LoginOpenAiAsync(options).ConfigureAwait(false);
-        state.OpenAI.AuthJson = AuthBundleSerializer.Serialize(state.OpenAI.AuthBundle);
-        state.OpenAI.AuthB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(state.OpenAI.AuthJson));
+        var authB64 = ResolveAuthB64(options);
+        if (string.IsNullOrWhiteSpace(authB64)) {
+            state.OpenAI.AuthBundle = await LoginOpenAiAsync(options).ConfigureAwait(false);
+            state.OpenAI.AuthJson = AuthBundleSerializer.Serialize(state.OpenAI.AuthBundle);
+            state.OpenAI.AuthB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(state.OpenAI.AuthJson));
+        } else {
+            state.OpenAI.AuthB64 = authB64;
+        }
 
         await github.SetSecretAsync(owner, repo, "INTELLIGENCEX_AUTH_B64", state.OpenAI.AuthB64)
             .ConfigureAwait(false);
@@ -340,6 +350,20 @@ internal static partial class SetupRunner {
         Console.WriteLine("Set INTELLIGENCEX_AUTH_B64 in your repo/org secrets with the following value:");
         Console.WriteLine(secret);
         Console.WriteLine("Warning: this value is sensitive. Avoid sharing logs.");
+    }
+
+    private static string? ResolveAuthB64(SetupOptions options) {
+        if (!string.IsNullOrWhiteSpace(options.AuthB64)) {
+            return options.AuthB64;
+        }
+        if (!string.IsNullOrWhiteSpace(options.AuthB64Path)) {
+            try {
+                return File.ReadAllText(options.AuthB64Path);
+            } catch {
+                return null;
+            }
+        }
+        return null;
     }
 
     private static async Task<AuthBundle> LoginOpenAiAsync(SetupOptions options) {
@@ -886,6 +910,8 @@ internal static partial class SetupRunner {
         Console.WriteLine("  --review-comment-mode <sticky|fresh>");
         Console.WriteLine("  --config-path <path> (use custom config.json content)");
         Console.WriteLine("  --config-json <json> (use inline config.json content)");
+        Console.WriteLine("  --auth-b64 <value> (use pre-exported auth bundle)");
+        Console.WriteLine("  --auth-b64-path <path> (read pre-exported auth bundle)");
         Console.WriteLine("  --cleanup-enabled <true|false>");
         Console.WriteLine("  --cleanup-mode <comment|edit|hybrid>");
         Console.WriteLine("  --cleanup-scope <pr|issue|both>");
