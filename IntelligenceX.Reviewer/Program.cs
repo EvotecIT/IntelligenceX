@@ -133,7 +133,10 @@ public static class ReviewerApp {
             if (inlineSupported) {
                 inlineKeys = await PostInlineCommentsAsync(github, context, files, settings, inlineComments, CancellationToken.None)
                     .ConfigureAwait(false);
-                if (settings.ReviewThreadsAutoResolveMissingInline && !string.IsNullOrWhiteSpace(context.HeadSha)) {
+                if (settings.ReviewThreadsAutoResolveMissingInline &&
+                    !string.IsNullOrWhiteSpace(context.HeadSha) &&
+                    inlineKeys is not null &&
+                    inlineKeys.Count > 0) {
                     await AutoResolveMissingInlineThreadsAsync(github, context, inlineKeys, settings, CancellationToken.None)
                         .ConfigureAwait(false);
                 }
@@ -620,7 +623,7 @@ public static class ReviewerApp {
             author.Equals("intelligencex-review", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static async Task<HashSet<string>> PostInlineCommentsAsync(GitHubClient github, PullRequestContext context,
+    private static async Task<HashSet<string>?> PostInlineCommentsAsync(GitHubClient github, PullRequestContext context,
         IReadOnlyList<PullRequestFile> files, ReviewSettings settings, IReadOnlyList<InlineReviewComment> inlineComments,
         CancellationToken cancellationToken) {
         var expectedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -631,7 +634,7 @@ public static class ReviewerApp {
         var lineMap = BuildInlineLineMap(files);
         var patchIndex = BuildInlinePatchIndex(files);
         if (lineMap.Count == 0) {
-            return expectedKeys;
+            return null;
         }
 
         var limit = Math.Max(0, settings.CommentSearchLimit);
