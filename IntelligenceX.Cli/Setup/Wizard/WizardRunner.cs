@@ -1,0 +1,501 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using IntelligenceX.Cli.Setup.Host;
+using Spectre.Console;
+
+namespace IntelligenceX.Cli.Setup.Wizard;
+
+internal static class WizardRunner {
+    private const string DefaultGitHubApi = "https://api.github.com";
+    private const string DefaultGitHubAuth = "https://github.com";
+    private const string DefaultGitHubScopes = "repo workflow read:org";
+
+    public static async Task<int> RunAsync(string[] args) {
+        var options = WizardOptions.Parse(args);
+        if (options.ShowHelp) {
+            WriteHelp();
+            return 0;
+        }
+
+        if (options.ForcePlain || Console.IsInputRedirected || !AnsiConsole.Profile.Capabilities.Ansi) {
+            Console.WriteLine("Wizard requires an interactive terminal. Falling back to setup options.");
+            return await SetupRunner.RunAsync(args).ConfigureAwait(false);
+        }
+
+        AnsiConsole.Write(new FigletText("IntelligenceX"));
+        AnsiConsole.MarkupLine("[grey]Setup wizard (CLI)[/]");
+        AnsiConsole.WriteLine();
+
+        var state = new WizardState {
+            RepoFullName = options.RepoFullName,
+            WithConfig = options.WithConfig,
+            SkipSecret = options.SkipSecret,
+            ManualSecret = options.ManualSecret,
+            ExplicitSecrets = options.ExplicitSecrets,
+            DryRun = options.DryRun,
+            BranchName = options.BranchName,
+            Upgrade = options.Upgrade,
+            Force = options.Force,
+            Operation = options.Operation
+        };
+
+        state.Operation = WizardPrompts.PromptOperation();
+        state.AuthMode = WizardPrompts.PromptAuthMode();
+
+        if (!await EnsureGitHubTokenAsync(state).ConfigureAwait(false)) {
+            AnsiConsole.MarkupLine("[red]GitHub authentication failed.[/]");
+            return 1;
+        }
+
+        state.Scope = WizardPrompts.PromptScope();
+        await ResolveRepositoriesAsync(state).ConfigureAwait(false);
+
+        if (state.SelectedRepos.Count == 0) {
+            AnsiConsole.MarkupLine("[red]No repositories selected.[/]");
+            return 1;
+        }
+
+        if (state.Operation == WizardOperation.Setup) {
+            state.ConfigMode = WizardPrompts.PromptConfigMode();
+            ApplyConfigSelection(state);
+        } else {
+            state.WithConfig = false;
+        }
+        if (state.Operation == WizardOperation.Setup) {
+            state.SkipSecret = WizardPrompts.PromptSkipSecret(state.SkipSecret);
+            if (!state.SkipSecret) {
+                state.ManualSecret = WizardPrompts.PromptManualSecret(state.ManualSecret);
+            }
+            state.ExplicitSecrets = WizardPrompts.PromptExplicitSecrets(state.ExplicitSecrets);
+            state.Upgrade = WizardPrompts.PromptUpgradeManaged(state.Upgrade);
+            state.Force = WizardPrompts.PromptForceOverwrite(state.Force);
+        }
+        if (state.Operation == WizardOperation.UpdateSecret) {
+            state.SkipSecret = false;
+            state.ManualSecret = WizardPrompts.PromptManualSecret(state.ManualSecret);
+        }
+        state.DryRun = WizardPrompts.PromptDryRun(state.DryRun);
+        state.BranchName = WizardPrompts.PromptBranchName(state.BranchName);
+
+        var plan = BuildPlan(state, state.SelectedRepos[0]);
+        WizardSummary.Render(plan, state.SelectedRepos);
+
+        if (!WizardPrompts.PromptConfirmApply()) {
+            AnsiConsole.MarkupLine("[yellow]Cancelled.[/]");
+            return 1;
+        }
+
+        var failures = 0;
+        var host = new SetupHost();
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .StartAsync("Applying setup...", async _ => {
+                foreach (var repo in state.SelectedRepos) {
+                    var repoPlan = BuildPlan(state, repo);
+                    var result = await host.ApplyAsync(repoPlan).ConfigureAwait(false);
+                    if (result != 0) {
+                        failures++;
+                    }
+                }
+            }).ConfigureAwait(false);
+
+        if (failures > 0) {
+            AnsiConsole.MarkupLine($"[red]Setup completed with {failures} failure(s).[/]");
+            return 1;
+        }
+
+        AnsiConsole.MarkupLine("[green]Setup completed successfully.[/]");
+        return 0;
+    }
+
+    private static SetupPlan BuildPlan(WizardState state, string repo) {
+        var plan = new SetupPlan(repo) {
+            GitHubClientId = state.GitHubClientId,
+            GitHubToken = state.GitHubToken,
+            GitHubAuthLabel = DescribeAuth(state),
+            WithConfig = state.WithConfig,
+            ConfigPath = state.ConfigPath,
+            ConfigJson = state.ConfigJson,
+            ReviewProfile = ResolveProfile(state),
+            ReviewMode = ResolveMode(state),
+            SkipSecret = state.SkipSecret,
+            ManualSecret = state.ManualSecret,
+            ExplicitSecrets = state.ExplicitSecrets,
+            Upgrade = state.Upgrade,
+            Force = state.Force,
+            UpdateSecret = state.Operation == WizardOperation.UpdateSecret,
+            Cleanup = state.Operation == WizardOperation.Cleanup,
+            DryRun = state.DryRun,
+            BranchName = state.BranchName
+        };
+        return plan;
+    }
+
+    private static string DescribeAuth(WizardState state) {
+        return state.AuthMode switch {
+            GitHubAuthMode.AppInstallation => "app installation token",
+            GitHubAuthMode.DeviceFlow => "device flow",
+            GitHubAuthMode.PersonalAccessToken => "personal access token",
+            _ => "token"
+        };
+    }
+
+    private static async Task<bool> EnsureGitHubTokenAsync(WizardState state) {
+        if (state.AuthMode == GitHubAuthMode.PersonalAccessToken) {
+            state.GitHubToken = WizardPrompts.PromptGitHubToken();
+            return !string.IsNullOrWhiteSpace(state.GitHubToken);
+        }
+
+        if (state.AuthMode == GitHubAuthMode.AppInstallation) {
+            var store = new GitHubAppStore();
+            var savedProfiles = store.LoadAll();
+            if (savedProfiles.Count > 0) {
+                var selectedProfile = WizardPrompts.PromptSavedApp(savedProfiles);
+                if (selectedProfile is not null) {
+                    state.GitHubAppId = selectedProfile.AppId;
+                    state.GitHubAppKeyPath = selectedProfile.KeyPath;
+                    if (!string.IsNullOrWhiteSpace(selectedProfile.KeyPath) && System.IO.File.Exists(selectedProfile.KeyPath)) {
+                        state.GitHubAppKeyPem = System.IO.File.ReadAllText(selectedProfile.KeyPath);
+                    }
+                    state.GitHubInstallationId = selectedProfile.DefaultInstallationId;
+                }
+            }
+
+            if (!state.GitHubAppId.HasValue) {
+                if (WizardPrompts.PromptCreateAppFromManifest()) {
+                    var appName = WizardPrompts.PromptAppName("IntelligenceX Reviewer");
+                    var owner = WizardPrompts.PromptAppOwner();
+                    var result = await GitHubAppManifestFlow.RunAsync(new GitHubAppManifestOptions {
+                        AppName = appName,
+                        Owner = owner,
+                        AuthBaseUrl = DefaultGitHubAuth,
+                        ApiBaseUrl = DefaultGitHubApi
+                    }, CancellationToken.None).ConfigureAwait(false);
+                    if (result is not null) {
+                        state.GitHubAppId = result.AppId;
+                        state.GitHubAppKeyPem = result.Pem;
+                        state.GitHubAppKeyPath = SavePemToDisk(result.Pem);
+                    }
+                }
+            }
+            if (!state.GitHubAppId.HasValue) {
+                state.GitHubAppId = WizardPrompts.PromptGitHubAppId();
+            }
+            if (!state.GitHubAppId.HasValue) {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(state.GitHubAppKeyPem)) {
+                var keyPath = WizardPrompts.PromptGitHubAppKeyPath();
+                if (!string.IsNullOrWhiteSpace(keyPath)) {
+                    try {
+                        state.GitHubAppKeyPem = System.IO.File.ReadAllText(keyPath);
+                        state.GitHubAppKeyPath = keyPath;
+                    } catch {
+                        return false;
+                    }
+                } else {
+                    state.GitHubAppKeyPem = WizardPrompts.PromptGitHubAppKeyPem();
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(state.GitHubAppKeyPem)) {
+                return false;
+            }
+
+            try {
+                using var appClient = new GitHubAppClient(state.GitHubAppId.Value, state.GitHubAppKeyPem, DefaultGitHubApi);
+                var installs = await appClient.ListInstallationsAsync().ConfigureAwait(false);
+                if (installs.Count == 0) {
+                    WizardPrompts.ShowInstallAppHint(state.GitHubAppId.Value);
+                    return false;
+                }
+                var selected = state.GitHubInstallationId ?? WizardPrompts.PromptInstallation(installs);
+                if (!selected.HasValue) {
+                    return false;
+                }
+                state.GitHubInstallationId = selected;
+                state.GitHubToken = await appClient.CreateInstallationTokenAsync(selected.Value).ConfigureAwait(false);
+
+                if (!string.IsNullOrWhiteSpace(state.GitHubAppKeyPath) && WizardPrompts.PromptSaveApp()) {
+                    var name = WizardPrompts.PromptAppProfileName($"app-{state.GitHubAppId}");
+                    store.Save(new GitHubAppProfile {
+                        Name = name ?? $"app-{state.GitHubAppId}",
+                        AppId = state.GitHubAppId.Value,
+                        KeyPath = state.GitHubAppKeyPath,
+                        DefaultInstallationId = state.GitHubInstallationId
+                    }, makeDefault: true);
+                }
+
+                return !string.IsNullOrWhiteSpace(state.GitHubToken);
+            } catch {
+                return false;
+            }
+        }
+
+        var fallback = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_CLIENT_ID");
+        state.GitHubClientId = WizardPrompts.PromptGitHubClientId(fallback);
+        if (string.IsNullOrWhiteSpace(state.GitHubClientId)) {
+            return false;
+        }
+
+        var token = await GitHubAuth.DeviceFlowAsync(state.GitHubClientId!, DefaultGitHubAuth, DefaultGitHubScopes)
+            .ConfigureAwait(false);
+        state.GitHubToken = token;
+        return !string.IsNullOrWhiteSpace(state.GitHubToken);
+    }
+
+    private static string SavePemToDisk(string pem) {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrWhiteSpace(home)) {
+            home = ".";
+        }
+        var dir = System.IO.Path.Combine(home, ".intelligencex");
+        System.IO.Directory.CreateDirectory(dir);
+        var path = System.IO.Path.Combine(dir, "github-app-private-key.pem");
+        System.IO.File.WriteAllText(path, pem);
+        return path;
+    }
+
+    private static async Task ResolveRepositoriesAsync(WizardState state) {
+        if (state.Scope == SetupScope.Manual) {
+            state.SelectedRepos.AddRange(WizardPrompts.PromptManualRepos());
+            return;
+        }
+
+        var repos = await LoadRepositoriesAsync(state).ConfigureAwait(false);
+        if (repos.Count == 0) {
+            state.SelectedRepos.AddRange(WizardPrompts.PromptManualRepos());
+            return;
+        }
+
+        var filtered = FilterRepositories(repos);
+        if (filtered.Count == 0) {
+            state.SelectedRepos.AddRange(WizardPrompts.PromptManualRepos());
+            return;
+        }
+
+        if (state.Scope == SetupScope.SingleRepo) {
+            var selected = WizardPrompts.PromptSingleRepo(filtered);
+            state.SelectedRepos.Add(selected);
+            return;
+        }
+
+        var selectedRepos = WizardPrompts.PromptMultipleRepos(filtered);
+        state.SelectedRepos.AddRange(selectedRepos);
+    }
+
+    private static void ApplyConfigSelection(WizardState state) {
+        if (state.ConfigMode == ConfigMode.None) {
+            state.WithConfig = false;
+            return;
+        }
+
+        if (state.ConfigMode == ConfigMode.Preset) {
+            state.Preset = WizardPrompts.PromptPreset();
+            state.WithConfig = true;
+            return;
+        }
+
+        state.WithConfig = true;
+        var source = WizardPrompts.PromptConfigSource();
+        switch (source) {
+            case ConfigSource.Editor:
+                state.ConfigJson = WizardConfigEditor.EditInEditor();
+                break;
+            case ConfigSource.Path: {
+                var path = WizardPrompts.PromptConfigPath();
+                if (!string.IsNullOrWhiteSpace(path)) {
+                    state.ConfigPath = path;
+                }
+                break;
+            }
+            case ConfigSource.Paste:
+                state.ConfigJson = WizardPrompts.PromptConfigJson();
+                break;
+        }
+
+        if (!string.IsNullOrWhiteSpace(state.ConfigJson) && !WizardConfigEditor.IsValidJson(state.ConfigJson)) {
+            AnsiConsole.MarkupLine("[red]Invalid JSON provided. Skipping config.[/]");
+            state.ConfigJson = null;
+            state.WithConfig = false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(state.ConfigPath)) {
+            try {
+                var content = System.IO.File.ReadAllText(state.ConfigPath);
+                if (!WizardConfigEditor.IsValidJson(content)) {
+                    AnsiConsole.MarkupLine("[red]Invalid JSON in config file. Skipping config.[/]");
+                    state.ConfigPath = null;
+                    state.WithConfig = false;
+                }
+            } catch {
+                AnsiConsole.MarkupLine("[red]Failed to read config file. Skipping config.[/]");
+                state.ConfigPath = null;
+                state.WithConfig = false;
+            }
+        }
+    }
+
+    private static string? ResolveProfile(WizardState state) {
+        if (state.ConfigMode != ConfigMode.Preset) {
+            return null;
+        }
+        return state.Preset switch {
+            ConfigPreset.Balanced => "balanced",
+            ConfigPreset.Strict => "picky",
+            ConfigPreset.Security => "security",
+            ConfigPreset.Minimal => "highlevel",
+            ConfigPreset.Performance => "performance",
+            ConfigPreset.Tests => "tests",
+            _ => "balanced"
+        };
+    }
+
+    private static string? ResolveMode(WizardState state) {
+        if (state.ConfigMode != ConfigMode.Preset) {
+            return null;
+        }
+        return state.Preset == ConfigPreset.Minimal ? "summary" : "hybrid";
+    }
+
+    private static async Task<List<string>> LoadRepositoriesAsync(WizardState state) {
+        if (string.IsNullOrWhiteSpace(state.GitHubToken)) {
+            return new List<string>();
+        }
+
+        try {
+            using var client = new GitHubRepoClient(state.GitHubToken, DefaultGitHubApi);
+            var repos = state.AuthMode == GitHubAuthMode.AppInstallation
+                ? await client.ListInstallationRepositoriesAsync().ConfigureAwait(false)
+                : await client.ListRepositoriesAsync().ConfigureAwait(false);
+            return repos
+                .OrderByDescending(r => r.UpdatedAt ?? DateTimeOffset.MinValue)
+                .Select(r => r.FullName)
+                .ToList();
+        } catch {
+            return new List<string>();
+        }
+    }
+
+    private static List<string> FilterRepositories(IReadOnlyList<string> repos) {
+        var filter = WizardPrompts.PromptFilter();
+        if (string.IsNullOrWhiteSpace(filter)) {
+            return repos.ToList();
+        }
+        return repos
+            .Where(repo => repo.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    private static void WriteHelp() {
+        Console.WriteLine("IntelligenceX setup wizard");
+        Console.WriteLine();
+        Console.WriteLine("Usage:");
+        Console.WriteLine("  intelligencex setup wizard [options]");
+        Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --repo <owner/name>");
+        Console.WriteLine("  --with-config");
+        Console.WriteLine("  --skip-secret");
+        Console.WriteLine("  --manual-secret");
+        Console.WriteLine("  --explicit-secrets");
+        Console.WriteLine("  --operation <setup|update-secret|cleanup>");
+        Console.WriteLine("  --upgrade");
+        Console.WriteLine("  --force");
+        Console.WriteLine("  --dry-run");
+        Console.WriteLine("  --branch <name>");
+        Console.WriteLine("  --plain (disable wizard UI)");
+        Console.WriteLine("  --help");
+    }
+
+    private sealed class WizardOptions {
+        public string? RepoFullName { get; set; }
+        public bool WithConfig { get; set; }
+        public bool SkipSecret { get; set; }
+        public bool ManualSecret { get; set; }
+        public bool ExplicitSecrets { get; set; }
+        public bool Upgrade { get; set; }
+        public bool Force { get; set; }
+        public WizardOperation Operation { get; set; }
+        public bool DryRun { get; set; }
+        public string? BranchName { get; set; }
+        public bool ForcePlain { get; set; }
+        public bool ShowHelp { get; set; }
+
+        public static WizardOptions Parse(string[] args) {
+            var options = new WizardOptions();
+            for (var i = 0; i < args.Length; i++) {
+                var arg = args[i];
+                if (!arg.StartsWith("--", StringComparison.Ordinal)) {
+                    continue;
+                }
+                var key = arg.Substring(2);
+                var value = i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal)
+                    ? args[++i]
+                    : "true";
+
+                switch (key) {
+                    case "repo":
+                        options.RepoFullName = value;
+                        break;
+                    case "with-config":
+                        options.WithConfig = ParseBool(value, true);
+                        break;
+                    case "skip-secret":
+                        options.SkipSecret = ParseBool(value, true);
+                        break;
+                    case "manual-secret":
+                        options.ManualSecret = ParseBool(value, true);
+                        break;
+                    case "explicit-secrets":
+                        options.ExplicitSecrets = ParseBool(value, true);
+                        break;
+                    case "upgrade":
+                        options.Upgrade = ParseBool(value, true);
+                        break;
+                    case "force":
+                        options.Force = ParseBool(value, true);
+                        break;
+                    case "operation":
+                        options.Operation = ParseOperation(value);
+                        break;
+                    case "dry-run":
+                        options.DryRun = ParseBool(value, true);
+                        break;
+                    case "branch":
+                        options.BranchName = value;
+                        break;
+                    case "plain":
+                        options.ForcePlain = ParseBool(value, true);
+                        break;
+                    case "help":
+                        options.ShowHelp = true;
+                        break;
+                }
+            }
+            return options;
+        }
+
+        private static bool ParseBool(string value, bool fallback) {
+            if (bool.TryParse(value, out var parsed)) {
+                return parsed;
+            }
+            return fallback;
+        }
+
+        private static WizardOperation ParseOperation(string value) {
+            if (string.IsNullOrWhiteSpace(value)) {
+                return WizardOperation.Setup;
+            }
+            return value.Trim().ToLowerInvariant() switch {
+                "cleanup" => WizardOperation.Cleanup,
+                "update-secret" => WizardOperation.UpdateSecret,
+                "update" => WizardOperation.UpdateSecret,
+                _ => WizardOperation.Setup
+            };
+        }
+    }
+}

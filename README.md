@@ -162,6 +162,25 @@ client.StandardErrorReceived += (_, line) => Console.WriteLine($"STDERR: {line}"
 `IntelligenceX.Reviewer` is the console tool behind the review workflow. It reads PR context, generates
 review feedback, and posts a sticky comment.
 
+### Onboarding wizard (CLI)
+
+Use the interactive wizard for the fastest setup across one or more repositories:
+
+```powershell
+intelligencex setup wizard
+```
+
+Docs:
+- `Docs/onboarding-wizard.md`
+- `Docs/cli-quickstart.md`
+- `Docs/security-trust.md`
+- `Docs/setup-web.md`
+
+Wizard operations:
+- Setup / update workflow + config (default)
+- Update OpenAI secret only
+- Cleanup (remove workflow/config)
+
 ### Quick start
 
 Use the reusable workflow from `evotecit/github-actions`:

@@ -1,0 +1,62 @@
+# IntelligenceX Onboarding Roadmap (Wizard + CLI)
+
+Status: In progress
+
+## Phase 0 — Goals & constraints
+- [ ] Confirm onboarding goals (wizard + PR-only path + upgrade path)
+- [ ] Confirm default auth choice (vendor OAuth for single repo, BYO App for org)
+- [ ] Confirm secret handling policy (auto if Sodium, manual fallback)
+- [ ] Confirm UI choice (local web UI + Spectre.Console wizard)
+
+## Phase 1 — Core setup architecture (shared by CLI + UI)
+- [x] Add SetupHost orchestration layer (single source of truth)
+- [x] Add wizard state model (repos, config, auth, apply mode)
+- [x] Implement Plan → Apply flow with dry-run output
+- [x] Implement upgrade/modify detection (existing workflow/config)
+
+## Phase 2 — CLI Wizard (Spectre.Console)
+- [x] Add Spectre.Console dependency (CLI project only)
+- [ ] Implement interactive steps:
+  - [x] Auth mode selection
+  - [x] GitHub auth flow
+  - [x] Org vs repo selection
+  - [x] Repo multi-select
+  - [x] Config presets + advanced JSON editor
+  - [x] OpenAI login (reuse if present)
+  - [ ] Apply (PR creation pending)
+- [ ] Non-interactive fallback (--plain, redirected input)
+- [ ] Summary table + PR links
+
+## Phase 3 — GitHub App Manifest (BYO App)
+- [x] Manifest generation (pre-filled app definition)
+- [x] Open GitHub "Create App from Manifest"
+- [x] Handle callback and exchange code for app id + PEM
+- [x] App install flow (select repos / all repos)
+- [x] Store app credentials locally for reuse
+
+## Phase 4 — Secrets handling
+- [x] Auto-encrypt and upload secrets when Sodium available
+- [x] Manual secret fallback (print export + instructions)
+- [x] Support INTELLIGENCEX_AUTH_KEY for encrypted store
+
+## Phase 5 — Local Web UI Wizard
+- [x] Local web host (Kestrel) + static assets
+- [ ] Wizard screens (same steps as CLI)
+- [x] Advanced JSON editor panel
+- [ ] Progress checklist + success summary
+- [ ] "Manage existing setup" flow
+
+## Phase 6 — Reviewer improvements
+- [ ] Early auth validation with actionable errors
+- [ ] Safer auth store handling in reviewer
+- [x] Explicit secrets in workflow (no secrets: inherit)
+
+## Phase 7 — Docs & README
+- [ ] README rewrite (what it is, trust model, quickstart)
+- [x] Docs: wizard onboarding, CLI quickstart, security/trust
+- [x] Screenshot placeholders + asset folder
+
+## Phase 8 — Copilot (experimental)
+- [ ] Keep CLI Copilot optional provider
+- [ ] Research native Copilot feasibility
+- [ ] Add provider toggle in wizard

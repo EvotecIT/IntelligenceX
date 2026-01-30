@@ -41,6 +41,8 @@ internal static class Program {
         Console.WriteLine("  intelligencex auth <command>");
         Console.WriteLine("  intelligencex reviewer run");
         Console.WriteLine("  intelligencex setup [options]");
+        Console.WriteLine("  intelligencex setup wizard [options]");
+        Console.WriteLine("  intelligencex setup web [url]");
         Console.WriteLine("  intelligencex release <command>");
         Console.WriteLine();
         Console.WriteLine("Auth commands:");
@@ -115,6 +117,14 @@ internal static class Program {
     }
 
     private static async Task<int> RunSetupAsync(string[] args) {
+        if (args.Length > 0 && args[0].Equals("wizard", StringComparison.OrdinalIgnoreCase)) {
+            var rest = args.Skip(1).ToArray();
+            return await Setup.Wizard.WizardRunner.RunAsync(rest).ConfigureAwait(false);
+        }
+        if (args.Length > 0 && args[0].Equals("web", StringComparison.OrdinalIgnoreCase)) {
+            var rest = args.Skip(1).ToArray();
+            return await Setup.Web.WebRunner.RunAsync(rest).ConfigureAwait(false);
+        }
         return await Setup.SetupRunner.RunAsync(args).ConfigureAwait(false);
     }
 
