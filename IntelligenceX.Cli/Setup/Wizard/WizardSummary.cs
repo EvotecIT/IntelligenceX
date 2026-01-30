@@ -4,7 +4,7 @@ using IntelligenceX.Cli.Setup.Host;
 namespace IntelligenceX.Cli.Setup.Wizard;
 
 internal static class WizardSummary {
-    public static void Render(SetupPlan plan, IReadOnlyList<string> repos) {
+    public static void Render(SetupPlan plan, IReadOnlyList<string> repos, string? workflowStatus = null, string? configSource = null) {
         var table = new Table()
             .RoundedBorder()
             .AddColumn("Setting")
@@ -14,6 +14,12 @@ internal static class WizardSummary {
         table.AddRow("Operation", DescribeOperation(plan));
         table.AddRow("With config", plan.WithConfig ? "yes" : "no");
         table.AddRow("Config detail", DescribeConfig(plan));
+        if (!string.IsNullOrWhiteSpace(configSource)) {
+            table.AddRow("Config source", configSource);
+        }
+        if (!string.IsNullOrWhiteSpace(workflowStatus)) {
+            table.AddRow("Workflow status", workflowStatus);
+        }
         if (!string.IsNullOrWhiteSpace(plan.Provider)) {
             table.AddRow("Provider", plan.Provider);
         }

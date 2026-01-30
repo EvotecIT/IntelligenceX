@@ -23,6 +23,7 @@ See `Docs/setup-web.md` for limitations and security notes.
 - Lets you pick single or multiple repos
 - Builds reviewer config via presets or custom JSON
 - Can load existing config from a repo and preview the workflow
+- Summary includes workflow status (managed/unmanaged) from the first selected repo
 - Logs into ChatGPT (native transport) if secrets are needed
 - Creates PRs with workflow/config updates
 

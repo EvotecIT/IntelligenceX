@@ -63,6 +63,7 @@ internal sealed class WizardState {
     public ConfigPreset Preset { get; set; } = ConfigPreset.Balanced;
     public string? ConfigPath { get; set; }
     public string? ConfigJson { get; set; }
+    public string? ConfigSourceLabel { get; set; }
     public bool Force { get; set; }
     public bool Upgrade { get; set; }
     public WizardOperation Operation { get; set; } = WizardOperation.Setup;

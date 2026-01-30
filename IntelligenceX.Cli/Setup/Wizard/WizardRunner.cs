@@ -91,7 +91,8 @@ internal static class WizardRunner {
         state.BranchName = WizardPrompts.PromptBranchName(state.BranchName);
 
         var plan = BuildPlan(state, state.SelectedRepos[0]);
-        WizardSummary.Render(plan, state.SelectedRepos);
+        var workflowStatus = await GetWorkflowStatusAsync(state).ConfigureAwait(false);
+        WizardSummary.Render(plan, state.SelectedRepos, workflowStatus, state.ConfigSourceLabel);
 
         if (!WizardPrompts.PromptConfirmApply()) {
             AnsiConsole.MarkupLine("[yellow]Cancelled.[/]");
@@ -350,9 +351,11 @@ internal static class WizardRunner {
 
         if (state.ConfigMode == ConfigMode.Existing) {
             state.WithConfig = true;
+            state.ConfigSourceLabel = "loaded from repo";
             var repo = SelectRepoForInspection(state, "Select repository to load config from:");
             if (string.IsNullOrWhiteSpace(repo)) {
                 state.WithConfig = false;
+                state.ConfigSourceLabel = null;
                 return;
             }
             var (content, branch) = await TryLoadRepoFileAsync(state, repo, ".intelligencex/config.json")
@@ -360,11 +363,13 @@ internal static class WizardRunner {
             if (string.IsNullOrWhiteSpace(content)) {
                 AnsiConsole.MarkupLine("[yellow]Config not found in default branch.[/]");
                 state.WithConfig = false;
+                state.ConfigSourceLabel = null;
                 return;
             }
             if (!WizardConfigEditor.IsValidJson(content)) {
                 AnsiConsole.MarkupLine("[red]Config JSON is invalid. Skipping config.[/]");
                 state.WithConfig = false;
+                state.ConfigSourceLabel = null;
                 return;
             }
             state.ConfigJson = content;
@@ -379,6 +384,7 @@ internal static class WizardRunner {
         }
 
         state.WithConfig = true;
+        state.ConfigSourceLabel = null;
         var source = WizardPrompts.PromptConfigSource();
         switch (source) {
             case ConfigSource.Editor:
@@ -464,6 +470,21 @@ internal static class WizardRunner {
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine($"[grey]Loaded from {repo} ({branch ?? "default"}).[/]");
         AnsiConsole.WriteLine();
+    }
+
+    private static async Task<string?> GetWorkflowStatusAsync(WizardState state) {
+        if (state.SelectedRepos.Count == 0 || string.IsNullOrWhiteSpace(state.GitHubToken)) {
+            return null;
+        }
+        var repo = state.SelectedRepos[0];
+        var (content, _) = await TryLoadRepoFileAsync(state, repo, ".github/workflows/review-intelligencex.yml")
+            .ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(content)) {
+            return state.SelectedRepos.Count > 1 ? "missing (first repo)" : "missing";
+        }
+        var managed = content.Contains("INTELLIGENCEX:BEGIN", StringComparison.Ordinal);
+        var status = managed ? "managed" : "unmanaged";
+        return state.SelectedRepos.Count > 1 ? $"{status} (first repo)" : status;
     }
 
     private static async Task<List<string>> LoadRepositoriesAsync(WizardState state) {
