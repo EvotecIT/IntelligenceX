@@ -256,6 +256,7 @@ Notes:
 - Context deny patterns are regex with a short timeout; invalid patterns are ignored with a warning.
 - `includeReviewThreads` adds an "Other Reviews" section that triages existing review threads.
 - `reviewThreadsAutoResolveStale` can auto-resolve stale threads (requires `pull-requests: write`).
+- Set `reviewThreadsMax` or `reviewThreadsMaxComments` to `0` to disable review-thread context.
 
 ## CLI setup (GitHub Actions)
 

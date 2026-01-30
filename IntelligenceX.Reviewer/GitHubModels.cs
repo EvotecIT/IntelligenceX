@@ -80,16 +80,19 @@ internal sealed class RelatedPullRequest {
 }
 
 internal sealed class PullRequestReviewThread {
-    public PullRequestReviewThread(string id, bool isResolved, bool isOutdated, IReadOnlyList<PullRequestReviewThreadComment> comments) {
+    public PullRequestReviewThread(string id, bool isResolved, bool isOutdated, int totalComments,
+        IReadOnlyList<PullRequestReviewThreadComment> comments) {
         Id = id;
         IsResolved = isResolved;
         IsOutdated = isOutdated;
+        TotalComments = totalComments;
         Comments = comments;
     }
 
     public string Id { get; }
     public bool IsResolved { get; }
     public bool IsOutdated { get; }
+    public int TotalComments { get; }
     public IReadOnlyList<PullRequestReviewThreadComment> Comments { get; }
 }
 

@@ -426,6 +426,9 @@ public static class ReviewerApp {
             if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread)) {
                 continue;
             }
+            if (settings.ReviewThreadsAutoResolveBotsOnly && thread.TotalComments > thread.Comments.Count) {
+                continue;
+            }
 
             try {
                 await github.ResolveReviewThreadAsync(thread.Id, cancellationToken).ConfigureAwait(false);

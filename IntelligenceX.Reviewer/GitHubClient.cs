@@ -156,13 +156,12 @@ internal sealed class GitHubClient : IDisposable {
 
     public async Task<IReadOnlyList<PullRequestReviewThread>> ListPullRequestReviewThreadsAsync(string owner, string repo, int number,
         int maxThreads, int maxComments, CancellationToken cancellationToken) {
-        if (maxThreads <= 0) {
+        if (maxThreads <= 0 || maxComments <= 0) {
             return Array.Empty<PullRequestReviewThread>();
         }
 
-        maxComments = Math.Max(1, maxComments);
         var threads = new List<PullRequestReviewThread>();
-        var commentLimit = Math.Min(Math.Max(1, maxComments), 100);
+        var commentLimit = Math.Min(maxComments, 100);
         string? cursor = null;
         while (threads.Count < maxThreads) {
             var payload = new JsonObject()
@@ -175,6 +174,7 @@ internal sealed class GitHubClient : IDisposable {
           isResolved
           isOutdated
           comments(first:$commentLimit){
+            totalCount
             nodes{
               body
               path
@@ -218,6 +218,7 @@ internal sealed class GitHubClient : IDisposable {
                 var isResolved = obj.GetBoolean("isResolved");
                 var isOutdated = obj.GetBoolean("isOutdated");
                 var commentsObj = obj.GetObject("comments");
+                var totalComments = (int)(commentsObj?.GetInt64("totalCount") ?? 0);
                 var commentNodes = commentsObj?.GetArray("nodes");
                 var comments = new List<PullRequestReviewThreadComment>();
                 if (commentNodes is not null) {
@@ -236,7 +237,7 @@ internal sealed class GitHubClient : IDisposable {
                         comments.Add(new PullRequestReviewThreadComment(body, author, path, line.HasValue ? (int?)line.Value : null));
                     }
                 }
-                threads.Add(new PullRequestReviewThread(id, isResolved, isOutdated, comments));
+                threads.Add(new PullRequestReviewThread(id, isResolved, isOutdated, totalComments, comments));
             }
 
             var pageInfo = threadsObj?.GetObject("pageInfo");

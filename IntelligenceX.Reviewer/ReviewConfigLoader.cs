@@ -174,11 +174,11 @@ internal static class ReviewConfigLoader {
         settings.ReviewThreadsIncludeBots = ReadBool(obj, "reviewThreadsIncludeBots", settings.ReviewThreadsIncludeBots);
         settings.ReviewThreadsIncludeResolved = ReadBool(obj, "reviewThreadsIncludeResolved", settings.ReviewThreadsIncludeResolved);
         settings.ReviewThreadsIncludeOutdated = ReadBool(obj, "reviewThreadsIncludeOutdated", settings.ReviewThreadsIncludeOutdated);
-        settings.ReviewThreadsMax = ReadInt(obj, "reviewThreadsMax", settings.ReviewThreadsMax);
-        settings.ReviewThreadsMaxComments = ReadInt(obj, "reviewThreadsMaxComments", settings.ReviewThreadsMaxComments);
+        settings.ReviewThreadsMax = ReadNonNegativeInt(obj, "reviewThreadsMax", settings.ReviewThreadsMax);
+        settings.ReviewThreadsMaxComments = ReadNonNegativeInt(obj, "reviewThreadsMaxComments", settings.ReviewThreadsMaxComments);
         settings.ReviewThreadsAutoResolveStale = ReadBool(obj, "reviewThreadsAutoResolveStale", settings.ReviewThreadsAutoResolveStale);
         settings.ReviewThreadsAutoResolveBotsOnly = ReadBool(obj, "reviewThreadsAutoResolveBotsOnly", settings.ReviewThreadsAutoResolveBotsOnly);
-        settings.ReviewThreadsAutoResolveMax = ReadInt(obj, "reviewThreadsAutoResolveMax", settings.ReviewThreadsAutoResolveMax);
+        settings.ReviewThreadsAutoResolveMax = ReadNonNegativeInt(obj, "reviewThreadsAutoResolveMax", settings.ReviewThreadsAutoResolveMax);
         settings.MaxCommentChars = ReadInt(obj, "maxCommentChars", settings.MaxCommentChars);
         settings.MaxComments = ReadInt(obj, "maxComments", settings.MaxComments);
         settings.CommentSearchLimit = ReadInt(obj, "commentSearchLimit", settings.CommentSearchLimit);
@@ -267,6 +267,14 @@ internal static class ReviewConfigLoader {
     private static int ReadInt(JsonObject obj, string key, int fallback) {
         var value = obj.GetInt64(key);
         if (value.HasValue && value.Value > 0) {
+            return (int)value.Value;
+        }
+        return fallback;
+    }
+
+    private static int ReadNonNegativeInt(JsonObject obj, string key, int fallback) {
+        var value = obj.GetInt64(key);
+        if (value.HasValue && value.Value >= 0) {
             return (int)value.Value;
         }
         return fallback;

@@ -415,11 +415,11 @@ internal sealed class ReviewSettings {
         }
         var reviewThreadsMax = GetInput("review_threads_max", "REVIEW_REVIEW_THREADS_MAX");
         if (!string.IsNullOrWhiteSpace(reviewThreadsMax)) {
-            settings.ReviewThreadsMax = ParsePositiveInt(reviewThreadsMax, settings.ReviewThreadsMax);
+            settings.ReviewThreadsMax = ParseNonNegativeInt(reviewThreadsMax, settings.ReviewThreadsMax);
         }
         var reviewThreadsMaxComments = GetInput("review_threads_max_comments", "REVIEW_REVIEW_THREADS_MAX_COMMENTS");
         if (!string.IsNullOrWhiteSpace(reviewThreadsMaxComments)) {
-            settings.ReviewThreadsMaxComments = ParsePositiveInt(reviewThreadsMaxComments, settings.ReviewThreadsMaxComments);
+            settings.ReviewThreadsMaxComments = ParseNonNegativeInt(reviewThreadsMaxComments, settings.ReviewThreadsMaxComments);
         }
         var reviewThreadsAutoResolveStale = GetInput("review_threads_auto_resolve_stale", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_STALE");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveStale)) {
@@ -431,7 +431,7 @@ internal sealed class ReviewSettings {
         }
         var reviewThreadsAutoResolveMax = GetInput("review_threads_auto_resolve_max", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_MAX");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveMax)) {
-            settings.ReviewThreadsAutoResolveMax = ParsePositiveInt(reviewThreadsAutoResolveMax, settings.ReviewThreadsAutoResolveMax);
+            settings.ReviewThreadsAutoResolveMax = ParseNonNegativeInt(reviewThreadsAutoResolveMax, settings.ReviewThreadsAutoResolveMax);
         }
         var contextDenyEnabled = GetInput("context_deny_enabled", "REVIEW_CONTEXT_DENY_ENABLED");
         if (!string.IsNullOrWhiteSpace(contextDenyEnabled)) {
@@ -561,6 +561,16 @@ internal sealed class ReviewSettings {
             return fallback;
         }
         if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed > 0) {
+            return parsed;
+        }
+        return fallback;
+    }
+
+    private static int ParseNonNegativeInt(string? value, int fallback) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return fallback;
+        }
+        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed >= 0) {
             return parsed;
         }
         return fallback;
