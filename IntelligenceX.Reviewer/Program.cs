@@ -740,7 +740,7 @@ public static class ReviewerApp {
         }
         var reviewedCommit = ExtractReviewedCommit(summary.Body);
         if (string.IsNullOrWhiteSpace(reviewedCommit)) {
-            return false;
+            return true;
         }
         return !headSha.StartsWith(reviewedCommit, StringComparison.OrdinalIgnoreCase);
     }
