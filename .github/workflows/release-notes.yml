@@ -110,8 +110,20 @@ jobs:
           }
           normalize_labels() {
             local labels="${1}"
-            labels="$(echo "${labels}" | tr '\n' ',' | tr -s ' ' ',' | tr -s ',' ',' | sed -E 's/^,+|,+$//g')"
-            echo "${labels}"
+            labels="${labels//$'\n'/,}"
+            local out=""
+            IFS=',' read -r -a parts <<< "${labels}"
+            for part in "${parts[@]}"; do
+              part="$(echo "${part}" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+              if [ -n "${part}" ]; then
+                if [ -n "${out}" ]; then
+                  out="${out},${part}"
+                else
+                  out="${part}"
+                fi
+              fi
+            done
+            echo "${out}"
           }
           has_label() {
             local labels_lc
