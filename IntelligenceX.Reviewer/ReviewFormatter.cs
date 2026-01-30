@@ -22,6 +22,7 @@ internal static class ReviewFormatter {
             ["SummaryMarker"] = SummaryMarker,
             ["Number"] = context.Number.ToString(),
             ["Title"] = EscapeMarkdown(context.Title),
+            ["CommitLine"] = FormatCommitLine(context.HeadSha),
             ["InlineNote"] = inlineNote,
             ["ReviewBody"] = body,
             ["Model"] = settings.Model,
@@ -76,6 +77,15 @@ internal static class ReviewFormatter {
 
     private static string EscapeMarkdown(string value) {
         return value.Replace("\r", "").Replace("\n", " ");
+    }
+
+    private static string FormatCommitLine(string? sha) {
+        if (string.IsNullOrWhiteSpace(sha)) {
+            return string.Empty;
+        }
+        var trimmed = sha.Trim();
+        var shortSha = trimmed.Length > 7 ? trimmed.Substring(0, 7) : trimmed;
+        return $"Reviewed commit: `{shortSha}`\n";
     }
 
     private static string BuildChecklist(ReviewProgress progress) {
