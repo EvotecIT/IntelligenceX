@@ -143,9 +143,11 @@ public static class ReviewerApp {
                 await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, commentBody, CancellationToken.None)
                     .ConfigureAwait(false);
                 Console.WriteLine("Updated review comment.");
-            } else if (settings.OverwriteSummary && settings.CommentMode == ReviewCommentMode.Sticky) {
+            } else if (settings.CommentMode == ReviewCommentMode.Sticky) {
                 var existing = await FindExistingSummaryAsync(github, context, settings, CancellationToken.None).ConfigureAwait(false);
-                if (existing is not null) {
+                var shouldOverwrite = settings.OverwriteSummary ||
+                                      (settings.OverwriteSummaryOnNewCommit && IsSummaryOutdated(existing, context.HeadSha));
+                if (existing is not null && shouldOverwrite) {
                     await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, commentBody, CancellationToken.None)
                         .ConfigureAwait(false);
                     Console.WriteLine("Updated existing review comment.");
@@ -726,6 +728,39 @@ public static class ReviewerApp {
             }
         }
         return null;
+    }
+
+    private static bool IsSummaryOutdated(IssueComment? summary, string? headSha) {
+        if (summary is null || string.IsNullOrWhiteSpace(headSha)) {
+            return false;
+        }
+        var reviewedCommit = ExtractReviewedCommit(summary.Body);
+        if (string.IsNullOrWhiteSpace(reviewedCommit)) {
+            return false;
+        }
+        return !headSha.StartsWith(reviewedCommit, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ExtractReviewedCommit(string body) {
+        if (string.IsNullOrWhiteSpace(body)) {
+            return null;
+        }
+        const string marker = "Reviewed commit:";
+        var index = body.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (index < 0) {
+            return null;
+        }
+        var slice = body.Substring(index + marker.Length);
+        var backtick = slice.IndexOf('`');
+        if (backtick >= 0) {
+            slice = slice.Substring(backtick + 1);
+            var end = slice.IndexOf('`');
+            if (end >= 0) {
+                slice = slice.Substring(0, end);
+            }
+        }
+        var token = slice.Trim();
+        return token.Length == 0 ? null : token;
     }
 
     private static async Task<long?> CreateOrUpdateProgressCommentAsync(GitHubClient github, PullRequestContext context,

@@ -218,6 +218,7 @@ You can configure the reviewer with environment variables **or** a repo-local fi
     "retryMaxDelaySeconds": 30,
     "commentSearchLimit": 500,
     "commentMode": "sticky",
+    "overwriteSummaryOnNewCommit": true,
     "contextDenyEnabled": true,
     "contextDenyPatterns": [
       "\\bpoem\\b",
@@ -244,6 +245,7 @@ Schema: `Schemas/reviewer.schema.json`
 Notes:
 - Set `maxInlineComments` to `0` to disable inline review comments.
 - `reasoningEffort`/`reasoningSummary` map to Codex reasoning controls.
+- `overwriteSummaryOnNewCommit` forces updating sticky summaries when the PR head SHA changes (prevents stale reviews).
 - Context deny patterns are regex with a short timeout; invalid patterns are ignored with a warning.
 
 ## CLI setup (GitHub Actions)
@@ -282,6 +284,7 @@ Common inputs/env:
 - `reasoning_effort`, `reasoning_summary`
 - `profile`, `style`, `output_style`, `tone`, `persona`, `notes`
 - `mode`, `length`, `max_files`, `max_patch_chars`, `max_inline_comments`
+- `comment_mode`, `overwrite_summary`, `overwrite_summary_on_new_commit`
 - `skip_titles`, `skip_labels`, `skip_paths`, `skip_draft`
 - `retry_count`, `retry_delay_seconds`, `retry_max_delay_seconds`
 - `context_deny_enabled`, `context_deny_patterns`
@@ -293,7 +296,7 @@ Template tokens:
 - Prompt: `{{ProfileBlock}}`, `{{StrictnessBlock}}`, `{{StyleBlock}}`, `{{OutputStyleBlock}}`, `{{ToneBlock}}`, `{{FocusBlock}}`,
   `{{PersonaBlock}}`, `{{NotesBlock}}`, `{{SeverityBlock}}`, `{{Length}}`, `{{Mode}}`, `{{MaxInlineComments}}`, `{{InlineSupported}}`,
   `{{NextStepsSection}}`, `{{Title}}`, `{{Body}}`, `{{Files}}`
-- Summary: `{{SummaryMarker}}`, `{{Number}}`, `{{Title}}`, `{{InlineNote}}`, `{{ReviewBody}}`, `{{Model}}`, `{{Length}}`
+- Summary: `{{SummaryMarker}}`, `{{Number}}`, `{{Title}}`, `{{CommitLine}}`, `{{InlineNote}}`, `{{ReviewBody}}`, `{{Model}}`, `{{Length}}`
 
 Codex app-server settings (optional):
 - `CODEX_APP_SERVER_PATH`

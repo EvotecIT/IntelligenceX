@@ -43,6 +43,7 @@
         "retryDelaySeconds": { "type": "integer", "minimum": 1 },
         "retryMaxDelaySeconds": { "type": "integer", "minimum": 1 },
         "skipDraft": { "type": "boolean" },
+        "overwriteSummaryOnNewCommit": { "type": "boolean" },
         "skipTitles": { "type": "array", "items": { "type": "string" } },
         "skipLabels": { "type": "array", "items": { "type": "string" } },
         "skipPaths": { "type": "array", "items": { "type": "string" } },
