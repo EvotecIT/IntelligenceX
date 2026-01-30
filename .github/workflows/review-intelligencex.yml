@@ -40,6 +40,9 @@ jobs:
       include_review_comments: true
       include_related_prs: true
       progress_updates: true
+      diagnostics: true
+      preflight: true
+      preflight_timeout_seconds: 15
       cleanup_enabled: false
       cleanup_mode: comment
       cleanup_scope: pr

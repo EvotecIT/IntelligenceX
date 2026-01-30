@@ -533,6 +533,15 @@ internal static partial class SetupRunner {
             if (!options.ProgressUpdatesSet && snapshot.ProgressUpdates.HasValue) {
                 settings.ProgressUpdates = snapshot.ProgressUpdates.Value;
             }
+            if (!options.DiagnosticsSet && snapshot.Diagnostics.HasValue) {
+                settings.Diagnostics = snapshot.Diagnostics.Value;
+            }
+            if (!options.PreflightSet && snapshot.Preflight.HasValue) {
+                settings.Preflight = snapshot.Preflight.Value;
+            }
+            if (!options.PreflightTimeoutSecondsSet && snapshot.PreflightTimeoutSeconds.HasValue) {
+                settings.PreflightTimeoutSeconds = snapshot.PreflightTimeoutSeconds.Value;
+            }
             if (!options.CleanupEnabledSet && snapshot.CleanupEnabled.HasValue) {
                 settings.CleanupEnabled = snapshot.CleanupEnabled.Value;
             }
@@ -601,6 +610,15 @@ internal static partial class SetupRunner {
         if (!options.ProgressUpdatesSet && snapshot.ProgressUpdates.HasValue) {
             settings.ProgressUpdates = snapshot.ProgressUpdates.Value;
         }
+        if (!options.DiagnosticsSet && snapshot.Diagnostics.HasValue) {
+            settings.Diagnostics = snapshot.Diagnostics.Value;
+        }
+        if (!options.PreflightSet && snapshot.Preflight.HasValue) {
+            settings.Preflight = snapshot.Preflight.Value;
+        }
+        if (!options.PreflightTimeoutSecondsSet && snapshot.PreflightTimeoutSeconds.HasValue) {
+            settings.PreflightTimeoutSeconds = snapshot.PreflightTimeoutSeconds.Value;
+        }
 
         return settings;
     }
@@ -617,7 +635,10 @@ internal static partial class SetupRunner {
                 ["includeIssueComments"] = settings.IncludeIssueComments,
                 ["includeReviewComments"] = settings.IncludeReviewComments,
                 ["includeRelatedPullRequests"] = settings.IncludeRelatedPullRequests,
-                ["progressUpdates"] = settings.ProgressUpdates
+                ["progressUpdates"] = settings.ProgressUpdates,
+                ["diagnostics"] = settings.Diagnostics,
+                ["preflight"] = settings.Preflight,
+                ["preflightTimeoutSeconds"] = settings.PreflightTimeoutSeconds
             }
         };
 
@@ -637,6 +658,9 @@ internal static partial class SetupRunner {
         review["includeReviewComments"] = settings.IncludeReviewComments;
         review["includeRelatedPullRequests"] = settings.IncludeRelatedPullRequests;
         review["progressUpdates"] = settings.ProgressUpdates;
+        review["diagnostics"] = settings.Diagnostics;
+        review["preflight"] = settings.Preflight;
+        review["preflightTimeoutSeconds"] = settings.PreflightTimeoutSeconds;
         node["review"] = review;
         return node.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
@@ -671,6 +695,9 @@ internal static partial class SetupRunner {
             ["IncludeReviewComments"] = ToYamlBool(settings.IncludeReviewComments),
             ["IncludeRelatedPullRequests"] = ToYamlBool(settings.IncludeRelatedPullRequests),
             ["ProgressUpdates"] = ToYamlBool(settings.ProgressUpdates),
+            ["Diagnostics"] = ToYamlBool(settings.Diagnostics),
+            ["Preflight"] = ToYamlBool(settings.Preflight),
+            ["PreflightTimeoutSeconds"] = settings.PreflightTimeoutSeconds.ToString(CultureInfo.InvariantCulture),
             ["CleanupEnabled"] = ToYamlBool(settings.CleanupEnabled),
             ["CleanupMode"] = settings.CleanupMode,
             ["CleanupScope"] = settings.CleanupScope,
@@ -781,6 +808,9 @@ internal static partial class SetupRunner {
         snapshot.IncludeReviewComments = ReadYamlBool(content, "include_review_comments");
         snapshot.IncludeRelatedPullRequests = ReadYamlBool(content, "include_related_prs");
         snapshot.ProgressUpdates = ReadYamlBool(content, "progress_updates");
+        snapshot.Diagnostics = ReadYamlBool(content, "diagnostics");
+        snapshot.Preflight = ReadYamlBool(content, "preflight");
+        snapshot.PreflightTimeoutSeconds = ReadYamlInt(content, "preflight_timeout_seconds");
         snapshot.CleanupEnabled = ReadYamlBool(content, "cleanup_enabled");
         snapshot.CleanupMode = ReadYamlScalar(content, "cleanup_mode");
         snapshot.CleanupScope = ReadYamlScalar(content, "cleanup_scope");
@@ -832,6 +862,17 @@ internal static partial class SetupRunner {
         return null;
     }
 
+    private static int? ReadYamlInt(string content, string key) {
+        var value = ReadYamlScalar(content, key);
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result)) {
+            return result;
+        }
+        return null;
+    }
+
     private static bool TryReadConfigSnapshot(string content, out ConfigSnapshot snapshot) {
         snapshot = new ConfigSnapshot();
         try {
@@ -851,6 +892,9 @@ internal static partial class SetupRunner {
                     snapshot.IncludeReviewComments = ReadJsonBool(review, "includeReviewComments");
                     snapshot.IncludeRelatedPullRequests = ReadJsonBool(review, "includeRelatedPullRequests");
                     snapshot.ProgressUpdates = ReadJsonBool(review, "progressUpdates");
+                    snapshot.Diagnostics = ReadJsonBool(review, "diagnostics");
+                    snapshot.Preflight = ReadJsonBool(review, "preflight");
+                    snapshot.PreflightTimeoutSeconds = ReadJsonInt(review, "preflightTimeoutSeconds");
                 }
             return true;
         } catch {
@@ -867,6 +911,16 @@ internal static partial class SetupRunner {
             return null;
         }
         if (value is JsonValue jsonValue && jsonValue.TryGetValue<bool>(out var result)) {
+            return result;
+        }
+        return null;
+    }
+
+    private static int? ReadJsonInt(JsonObject obj, string key) {
+        if (!obj.TryGetPropertyValue(key, out var value) || value is null) {
+            return null;
+        }
+        if (value is JsonValue jsonValue && jsonValue.TryGetValue<int>(out var result)) {
             return result;
         }
         return null;
@@ -920,6 +974,9 @@ internal static partial class SetupRunner {
         Console.WriteLine("  --config-json <json> (use inline config.json content)");
         Console.WriteLine("  --auth-b64 <value> (use pre-exported auth bundle)");
         Console.WriteLine("  --auth-b64-path <path> (read pre-exported auth bundle)");
+        Console.WriteLine("  --diagnostics <true|false>");
+        Console.WriteLine("  --preflight <true|false>");
+        Console.WriteLine("  --preflight-timeout-seconds <number>");
         Console.WriteLine("  --cleanup-enabled <true|false>");
         Console.WriteLine("  --cleanup-mode <comment|edit|hybrid>");
         Console.WriteLine("  --cleanup-scope <pr|issue|both>");
@@ -967,4 +1024,15 @@ internal static partial class SetupRunner {
         }
         return fallback;
     }
+
+    private static int ParseInt(string value, int fallback) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return fallback;
+        }
+        if (int.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)) {
+            return parsed;
+        }
+        return fallback;
+    }
 }
+

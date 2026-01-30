@@ -60,6 +60,9 @@ internal sealed class ReviewSettings {
     public int RetryCount { get; set; } = 3;
     public int RetryDelaySeconds { get; set; } = 5;
     public int RetryMaxDelaySeconds { get; set; } = 30;
+    public bool Diagnostics { get; set; }
+    public bool Preflight { get; set; }
+    public int PreflightTimeoutSeconds { get; set; } = 15;
     public ReviewLength Length { get; set; } = ReviewLength.Long;
     public bool IncludeNextSteps { get; set; } = true;
     public string? PromptTemplate { get; set; }
@@ -315,6 +318,30 @@ internal sealed class ReviewSettings {
         var retryMaxDelaySeconds = GetInput("retry_max_delay_seconds", "REVIEW_RETRY_MAX_DELAY_SECONDS");
         if (!string.IsNullOrWhiteSpace(retryMaxDelaySeconds)) {
             settings.RetryMaxDelaySeconds = ParsePositiveInt(retryMaxDelaySeconds, settings.RetryMaxDelaySeconds);
+        }
+
+        var diagnostics = GetInput("diagnostics", "REVIEW_DIAGNOSTICS");
+        if (string.IsNullOrWhiteSpace(diagnostics)) {
+            diagnostics = Environment.GetEnvironmentVariable("INTELLIGENCEX_REVIEWER_DIAGNOSTICS");
+        }
+        if (!string.IsNullOrWhiteSpace(diagnostics)) {
+            settings.Diagnostics = ParseBoolean(diagnostics, settings.Diagnostics);
+        }
+
+        var preflight = GetInput("preflight", "REVIEW_PREFLIGHT");
+        if (string.IsNullOrWhiteSpace(preflight)) {
+            preflight = Environment.GetEnvironmentVariable("INTELLIGENCEX_REVIEWER_PREFLIGHT");
+        }
+        if (!string.IsNullOrWhiteSpace(preflight)) {
+            settings.Preflight = ParseBoolean(preflight, settings.Preflight);
+        }
+
+        var preflightTimeoutSeconds = GetInput("preflight_timeout_seconds", "REVIEW_PREFLIGHT_TIMEOUT_SECONDS");
+        if (string.IsNullOrWhiteSpace(preflightTimeoutSeconds)) {
+            preflightTimeoutSeconds = Environment.GetEnvironmentVariable("INTELLIGENCEX_REVIEWER_PREFLIGHT_TIMEOUT_SECONDS");
+        }
+        if (!string.IsNullOrWhiteSpace(preflightTimeoutSeconds)) {
+            settings.PreflightTimeoutSeconds = ParsePositiveInt(preflightTimeoutSeconds, settings.PreflightTimeoutSeconds);
         }
 
         var progressUpdates = GetInput("progress_updates", "REVIEW_PROGRESS_UPDATES");
