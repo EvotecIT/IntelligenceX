@@ -48,6 +48,7 @@ Status: In progress
 - [x] "Manage existing setup" flow (load config from repo)
 - [x] Workflow preview in web UI
 - [x] Config presets (local storage)
+- [x] Preset export/import (web UI)
 - [x] Enforce loopback + HTTP-only binding
 - [x] Device flow timeout + expiry messaging
 - [x] GitHub App manifest flow in web UI

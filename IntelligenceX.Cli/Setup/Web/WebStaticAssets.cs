@@ -145,7 +145,10 @@ internal static class WebStaticAssets {
             <button id=""savePreset"">Save preset</button>
             <button id=""loadPreset"">Load preset</button>
             <button id=""deletePreset"">Delete preset</button>
+            <button id=""exportPresets"">Export presets</button>
+            <button id=""importPresets"">Import presets</button>
           </div>
+          <input id=""importFile"" type=""file"" accept=""application/json"" style=""display:none"" />
           <label>Saved presets</label>
           <select id=""presetList""></select>
           <p class=""hint"">Presets are stored locally in your browser.</p>
@@ -212,6 +215,9 @@ const presetList = document.getElementById('presetList');
 const savePreset = document.getElementById('savePreset');
 const loadPreset = document.getElementById('loadPreset');
 const deletePreset = document.getElementById('deletePreset');
+const exportPresets = document.getElementById('exportPresets');
+const importPresets = document.getElementById('importPresets');
+const importFile = document.getElementById('importFile');
 const workflowPreview = document.getElementById('workflowPreview');
 const configPath = document.getElementById('configPath');
 const authB64 = document.getElementById('authB64');
@@ -523,6 +529,18 @@ function refreshPresets() {
     presetList.appendChild(option);
   });
   updateControls();
+}
+
+function downloadFile(name, content, contentType) {
+  const blob = new Blob([content], { type: contentType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 deviceStart.addEventListener('click', async () => {
@@ -857,6 +875,58 @@ deletePreset.addEventListener('click', () => {
   writePresets(presets);
   refreshPresets();
   setSummary(`Deleted preset '${name}'.`);
+});
+
+exportPresets.addEventListener('click', () => {
+  const presets = readPresets();
+  if (presets.length === 0) {
+    write('No presets to export.');
+    return;
+  }
+  downloadFile('intelligencex-presets.json', JSON.stringify(presets, null, 2), 'application/json');
+  setSummary('Exported presets to intelligencex-presets.json.');
+});
+
+importPresets.addEventListener('click', () => {
+  importFile.value = '';
+  importFile.click();
+});
+
+importFile.addEventListener('change', async () => {
+  const file = importFile.files && importFile.files[0];
+  if (!file) {
+    return;
+  }
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    if (!Array.isArray(parsed)) {
+      write('Invalid preset file: expected array.');
+      return;
+    }
+    const normalized = parsed
+      .filter(item => item && typeof item.name === 'string' && typeof item.content === 'string')
+      .map(item => ({ name: item.name.trim(), content: item.content }))
+      .filter(item => item.name.length > 0);
+    if (normalized.length === 0) {
+      write('No valid presets found in file.');
+      return;
+    }
+    const existing = readPresets();
+    normalized.forEach(item => {
+      const match = existing.find(p => p.name === item.name);
+      if (match) {
+        match.content = item.content;
+      } else {
+        existing.push(item);
+      }
+    });
+    writePresets(existing);
+    refreshPresets();
+    setSummary(`Imported ${normalized.length} preset(s).`);
+  } catch (err) {
+    write('Import failed: ' + (err && err.message ? err.message : err));
+  }
 });
 
 function resolveWithConfig() {
