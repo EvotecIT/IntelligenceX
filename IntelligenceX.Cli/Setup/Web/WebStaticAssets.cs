@@ -943,6 +943,16 @@ importFile.addEventListener('change', async () => {
       return;
     }
     const existing = readPresets();
+    const conflicts = normalized.filter(item => existing.some(preset => preset.name === item.name));
+    if (conflicts.length > 0) {
+      const list = conflicts.map(item => item.name).slice(0, 5).join(', ');
+      const suffix = conflicts.length > 5 ? ', ...' : '';
+      const message = `Overwrite ${conflicts.length} preset(s)? (${list}${suffix})`;
+      if (!confirm(message)) {
+        write('Import cancelled.');
+        return;
+      }
+    }
     normalized.forEach(item => {
       const match = existing.find(p => p.name === item.name);
       if (match) {

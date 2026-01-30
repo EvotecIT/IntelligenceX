@@ -17,6 +17,7 @@ Operations available:
 - Load workflow preview for the managed workflow
 - Save/load config presets in the browser
 - Export/import presets as JSON files
+- Import prompts before overwriting existing presets
 
 Advanced options:
 - Provider toggle (openai | copilot)
