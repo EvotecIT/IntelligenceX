@@ -22,6 +22,10 @@ internal sealed class WebApi {
             await HandleRepoStatusAsync(context).ConfigureAwait(false);
             return;
         }
+        if (path.StartsWith("/api/repo-config", StringComparison.OrdinalIgnoreCase)) {
+            await HandleRepoConfigAsync(context).ConfigureAwait(false);
+            return;
+        }
         if (path.StartsWith("/api/device-code", StringComparison.OrdinalIgnoreCase)) {
             await HandleDeviceCodeAsync(context).ConfigureAwait(false);
             return;
@@ -164,6 +168,47 @@ internal sealed class WebApi {
         }
 
         await WriteJsonAsync(context, new { status = results }).ConfigureAwait(false);
+    }
+
+    private async Task HandleRepoConfigAsync(System.Net.HttpListenerContext context) {
+        if (context.Request.HttpMethod != "POST") {
+            context.Response.StatusCode = 405;
+            await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+            return;
+        }
+
+        var body = await ReadBodyAsync(context).ConfigureAwait(false);
+        var request = JsonSerializer.Deserialize<RepoConfigRequest>(body, _jsonOptions) ?? new RepoConfigRequest();
+        if (string.IsNullOrWhiteSpace(request.Token) || string.IsNullOrWhiteSpace(request.Repo)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Missing token or repo" }).ConfigureAwait(false);
+            return;
+        }
+        if (!TryParseRepo(request.Repo, out var owner, out var name)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Invalid repo name (expected owner/name)." }).ConfigureAwait(false);
+            return;
+        }
+
+        try {
+            using var client = new GitHubRepoClient(request.Token!, request.ApiBaseUrl ?? "https://api.github.com");
+            var defaultBranch = await client.GetDefaultBranchAsync(owner, name).ConfigureAwait(false);
+            var config = await client.TryGetFileAsync(owner, name, ".intelligencex/config.json", defaultBranch)
+                .ConfigureAwait(false);
+            if (config is null) {
+                context.Response.StatusCode = 404;
+                await WriteJsonAsync(context, new { error = "Config not found in default branch." }).ConfigureAwait(false);
+                return;
+            }
+
+            await WriteJsonAsync(context, new {
+                config = config.Content,
+                branch = defaultBranch
+            }).ConfigureAwait(false);
+        } catch (Exception ex) {
+            context.Response.StatusCode = 500;
+            await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+        }
     }
 
     private async Task HandleDeviceCodeAsync(System.Net.HttpListenerContext context) {
@@ -493,6 +538,12 @@ internal sealed class WebApi {
         public string? Token { get; set; }
         public string? ApiBaseUrl { get; set; }
         public List<string>? Repos { get; set; }
+    }
+
+    private sealed class RepoConfigRequest {
+        public string? Token { get; set; }
+        public string? ApiBaseUrl { get; set; }
+        public string? Repo { get; set; }
     }
 
     private sealed class DeviceCodeRequest {

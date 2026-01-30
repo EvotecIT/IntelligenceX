@@ -151,6 +151,7 @@ internal static class WebStaticAssets {
 
         <div class=""row"">
           <button id=""inspect"">Check existing setup</button>
+          <button id=""loadConfig"">Load existing config</button>
           <button id=""recommend"" disabled>Use recommendations</button>
           <button id=""plan"">Plan</button>
           <button id=""apply"">Apply</button>
@@ -205,6 +206,7 @@ const force = document.getElementById('force');
 const keepSecret = document.getElementById('keepSecret');
 const output = document.getElementById('output');
 const inspect = document.getElementById('inspect');
+const loadConfig = document.getElementById('loadConfig');
 const recommend = document.getElementById('recommend');
 const summary = document.getElementById('summary');
 const progress = document.getElementById('progress');
@@ -618,6 +620,43 @@ inspect.addEventListener('click', async () => {
   const data = await res.json();
   setStep('inspect', data.error ? 'error' : 'done');
   write(formatStatus(data));
+});
+
+loadConfig.addEventListener('click', async () => {
+  write('Loading config...');
+  refreshProgress();
+  const repos = selectedRepos();
+  if (repos.length === 0) {
+    write('Select or enter a repository.');
+    setStep('repos', 'error');
+    return;
+  }
+  if (repos.length > 1) {
+    write('Select a single repository to load config.');
+    return;
+  }
+  if (!token.value) {
+    write('GitHub token required to load config.');
+    setStep('auth', 'error');
+    return;
+  }
+  const res = await fetch('/api/repo-config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      repo: repos[0],
+      token: token.value
+    })
+  });
+  const data = await res.json();
+  if (data.error) {
+    write('Config error: ' + data.error);
+    return;
+  }
+  configJson.value = data.config || '';
+  withConfig.checked = true;
+  setSummary(`Loaded config from ${repos[0]} (${data.branch || 'default'}). Review before applying.`);
+  write('Config loaded.');
 });
 
 function resolveWithConfig() {

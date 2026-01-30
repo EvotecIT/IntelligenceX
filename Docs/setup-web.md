@@ -13,6 +13,7 @@ Operations available:
 - Update OpenAI secret only (requires auth bundle)
 - Cleanup (remove workflow/config)
 - Optional GitHub App manifest flow (create app + installation token)
+- Load existing config from a repo (manage existing setup)
 
 Advanced options:
 - Provider toggle (openai | copilot)

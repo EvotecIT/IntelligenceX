@@ -45,7 +45,7 @@ Status: In progress
 - [ ] Wizard screens (same steps as CLI)
 - [x] Advanced JSON editor panel
 - [x] Progress checklist + success summary
-- [ ] "Manage existing setup" flow
+- [x] "Manage existing setup" flow (load config from repo)
 - [x] Enforce loopback + HTTP-only binding
 - [x] Device flow timeout + expiry messaging
 - [x] GitHub App manifest flow in web UI
