@@ -128,6 +128,20 @@ internal static class WebStaticAssets {
         <h2>Output</h2>
         <pre id=""output"" class=""output""></pre>
       </section>
+      <section class=""card"">
+        <h2>Progress</h2>
+        <ul id=""progress"" class=""progress"">
+          <li data-step=""auth"">Authenticate with GitHub</li>
+          <li data-step=""repos"">Select repositories</li>
+          <li data-step=""inspect"">Inspect existing setup</li>
+          <li data-step=""plan"">Plan changes</li>
+          <li data-step=""apply"">Apply changes</li>
+        </ul>
+      </section>
+      <section class=""card"">
+        <h2>Summary</h2>
+        <div id=""summary"" class=""summary"">No actions yet.</div>
+      </section>
     </main>
     <script src=""/app.js""></script>
   </body>
@@ -155,6 +169,8 @@ const force = document.getElementById('force');
 const keepSecret = document.getElementById('keepSecret');
 const output = document.getElementById('output');
 const inspect = document.getElementById('inspect');
+const summary = document.getElementById('summary');
+const progress = document.getElementById('progress');
 const deviceStart = document.getElementById('deviceStart');
 const devicePoll = document.getElementById('devicePoll');
 const deviceInfo = document.getElementById('deviceInfo');
@@ -164,12 +180,40 @@ function write(text) {
   output.textContent = text;
 }
 
+function setSummary(text) {
+  summary.textContent = text;
+}
+
+function setStep(step, state) {
+  const item = progress.querySelector(`li[data-step='${step}']`);
+  if (!item) {
+    return;
+  }
+  item.classList.remove('done', 'error');
+  if (state === 'done') {
+    item.classList.add('done');
+  }
+  if (state === 'error') {
+    item.classList.add('error');
+  }
+}
+
+function refreshProgress() {
+  if (token.value.trim()) {
+    setStep('auth', 'done');
+  }
+  if (selectedRepos().length > 0) {
+    setStep('repos', 'done');
+  }
+}
+
 function formatResults(data) {
   if (data && Array.isArray(data.results)) {
     const lines = [];
     const total = data.results.length;
     const succeeded = data.results.filter(r => r.exitCode === 0).length;
     const failed = total - succeeded;
+    setSummary(`Apply results: ${succeeded}/${total} succeeded${failed > 0 ? `, ${failed} failed` : ''}.`);
     lines.push(`Summary: ${succeeded}/${total} succeeded`);
     if (failed > 0) {
       lines.push(`Failures: ${failed}`);
@@ -206,6 +250,9 @@ function formatStatus(data) {
     return formatResults(data);
   }
   const lines = [];
+  const workflowCount = data.status.filter(item => item.workflowExists).length;
+  const configCount = data.status.filter(item => item.configExists).length;
+  setSummary(`Inspection: workflow in ${workflowCount}/${data.status.length}, config in ${configCount}/${data.status.length}.`);
   data.status.forEach(item => {
     lines.push(`== ${item.repo} ==`);
     if (item.error) {
@@ -264,6 +311,7 @@ devicePoll.addEventListener('click', async () => {
     return;
   }
   token.value = data.token || '';
+  setStep('auth', 'done');
   write('Token acquired.');
 });
 
@@ -312,13 +360,16 @@ function selectedRepos() {
 
 inspect.addEventListener('click', async () => {
   write('Checking existing setup...');
+  refreshProgress();
   const repos = selectedRepos();
   if (repos.length === 0) {
     write('Select or enter a repository.');
+    setStep('repos', 'error');
     return;
   }
   if (!token.value) {
     write('GitHub token required to inspect repositories.');
+    setStep('auth', 'error');
     return;
   }
   const res = await fetch('/api/repo-status', {
@@ -330,6 +381,7 @@ inspect.addEventListener('click', async () => {
     })
   });
   const data = await res.json();
+  setStep('inspect', data.error ? 'error' : 'done');
   write(formatStatus(data));
 });
 
@@ -359,9 +411,11 @@ configPath.addEventListener('input', () => {
 
 document.getElementById('plan').addEventListener('click', async () => {
   write('Planning...');
+  refreshProgress();
   const repos = selectedRepos();
   if (repos.length === 0) {
     write('Select or enter a repository.');
+    setStep('repos', 'error');
     return;
   }
   const res = await fetch('/api/setup/plan', {
@@ -388,14 +442,17 @@ document.getElementById('plan').addEventListener('click', async () => {
     })
   });
   const data = await res.json();
+  setStep('plan', data.error ? 'error' : 'done');
   write(formatResults(data));
 });
 
 document.getElementById('apply').addEventListener('click', async () => {
   write('Applying...');
+  refreshProgress();
   const repos = selectedRepos();
   if (repos.length === 0) {
     write('Select or enter a repository.');
+    setStep('repos', 'error');
     return;
   }
   const res = await fetch('/api/setup/apply', {
@@ -422,6 +479,7 @@ document.getElementById('apply').addEventListener('click', async () => {
     })
   });
   const data = await res.json();
+  setStep('apply', data.error ? 'error' : 'done');
   write(formatResults(data));
 });";
 
@@ -513,6 +571,39 @@ summary {
   gap: 16px;
   margin-top: 12px;
   flex-wrap: wrap;
+}
+
+.progress {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.progress li {
+  padding: 6px 0 6px 24px;
+  position: relative;
+}
+
+.progress li::before {
+  content: '○';
+  position: absolute;
+  left: 0;
+  color: #6b7280;
+}
+
+.progress li.done::before {
+  content: '●';
+  color: #16a34a;
+}
+
+.progress li.error::before {
+  content: '●';
+  color: #dc2626;
+}
+
+.summary {
+  font-size: 13px;
+  color: #1f2937;
 }
 
 .hint {

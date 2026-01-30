@@ -44,7 +44,7 @@ Status: In progress
 - [x] Local web host (Kestrel) + static assets
 - [ ] Wizard screens (same steps as CLI)
 - [x] Advanced JSON editor panel
-- [ ] Progress checklist + success summary
+ - [x] Progress checklist + success summary
 - [ ] "Manage existing setup" flow
 - [x] Enforce loopback + HTTP-only binding
 - [x] Device flow timeout + expiry messaging
