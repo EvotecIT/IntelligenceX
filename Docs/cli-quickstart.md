@@ -49,3 +49,19 @@ intelligencex setup --repo owner/name --explicit-secrets
 ```powershell
 intelligencex setup --repo owner/name --cleanup --keep-secret
 ```
+
+## Release notes (CLI)
+
+```powershell
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -- release notes --update-changelog
+```
+
+## Release notes (workflow)
+
+Use `.github/workflows/release-notes.yml` (template in `IntelligenceX.Cli/Templates/release-notes.yml`).
+Inputs are mapped to environment variables to keep YAML minimal.
+
+## Release reviewer (workflow)
+
+Use `.github/workflows/release-reviewer.yml`.
+Inputs like `release_tag`, `release_title`, `release_repo`, and `rids` map to env vars.

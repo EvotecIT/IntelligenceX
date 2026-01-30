@@ -678,6 +678,12 @@ Generate release notes between tags (and update CHANGELOG.md):
 dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release notes --from v1.2.3 --to v1.2.4 --version v1.2.4 --update-changelog
 ```
 
+One-liner (default range, update changelog):
+
+```bash
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release notes --update-changelog
+```
+
 ### Release notes automation (direct to default branch)
 
 Template workflow is available at `IntelligenceX.Cli/Templates/release-notes.yml`.
@@ -722,6 +728,12 @@ Environment overrides (optional):
 - `INTELLIGENCEX_REVIEWER_TAG`, `INTELLIGENCEX_REVIEWER_TITLE`, `INTELLIGENCEX_REVIEWER_NOTES`
 - `INTELLIGENCEX_REVIEWER_REPO_SLUG`, `INTELLIGENCEX_REVIEWER_RIDS`
 - `INTELLIGENCEX_REVIEWER_FRAMEWORK`, `INTELLIGENCEX_REVIEWER_CONFIGURATION`
+
+One-liner (CLI):
+
+```bash
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release reviewer
+```
 
 ## Copilot CLI (GitHub)
 
