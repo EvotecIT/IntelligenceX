@@ -642,6 +642,12 @@ Login:
 dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- auth login
 ```
 
+Login + export + set GitHub secret (repo or org):
+
+```bash
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- auth login --set-github-secret --repo owner/name --github-token $TOKEN
+```
+
 Export (store-base64 for GitHub Secrets):
 
 ```bash

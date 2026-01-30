@@ -1,0 +1,92 @@
+using System;
+using System.Collections.Generic;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
+using System.Threading.Tasks;
+using Sodium;
+
+namespace IntelligenceX.Cli;
+
+internal sealed class GitHubSecretsClient : IDisposable {
+    private readonly HttpClient _http;
+    private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
+
+    public GitHubSecretsClient(string token, string apiBaseUrl = "https://api.github.com") {
+        _http = new HttpClient {
+            BaseAddress = new Uri(apiBaseUrl)
+        };
+        _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("IntelligenceX.Cli", "1.0"));
+        _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        _http.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+    }
+
+    public void Dispose() => _http.Dispose();
+
+    public async Task SetRepoSecretAsync(string owner, string repo, string name, string value) {
+        var key = await GetPublicKeyAsync($"/repos/{owner}/{repo}/actions/secrets/public-key").ConfigureAwait(false);
+        var payload = new Dictionary<string, object?> {
+            ["encrypted_value"] = Encrypt(value, key.PublicKey),
+            ["key_id"] = key.KeyId
+        };
+        await PutJsonAsync($"/repos/{owner}/{repo}/actions/secrets/{name}", payload).ConfigureAwait(false);
+    }
+
+    public async Task SetOrgSecretAsync(string org, string name, string value, string visibility = "all") {
+        var key = await GetPublicKeyAsync($"/orgs/{org}/actions/secrets/public-key").ConfigureAwait(false);
+        var payload = new Dictionary<string, object?> {
+            ["encrypted_value"] = Encrypt(value, key.PublicKey),
+            ["key_id"] = key.KeyId,
+            ["visibility"] = NormalizeVisibility(visibility)
+        };
+        await PutJsonAsync($"/orgs/{org}/actions/secrets/{name}", payload).ConfigureAwait(false);
+    }
+
+    private static string NormalizeVisibility(string visibility) {
+        if (string.IsNullOrWhiteSpace(visibility)) {
+            return "all";
+        }
+        var normalized = visibility.Trim().ToLowerInvariant();
+        return normalized switch {
+            "private" => "private",
+            "selected" => "selected",
+            _ => "all"
+        };
+    }
+
+    private async Task<PublicKeyInfo> GetPublicKeyAsync(string url) {
+        using var response = await _http.GetAsync(url).ConfigureAwait(false);
+        var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode) {
+            throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {content}");
+        }
+        using var doc = JsonDocument.Parse(content);
+        var root = doc.RootElement;
+        var key = root.GetProperty("key").GetString();
+        var keyId = root.GetProperty("key_id").GetString();
+        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(keyId)) {
+            throw new InvalidOperationException("Failed to read GitHub public key.");
+        }
+        return new PublicKeyInfo(key!, keyId!);
+    }
+
+    private async Task PutJsonAsync(string url, object payload) {
+        var json = JsonSerializer.Serialize(payload, _jsonOptions);
+        using var response = await _http.PutAsync(url, new StringContent(json, Encoding.UTF8, "application/json"))
+            .ConfigureAwait(false);
+        var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode) {
+            throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {content}");
+        }
+    }
+
+    private static string Encrypt(string value, string publicKey) {
+        var keyBytes = Convert.FromBase64String(publicKey);
+        var encrypted = SealedPublicKeyBox.Create(Encoding.UTF8.GetBytes(value), keyBytes);
+        return Convert.ToBase64String(encrypted);
+    }
+
+    private readonly record struct PublicKeyInfo(string PublicKey, string KeyId);
+}

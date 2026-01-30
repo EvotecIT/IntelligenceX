@@ -75,7 +75,7 @@ internal static class Program {
 
         var command = args[0].ToLowerInvariant();
         return command switch {
-            "login" => await RunLoginAsync().ConfigureAwait(false),
+            "login" => await RunLoginAsync(args.Skip(1).ToArray()).ConfigureAwait(false),
             "export" => await RunExportAsync(args.Skip(1).ToArray()).ConfigureAwait(false),
             "sync-codex" => await RunSyncCodexAsync().ConfigureAwait(false),
             "help" or "-h" or "--help" => PrintAuthHelpReturn(),
@@ -106,9 +106,19 @@ internal static class Program {
 
     private static void PrintAuthHelp() {
         Console.WriteLine("Auth commands:");
-        Console.WriteLine("  intelligencex auth login");
+        Console.WriteLine("  intelligencex auth login [options]");
         Console.WriteLine("  intelligencex auth export");
         Console.WriteLine("  intelligencex auth sync-codex");
+        Console.WriteLine();
+        Console.WriteLine("Auth login options:");
+        Console.WriteLine("  --export [format]              Export auth store after login (default: store-base64)");
+        Console.WriteLine("  --out <path>                   Write export to file");
+        Console.WriteLine("  --print                        Print export to stdout");
+        Console.WriteLine("  --set-github-secret [name]     Upload export to GitHub Actions secret (default name: INTELLIGENCEX_AUTH_B64)");
+        Console.WriteLine("  --repo <owner/name>            Target repository secret");
+        Console.WriteLine("  --org <org>                    Target organization secret (visibility defaults to all)");
+        Console.WriteLine("  --visibility <all|private|selected>  Org secret visibility");
+        Console.WriteLine("  --github-token <token>         Token for GitHub API (or set INTELLIGENCEX_GITHUB_TOKEN/GITHUB_TOKEN/GH_TOKEN)");
     }
 
     private static void PrintReviewerHelp() {
@@ -152,12 +162,13 @@ internal static class Program {
         };
     }
 
-    private static async Task<int> RunLoginAsync() {
+    private static async Task<int> RunLoginAsync(string[] args) {
         try {
+            var loginOptions = ParseLoginOptions(args);
             var config = OAuthConfig.FromEnvironment();
             config.Validate();
             var service = new OAuthLoginService();
-            var options = new OAuthLoginOptions(config) {
+            var oauthOptions = new OAuthLoginOptions(config) {
                 OnAuthUrl = async url => {
                     TryOpenBrowser(url);
                     Console.WriteLine($"Open: {url}");
@@ -170,10 +181,60 @@ internal static class Program {
                 }
             };
 
-            var result = await service.LoginAsync(options).ConfigureAwait(false);
+            var result = await service.LoginAsync(oauthOptions).ConfigureAwait(false);
             var store = new FileAuthBundleStore();
             await store.SaveAsync(result.Bundle).ConfigureAwait(false);
             Console.WriteLine("Login complete. Credentials saved.");
+
+            if (loginOptions.Export || loginOptions.SetGitHubSecret || !string.IsNullOrWhiteSpace(loginOptions.OutputPath) || loginOptions.PrintExport) {
+                var format = string.IsNullOrWhiteSpace(loginOptions.ExportFormat) ? "store-base64" : loginOptions.ExportFormat!;
+                if (!IsStoreFormat(format)) {
+                    Console.Error.WriteLine("Login export supports store or store-base64 formats.");
+                    return 1;
+                }
+                if (loginOptions.SetGitHubSecret && !IsStoreBase64Format(format)) {
+                    Console.Error.WriteLine("GitHub secrets require store-base64 export.");
+                    return 1;
+                }
+                var export = await ExportAuthStoreContentAsync(format).ConfigureAwait(false);
+                if (export is null) {
+                    return 1;
+                }
+
+                if (loginOptions.SetGitHubSecret) {
+                    var token = ResolveGitHubToken(loginOptions.GitHubToken);
+                    if (string.IsNullOrWhiteSpace(token)) {
+                        Console.Error.WriteLine("Missing GitHub token. Use --github-token or set INTELLIGENCEX_GITHUB_TOKEN/GITHUB_TOKEN/GH_TOKEN.");
+                        return 1;
+                    }
+                    using var client = new GitHubSecretsClient(token!);
+                    if (!string.IsNullOrWhiteSpace(loginOptions.Repo)) {
+                        if (!TryParseRepo(loginOptions.Repo!, out var owner, out var repo)) {
+                            Console.Error.WriteLine("Repo must be in owner/name format.");
+                            return 1;
+                        }
+                        await client.SetRepoSecretAsync(owner, repo, loginOptions.SecretName, export).ConfigureAwait(false);
+                        Console.WriteLine($"Updated secret {loginOptions.SecretName} for {owner}/{repo}.");
+                    } else if (!string.IsNullOrWhiteSpace(loginOptions.Org)) {
+                        var visibility = string.IsNullOrWhiteSpace(loginOptions.Visibility) ? "all" : loginOptions.Visibility!;
+                        await client.SetOrgSecretAsync(loginOptions.Org!, loginOptions.SecretName, export, visibility).ConfigureAwait(false);
+                        Console.WriteLine($"Updated org secret {loginOptions.SecretName} for {loginOptions.Org} (visibility: {visibility}).");
+                    } else {
+                        Console.Error.WriteLine("Specify --repo or --org when using --set-github-secret.");
+                        return 1;
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(loginOptions.OutputPath)) {
+                    await File.WriteAllTextAsync(loginOptions.OutputPath!, export).ConfigureAwait(false);
+                    Console.WriteLine($"Wrote {loginOptions.OutputPath}");
+                }
+
+                if (loginOptions.PrintExport || (!loginOptions.SetGitHubSecret && string.IsNullOrWhiteSpace(loginOptions.OutputPath))) {
+                    Console.WriteLine(export);
+                }
+            }
+
             return 0;
         } catch (Exception ex) {
             Console.Error.WriteLine(ex.Message);
@@ -263,6 +324,144 @@ internal static class Program {
             Console.WriteLine(content);
         }
         return 0;
+    }
+
+    private static async Task<string?> ExportAuthStoreContentAsync(string format) {
+        var path = AuthPaths.ResolveAuthPath();
+        if (!File.Exists(path)) {
+            Console.Error.WriteLine("No auth store found.");
+            return null;
+        }
+        var content = await File.ReadAllTextAsync(path).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(content)) {
+            Console.Error.WriteLine("Auth store is empty.");
+            return null;
+        }
+        if (IsStoreBase64Format(format)) {
+            var bytes = Encoding.UTF8.GetBytes(content);
+            return Convert.ToBase64String(bytes);
+        }
+        return content;
+    }
+
+    private static bool IsStoreBase64Format(string format) {
+        return format is "store-base64" or "store_b64" or "store-b64";
+    }
+
+    private static bool IsStoreFormat(string format) {
+        if (IsStoreBase64Format(format)) {
+            return true;
+        }
+        return format is "store";
+    }
+
+    private static string? ResolveGitHubToken(string? direct) {
+        if (!string.IsNullOrWhiteSpace(direct)) {
+            return direct;
+        }
+        return Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN")
+               ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN")
+               ?? Environment.GetEnvironmentVariable("GH_TOKEN");
+    }
+
+    private static bool TryParseRepo(string repo, out string owner, out string name) {
+        owner = string.Empty;
+        name = string.Empty;
+        if (string.IsNullOrWhiteSpace(repo)) {
+            return false;
+        }
+        var parts = repo.Split('/', 2, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2) {
+            return false;
+        }
+        owner = parts[0];
+        name = parts[1];
+        return !string.IsNullOrWhiteSpace(owner) && !string.IsNullOrWhiteSpace(name);
+    }
+
+    private sealed class LoginOptions {
+        public bool Export { get; set; }
+        public string? ExportFormat { get; set; }
+        public bool PrintExport { get; set; }
+        public string? OutputPath { get; set; }
+        public bool SetGitHubSecret { get; set; }
+        public string SecretName { get; set; } = "INTELLIGENCEX_AUTH_B64";
+        public string? Repo { get; set; }
+        public string? Org { get; set; }
+        public string? Visibility { get; set; }
+        public string? GitHubToken { get; set; }
+    }
+
+    private static LoginOptions ParseLoginOptions(string[] args) {
+        var options = new LoginOptions();
+        for (var i = 0; i < args.Length; i++) {
+            var arg = args[i];
+            switch (arg) {
+                case "--export":
+                    options.Export = true;
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal)) {
+                        options.ExportFormat = args[++i];
+                    }
+                    break;
+                case "--export-format":
+                    options.Export = true;
+                    if (i + 1 < args.Length) {
+                        options.ExportFormat = args[++i];
+                    }
+                    break;
+                case "--out":
+                    options.Export = true;
+                    if (i + 1 < args.Length) {
+                        options.OutputPath = args[++i];
+                    }
+                    break;
+                case "--print":
+                    options.Export = true;
+                    options.PrintExport = true;
+                    break;
+                case "--set-github-secret":
+                    options.SetGitHubSecret = true;
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal)) {
+                        options.SecretName = args[++i];
+                    }
+                    break;
+                case "--secret-name":
+                    options.SetGitHubSecret = true;
+                    if (i + 1 < args.Length) {
+                        options.SecretName = args[++i];
+                    }
+                    break;
+                case "--repo":
+                    if (i + 1 < args.Length) {
+                        options.Repo = args[++i];
+                    }
+                    break;
+                case "--org":
+                    if (i + 1 < args.Length) {
+                        options.Org = args[++i];
+                    }
+                    break;
+                case "--visibility":
+                    if (i + 1 < args.Length) {
+                        options.Visibility = args[++i];
+                    }
+                    break;
+                case "--github-token":
+                    if (i + 1 < args.Length) {
+                        options.GitHubToken = args[++i];
+                    }
+                    break;
+            }
+        }
+
+        if (options.SetGitHubSecret) {
+            options.Export = true;
+            if (string.IsNullOrWhiteSpace(options.ExportFormat)) {
+                options.ExportFormat = "store-base64";
+            }
+        }
+
+        return options;
     }
 
     private static void TryOpenBrowser(string url) {
