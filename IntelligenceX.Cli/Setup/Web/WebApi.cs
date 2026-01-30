@@ -420,6 +420,16 @@ internal sealed class WebApi {
             await WriteJsonAsync(context, new { error = "Missing repo or GitHub auth" }).ConfigureAwait(false);
             return;
         }
+        if (!string.IsNullOrWhiteSpace(request.ConfigJson) && !string.IsNullOrWhiteSpace(request.ConfigPath)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Choose only one of configJson or configPath." }).ConfigureAwait(false);
+            return;
+        }
+        if (!string.IsNullOrWhiteSpace(request.AuthB64) && !string.IsNullOrWhiteSpace(request.AuthB64Path)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Choose only one of authB64 or authB64Path." }).ConfigureAwait(false);
+            return;
+        }
 
         var hasAuthBundle = !string.IsNullOrWhiteSpace(request.AuthB64) || !string.IsNullOrWhiteSpace(request.AuthB64Path);
         if (!request.SkipSecret && !request.Cleanup && !request.UpdateSecret && !hasAuthBundle) {

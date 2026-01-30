@@ -8,9 +8,10 @@ using System.Threading.Tasks;
 namespace IntelligenceX.Cli.Setup.Web;
 
 internal static class GitHubDeviceFlowClient {
+    private static readonly HttpClient Http = new();
+
     public static async Task<DeviceCodeResponse> RequestCodeAsync(string clientId, string? authBaseUrl, string? scopes) {
         var baseUrl = string.IsNullOrWhiteSpace(authBaseUrl) ? "https://github.com" : authBaseUrl;
-        using var http = new HttpClient();
         var deviceUri = new Uri(new Uri(baseUrl), "/login/device/code");
         using var request = new HttpRequestMessage(HttpMethod.Post, deviceUri) {
             Content = new FormUrlEncodedContent(new Dictionary<string, string> {
@@ -20,7 +21,7 @@ internal static class GitHubDeviceFlowClient {
         };
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-        var response = await http.SendAsync(request).ConfigureAwait(false);
+        var response = await Http.SendAsync(request).ConfigureAwait(false);
         var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         using var doc = JsonDocument.Parse(json);
@@ -36,7 +37,6 @@ internal static class GitHubDeviceFlowClient {
 
     public static async Task<string?> PollTokenAsync(string clientId, string deviceCode, string? authBaseUrl, int intervalSeconds, int expiresInSeconds) {
         var baseUrl = string.IsNullOrWhiteSpace(authBaseUrl) ? "https://github.com" : authBaseUrl;
-        using var http = new HttpClient();
         var tokenUri = new Uri(new Uri(baseUrl), "/login/oauth/access_token");
         var interval = Math.Max(1, intervalSeconds);
         var timeoutSeconds = expiresInSeconds > 0 ? expiresInSeconds : 600;
@@ -52,7 +52,7 @@ internal static class GitHubDeviceFlowClient {
             };
             pollRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-            var pollResponse = await http.SendAsync(pollRequest).ConfigureAwait(false);
+            var pollResponse = await Http.SendAsync(pollRequest).ConfigureAwait(false);
             var pollJson = await pollResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
             pollResponse.EnsureSuccessStatusCode();
             using var pollDoc = JsonDocument.Parse(pollJson);

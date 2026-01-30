@@ -40,6 +40,14 @@ internal static partial class SetupRunner {
                 Console.Error.WriteLine("Choose only one of --manual-secret or --update-secret.");
                 return 1;
             }
+            if (!string.IsNullOrWhiteSpace(options.ConfigJson) && !string.IsNullOrWhiteSpace(options.ConfigPath)) {
+                Console.Error.WriteLine("Choose only one of --config-json or --config-path.");
+                return 1;
+            }
+            if (!string.IsNullOrWhiteSpace(options.AuthB64) && !string.IsNullOrWhiteSpace(options.AuthB64Path)) {
+                Console.Error.WriteLine("Choose only one of --auth-b64 or --auth-b64-path.");
+                return 1;
+            }
 
             var state = new SetupState(options);
             await ResolveGitHubAuthAsync(state).ConfigureAwait(false);

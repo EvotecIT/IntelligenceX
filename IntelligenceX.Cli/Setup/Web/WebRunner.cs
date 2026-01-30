@@ -13,7 +13,15 @@ internal static class WebRunner {
             if (Uri.TryCreate(args[0], UriKind.Absolute, out var parsed)
                 && parsed.Scheme == Uri.UriSchemeHttp) {
                 if (parsed.IsLoopback) {
-                    url = parsed.ToString();
+                    var builder = new UriBuilder(parsed) {
+                        Path = "/",
+                        Query = string.Empty,
+                        Fragment = string.Empty
+                    };
+                    url = builder.Uri.ToString();
+                    if (parsed.AbsolutePath != "/") {
+                        Console.WriteLine("Normalized setup UI URL to root path.");
+                    }
                 } else {
                     Console.WriteLine("Non-loopback hosts are not allowed for setup UI. Using localhost instead.");
                 }

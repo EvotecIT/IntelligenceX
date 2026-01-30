@@ -47,7 +47,17 @@ internal sealed class WebServer : IDisposable {
             } catch {
                 break;
             }
-            _ = Task.Run(() => HandleAsync(context));
+            _ = Task.Run(async () => {
+                try {
+                    await HandleAsync(context).ConfigureAwait(false);
+                } catch (Exception ex) {
+                    try {
+                        Console.Error.WriteLine($"Web request failed: {ex.Message}");
+                    } catch {
+                        // Best effort logging.
+                    }
+                }
+            });
         }
     }
 
