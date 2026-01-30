@@ -597,7 +597,9 @@ It updates `CHANGELOG.md` on the default branch.
 
 Optional PR mode:
 - Set `create_pr: 'true'` to open/update a PR instead of pushing directly.
-- Optional inputs: `pr_branch`, `pr_title`, `pr_body`.
+- Optional inputs: `pr_branch`, `pr_title`, `pr_body`, `pr_labels`, `skip_review`.
+- When `skip_review: 'true'` (default), the workflow prefixes `[skip-review]` to the PR title
+  and applies the `skip-review` label (so IntelligenceX can skip its own release-notes PRs).
 Requires workflow permissions: `contents: write` + `pull-requests: write`.
 
 Required secret:
