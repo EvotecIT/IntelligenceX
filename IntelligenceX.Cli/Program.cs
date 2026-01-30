@@ -202,6 +202,9 @@ internal static class Program {
                 }
 
                 if (loginOptions.SetGitHubSecret) {
+                    if (!ResolveSecretTarget(loginOptions)) {
+                        return 1;
+                    }
                     var token = ResolveGitHubToken(loginOptions.GitHubToken);
                     if (string.IsNullOrWhiteSpace(token)) {
                         Console.Error.WriteLine("Missing GitHub token. Use --github-token or set INTELLIGENCEX_GITHUB_TOKEN/GITHUB_TOKEN/GH_TOKEN.");
@@ -359,9 +362,13 @@ internal static class Program {
         if (!string.IsNullOrWhiteSpace(direct)) {
             return direct;
         }
-        return Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN")
+        var token = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN")
                ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN")
                ?? Environment.GetEnvironmentVariable("GH_TOKEN");
+        if (!string.IsNullOrWhiteSpace(token)) {
+            return token;
+        }
+        return TryReadGhToken();
     }
 
     private static bool TryParseRepo(string repo, out string owner, out string name) {
@@ -377,6 +384,175 @@ internal static class Program {
         owner = parts[0];
         name = parts[1];
         return !string.IsNullOrWhiteSpace(owner) && !string.IsNullOrWhiteSpace(name);
+    }
+
+    private static bool ResolveSecretTarget(LoginOptions options) {
+        if (!string.IsNullOrWhiteSpace(options.Repo) && !string.IsNullOrWhiteSpace(options.Org)) {
+            Console.Error.WriteLine("Choose only one of --repo or --org.");
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(options.Repo) && string.IsNullOrWhiteSpace(options.Org)) {
+            var repo = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_REPO")
+                       ?? Environment.GetEnvironmentVariable("GITHUB_REPOSITORY");
+            if (!string.IsNullOrWhiteSpace(repo)) {
+                options.Repo = repo;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(options.Repo) && string.IsNullOrWhiteSpace(options.Org)) {
+            var org = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_ORG")
+                      ?? Environment.GetEnvironmentVariable("GITHUB_ORG")
+                      ?? Environment.GetEnvironmentVariable("GITHUB_OWNER");
+            if (!string.IsNullOrWhiteSpace(org)) {
+                options.Org = org;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(options.Repo) && string.IsNullOrWhiteSpace(options.Org)) {
+            var repo = TryResolveRepoFromGit();
+            if (!string.IsNullOrWhiteSpace(repo)) {
+                options.Repo = repo;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(options.Repo) && string.IsNullOrWhiteSpace(options.Org)) {
+            Console.Error.WriteLine("Specify --repo or --org when using --set-github-secret.");
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string? TryResolveRepoFromGit() {
+        var root = TryFindGitRoot(Directory.GetCurrentDirectory());
+        if (string.IsNullOrWhiteSpace(root)) {
+            return null;
+        }
+        var configPath = Path.Combine(root, ".git", "config");
+        if (!File.Exists(configPath)) {
+            return null;
+        }
+        var url = TryReadGitRemoteUrl(configPath, "origin") ?? TryReadFirstRemoteUrl(configPath);
+        if (string.IsNullOrWhiteSpace(url)) {
+            return null;
+        }
+        return ParseGitHubRepoFromUrl(url);
+    }
+
+    private static string? TryFindGitRoot(string start) {
+        var current = new DirectoryInfo(start);
+        while (current is not null) {
+            var gitDir = Path.Combine(current.FullName, ".git");
+            if (Directory.Exists(gitDir)) {
+                return current.FullName;
+            }
+            current = current.Parent;
+        }
+        return null;
+    }
+
+    private static string? TryReadGitRemoteUrl(string configPath, string remoteName) {
+        var lines = File.ReadAllLines(configPath);
+        var inRemote = false;
+        foreach (var raw in lines) {
+            var line = raw.Trim();
+            if (line.StartsWith("[") && line.EndsWith("]")) {
+                inRemote = line.Equals($"[remote \"{remoteName}\"]", StringComparison.OrdinalIgnoreCase);
+                continue;
+            }
+            if (!inRemote) {
+                continue;
+            }
+            if (line.StartsWith("url", StringComparison.OrdinalIgnoreCase)) {
+                var idx = line.IndexOf('=');
+                if (idx >= 0) {
+                    return line[(idx + 1)..].Trim();
+                }
+            }
+        }
+        return null;
+    }
+
+    private static string? TryReadFirstRemoteUrl(string configPath) {
+        var lines = File.ReadAllLines(configPath);
+        var inRemote = false;
+        foreach (var raw in lines) {
+            var line = raw.Trim();
+            if (line.StartsWith("[") && line.EndsWith("]")) {
+                inRemote = line.StartsWith("[remote ", StringComparison.OrdinalIgnoreCase);
+                continue;
+            }
+            if (!inRemote) {
+                continue;
+            }
+            if (line.StartsWith("url", StringComparison.OrdinalIgnoreCase)) {
+                var idx = line.IndexOf('=');
+                if (idx >= 0) {
+                    return line[(idx + 1)..].Trim();
+                }
+            }
+        }
+        return null;
+    }
+
+    private static string? ParseGitHubRepoFromUrl(string url) {
+        if (string.IsNullOrWhiteSpace(url)) {
+            return null;
+        }
+        var trimmed = url.Trim();
+        if (trimmed.StartsWith("git@github.com:", StringComparison.OrdinalIgnoreCase)) {
+            var path = trimmed.Substring("git@github.com:".Length);
+            return NormalizeRepoPath(path);
+        }
+        if (trimmed.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("http://github.com/", StringComparison.OrdinalIgnoreCase)) {
+            var uri = new Uri(trimmed);
+            var path = uri.AbsolutePath.Trim('/');
+            return NormalizeRepoPath(path);
+        }
+        return null;
+    }
+
+    private static string? NormalizeRepoPath(string path) {
+        if (string.IsNullOrWhiteSpace(path)) {
+            return null;
+        }
+        var cleaned = path.Trim().TrimEnd('/');
+        if (cleaned.EndsWith(".git", StringComparison.OrdinalIgnoreCase)) {
+            cleaned = cleaned.Substring(0, cleaned.Length - 4);
+        }
+        var parts = cleaned.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2) {
+            return null;
+        }
+        return $"{parts[0]}/{parts[1]}";
+    }
+
+    private static string? TryReadGhToken() {
+        try {
+            var startInfo = new System.Diagnostics.ProcessStartInfo {
+                FileName = "gh",
+                Arguments = "auth token",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var process = System.Diagnostics.Process.Start(startInfo);
+            if (process is null) {
+                return null;
+            }
+            var output = process.StandardOutput.ReadToEnd();
+            process.WaitForExit(3000);
+            if (process.ExitCode != 0) {
+                return null;
+            }
+            var token = output.Trim();
+            return string.IsNullOrWhiteSpace(token) ? null : token;
+        } catch {
+            return null;
+        }
     }
 
     private sealed class LoginOptions {
