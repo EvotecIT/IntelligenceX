@@ -27,5 +27,6 @@
 
     <ItemGroup Condition=" '$(TargetFramework)' != 'net472' ">
         <ProjectReference Include="..\IntelligenceX.Reviewer\IntelligenceX.Reviewer.csproj" />
+        <ProjectReference Include="..\IntelligenceX.Cli\IntelligenceX.Cli.csproj" />
     </ItemGroup>
 </Project>

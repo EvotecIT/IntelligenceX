@@ -27,6 +27,7 @@ internal sealed class GitHubSecretsClient : IDisposable {
 
     public async Task SetRepoSecretAsync(string owner, string repo, string name, string value) {
         ValidateRepoInputs(owner, repo, name);
+        ValidateSecretValue(value);
         var key = await GetPublicKeyAsync($"/repos/{owner}/{repo}/actions/secrets/public-key").ConfigureAwait(false);
         var payload = new Dictionary<string, object?> {
             ["encrypted_value"] = Encrypt(value, key.PublicKey),
@@ -37,6 +38,7 @@ internal sealed class GitHubSecretsClient : IDisposable {
 
     public async Task SetOrgSecretAsync(string org, string name, string value, string visibility = "all", IReadOnlyList<long>? selectedRepositoryIds = null) {
         ValidateOrgInputs(org, name);
+        ValidateSecretValue(value);
         var key = await GetPublicKeyAsync($"/orgs/{org}/actions/secrets/public-key").ConfigureAwait(false);
         var normalizedVisibility = NormalizeVisibility(visibility);
         if (normalizedVisibility == "selected" && (selectedRepositoryIds is null || selectedRepositoryIds.Count == 0)) {
@@ -141,6 +143,12 @@ internal sealed class GitHubSecretsClient : IDisposable {
             if (!(char.IsLetterOrDigit(ch) || ch == '_')) {
                 throw new InvalidOperationException("Secret name must contain only letters, numbers, or underscores.");
             }
+        }
+    }
+
+    private static void ValidateSecretValue(string value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            throw new InvalidOperationException("Secret value is required.");
         }
     }
 

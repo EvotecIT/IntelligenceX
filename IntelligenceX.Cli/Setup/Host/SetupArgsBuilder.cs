@@ -19,6 +19,10 @@ internal static class SetupArgsBuilder {
             throw new InvalidOperationException("Choose only one of --manual-secret or --update-secret.");
         }
 
+        if (plan.SkipSecret && plan.UpdateSecret) {
+            throw new InvalidOperationException("Choose only one of --skip-secret or --update-secret.");
+        }
+
         if (!string.IsNullOrWhiteSpace(plan.ConfigPath) && !string.IsNullOrWhiteSpace(plan.ConfigJson)) {
             throw new InvalidOperationException("Choose only one of --config-path or --config-json.");
         }
