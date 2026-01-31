@@ -30,7 +30,13 @@ public static class ReviewerApp {
                 return 1;
             }
 
+            var fallbackToken = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+            if (string.Equals(token, fallbackToken, StringComparison.Ordinal)) {
+                fallbackToken = null;
+            }
+
             using var github = new GitHubClient(token);
+            using var fallbackGithub = string.IsNullOrWhiteSpace(fallbackToken) ? null : new GitHubClient(fallbackToken);
             PullRequestContext? context = null;
             var eventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
             if (!string.IsNullOrWhiteSpace(eventPath) && File.Exists(eventPath)) {
@@ -91,7 +97,7 @@ public static class ReviewerApp {
             progress.Files = ReviewProgressState.Complete;
             progress.StatusLine = "Analyzed changed files.";
 
-            var extras = await BuildExtrasAsync(github, context, settings, CancellationToken.None)
+            var extras = await BuildExtrasAsync(github, fallbackGithub, context, settings, CancellationToken.None)
                 .ConfigureAwait(false);
             var inlineSupported = !string.Equals(settings.Mode, "summary", StringComparison.OrdinalIgnoreCase) &&
                                   settings.MaxInlineComments > 0 &&
@@ -145,12 +151,12 @@ public static class ReviewerApp {
                     !string.IsNullOrWhiteSpace(context.HeadSha) &&
                     inlineKeys is not null &&
                     inlineKeys.Count > 0) {
-                    await AutoResolveMissingInlineThreadsAsync(github, context, inlineKeys, settings, CancellationToken.None)
+                    await AutoResolveMissingInlineThreadsAsync(github, fallbackGithub, context, inlineKeys, settings, CancellationToken.None)
                         .ConfigureAwait(false);
                 }
             }
 
-            var triageResult = await MaybeAutoResolveAssessedThreadsAsync(github, runner, context, files, settings, extras, reviewFailed)
+            var triageResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, runner, context, files, settings, extras, reviewFailed)
                 .ConfigureAwait(false);
             if (settings.ReviewThreadsAutoResolveAIEmbed && !string.IsNullOrWhiteSpace(triageResult.EmbeddedBlock)) {
                 summaryBody = summaryBody.TrimEnd() + "\n\n" + triageResult.EmbeddedBlock.Trim();
@@ -371,8 +377,8 @@ public static class ReviewerApp {
         return list;
     }
 
-    private static async Task<ReviewContextExtras> BuildExtrasAsync(GitHubClient github, PullRequestContext context,
-        ReviewSettings settings, CancellationToken cancellationToken) {
+    private static async Task<ReviewContextExtras> BuildExtrasAsync(GitHubClient github, GitHubClient? fallbackGithub,
+        PullRequestContext context, ReviewSettings settings, CancellationToken cancellationToken) {
         var extras = new ReviewContextExtras();
         if (settings.IncludeIssueComments) {
             var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, settings.MaxComments, cancellationToken)
@@ -386,7 +392,7 @@ public static class ReviewerApp {
                 .ConfigureAwait(false);
             extras.ReviewThreads = threads;
             if (settings.ReviewThreadsAutoResolveStale) {
-                await AutoResolveStaleThreadsAsync(github, threads, settings, cancellationToken).ConfigureAwait(false);
+                await AutoResolveStaleThreadsAsync(github, fallbackGithub, threads, settings, cancellationToken).ConfigureAwait(false);
             }
             if (settings.IncludeReviewThreads) {
                 extras.ReviewThreadsSection = BuildReviewThreadsSection(threads, settings);
@@ -527,8 +533,8 @@ public static class ReviewerApp {
         return sb.ToString();
     }
 
-    private static async Task AutoResolveStaleThreadsAsync(GitHubClient github, IReadOnlyList<PullRequestReviewThread> threads,
-        ReviewSettings settings, CancellationToken cancellationToken) {
+    private static async Task AutoResolveStaleThreadsAsync(GitHubClient github, GitHubClient? fallbackGithub,
+        IReadOnlyList<PullRequestReviewThread> threads, ReviewSettings settings, CancellationToken cancellationToken) {
         var resolved = 0;
         foreach (var thread in threads) {
             if (resolved >= settings.ReviewThreadsAutoResolveMax) {
@@ -544,17 +550,17 @@ public static class ReviewerApp {
                 continue;
             }
 
-            try {
-                await github.ResolveReviewThreadAsync(thread.Id, cancellationToken).ConfigureAwait(false);
+            var result = await TryResolveThreadAsync(github, fallbackGithub, thread.Id, cancellationToken).ConfigureAwait(false);
+            if (result.Resolved) {
                 resolved++;
-            } catch (Exception ex) {
-                Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {ex.Message}");
+                continue;
             }
+            Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {result.Error ?? "unknown error"}");
         }
     }
 
-    private static async Task AutoResolveMissingInlineThreadsAsync(GitHubClient github, PullRequestContext context,
-        HashSet<string>? expectedKeys, ReviewSettings settings, CancellationToken cancellationToken) {
+    private static async Task AutoResolveMissingInlineThreadsAsync(GitHubClient github, GitHubClient? fallbackGithub,
+        PullRequestContext context, HashSet<string>? expectedKeys, ReviewSettings settings, CancellationToken cancellationToken) {
         if (settings.ReviewThreadsAutoResolveMax <= 0) {
             return;
         }
@@ -584,17 +590,18 @@ public static class ReviewerApp {
                 continue;
             }
 
-            try {
-                await github.ResolveReviewThreadAsync(thread.Id, cancellationToken).ConfigureAwait(false);
+            var result = await TryResolveThreadAsync(github, fallbackGithub, thread.Id, cancellationToken).ConfigureAwait(false);
+            if (result.Resolved) {
                 resolved++;
-            } catch (Exception ex) {
-                Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {ex.Message}");
+                continue;
             }
+            Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {result.Error ?? "unknown error"}");
         }
     }
 
-    private static async Task<ThreadTriageResult> MaybeAutoResolveAssessedThreadsAsync(GitHubClient github, ReviewRunner runner, PullRequestContext context,
-        IReadOnlyList<PullRequestFile> files, ReviewSettings settings, ReviewContextExtras extras, bool reviewFailed) {
+    private static async Task<ThreadTriageResult> MaybeAutoResolveAssessedThreadsAsync(GitHubClient github, GitHubClient? fallbackGithub,
+        ReviewRunner runner, PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
+        ReviewContextExtras extras, bool reviewFailed) {
         if (!settings.ReviewThreadsAutoResolveAI || reviewFailed) {
             return ThreadTriageResult.Empty;
         }
@@ -644,14 +651,15 @@ public static class ReviewerApp {
             if (!byId.TryGetValue(thread.Id, out var assessment) || assessment.Action != "resolve") {
                 continue;
             }
-            try {
-                await github.ResolveReviewThreadAsync(thread.Id, CancellationToken.None).ConfigureAwait(false);
+            var result = await TryResolveThreadAsync(github, fallbackGithub, thread.Id, CancellationToken.None).ConfigureAwait(false);
+            if (result.Resolved) {
                 resolvedCount++;
                 resolved.Add(assessment);
-            } catch (Exception ex) {
-                failed.Add(new ThreadAssessment(assessment.Id, "keep", $"{assessment.Reason} (resolve failed: {ex.Message})"));
-                Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {ex.Message}");
+                continue;
             }
+            var error = result.Error ?? "unknown error";
+            failed.Add(new ThreadAssessment(assessment.Id, "keep", $"{assessment.Reason} (resolve failed: {error})"));
+            Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {error}");
         }
 
         if (failed.Count > 0) {
@@ -708,6 +716,7 @@ public static class ReviewerApp {
         sb.AppendLine("Only mark a thread as resolved if the current diff clearly addresses the comment.");
         sb.AppendLine("If a human reply in the thread confirms the issue is fixed/expected/accepted, resolve it.");
         sb.AppendLine("If unclear or still valid, keep it open.");
+        sb.AppendLine("If diff context shows `<file patch>`, it is the file-level diff because line-level context was unavailable.");
         sb.AppendLine();
         sb.AppendLine("Return JSON only in this format:");
         sb.AppendLine("{\"threads\":[{\"id\":\"...\",\"action\":\"resolve|keep|comment\",\"reason\":\"...\"}]}");
@@ -719,6 +728,7 @@ public static class ReviewerApp {
         sb.AppendLine();
 
         var patchIndex = BuildInlinePatchIndex(files);
+        var patchLookup = BuildPatchLookup(files, settings.MaxPatchChars);
         var index = 1;
         foreach (var thread in threads) {
             sb.AppendLine($"Thread {index}:");
@@ -741,7 +751,7 @@ public static class ReviewerApp {
             }
             sb.AppendLine("diff context:");
             sb.AppendLine("```");
-            sb.AppendLine(BuildThreadDiffContext(patchIndex, path, line));
+            sb.AppendLine(BuildThreadDiffContext(patchIndex, patchLookup, path, line, settings.MaxPatchChars));
             sb.AppendLine("```");
             sb.AppendLine();
             index++;
@@ -766,13 +776,18 @@ public static class ReviewerApp {
         return false;
     }
 
-    private static string BuildThreadDiffContext(Dictionary<string, List<PatchLine>> patchIndex, string path, int lineNumber) {
-        if (string.IsNullOrWhiteSpace(path) || lineNumber <= 0) {
+    private static string BuildThreadDiffContext(Dictionary<string, List<PatchLine>> patchIndex,
+        IReadOnlyDictionary<string, string> patchLookup, string path, int lineNumber, int maxPatchChars) {
+        if (string.IsNullOrWhiteSpace(path)) {
             return "<unavailable>";
+        }
+        if (lineNumber <= 0) {
+            var normalizedPath = NormalizePath(path);
+            return TryBuildFallbackPatch(patchLookup, normalizedPath, maxPatchChars);
         }
         var normalized = NormalizePath(path);
         if (string.IsNullOrWhiteSpace(normalized) || !patchIndex.TryGetValue(normalized, out var lines) || lines.Count == 0) {
-            return "<unavailable>";
+            return TryBuildFallbackPatch(patchLookup, normalized, maxPatchChars);
         }
         var context = 3;
         var lower = lineNumber - context;
@@ -780,7 +795,54 @@ public static class ReviewerApp {
         var snippet = lines.Where(l => l.LineNumber >= lower && l.LineNumber <= upper)
             .Select(l => $"{l.LineNumber}: {l.Text}")
             .ToList();
-        return snippet.Count == 0 ? "<unavailable>" : string.Join("\n", snippet);
+        if (snippet.Count > 0) {
+            return string.Join("\n", snippet);
+        }
+        return TryBuildFallbackPatch(patchLookup, normalized, maxPatchChars);
+    }
+
+    private static Dictionary<string, string> BuildPatchLookup(IReadOnlyList<PullRequestFile> files, int maxPatchChars) {
+        var lookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in files) {
+            if (string.IsNullOrWhiteSpace(file.Patch)) {
+                continue;
+            }
+            var normalized = NormalizePath(file.Filename);
+            if (string.IsNullOrWhiteSpace(normalized)) {
+                continue;
+            }
+            lookup[normalized] = TrimPatch(file.Patch!, maxPatchChars);
+        }
+        return lookup;
+    }
+
+    private static string TryBuildFallbackPatch(IReadOnlyDictionary<string, string> patchLookup, string normalizedPath,
+        int maxPatchChars) {
+        if (string.IsNullOrWhiteSpace(normalizedPath)) {
+            return "<unavailable>";
+        }
+        if (!patchLookup.TryGetValue(normalizedPath, out var patch) || string.IsNullOrWhiteSpace(patch)) {
+            return "<unavailable>";
+        }
+        var limited = TrimPatch(patch, maxPatchChars);
+        return $"<file patch>\n{limited}";
+    }
+
+    private static string TrimPatch(string patch, int maxPatchChars) {
+        if (string.IsNullOrWhiteSpace(patch)) {
+            return string.Empty;
+        }
+        if (maxPatchChars <= 0 || patch.Length <= maxPatchChars) {
+            return patch;
+        }
+        var headSize = Math.Max(0, maxPatchChars / 2);
+        var tailSize = Math.Max(0, maxPatchChars - headSize);
+        if (headSize + tailSize > patch.Length) {
+            return patch.Substring(0, maxPatchChars) + "\n... (truncated)";
+        }
+        var head = patch.Substring(0, headSize);
+        var tail = patch.Substring(patch.Length - tailSize);
+        return head + "\n... (truncated) ...\n" + tail;
     }
 
     private static string BuildThreadAssessmentComment(IReadOnlyList<ThreadAssessment> resolved,
@@ -923,6 +985,32 @@ public static class ReviewerApp {
     }
 
     private sealed record ThreadAssessment(string Id, string Action, string Reason);
+
+    private static async Task<(bool Resolved, string? Error)> TryResolveThreadAsync(GitHubClient github,
+        GitHubClient? fallbackGithub, string threadId, CancellationToken cancellationToken) {
+        try {
+            await github.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
+            return (true, null);
+        } catch (Exception ex) {
+            if (fallbackGithub is not null && IsIntegrationForbidden(ex)) {
+                try {
+                    await fallbackGithub.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
+                    return (true, null);
+                } catch (Exception fallbackEx) {
+                    return (false, fallbackEx.Message);
+                }
+            }
+            return (false, ex.Message);
+        }
+    }
+
+    private static bool IsIntegrationForbidden(Exception ex) {
+        if (ex.Message.Contains("Resource not accessible by integration", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("\"FORBIDDEN\"", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+        return ex.InnerException is not null && IsIntegrationForbidden(ex.InnerException);
+    }
 
     private static bool ThreadHasOnlyBotComments(PullRequestReviewThread thread) {
         if (thread.Comments.Count == 0) {
