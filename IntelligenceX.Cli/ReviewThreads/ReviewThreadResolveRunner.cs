@@ -38,8 +38,12 @@ internal static class ReviewThreadResolveRunner {
 
         var botLogin = string.IsNullOrWhiteSpace(options.BotLogin) ? "intelligencex-review" : options.BotLogin!;
         using var client = new ReviewThreadClient(token!, options.ApiBaseUrl);
+        using var cts = options.TimeoutSeconds > 0
+            ? new CancellationTokenSource(TimeSpan.FromSeconds(options.TimeoutSeconds))
+            : new CancellationTokenSource();
+        var tokenSource = cts.Token;
         var threads = await client.ListReviewThreadsAsync(owner, repo, prNumber, options.MaxThreads, options.MaxComments,
-            CancellationToken.None).ConfigureAwait(false);
+            tokenSource).ConfigureAwait(false);
 
         var eligible = FilterThreads(threads, botLogin, options).ToList();
         if (eligible.Count == 0) {
@@ -61,7 +65,7 @@ internal static class ReviewThreadResolveRunner {
                 break;
             }
             try {
-                await client.ResolveThreadAsync(thread.Id, CancellationToken.None).ConfigureAwait(false);
+                await client.ResolveThreadAsync(thread.Id, tokenSource).ConfigureAwait(false);
                 resolved++;
             } catch (Exception ex) {
                 Console.Error.WriteLine($"Failed to resolve thread {thread.Id}: {ex.Message}");
@@ -248,6 +252,12 @@ internal static class ReviewThreadResolveRunner {
                         options.ResolveMax = Math.Max(1, resolveMax);
                     }
                     break;
+                case "--timeout":
+                case "--timeout-seconds":
+                    if (i + 1 < args.Length && int.TryParse(args[++i], out var timeoutSeconds)) {
+                        options.TimeoutSeconds = Math.Max(1, timeoutSeconds);
+                    }
+                    break;
                 case "--api-base-url":
                     if (i + 1 < args.Length) {
                         options.ApiBaseUrl = args[++i];
@@ -277,6 +287,7 @@ internal static class ReviewThreadResolveRunner {
         Console.WriteLine("  --max-threads <n>         Max threads to scan (default: 50)");
         Console.WriteLine("  --max-comments <n>        Max comments per thread (default: 5)");
         Console.WriteLine("  --resolve-max <n>         Max threads to resolve (default: 20)");
+        Console.WriteLine("  --timeout-seconds <n>     Overall timeout (default: 60)");
         Console.WriteLine("  --dry-run                Preview without resolving");
     }
 
@@ -292,6 +303,7 @@ internal static class ReviewThreadResolveRunner {
         public int MaxThreads { get; set; } = 50;
         public int MaxComments { get; set; } = 5;
         public int ResolveMax { get; set; } = 20;
+        public int TimeoutSeconds { get; set; } = 60;
         public string? ApiBaseUrl { get; set; }
     }
 
