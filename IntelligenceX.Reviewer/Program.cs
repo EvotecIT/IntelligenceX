@@ -726,7 +726,7 @@ public static class ReviewerApp {
         if (settings.ReviewThreadsAutoResolveAIReply && kept.Count > 0) {
             await ReplyToKeptThreadsAsync(github, context, candidates, byId, context.HeadSha, diffNote, settings).ConfigureAwait(false);
         }
-        if (settings.ReviewThreadsAutoResolveAIPostComment && kept.Count > 0) {
+        if (settings.ReviewThreadsAutoResolveAIPostComment && !settings.ReviewThreadsAutoResolveAIEmbed && kept.Count > 0) {
             var body = triageBody;
             await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, CancellationToken.None)
                 .ConfigureAwait(false);

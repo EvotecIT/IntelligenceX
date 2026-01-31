@@ -339,6 +339,7 @@ Notes:
 - `reviewThreadsAutoResolveAIEmbed` adds the triage block to the main review comment.
 - `reviewThreadsAutoResolveAISummary` toggles the one-line auto-resolve summary in the main review comment.
 - `reviewThreadsAutoResolveAIReply` posts per-thread replies with the triage reason (opt-in).
+- When `reviewThreadsAutoResolveAIEmbed` is true, the triage block is embedded in the main review and the extra triage comment is skipped to reduce clutter.
 - Set `reviewThreadsMax` or `reviewThreadsMaxComments` to `0` to disable review-thread context.
 - When review-thread context is included, the reviewer suppresses the separate "Review comments" block to avoid duplicate content.
 
