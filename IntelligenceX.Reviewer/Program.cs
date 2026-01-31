@@ -149,9 +149,13 @@ public static class ReviewerApp {
                 }
             }
 
-            var autoResolveSummary = await MaybeAutoResolveAssessedThreadsAsync(github, runner, context, files, settings, extras, reviewFailed)
+            var triageResult = await MaybeAutoResolveAssessedThreadsAsync(github, runner, context, files, settings, extras, reviewFailed)
                 .ConfigureAwait(false);
+            if (settings.ReviewThreadsAutoResolveAIEmbed && !string.IsNullOrWhiteSpace(triageResult.EmbeddedBlock)) {
+                summaryBody = summaryBody.TrimEnd() + "\n\n" + triageResult.EmbeddedBlock.Trim();
+            }
             var inlineSuppressed = inlineSupported && !inlineAllowed;
+            var autoResolveSummary = settings.ReviewThreadsAutoResolveAISummary ? triageResult.SummaryLine : string.Empty;
             var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported, inlineSuppressed, autoResolveSummary);
             progress.Review = ReviewProgressState.Complete;
             progress.Finalize = ReviewProgressState.InProgress;
@@ -588,45 +592,42 @@ public static class ReviewerApp {
         }
     }
 
-    private static async Task<string> MaybeAutoResolveAssessedThreadsAsync(GitHubClient github, ReviewRunner runner, PullRequestContext context,
+    private static async Task<ThreadTriageResult> MaybeAutoResolveAssessedThreadsAsync(GitHubClient github, ReviewRunner runner, PullRequestContext context,
         IReadOnlyList<PullRequestFile> files, ReviewSettings settings, ReviewContextExtras extras, bool reviewFailed) {
         if (!settings.ReviewThreadsAutoResolveAI || reviewFailed) {
-            return string.Empty;
+            return ThreadTriageResult.Empty;
         }
         if (extras.ReviewThreads.Count == 0) {
-            return string.Empty;
+            return ThreadTriageResult.Empty;
         }
 
         var candidates = SelectAssessmentCandidates(extras.ReviewThreads, settings);
         if (candidates.Count == 0) {
-            return string.Empty;
+            return ThreadTriageResult.Empty;
         }
 
-        var limitedFiles = PrepareFiles(files, settings.MaxFiles, settings.MaxPatchChars);
-        var prompt = BuildThreadAssessmentPrompt(context, candidates, limitedFiles, settings);
+        var prompt = BuildThreadAssessmentPrompt(context, candidates, files, settings);
         if (settings.RedactPii) {
             prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
         }
 
         var output = await runner.RunAsync(prompt, null, null, CancellationToken.None).ConfigureAwait(false);
         if (ReviewDiagnostics.IsFailureBody(output)) {
-            return string.Empty;
+            return ThreadTriageResult.Empty;
         }
 
         var assessments = ParseThreadAssessments(output);
         if (assessments.Count == 0) {
             Console.Error.WriteLine("Thread assessment returned no usable results.");
-            return string.Empty;
+            return ThreadTriageResult.Empty;
         }
 
         var byId = assessments.ToDictionary(a => a.Id, StringComparer.OrdinalIgnoreCase);
         var resolved = new List<ThreadAssessment>();
         var kept = new List<ThreadAssessment>();
+        var failed = new List<ThreadAssessment>();
         foreach (var assessment in assessments) {
             switch (assessment.Action) {
-                case "resolve":
-                    resolved.Add(assessment);
-                    break;
                 case "comment":
                 case "keep":
                     kept.Add(assessment);
@@ -645,27 +646,34 @@ public static class ReviewerApp {
             try {
                 await github.ResolveReviewThreadAsync(thread.Id, CancellationToken.None).ConfigureAwait(false);
                 resolvedCount++;
+                resolved.Add(assessment);
             } catch (Exception ex) {
+                failed.Add(new ThreadAssessment(assessment.Id, "keep", $"{assessment.Reason} (resolve failed: {ex.Message})"));
                 Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {ex.Message}");
             }
         }
 
+        if (failed.Count > 0) {
+            kept.AddRange(failed);
+        }
+
         var commentPosted = false;
+        var triageBody = BuildThreadAssessmentComment(resolved, kept, context.HeadSha);
         if (settings.ReviewThreadsAutoResolveAIPostComment && kept.Count > 0) {
-            var body = BuildThreadAssessmentComment(resolved, kept);
+            var body = triageBody;
             await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, CancellationToken.None)
                 .ConfigureAwait(false);
             commentPosted = true;
         }
 
         if (resolvedCount == 0 && kept.Count == 0) {
-            return string.Empty;
+            return ThreadTriageResult.Empty;
         }
         var summary = $"Auto-resolve (AI): {resolvedCount} resolved, {kept.Count} kept.";
         if (commentPosted) {
             summary += " Triage comment posted.";
         }
-        return summary;
+        return new ThreadTriageResult(summary, triageBody);
     }
 
     private static List<PullRequestReviewThread> SelectAssessmentCandidates(IReadOnlyList<PullRequestReviewThread> threads,
@@ -772,10 +780,15 @@ public static class ReviewerApp {
     }
 
     private static string BuildThreadAssessmentComment(IReadOnlyList<ThreadAssessment> resolved,
-        IReadOnlyList<ThreadAssessment> kept) {
+        IReadOnlyList<ThreadAssessment> kept, string? headSha) {
         var sb = new StringBuilder();
         sb.AppendLine("<!-- intelligencex:thread-triage -->");
         sb.AppendLine("### IntelligenceX thread triage");
+        if (!string.IsNullOrWhiteSpace(headSha)) {
+            var trimmed = headSha.Length > 7 ? headSha.Substring(0, 7) : headSha;
+            sb.AppendLine($"_Assessed commit: `{trimmed}`_");
+            sb.AppendLine();
+        }
         if (resolved.Count > 0) {
             sb.AppendLine();
             sb.AppendLine("Resolved:");
@@ -791,6 +804,10 @@ public static class ReviewerApp {
             }
         }
         return sb.ToString().TrimEnd();
+    }
+
+    private readonly record struct ThreadTriageResult(string SummaryLine, string EmbeddedBlock) {
+        public static ThreadTriageResult Empty => new(string.Empty, string.Empty);
     }
 
     private static List<ThreadAssessment> ParseThreadAssessments(string output) {

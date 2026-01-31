@@ -38,6 +38,8 @@
         "reviewThreadsAutoResolveMax": { "type": "integer", "minimum": 0 },
         "reviewThreadsAutoResolveAI": { "type": "boolean" },
         "reviewThreadsAutoResolveAIPostComment": { "type": "boolean" },
+        "reviewThreadsAutoResolveAIEmbed": { "type": "boolean" },
+        "reviewThreadsAutoResolveAISummary": { "type": "boolean" },
         "includeRelatedPrs": { "type": "boolean" },
         "maxCommentChars": { "type": "integer", "minimum": 0 },
         "maxComments": { "type": "integer", "minimum": 0 },

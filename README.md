@@ -286,6 +286,8 @@ You can configure the reviewer with environment variables **or** a repo-local fi
     "reviewThreadsAutoResolveMax": 10,
     "reviewThreadsAutoResolveAI": true,
     "reviewThreadsAutoResolveAIPostComment": true,
+    "reviewThreadsAutoResolveAIEmbed": true,
+    "reviewThreadsAutoResolveAISummary": true,
     "commentMode": "sticky",
     "overwriteSummaryOnNewCommit": true,
     "contextDenyEnabled": true,
@@ -325,6 +327,8 @@ Notes:
 - `reviewThreadsAutoResolveMissingInline` resolves inline threads created by the bot when they no longer appear in the latest review (requires `pull-requests: write`).
 - `reviewThreadsAutoResolveAI` uses the model to assess open threads against the current diff before resolving.
 - `reviewThreadsAutoResolveAIPostComment` posts a triage summary comment when AI keeps threads open.
+- `reviewThreadsAutoResolveAIEmbed` adds the triage block to the main review comment.
+- `reviewThreadsAutoResolveAISummary` toggles the one-line auto-resolve summary in the main review comment.
 - Set `reviewThreadsMax` or `reviewThreadsMaxComments` to `0` to disable review-thread context.
 - When review-thread context is included, the reviewer suppresses the separate "Review comments" block to avoid duplicate content.
 
