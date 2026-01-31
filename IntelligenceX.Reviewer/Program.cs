@@ -612,31 +612,46 @@ public static class ReviewerApp {
             return (currentFiles, "current PR files (missing head SHA)");
         }
 
-        string? baseSha = null;
-        string label;
-        if (range == "pr-base") {
-            baseSha = context.BaseSha;
-            label = "PR base";
-        } else {
-            baseSha = await FindOldestSummaryCommitAsync(github, context, settings, cancellationToken).ConfigureAwait(false);
-            label = "first review";
-        }
-
-        if (string.IsNullOrWhiteSpace(baseSha)) {
-            return (currentFiles, $"current PR files (missing {label} commit)");
-        }
-
-        try {
-            var compareFiles = await github.GetCompareFilesAsync(context.Owner, context.Repo, baseSha, context.HeadSha, cancellationToken)
-                .ConfigureAwait(false);
-            if (compareFiles.Count == 0) {
-                return (currentFiles, $"{label} diff empty; using current PR files");
+        async Task<(bool Success, IReadOnlyList<PullRequestFile> Files, string Note)> TryCompareAsync(string? baseSha, string label) {
+            if (string.IsNullOrWhiteSpace(baseSha)) {
+                return (false, Array.Empty<PullRequestFile>(), $"missing {label} commit");
             }
-            return (compareFiles, $"{label} → head ({ShortSha(baseSha)}..{ShortSha(context.HeadSha)})");
-        } catch (Exception ex) {
-            Console.Error.WriteLine($"Failed to load {label} diff: {ex.Message}");
-            return (currentFiles, $"current PR files (failed to load {label} diff)");
+            try {
+                var compareFiles = await github.GetCompareFilesAsync(context.Owner, context.Repo, baseSha, context.HeadSha!, cancellationToken)
+                    .ConfigureAwait(false);
+                if (compareFiles.Count == 0) {
+                    return (false, Array.Empty<PullRequestFile>(), $"{label} diff empty");
+                }
+                return (true, compareFiles, $"{label} → head ({ShortSha(baseSha)}..{ShortSha(context.HeadSha)})");
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Failed to load {label} diff: {ex.Message}");
+                return (false, Array.Empty<PullRequestFile>(), $"failed to load {label} diff");
+            }
         }
+
+        if (range == "pr-base") {
+            var result = await TryCompareAsync(context.BaseSha, "PR base").ConfigureAwait(false);
+            return result.Success
+                ? (result.Files, result.Note)
+                : (currentFiles, $"current PR files ({result.Note})");
+        }
+
+        var firstReviewSha = await FindOldestSummaryCommitAsync(github, context, settings, cancellationToken).ConfigureAwait(false);
+        var firstReviewResult = await TryCompareAsync(firstReviewSha, "first review").ConfigureAwait(false);
+        if (firstReviewResult.Success) {
+            return (firstReviewResult.Files, firstReviewResult.Note);
+        }
+
+        var prBaseResult = await TryCompareAsync(context.BaseSha, "PR base fallback").ConfigureAwait(false);
+        if (prBaseResult.Success) {
+            return (prBaseResult.Files, prBaseResult.Note);
+        }
+
+        var note = firstReviewResult.Note;
+        if (!string.IsNullOrWhiteSpace(prBaseResult.Note)) {
+            note = string.IsNullOrWhiteSpace(note) ? prBaseResult.Note : $"{note}; {prBaseResult.Note}";
+        }
+        return (currentFiles, $"current PR files ({note})");
     }
 
     private static async Task<ThreadTriageResult> MaybeAutoResolveAssessedThreadsAsync(GitHubClient github, GitHubClient? fallbackGithub,
@@ -709,7 +724,7 @@ public static class ReviewerApp {
         var commentPosted = false;
         var triageBody = BuildThreadAssessmentComment(resolved, kept, context.HeadSha, diffNote);
         if (settings.ReviewThreadsAutoResolveAIReply && kept.Count > 0) {
-            await ReplyToKeptThreadsAsync(github, context, candidates, byId, context.HeadSha, settings).ConfigureAwait(false);
+            await ReplyToKeptThreadsAsync(github, context, candidates, byId, context.HeadSha, diffNote, settings).ConfigureAwait(false);
         }
         if (settings.ReviewThreadsAutoResolveAIPostComment && kept.Count > 0) {
             var body = triageBody;
@@ -946,7 +961,7 @@ public static class ReviewerApp {
 
     private static async Task ReplyToKeptThreadsAsync(GitHubClient github, PullRequestContext context,
         IReadOnlyList<PullRequestReviewThread> candidates, IReadOnlyDictionary<string, ThreadAssessment> assessments,
-        string? headSha, ReviewSettings settings) {
+        string? headSha, string? diffNote, ReviewSettings settings) {
         var replies = 0;
         foreach (var thread in candidates) {
             if (replies >= settings.ReviewThreadsAutoResolveMax) {
@@ -965,7 +980,7 @@ public static class ReviewerApp {
             if (target?.DatabaseId is null) {
                 continue;
             }
-            var body = BuildThreadReply(assessment, headSha);
+            var body = BuildThreadReply(assessment, headSha, diffNote);
             try {
                 await github.CreatePullRequestReviewCommentReplyAsync(context.Owner, context.Repo, context.Number,
                         target.DatabaseId.Value, body, CancellationToken.None)
@@ -998,7 +1013,7 @@ public static class ReviewerApp {
         return thread.Comments[^1];
     }
 
-    private static string BuildThreadReply(ThreadAssessment assessment, string? headSha) {
+    private static string BuildThreadReply(ThreadAssessment assessment, string? headSha, string? diffNote) {
         var sb = new StringBuilder();
         sb.AppendLine(ThreadReplyMarker);
         sb.AppendLine($"IntelligenceX triage: {assessment.Reason}");
@@ -1006,6 +1021,10 @@ public static class ReviewerApp {
             var trimmed = headSha.Length > 7 ? headSha.Substring(0, 7) : headSha;
             sb.AppendLine();
             sb.AppendLine($"_Assessed commit: `{trimmed}`_");
+        }
+        if (!string.IsNullOrWhiteSpace(diffNote)) {
+            sb.AppendLine();
+            sb.AppendLine($"_Diff range: {diffNote}_");
         }
         return sb.ToString().TrimEnd();
     }
