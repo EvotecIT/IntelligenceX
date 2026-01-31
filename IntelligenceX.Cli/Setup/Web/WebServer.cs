@@ -70,7 +70,7 @@ internal sealed class WebServer : IDisposable {
     }
 
     private async Task HandleAsync(HttpListenerContext context) {
-        if (!context.Request.IsLocal && !IsRemoteAccessAllowed()) {
+        if (!IsRemoteAccessAllowed() && !IsLoopbackRequest(context.Request)) {
             context.Response.StatusCode = 403;
             await WriteTextAsync(context.Response,
                 "Forbidden. This setup server only accepts loopback requests by default. " +
@@ -116,5 +116,13 @@ internal sealed class WebServer : IDisposable {
         }
         var normalized = value.Trim().ToLowerInvariant();
         return normalized is "1" or "true" or "yes" or "y" or "on";
+    }
+
+    private static bool IsLoopbackRequest(HttpListenerRequest request) {
+        if (request.IsLocal) {
+            return true;
+        }
+        var remote = request.RemoteEndPoint;
+        return remote is not null && IPAddress.IsLoopback(remote.Address);
     }
 }

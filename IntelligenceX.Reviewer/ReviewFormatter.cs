@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 
 namespace IntelligenceX.Reviewer;
 
@@ -19,7 +20,7 @@ internal static class ReviewFormatter {
         }
         var autoResolveLine = string.IsNullOrWhiteSpace(autoResolveNote)
             ? string.Empty
-            : $"> {autoResolveNote.Trim()}\n";
+            : FormatBlockQuote(autoResolveNote);
 
         var body = string.IsNullOrWhiteSpace(reviewBody)
             ? "_No review content was produced._"
@@ -98,6 +99,20 @@ internal static class ReviewFormatter {
 
     private static string EscapeMarkdown(string value) {
         return value.Replace("\r", "").Replace("\n", " ");
+    }
+
+    private static string FormatBlockQuote(string value) {
+        var lines = value.Replace("\r", "").Split('\n');
+        var sb = new StringBuilder();
+        foreach (var line in lines) {
+            var trimmed = line.TrimEnd();
+            if (trimmed.Length == 0) {
+                sb.AppendLine(">");
+                continue;
+            }
+            sb.AppendLine($"> {trimmed}");
+        }
+        return sb.ToString();
     }
 
     private static string FormatCommitLine(string? sha) {
