@@ -291,7 +291,7 @@ You can configure the reviewer with environment variables **or** a repo-local fi
     "reviewThreadsAutoResolveDiffRange": "current",
     "reviewThreadsAutoResolveMax": 10,
     "reviewThreadsAutoResolveAI": true,
-    "reviewThreadsAutoResolveAIPostComment": true,
+    "reviewThreadsAutoResolveAIPostComment": false,
     "reviewThreadsAutoResolveAIEmbed": true,
     "reviewThreadsAutoResolveAISummary": true,
     "reviewThreadsAutoResolveAIReply": false,
@@ -335,7 +335,7 @@ Notes:
 - `reviewThreadsAutoResolveBotLogins` lists additional bot usernames to treat as bots for auto-resolve (ex: Copilot/Codex reviewers).
 - `reviewThreadsAutoResolveDiffRange` controls the diff used for AI triage: `current` (default PR files), `pr-base` (PR base SHA → head), or `first-review` (oldest IntelligenceX summary commit → head). `first-review` falls back to PR base, then current files if the summary commit is missing.
 - `reviewThreadsAutoResolveAI` uses the model to assess open threads against the current diff before resolving.
-- `reviewThreadsAutoResolveAIPostComment` posts a triage summary comment when AI keeps threads open.
+- `reviewThreadsAutoResolveAIPostComment` posts a triage summary comment when AI keeps threads open (default: false).
 - `reviewThreadsAutoResolveAIEmbed` adds the triage block to the main review comment.
 - `reviewThreadsAutoResolveAISummary` toggles the one-line auto-resolve summary in the main review comment.
 - `reviewThreadsAutoResolveAIReply` posts per-thread replies with the triage reason (opt-in).

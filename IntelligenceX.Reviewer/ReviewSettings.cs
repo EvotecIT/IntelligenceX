@@ -107,7 +107,7 @@ internal sealed class ReviewSettings {
     public string ReviewThreadsAutoResolveDiffRange { get; set; } = "current";
     public int ReviewThreadsAutoResolveMax { get; set; } = 10;
     public bool ReviewThreadsAutoResolveAI { get; set; } = true;
-    public bool ReviewThreadsAutoResolveAIPostComment { get; set; } = true;
+    public bool ReviewThreadsAutoResolveAIPostComment { get; set; }
     public bool ReviewThreadsAutoResolveAIEmbed { get; set; } = true;
     public bool ReviewThreadsAutoResolveAISummary { get; set; } = true;
     public bool ReviewThreadsAutoResolveAIReply { get; set; }
