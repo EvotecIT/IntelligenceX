@@ -543,7 +543,7 @@ public static class ReviewerApp {
             if (thread.IsResolved || !thread.IsOutdated) {
                 continue;
             }
-            if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread)) {
+            if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread, settings)) {
                 continue;
             }
             if (settings.ReviewThreadsAutoResolveBotsOnly && thread.TotalComments > thread.Comments.Count) {
@@ -695,7 +695,7 @@ public static class ReviewerApp {
             if (thread.IsResolved) {
                 continue;
             }
-            if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread)) {
+            if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread, settings)) {
                 continue;
             }
             if (settings.ReviewThreadsAutoResolveBotsOnly && thread.TotalComments > thread.Comments.Count) {
@@ -1012,7 +1012,7 @@ public static class ReviewerApp {
         return ex.InnerException is not null && IsIntegrationForbidden(ex.InnerException);
     }
 
-    private static bool ThreadHasOnlyBotComments(PullRequestReviewThread thread) {
+    private static bool ThreadHasOnlyBotComments(PullRequestReviewThread thread, ReviewSettings settings) {
         if (thread.Comments.Count == 0) {
             return false;
         }
@@ -1020,7 +1020,7 @@ public static class ReviewerApp {
             if (string.IsNullOrWhiteSpace(comment.Author)) {
                 return false;
             }
-            if (!IsBotAuthor(comment.Author)) {
+            if (!IsBotAuthor(comment.Author, settings)) {
                 return false;
             }
         }
@@ -1032,7 +1032,7 @@ public static class ReviewerApp {
         if (thread.Comments.Count == 0) {
             return false;
         }
-        if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread)) {
+        if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread, settings)) {
             return false;
         }
 
@@ -1103,7 +1103,7 @@ public static class ReviewerApp {
             }
         }
         if (!string.IsNullOrWhiteSpace(author)) {
-            if (IsBotAuthor(author)) {
+            if (IsBotAuthor(author, settings)) {
                 return false;
             }
         }
@@ -1123,7 +1123,7 @@ public static class ReviewerApp {
             }
         }
         if (!settings.ReviewThreadsIncludeBots && !string.IsNullOrWhiteSpace(author)) {
-            if (IsBotAuthor(author)) {
+            if (IsBotAuthor(author, settings)) {
                 return false;
             }
         }
@@ -1133,13 +1133,39 @@ public static class ReviewerApp {
         return true;
     }
 
-    private static bool IsBotAuthor(string author) {
+    private static bool IsBotAuthor(string author, ReviewSettings settings) {
+        if (string.IsNullOrWhiteSpace(author)) {
+            return false;
+        }
+        var normalizedAuthor = NormalizeBotLogin(author);
+        if (settings.ReviewThreadsAutoResolveBotLogins.Count > 0) {
+            foreach (var login in settings.ReviewThreadsAutoResolveBotLogins) {
+                if (string.IsNullOrWhiteSpace(login)) {
+                    continue;
+                }
+                var normalizedLogin = NormalizeBotLogin(login);
+                if (string.IsNullOrWhiteSpace(normalizedLogin)) {
+                    continue;
+                }
+                if (string.Equals(normalizedAuthor, normalizedLogin, StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+        }
         if (author.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase) ||
             author.EndsWith("bot", StringComparison.OrdinalIgnoreCase)) {
             return true;
         }
         return author.Equals("github-actions", StringComparison.OrdinalIgnoreCase) ||
             author.Equals("intelligencex-review", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeBotLogin(string login) {
+        var trimmed = login.Trim();
+        if (trimmed.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase)) {
+            trimmed = trimmed.Substring(0, trimmed.Length - "[bot]".Length).TrimEnd();
+        }
+        return trimmed;
     }
 
     private static async Task<HashSet<string>?> PostInlineCommentsAsync(GitHubClient github, PullRequestContext context,

@@ -36,7 +36,7 @@ internal static class ReviewThreadResolveRunner {
             return 1;
         }
 
-        var botLogin = string.IsNullOrWhiteSpace(options.BotLogin) ? "intelligencex-review" : options.BotLogin!;
+        var botLogins = ResolveBotLogins(options);
         using var client = new ReviewThreadClient(token!, options.ApiBaseUrl);
         using var cts = options.TimeoutSeconds > 0
             ? new CancellationTokenSource(TimeSpan.FromSeconds(options.TimeoutSeconds))
@@ -45,7 +45,7 @@ internal static class ReviewThreadResolveRunner {
         var threads = await client.ListReviewThreadsAsync(owner, repo, prNumber, options.MaxThreads, options.MaxComments,
             tokenSource).ConfigureAwait(false);
 
-        var eligible = FilterThreads(threads, botLogin, options).ToList();
+        var eligible = FilterThreads(threads, botLogins, options).ToList();
         if (eligible.Count == 0) {
             Console.WriteLine("No review threads matched the criteria.");
             return 0;
@@ -76,7 +76,7 @@ internal static class ReviewThreadResolveRunner {
         return 0;
     }
 
-    private static IEnumerable<ReviewThread> FilterThreads(IEnumerable<ReviewThread> threads, string botLogin, Options options) {
+    private static IEnumerable<ReviewThread> FilterThreads(IEnumerable<ReviewThread> threads, IReadOnlyList<string> botLogins, Options options) {
         foreach (var thread in threads) {
             if (thread.IsResolved) {
                 continue;
@@ -84,14 +84,14 @@ internal static class ReviewThreadResolveRunner {
             if (options.OnlyOutdated && !thread.IsOutdated) {
                 continue;
             }
-            if (options.BotOnly && !ThreadHasOnlyBotComments(thread, botLogin)) {
+            if (options.BotOnly && !ThreadHasOnlyBotComments(thread, botLogins)) {
                 continue;
             }
             yield return thread;
         }
     }
 
-    private static bool ThreadHasOnlyBotComments(ReviewThread thread, string botLogin) {
+    private static bool ThreadHasOnlyBotComments(ReviewThread thread, IReadOnlyList<string> botLogins) {
         if (thread.Comments.Count == 0) {
             return false;
         }
@@ -99,19 +99,30 @@ internal static class ReviewThreadResolveRunner {
             return false;
         }
         return thread.Comments.All(comment =>
-            IsBotMatch(comment.Author, botLogin));
+            IsBotMatch(comment.Author, botLogins));
     }
 
-    private static bool IsBotMatch(string? author, string botLogin) {
-        if (string.IsNullOrWhiteSpace(author) || string.IsNullOrWhiteSpace(botLogin)) {
+    private static bool IsBotMatch(string? author, IReadOnlyList<string> botLogins) {
+        if (string.IsNullOrWhiteSpace(author) || botLogins.Count == 0) {
             return false;
         }
         var normalizedAuthor = NormalizeBotLogin(author);
-        var normalizedBot = NormalizeBotLogin(botLogin);
-        if (string.IsNullOrWhiteSpace(normalizedAuthor) || string.IsNullOrWhiteSpace(normalizedBot)) {
+        if (string.IsNullOrWhiteSpace(normalizedAuthor)) {
             return false;
         }
-        return string.Equals(normalizedAuthor, normalizedBot, StringComparison.OrdinalIgnoreCase);
+        foreach (var login in botLogins) {
+            if (string.IsNullOrWhiteSpace(login)) {
+                continue;
+            }
+            var normalizedBot = NormalizeBotLogin(login);
+            if (string.IsNullOrWhiteSpace(normalizedBot)) {
+                continue;
+            }
+            if (string.Equals(normalizedAuthor, normalizedBot, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static string NormalizeBotLogin(string login) {
@@ -120,6 +131,13 @@ internal static class ReviewThreadResolveRunner {
             trimmed = trimmed.Substring(0, trimmed.Length - "[bot]".Length).TrimEnd();
         }
         return trimmed;
+    }
+
+    private static IReadOnlyList<string> ResolveBotLogins(Options options) {
+        if (options.BotLogins.Count > 0) {
+            return options.BotLogins;
+        }
+        return new[] { "intelligencex-review" };
     }
 
     private static bool TryResolveRepo(Options options, out string owner, out string repo) {
@@ -240,7 +258,7 @@ internal static class ReviewThreadResolveRunner {
                 case "--bot":
                 case "--bot-login":
                     if (i + 1 < args.Length) {
-                        options.BotLogin = args[++i];
+                        AddBotLogins(options.BotLogins, args[++i]);
                     }
                     break;
                 case "--include-human":
@@ -296,7 +314,7 @@ internal static class ReviewThreadResolveRunner {
         Console.WriteLine("  --repo <owner/name>      Target repo (defaults to GITHUB_REPOSITORY)");
         Console.WriteLine("  --pr <number>            Pull request number");
         Console.WriteLine("  --token <token>          GitHub token (or set INTELLIGENCEX_GITHUB_TOKEN/GITHUB_TOKEN)");
-        Console.WriteLine("  --bot <login>            Bot login to match (default: intelligencex-review)");
+        Console.WriteLine("  --bot <login>            Bot login to match (repeatable or comma-separated)");
         Console.WriteLine("  --include-human          Allow resolving threads with non-bot comments");
         Console.WriteLine("  --include-current        Resolve non-outdated threads too");
         Console.WriteLine("  --max-threads <n>         Max threads to scan (default: 50)");
@@ -312,7 +330,7 @@ internal static class ReviewThreadResolveRunner {
         public string? Repo { get; set; }
         public int PrNumber { get; set; }
         public string? Token { get; set; }
-        public string? BotLogin { get; set; }
+        public List<string> BotLogins { get; } = new();
         public bool BotOnly { get; set; } = true;
         public bool OnlyOutdated { get; set; } = true;
         public bool DryRun { get; set; }
@@ -321,6 +339,18 @@ internal static class ReviewThreadResolveRunner {
         public int ResolveMax { get; set; } = 20;
         public int TimeoutSeconds { get; set; } = 60;
         public string? ApiBaseUrl { get; set; }
+    }
+
+    private static void AddBotLogins(List<string> botLogins, string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return;
+        }
+        var parts = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var part in parts) {
+            if (!string.IsNullOrWhiteSpace(part)) {
+                botLogins.Add(part);
+            }
+        }
     }
 
     private sealed class ReviewThreadClient : IDisposable {

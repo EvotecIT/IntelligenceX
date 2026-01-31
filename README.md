@@ -282,7 +282,12 @@ You can configure the reviewer with environment variables **or** a repo-local fi
     "reviewThreadsMaxComments": 3,
     "reviewThreadsAutoResolveStale": false,
     "reviewThreadsAutoResolveMissingInline": false,
-    "reviewThreadsAutoResolveBotsOnly": false,
+    "reviewThreadsAutoResolveBotsOnly": true,
+    "reviewThreadsAutoResolveBotLogins": [
+      "intelligencex-review",
+      "copilot-pull-request-reviewer",
+      "chatgpt-codex-connector"
+    ],
     "reviewThreadsAutoResolveMax": 10,
     "reviewThreadsAutoResolveAI": true,
     "reviewThreadsAutoResolveAIPostComment": true,
@@ -326,6 +331,7 @@ Notes:
 - `includeReviewThreads` adds an "Other Reviews" section that triages existing review threads.
 - `reviewThreadsAutoResolveStale` can auto-resolve stale threads (requires `pull-requests: write`).
 - `reviewThreadsAutoResolveMissingInline` resolves inline threads created by the bot when they no longer appear in the latest review (requires `pull-requests: write`).
+- `reviewThreadsAutoResolveBotLogins` lists additional bot usernames to treat as bots for auto-resolve (ex: Copilot/Codex reviewers).
 - `reviewThreadsAutoResolveAI` uses the model to assess open threads against the current diff before resolving.
 - `reviewThreadsAutoResolveAIPostComment` posts a triage summary comment when AI keeps threads open.
 - `reviewThreadsAutoResolveAIEmbed` adds the triage block to the main review comment.
@@ -707,10 +713,10 @@ One-liner (default range, update changelog):
 dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release notes --update-changelog
 ```
 
-Auto-resolve IntelligenceX bot threads after fixes:
+Auto-resolve bot threads after fixes (repeatable `--bot` or comma-separated):
 
 ```bash
-dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- reviewer resolve-threads --repo owner/name --pr 123 --dry-run
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- reviewer resolve-threads --repo owner/name --pr 123 --bot intelligencex-review,copilot-pull-request-reviewer,chatgpt-codex-connector --dry-run
 ```
 
 ### Release notes automation (direct to default branch)

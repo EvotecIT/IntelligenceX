@@ -484,7 +484,8 @@ internal static class Program {
             "--pr", "42",
             "--timeout-seconds", "15",
             "--include-human",
-            "--include-current"
+            "--include-current",
+            "--bot", "intelligencex-review,copilot-pull-request-reviewer"
         });
 
         AssertEqual("owner/name", options.Repo ?? string.Empty, "repo parse");
@@ -492,6 +493,9 @@ internal static class Program {
         AssertEqual(15, options.TimeoutSeconds, "timeout parse");
         AssertEqual(false, options.BotOnly, "include human");
         AssertEqual(false, options.OnlyOutdated, "include current");
+        AssertEqual(2, options.BotLogins.Count, "bot logins count");
+        AssertEqual("intelligencex-review", options.BotLogins[0], "bot login 1");
+        AssertEqual("copilot-pull-request-reviewer", options.BotLogins[1], "bot login 2");
     }
 
     private static void TestResolveThreadsEndpointResolution() {
