@@ -284,7 +284,7 @@ You can configure the reviewer with environment variables **or** a repo-local fi
     "reviewThreadsAutoResolveMissingInline": false,
     "reviewThreadsAutoResolveBotsOnly": true,
     "reviewThreadsAutoResolveMax": 10,
-    "reviewThreadsAutoResolveAI": false,
+    "reviewThreadsAutoResolveAI": true,
     "reviewThreadsAutoResolveAIPostComment": false,
     "commentMode": "sticky",
     "overwriteSummaryOnNewCommit": true,

@@ -137,6 +137,7 @@ internal static class Program {
         Console.WriteLine("Reviewer commands:");
         Console.WriteLine("  intelligencex reviewer run");
         Console.WriteLine("  intelligencex reviewer resolve-threads [options]");
+        Console.WriteLine("  intelligencex reviewer threads resolve [options]");
     }
 
     private static async Task<int> RunSetupAsync(string[] args) {

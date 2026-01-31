@@ -176,16 +176,14 @@ internal sealed class ReviewRunner {
             for (var attempt = 1; attempt <= attempts; attempt++) {
                 try {
                     return await action().ConfigureAwait(false);
-                } catch (Exception ex) when (isTransient(ex) && !cancellationToken.IsCancellationRequested) {
+                } catch (Exception ex) when (isTransient(ex) &&
+                                             !cancellationToken.IsCancellationRequested &&
+                                             (attempt < attempts ||
+                                              (extraRemaining > 0 &&
+                                               extraRetryPredicate is not null &&
+                                               extraRetryPredicate(ex)))) {
                     lastError = ex;
-                    var allowExtra = attempt >= attempts &&
-                                     extraRemaining > 0 &&
-                                     extraRetryPredicate is not null &&
-                                     extraRetryPredicate(ex);
-                    if (attempt >= attempts && !allowExtra) {
-                        break;
-                    }
-                    if (allowExtra) {
+                    if (attempt >= attempts) {
                         attempts += extraRemaining;
                         extraRemaining = 0;
                     }
