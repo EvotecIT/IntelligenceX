@@ -102,7 +102,7 @@ internal sealed class ReviewSettings {
     public int ReviewThreadsMaxComments { get; set; } = 3;
     public bool ReviewThreadsAutoResolveStale { get; set; }
     public bool ReviewThreadsAutoResolveMissingInline { get; set; }
-    public bool ReviewThreadsAutoResolveBotsOnly { get; set; }
+    public bool ReviewThreadsAutoResolveBotsOnly { get; set; } = true;
     public int ReviewThreadsAutoResolveMax { get; set; } = 10;
     public bool ReviewThreadsAutoResolveAI { get; set; } = true;
     public bool ReviewThreadsAutoResolveAIPostComment { get; set; } = true;

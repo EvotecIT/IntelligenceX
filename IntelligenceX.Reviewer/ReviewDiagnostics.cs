@@ -115,14 +115,14 @@ internal static class ReviewDiagnostics {
     }
 
     public static string BuildFailureBody(Exception ex, ReviewSettings settings, ReviewDiagnosticsSnapshot? snapshot) {
-        var summary = FormatExceptionSummary(ex, settings.Diagnostics);
+        var summary = settings.Diagnostics ? FormatExceptionSummary(ex, true) : string.Empty;
         var sb = new StringBuilder();
         sb.AppendLine(FailureMarker);
         sb.AppendLine("WARNING: Review failed to complete due to an OpenAI request error.");
         sb.AppendLine();
         sb.AppendLine($"- Transport: {settings.OpenAITransport}");
         sb.AppendLine($"- Model: {settings.Model}");
-        if (!string.IsNullOrWhiteSpace(summary)) {
+        if (settings.Diagnostics && !string.IsNullOrWhiteSpace(summary)) {
             sb.AppendLine($"- Error: {summary}");
         }
         if (settings.Diagnostics && snapshot is not null && !string.IsNullOrWhiteSpace(snapshot.LastRpcMethod)) {
