@@ -5,7 +5,7 @@ namespace IntelligenceX.Reviewer;
 
 internal sealed class PullRequestContext {
     public PullRequestContext(string repoFullName, string owner, string repo, int number, string title, string? body,
-        bool draft, string? headSha, IReadOnlyList<string> labels) {
+        bool draft, string? headSha, string? baseSha, IReadOnlyList<string> labels) {
         RepoFullName = repoFullName;
         Owner = owner;
         Repo = repo;
@@ -14,6 +14,7 @@ internal sealed class PullRequestContext {
         Body = body;
         Draft = draft;
         HeadSha = headSha;
+        BaseSha = baseSha;
         Labels = labels;
     }
 
@@ -25,6 +26,7 @@ internal sealed class PullRequestContext {
     public string? Body { get; }
     public bool Draft { get; }
     public string? HeadSha { get; }
+    public string? BaseSha { get; }
     public IReadOnlyList<string> Labels { get; }
 }
 

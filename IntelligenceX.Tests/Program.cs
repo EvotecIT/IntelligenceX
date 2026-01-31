@@ -54,6 +54,7 @@ internal static class Program {
         failed += Run("Review retry extra attempt", TestReviewRetryExtraAttempt);
         failed += Run("Review failure marker", TestReviewFailureMarker);
         failed += Run("Review fail-open only transient", TestReviewFailOpenTransientOnly);
+        failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
         failed += Run("Context deny invalid regex", TestContextDenyInvalidRegex);
@@ -476,6 +477,13 @@ internal static class Program {
         AssertEqual(true, ReviewRunner.IsTransient(transient), "transient true");
         AssertEqual(true, ReviewRunner.IsTransient(responseEnded), "response ended transient");
         AssertEqual(false, ReviewRunner.IsTransient(nonTransient), "non-transient false");
+    }
+
+    private static void TestReviewThreadsDiffRangeNormalize() {
+        AssertEqual("current", ReviewSettings.NormalizeDiffRange("current", "pr-base"), "diff current");
+        AssertEqual("pr-base", ReviewSettings.NormalizeDiffRange("pr_base", "current"), "diff pr-base");
+        AssertEqual("first-review", ReviewSettings.NormalizeDiffRange("first_review", "current"), "diff first-review");
+        AssertEqual("current", ReviewSettings.NormalizeDiffRange("unknown", "current"), "diff fallback");
     }
 
     private static void TestResolveThreadsOptionParsing() {

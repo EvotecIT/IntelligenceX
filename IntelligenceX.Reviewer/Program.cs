@@ -156,7 +156,9 @@ public static class ReviewerApp {
                 }
             }
 
-            var triageResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, runner, context, files, settings, extras, reviewFailed)
+            var (triageFiles, triageNote) = await ResolveThreadTriageFilesAsync(github, context, settings, files, CancellationToken.None)
+                .ConfigureAwait(false);
+            var triageResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, runner, context, triageFiles, settings, extras, reviewFailed, triageNote)
                 .ConfigureAwait(false);
             if (settings.ReviewThreadsAutoResolveAIEmbed && !string.IsNullOrWhiteSpace(triageResult.EmbeddedBlock)) {
                 summaryBody = summaryBody.TrimEnd() + "\n\n" + triageResult.EmbeddedBlock.Trim();
@@ -599,9 +601,47 @@ public static class ReviewerApp {
         }
     }
 
+    private static async Task<(IReadOnlyList<PullRequestFile> Files, string DiffNote)> ResolveThreadTriageFilesAsync(
+        GitHubClient github, PullRequestContext context, ReviewSettings settings, IReadOnlyList<PullRequestFile> currentFiles,
+        CancellationToken cancellationToken) {
+        var range = ReviewSettings.NormalizeDiffRange(settings.ReviewThreadsAutoResolveDiffRange, "current");
+        if (range == "current") {
+            return (currentFiles, "current PR files");
+        }
+        if (string.IsNullOrWhiteSpace(context.HeadSha)) {
+            return (currentFiles, "current PR files (missing head SHA)");
+        }
+
+        string? baseSha = null;
+        string label;
+        if (range == "pr-base") {
+            baseSha = context.BaseSha;
+            label = "PR base";
+        } else {
+            baseSha = await FindOldestSummaryCommitAsync(github, context, settings, cancellationToken).ConfigureAwait(false);
+            label = "first review";
+        }
+
+        if (string.IsNullOrWhiteSpace(baseSha)) {
+            return (currentFiles, $"current PR files (missing {label} commit)");
+        }
+
+        try {
+            var compareFiles = await github.GetCompareFilesAsync(context.Owner, context.Repo, baseSha, context.HeadSha, cancellationToken)
+                .ConfigureAwait(false);
+            if (compareFiles.Count == 0) {
+                return (currentFiles, $"{label} diff empty; using current PR files");
+            }
+            return (compareFiles, $"{label} → head ({ShortSha(baseSha)}..{ShortSha(context.HeadSha)})");
+        } catch (Exception ex) {
+            Console.Error.WriteLine($"Failed to load {label} diff: {ex.Message}");
+            return (currentFiles, $"current PR files (failed to load {label} diff)");
+        }
+    }
+
     private static async Task<ThreadTriageResult> MaybeAutoResolveAssessedThreadsAsync(GitHubClient github, GitHubClient? fallbackGithub,
         ReviewRunner runner, PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
-        ReviewContextExtras extras, bool reviewFailed) {
+        ReviewContextExtras extras, bool reviewFailed, string? diffNote) {
         if (!settings.ReviewThreadsAutoResolveAI || reviewFailed) {
             return ThreadTriageResult.Empty;
         }
@@ -614,7 +654,7 @@ public static class ReviewerApp {
             return ThreadTriageResult.Empty;
         }
 
-        var prompt = BuildThreadAssessmentPrompt(context, candidates, files, settings);
+        var prompt = BuildThreadAssessmentPrompt(context, candidates, files, settings, diffNote);
         if (settings.RedactPii) {
             prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
         }
@@ -667,7 +707,7 @@ public static class ReviewerApp {
         }
 
         var commentPosted = false;
-        var triageBody = BuildThreadAssessmentComment(resolved, kept, context.HeadSha);
+        var triageBody = BuildThreadAssessmentComment(resolved, kept, context.HeadSha, diffNote);
         if (settings.ReviewThreadsAutoResolveAIReply && kept.Count > 0) {
             await ReplyToKeptThreadsAsync(github, context, candidates, byId, context.HeadSha, settings).ConfigureAwait(false);
         }
@@ -686,6 +726,31 @@ public static class ReviewerApp {
             summary += " Triage comment posted.";
         }
         return new ThreadTriageResult(summary, triageBody);
+    }
+
+    private static async Task<string?> FindOldestSummaryCommitAsync(GitHubClient github, PullRequestContext context,
+        ReviewSettings settings, CancellationToken cancellationToken) {
+        var limit = Math.Max(0, settings.CommentSearchLimit);
+        var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, limit, cancellationToken)
+            .ConfigureAwait(false);
+        string? oldest = null;
+        foreach (var comment in comments) {
+            if (!comment.Body.Contains(ReviewFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            var commit = ExtractReviewedCommit(comment.Body);
+            if (!string.IsNullOrWhiteSpace(commit)) {
+                oldest = commit;
+            }
+        }
+        return oldest;
+    }
+
+    private static string ShortSha(string? sha) {
+        if (string.IsNullOrWhiteSpace(sha)) {
+            return "?";
+        }
+        return sha.Length > 7 ? sha.Substring(0, 7) : sha;
     }
 
     private static List<PullRequestReviewThread> SelectAssessmentCandidates(IReadOnlyList<PullRequestReviewThread> threads,
@@ -710,7 +775,7 @@ public static class ReviewerApp {
     }
 
     private static string BuildThreadAssessmentPrompt(PullRequestContext context, IReadOnlyList<PullRequestReviewThread> threads,
-        IReadOnlyList<PullRequestFile> files, ReviewSettings settings) {
+        IReadOnlyList<PullRequestFile> files, ReviewSettings settings, string? diffNote) {
         var sb = new StringBuilder();
         sb.AppendLine("You are reviewing existing PR review threads to decide if they should be resolved.");
         sb.AppendLine("Only mark a thread as resolved if the current diff clearly addresses the comment.");
@@ -724,6 +789,9 @@ public static class ReviewerApp {
         sb.AppendLine($"PR: {context.Owner}/{context.Repo} #{context.Number}");
         if (!string.IsNullOrWhiteSpace(context.Title)) {
             sb.AppendLine($"Title: {context.Title}");
+        }
+        if (!string.IsNullOrWhiteSpace(diffNote)) {
+            sb.AppendLine($"Diff range: {diffNote}");
         }
         sb.AppendLine();
 
@@ -846,13 +914,17 @@ public static class ReviewerApp {
     }
 
     private static string BuildThreadAssessmentComment(IReadOnlyList<ThreadAssessment> resolved,
-        IReadOnlyList<ThreadAssessment> kept, string? headSha) {
+        IReadOnlyList<ThreadAssessment> kept, string? headSha, string? diffNote) {
         var sb = new StringBuilder();
         sb.AppendLine("<!-- intelligencex:thread-triage -->");
         sb.AppendLine("### IntelligenceX thread triage");
         if (!string.IsNullOrWhiteSpace(headSha)) {
             var trimmed = headSha.Length > 7 ? headSha.Substring(0, 7) : headSha;
             sb.AppendLine($"_Assessed commit: `{trimmed}`_");
+            sb.AppendLine();
+        }
+        if (!string.IsNullOrWhiteSpace(diffNote)) {
+            sb.AppendLine($"_Diff range: {diffNote}_");
             sb.AppendLine();
         }
         if (resolved.Count > 0) {

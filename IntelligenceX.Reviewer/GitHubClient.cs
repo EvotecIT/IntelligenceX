@@ -66,6 +66,7 @@ internal sealed class GitHubClient : IDisposable {
         var draft = obj.GetBoolean("draft");
         var prNumber = (int)(obj.GetInt64("number") ?? number);
         var headSha = obj.GetObject("head")?.GetString("sha");
+        var baseSha = obj.GetObject("base")?.GetString("sha");
         var repoFullName = obj.GetObject("base")?.GetObject("repo")?.GetString("full_name")
             ?? $"{owner}/{repo}";
 
@@ -81,7 +82,47 @@ internal sealed class GitHubClient : IDisposable {
             }
         }
 
-        return new PullRequestContext(repoFullName, owner, repo, prNumber, title, body, draft, headSha, labels);
+        return new PullRequestContext(repoFullName, owner, repo, prNumber, title, body, draft, headSha, baseSha, labels);
+    }
+
+    public async Task<IReadOnlyList<PullRequestFile>> GetCompareFilesAsync(string owner, string repo, string baseSha, string headSha,
+        CancellationToken cancellationToken) {
+        if (string.IsNullOrWhiteSpace(baseSha) || string.IsNullOrWhiteSpace(headSha)) {
+            return Array.Empty<PullRequestFile>();
+        }
+        if (string.Equals(baseSha, headSha, StringComparison.OrdinalIgnoreCase)) {
+            return Array.Empty<PullRequestFile>();
+        }
+
+        var files = new List<PullRequestFile>();
+        var page = 1;
+        while (true) {
+            var baseToken = Uri.EscapeDataString(baseSha);
+            var headToken = Uri.EscapeDataString(headSha);
+            var url = $"/repos/{owner}/{repo}/compare/{baseToken}...{headToken}?per_page=100&page={page}";
+            var json = await GetJsonAsync(url, cancellationToken).ConfigureAwait(false);
+            var obj = json.AsObject();
+            var array = obj?.GetArray("files");
+            if (array is null || array.Count == 0) {
+                break;
+            }
+            foreach (var item in array) {
+                var fileObj = item.AsObject();
+                if (fileObj is null) {
+                    continue;
+                }
+                var filename = fileObj.GetString("filename") ?? string.Empty;
+                var status = fileObj.GetString("status") ?? string.Empty;
+                var patch = fileObj.GetString("patch");
+                files.Add(new PullRequestFile(filename, status, patch));
+            }
+            if (array.Count < 100) {
+                break;
+            }
+            page++;
+        }
+
+        return files;
     }
 
     public async Task<IReadOnlyList<IssueComment>> ListIssueCommentsAsync(string owner, string repo, int number,

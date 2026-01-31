@@ -36,6 +36,7 @@
         "reviewThreadsAutoResolveMissingInline": { "type": "boolean" },
         "reviewThreadsAutoResolveBotsOnly": { "type": "boolean" },
         "reviewThreadsAutoResolveBotLogins": { "type": "array", "items": { "type": "string" } },
+        "reviewThreadsAutoResolveDiffRange": { "type": "string", "enum": ["current", "pr-base", "first-review"] },
         "reviewThreadsAutoResolveMax": { "type": "integer", "minimum": 0 },
         "reviewThreadsAutoResolveAI": { "type": "boolean" },
         "reviewThreadsAutoResolveAIPostComment": { "type": "boolean" },

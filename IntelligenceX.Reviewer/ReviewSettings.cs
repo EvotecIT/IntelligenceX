@@ -104,6 +104,7 @@ internal sealed class ReviewSettings {
     public bool ReviewThreadsAutoResolveMissingInline { get; set; }
     public bool ReviewThreadsAutoResolveBotsOnly { get; set; } = true;
     public IReadOnlyList<string> ReviewThreadsAutoResolveBotLogins { get; set; } = Array.Empty<string>();
+    public string ReviewThreadsAutoResolveDiffRange { get; set; } = "current";
     public int ReviewThreadsAutoResolveMax { get; set; } = 10;
     public bool ReviewThreadsAutoResolveAI { get; set; } = true;
     public bool ReviewThreadsAutoResolveAIPostComment { get; set; } = true;
@@ -486,6 +487,10 @@ internal sealed class ReviewSettings {
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveBotLogins)) {
             settings.ReviewThreadsAutoResolveBotLogins = ParseList(reviewThreadsAutoResolveBotLogins, settings.ReviewThreadsAutoResolveBotLogins);
         }
+        var reviewThreadsAutoResolveDiffRange = GetInput("review_threads_auto_resolve_diff_range", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_DIFF_RANGE");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveDiffRange)) {
+            settings.ReviewThreadsAutoResolveDiffRange = NormalizeDiffRange(reviewThreadsAutoResolveDiffRange, settings.ReviewThreadsAutoResolveDiffRange);
+        }
         var reviewThreadsAutoResolveMax = GetInput("review_threads_auto_resolve_max", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_MAX");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveMax)) {
             settings.ReviewThreadsAutoResolveMax = ParseNonNegativeInt(reviewThreadsAutoResolveMax, settings.ReviewThreadsAutoResolveMax);
@@ -619,6 +624,19 @@ internal sealed class ReviewSettings {
         }
         var parts = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return parts.Length == 0 ? fallback ?? Array.Empty<string>() : parts;
+    }
+
+    internal static string NormalizeDiffRange(string? value, string fallback) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return fallback;
+        }
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "current" or "pr" or "pr-files" or "pr_files" => "current",
+            "pr-base" or "pr_base" or "base" or "prbase" => "pr-base",
+            "first-review" or "first_review" or "first-reviewed" or "firstreview" or "first" => "first-review",
+            _ => fallback
+        };
     }
 
     private static bool ParseBoolean(string? value, bool fallback) {

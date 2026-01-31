@@ -189,6 +189,10 @@ internal static class ReviewConfigLoader {
         if (reviewThreadsAutoResolveBotLogins is not null) {
             settings.ReviewThreadsAutoResolveBotLogins = reviewThreadsAutoResolveBotLogins;
         }
+        var diffRange = obj.GetString("reviewThreadsAutoResolveDiffRange");
+        if (!string.IsNullOrWhiteSpace(diffRange)) {
+            settings.ReviewThreadsAutoResolveDiffRange = ReviewSettings.NormalizeDiffRange(diffRange, settings.ReviewThreadsAutoResolveDiffRange);
+        }
         settings.ReviewThreadsAutoResolveMax = ReadNonNegativeInt(obj, "reviewThreadsAutoResolveMax", settings.ReviewThreadsAutoResolveMax);
         settings.ReviewThreadsAutoResolveAI = ReadBool(obj, "reviewThreadsAutoResolveAI", settings.ReviewThreadsAutoResolveAI);
         settings.ReviewThreadsAutoResolveAIPostComment = ReadBool(obj, "reviewThreadsAutoResolveAIPostComment", settings.ReviewThreadsAutoResolveAIPostComment);
