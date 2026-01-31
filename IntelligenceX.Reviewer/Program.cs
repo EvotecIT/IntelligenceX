@@ -151,7 +151,8 @@ public static class ReviewerApp {
 
             var autoResolveSummary = await MaybeAutoResolveAssessedThreadsAsync(github, runner, context, files, settings, extras, reviewFailed)
                 .ConfigureAwait(false);
-            var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineAllowed, autoResolveSummary);
+            var inlineSuppressed = inlineSupported && !inlineAllowed;
+            var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported, inlineSuppressed, autoResolveSummary);
             progress.Review = ReviewProgressState.Complete;
             progress.Finalize = ReviewProgressState.InProgress;
             progress.StatusLine = "Finalizing summary.";

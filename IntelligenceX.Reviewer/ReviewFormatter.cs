@@ -10,10 +10,13 @@ internal static class ReviewFormatter {
     private const string ProgressTemplateName = "ReviewProgress.md";
 
     public static string BuildComment(PullRequestContext context, string reviewBody, ReviewSettings settings, bool inlineSupported,
-        string? autoResolveNote) {
-        var inlineNote = (!inlineSupported && settings.Mode != "summary")
-            ? "> Inline comments are not enabled yet; posting summary only.\n"
-            : string.Empty;
+        bool inlineSuppressed, string? autoResolveNote) {
+        var inlineNote = string.Empty;
+        if (!inlineSupported && settings.Mode != "summary") {
+            inlineNote = "> Inline comments are not enabled yet; posting summary only.\n";
+        } else if (inlineSuppressed) {
+            inlineNote = "> Inline comments were skipped due to a failed review; posting summary only.\n";
+        }
         var autoResolveLine = string.IsNullOrWhiteSpace(autoResolveNote)
             ? string.Empty
             : $"> {autoResolveNote.Trim()}\n";
@@ -23,6 +26,16 @@ internal static class ReviewFormatter {
             : reviewBody.Trim();
 
         var template = ResolveSummaryTemplate(settings);
+        var reasoningParts = new List<string>();
+        if (settings.ReasoningEffort.HasValue) {
+            reasoningParts.Add($"effort: {settings.ReasoningEffort.Value.ToString().ToLowerInvariant()}");
+        }
+        if (settings.ReasoningSummary.HasValue) {
+            reasoningParts.Add($"summary: {settings.ReasoningSummary.Value.ToString().ToLowerInvariant()}");
+        }
+        var reasoningLine = reasoningParts.Count == 0
+            ? string.Empty
+            : $" | Reasoning: {string.Join(", ", reasoningParts)}";
         var tokens = new Dictionary<string, string> {
             ["SummaryMarker"] = SummaryMarker,
             ["Number"] = context.Number.ToString(),
@@ -32,7 +45,9 @@ internal static class ReviewFormatter {
             ["AutoResolveNote"] = autoResolveLine,
             ["ReviewBody"] = body,
             ["Model"] = settings.Model,
-            ["Length"] = settings.Length.ToString().ToLowerInvariant()
+            ["Length"] = settings.Length.ToString().ToLowerInvariant(),
+            ["Mode"] = settings.Mode,
+            ["ReasoningLine"] = reasoningLine
         };
 
         return TemplateRenderer.Render(template, tokens).TrimEnd();

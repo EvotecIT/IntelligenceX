@@ -7,4 +7,4 @@ Reviewing PR #{{Number}}: **{{Title}}**
 {{AutoResolveNote}}
 {{ReviewBody}}
 
-_Model: {{Model}} · Length: {{Length}}_
+_Model: {{Model}} | Length: {{Length}} | Mode: {{Mode}}{{ReasoningLine}}_
