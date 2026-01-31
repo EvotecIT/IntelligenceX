@@ -649,16 +649,22 @@ public static class ReviewerApp {
             }
         }
 
+        var commentPosted = false;
         if (settings.ReviewThreadsAutoResolveAIPostComment && kept.Count > 0) {
             var body = BuildThreadAssessmentComment(resolved, kept);
             await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, CancellationToken.None)
                 .ConfigureAwait(false);
+            commentPosted = true;
         }
 
         if (resolvedCount == 0 && kept.Count == 0) {
             return string.Empty;
         }
-        return $"Auto-resolve (AI): {resolvedCount} resolved, {kept.Count} kept.";
+        var summary = $"Auto-resolve (AI): {resolvedCount} resolved, {kept.Count} kept.";
+        if (commentPosted) {
+            summary += " Triage comment posted.";
+        }
+        return summary;
     }
 
     private static List<PullRequestReviewThread> SelectAssessmentCandidates(IReadOnlyList<PullRequestReviewThread> threads,
@@ -687,6 +693,7 @@ public static class ReviewerApp {
         var sb = new StringBuilder();
         sb.AppendLine("You are reviewing existing PR review threads to decide if they should be resolved.");
         sb.AppendLine("Only mark a thread as resolved if the current diff clearly addresses the comment.");
+        sb.AppendLine("If a human reply in the thread confirms the issue is fixed/expected/accepted, resolve it.");
         sb.AppendLine("If unclear or still valid, keep it open.");
         sb.AppendLine();
         sb.AppendLine("Return JSON only in this format:");

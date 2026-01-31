@@ -199,7 +199,7 @@ internal static class ReviewThreadResolveRunner {
                ?? Environment.GetEnvironmentVariable("GH_TOKEN");
     }
 
-    private static Options ParseOptions(string[] args) {
+    internal static Options ParseOptions(string[] args) {
         var options = new Options();
         for (var i = 0; i < args.Length; i++) {
             var arg = args[i];
@@ -291,7 +291,7 @@ internal static class ReviewThreadResolveRunner {
         Console.WriteLine("  --dry-run                Preview without resolving");
     }
 
-    private sealed class Options {
+    internal sealed class Options {
         public bool ShowHelp { get; set; }
         public string? Repo { get; set; }
         public int PrNumber { get; set; }
@@ -447,7 +447,7 @@ internal static class ReviewThreadResolveRunner {
         public void Dispose() => _http.Dispose();
     }
 
-    private static (Uri BaseUri, string GraphQlPath) ResolveGraphQlEndpoint(string? apiBaseUrl) {
+    internal static (Uri BaseUri, string GraphQlPath) ResolveGraphQlEndpoint(string? apiBaseUrl) {
         var raw = string.IsNullOrWhiteSpace(apiBaseUrl) ? "https://api.github.com" : apiBaseUrl!.Trim();
         if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri)) {
             return (new Uri("https://api.github.com"), "/graphql");

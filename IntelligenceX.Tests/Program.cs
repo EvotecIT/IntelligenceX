@@ -53,6 +53,9 @@ internal static class Program {
         failed += Run("Review retry rethrows", TestReviewRetryRethrows);
         failed += Run("Review retry extra attempt", TestReviewRetryExtraAttempt);
         failed += Run("Review failure marker", TestReviewFailureMarker);
+        failed += Run("Review fail-open only transient", TestReviewFailOpenTransientOnly);
+        failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
+        failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
         failed += Run("Context deny invalid regex", TestContextDenyInvalidRegex);
         failed += Run("Context deny timeout", TestContextDenyTimeout);
         failed += Run("Review summary parser", TestReviewSummaryParser);
@@ -464,6 +467,35 @@ internal static class Program {
         var settings = new ReviewSettings { Diagnostics = true };
         var body = ReviewDiagnostics.BuildFailureBody(new IOException("ResponseEnded"), settings, null);
         AssertEqual(true, ReviewDiagnostics.IsFailureBody(body), "failure marker");
+    }
+
+    private static void TestReviewFailOpenTransientOnly() {
+        var transient = new HttpRequestException("network");
+        var nonTransient = new InvalidOperationException("logic");
+        AssertEqual(true, ReviewRunner.IsTransient(transient), "transient true");
+        AssertEqual(false, ReviewRunner.IsTransient(nonTransient), "non-transient false");
+    }
+
+    private static void TestResolveThreadsOptionParsing() {
+        var options = IntelligenceX.Cli.ReviewThreads.ReviewThreadResolveRunner.ParseOptions(new[] {
+            "--repo", "owner/name",
+            "--pr", "42",
+            "--timeout-seconds", "15",
+            "--include-human",
+            "--include-current"
+        });
+
+        AssertEqual("owner/name", options.Repo ?? string.Empty, "repo parse");
+        AssertEqual(42, options.PrNumber, "pr parse");
+        AssertEqual(15, options.TimeoutSeconds, "timeout parse");
+        AssertEqual(false, options.BotOnly, "include human");
+        AssertEqual(false, options.OnlyOutdated, "include current");
+    }
+
+    private static void TestResolveThreadsEndpointResolution() {
+        var (baseUri, graphQlPath) = IntelligenceX.Cli.ReviewThreads.ReviewThreadResolveRunner.ResolveGraphQlEndpoint("https://github.company.local/api/v3");
+        AssertEqual("https://github.company.local/", baseUri.ToString(), "base uri");
+        AssertEqual("/api/graphql", graphQlPath, "graphql path");
     }
 
     private static void TestContextDenyInvalidRegex() {

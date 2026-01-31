@@ -51,7 +51,7 @@ internal sealed class ReviewRunner {
                 ReviewDiagnostics.IsResponseEnded).ConfigureAwait(false);
         } catch (Exception ex) {
             ReviewDiagnostics.LogFailure(ex, _settings, snapshot);
-            if (_settings.FailOpen) {
+            if (_settings.FailOpen && IsTransient(ex)) {
                 return ReviewDiagnostics.BuildFailureBody(ex, _settings, snapshot);
             }
             throw;
@@ -151,7 +151,7 @@ internal sealed class ReviewRunner {
         }
     }
 
-    private static bool IsTransient(Exception ex) {
+    internal static bool IsTransient(Exception ex) {
         if (ex is OperationCanceledException) {
             return false;
         }
