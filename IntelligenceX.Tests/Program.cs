@@ -496,7 +496,7 @@ internal static class Program {
 
     private static void TestResolveThreadsEndpointResolution() {
         var (baseUri, graphQlPath) = IntelligenceX.Cli.ReviewThreads.ReviewThreadResolveRunner.ResolveGraphQlEndpoint("https://github.company.local/api/v3");
-        AssertEqual("https://github.company.local/", baseUri.ToString(), "base uri");
+        AssertEqual("https://github.company.local/api/v3", baseUri.ToString(), "base uri");
         AssertEqual("/api/graphql", graphQlPath, "graphql path");
     }
 

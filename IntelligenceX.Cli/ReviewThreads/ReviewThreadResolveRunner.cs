@@ -486,7 +486,7 @@ internal static class ReviewThreadResolveRunner {
 
     private static string NormalizePathPrefix(string path) {
         if (string.IsNullOrWhiteSpace(path)) {
-            return "/";
+            return string.Empty;
         }
         if (!path.StartsWith("/", StringComparison.Ordinal)) {
             return "/" + path;
