@@ -356,7 +356,7 @@ internal static class Program {
 
     private static void TestReviewThreadInlineKey() {
         var settings = new ReviewSettings { ReviewThreadsAutoResolveBotsOnly = true };
-        var comment = new PullRequestReviewThreadComment($"{ReviewFormatter.InlineMarker}\nFix it.", "intelligencex-review", "src/Foo.cs", 10);
+        var comment = new PullRequestReviewThreadComment(null, null, $"{ReviewFormatter.InlineMarker}\nFix it.", "intelligencex-review", "src/Foo.cs", 10);
         var thread = new PullRequestReviewThread("id", false, false, 1, new[] { comment });
         var ok = ReviewerApp.TryGetInlineThreadKey(thread, settings, out var key);
         AssertEqual(true, ok, "inline key ok");
@@ -365,7 +365,7 @@ internal static class Program {
 
     private static void TestReviewThreadInlineKeyBotsOnly() {
         var settings = new ReviewSettings { ReviewThreadsAutoResolveBotsOnly = true };
-        var comment = new PullRequestReviewThreadComment($"{ReviewFormatter.InlineMarker}\nFix it.", "alice", "src/Foo.cs", 10);
+        var comment = new PullRequestReviewThreadComment(null, null, $"{ReviewFormatter.InlineMarker}\nFix it.", "alice", "src/Foo.cs", 10);
         var thread = new PullRequestReviewThread("id", false, false, 1, new[] { comment });
         var ok = ReviewerApp.TryGetInlineThreadKey(thread, settings, out _);
         AssertEqual(false, ok, "inline key bots only");
@@ -471,8 +471,10 @@ internal static class Program {
 
     private static void TestReviewFailOpenTransientOnly() {
         var transient = new HttpRequestException("network");
+        var responseEnded = new IOException("ResponseEnded");
         var nonTransient = new InvalidOperationException("logic");
         AssertEqual(true, ReviewRunner.IsTransient(transient), "transient true");
+        AssertEqual(true, ReviewRunner.IsTransient(responseEnded), "response ended transient");
         AssertEqual(false, ReviewRunner.IsTransient(nonTransient), "non-transient false");
     }
 

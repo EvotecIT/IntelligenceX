@@ -158,6 +158,9 @@ internal sealed class ReviewRunner {
         if (ex is HttpRequestException || ex is IOException || ex is TimeoutException) {
             return true;
         }
+        if (ReviewDiagnostics.IsResponseEnded(ex)) {
+            return true;
+        }
         return ex.InnerException is not null && IsTransient(ex.InnerException);
     }
 

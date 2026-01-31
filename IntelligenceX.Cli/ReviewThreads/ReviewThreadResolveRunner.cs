@@ -98,13 +98,9 @@ internal static class ReviewThreadResolveRunner {
         if (thread.TotalComments > thread.Comments.Count) {
             return false;
         }
-        foreach (var comment in thread.Comments) {
-            if (string.IsNullOrWhiteSpace(comment.Author) ||
-                !string.Equals(comment.Author, botLogin, StringComparison.OrdinalIgnoreCase)) {
-                return false;
-            }
-        }
-        return true;
+        return thread.Comments.All(comment =>
+            !string.IsNullOrWhiteSpace(comment.Author) &&
+            string.Equals(comment.Author, botLogin, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool TryResolveRepo(Options options, out string owner, out string repo) {
@@ -288,6 +284,7 @@ internal static class ReviewThreadResolveRunner {
         Console.WriteLine("  --max-comments <n>        Max comments per thread (default: 5)");
         Console.WriteLine("  --resolve-max <n>         Max threads to resolve (default: 20)");
         Console.WriteLine("  --timeout-seconds <n>     Overall timeout (default: 60)");
+        Console.WriteLine("  --api-base-url <url>     GitHub API base (default: https://api.github.com)");
         Console.WriteLine("  --dry-run                Preview without resolving");
     }
 
@@ -343,7 +340,6 @@ internal static class ReviewThreadResolveRunner {
             totalCount
             nodes{
               author{ login }
-              body
             }
           }
         }
@@ -383,21 +379,18 @@ internal static class ReviewThreadResolveRunner {
                     var isOutdated = obj.GetBoolean("isOutdated");
                     var commentsObj = obj.GetObject("comments");
                     var totalComments = (int)(commentsObj?.GetInt64("totalCount") ?? 0);
-                    var commentNodes = commentsObj?.GetArray("nodes");
+                    var commentNodes = commentsObj?.GetArray("nodes") ?? new JsonArray();
                     var comments = new List<ReviewThreadComment>();
-                    if (commentNodes is not null) {
-                        foreach (var comment in commentNodes) {
-                            if (comments.Count >= commentLimit) {
-                                break;
-                            }
-                            var commentObj = comment.AsObject();
-                            if (commentObj is null) {
-                                continue;
-                            }
-                            var author = commentObj.GetObject("author")?.GetString("login");
-                            var body = commentObj.GetString("body") ?? string.Empty;
-                            comments.Add(new ReviewThreadComment(author, body));
+                    foreach (var comment in commentNodes) {
+                        if (comments.Count >= commentLimit) {
+                            break;
                         }
+                        var commentObj = comment.AsObject();
+                        if (commentObj is null) {
+                            continue;
+                        }
+                        var author = commentObj.GetObject("author")?.GetString("login");
+                        comments.Add(new ReviewThreadComment(author));
                     }
                     threads.Add(new ReviewThread(id, isResolved, isOutdated, totalComments, comments));
                 }
@@ -452,25 +445,21 @@ internal static class ReviewThreadResolveRunner {
         if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri)) {
             return (new Uri("https://api.github.com"), "/graphql");
         }
-        var prefix = uri.GetLeftPart(UriPartial.Authority);
         var path = uri.AbsolutePath.TrimEnd('/');
 
         if (path.EndsWith("/api/v3", StringComparison.OrdinalIgnoreCase)) {
             var rootPath = path.Substring(0, path.Length - "/api/v3".Length);
-            var baseUri = new Uri(prefix + NormalizePathPrefix(rootPath));
-            return (baseUri, $"{NormalizePathPrefix(rootPath)}/api/graphql");
+            return (uri, $"{NormalizePathPrefix(rootPath)}/api/graphql");
         }
 
         if (path.EndsWith("/api/graphql", StringComparison.OrdinalIgnoreCase)) {
             var rootPath = path.Substring(0, path.Length - "/api/graphql".Length);
-            var baseUri = new Uri(prefix + NormalizePathPrefix(rootPath));
-            return (baseUri, $"{NormalizePathPrefix(rootPath)}/api/graphql");
+            return (uri, $"{NormalizePathPrefix(rootPath)}/api/graphql");
         }
 
         if (path.EndsWith("/graphql", StringComparison.OrdinalIgnoreCase)) {
             var rootPath = path.Substring(0, path.Length - "/graphql".Length);
-            var baseUri = new Uri(prefix + NormalizePathPrefix(rootPath));
-            return (baseUri, $"{NormalizePathPrefix(rootPath)}/graphql");
+            return (uri, $"{NormalizePathPrefix(rootPath)}/graphql");
         }
 
         return (uri, "/graphql");
@@ -489,5 +478,5 @@ internal static class ReviewThreadResolveRunner {
     private sealed record ReviewThread(string Id, bool IsResolved, bool IsOutdated, int TotalComments,
         IReadOnlyList<ReviewThreadComment> Comments);
 
-    private sealed record ReviewThreadComment(string? Author, string Body);
+    private sealed record ReviewThreadComment(string? Author);
 }
