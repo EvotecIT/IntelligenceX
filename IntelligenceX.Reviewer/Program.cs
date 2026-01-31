@@ -149,7 +149,9 @@ public static class ReviewerApp {
                 }
             }
 
-            var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineAllowed);
+            var autoResolveSummary = await MaybeAutoResolveAssessedThreadsAsync(github, runner, context, files, settings, extras, reviewFailed)
+                .ConfigureAwait(false);
+            var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineAllowed, autoResolveSummary);
             progress.Review = ReviewProgressState.Complete;
             progress.Finalize = ReviewProgressState.InProgress;
             progress.StatusLine = "Finalizing summary.";
@@ -170,8 +172,6 @@ public static class ReviewerApp {
                     await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, commentBody, CancellationToken.None)
                         .ConfigureAwait(false);
                     Console.WriteLine("Updated existing review comment.");
-                    await MaybeAutoResolveAssessedThreadsAsync(github, runner, context, files, settings, extras, reviewFailed)
-                        .ConfigureAwait(false);
                     return 0;
                 }
                 await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, CancellationToken.None)
@@ -182,9 +182,6 @@ public static class ReviewerApp {
                     .ConfigureAwait(false);
                 Console.WriteLine("Posted review comment.");
             }
-
-            await MaybeAutoResolveAssessedThreadsAsync(github, runner, context, files, settings, extras, reviewFailed)
-                .ConfigureAwait(false);
 
             return 0;
         } catch (Exception ex) {
@@ -590,18 +587,18 @@ public static class ReviewerApp {
         }
     }
 
-    private static async Task MaybeAutoResolveAssessedThreadsAsync(GitHubClient github, ReviewRunner runner, PullRequestContext context,
+    private static async Task<string> MaybeAutoResolveAssessedThreadsAsync(GitHubClient github, ReviewRunner runner, PullRequestContext context,
         IReadOnlyList<PullRequestFile> files, ReviewSettings settings, ReviewContextExtras extras, bool reviewFailed) {
         if (!settings.ReviewThreadsAutoResolveAI || reviewFailed) {
-            return;
+            return string.Empty;
         }
         if (extras.ReviewThreads.Count == 0) {
-            return;
+            return string.Empty;
         }
 
         var candidates = SelectAssessmentCandidates(extras.ReviewThreads, settings);
         if (candidates.Count == 0) {
-            return;
+            return string.Empty;
         }
 
         var limitedFiles = PrepareFiles(files, settings.MaxFiles, settings.MaxPatchChars);
@@ -612,13 +609,13 @@ public static class ReviewerApp {
 
         var output = await runner.RunAsync(prompt, null, null, CancellationToken.None).ConfigureAwait(false);
         if (ReviewDiagnostics.IsFailureBody(output)) {
-            return;
+            return string.Empty;
         }
 
         var assessments = ParseThreadAssessments(output);
         if (assessments.Count == 0) {
             Console.Error.WriteLine("Thread assessment returned no usable results.");
-            return;
+            return string.Empty;
         }
 
         var byId = assessments.ToDictionary(a => a.Id, StringComparer.OrdinalIgnoreCase);
@@ -657,6 +654,11 @@ public static class ReviewerApp {
             await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, CancellationToken.None)
                 .ConfigureAwait(false);
         }
+
+        if (resolvedCount == 0 && kept.Count == 0) {
+            return string.Empty;
+        }
+        return $"Auto-resolve (AI): {resolvedCount} resolved, {kept.Count} kept.";
     }
 
     private static List<PullRequestReviewThread> SelectAssessmentCandidates(IReadOnlyList<PullRequestReviewThread> threads,

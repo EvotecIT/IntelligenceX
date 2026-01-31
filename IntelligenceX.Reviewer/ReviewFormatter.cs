@@ -9,10 +9,14 @@ internal static class ReviewFormatter {
     public const string ReviewedCommitMarker = "Reviewed commit:";
     private const string ProgressTemplateName = "ReviewProgress.md";
 
-    public static string BuildComment(PullRequestContext context, string reviewBody, ReviewSettings settings, bool inlineSupported) {
+    public static string BuildComment(PullRequestContext context, string reviewBody, ReviewSettings settings, bool inlineSupported,
+        string? autoResolveNote) {
         var inlineNote = (!inlineSupported && settings.Mode != "summary")
             ? "> Inline comments are not enabled yet; posting summary only.\n"
             : string.Empty;
+        var autoResolveLine = string.IsNullOrWhiteSpace(autoResolveNote)
+            ? string.Empty
+            : $"> {autoResolveNote.Trim()}\n";
 
         var body = string.IsNullOrWhiteSpace(reviewBody)
             ? "_No review content was produced._"
@@ -25,6 +29,7 @@ internal static class ReviewFormatter {
             ["Title"] = EscapeMarkdown(context.Title),
             ["CommitLine"] = FormatCommitLine(context.HeadSha),
             ["InlineNote"] = inlineNote,
+            ["AutoResolveNote"] = autoResolveLine,
             ["ReviewBody"] = body,
             ["Model"] = settings.Model,
             ["Length"] = settings.Length.ToString().ToLowerInvariant()

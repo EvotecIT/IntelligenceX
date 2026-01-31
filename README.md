@@ -282,7 +282,7 @@ You can configure the reviewer with environment variables **or** a repo-local fi
     "reviewThreadsMaxComments": 3,
     "reviewThreadsAutoResolveStale": false,
     "reviewThreadsAutoResolveMissingInline": false,
-    "reviewThreadsAutoResolveBotsOnly": true,
+    "reviewThreadsAutoResolveBotsOnly": false,
     "reviewThreadsAutoResolveMax": 10,
     "reviewThreadsAutoResolveAI": true,
     "reviewThreadsAutoResolveAIPostComment": false,
