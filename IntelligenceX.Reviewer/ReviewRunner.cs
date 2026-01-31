@@ -155,7 +155,14 @@ internal sealed class ReviewRunner {
         if (ex is OperationCanceledException) {
             return false;
         }
-        if (ex is HttpRequestException || ex is IOException || ex is TimeoutException) {
+        if (ex is HttpRequestException httpRequestException) {
+            if (httpRequestException.StatusCode.HasValue) {
+                var code = (int)httpRequestException.StatusCode.Value;
+                return code == 408 || code == 429 || (code >= 500 && code <= 599);
+            }
+            return true;
+        }
+        if (ex is IOException || ex is TimeoutException) {
             return true;
         }
         if (ReviewDiagnostics.IsResponseEnded(ex)) {

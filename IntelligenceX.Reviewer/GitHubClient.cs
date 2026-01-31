@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -239,7 +240,9 @@ internal sealed class GitHubClient : IDisposable {
                         var databaseId = commentObj.GetInt64("databaseId");
                         var createdAtRaw = commentObj.GetString("createdAt");
                         DateTimeOffset? createdAt = null;
-                        if (!string.IsNullOrWhiteSpace(createdAtRaw) && DateTimeOffset.TryParse(createdAtRaw, out var parsed)) {
+                        if (!string.IsNullOrWhiteSpace(createdAtRaw) &&
+                            DateTimeOffset.TryParse(createdAtRaw, CultureInfo.InvariantCulture,
+                                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed)) {
                             createdAt = parsed;
                         }
                         comments.Add(new PullRequestReviewThreadComment(databaseId, createdAt, body, author, path,

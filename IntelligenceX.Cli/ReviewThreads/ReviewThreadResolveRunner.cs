@@ -99,8 +99,27 @@ internal static class ReviewThreadResolveRunner {
             return false;
         }
         return thread.Comments.All(comment =>
-            !string.IsNullOrWhiteSpace(comment.Author) &&
-            string.Equals(comment.Author, botLogin, StringComparison.OrdinalIgnoreCase));
+            IsBotMatch(comment.Author, botLogin));
+    }
+
+    private static bool IsBotMatch(string? author, string botLogin) {
+        if (string.IsNullOrWhiteSpace(author) || string.IsNullOrWhiteSpace(botLogin)) {
+            return false;
+        }
+        var normalizedAuthor = NormalizeBotLogin(author);
+        var normalizedBot = NormalizeBotLogin(botLogin);
+        if (string.IsNullOrWhiteSpace(normalizedAuthor) || string.IsNullOrWhiteSpace(normalizedBot)) {
+            return false;
+        }
+        return string.Equals(normalizedAuthor, normalizedBot, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeBotLogin(string login) {
+        var trimmed = login.Trim();
+        if (trimmed.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase)) {
+            trimmed = trimmed.Substring(0, trimmed.Length - "[bot]".Length).TrimEnd();
+        }
+        return trimmed;
     }
 
     private static bool TryResolveRepo(Options options, out string owner, out string repo) {
