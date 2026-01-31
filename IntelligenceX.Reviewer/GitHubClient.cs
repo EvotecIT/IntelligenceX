@@ -176,6 +176,8 @@ internal sealed class GitHubClient : IDisposable {
           comments(first:$commentLimit){
             totalCount
             nodes{
+              databaseId
+              createdAt
               body
               path
               line
@@ -234,7 +236,14 @@ internal sealed class GitHubClient : IDisposable {
                         var author = commentObj.GetObject("author")?.GetString("login");
                         var path = commentObj.GetString("path");
                         var line = commentObj.GetInt64("line");
-                        comments.Add(new PullRequestReviewThreadComment(body, author, path, line.HasValue ? (int?)line.Value : null));
+                        var databaseId = commentObj.GetInt64("databaseId");
+                        var createdAtRaw = commentObj.GetString("createdAt");
+                        DateTimeOffset? createdAt = null;
+                        if (!string.IsNullOrWhiteSpace(createdAtRaw) && DateTimeOffset.TryParse(createdAtRaw, out var parsed)) {
+                            createdAt = parsed;
+                        }
+                        comments.Add(new PullRequestReviewThreadComment(databaseId, createdAt, body, author, path,
+                            line.HasValue ? (int?)line.Value : null));
                     }
                 }
                 threads.Add(new PullRequestReviewThread(id, isResolved, isOutdated, totalComments, comments));
@@ -350,6 +359,15 @@ internal sealed class GitHubClient : IDisposable {
         var responsePath = obj?.GetString("path") ?? path;
         var responseLine = obj?.GetInt64("line");
         return new PullRequestReviewComment(body, author, responsePath, responseLine.HasValue ? (int?)responseLine.Value : line);
+    }
+
+    public async Task CreatePullRequestReviewCommentReplyAsync(string owner, string repo, int number, long inReplyTo,
+        string body, CancellationToken cancellationToken) {
+        var payload = new JsonObject()
+            .Add("body", body)
+            .Add("in_reply_to", inReplyTo);
+        await PostJsonAsync($"/repos/{owner}/{repo}/pulls/{number}/comments", payload, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public void Dispose() => _http.Dispose();

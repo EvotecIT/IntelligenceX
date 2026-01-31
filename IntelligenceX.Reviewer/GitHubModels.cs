@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace IntelligenceX.Reviewer;
@@ -97,13 +98,17 @@ internal sealed class PullRequestReviewThread {
 }
 
 internal sealed class PullRequestReviewThreadComment {
-    public PullRequestReviewThreadComment(string body, string? author, string? path, int? line) {
+    public PullRequestReviewThreadComment(long? databaseId, DateTimeOffset? createdAt, string body, string? author, string? path, int? line) {
+        DatabaseId = databaseId;
+        CreatedAt = createdAt;
         Body = body;
         Author = author;
         Path = path;
         Line = line;
     }
 
+    public long? DatabaseId { get; }
+    public DateTimeOffset? CreatedAt { get; }
     public string Body { get; }
     public string? Author { get; }
     public string? Path { get; }

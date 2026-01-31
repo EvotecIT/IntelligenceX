@@ -40,6 +40,7 @@
         "reviewThreadsAutoResolveAIPostComment": { "type": "boolean" },
         "reviewThreadsAutoResolveAIEmbed": { "type": "boolean" },
         "reviewThreadsAutoResolveAISummary": { "type": "boolean" },
+        "reviewThreadsAutoResolveAIReply": { "type": "boolean" },
         "includeRelatedPrs": { "type": "boolean" },
         "maxCommentChars": { "type": "integer", "minimum": 0 },
         "maxComments": { "type": "integer", "minimum": 0 },

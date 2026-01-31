@@ -12,6 +12,7 @@ using IntelligenceX.OpenAI.Auth;
 namespace IntelligenceX.Reviewer;
 
 public static class ReviewerApp {
+    private const string ThreadReplyMarker = "<!-- intelligencex:thread-reply -->";
     public static async Task<int> RunAsync(string[] args) {
         try {
             if (!await TryWriteAuthFromEnvAsync().ConfigureAwait(false)) {
@@ -659,6 +660,9 @@ public static class ReviewerApp {
 
         var commentPosted = false;
         var triageBody = BuildThreadAssessmentComment(resolved, kept, context.HeadSha);
+        if (settings.ReviewThreadsAutoResolveAIReply && kept.Count > 0) {
+            await ReplyToKeptThreadsAsync(github, context, candidates, byId, context.HeadSha, settings).ConfigureAwait(false);
+        }
         if (settings.ReviewThreadsAutoResolveAIPostComment && kept.Count > 0) {
             var body = triageBody;
             await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, CancellationToken.None)
@@ -802,6 +806,72 @@ public static class ReviewerApp {
             foreach (var item in kept) {
                 sb.AppendLine($"- {item.Id}: {item.Reason}");
             }
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    private static async Task ReplyToKeptThreadsAsync(GitHubClient github, PullRequestContext context,
+        IReadOnlyList<PullRequestReviewThread> candidates, IReadOnlyDictionary<string, ThreadAssessment> assessments,
+        string? headSha, ReviewSettings settings) {
+        var replies = 0;
+        foreach (var thread in candidates) {
+            if (replies >= settings.ReviewThreadsAutoResolveMax) {
+                break;
+            }
+            if (!assessments.TryGetValue(thread.Id, out var assessment)) {
+                continue;
+            }
+            if (assessment.Action == "resolve") {
+                continue;
+            }
+            if (ThreadHasAutoReply(thread)) {
+                continue;
+            }
+            var target = GetReplyTargetComment(thread);
+            if (target?.DatabaseId is null) {
+                continue;
+            }
+            var body = BuildThreadReply(assessment, headSha);
+            try {
+                await github.CreatePullRequestReviewCommentReplyAsync(context.Owner, context.Repo, context.Number,
+                        target.DatabaseId.Value, body, CancellationToken.None)
+                    .ConfigureAwait(false);
+                replies++;
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Failed to reply to thread {thread.Id}: {ex.Message}");
+            }
+        }
+    }
+
+    private static bool ThreadHasAutoReply(PullRequestReviewThread thread) {
+        foreach (var comment in thread.Comments) {
+            if (!string.IsNullOrWhiteSpace(comment.Body) &&
+                comment.Body.Contains(ThreadReplyMarker, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static PullRequestReviewThreadComment? GetReplyTargetComment(PullRequestReviewThread thread) {
+        if (thread.Comments.Count == 0) {
+            return null;
+        }
+        var withDates = thread.Comments.Where(c => c.CreatedAt.HasValue).ToList();
+        if (withDates.Count > 0) {
+            return withDates.OrderByDescending(c => c.CreatedAt).FirstOrDefault();
+        }
+        return thread.Comments[^1];
+    }
+
+    private static string BuildThreadReply(ThreadAssessment assessment, string? headSha) {
+        var sb = new StringBuilder();
+        sb.AppendLine(ThreadReplyMarker);
+        sb.AppendLine($"IntelligenceX triage: {assessment.Reason}");
+        if (!string.IsNullOrWhiteSpace(headSha)) {
+            var trimmed = headSha.Length > 7 ? headSha.Substring(0, 7) : headSha;
+            sb.AppendLine();
+            sb.AppendLine($"_Assessed commit: `{trimmed}`_");
         }
         return sb.ToString().TrimEnd();
     }

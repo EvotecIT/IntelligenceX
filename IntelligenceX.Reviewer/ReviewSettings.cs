@@ -108,6 +108,7 @@ internal sealed class ReviewSettings {
     public bool ReviewThreadsAutoResolveAIPostComment { get; set; } = true;
     public bool ReviewThreadsAutoResolveAIEmbed { get; set; } = true;
     public bool ReviewThreadsAutoResolveAISummary { get; set; } = true;
+    public bool ReviewThreadsAutoResolveAIReply { get; set; }
     public int MaxCommentChars { get; set; } = 4000;
     public int MaxComments { get; set; } = 20;
     public int CommentSearchLimit { get; set; } = 500;
@@ -499,6 +500,10 @@ internal sealed class ReviewSettings {
         var reviewThreadsAutoResolveAiSummary = GetInput("review_threads_auto_resolve_ai_summary", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI_SUMMARY");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAiSummary)) {
             settings.ReviewThreadsAutoResolveAISummary = ParseBoolean(reviewThreadsAutoResolveAiSummary, settings.ReviewThreadsAutoResolveAISummary);
+        }
+        var reviewThreadsAutoResolveAiReply = GetInput("review_threads_auto_resolve_ai_reply", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI_REPLY");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAiReply)) {
+            settings.ReviewThreadsAutoResolveAIReply = ParseBoolean(reviewThreadsAutoResolveAiReply, settings.ReviewThreadsAutoResolveAIReply);
         }
         var contextDenyEnabled = GetInput("context_deny_enabled", "REVIEW_CONTEXT_DENY_ENABLED");
         if (!string.IsNullOrWhiteSpace(contextDenyEnabled)) {

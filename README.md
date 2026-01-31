@@ -288,6 +288,7 @@ You can configure the reviewer with environment variables **or** a repo-local fi
     "reviewThreadsAutoResolveAIPostComment": true,
     "reviewThreadsAutoResolveAIEmbed": true,
     "reviewThreadsAutoResolveAISummary": true,
+    "reviewThreadsAutoResolveAIReply": false,
     "commentMode": "sticky",
     "overwriteSummaryOnNewCommit": true,
     "contextDenyEnabled": true,
@@ -329,6 +330,7 @@ Notes:
 - `reviewThreadsAutoResolveAIPostComment` posts a triage summary comment when AI keeps threads open.
 - `reviewThreadsAutoResolveAIEmbed` adds the triage block to the main review comment.
 - `reviewThreadsAutoResolveAISummary` toggles the one-line auto-resolve summary in the main review comment.
+- `reviewThreadsAutoResolveAIReply` posts per-thread replies with the triage reason (opt-in).
 - Set `reviewThreadsMax` or `reviewThreadsMaxComments` to `0` to disable review-thread context.
 - When review-thread context is included, the reviewer suppresses the separate "Review comments" block to avoid duplicate content.
 
