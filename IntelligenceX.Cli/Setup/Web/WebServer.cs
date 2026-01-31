@@ -70,9 +70,12 @@ internal sealed class WebServer : IDisposable {
     }
 
     private async Task HandleAsync(HttpListenerContext context) {
-        if (!context.Request.IsLocal) {
+        if (!context.Request.IsLocal && !IsRemoteAccessAllowed()) {
             context.Response.StatusCode = 403;
-            await WriteTextAsync(context.Response, "Forbidden.").ConfigureAwait(false);
+            await WriteTextAsync(context.Response,
+                "Forbidden. This setup server only accepts loopback requests by default. " +
+                "Set INTELLIGENCEX_ALLOW_REMOTE=1 to allow remote access.")
+                .ConfigureAwait(false);
             return;
         }
         var path = context.Request.Url?.AbsolutePath ?? "/";
@@ -104,5 +107,14 @@ internal sealed class WebServer : IDisposable {
         response.ContentLength64 = bytes.Length;
         await response.OutputStream.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
         response.Close();
+    }
+
+    private static bool IsRemoteAccessAllowed() {
+        var value = Environment.GetEnvironmentVariable("INTELLIGENCEX_ALLOW_REMOTE");
+        if (string.IsNullOrWhiteSpace(value)) {
+            return false;
+        }
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized is "1" or "true" or "yes" or "y" or "on";
     }
 }
