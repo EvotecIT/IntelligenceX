@@ -297,11 +297,12 @@ internal static class ReviewThreadResolveRunner {
 
     private sealed class ReviewThreadClient : IDisposable {
         private readonly HttpClient _http;
+        private readonly string _graphQlPath;
 
         public ReviewThreadClient(string token, string? apiBaseUrl) {
-            _http = new HttpClient {
-                BaseAddress = new Uri(string.IsNullOrWhiteSpace(apiBaseUrl) ? "https://api.github.com" : apiBaseUrl!)
-            };
+            var (baseUri, graphQlPath) = ResolveGraphQlEndpoint(apiBaseUrl);
+            _http = new HttpClient { BaseAddress = baseUri };
+            _graphQlPath = graphQlPath;
             _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("IntelligenceX.Cli", "1.0"));
             _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
             _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -418,7 +419,7 @@ internal static class ReviewThreadResolveRunner {
         private async Task<JsonValue> PostGraphQlAsync(JsonObject payload, CancellationToken cancellationToken) {
             var json = JsonLite.Serialize(JsonValue.From(payload));
             using var content = new StringContent(json, Encoding.UTF8, "application/json");
-            using var response = await _http.PostAsync("/graphql", content, cancellationToken).ConfigureAwait(false);
+            using var response = await _http.PostAsync(_graphQlPath, content, cancellationToken).ConfigureAwait(false);
             var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) {
                 throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {responseText}");
@@ -432,6 +433,45 @@ internal static class ReviewThreadResolveRunner {
         }
 
         public void Dispose() => _http.Dispose();
+    }
+
+    private static (Uri BaseUri, string GraphQlPath) ResolveGraphQlEndpoint(string? apiBaseUrl) {
+        var raw = string.IsNullOrWhiteSpace(apiBaseUrl) ? "https://api.github.com" : apiBaseUrl!.Trim();
+        if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri)) {
+            return (new Uri("https://api.github.com"), "/graphql");
+        }
+        var prefix = uri.GetLeftPart(UriPartial.Authority);
+        var path = uri.AbsolutePath.TrimEnd('/');
+
+        if (path.EndsWith("/api/v3", StringComparison.OrdinalIgnoreCase)) {
+            var rootPath = path.Substring(0, path.Length - "/api/v3".Length);
+            var baseUri = new Uri(prefix + NormalizePathPrefix(rootPath));
+            return (baseUri, $"{NormalizePathPrefix(rootPath)}/api/graphql");
+        }
+
+        if (path.EndsWith("/api/graphql", StringComparison.OrdinalIgnoreCase)) {
+            var rootPath = path.Substring(0, path.Length - "/api/graphql".Length);
+            var baseUri = new Uri(prefix + NormalizePathPrefix(rootPath));
+            return (baseUri, $"{NormalizePathPrefix(rootPath)}/api/graphql");
+        }
+
+        if (path.EndsWith("/graphql", StringComparison.OrdinalIgnoreCase)) {
+            var rootPath = path.Substring(0, path.Length - "/graphql".Length);
+            var baseUri = new Uri(prefix + NormalizePathPrefix(rootPath));
+            return (baseUri, $"{NormalizePathPrefix(rootPath)}/graphql");
+        }
+
+        return (uri, "/graphql");
+    }
+
+    private static string NormalizePathPrefix(string path) {
+        if (string.IsNullOrWhiteSpace(path)) {
+            return "/";
+        }
+        if (!path.StartsWith("/", StringComparison.Ordinal)) {
+            return "/" + path;
+        }
+        return path;
     }
 
     private sealed record ReviewThread(string Id, bool IsResolved, bool IsOutdated, int TotalComments,

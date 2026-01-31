@@ -186,6 +186,8 @@ internal static class ReviewConfigLoader {
         settings.ReviewThreadsAutoResolveMissingInline = ReadBool(obj, "reviewThreadsAutoResolveMissingInline", settings.ReviewThreadsAutoResolveMissingInline);
         settings.ReviewThreadsAutoResolveBotsOnly = ReadBool(obj, "reviewThreadsAutoResolveBotsOnly", settings.ReviewThreadsAutoResolveBotsOnly);
         settings.ReviewThreadsAutoResolveMax = ReadNonNegativeInt(obj, "reviewThreadsAutoResolveMax", settings.ReviewThreadsAutoResolveMax);
+        settings.ReviewThreadsAutoResolveAI = ReadBool(obj, "reviewThreadsAutoResolveAI", settings.ReviewThreadsAutoResolveAI);
+        settings.ReviewThreadsAutoResolveAIPostComment = ReadBool(obj, "reviewThreadsAutoResolveAIPostComment", settings.ReviewThreadsAutoResolveAIPostComment);
         settings.MaxCommentChars = ReadInt(obj, "maxCommentChars", settings.MaxCommentChars);
         settings.MaxComments = ReadInt(obj, "maxComments", settings.MaxComments);
         settings.CommentSearchLimit = ReadInt(obj, "commentSearchLimit", settings.CommentSearchLimit);

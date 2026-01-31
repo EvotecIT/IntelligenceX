@@ -104,6 +104,8 @@ internal sealed class ReviewSettings {
     public bool ReviewThreadsAutoResolveMissingInline { get; set; }
     public bool ReviewThreadsAutoResolveBotsOnly { get; set; } = true;
     public int ReviewThreadsAutoResolveMax { get; set; } = 10;
+    public bool ReviewThreadsAutoResolveAI { get; set; }
+    public bool ReviewThreadsAutoResolveAIPostComment { get; set; }
     public int MaxCommentChars { get; set; } = 4000;
     public int MaxComments { get; set; } = 20;
     public int CommentSearchLimit { get; set; } = 500;
@@ -479,6 +481,14 @@ internal sealed class ReviewSettings {
         var reviewThreadsAutoResolveMax = GetInput("review_threads_auto_resolve_max", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_MAX");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveMax)) {
             settings.ReviewThreadsAutoResolveMax = ParseNonNegativeInt(reviewThreadsAutoResolveMax, settings.ReviewThreadsAutoResolveMax);
+        }
+        var reviewThreadsAutoResolveAi = GetInput("review_threads_auto_resolve_ai", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAi)) {
+            settings.ReviewThreadsAutoResolveAI = ParseBoolean(reviewThreadsAutoResolveAi, settings.ReviewThreadsAutoResolveAI);
+        }
+        var reviewThreadsAutoResolveAiPost = GetInput("review_threads_auto_resolve_ai_post_comment", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI_POST_COMMENT");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAiPost)) {
+            settings.ReviewThreadsAutoResolveAIPostComment = ParseBoolean(reviewThreadsAutoResolveAiPost, settings.ReviewThreadsAutoResolveAIPostComment);
         }
         var contextDenyEnabled = GetInput("context_deny_enabled", "REVIEW_CONTEXT_DENY_ENABLED");
         if (!string.IsNullOrWhiteSpace(contextDenyEnabled)) {

@@ -170,6 +170,8 @@ public static class ReviewerApp {
                     await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, commentBody, CancellationToken.None)
                         .ConfigureAwait(false);
                     Console.WriteLine("Updated existing review comment.");
+                    await MaybeAutoResolveAssessedThreadsAsync(github, runner, context, files, settings, extras, reviewFailed)
+                        .ConfigureAwait(false);
                     return 0;
                 }
                 await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, CancellationToken.None)
@@ -180,6 +182,9 @@ public static class ReviewerApp {
                     .ConfigureAwait(false);
                 Console.WriteLine("Posted review comment.");
             }
+
+            await MaybeAutoResolveAssessedThreadsAsync(github, runner, context, files, settings, extras, reviewFailed)
+                .ConfigureAwait(false);
 
             return 0;
         } catch (Exception ex) {
@@ -371,14 +376,18 @@ public static class ReviewerApp {
                 .ConfigureAwait(false);
             extras.IssueCommentsSection = BuildIssueCommentsSection(comments, settings);
         }
-        if (settings.IncludeReviewThreads) {
+        var loadThreads = settings.IncludeReviewThreads || settings.ReviewThreadsAutoResolveAI;
+        if (loadThreads) {
             var threads = await github.ListPullRequestReviewThreadsAsync(context.Owner, context.Repo, context.Number,
                     settings.ReviewThreadsMax, settings.ReviewThreadsMaxComments, cancellationToken)
                 .ConfigureAwait(false);
+            extras.ReviewThreads = threads;
             if (settings.ReviewThreadsAutoResolveStale) {
                 await AutoResolveStaleThreadsAsync(github, threads, settings, cancellationToken).ConfigureAwait(false);
             }
-            extras.ReviewThreadsSection = BuildReviewThreadsSection(threads, settings);
+            if (settings.IncludeReviewThreads) {
+                extras.ReviewThreadsSection = BuildReviewThreadsSection(threads, settings);
+            }
         }
         if (settings.IncludeReviewComments && string.IsNullOrEmpty(extras.ReviewThreadsSection)) {
             var comments = await github.ListPullRequestReviewCommentsAsync(context.Owner, context.Repo, context.Number, settings.MaxComments, cancellationToken)
@@ -580,6 +589,243 @@ public static class ReviewerApp {
             }
         }
     }
+
+    private static async Task MaybeAutoResolveAssessedThreadsAsync(GitHubClient github, ReviewRunner runner, PullRequestContext context,
+        IReadOnlyList<PullRequestFile> files, ReviewSettings settings, ReviewContextExtras extras, bool reviewFailed) {
+        if (!settings.ReviewThreadsAutoResolveAI || reviewFailed) {
+            return;
+        }
+        if (extras.ReviewThreads.Count == 0) {
+            return;
+        }
+
+        var candidates = SelectAssessmentCandidates(extras.ReviewThreads, settings);
+        if (candidates.Count == 0) {
+            return;
+        }
+
+        var limitedFiles = PrepareFiles(files, settings.MaxFiles, settings.MaxPatchChars);
+        var prompt = BuildThreadAssessmentPrompt(context, candidates, limitedFiles, settings);
+        if (settings.RedactPii) {
+            prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
+        }
+
+        var output = await runner.RunAsync(prompt, null, null, CancellationToken.None).ConfigureAwait(false);
+        if (ReviewDiagnostics.IsFailureBody(output)) {
+            return;
+        }
+
+        var assessments = ParseThreadAssessments(output);
+        if (assessments.Count == 0) {
+            Console.Error.WriteLine("Thread assessment returned no usable results.");
+            return;
+        }
+
+        var byId = assessments.ToDictionary(a => a.Id, StringComparer.OrdinalIgnoreCase);
+        var resolved = new List<ThreadAssessment>();
+        var kept = new List<ThreadAssessment>();
+        foreach (var assessment in assessments) {
+            switch (assessment.Action) {
+                case "resolve":
+                    resolved.Add(assessment);
+                    break;
+                case "comment":
+                case "keep":
+                    kept.Add(assessment);
+                    break;
+            }
+        }
+
+        var resolvedCount = 0;
+        foreach (var thread in candidates) {
+            if (resolvedCount >= settings.ReviewThreadsAutoResolveMax) {
+                break;
+            }
+            if (!byId.TryGetValue(thread.Id, out var assessment) || assessment.Action != "resolve") {
+                continue;
+            }
+            try {
+                await github.ResolveReviewThreadAsync(thread.Id, CancellationToken.None).ConfigureAwait(false);
+                resolvedCount++;
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {ex.Message}");
+            }
+        }
+
+        if (settings.ReviewThreadsAutoResolveAIPostComment && kept.Count > 0) {
+            var body = BuildThreadAssessmentComment(resolved, kept);
+            await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private static List<PullRequestReviewThread> SelectAssessmentCandidates(IReadOnlyList<PullRequestReviewThread> threads,
+        ReviewSettings settings) {
+        var candidates = new List<PullRequestReviewThread>();
+        foreach (var thread in threads) {
+            if (thread.IsResolved) {
+                continue;
+            }
+            if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread)) {
+                continue;
+            }
+            if (settings.ReviewThreadsAutoResolveBotsOnly && thread.TotalComments > thread.Comments.Count) {
+                continue;
+            }
+            candidates.Add(thread);
+            if (candidates.Count >= settings.ReviewThreadsAutoResolveMax) {
+                break;
+            }
+        }
+        return candidates;
+    }
+
+    private static string BuildThreadAssessmentPrompt(PullRequestContext context, IReadOnlyList<PullRequestReviewThread> threads,
+        IReadOnlyList<PullRequestFile> files, ReviewSettings settings) {
+        var sb = new StringBuilder();
+        sb.AppendLine("You are reviewing existing PR review threads to decide if they should be resolved.");
+        sb.AppendLine("Only mark a thread as resolved if the current diff clearly addresses the comment.");
+        sb.AppendLine("If unclear or still valid, keep it open.");
+        sb.AppendLine();
+        sb.AppendLine("Return JSON only in this format:");
+        sb.AppendLine("{\"threads\":[{\"id\":\"...\",\"action\":\"resolve|keep|comment\",\"reason\":\"...\"}]}");
+        sb.AppendLine();
+        sb.AppendLine($"PR: {context.Owner}/{context.Repo} #{context.Number}");
+        if (!string.IsNullOrWhiteSpace(context.Title)) {
+            sb.AppendLine($"Title: {context.Title}");
+        }
+        sb.AppendLine();
+
+        var patchIndex = BuildInlinePatchIndex(files);
+        var index = 1;
+        foreach (var thread in threads) {
+            sb.AppendLine($"Thread {index}:");
+            sb.AppendLine($"id: {thread.Id}");
+            sb.AppendLine($"status: {(thread.IsOutdated ? "stale" : "active")}");
+            var location = TryGetThreadLocation(thread, out var path, out var line)
+                ? line > 0 ? $"{path}:{line}" : path
+                : "<unknown>";
+            sb.AppendLine($"location: {location}");
+            sb.AppendLine("comments:");
+            var commentCount = 0;
+            foreach (var comment in thread.Comments) {
+                if (commentCount >= settings.ReviewThreadsMaxComments) {
+                    break;
+                }
+                var author = string.IsNullOrWhiteSpace(comment.Author) ? "unknown" : comment.Author!;
+                var body = TrimComment(comment.Body, settings.MaxCommentChars);
+                sb.AppendLine($"- {author}: {body}");
+                commentCount++;
+            }
+            sb.AppendLine("diff context:");
+            sb.AppendLine("```");
+            sb.AppendLine(BuildThreadDiffContext(patchIndex, path, line));
+            sb.AppendLine("```");
+            sb.AppendLine();
+            index++;
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private static bool TryGetThreadLocation(PullRequestReviewThread thread, out string path, out int line) {
+        path = string.Empty;
+        line = 0;
+        foreach (var comment in thread.Comments) {
+            if (string.IsNullOrWhiteSpace(comment.Path)) {
+                continue;
+            }
+            path = comment.Path!;
+            if (comment.Line.HasValue) {
+                line = (int)comment.Line.Value;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private static string BuildThreadDiffContext(Dictionary<string, List<PatchLine>> patchIndex, string path, int lineNumber) {
+        if (string.IsNullOrWhiteSpace(path) || lineNumber <= 0) {
+            return "<unavailable>";
+        }
+        var normalized = NormalizePath(path);
+        if (string.IsNullOrWhiteSpace(normalized) || !patchIndex.TryGetValue(normalized, out var lines) || lines.Count == 0) {
+            return "<unavailable>";
+        }
+        var context = 3;
+        var lower = lineNumber - context;
+        var upper = lineNumber + context;
+        var snippet = lines.Where(l => l.LineNumber >= lower && l.LineNumber <= upper)
+            .Select(l => $"{l.LineNumber}: {l.Text}")
+            .ToList();
+        return snippet.Count == 0 ? "<unavailable>" : string.Join("\n", snippet);
+    }
+
+    private static string BuildThreadAssessmentComment(IReadOnlyList<ThreadAssessment> resolved,
+        IReadOnlyList<ThreadAssessment> kept) {
+        var sb = new StringBuilder();
+        sb.AppendLine("<!-- intelligencex:thread-triage -->");
+        sb.AppendLine("### IntelligenceX thread triage");
+        if (resolved.Count > 0) {
+            sb.AppendLine();
+            sb.AppendLine("Resolved:");
+            foreach (var item in resolved) {
+                sb.AppendLine($"- {item.Id}: {item.Reason}");
+            }
+        }
+        if (kept.Count > 0) {
+            sb.AppendLine();
+            sb.AppendLine("Needs attention:");
+            foreach (var item in kept) {
+                sb.AppendLine($"- {item.Id}: {item.Reason}");
+            }
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    private static List<ThreadAssessment> ParseThreadAssessments(string output) {
+        var result = new List<ThreadAssessment>();
+        var obj = TryParseJsonObject(output);
+        var array = obj?.GetArray("threads");
+        if (array is null) {
+            return result;
+        }
+        foreach (var item in array) {
+            var thread = item?.AsObject();
+            if (thread is null) {
+                continue;
+            }
+            var id = thread.GetString("id");
+            var actionRaw = thread.GetString("action");
+            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(actionRaw)) {
+                continue;
+            }
+            var action = actionRaw.Trim().ToLowerInvariant();
+            if (action is not "resolve" and not "keep" and not "comment") {
+                action = "keep";
+            }
+            var reason = thread.GetString("reason") ?? string.Empty;
+            result.Add(new ThreadAssessment(id.Trim(), action, reason.Trim()));
+        }
+        return result;
+    }
+
+    private static JsonObject? TryParseJsonObject(string output) {
+        if (string.IsNullOrWhiteSpace(output)) {
+            return null;
+        }
+        var trimmed = output.Trim();
+        var start = trimmed.IndexOf('{');
+        var end = trimmed.LastIndexOf('}');
+        if (start < 0 || end <= start) {
+            return null;
+        }
+        var json = trimmed.Substring(start, end - start + 1);
+        var value = JsonLite.Parse(json);
+        return value?.AsObject();
+    }
+
+    private sealed record ThreadAssessment(string Id, string Action, string Reason);
 
     private static bool ThreadHasOnlyBotComments(PullRequestReviewThread thread) {
         if (thread.Comments.Count == 0) {
