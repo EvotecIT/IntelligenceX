@@ -85,6 +85,4 @@ jobs:
           OPENAI_MODEL: gpt-5.2-codex
           OPENAI_TRANSPORT: native
         shell: bash
-        run: |
-          set -euo pipefail
-          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release notes --update-changelog
+        run: bash -euo pipefail scripts/release-notes.sh

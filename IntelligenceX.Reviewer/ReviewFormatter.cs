@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 
 namespace IntelligenceX.Reviewer;
 
@@ -9,25 +10,45 @@ internal static class ReviewFormatter {
     public const string ReviewedCommitMarker = "Reviewed commit:";
     private const string ProgressTemplateName = "ReviewProgress.md";
 
-    public static string BuildComment(PullRequestContext context, string reviewBody, ReviewSettings settings, bool inlineSupported) {
-        var inlineNote = (!inlineSupported && settings.Mode != "summary")
-            ? "> Inline comments are not enabled yet; posting summary only.\n"
-            : string.Empty;
+    public static string BuildComment(PullRequestContext context, string reviewBody, ReviewSettings settings, bool inlineSupported,
+        bool inlineSuppressed, string? autoResolveNote) {
+        var inlineNote = string.Empty;
+        if (!inlineSupported && settings.Mode != "summary") {
+            inlineNote = "> Inline comments are not enabled yet; posting summary only.\n";
+        } else if (inlineSuppressed && settings.Mode != "summary") {
+            inlineNote = "> Inline comments were skipped due to a failed review; posting summary only.\n";
+        }
+        var autoResolveLine = string.IsNullOrWhiteSpace(autoResolveNote)
+            ? string.Empty
+            : FormatBlockQuote(autoResolveNote);
 
         var body = string.IsNullOrWhiteSpace(reviewBody)
             ? "_No review content was produced._"
             : reviewBody.Trim();
 
         var template = ResolveSummaryTemplate(settings);
+        var reasoningParts = new List<string>();
+        if (settings.ReasoningEffort.HasValue) {
+            reasoningParts.Add($"effort: {settings.ReasoningEffort.Value.ToString().ToLowerInvariant()}");
+        }
+        if (settings.ReasoningSummary.HasValue) {
+            reasoningParts.Add($"summary: {settings.ReasoningSummary.Value.ToString().ToLowerInvariant()}");
+        }
+        var reasoningLine = reasoningParts.Count == 0
+            ? string.Empty
+            : $" | Reasoning: {string.Join(", ", reasoningParts)}";
         var tokens = new Dictionary<string, string> {
             ["SummaryMarker"] = SummaryMarker,
             ["Number"] = context.Number.ToString(),
             ["Title"] = EscapeMarkdown(context.Title),
             ["CommitLine"] = FormatCommitLine(context.HeadSha),
             ["InlineNote"] = inlineNote,
+            ["AutoResolveNote"] = autoResolveLine,
             ["ReviewBody"] = body,
             ["Model"] = settings.Model,
-            ["Length"] = settings.Length.ToString().ToLowerInvariant()
+            ["Length"] = settings.Length.ToString().ToLowerInvariant(),
+            ["Mode"] = settings.Mode,
+            ["ReasoningLine"] = reasoningLine
         };
 
         return TemplateRenderer.Render(template, tokens).TrimEnd();
@@ -78,6 +99,20 @@ internal static class ReviewFormatter {
 
     private static string EscapeMarkdown(string value) {
         return value.Replace("\r", "").Replace("\n", " ");
+    }
+
+    private static string FormatBlockQuote(string value) {
+        var lines = value.Replace("\r", "").Split('\n');
+        var sb = new StringBuilder();
+        foreach (var line in lines) {
+            var trimmed = line.TrimEnd();
+            if (trimmed.Length == 0) {
+                sb.AppendLine(">");
+                continue;
+            }
+            sb.AppendLine($"> {trimmed}");
+        }
+        return sb.ToString();
     }
 
     private static string FormatCommitLine(string? sha) {

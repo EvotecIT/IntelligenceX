@@ -268,9 +268,11 @@ You can configure the reviewer with environment variables **or** a repo-local fi
     "retryCount": 3,
     "retryDelaySeconds": 5,
     "retryMaxDelaySeconds": 30,
+    "retryExtraResponseEnded": true,
     "diagnostics": false,
     "preflight": false,
     "preflightTimeoutSeconds": 15,
+    "failOpen": true,
     "commentSearchLimit": 500,
     "includeReviewThreads": false,
     "reviewThreadsIncludeBots": false,
@@ -281,7 +283,18 @@ You can configure the reviewer with environment variables **or** a repo-local fi
     "reviewThreadsAutoResolveStale": false,
     "reviewThreadsAutoResolveMissingInline": false,
     "reviewThreadsAutoResolveBotsOnly": true,
+    "reviewThreadsAutoResolveBotLogins": [
+      "intelligencex-review",
+      "copilot-pull-request-reviewer",
+      "chatgpt-codex-connector"
+    ],
+    "reviewThreadsAutoResolveDiffRange": "current",
     "reviewThreadsAutoResolveMax": 10,
+    "reviewThreadsAutoResolveAI": true,
+    "reviewThreadsAutoResolveAIPostComment": false,
+    "reviewThreadsAutoResolveAIEmbed": true,
+    "reviewThreadsAutoResolveAISummary": true,
+    "reviewThreadsAutoResolveAIReply": false,
     "commentMode": "sticky",
     "overwriteSummaryOnNewCommit": true,
     "contextDenyEnabled": true,
@@ -314,9 +327,19 @@ Notes:
 - Context deny patterns are regex with a short timeout; invalid patterns are ignored with a warning.
 - `diagnostics` enables extra transport logging (stderr + RPC failures) to debug OpenAI connectivity.
 - `preflight` runs a health check before the review request (useful for early auth/transport failures).
+- `retryExtraResponseEnded` adds one extra retry when the HTTP response ends prematurely.
+- `failOpen` posts a failure summary comment instead of failing the workflow.
 - `includeReviewThreads` adds an "Other Reviews" section that triages existing review threads.
 - `reviewThreadsAutoResolveStale` can auto-resolve stale threads (requires `pull-requests: write`).
 - `reviewThreadsAutoResolveMissingInline` resolves inline threads created by the bot when they no longer appear in the latest review (requires `pull-requests: write`).
+- `reviewThreadsAutoResolveBotLogins` lists additional bot usernames to treat as bots for auto-resolve (ex: Copilot/Codex reviewers).
+- `reviewThreadsAutoResolveDiffRange` controls the diff used for AI triage: `current` (default PR files), `pr-base` (PR base SHA → head), or `first-review` (oldest IntelligenceX summary commit → head). `first-review` falls back to PR base, then current files if the summary commit is missing.
+- `reviewThreadsAutoResolveAI` uses the model to assess open threads against the current diff before resolving.
+- `reviewThreadsAutoResolveAIPostComment` posts a triage summary comment when AI keeps threads open (default: false).
+- `reviewThreadsAutoResolveAIEmbed` adds the triage block to the main review comment.
+- `reviewThreadsAutoResolveAISummary` toggles the one-line auto-resolve summary in the main review comment.
+- `reviewThreadsAutoResolveAIReply` posts per-thread replies with the triage reason (opt-in).
+- When `reviewThreadsAutoResolveAIEmbed` is true, the triage block is embedded in the main review and the extra triage comment is skipped to reduce clutter.
 - Set `reviewThreadsMax` or `reviewThreadsMaxComments` to `0` to disable review-thread context.
 - When review-thread context is included, the reviewer suppresses the separate "Review comments" block to avoid duplicate content.
 
@@ -615,6 +638,7 @@ Commands:
 - `intelligencex auth export`
 - `intelligencex auth sync-codex`
 - `intelligencex reviewer run`
+- `intelligencex reviewer resolve-threads`
 - `intelligencex release notes`
 Legacy aliases are supported: `login`, `export`, `sync-codex`.
 Defaults are built in; environment variables only override them.
@@ -690,6 +714,12 @@ One-liner (default range, update changelog):
 
 ```bash
 dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release notes --update-changelog
+```
+
+Auto-resolve bot threads after fixes (repeatable `--bot` or comma-separated):
+
+```bash
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- reviewer resolve-threads --repo owner/name --pr 123 --bot intelligencex-review,copilot-pull-request-reviewer,chatgpt-codex-connector --dry-run
 ```
 
 ### Release notes automation (direct to default branch)

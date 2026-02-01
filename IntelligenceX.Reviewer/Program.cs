@@ -12,6 +12,7 @@ using IntelligenceX.OpenAI.Auth;
 namespace IntelligenceX.Reviewer;
 
 public static class ReviewerApp {
+    private const string ThreadReplyMarker = "<!-- intelligencex:thread-reply -->";
     public static async Task<int> RunAsync(string[] args) {
         try {
             if (!await TryWriteAuthFromEnvAsync().ConfigureAwait(false)) {
@@ -29,7 +30,13 @@ public static class ReviewerApp {
                 return 1;
             }
 
+            var fallbackToken = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+            if (string.Equals(token, fallbackToken, StringComparison.Ordinal)) {
+                fallbackToken = null;
+            }
+
             using var github = new GitHubClient(token);
+            using var fallbackGithub = string.IsNullOrWhiteSpace(fallbackToken) ? null : new GitHubClient(fallbackToken);
             PullRequestContext? context = null;
             var eventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
             if (!string.IsNullOrWhiteSpace(eventPath) && File.Exists(eventPath)) {
@@ -90,7 +97,7 @@ public static class ReviewerApp {
             progress.Files = ReviewProgressState.Complete;
             progress.StatusLine = "Analyzed changed files.";
 
-            var extras = await BuildExtrasAsync(github, context, settings, CancellationToken.None)
+            var extras = await BuildExtrasAsync(github, fallbackGithub, context, settings, CancellationToken.None)
                 .ConfigureAwait(false);
             var inlineSupported = !string.Equals(settings.Mode, "summary", StringComparison.OrdinalIgnoreCase) &&
                                   settings.MaxInlineComments > 0 &&
@@ -124,9 +131,11 @@ public static class ReviewerApp {
             var reviewBody = await runner.RunAsync(prompt, onPartial, TimeSpan.FromSeconds(settings.ProgressUpdateSeconds),
                 CancellationToken.None).ConfigureAwait(false);
 
+            var reviewFailed = ReviewDiagnostics.IsFailureBody(reviewBody);
+            var inlineAllowed = inlineSupported && !reviewFailed;
             var inlineComments = Array.Empty<InlineReviewComment>();
             var summaryBody = reviewBody;
-            if (inlineSupported) {
+            if (inlineAllowed) {
                 var inlineResult = ReviewInlineParser.Extract(reviewBody, settings.MaxInlineComments);
                 inlineComments = inlineResult.Comments as InlineReviewComment[] ?? inlineResult.Comments.ToArray();
                 if (inlineResult.HadInlineSection && !string.IsNullOrWhiteSpace(inlineResult.Body)) {
@@ -135,19 +144,28 @@ public static class ReviewerApp {
             }
 
             HashSet<string>? inlineKeys = null;
-            if (inlineSupported) {
+            if (inlineAllowed) {
                 inlineKeys = await PostInlineCommentsAsync(github, context, files, settings, inlineComments, CancellationToken.None)
                     .ConfigureAwait(false);
                 if (settings.ReviewThreadsAutoResolveMissingInline &&
                     !string.IsNullOrWhiteSpace(context.HeadSha) &&
                     inlineKeys is not null &&
                     inlineKeys.Count > 0) {
-                    await AutoResolveMissingInlineThreadsAsync(github, context, inlineKeys, settings, CancellationToken.None)
+                    await AutoResolveMissingInlineThreadsAsync(github, fallbackGithub, context, inlineKeys, settings, CancellationToken.None)
                         .ConfigureAwait(false);
                 }
             }
 
-            var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported);
+            var (triageFiles, triageNote) = await ResolveThreadTriageFilesAsync(github, context, settings, files, CancellationToken.None)
+                .ConfigureAwait(false);
+            var triageResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, runner, context, triageFiles, settings, extras, reviewFailed, triageNote)
+                .ConfigureAwait(false);
+            if (settings.ReviewThreadsAutoResolveAIEmbed && !string.IsNullOrWhiteSpace(triageResult.EmbeddedBlock)) {
+                summaryBody = summaryBody.TrimEnd() + "\n\n" + triageResult.EmbeddedBlock.Trim();
+            }
+            var inlineSuppressed = inlineSupported && !inlineAllowed;
+            var autoResolveSummary = settings.ReviewThreadsAutoResolveAISummary ? triageResult.SummaryLine : string.Empty;
+            var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported, inlineSuppressed, autoResolveSummary);
             progress.Review = ReviewProgressState.Complete;
             progress.Finalize = ReviewProgressState.InProgress;
             progress.StatusLine = "Finalizing summary.";
@@ -361,22 +379,26 @@ public static class ReviewerApp {
         return list;
     }
 
-    private static async Task<ReviewContextExtras> BuildExtrasAsync(GitHubClient github, PullRequestContext context,
-        ReviewSettings settings, CancellationToken cancellationToken) {
+    private static async Task<ReviewContextExtras> BuildExtrasAsync(GitHubClient github, GitHubClient? fallbackGithub,
+        PullRequestContext context, ReviewSettings settings, CancellationToken cancellationToken) {
         var extras = new ReviewContextExtras();
         if (settings.IncludeIssueComments) {
             var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, settings.MaxComments, cancellationToken)
                 .ConfigureAwait(false);
             extras.IssueCommentsSection = BuildIssueCommentsSection(comments, settings);
         }
-        if (settings.IncludeReviewThreads) {
+        var loadThreads = settings.IncludeReviewThreads || settings.ReviewThreadsAutoResolveAI;
+        if (loadThreads) {
             var threads = await github.ListPullRequestReviewThreadsAsync(context.Owner, context.Repo, context.Number,
                     settings.ReviewThreadsMax, settings.ReviewThreadsMaxComments, cancellationToken)
                 .ConfigureAwait(false);
+            extras.ReviewThreads = threads;
             if (settings.ReviewThreadsAutoResolveStale) {
-                await AutoResolveStaleThreadsAsync(github, threads, settings, cancellationToken).ConfigureAwait(false);
+                await AutoResolveStaleThreadsAsync(github, fallbackGithub, threads, settings, cancellationToken).ConfigureAwait(false);
             }
-            extras.ReviewThreadsSection = BuildReviewThreadsSection(threads, settings);
+            if (settings.IncludeReviewThreads) {
+                extras.ReviewThreadsSection = BuildReviewThreadsSection(threads, settings);
+            }
         }
         if (settings.IncludeReviewComments && string.IsNullOrEmpty(extras.ReviewThreadsSection)) {
             var comments = await github.ListPullRequestReviewCommentsAsync(context.Owner, context.Repo, context.Number, settings.MaxComments, cancellationToken)
@@ -513,8 +535,8 @@ public static class ReviewerApp {
         return sb.ToString();
     }
 
-    private static async Task AutoResolveStaleThreadsAsync(GitHubClient github, IReadOnlyList<PullRequestReviewThread> threads,
-        ReviewSettings settings, CancellationToken cancellationToken) {
+    private static async Task AutoResolveStaleThreadsAsync(GitHubClient github, GitHubClient? fallbackGithub,
+        IReadOnlyList<PullRequestReviewThread> threads, ReviewSettings settings, CancellationToken cancellationToken) {
         var resolved = 0;
         foreach (var thread in threads) {
             if (resolved >= settings.ReviewThreadsAutoResolveMax) {
@@ -523,24 +545,24 @@ public static class ReviewerApp {
             if (thread.IsResolved || !thread.IsOutdated) {
                 continue;
             }
-            if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread)) {
+            if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread, settings)) {
                 continue;
             }
             if (settings.ReviewThreadsAutoResolveBotsOnly && thread.TotalComments > thread.Comments.Count) {
                 continue;
             }
 
-            try {
-                await github.ResolveReviewThreadAsync(thread.Id, cancellationToken).ConfigureAwait(false);
+            var result = await TryResolveThreadAsync(github, fallbackGithub, thread.Id, cancellationToken).ConfigureAwait(false);
+            if (result.Resolved) {
                 resolved++;
-            } catch (Exception ex) {
-                Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {ex.Message}");
+                continue;
             }
+            Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {result.Error ?? "unknown error"}");
         }
     }
 
-    private static async Task AutoResolveMissingInlineThreadsAsync(GitHubClient github, PullRequestContext context,
-        HashSet<string>? expectedKeys, ReviewSettings settings, CancellationToken cancellationToken) {
+    private static async Task AutoResolveMissingInlineThreadsAsync(GitHubClient github, GitHubClient? fallbackGithub,
+        PullRequestContext context, HashSet<string>? expectedKeys, ReviewSettings settings, CancellationToken cancellationToken) {
         if (settings.ReviewThreadsAutoResolveMax <= 0) {
             return;
         }
@@ -570,16 +592,518 @@ public static class ReviewerApp {
                 continue;
             }
 
-            try {
-                await github.ResolveReviewThreadAsync(thread.Id, cancellationToken).ConfigureAwait(false);
+            var result = await TryResolveThreadAsync(github, fallbackGithub, thread.Id, cancellationToken).ConfigureAwait(false);
+            if (result.Resolved) {
                 resolved++;
+                continue;
+            }
+            Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {result.Error ?? "unknown error"}");
+        }
+    }
+
+    private static async Task<(IReadOnlyList<PullRequestFile> Files, string DiffNote)> ResolveThreadTriageFilesAsync(
+        GitHubClient github, PullRequestContext context, ReviewSettings settings, IReadOnlyList<PullRequestFile> currentFiles,
+        CancellationToken cancellationToken) {
+        var range = ReviewSettings.NormalizeDiffRange(settings.ReviewThreadsAutoResolveDiffRange, "current");
+        if (range == "current") {
+            return (currentFiles, "current PR files");
+        }
+        if (string.IsNullOrWhiteSpace(context.HeadSha)) {
+            return (currentFiles, "current PR files (missing head SHA)");
+        }
+
+        async Task<(bool Success, IReadOnlyList<PullRequestFile> Files, string Note)> TryCompareAsync(string? baseSha, string label) {
+            if (string.IsNullOrWhiteSpace(baseSha)) {
+                return (false, Array.Empty<PullRequestFile>(), $"missing {label} commit");
+            }
+            try {
+                var compareFiles = await github.GetCompareFilesAsync(context.Owner, context.Repo, baseSha, context.HeadSha!, cancellationToken)
+                    .ConfigureAwait(false);
+                if (compareFiles.Count == 0) {
+                    return (false, Array.Empty<PullRequestFile>(), $"{label} diff empty");
+                }
+                return (true, compareFiles, $"{label} → head ({ShortSha(baseSha)}..{ShortSha(context.HeadSha)})");
             } catch (Exception ex) {
-                Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {ex.Message}");
+                Console.Error.WriteLine($"Failed to load {label} diff: {ex.Message}");
+                return (false, Array.Empty<PullRequestFile>(), $"failed to load {label} diff");
+            }
+        }
+
+        if (range == "pr-base") {
+            var result = await TryCompareAsync(context.BaseSha, "PR base").ConfigureAwait(false);
+            return result.Success
+                ? (result.Files, result.Note)
+                : (currentFiles, $"current PR files ({result.Note})");
+        }
+
+        var firstReviewSha = await FindOldestSummaryCommitAsync(github, context, settings, cancellationToken).ConfigureAwait(false);
+        var firstReviewResult = await TryCompareAsync(firstReviewSha, "first review").ConfigureAwait(false);
+        if (firstReviewResult.Success) {
+            return (firstReviewResult.Files, firstReviewResult.Note);
+        }
+
+        var prBaseResult = await TryCompareAsync(context.BaseSha, "PR base fallback").ConfigureAwait(false);
+        if (prBaseResult.Success) {
+            return (prBaseResult.Files, prBaseResult.Note);
+        }
+
+        var note = firstReviewResult.Note;
+        if (!string.IsNullOrWhiteSpace(prBaseResult.Note)) {
+            note = string.IsNullOrWhiteSpace(note) ? prBaseResult.Note : $"{note}; {prBaseResult.Note}";
+        }
+        return (currentFiles, $"current PR files ({note})");
+    }
+
+    private static async Task<ThreadTriageResult> MaybeAutoResolveAssessedThreadsAsync(GitHubClient github, GitHubClient? fallbackGithub,
+        ReviewRunner runner, PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
+        ReviewContextExtras extras, bool reviewFailed, string? diffNote) {
+        if (!settings.ReviewThreadsAutoResolveAI || reviewFailed) {
+            return ThreadTriageResult.Empty;
+        }
+        if (extras.ReviewThreads.Count == 0) {
+            return ThreadTriageResult.Empty;
+        }
+
+        var candidates = SelectAssessmentCandidates(extras.ReviewThreads, settings);
+        if (candidates.Count == 0) {
+            return ThreadTriageResult.Empty;
+        }
+
+        var prompt = BuildThreadAssessmentPrompt(context, candidates, files, settings, diffNote);
+        if (settings.RedactPii) {
+            prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
+        }
+
+        var output = await runner.RunAsync(prompt, null, null, CancellationToken.None).ConfigureAwait(false);
+        if (ReviewDiagnostics.IsFailureBody(output)) {
+            return ThreadTriageResult.Empty;
+        }
+
+        var assessments = ParseThreadAssessments(output);
+        if (assessments.Count == 0) {
+            Console.Error.WriteLine("Thread assessment returned no usable results.");
+            return ThreadTriageResult.Empty;
+        }
+
+        var byId = assessments.ToDictionary(a => a.Id, StringComparer.OrdinalIgnoreCase);
+        var resolved = new List<ThreadAssessment>();
+        var kept = new List<ThreadAssessment>();
+        var failed = new List<ThreadAssessment>();
+        foreach (var assessment in assessments) {
+            switch (assessment.Action) {
+                case "comment":
+                case "keep":
+                    kept.Add(assessment);
+                    break;
+            }
+        }
+
+        var resolvedCount = 0;
+        foreach (var thread in candidates) {
+            if (resolvedCount >= settings.ReviewThreadsAutoResolveMax) {
+                break;
+            }
+            if (!byId.TryGetValue(thread.Id, out var assessment) || assessment.Action != "resolve") {
+                continue;
+            }
+            var result = await TryResolveThreadAsync(github, fallbackGithub, thread.Id, CancellationToken.None).ConfigureAwait(false);
+            if (result.Resolved) {
+                resolvedCount++;
+                resolved.Add(assessment);
+                continue;
+            }
+            var error = result.Error ?? "unknown error";
+            failed.Add(new ThreadAssessment(assessment.Id, "keep", $"{assessment.Reason} (resolve failed: {error})"));
+            Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {error}");
+        }
+
+        if (failed.Count > 0) {
+            kept.AddRange(failed);
+        }
+
+        var commentPosted = false;
+        var triageBody = BuildThreadAssessmentComment(resolved, kept, context.HeadSha, diffNote);
+        if (settings.ReviewThreadsAutoResolveAIReply && kept.Count > 0) {
+            await ReplyToKeptThreadsAsync(github, context, candidates, byId, context.HeadSha, diffNote, settings).ConfigureAwait(false);
+        }
+        if (settings.ReviewThreadsAutoResolveAIPostComment && !settings.ReviewThreadsAutoResolveAIEmbed && kept.Count > 0) {
+            var body = triageBody;
+            await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, CancellationToken.None)
+                .ConfigureAwait(false);
+            commentPosted = true;
+        }
+
+        if (resolvedCount == 0 && kept.Count == 0) {
+            return ThreadTriageResult.Empty;
+        }
+        var summary = $"Auto-resolve (AI): {resolvedCount} resolved, {kept.Count} kept.";
+        if (commentPosted) {
+            summary += " Triage comment posted.";
+        }
+        return new ThreadTriageResult(summary, triageBody);
+    }
+
+    private static async Task<string?> FindOldestSummaryCommitAsync(GitHubClient github, PullRequestContext context,
+        ReviewSettings settings, CancellationToken cancellationToken) {
+        var limit = Math.Max(0, settings.CommentSearchLimit);
+        var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, limit, cancellationToken)
+            .ConfigureAwait(false);
+        string? oldest = null;
+        foreach (var comment in comments) {
+            if (!comment.Body.Contains(ReviewFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            var commit = ExtractReviewedCommit(comment.Body);
+            if (!string.IsNullOrWhiteSpace(commit)) {
+                oldest = commit;
+            }
+        }
+        return oldest;
+    }
+
+    private static string ShortSha(string? sha) {
+        if (string.IsNullOrWhiteSpace(sha)) {
+            return "?";
+        }
+        return sha.Length > 7 ? sha.Substring(0, 7) : sha;
+    }
+
+    private static List<PullRequestReviewThread> SelectAssessmentCandidates(IReadOnlyList<PullRequestReviewThread> threads,
+        ReviewSettings settings) {
+        var candidates = new List<PullRequestReviewThread>();
+        foreach (var thread in threads) {
+            if (thread.IsResolved) {
+                continue;
+            }
+            if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread, settings)) {
+                continue;
+            }
+            if (settings.ReviewThreadsAutoResolveBotsOnly && thread.TotalComments > thread.Comments.Count) {
+                continue;
+            }
+            candidates.Add(thread);
+            if (candidates.Count >= settings.ReviewThreadsAutoResolveMax) {
+                break;
+            }
+        }
+        return candidates;
+    }
+
+    private static string BuildThreadAssessmentPrompt(PullRequestContext context, IReadOnlyList<PullRequestReviewThread> threads,
+        IReadOnlyList<PullRequestFile> files, ReviewSettings settings, string? diffNote) {
+        var sb = new StringBuilder();
+        sb.AppendLine("You are reviewing existing PR review threads to decide if they should be resolved.");
+        sb.AppendLine("Only mark a thread as resolved if the current diff clearly addresses the comment.");
+        sb.AppendLine("If a human reply in the thread confirms the issue is fixed/expected/accepted, resolve it.");
+        sb.AppendLine("If unclear or still valid, keep it open.");
+        sb.AppendLine("If diff context shows `<file patch>`, it is the file-level diff because line-level context was unavailable.");
+        sb.AppendLine();
+        sb.AppendLine("Return JSON only in this format:");
+        sb.AppendLine("{\"threads\":[{\"id\":\"...\",\"action\":\"resolve|keep|comment\",\"reason\":\"...\"}]}");
+        sb.AppendLine();
+        sb.AppendLine($"PR: {context.Owner}/{context.Repo} #{context.Number}");
+        if (!string.IsNullOrWhiteSpace(context.Title)) {
+            sb.AppendLine($"Title: {context.Title}");
+        }
+        if (!string.IsNullOrWhiteSpace(diffNote)) {
+            sb.AppendLine($"Diff range: {diffNote}");
+        }
+        sb.AppendLine();
+
+        var patchIndex = BuildInlinePatchIndex(files);
+        var patchLookup = BuildPatchLookup(files, settings.MaxPatchChars);
+        var index = 1;
+        foreach (var thread in threads) {
+            sb.AppendLine($"Thread {index}:");
+            sb.AppendLine($"id: {thread.Id}");
+            sb.AppendLine($"status: {(thread.IsOutdated ? "stale" : "active")}");
+            var location = TryGetThreadLocation(thread, out var path, out var line)
+                ? line > 0 ? $"{path}:{line}" : path
+                : "<unknown>";
+            sb.AppendLine($"location: {location}");
+            sb.AppendLine("comments:");
+            var commentCount = 0;
+            foreach (var comment in thread.Comments) {
+                if (commentCount >= settings.ReviewThreadsMaxComments) {
+                    break;
+                }
+                var author = string.IsNullOrWhiteSpace(comment.Author) ? "unknown" : comment.Author!;
+                var body = TrimComment(comment.Body, settings.MaxCommentChars);
+                sb.AppendLine($"- {author}: {body}");
+                commentCount++;
+            }
+            sb.AppendLine("diff context:");
+            sb.AppendLine("```");
+            sb.AppendLine(BuildThreadDiffContext(patchIndex, patchLookup, path, line, settings.MaxPatchChars));
+            sb.AppendLine("```");
+            sb.AppendLine();
+            index++;
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private static bool TryGetThreadLocation(PullRequestReviewThread thread, out string path, out int line) {
+        path = string.Empty;
+        line = 0;
+        foreach (var comment in thread.Comments) {
+            if (string.IsNullOrWhiteSpace(comment.Path)) {
+                continue;
+            }
+            path = comment.Path!;
+            if (comment.Line.HasValue) {
+                line = (int)comment.Line.Value;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private static string BuildThreadDiffContext(Dictionary<string, List<PatchLine>> patchIndex,
+        IReadOnlyDictionary<string, string> patchLookup, string path, int lineNumber, int maxPatchChars) {
+        if (string.IsNullOrWhiteSpace(path)) {
+            return "<unavailable>";
+        }
+        if (lineNumber <= 0) {
+            var normalizedPath = NormalizePath(path);
+            return TryBuildFallbackPatch(patchLookup, normalizedPath, maxPatchChars);
+        }
+        var normalized = NormalizePath(path);
+        if (string.IsNullOrWhiteSpace(normalized) || !patchIndex.TryGetValue(normalized, out var lines) || lines.Count == 0) {
+            return TryBuildFallbackPatch(patchLookup, normalized, maxPatchChars);
+        }
+        var context = 3;
+        var lower = lineNumber - context;
+        var upper = lineNumber + context;
+        var snippet = lines.Where(l => l.LineNumber >= lower && l.LineNumber <= upper)
+            .Select(l => $"{l.LineNumber}: {l.Text}")
+            .ToList();
+        if (snippet.Count > 0) {
+            return string.Join("\n", snippet);
+        }
+        return TryBuildFallbackPatch(patchLookup, normalized, maxPatchChars);
+    }
+
+    private static Dictionary<string, string> BuildPatchLookup(IReadOnlyList<PullRequestFile> files, int maxPatchChars) {
+        var lookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in files) {
+            if (string.IsNullOrWhiteSpace(file.Patch)) {
+                continue;
+            }
+            var normalized = NormalizePath(file.Filename);
+            if (string.IsNullOrWhiteSpace(normalized)) {
+                continue;
+            }
+            lookup[normalized] = TrimPatch(file.Patch!, maxPatchChars);
+        }
+        return lookup;
+    }
+
+    private static string TryBuildFallbackPatch(IReadOnlyDictionary<string, string> patchLookup, string normalizedPath,
+        int maxPatchChars) {
+        if (string.IsNullOrWhiteSpace(normalizedPath)) {
+            return "<unavailable>";
+        }
+        if (!patchLookup.TryGetValue(normalizedPath, out var patch) || string.IsNullOrWhiteSpace(patch)) {
+            return "<unavailable>";
+        }
+        var limited = TrimPatch(patch, maxPatchChars);
+        return $"<file patch>\n{limited}";
+    }
+
+    private static string TrimPatch(string patch, int maxPatchChars) {
+        if (string.IsNullOrWhiteSpace(patch)) {
+            return string.Empty;
+        }
+        if (maxPatchChars <= 0 || patch.Length <= maxPatchChars) {
+            return patch;
+        }
+        var headSize = Math.Max(0, maxPatchChars / 2);
+        var tailSize = Math.Max(0, maxPatchChars - headSize);
+        if (headSize + tailSize > patch.Length) {
+            return patch.Substring(0, maxPatchChars) + "\n... (truncated)";
+        }
+        var head = patch.Substring(0, headSize);
+        var tail = patch.Substring(patch.Length - tailSize);
+        return head + "\n... (truncated) ...\n" + tail;
+    }
+
+    private static string BuildThreadAssessmentComment(IReadOnlyList<ThreadAssessment> resolved,
+        IReadOnlyList<ThreadAssessment> kept, string? headSha, string? diffNote) {
+        var sb = new StringBuilder();
+        sb.AppendLine("<!-- intelligencex:thread-triage -->");
+        sb.AppendLine("### IntelligenceX thread triage");
+        if (!string.IsNullOrWhiteSpace(headSha)) {
+            var trimmed = headSha.Length > 7 ? headSha.Substring(0, 7) : headSha;
+            sb.AppendLine($"_Assessed commit: `{trimmed}`_");
+            sb.AppendLine();
+        }
+        if (!string.IsNullOrWhiteSpace(diffNote)) {
+            sb.AppendLine($"_Diff range: {diffNote}_");
+            sb.AppendLine();
+        }
+        if (resolved.Count > 0) {
+            sb.AppendLine();
+            sb.AppendLine("Resolved:");
+            foreach (var item in resolved) {
+                sb.AppendLine($"- {item.Id}: {item.Reason}");
+            }
+        }
+        if (kept.Count > 0) {
+            sb.AppendLine();
+            sb.AppendLine("Needs attention:");
+            foreach (var item in kept) {
+                sb.AppendLine($"- {item.Id}: {item.Reason}");
+            }
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    private static async Task ReplyToKeptThreadsAsync(GitHubClient github, PullRequestContext context,
+        IReadOnlyList<PullRequestReviewThread> candidates, IReadOnlyDictionary<string, ThreadAssessment> assessments,
+        string? headSha, string? diffNote, ReviewSettings settings) {
+        var replies = 0;
+        foreach (var thread in candidates) {
+            if (replies >= settings.ReviewThreadsAutoResolveMax) {
+                break;
+            }
+            if (!assessments.TryGetValue(thread.Id, out var assessment)) {
+                continue;
+            }
+            if (assessment.Action == "resolve") {
+                continue;
+            }
+            if (ThreadHasAutoReply(thread)) {
+                continue;
+            }
+            var target = GetReplyTargetComment(thread);
+            if (target?.DatabaseId is null) {
+                continue;
+            }
+            var body = BuildThreadReply(assessment, headSha, diffNote);
+            try {
+                await github.CreatePullRequestReviewCommentReplyAsync(context.Owner, context.Repo, context.Number,
+                        target.DatabaseId.Value, body, CancellationToken.None)
+                    .ConfigureAwait(false);
+                replies++;
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Failed to reply to thread {thread.Id}: {ex.Message}");
             }
         }
     }
 
-    private static bool ThreadHasOnlyBotComments(PullRequestReviewThread thread) {
+    private static bool ThreadHasAutoReply(PullRequestReviewThread thread) {
+        foreach (var comment in thread.Comments) {
+            if (!string.IsNullOrWhiteSpace(comment.Body) &&
+                comment.Body.Contains(ThreadReplyMarker, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static PullRequestReviewThreadComment? GetReplyTargetComment(PullRequestReviewThread thread) {
+        if (thread.Comments.Count == 0) {
+            return null;
+        }
+        var withDates = thread.Comments.Where(c => c.CreatedAt.HasValue).ToList();
+        if (withDates.Count > 0) {
+            return withDates.OrderByDescending(c => c.CreatedAt).FirstOrDefault();
+        }
+        return thread.Comments[^1];
+    }
+
+    private static string BuildThreadReply(ThreadAssessment assessment, string? headSha, string? diffNote) {
+        var sb = new StringBuilder();
+        sb.AppendLine(ThreadReplyMarker);
+        sb.AppendLine($"IntelligenceX triage: {assessment.Reason}");
+        if (!string.IsNullOrWhiteSpace(headSha)) {
+            var trimmed = headSha.Length > 7 ? headSha.Substring(0, 7) : headSha;
+            sb.AppendLine();
+            sb.AppendLine($"_Assessed commit: `{trimmed}`_");
+        }
+        if (!string.IsNullOrWhiteSpace(diffNote)) {
+            sb.AppendLine();
+            sb.AppendLine($"_Diff range: {diffNote}_");
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    private readonly record struct ThreadTriageResult(string SummaryLine, string EmbeddedBlock) {
+        public static ThreadTriageResult Empty => new(string.Empty, string.Empty);
+    }
+
+    private static List<ThreadAssessment> ParseThreadAssessments(string output) {
+        var result = new List<ThreadAssessment>();
+        var obj = TryParseJsonObject(output);
+        var array = obj?.GetArray("threads");
+        if (array is null) {
+            return result;
+        }
+        foreach (var item in array) {
+            var thread = item?.AsObject();
+            if (thread is null) {
+                continue;
+            }
+            var id = thread.GetString("id");
+            var actionRaw = thread.GetString("action");
+            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(actionRaw)) {
+                continue;
+            }
+            var action = actionRaw.Trim().ToLowerInvariant();
+            if (action is not "resolve" and not "keep" and not "comment") {
+                action = "keep";
+            }
+            var reason = thread.GetString("reason") ?? string.Empty;
+            result.Add(new ThreadAssessment(id.Trim(), action, reason.Trim()));
+        }
+        return result;
+    }
+
+    private static JsonObject? TryParseJsonObject(string output) {
+        if (string.IsNullOrWhiteSpace(output)) {
+            return null;
+        }
+        var trimmed = output.Trim();
+        var start = trimmed.IndexOf('{');
+        var end = trimmed.LastIndexOf('}');
+        if (start < 0 || end <= start) {
+            return null;
+        }
+        var json = trimmed.Substring(start, end - start + 1);
+        var value = JsonLite.Parse(json);
+        return value?.AsObject();
+    }
+
+    private sealed record ThreadAssessment(string Id, string Action, string Reason);
+
+    private static async Task<(bool Resolved, string? Error)> TryResolveThreadAsync(GitHubClient github,
+        GitHubClient? fallbackGithub, string threadId, CancellationToken cancellationToken) {
+        try {
+            await github.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
+            return (true, null);
+        } catch (Exception ex) {
+            if (fallbackGithub is not null && IsIntegrationForbidden(ex)) {
+                try {
+                    await fallbackGithub.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
+                    return (true, null);
+                } catch (Exception fallbackEx) {
+                    return (false, fallbackEx.Message);
+                }
+            }
+            return (false, ex.Message);
+        }
+    }
+
+    private static bool IsIntegrationForbidden(Exception ex) {
+        if (ex.Message.Contains("Resource not accessible by integration", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("\"FORBIDDEN\"", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+        return ex.InnerException is not null && IsIntegrationForbidden(ex.InnerException);
+    }
+
+    private static bool ThreadHasOnlyBotComments(PullRequestReviewThread thread, ReviewSettings settings) {
         if (thread.Comments.Count == 0) {
             return false;
         }
@@ -587,7 +1111,7 @@ public static class ReviewerApp {
             if (string.IsNullOrWhiteSpace(comment.Author)) {
                 return false;
             }
-            if (!IsBotAuthor(comment.Author)) {
+            if (!IsBotAuthor(comment.Author, settings)) {
                 return false;
             }
         }
@@ -599,7 +1123,7 @@ public static class ReviewerApp {
         if (thread.Comments.Count == 0) {
             return false;
         }
-        if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread)) {
+        if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread, settings)) {
             return false;
         }
 
@@ -670,7 +1194,7 @@ public static class ReviewerApp {
             }
         }
         if (!string.IsNullOrWhiteSpace(author)) {
-            if (IsBotAuthor(author)) {
+            if (IsBotAuthor(author, settings)) {
                 return false;
             }
         }
@@ -690,7 +1214,7 @@ public static class ReviewerApp {
             }
         }
         if (!settings.ReviewThreadsIncludeBots && !string.IsNullOrWhiteSpace(author)) {
-            if (IsBotAuthor(author)) {
+            if (IsBotAuthor(author, settings)) {
                 return false;
             }
         }
@@ -700,13 +1224,40 @@ public static class ReviewerApp {
         return true;
     }
 
-    private static bool IsBotAuthor(string author) {
-        if (author.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase) ||
-            author.EndsWith("bot", StringComparison.OrdinalIgnoreCase)) {
+    private static bool IsBotAuthor(string author, ReviewSettings settings) {
+        if (string.IsNullOrWhiteSpace(author)) {
+            return false;
+        }
+        var trimmedAuthor = author.Trim();
+        var normalizedAuthor = NormalizeBotLogin(trimmedAuthor);
+        if (settings.ReviewThreadsAutoResolveBotLogins.Count > 0) {
+            foreach (var login in settings.ReviewThreadsAutoResolveBotLogins) {
+                if (string.IsNullOrWhiteSpace(login)) {
+                    continue;
+                }
+                var normalizedLogin = NormalizeBotLogin(login);
+                if (string.IsNullOrWhiteSpace(normalizedLogin)) {
+                    continue;
+                }
+                if (string.Equals(normalizedAuthor, normalizedLogin, StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+        }
+        if (trimmedAuthor.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase) ||
+            trimmedAuthor.EndsWith("bot", StringComparison.OrdinalIgnoreCase)) {
             return true;
         }
-        return author.Equals("github-actions", StringComparison.OrdinalIgnoreCase) ||
-            author.Equals("intelligencex-review", StringComparison.OrdinalIgnoreCase);
+        return trimmedAuthor.Equals("github-actions", StringComparison.OrdinalIgnoreCase) ||
+            trimmedAuthor.Equals("intelligencex-review", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeBotLogin(string login) {
+        var trimmed = login.Trim();
+        if (trimmed.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase)) {
+            trimmed = trimmed.Substring(0, trimmed.Length - "[bot]".Length).TrimEnd();
+        }
+        return trimmed;
     }
 
     private static async Task<HashSet<string>?> PostInlineCommentsAsync(GitHubClient github, PullRequestContext context,

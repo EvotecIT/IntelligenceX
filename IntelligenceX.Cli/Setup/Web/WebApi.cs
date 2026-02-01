@@ -64,11 +64,10 @@ internal sealed class WebApi {
     }
 
     private async Task HandleReposAsync(System.Net.HttpListenerContext context) {
-        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
+        var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
+        if (body is null) {
             return;
         }
-
-        var body = await ReadBodyAsync(context).ConfigureAwait(false);
         var request = JsonSerializer.Deserialize<RepoListRequest>(body, _jsonOptions) ?? new RepoListRequest();
         if (string.IsNullOrWhiteSpace(request.Token)) {
             context.Response.StatusCode = 400;
@@ -113,11 +112,10 @@ internal sealed class WebApi {
     }
 
     private async Task HandleRepoStatusAsync(System.Net.HttpListenerContext context) {
-        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
+        var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
+        if (body is null) {
             return;
         }
-
-        var body = await ReadBodyAsync(context).ConfigureAwait(false);
         var request = JsonSerializer.Deserialize<RepoStatusRequest>(body, _jsonOptions) ?? new RepoStatusRequest();
         if (string.IsNullOrWhiteSpace(request.Token)) {
             context.Response.StatusCode = 400;
@@ -167,11 +165,10 @@ internal sealed class WebApi {
     }
 
     private async Task HandleRepoConfigAsync(System.Net.HttpListenerContext context) {
-        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
+        var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
+        if (body is null) {
             return;
         }
-
-        var body = await ReadBodyAsync(context).ConfigureAwait(false);
         var request = JsonSerializer.Deserialize<RepoConfigRequest>(body, _jsonOptions) ?? new RepoConfigRequest();
         if (string.IsNullOrWhiteSpace(request.Token) || string.IsNullOrWhiteSpace(request.Repo)) {
             context.Response.StatusCode = 400;
@@ -206,11 +203,10 @@ internal sealed class WebApi {
     }
 
     private async Task HandleRepoWorkflowAsync(System.Net.HttpListenerContext context) {
-        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
+        var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
+        if (body is null) {
             return;
         }
-
-        var body = await ReadBodyAsync(context).ConfigureAwait(false);
         var request = JsonSerializer.Deserialize<RepoWorkflowRequest>(body, _jsonOptions) ?? new RepoWorkflowRequest();
         if (string.IsNullOrWhiteSpace(request.Token) || string.IsNullOrWhiteSpace(request.Repo)) {
             context.Response.StatusCode = 400;
@@ -246,11 +242,10 @@ internal sealed class WebApi {
     }
 
     private async Task HandleDeviceCodeAsync(System.Net.HttpListenerContext context) {
-        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
+        var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
+        if (body is null) {
             return;
         }
-
-        var body = await ReadBodyAsync(context).ConfigureAwait(false);
         var request = JsonSerializer.Deserialize<DeviceCodeRequest>(body, _jsonOptions) ?? new DeviceCodeRequest();
         if (string.IsNullOrWhiteSpace(request.ClientId)) {
             context.Response.StatusCode = 400;
@@ -269,11 +264,10 @@ internal sealed class WebApi {
     }
 
     private async Task HandleDevicePollAsync(System.Net.HttpListenerContext context) {
-        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
+        var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
+        if (body is null) {
             return;
         }
-
-        var body = await ReadBodyAsync(context).ConfigureAwait(false);
         var request = JsonSerializer.Deserialize<DevicePollRequest>(body, _jsonOptions) ?? new DevicePollRequest();
         if (string.IsNullOrWhiteSpace(request.ClientId) || string.IsNullOrWhiteSpace(request.DeviceCode)) {
             context.Response.StatusCode = 400;
@@ -297,11 +291,10 @@ internal sealed class WebApi {
     }
 
     private async Task HandleAppManifestAsync(System.Net.HttpListenerContext context) {
-        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
+        var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
+        if (body is null) {
             return;
         }
-
-        var body = await ReadBodyAsync(context).ConfigureAwait(false);
         var request = JsonSerializer.Deserialize<AppManifestRequest>(body, _jsonOptions) ?? new AppManifestRequest();
         if (string.IsNullOrWhiteSpace(request.AppName)) {
             request.AppName = "IntelligenceX Reviewer";
@@ -332,11 +325,10 @@ internal sealed class WebApi {
     }
 
     private async Task HandleAppInstallationsAsync(System.Net.HttpListenerContext context) {
-        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
+        var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
+        if (body is null) {
             return;
         }
-
-        var body = await ReadBodyAsync(context).ConfigureAwait(false);
         var request = JsonSerializer.Deserialize<AppInstallationRequest>(body, _jsonOptions) ?? new AppInstallationRequest();
         if (request.AppId <= 0 || string.IsNullOrWhiteSpace(request.Pem)) {
             context.Response.StatusCode = 400;
@@ -357,11 +349,10 @@ internal sealed class WebApi {
     }
 
     private async Task HandleAppTokenAsync(System.Net.HttpListenerContext context) {
-        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
+        var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
+        if (body is null) {
             return;
         }
-
-        var body = await ReadBodyAsync(context).ConfigureAwait(false);
         var request = JsonSerializer.Deserialize<AppTokenRequest>(body, _jsonOptions) ?? new AppTokenRequest();
         if (request.AppId <= 0 || string.IsNullOrWhiteSpace(request.Pem) || request.InstallationId <= 0) {
             context.Response.StatusCode = 400;
@@ -380,11 +371,10 @@ internal sealed class WebApi {
     }
 
     private async Task HandleSetupAsync(System.Net.HttpListenerContext context, bool dryRun) {
-        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
+        var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
+        if (body is null) {
             return;
         }
-
-        var body = await ReadBodyAsync(context).ConfigureAwait(false);
         var request = JsonSerializer.Deserialize<SetupRequest>(body, _jsonOptions) ?? new SetupRequest();
         if ((request.Repos is null || request.Repos.Count == 0) && string.IsNullOrWhiteSpace(request.Repo)) {
             context.Response.StatusCode = 400;
@@ -450,7 +440,10 @@ internal sealed class WebApi {
             args.Add("--github-client-id");
             args.Add(request.GitHubClientId!);
         }
-        if (request.WithConfig) {
+        var withConfig = request.WithConfig ||
+                         !string.IsNullOrWhiteSpace(request.ConfigJson) ||
+                         !string.IsNullOrWhiteSpace(request.ConfigPath);
+        if (withConfig) {
             args.Add("--with-config");
         }
         if (!string.IsNullOrWhiteSpace(request.AuthB64)) {
@@ -488,7 +481,7 @@ internal sealed class WebApi {
         if (request.SkipSecret) {
             args.Add("--skip-secret");
         }
-        if (request.ManualSecret) {
+        if (request.ManualSecret && !request.UpdateSecret) {
             args.Add("--manual-secret");
         }
         if (request.ExplicitSecrets) {
@@ -499,6 +492,9 @@ internal sealed class WebApi {
         }
         if (request.Force) {
             args.Add("--force");
+        }
+        if (request.UpdateSecret) {
+            args.Add("--update-secret");
         }
         if (request.Cleanup) {
             args.Add("--cleanup");
@@ -557,6 +553,19 @@ internal sealed class WebApi {
         context.Response.Close();
     }
 
+    private async Task<string?> ReadJsonBodyAsync(System.Net.HttpListenerContext context) {
+        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
+            return null;
+        }
+        var body = await ReadBodyAsync(context).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(body)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Request body required." }).ConfigureAwait(false);
+            return null;
+        }
+        return body;
+    }
+
     private async Task<bool> RequirePostJsonAsync(System.Net.HttpListenerContext context) {
         if (!string.Equals(context.Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase)) {
             context.Response.StatusCode = 405;
@@ -566,6 +575,11 @@ internal sealed class WebApi {
         if (!IsJsonContentType(context.Request.ContentType)) {
             context.Response.StatusCode = 415;
             await WriteJsonAsync(context, new { error = "Content-Type must be application/json." }).ConfigureAwait(false);
+            return false;
+        }
+        if (!context.Request.HasEntityBody) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Request body required." }).ConfigureAwait(false);
             return false;
         }
         return true;
@@ -696,3 +710,4 @@ internal sealed class WebApi {
         return !string.IsNullOrWhiteSpace(owner) && !string.IsNullOrWhiteSpace(name);
     }
 }
+

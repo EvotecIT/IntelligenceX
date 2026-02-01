@@ -52,6 +52,7 @@ internal static class Program {
         Console.WriteLine();
         Console.WriteLine("Reviewer commands:");
         Console.WriteLine("  reviewer run     Run reviewer using GitHub event payload or inputs");
+        Console.WriteLine("  reviewer resolve-threads   Auto-resolve IntelligenceX bot review threads");
         Console.WriteLine();
         Console.WriteLine("Setup:");
         Console.WriteLine("  setup            Configure GitHub Actions workflow and secrets");
@@ -89,6 +90,16 @@ internal static class Program {
             var rest = args.Length == 0 ? Array.Empty<string>() : args.Skip(1).ToArray();
             return await IntelligenceX.Reviewer.ReviewerApp.RunAsync(rest).ConfigureAwait(false);
         }
+        if (args[0].Equals("resolve-threads", StringComparison.OrdinalIgnoreCase)) {
+            var rest = args.Skip(1).ToArray();
+            return await ReviewThreads.ReviewThreadResolveRunner.RunAsync(rest).ConfigureAwait(false);
+        }
+        if (args[0].Equals("threads", StringComparison.OrdinalIgnoreCase)) {
+            var rest = args.Skip(1).ToArray();
+            if (rest.Length > 0 && rest[0].Equals("resolve", StringComparison.OrdinalIgnoreCase)) {
+                return await ReviewThreads.ReviewThreadResolveRunner.RunAsync(rest.Skip(1).ToArray()).ConfigureAwait(false);
+            }
+        }
         if (args[0].Equals("help", StringComparison.OrdinalIgnoreCase) ||
             args[0].Equals("-h", StringComparison.OrdinalIgnoreCase) ||
             args[0].Equals("--help", StringComparison.OrdinalIgnoreCase)) {
@@ -125,6 +136,8 @@ internal static class Program {
     private static void PrintReviewerHelp() {
         Console.WriteLine("Reviewer commands:");
         Console.WriteLine("  intelligencex reviewer run");
+        Console.WriteLine("  intelligencex reviewer resolve-threads [options]");
+        Console.WriteLine("  intelligencex reviewer threads resolve [options]");
     }
 
     private static async Task<int> RunSetupAsync(string[] args) {

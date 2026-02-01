@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -65,6 +66,7 @@ internal sealed class GitHubClient : IDisposable {
         var draft = obj.GetBoolean("draft");
         var prNumber = (int)(obj.GetInt64("number") ?? number);
         var headSha = obj.GetObject("head")?.GetString("sha");
+        var baseSha = obj.GetObject("base")?.GetString("sha");
         var repoFullName = obj.GetObject("base")?.GetObject("repo")?.GetString("full_name")
             ?? $"{owner}/{repo}";
 
@@ -80,7 +82,62 @@ internal sealed class GitHubClient : IDisposable {
             }
         }
 
-        return new PullRequestContext(repoFullName, owner, repo, prNumber, title, body, draft, headSha, labels);
+        return new PullRequestContext(repoFullName, owner, repo, prNumber, title, body, draft, headSha, baseSha, labels);
+    }
+
+    public async Task<IReadOnlyList<PullRequestFile>> GetCompareFilesAsync(string owner, string repo, string baseSha, string headSha,
+        CancellationToken cancellationToken) {
+        if (string.IsNullOrWhiteSpace(baseSha) || string.IsNullOrWhiteSpace(headSha)) {
+            return Array.Empty<PullRequestFile>();
+        }
+        if (string.Equals(baseSha, headSha, StringComparison.OrdinalIgnoreCase)) {
+            return Array.Empty<PullRequestFile>();
+        }
+
+        var files = new List<PullRequestFile>();
+        var seenFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var page = 1;
+        var truncated = false;
+        const int MaxPages = 20;
+        while (true) {
+            var baseToken = Uri.EscapeDataString(baseSha);
+            var headToken = Uri.EscapeDataString(headSha);
+            var url = $"/repos/{owner}/{repo}/compare/{baseToken}...{headToken}?per_page=100&page={page}";
+            var json = await GetJsonAsync(url, cancellationToken).ConfigureAwait(false);
+            var obj = json.AsObject();
+            var array = obj?.GetArray("files");
+            if (array is null || array.Count == 0) {
+                break;
+            }
+            var added = 0;
+            foreach (var item in array) {
+                var fileObj = item.AsObject();
+                if (fileObj is null) {
+                    continue;
+                }
+                var filename = fileObj.GetString("filename") ?? string.Empty;
+                var status = fileObj.GetString("status") ?? string.Empty;
+                var patch = fileObj.GetString("patch");
+                if (string.IsNullOrWhiteSpace(filename) || !seenFiles.Add(filename)) {
+                    continue;
+                }
+                files.Add(new PullRequestFile(filename, status, patch));
+                added++;
+            }
+            if (array.Count < 100 || added == 0) {
+                break;
+            }
+            if (page >= MaxPages) {
+                truncated = true;
+                break;
+            }
+            page++;
+        }
+
+        if (truncated) {
+            Console.Error.WriteLine("Compare API results truncated after 2000 files. Consider using pull request files endpoint for full coverage.");
+        }
+        return files;
     }
 
     public async Task<IReadOnlyList<IssueComment>> ListIssueCommentsAsync(string owner, string repo, int number,
@@ -176,6 +233,8 @@ internal sealed class GitHubClient : IDisposable {
           comments(first:$commentLimit){
             totalCount
             nodes{
+              databaseId
+              createdAt
               body
               path
               line
@@ -234,7 +293,16 @@ internal sealed class GitHubClient : IDisposable {
                         var author = commentObj.GetObject("author")?.GetString("login");
                         var path = commentObj.GetString("path");
                         var line = commentObj.GetInt64("line");
-                        comments.Add(new PullRequestReviewThreadComment(body, author, path, line.HasValue ? (int?)line.Value : null));
+                        var databaseId = commentObj.GetInt64("databaseId");
+                        var createdAtRaw = commentObj.GetString("createdAt");
+                        DateTimeOffset? createdAt = null;
+                        if (!string.IsNullOrWhiteSpace(createdAtRaw) &&
+                            DateTimeOffset.TryParse(createdAtRaw, CultureInfo.InvariantCulture,
+                                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed)) {
+                            createdAt = parsed;
+                        }
+                        comments.Add(new PullRequestReviewThreadComment(databaseId, createdAt, body, author, path,
+                            line.HasValue ? (int?)line.Value : null));
                     }
                 }
                 threads.Add(new PullRequestReviewThread(id, isResolved, isOutdated, totalComments, comments));
@@ -350,6 +418,15 @@ internal sealed class GitHubClient : IDisposable {
         var responsePath = obj?.GetString("path") ?? path;
         var responseLine = obj?.GetInt64("line");
         return new PullRequestReviewComment(body, author, responsePath, responseLine.HasValue ? (int?)responseLine.Value : line);
+    }
+
+    public async Task CreatePullRequestReviewCommentReplyAsync(string owner, string repo, int number, long inReplyTo,
+        string body, CancellationToken cancellationToken) {
+        var payload = new JsonObject()
+            .Add("body", body)
+            .Add("in_reply_to", inReplyTo);
+        await PostJsonAsync($"/repos/{owner}/{repo}/pulls/{number}/comments", payload, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public void Dispose() => _http.Dispose();

@@ -27,6 +27,7 @@ Status: In progress
 - [x] Non-interactive fallback (--plain, redirected input)
 - [x] Summary table + PR links
 - [x] Keep-secret propagation for cleanup
+- [x] Disable manual-secret for update-secret flow
 
 ## Phase 3 — GitHub App Manifest (BYO App)
 - [x] Manifest generation (pre-filled app definition)
@@ -57,11 +58,13 @@ Status: In progress
 - [x] Recommend setup actions based on inspection
 - [x] Support auth bundle input for secrets (web UI)
 - [x] Update-secret support in web UI
+- [x] Reject non-local web UI requests + require JSON body
 
 ## Phase 6 — Reviewer improvements
 - [x] Early auth validation with actionable errors
 - [x] Safer auth store handling in reviewer
 - [x] Explicit secrets in workflow (no secrets: inherit)
+- [x] Retry extra ResponseEnded + fail-open summary option
 
 ## Phase 7 — Docs & README
 - [x] README rewrite (what it is, trust model, quickstart)
@@ -74,4 +77,4 @@ Status: In progress
 - [x] Add provider toggle in wizard
 
 ## Phase 9 — DevEx automation
-- [ ] Auto-resolve IntelligenceX bot review threads after fixes (CLI command or GitHub App action)
+- [x] Auto-resolve IntelligenceX bot review threads after fixes (CLI command or GitHub App action)

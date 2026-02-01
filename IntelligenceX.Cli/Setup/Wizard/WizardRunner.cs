@@ -83,6 +83,9 @@ internal static class WizardRunner {
         if (state.Operation == WizardOperation.UpdateSecret) {
             state.SkipSecret = false;
             state.ManualSecret = false;
+            state.ExplicitSecrets = false;
+            state.Upgrade = false;
+            state.Force = false;
         }
         if (state.Operation == WizardOperation.Cleanup) {
             state.KeepSecret = WizardPrompts.PromptKeepSecret(state.KeepSecret);
@@ -131,20 +134,24 @@ internal static class WizardRunner {
     }
 
     private static SetupPlan BuildPlan(WizardState state, string repo) {
+        var withConfig = state.WithConfig ||
+                         !string.IsNullOrWhiteSpace(state.ConfigPath) ||
+                         !string.IsNullOrWhiteSpace(state.ConfigJson);
+        var allowSecrets = state.Operation == WizardOperation.Setup;
         var plan = new SetupPlan(repo) {
             GitHubClientId = state.GitHubClientId,
             GitHubToken = state.GitHubToken,
-            WithConfig = state.WithConfig,
+            WithConfig = withConfig,
             ConfigPath = state.ConfigPath,
             ConfigJson = state.ConfigJson,
             Provider = state.Provider,
             ReviewProfile = ResolveProfile(state),
             ReviewMode = ResolveMode(state),
-            SkipSecret = state.SkipSecret,
-            ManualSecret = state.ManualSecret,
-            ExplicitSecrets = state.ExplicitSecrets,
-            Upgrade = state.Upgrade,
-            Force = state.Force,
+            SkipSecret = allowSecrets && state.SkipSecret,
+            ManualSecret = allowSecrets && state.ManualSecret,
+            ExplicitSecrets = allowSecrets && state.ExplicitSecrets,
+            Upgrade = allowSecrets && state.Upgrade,
+            Force = allowSecrets && state.Force,
             UpdateSecret = state.Operation == WizardOperation.UpdateSecret,
             Cleanup = state.Operation == WizardOperation.Cleanup,
             KeepSecret = state.KeepSecret,

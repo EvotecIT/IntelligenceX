@@ -51,6 +51,12 @@ internal static class Program {
         failed += Run("Review retry transient", TestReviewRetryTransient);
         failed += Run("Review retry non-transient", TestReviewRetryNonTransient);
         failed += Run("Review retry rethrows", TestReviewRetryRethrows);
+        failed += Run("Review retry extra attempt", TestReviewRetryExtraAttempt);
+        failed += Run("Review failure marker", TestReviewFailureMarker);
+        failed += Run("Review fail-open only transient", TestReviewFailOpenTransientOnly);
+        failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
+        failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
+        failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
         failed += Run("Context deny invalid regex", TestContextDenyInvalidRegex);
         failed += Run("Context deny timeout", TestContextDenyTimeout);
         failed += Run("Review summary parser", TestReviewSummaryParser);
@@ -351,7 +357,7 @@ internal static class Program {
 
     private static void TestReviewThreadInlineKey() {
         var settings = new ReviewSettings { ReviewThreadsAutoResolveBotsOnly = true };
-        var comment = new PullRequestReviewThreadComment($"{ReviewFormatter.InlineMarker}\nFix it.", "intelligencex-review", "src/Foo.cs", 10);
+        var comment = new PullRequestReviewThreadComment(null, null, $"{ReviewFormatter.InlineMarker}\nFix it.", "intelligencex-review", "src/Foo.cs", 10);
         var thread = new PullRequestReviewThread("id", false, false, 1, new[] { comment });
         var ok = ReviewerApp.TryGetInlineThreadKey(thread, settings, out var key);
         AssertEqual(true, ok, "inline key ok");
@@ -360,7 +366,7 @@ internal static class Program {
 
     private static void TestReviewThreadInlineKeyBotsOnly() {
         var settings = new ReviewSettings { ReviewThreadsAutoResolveBotsOnly = true };
-        var comment = new PullRequestReviewThreadComment($"{ReviewFormatter.InlineMarker}\nFix it.", "alice", "src/Foo.cs", 10);
+        var comment = new PullRequestReviewThreadComment(null, null, $"{ReviewFormatter.InlineMarker}\nFix it.", "alice", "src/Foo.cs", 10);
         var thread = new PullRequestReviewThread("id", false, false, 1, new[] { comment });
         var ok = ReviewerApp.TryGetInlineThreadKey(thread, settings, out _);
         AssertEqual(false, ok, "inline key bots only");
@@ -380,7 +386,9 @@ internal static class Program {
             retryDelaySeconds: 1,
             retryMaxDelaySeconds: 1,
             CancellationToken.None,
-            describeError: null).GetAwaiter().GetResult();
+            describeError: null,
+            extraAttempts: 0,
+            extraRetryPredicate: null).GetAwaiter().GetResult();
 
         AssertEqual("ok", result, "retry result");
         AssertEqual(3, attempts, "retry attempts");
@@ -399,7 +407,9 @@ internal static class Program {
                 retryDelaySeconds: 1,
                 retryMaxDelaySeconds: 1,
                 CancellationToken.None,
-                describeError: null).GetAwaiter().GetResult();
+                describeError: null,
+                extraAttempts: 0,
+                extraRetryPredicate: null).GetAwaiter().GetResult();
         } catch (InvalidOperationException) {
             thrown = true;
         }
@@ -421,13 +431,97 @@ internal static class Program {
                 retryDelaySeconds: 1,
                 retryMaxDelaySeconds: 1,
                 CancellationToken.None,
-                describeError: null).GetAwaiter().GetResult();
+                describeError: null,
+                extraAttempts: 0,
+                extraRetryPredicate: null).GetAwaiter().GetResult();
             throw new InvalidOperationException("Expected exception.");
         } catch (IOException caught) {
             AssertEqual(true, ReferenceEquals(ex, caught), "retry exception instance");
         }
 
         AssertEqual(2, attempts, "retry attempts rethrow");
+    }
+
+    private static void TestReviewRetryExtraAttempt() {
+        var attempts = 0;
+        var result = ReviewRunner.ReviewRetryPolicy.RunAsync(() => {
+                attempts++;
+                if (attempts == 1) {
+                    throw new IOException("ResponseEnded");
+                }
+                return Task.FromResult("ok");
+            },
+            ex => ex is IOException,
+            maxAttempts: 1,
+            retryDelaySeconds: 1,
+            retryMaxDelaySeconds: 1,
+            CancellationToken.None,
+            describeError: null,
+            extraAttempts: 1,
+            extraRetryPredicate: ReviewDiagnostics.IsResponseEnded).GetAwaiter().GetResult();
+
+        AssertEqual("ok", result, "retry extra result");
+        AssertEqual(2, attempts, "retry extra attempts");
+    }
+
+    private static void TestReviewFailureMarker() {
+        var settings = new ReviewSettings { Diagnostics = true };
+        var body = ReviewDiagnostics.BuildFailureBody(new IOException("ResponseEnded"), settings, null);
+        AssertEqual(true, ReviewDiagnostics.IsFailureBody(body), "failure marker");
+    }
+
+    private static void TestReviewFailOpenTransientOnly() {
+        var transient = new HttpRequestException("network");
+        var responseEnded = new IOException("ResponseEnded");
+        var nonTransient = new InvalidOperationException("logic");
+        AssertEqual(true, ReviewRunner.IsTransient(transient), "transient true");
+        AssertEqual(true, ReviewRunner.IsTransient(responseEnded), "response ended transient");
+        AssertEqual(false, ReviewRunner.IsTransient(nonTransient), "non-transient false");
+    }
+
+    private static void TestReviewThreadsDiffRangeNormalize() {
+        AssertEqual("current", ReviewSettings.NormalizeDiffRange("current", "pr-base"), "diff current");
+        AssertEqual("pr-base", ReviewSettings.NormalizeDiffRange("pr_base", "current"), "diff pr-base");
+        AssertEqual("first-review", ReviewSettings.NormalizeDiffRange("first_review", "current"), "diff first-review");
+        AssertEqual("current", ReviewSettings.NormalizeDiffRange("unknown", "current"), "diff fallback");
+    }
+
+    private static void TestResolveThreadsOptionParsing() {
+        var options = IntelligenceX.Cli.ReviewThreads.ReviewThreadResolveRunner.ParseOptions(new[] {
+            "--repo", "owner/name",
+            "--pr", "42",
+            "--timeout-seconds", "15",
+            "--include-human",
+            "--include-current",
+            "--bot", "intelligencex-review,copilot-pull-request-reviewer"
+        });
+
+        AssertEqual("owner/name", options.Repo ?? string.Empty, "repo parse");
+        AssertEqual(42, options.PrNumber, "pr parse");
+        AssertEqual(15, options.TimeoutSeconds, "timeout parse");
+        AssertEqual(false, options.BotOnly, "include human");
+        AssertEqual(false, options.OnlyOutdated, "include current");
+        AssertEqual(2, options.BotLogins.Count, "bot logins count");
+        AssertEqual("intelligencex-review", options.BotLogins[0], "bot login 1");
+        AssertEqual("copilot-pull-request-reviewer", options.BotLogins[1], "bot login 2");
+    }
+
+    private static void TestResolveThreadsEndpointResolution() {
+        var (baseUri, graphQlPath) = IntelligenceX.Cli.ReviewThreads.ReviewThreadResolveRunner.ResolveGraphQlEndpoint("https://github.company.local/api/v3");
+        AssertEqual("https://github.company.local/api/v3", baseUri.ToString(), "base uri");
+        AssertEqual("/api/graphql", graphQlPath, "graphql path");
+
+        var (apiGraphBase, apiGraphPath) = IntelligenceX.Cli.ReviewThreads.ReviewThreadResolveRunner.ResolveGraphQlEndpoint("https://github.company.local/api/graphql");
+        AssertEqual("/api/graphql", apiGraphPath, "graphql path api/graphql");
+        AssertEqual("https://github.company.local", apiGraphBase.GetLeftPart(UriPartial.Authority), "base uri api/graphql");
+
+        var (rootGraphBase, rootGraphPath) = IntelligenceX.Cli.ReviewThreads.ReviewThreadResolveRunner.ResolveGraphQlEndpoint("https://github.company.local/graphql");
+        AssertEqual("/graphql", rootGraphPath, "graphql path root");
+        AssertEqual("https://github.company.local", rootGraphBase.GetLeftPart(UriPartial.Authority), "base uri /graphql");
+
+        var (defaultBase, defaultPath) = IntelligenceX.Cli.ReviewThreads.ReviewThreadResolveRunner.ResolveGraphQlEndpoint("https://github.company.local");
+        AssertEqual("/graphql", defaultPath, "graphql path default");
+        AssertEqual("https://github.company.local", defaultBase.GetLeftPart(UriPartial.Authority), "base uri default");
     }
 
     private static void TestContextDenyInvalidRegex() {

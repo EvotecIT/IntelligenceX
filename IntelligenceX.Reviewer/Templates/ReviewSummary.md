@@ -4,6 +4,7 @@ Reviewing PR #{{Number}}: **{{Title}}**
 {{CommitLine}}
 
 {{InlineNote}}
+{{AutoResolveNote}}
 {{ReviewBody}}
 
-_Model: {{Model}} · Length: {{Length}}_
+_Model: {{Model}} | Length: {{Length}} | Mode: {{Mode}}{{ReasoningLine}}_

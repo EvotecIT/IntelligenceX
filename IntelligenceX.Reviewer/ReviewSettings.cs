@@ -60,6 +60,8 @@ internal sealed class ReviewSettings {
     public int RetryCount { get; set; } = 3;
     public int RetryDelaySeconds { get; set; } = 5;
     public int RetryMaxDelaySeconds { get; set; } = 30;
+    public bool RetryExtraOnResponseEnded { get; set; } = true;
+    public bool FailOpen { get; set; } = true;
     public bool Diagnostics { get; set; }
     public bool Preflight { get; set; }
     public int PreflightTimeoutSeconds { get; set; } = 15;
@@ -101,7 +103,14 @@ internal sealed class ReviewSettings {
     public bool ReviewThreadsAutoResolveStale { get; set; }
     public bool ReviewThreadsAutoResolveMissingInline { get; set; }
     public bool ReviewThreadsAutoResolveBotsOnly { get; set; } = true;
+    public IReadOnlyList<string> ReviewThreadsAutoResolveBotLogins { get; set; } = Array.Empty<string>();
+    public string ReviewThreadsAutoResolveDiffRange { get; set; } = "current";
     public int ReviewThreadsAutoResolveMax { get; set; } = 10;
+    public bool ReviewThreadsAutoResolveAI { get; set; } = true;
+    public bool ReviewThreadsAutoResolveAIPostComment { get; set; }
+    public bool ReviewThreadsAutoResolveAIEmbed { get; set; } = true;
+    public bool ReviewThreadsAutoResolveAISummary { get; set; } = true;
+    public bool ReviewThreadsAutoResolveAIReply { get; set; }
     public int MaxCommentChars { get; set; } = 4000;
     public int MaxComments { get; set; } = 20;
     public int CommentSearchLimit { get; set; } = 500;
@@ -320,6 +329,14 @@ internal sealed class ReviewSettings {
         if (!string.IsNullOrWhiteSpace(retryMaxDelaySeconds)) {
             settings.RetryMaxDelaySeconds = ParsePositiveInt(retryMaxDelaySeconds, settings.RetryMaxDelaySeconds);
         }
+        var retryExtraResponseEnded = GetInput("retry_extra_response_ended", "REVIEW_RETRY_EXTRA_RESPONSE_ENDED");
+        if (!string.IsNullOrWhiteSpace(retryExtraResponseEnded)) {
+            settings.RetryExtraOnResponseEnded = ParseBoolean(retryExtraResponseEnded, settings.RetryExtraOnResponseEnded);
+        }
+        var failOpen = GetInput("fail_open", "REVIEW_FAIL_OPEN");
+        if (!string.IsNullOrWhiteSpace(failOpen)) {
+            settings.FailOpen = ParseBoolean(failOpen, settings.FailOpen);
+        }
 
         var diagnostics = GetInput("diagnostics", "REVIEW_DIAGNOSTICS");
         if (string.IsNullOrWhiteSpace(diagnostics)) {
@@ -434,41 +451,69 @@ internal sealed class ReviewSettings {
         if (!string.IsNullOrWhiteSpace(includeReviewThreads)) {
             settings.IncludeReviewThreads = ParseBoolean(includeReviewThreads, settings.IncludeReviewThreads);
         }
-        var reviewThreadsIncludeBots = GetInput("review_threads_include_bots", "REVIEW_REVIEW_THREADS_INCLUDE_BOTS");
+        var reviewThreadsIncludeBots = GetInput("review_threads_include_bots", "REVIEW_THREADS_INCLUDE_BOTS", "REVIEW_REVIEW_THREADS_INCLUDE_BOTS");
         if (!string.IsNullOrWhiteSpace(reviewThreadsIncludeBots)) {
             settings.ReviewThreadsIncludeBots = ParseBoolean(reviewThreadsIncludeBots, settings.ReviewThreadsIncludeBots);
         }
-        var reviewThreadsIncludeResolved = GetInput("review_threads_include_resolved", "REVIEW_REVIEW_THREADS_INCLUDE_RESOLVED");
+        var reviewThreadsIncludeResolved = GetInput("review_threads_include_resolved", "REVIEW_THREADS_INCLUDE_RESOLVED", "REVIEW_REVIEW_THREADS_INCLUDE_RESOLVED");
         if (!string.IsNullOrWhiteSpace(reviewThreadsIncludeResolved)) {
             settings.ReviewThreadsIncludeResolved = ParseBoolean(reviewThreadsIncludeResolved, settings.ReviewThreadsIncludeResolved);
         }
-        var reviewThreadsIncludeOutdated = GetInput("review_threads_include_outdated", "REVIEW_REVIEW_THREADS_INCLUDE_OUTDATED");
+        var reviewThreadsIncludeOutdated = GetInput("review_threads_include_outdated", "REVIEW_THREADS_INCLUDE_OUTDATED", "REVIEW_REVIEW_THREADS_INCLUDE_OUTDATED");
         if (!string.IsNullOrWhiteSpace(reviewThreadsIncludeOutdated)) {
             settings.ReviewThreadsIncludeOutdated = ParseBoolean(reviewThreadsIncludeOutdated, settings.ReviewThreadsIncludeOutdated);
         }
-        var reviewThreadsMax = GetInput("review_threads_max", "REVIEW_REVIEW_THREADS_MAX");
+        var reviewThreadsMax = GetInput("review_threads_max", "REVIEW_THREADS_MAX", "REVIEW_REVIEW_THREADS_MAX");
         if (!string.IsNullOrWhiteSpace(reviewThreadsMax)) {
             settings.ReviewThreadsMax = ParseNonNegativeInt(reviewThreadsMax, settings.ReviewThreadsMax);
         }
-        var reviewThreadsMaxComments = GetInput("review_threads_max_comments", "REVIEW_REVIEW_THREADS_MAX_COMMENTS");
+        var reviewThreadsMaxComments = GetInput("review_threads_max_comments", "REVIEW_THREADS_MAX_COMMENTS", "REVIEW_REVIEW_THREADS_MAX_COMMENTS");
         if (!string.IsNullOrWhiteSpace(reviewThreadsMaxComments)) {
             settings.ReviewThreadsMaxComments = ParseNonNegativeInt(reviewThreadsMaxComments, settings.ReviewThreadsMaxComments);
         }
-        var reviewThreadsAutoResolveStale = GetInput("review_threads_auto_resolve_stale", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_STALE");
+        var reviewThreadsAutoResolveStale = GetInput("review_threads_auto_resolve_stale", "REVIEW_THREADS_AUTO_RESOLVE_STALE", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_STALE");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveStale)) {
             settings.ReviewThreadsAutoResolveStale = ParseBoolean(reviewThreadsAutoResolveStale, settings.ReviewThreadsAutoResolveStale);
         }
-        var reviewThreadsAutoResolveMissingInline = GetInput("review_threads_auto_resolve_missing_inline", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_MISSING_INLINE");
+        var reviewThreadsAutoResolveMissingInline = GetInput("review_threads_auto_resolve_missing_inline", "REVIEW_THREADS_AUTO_RESOLVE_MISSING_INLINE", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_MISSING_INLINE");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveMissingInline)) {
             settings.ReviewThreadsAutoResolveMissingInline = ParseBoolean(reviewThreadsAutoResolveMissingInline, settings.ReviewThreadsAutoResolveMissingInline);
         }
-        var reviewThreadsAutoResolveBotsOnly = GetInput("review_threads_auto_resolve_bots_only", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_BOTS_ONLY");
+        var reviewThreadsAutoResolveBotsOnly = GetInput("review_threads_auto_resolve_bots_only", "REVIEW_THREADS_AUTO_RESOLVE_BOTS_ONLY", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_BOTS_ONLY");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveBotsOnly)) {
             settings.ReviewThreadsAutoResolveBotsOnly = ParseBoolean(reviewThreadsAutoResolveBotsOnly, settings.ReviewThreadsAutoResolveBotsOnly);
         }
-        var reviewThreadsAutoResolveMax = GetInput("review_threads_auto_resolve_max", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_MAX");
+        var reviewThreadsAutoResolveBotLogins = GetInput("review_threads_auto_resolve_bot_logins", "REVIEW_THREADS_AUTO_RESOLVE_BOT_LOGINS", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_BOT_LOGINS");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveBotLogins)) {
+            settings.ReviewThreadsAutoResolveBotLogins = ParseList(reviewThreadsAutoResolveBotLogins, settings.ReviewThreadsAutoResolveBotLogins);
+        }
+        var reviewThreadsAutoResolveDiffRange = GetInput("review_threads_auto_resolve_diff_range", "REVIEW_THREADS_AUTO_RESOLVE_DIFF_RANGE", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_DIFF_RANGE");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveDiffRange)) {
+            settings.ReviewThreadsAutoResolveDiffRange = NormalizeDiffRange(reviewThreadsAutoResolveDiffRange, settings.ReviewThreadsAutoResolveDiffRange);
+        }
+        var reviewThreadsAutoResolveMax = GetInput("review_threads_auto_resolve_max", "REVIEW_THREADS_AUTO_RESOLVE_MAX", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_MAX");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveMax)) {
             settings.ReviewThreadsAutoResolveMax = ParseNonNegativeInt(reviewThreadsAutoResolveMax, settings.ReviewThreadsAutoResolveMax);
+        }
+        var reviewThreadsAutoResolveAi = GetInput("review_threads_auto_resolve_ai", "REVIEW_THREADS_AUTO_RESOLVE_AI", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAi)) {
+            settings.ReviewThreadsAutoResolveAI = ParseBoolean(reviewThreadsAutoResolveAi, settings.ReviewThreadsAutoResolveAI);
+        }
+        var reviewThreadsAutoResolveAiPost = GetInput("review_threads_auto_resolve_ai_post_comment", "REVIEW_THREADS_AUTO_RESOLVE_AI_POST_COMMENT", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI_POST_COMMENT");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAiPost)) {
+            settings.ReviewThreadsAutoResolveAIPostComment = ParseBoolean(reviewThreadsAutoResolveAiPost, settings.ReviewThreadsAutoResolveAIPostComment);
+        }
+        var reviewThreadsAutoResolveAiEmbed = GetInput("review_threads_auto_resolve_ai_embed", "REVIEW_THREADS_AUTO_RESOLVE_AI_EMBED", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI_EMBED");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAiEmbed)) {
+            settings.ReviewThreadsAutoResolveAIEmbed = ParseBoolean(reviewThreadsAutoResolveAiEmbed, settings.ReviewThreadsAutoResolveAIEmbed);
+        }
+        var reviewThreadsAutoResolveAiSummary = GetInput("review_threads_auto_resolve_ai_summary", "REVIEW_THREADS_AUTO_RESOLVE_AI_SUMMARY", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI_SUMMARY");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAiSummary)) {
+            settings.ReviewThreadsAutoResolveAISummary = ParseBoolean(reviewThreadsAutoResolveAiSummary, settings.ReviewThreadsAutoResolveAISummary);
+        }
+        var reviewThreadsAutoResolveAiReply = GetInput("review_threads_auto_resolve_ai_reply", "REVIEW_THREADS_AUTO_RESOLVE_AI_REPLY", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI_REPLY");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAiReply)) {
+            settings.ReviewThreadsAutoResolveAIReply = ParseBoolean(reviewThreadsAutoResolveAiReply, settings.ReviewThreadsAutoResolveAIReply);
         }
         var contextDenyEnabled = GetInput("context_deny_enabled", "REVIEW_CONTEXT_DENY_ENABLED");
         if (!string.IsNullOrWhiteSpace(contextDenyEnabled)) {
@@ -559,13 +604,19 @@ internal sealed class ReviewSettings {
         };
     }
 
-    private static string? GetInput(string inputName, string? envName = null) {
+    private static string? GetInput(string inputName, string? envName = null, string? altEnvName = null) {
         var value = Environment.GetEnvironmentVariable($"INPUT_{inputName.ToUpperInvariant()}");
         if (!string.IsNullOrWhiteSpace(value)) {
             return value.Trim();
         }
         if (!string.IsNullOrWhiteSpace(envName)) {
             value = Environment.GetEnvironmentVariable(envName);
+            if (!string.IsNullOrWhiteSpace(value)) {
+                return value.Trim();
+            }
+        }
+        if (!string.IsNullOrWhiteSpace(altEnvName)) {
+            value = Environment.GetEnvironmentVariable(altEnvName);
             if (!string.IsNullOrWhiteSpace(value)) {
                 return value.Trim();
             }
@@ -579,6 +630,19 @@ internal sealed class ReviewSettings {
         }
         var parts = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return parts.Length == 0 ? fallback ?? Array.Empty<string>() : parts;
+    }
+
+    internal static string NormalizeDiffRange(string? value, string fallback) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return fallback;
+        }
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "current" or "pr" or "pr-files" or "pr_files" => "current",
+            "pr-base" or "pr_base" or "base" or "prbase" => "pr-base",
+            "first-review" or "first_review" or "first-reviewed" or "firstreview" or "first" => "first-review",
+            _ => fallback
+        };
     }
 
     private static bool ParseBoolean(string? value, bool fallback) {

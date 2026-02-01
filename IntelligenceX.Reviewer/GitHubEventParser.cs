@@ -24,6 +24,7 @@ internal static class GitHubEventParser {
         var draft = pr.GetBoolean("draft");
         var number = (int)(pr.GetInt64("number") ?? 0);
         var headSha = pr.GetObject("head")?.GetString("sha");
+        var baseSha = pr.GetObject("base")?.GetString("sha");
 
         var labels = new List<string>();
         var labelsArray = pr.GetArray("labels");
@@ -38,7 +39,7 @@ internal static class GitHubEventParser {
         }
 
         var (owner, repo) = SplitRepo(repoFullName);
-        return new PullRequestContext(repoFullName, owner, repo, number, title, body, draft, headSha, labels);
+        return new PullRequestContext(repoFullName, owner, repo, number, title, body, draft, headSha, baseSha, labels);
     }
 
     private static (string owner, string repo) SplitRepo(string fullName) {
