@@ -986,31 +986,43 @@ checkUsage.addEventListener('click', async () => {
     return;
   }
   writeUsage('Checking usage...');
-  const res = await fetch('/api/usage', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      authB64: authB64.value.trim(),
-      authB64Path: authB64Path.value.trim(),
-      includeEvents: usageEvents.checked
-    })
-  });
-  const data = await res.json();
-  if (data.error) {
-    writeUsage('Usage error: ' + data.error);
-    return;
+  try {
+    const res = await fetch('/api/usage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        authB64: authB64.value.trim(),
+        authB64Path: authB64Path.value.trim(),
+        includeEvents: usageEvents.checked
+      })
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      writeUsage('Usage error: ' + (text || res.status));
+      return;
+    }
+    const data = await res.json();
+    if (data.error) {
+      writeUsage('Usage error: ' + data.error);
+      return;
+    }
+    if (data.updatedAt) {
+      writeUsage(`Updated: ${data.updatedAt}\n\n` + formatUsageResult(data));
+    } else {
+      writeUsage(formatUsageResult(data));
+    }
+    setUsageSummary(formatUsageSummaryShort(data));
+  } catch (err) {
+    writeUsage('Usage error: ' + (err?.message || err));
   }
-  if (data.updatedAt) {
-    writeUsage(`Updated: ${data.updatedAt}\n\n` + formatUsageResult(data));
-  } else {
-    writeUsage(formatUsageResult(data));
-  }
-  setUsageSummary(formatUsageSummaryShort(data));
 });
 
 async function loadUsageCache() {
   try {
     const res = await fetch('/api/usage-cache');
+    if (!res.ok) {
+      return;
+    }
     const data = await res.json();
     if (data && data.usage) {
       const updated = data.updatedAt ? `Updated: ${data.updatedAt}\n\n` : '';

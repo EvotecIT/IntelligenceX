@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,7 +14,8 @@ internal enum ChatGptUsagePathStyle {
 }
 
 internal sealed class ChatGptUsageClient : IDisposable {
-    private readonly HttpClient _httpClient = new();
+    private static readonly HttpClient SharedClient = CreateClient();
+    private readonly HttpClient _httpClient = SharedClient;
 
     public async Task<ChatGptUsageSnapshot> GetUsageAsync(string baseUrl, string accessToken, string? accountId, string? userAgent,
         CancellationToken cancellationToken) {
@@ -53,12 +55,8 @@ internal sealed class ChatGptUsageClient : IDisposable {
             return Array.Empty<ChatGptCreditUsageEvent>();
         }
         var result = new List<ChatGptCreditUsageEvent>();
-        foreach (var item in data) {
-            var entry = item.AsObject();
-            if (entry is null) {
-                continue;
-            }
-            result.Add(ChatGptCreditUsageEvent.FromJson(entry));
+        foreach (var entry in data.Select(item => item.AsObject()).Where(obj => obj is not null)) {
+            result.Add(ChatGptCreditUsageEvent.FromJson(entry!));
         }
         return result;
     }
@@ -109,6 +107,12 @@ internal sealed class ChatGptUsageClient : IDisposable {
         }
     }
 
+    private static HttpClient CreateClient() {
+        return new HttpClient {
+            Timeout = TimeSpan.FromSeconds(30)
+        };
+    }
+
     private static Task<string> ReadAsStringAsync(HttpContent content, CancellationToken cancellationToken) {
 #if NETSTANDARD2_0 || NET472
         cancellationToken.ThrowIfCancellationRequested();
@@ -119,6 +123,6 @@ internal sealed class ChatGptUsageClient : IDisposable {
     }
 
     public void Dispose() {
-        _httpClient.Dispose();
+        // Shared client; do not dispose.
     }
 }

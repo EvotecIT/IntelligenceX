@@ -26,7 +26,14 @@ internal static class UsageRunner {
     }
 
     public static async Task<int> RunAsync(string[] args) {
-        var options = UsageOptions.Parse(args);
+        UsageOptions options;
+        try {
+            options = UsageOptions.Parse(args);
+        } catch (Exception ex) {
+            Console.Error.WriteLine(ex.Message);
+            PrintHelp();
+            return 1;
+        }
         if (options.ShowHelp) {
             PrintHelp();
             return 0;

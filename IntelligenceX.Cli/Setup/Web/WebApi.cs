@@ -17,6 +17,7 @@ internal sealed class WebApi {
 
     public async Task HandleAsync(System.Net.HttpListenerContext context) {
         var path = context.Request.Url?.AbsolutePath ?? "/";
+        var normalizedPath = path.Length > 1 ? path.TrimEnd('/') : path;
         if (path.StartsWith("/api/repos", StringComparison.OrdinalIgnoreCase)) {
             await HandleReposAsync(context).ConfigureAwait(false);
             return;
@@ -61,12 +62,12 @@ internal sealed class WebApi {
             await HandleSetupAsync(context, dryRun: false).ConfigureAwait(false);
             return;
         }
-        if (path.StartsWith("/api/usage", StringComparison.OrdinalIgnoreCase)) {
-            await HandleUsageAsync(context).ConfigureAwait(false);
+        if (normalizedPath.Equals("/api/usage-cache", StringComparison.OrdinalIgnoreCase)) {
+            await HandleUsageCacheAsync(context).ConfigureAwait(false);
             return;
         }
-        if (path.StartsWith("/api/usage-cache", StringComparison.OrdinalIgnoreCase)) {
-            await HandleUsageCacheAsync(context).ConfigureAwait(false);
+        if (normalizedPath.Equals("/api/usage", StringComparison.OrdinalIgnoreCase)) {
+            await HandleUsageAsync(context).ConfigureAwait(false);
             return;
         }
 
@@ -456,7 +457,14 @@ internal sealed class WebApi {
         }
 
         var body = await ReadBodyAsync(context).ConfigureAwait(false);
-        var request = JsonSerializer.Deserialize<UsageRequest>(body, _jsonOptions) ?? new UsageRequest();
+        UsageRequest request;
+        try {
+            request = JsonSerializer.Deserialize<UsageRequest>(body, _jsonOptions) ?? new UsageRequest();
+        } catch (JsonException) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Invalid JSON payload." }).ConfigureAwait(false);
+            return;
+        }
         if (string.IsNullOrWhiteSpace(request.AuthB64) && string.IsNullOrWhiteSpace(request.AuthB64Path)) {
             context.Response.StatusCode = 400;
             await WriteJsonAsync(context, new { error = "Missing auth bundle (base64 or path)." }).ConfigureAwait(false);
