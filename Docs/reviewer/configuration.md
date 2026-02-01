@@ -35,4 +35,4 @@ Schema: `../../Schemas/reviewer.schema.json`
 - `reviewThreadsAutoResolveDiffRange` supports `current`, `pr-base`, or `first-review`.
 
 ## Full example
-See `../../README.md` for a full JSON sample, or inspect the schema for all options.
+See `../../Schemas/reviewer.schema.json` for all available options.
