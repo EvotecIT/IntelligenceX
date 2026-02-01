@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -8,6 +9,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI.Auth;
+using IntelligenceX.OpenAI.Native;
+using IntelligenceX.OpenAI.Usage;
 
 namespace IntelligenceX.Reviewer;
 
@@ -165,7 +168,9 @@ public static class ReviewerApp {
             }
             var inlineSuppressed = inlineSupported && !inlineAllowed;
             var autoResolveSummary = settings.ReviewThreadsAutoResolveAISummary ? triageResult.SummaryLine : string.Empty;
-            var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported, inlineSuppressed, autoResolveSummary);
+            var usageLine = await TryBuildUsageLineAsync(settings).ConfigureAwait(false);
+            var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported, inlineSuppressed,
+                autoResolveSummary, usageLine);
             progress.Review = ReviewProgressState.Complete;
             progress.Finalize = ReviewProgressState.InProgress;
             progress.StatusLine = "Finalizing summary.";
@@ -741,6 +746,87 @@ public static class ReviewerApp {
             summary += " Triage comment posted.";
         }
         return new ThreadTriageResult(summary, triageBody);
+    }
+
+    private static async Task<string> TryBuildUsageLineAsync(ReviewSettings settings) {
+        if (!settings.ReviewUsageSummary) {
+            return string.Empty;
+        }
+        if (settings.Provider != ReviewProvider.OpenAI) {
+            return string.Empty;
+        }
+
+        try {
+            var snapshot = await TryGetUsageSnapshotAsync(settings).ConfigureAwait(false);
+            if (snapshot is null) {
+                return string.Empty;
+            }
+            var summary = FormatUsageSummary(snapshot);
+            return string.IsNullOrWhiteSpace(summary) ? string.Empty : $"Usage: {summary}";
+        } catch (Exception ex) {
+            if (settings.Diagnostics) {
+                Console.Error.WriteLine($"Usage summary failed: {ex.Message}");
+            }
+            return string.Empty;
+        }
+    }
+
+    private static async Task<ChatGptUsageSnapshot?> TryGetUsageSnapshotAsync(ReviewSettings settings) {
+        var cacheMinutes = Math.Max(0, settings.ReviewUsageSummaryCacheMinutes);
+        if (cacheMinutes > 0 && ChatGptUsageCache.TryLoad(out var entry) && entry is not null) {
+            var age = DateTimeOffset.UtcNow - entry.UpdatedAt;
+            if (age <= TimeSpan.FromMinutes(cacheMinutes)) {
+                return entry.Snapshot;
+            }
+        }
+
+        using var cts = new CancellationTokenSource(
+            TimeSpan.FromSeconds(Math.Max(1, settings.ReviewUsageSummaryTimeoutSeconds)));
+        var options = new OpenAINativeOptions {
+            AuthStore = new FileAuthBundleStore()
+        };
+        using var service = new ChatGptUsageService(options);
+        var snapshot = await service.GetUsageSnapshotAsync(cts.Token).ConfigureAwait(false);
+        try {
+            ChatGptUsageCache.Save(snapshot);
+        } catch {
+            // Best-effort cache.
+        }
+        return snapshot;
+    }
+
+    private static string FormatUsageSummary(ChatGptUsageSnapshot snapshot) {
+        var parts = new List<string>();
+
+        var rate = FormatRemainingPercent(snapshot.RateLimit?.PrimaryWindow?.UsedPercent);
+        if (!string.IsNullOrWhiteSpace(rate)) {
+            parts.Add($"rate {rate}% remaining");
+        }
+
+        var codeReview = FormatRemainingPercent(snapshot.CodeReviewRateLimit?.PrimaryWindow?.UsedPercent);
+        if (!string.IsNullOrWhiteSpace(codeReview)) {
+            parts.Add($"code review {codeReview}% remaining");
+        }
+
+        if (snapshot.Credits is not null) {
+            if (snapshot.Credits.Unlimited) {
+                parts.Add("credits unlimited");
+            } else if (snapshot.Credits.Balance.HasValue) {
+                parts.Add($"credits {snapshot.Credits.Balance.Value.ToString("0.####", CultureInfo.InvariantCulture)}");
+            } else if (!snapshot.Credits.HasCredits) {
+                parts.Add("credits none");
+            }
+        }
+
+        return string.Join(", ", parts);
+    }
+
+    private static string? FormatRemainingPercent(double? usedPercent) {
+        if (!usedPercent.HasValue) {
+            return null;
+        }
+        var remaining = Math.Max(0, 100 - usedPercent.Value);
+        return remaining.ToString("0.#", CultureInfo.InvariantCulture);
     }
 
     private static async Task<string?> FindOldestSummaryCommitAsync(GitHubClient github, PullRequestContext context,

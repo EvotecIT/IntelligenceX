@@ -42,6 +42,10 @@ internal sealed class ReviewSettings {
         "\\binvestment\\b",
         "\\btax\\b"
     };
+    private static readonly IReadOnlyList<string> DefaultReviewThreadsBotLogins = new[] {
+        "intelligencex-review",
+        "copilot-pull-request-reviewer"
+    };
 
     public string Mode { get; set; } = "hybrid";
     public ReviewProvider Provider { get; set; } = ReviewProvider.OpenAI;
@@ -56,6 +60,9 @@ internal sealed class ReviewSettings {
     public string Model { get; set; } = "gpt-5.2-codex";
     public ReasoningEffort? ReasoningEffort { get; set; }
     public ReasoningSummary? ReasoningSummary { get; set; }
+    public bool ReviewUsageSummary { get; set; }
+    public int ReviewUsageSummaryCacheMinutes { get; set; } = 10;
+    public int ReviewUsageSummaryTimeoutSeconds { get; set; } = 10;
     public OpenAITransportKind OpenAITransport { get; set; } = OpenAITransportKind.AppServer;
     public int RetryCount { get; set; } = 3;
     public int RetryDelaySeconds { get; set; } = 5;
@@ -103,7 +110,7 @@ internal sealed class ReviewSettings {
     public bool ReviewThreadsAutoResolveStale { get; set; }
     public bool ReviewThreadsAutoResolveMissingInline { get; set; }
     public bool ReviewThreadsAutoResolveBotsOnly { get; set; } = true;
-    public IReadOnlyList<string> ReviewThreadsAutoResolveBotLogins { get; set; } = Array.Empty<string>();
+    public IReadOnlyList<string> ReviewThreadsAutoResolveBotLogins { get; set; } = DefaultReviewThreadsBotLogins;
     public string ReviewThreadsAutoResolveDiffRange { get; set; } = "current";
     public int ReviewThreadsAutoResolveMax { get; set; } = 10;
     public bool ReviewThreadsAutoResolveAI { get; set; } = true;
@@ -216,6 +223,20 @@ internal sealed class ReviewSettings {
             if (parsed.HasValue) {
                 settings.ReasoningSummary = parsed;
             }
+        }
+        var usageSummary = GetInput("usage_summary", "REVIEW_USAGE_SUMMARY");
+        if (!string.IsNullOrWhiteSpace(usageSummary)) {
+            settings.ReviewUsageSummary = ParseBoolean(usageSummary, settings.ReviewUsageSummary);
+        }
+        var usageCacheMinutes = GetInput("usage_summary_cache_minutes", "REVIEW_USAGE_SUMMARY_CACHE_MINUTES");
+        if (!string.IsNullOrWhiteSpace(usageCacheMinutes)) {
+            settings.ReviewUsageSummaryCacheMinutes =
+                ParseNonNegativeInt(usageCacheMinutes, settings.ReviewUsageSummaryCacheMinutes);
+        }
+        var usageTimeoutSeconds = GetInput("usage_summary_timeout_seconds", "REVIEW_USAGE_SUMMARY_TIMEOUT_SECONDS");
+        if (!string.IsNullOrWhiteSpace(usageTimeoutSeconds)) {
+            settings.ReviewUsageSummaryTimeoutSeconds =
+                Math.Max(1, ParseNonNegativeInt(usageTimeoutSeconds, settings.ReviewUsageSummaryTimeoutSeconds));
         }
 
         var transport = GetInput("openai_transport", "OPENAI_TRANSPORT");
