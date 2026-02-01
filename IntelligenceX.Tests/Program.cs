@@ -34,6 +34,7 @@ internal static class Program {
         failed += Run("Header transport truncated", TestHeaderTransportTruncated);
         failed += Run("Copilot idle event", TestCopilotIdleEvent);
         failed += Run("ChatGPT usage parse", TestChatGptUsageParse);
+        failed += Run("ChatGPT usage cache invalid JSON", TestChatGptUsageCacheInvalidJson);
 #if !NET472
         failed += Run("Setup args reject skip+update", TestSetupArgsRejectSkipUpdate);
         failed += Run("GitHub secrets reject empty value", TestGitHubSecretsRejectEmptyValue);
@@ -157,6 +158,24 @@ internal static class Program {
         AssertNotNull(snapshot.CodeReviewRateLimit, "code review rate limit");
         AssertNotNull(snapshot.Credits, "credits");
         AssertEqual(true, snapshot.Credits!.HasCredits, "credits has");
+    }
+
+    private static void TestChatGptUsageCacheInvalidJson() {
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-usage-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path, "{invalid");
+            var ok = ChatGptUsageCache.TryLoad(out var entry, path);
+            AssertEqual(false, ok, "cache parse ok");
+            AssertEqual(null, entry, "cache entry null");
+        } finally {
+            try {
+                if (File.Exists(path)) {
+                    File.Delete(path);
+                }
+            } catch {
+                // best-effort cleanup
+            }
+        }
     }
 
     private static void TestEscapeHandling() {

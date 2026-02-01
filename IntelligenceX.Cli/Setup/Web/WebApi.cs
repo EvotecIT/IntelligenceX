@@ -463,14 +463,15 @@ internal sealed class WebApi {
             return;
         }
 
-        string? tempPath = null;
+        TempFile? tempFile = null;
         try {
             var authPath = request.AuthB64Path;
             if (!string.IsNullOrWhiteSpace(request.AuthB64)) {
                 var raw = Convert.FromBase64String(request.AuthB64);
                 var content = Encoding.UTF8.GetString(raw);
-                tempPath = Path.Combine(Path.GetTempPath(), $"intelligencex-auth-{Guid.NewGuid():N}.json");
+                var tempPath = Path.Combine(Path.GetTempPath(), $"intelligencex-auth-{Guid.NewGuid():N}.json");
                 await File.WriteAllTextAsync(tempPath, content).ConfigureAwait(false);
+                tempFile = new TempFile(tempPath);
                 authPath = tempPath;
             }
             if (string.IsNullOrWhiteSpace(authPath) || !File.Exists(authPath)) {
@@ -498,13 +499,7 @@ internal sealed class WebApi {
             context.Response.StatusCode = 500;
             await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
         } finally {
-            if (!string.IsNullOrWhiteSpace(tempPath)) {
-                try {
-                    File.Delete(tempPath);
-                } catch {
-                    // Best-effort cleanup.
-                }
-            }
+            tempFile?.Dispose();
         }
     }
 
@@ -790,6 +785,27 @@ internal sealed class WebApi {
         public bool WorkflowManaged { get; set; }
         public bool ConfigExists { get; set; }
         public string? Error { get; set; }
+    }
+
+    private sealed class TempFile : IDisposable {
+        private readonly string _path;
+
+        public TempFile(string path) {
+            _path = path;
+        }
+
+        public void Dispose() {
+            if (string.IsNullOrWhiteSpace(_path)) {
+                return;
+            }
+            try {
+                if (File.Exists(_path)) {
+                    File.Delete(_path);
+                }
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
     }
 
     private sealed class UsageResponse {

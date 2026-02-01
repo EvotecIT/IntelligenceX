@@ -62,20 +62,25 @@ public static class ChatGptUsageCache {
 
     public static bool TryLoad(out ChatGptUsageCacheEntry? entry, string? path = null) {
         entry = null;
-        var resolved = path ?? ResolveCachePath();
-        if (!File.Exists(resolved)) {
+        try {
+            var resolved = path ?? ResolveCachePath();
+            if (!File.Exists(resolved)) {
+                return false;
+            }
+            var content = File.ReadAllText(resolved);
+            if (string.IsNullOrWhiteSpace(content)) {
+                return false;
+            }
+            var obj = JsonLite.Parse(content)?.AsObject();
+            if (obj is null) {
+                return false;
+            }
+            entry = ChatGptUsageCacheEntry.FromJson(obj);
+            return entry is not null;
+        } catch {
+            entry = null;
             return false;
         }
-        var content = File.ReadAllText(resolved);
-        if (string.IsNullOrWhiteSpace(content)) {
-            return false;
-        }
-        var obj = JsonLite.Parse(content)?.AsObject();
-        if (obj is null) {
-            return false;
-        }
-        entry = ChatGptUsageCacheEntry.FromJson(obj);
-        return entry is not null;
     }
 
     public static void Save(ChatGptUsageSnapshot snapshot, string? path = null) {

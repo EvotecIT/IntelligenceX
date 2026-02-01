@@ -29,7 +29,7 @@ internal static class UsageRunner {
         var options = UsageOptions.Parse(args);
         if (options.ShowHelp) {
             PrintHelp();
-            return 1;
+            return 0;
         }
 
         try {
