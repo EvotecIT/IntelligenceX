@@ -1,5 +1,8 @@
 {
   "review": {
-    "reviewThreadsAutoResolveAIReply": true
+    "reviewThreadsAutoResolveAIReply": true,
+    "reviewUsageSummary": true,
+    "reviewUsageSummaryCacheMinutes": 10,
+    "reviewUsageSummaryTimeoutSeconds": 10
   }
 }
