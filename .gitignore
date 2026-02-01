@@ -377,3 +377,7 @@ build/*
 /Module/Lib/*dotnet-install.sh
 packages-microsoft-prod.deb
 dotnet-install.sh
+
+# Website build output
+Website/_site/
+nul

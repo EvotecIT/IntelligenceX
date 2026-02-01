@@ -1,0 +1,37 @@
+<header class="ix-header">
+  <div class="ix-header-inner">
+    <a href="/" class="ix-brand">
+      <svg class="ix-logo" viewBox="0 0 32 32" width="28" height="28" fill="none">
+        <rect width="32" height="32" rx="8" fill="var(--pf-accent)"/>
+        <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="var(--pf-bg)" font-family="var(--pf-font-display)" font-weight="700" font-size="18">IX</text>
+      </svg>
+      <span>IntelligenceX</span>
+    </a>
+
+    <button class="ix-nav-toggle" type="button" aria-label="Toggle navigation">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+
+    <nav class="ix-nav" aria-label="Main navigation">
+      <div class="ix-nav-links">
+        {{ if navigation.menus && navigation.menus.size > 0 }}
+          {{ for link in navigation.menus[0].items }}
+            <a href="{{ link.url }}" class="ix-nav-link">{{ link.title }}</a>
+          {{ end }}
+        {{ end }}
+      </div>
+      <div class="ix-actions">
+        {{ if navigation.actions && navigation.actions.size > 0 }}
+          {{ for action in navigation.actions }}
+            {{ if action.url }}
+            <a href="{{ action.url }}"{{ if action.css_class }} class="{{ action.css_class }}"{{ end }}{{ if action.aria_label }} aria-label="{{ action.aria_label }}"{{ else if action.title }} aria-label="{{ action.title }}"{{ end }}{{ if action.external }} target="_blank" rel="noopener"{{ end }}>
+              {{ if action.icon_html && action.icon_html != "" }}{{ action.icon_html }}{{ end }}
+              {{ if action.text && action.text != "" }} {{ action.text }}{{ else if !action.icon_html || action.icon_html == "" }} {{ action.title }}{{ end }}
+            </a>
+            {{ end }}
+          {{ end }}
+        {{ end }}
+      </div>
+    </nav>
+  </div>
+</header>
