@@ -1,0 +1,42 @@
+{
+  "steps": [
+    {
+      "task": "build",
+      "config": "./site.json",
+      "out": "./_site",
+      "clean": true
+    },
+    {
+      "task": "llms",
+      "siteRoot": "./_site",
+      "name": "IntelligenceX",
+      "license": "MIT",
+      "targets": ".NET 8+, .NET 10+, .NET Standard 2.0, .NET Framework 4.7.2"
+    },
+    {
+      "task": "sitemap",
+      "siteRoot": "./_site",
+      "baseUrl": "https://evotecit.github.io/IntelligenceX",
+      "html": true,
+      "htmlTitle": "IntelligenceX Sitemap",
+      "entries": [
+        { "path": "/", "priority": "1.0", "changefreq": "weekly" },
+        { "path": "/getting-started/", "priority": "0.9", "changefreq": "weekly" },
+        { "path": "/security/", "priority": "0.8", "changefreq": "monthly" },
+        { "path": "/docs/", "priority": "0.9", "changefreq": "weekly" },
+        { "path": "/docs/reviewer/overview/", "priority": "0.9", "changefreq": "weekly" },
+        { "path": "/docs/cli/overview/", "priority": "0.8", "changefreq": "weekly" },
+        { "path": "/docs/library/overview/", "priority": "0.8", "changefreq": "weekly" },
+        { "path": "/docs/powershell/overview/", "priority": "0.8", "changefreq": "weekly" }
+      ]
+    },
+    {
+      "task": "optimize",
+      "siteRoot": "./_site",
+      "criticalCss": "./themes/intelligencex/critical.css",
+      "minifyHtml": true,
+      "minifyCss": true,
+      "minifyJs": true
+    }
+  ]
+}

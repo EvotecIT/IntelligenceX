@@ -1,0 +1,51 @@
+{
+  "name": "intelligencex",
+  "engine": "scriban",
+  "layoutsPath": "layouts",
+  "partialsPath": "partials",
+  "assetsPath": "assets",
+  "defaultLayout": "home",
+  "tokens": {
+    "color": {
+      "bg": "#0A0E1A",
+      "bgAlt": "#111827",
+      "panel": "rgba(30, 41, 59, 0.85)",
+      "ink": "#F1F5F9",
+      "inkStrong": "#FFFFFF",
+      "muted": "#94A3B8",
+      "accent": "#00D9FF",
+      "accent2": "#8B5CF6",
+      "border": "rgba(51, 65, 85, 0.6)",
+      "success": "#10B981",
+      "headerBg": "rgba(10, 14, 26, 0.8)",
+      "cardBg": "rgba(30, 41, 59, 0.6)",
+      "codeBg": "#0D1117",
+      "codeBorder": "rgba(71, 85, 105, 0.5)",
+      "glowPrimary": "rgba(0, 217, 255, 0.15)",
+      "glowSecondary": "rgba(139, 92, 246, 0.12)",
+      "buttonPrimaryBg": "#00D9FF",
+      "buttonPrimaryText": "#0A0E1A",
+      "buttonSecondaryBg": "rgba(139, 92, 246, 0.2)",
+      "buttonSecondaryBorder": "rgba(139, 92, 246, 0.5)",
+      "buttonGhostBorder": "rgba(148, 163, 184, 0.4)"
+    },
+    "radius": {
+      "base": "12px",
+      "sm": "8px",
+      "lg": "16px"
+    },
+    "shadow": {
+      "button": "0 8px 24px rgba(0, 217, 255, 0.15)",
+      "panel": "0 24px 48px rgba(2, 6, 23, 0.45)",
+      "card": "0 12px 28px rgba(2, 6, 23, 0.35)"
+    },
+    "layout": {
+      "maxWidth": "1200px"
+    },
+    "font": {
+      "body": "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+      "display": "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+      "mono": "JetBrains Mono, Consolas, monospace"
+    }
+  }
+}
