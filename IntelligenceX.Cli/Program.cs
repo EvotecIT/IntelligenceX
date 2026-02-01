@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using IntelligenceX.Cli.Usage;
 using IntelligenceX.OpenAI.Auth;
 
 namespace IntelligenceX.Cli;
@@ -24,6 +25,7 @@ internal static class Program {
             "reviewer" => await RunReviewerAsync(rest).ConfigureAwait(false),
             "setup" => await RunSetupAsync(rest).ConfigureAwait(false),
             "release" => await RunReleaseAsync(rest).ConfigureAwait(false),
+            "usage" => await UsageRunner.RunAsync(rest).ConfigureAwait(false),
             "help" or "-h" or "--help" => PrintHelpReturn(),
             _ => PrintHelpReturn()
         };
@@ -44,6 +46,7 @@ internal static class Program {
         Console.WriteLine("  intelligencex setup wizard [options]");
         Console.WriteLine("  intelligencex setup web [url]");
         Console.WriteLine("  intelligencex release <command>");
+        Console.WriteLine("  intelligencex usage [options]");
         Console.WriteLine();
         Console.WriteLine("Auth commands:");
         Console.WriteLine("  auth login       Start OAuth login flow and store credentials");
@@ -666,4 +669,5 @@ internal static class Program {
         }
     }
 }
+
 

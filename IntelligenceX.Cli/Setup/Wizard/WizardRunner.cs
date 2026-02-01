@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.Setup.Host;
+using IntelligenceX.OpenAI.Auth;
+using IntelligenceX.OpenAI.Native;
+using IntelligenceX.OpenAI.Usage;
 using Spectre.Console;
 
 namespace IntelligenceX.Cli.Setup.Wizard;
@@ -92,7 +95,8 @@ internal static class WizardRunner {
 
         var plan = BuildPlan(state, state.SelectedRepos[0]);
         var workflowStatus = await GetWorkflowStatusAsync(state).ConfigureAwait(false);
-        WizardSummary.Render(plan, state.SelectedRepos, workflowStatus, state.ConfigSourceLabel, DescribeAuth(state));
+        var usageLabel = TryLoadCachedUsageSummary();
+        WizardSummary.Render(plan, state.SelectedRepos, workflowStatus, state.ConfigSourceLabel, DescribeAuth(state), usageLabel);
 
         if (!WizardPrompts.PromptConfirmApply()) {
             AnsiConsole.MarkupLine("[yellow]Cancelled.[/]");
@@ -127,6 +131,7 @@ internal static class WizardRunner {
         }
 
         AnsiConsole.MarkupLine("[green]Setup completed successfully.[/]");
+        await TryShowUsageAsync(state).ConfigureAwait(false);
         return 0;
     }
 
@@ -190,6 +195,153 @@ internal static class WizardRunner {
 
         AnsiConsole.Write(table);
         AnsiConsole.WriteLine();
+    }
+
+    private static async Task TryShowUsageAsync(WizardState state) {
+        if (state.Operation == WizardOperation.Cleanup) {
+            return;
+        }
+        if (!WizardPrompts.PromptCheckUsage()) {
+            return;
+        }
+        var includeEvents = WizardPrompts.PromptIncludeUsageEvents();
+        var authPath = AuthPaths.ResolveAuthPath();
+        if (!System.IO.File.Exists(authPath)) {
+            AnsiConsole.MarkupLine("[yellow]No local auth bundle found. Run `intelligencex auth login` first.[/]");
+            return;
+        }
+        try {
+            var options = new OpenAINativeOptions();
+            using var service = new ChatGptUsageService(options);
+            var report = await service.GetReportAsync(includeEvents, System.Threading.CancellationToken.None).ConfigureAwait(false);
+            TrySaveCache(report.Snapshot);
+            RenderUsage(report);
+        } catch (Exception ex) {
+            AnsiConsole.MarkupLine($"[yellow]Usage check failed: {ex.Message}[/]");
+        }
+    }
+
+    private static void TrySaveCache(ChatGptUsageSnapshot snapshot) {
+        try {
+            ChatGptUsageCache.Save(snapshot);
+        } catch {
+            // Best-effort cache.
+        }
+    }
+
+    private static string? TryLoadCachedUsageSummary() {
+        try {
+            if (!ChatGptUsageCache.TryLoad(out var entry) || entry is null) {
+                return null;
+            }
+            var summary = FormatUsageSummary(entry.Snapshot);
+            var updatedAt = entry.UpdatedAt.ToUniversalTime().ToString("u");
+            return string.IsNullOrWhiteSpace(summary) ? $"updated {updatedAt}" : $"{summary} (updated {updatedAt})";
+        } catch {
+            return null;
+        }
+    }
+
+    private static string FormatUsageSummary(ChatGptUsageSnapshot snapshot) {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(snapshot.PlanType)) {
+            parts.Add($"Plan {snapshot.PlanType}");
+        }
+        if (snapshot.Credits is not null && snapshot.Credits.Balance.HasValue) {
+            parts.Add($"Credits {snapshot.Credits.Balance.Value:0.####}");
+        }
+        if (snapshot.RateLimit is not null && snapshot.RateLimit.LimitReached) {
+            parts.Add("Limit reached");
+        }
+        return string.Join(" | ", parts);
+    }
+
+    private static void RenderUsage(ChatGptUsageReport report) {
+        var snapshot = report.Snapshot;
+        var table = new Table()
+            .RoundedBorder()
+            .AddColumn("Metric")
+            .AddColumn("Value");
+
+        if (!string.IsNullOrWhiteSpace(snapshot.PlanType)) {
+            table.AddRow("Plan", snapshot.PlanType!);
+        }
+        if (!string.IsNullOrWhiteSpace(snapshot.Email)) {
+            table.AddRow("Email", snapshot.Email!);
+        }
+        if (!string.IsNullOrWhiteSpace(snapshot.AccountId)) {
+            table.AddRow("Account", snapshot.AccountId!);
+        }
+
+        AddRateLimitRows(table, "Rate limit", snapshot.RateLimit);
+        AddRateLimitRows(table, "Code review limit", snapshot.CodeReviewRateLimit);
+
+        if (snapshot.Credits is not null) {
+            table.AddRow("Credits (has)", snapshot.Credits.HasCredits.ToString());
+            table.AddRow("Credits (unlimited)", snapshot.Credits.Unlimited.ToString());
+            if (snapshot.Credits.Balance.HasValue) {
+                table.AddRow("Credits balance", snapshot.Credits.Balance.Value.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture));
+            }
+        }
+
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine("[grey]ChatGPT usage[/]");
+        AnsiConsole.Write(table);
+        AnsiConsole.WriteLine();
+
+        if (report.Events.Count > 0) {
+            var eventsTable = new Table()
+                .RoundedBorder()
+                .AddColumn("Date")
+                .AddColumn("Surface")
+                .AddColumn("Credits")
+                .AddColumn("Usage Id");
+            foreach (var evt in report.Events) {
+                eventsTable.AddRow(evt.Date ?? "-", evt.ProductSurface ?? "-", FormatCredits(evt.CreditAmount), evt.UsageId ?? "-");
+            }
+            AnsiConsole.MarkupLine("[grey]Credit usage events[/]");
+            AnsiConsole.Write(eventsTable);
+            AnsiConsole.WriteLine();
+        }
+    }
+
+    private static void AddRateLimitRows(Table table, string label, ChatGptRateLimitStatus? status) {
+        if (status is null) {
+            return;
+        }
+        table.AddRow($"{label} allowed", status.Allowed.ToString());
+        table.AddRow($"{label} limit reached", status.LimitReached.ToString());
+        if (status.PrimaryWindow is not null) {
+            table.AddRow($"{label} primary", FormatWindow(status.PrimaryWindow));
+        }
+        if (status.SecondaryWindow is not null) {
+            table.AddRow($"{label} secondary", FormatWindow(status.SecondaryWindow));
+        }
+    }
+
+    private static string FormatWindow(ChatGptRateLimitWindow window) {
+        var parts = new List<string>();
+        if (window.UsedPercent.HasValue) {
+            parts.Add($"{window.UsedPercent.Value:0.#}%");
+        }
+        if (window.LimitWindowSeconds.HasValue) {
+            var span = TimeSpan.FromSeconds(Math.Max(0, window.LimitWindowSeconds.Value));
+            parts.Add($"{(int)span.TotalMinutes}m");
+        }
+        if (window.ResetAfterSeconds.HasValue) {
+            var span = TimeSpan.FromSeconds(Math.Max(0, window.ResetAfterSeconds.Value));
+            parts.Add($"resets in {(int)span.TotalMinutes}m");
+        } else if (window.ResetAtUnixSeconds.HasValue) {
+            var resetAt = DateTimeOffset.FromUnixTimeSeconds(window.ResetAtUnixSeconds.Value).ToUniversalTime();
+            parts.Add($"reset at {resetAt:u}");
+        }
+        return parts.Count == 0 ? "n/a" : string.Join(", ", parts);
+    }
+
+    private static string FormatCredits(double? value) {
+        return value.HasValue
+            ? value.Value.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)
+            : "-";
     }
 
     private static async Task<bool> EnsureGitHubTokenAsync(WizardState state) {

@@ -168,6 +168,13 @@ internal static class WebStaticAssets {
           <label>Auth bundle path</label>
           <input id=""authB64Path"" placeholder=""path to auth bundle file"" />
           <p class=""hint"">Provide this to update secrets without browser login.</p>
+
+          <h3>ChatGPT usage (optional)</h3>
+          <div class=""row"">
+            <label><input type=""checkbox"" id=""usageEvents"" /> Include credit usage events</label>
+            <button id=""checkUsage"">Check usage</button>
+          </div>
+          <div id=""usageSummary"" class=""summary"">No usage data yet.</div>
         </details>
 
         <div class=""row"">
@@ -227,6 +234,9 @@ const workflowPreview = document.getElementById('workflowPreview');
 const configPath = document.getElementById('configPath');
 const authB64 = document.getElementById('authB64');
 const authB64Path = document.getElementById('authB64Path');
+const usageEvents = document.getElementById('usageEvents');
+const checkUsage = document.getElementById('checkUsage');
+const usageSummary = document.getElementById('usageSummary');
 const provider = document.getElementById('provider');
 const reviewProfile = document.getElementById('reviewProfile');
 const reviewMode = document.getElementById('reviewMode');
@@ -260,13 +270,33 @@ const listInstalls = document.getElementById('listInstalls');
 const useInstallationToken = document.getElementById('useInstallationToken');
 let deviceState = null;
 let lastRecommendation = null;
+let lastSummaryBase = 'No actions yet.';
+let lastUsageSummary = null;
 
 function write(text) {
   output.textContent = text;
 }
 
+function writeUsage(text) {
+  usageSummary.textContent = text;
+}
+
 function setSummary(text) {
-  summary.textContent = text;
+  lastSummaryBase = text;
+  renderSummary();
+}
+
+function setUsageSummary(text) {
+  lastUsageSummary = text;
+  renderSummary();
+}
+
+function renderSummary() {
+  if (lastUsageSummary && lastUsageSummary.trim().length > 0) {
+    summary.textContent = `${lastSummaryBase}\n\nUsage:\n${lastUsageSummary}`;
+    return;
+  }
+  summary.textContent = lastSummaryBase;
 }
 
 function setStep(step, state) {
@@ -329,6 +359,7 @@ function updateControls() {
   const allowPlanApply = hasRepo && hasToken && (!needsAuthBundle || hasAuthBundle);
   document.getElementById('plan').disabled = !allowPlanApply;
   document.getElementById('apply').disabled = !allowPlanApply;
+  checkUsage.disabled = !hasAuthBundle;
 
   savePreset.disabled = !hasPresetName || !hasConfigJson;
   loadPreset.disabled = !hasPresetSelected;
@@ -359,6 +390,97 @@ function updateControls() {
   } else {
     setBadge(statusSecret, 'muted', 'Auth bundle: optional');
   }
+}
+
+function formatUsageResult(data) {
+  if (!data || !data.usage) {
+    return 'No usage data.';
+  }
+  const usage = data.usage;
+  const lines = [];
+  if (usage.planType) {
+    lines.push(`Plan: ${usage.planType}`);
+  }
+  if (usage.email) {
+    lines.push(`Email: ${usage.email}`);
+  }
+  if (usage.accountId) {
+    lines.push(`Account: ${usage.accountId}`);
+  }
+  if (usage.rateLimit) {
+    lines.push(formatRateLimit('Rate limit', usage.rateLimit));
+  }
+  if (usage.codeReviewRateLimit) {
+    lines.push(formatRateLimit('Code review limit', usage.codeReviewRateLimit));
+  }
+  if (usage.credits) {
+    const credits = usage.credits;
+    lines.push(`Credits: ${credits.hasCredits ? 'yes' : 'no'}${credits.unlimited ? ' (unlimited)' : ''}`);
+    if (credits.balance !== null && credits.balance !== undefined) {
+      lines.push(`Credits balance: ${credits.balance}`);
+    }
+  }
+  if (data.events && data.events.length > 0) {
+    lines.push('');
+    lines.push('Credit usage events:');
+    data.events.forEach(evt => {
+      const parts = [evt.date || '-', evt.productSurface || '-', evt.creditAmount ?? '-', evt.usageId || '-'];
+      lines.push(`- ${parts.join(' | ')}`);
+    });
+  }
+  return lines.join('\n');
+}
+
+function formatUsageSummaryShort(data) {
+  if (!data || !data.usage) {
+    return 'No usage data.';
+  }
+  const usage = data.usage;
+  const parts = [];
+  if (usage.planType) {
+    parts.push(`Plan ${usage.planType}`);
+  }
+  if (usage.credits && usage.credits.balance !== null && usage.credits.balance !== undefined) {
+    parts.push(`Credits ${usage.credits.balance}`);
+  }
+  if (usage.rateLimit && usage.rateLimit.limitReached) {
+    parts.push('Limit reached');
+  }
+  if (parts.length === 0) {
+    return 'Usage available.';
+  }
+  return parts.join(' | ');
+}
+
+function formatRateLimit(label, limit) {
+  const parts = [];
+  parts.push(`${label}: ${limit.allowed ? 'allowed' : 'blocked'}`);
+  if (limit.limitReached) {
+    parts.push('limit reached');
+  }
+  if (limit.primary) {
+    parts.push(`primary ${formatWindow(limit.primary)}`);
+  }
+  if (limit.secondary) {
+    parts.push(`secondary ${formatWindow(limit.secondary)}`);
+  }
+  return parts.join(', ');
+}
+
+function formatWindow(window) {
+  const segments = [];
+  if (window.usedPercent !== null && window.usedPercent !== undefined) {
+    segments.push(`${window.usedPercent}% used`);
+  }
+  if (window.limitWindowSeconds) {
+    segments.push(`${Math.round(window.limitWindowSeconds / 60)}m window`);
+  }
+  if (window.resetAfterSeconds) {
+    segments.push(`resets in ${Math.round(window.resetAfterSeconds / 60)}m`);
+  } else if (window.resetAt) {
+    segments.push(`reset at ${window.resetAt}`);
+  }
+  return segments.join(', ');
 }
 
 function updateOperationHint() {
@@ -857,6 +979,49 @@ loadWorkflow.addEventListener('click', async () => {
   updateControls();
 });
 
+checkUsage.addEventListener('click', async () => {
+  const hasAuthBundle = authB64.value.trim().length > 0 || authB64Path.value.trim().length > 0;
+  if (!hasAuthBundle) {
+    writeUsage('Provide auth bundle base64 or path first.');
+    return;
+  }
+  writeUsage('Checking usage...');
+  const res = await fetch('/api/usage', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      authB64: authB64.value.trim(),
+      authB64Path: authB64Path.value.trim(),
+      includeEvents: usageEvents.checked
+    })
+  });
+  const data = await res.json();
+  if (data.error) {
+    writeUsage('Usage error: ' + data.error);
+    return;
+  }
+  if (data.updatedAt) {
+    writeUsage(`Updated: ${data.updatedAt}\n\n` + formatUsageResult(data));
+  } else {
+    writeUsage(formatUsageResult(data));
+  }
+  setUsageSummary(formatUsageSummaryShort(data));
+});
+
+async function loadUsageCache() {
+  try {
+    const res = await fetch('/api/usage-cache');
+    const data = await res.json();
+    if (data && data.usage) {
+      const updated = data.updatedAt ? `Updated: ${data.updatedAt}\n\n` : '';
+      writeUsage(updated + formatUsageResult(data));
+      setUsageSummary(formatUsageSummaryShort(data));
+    }
+  } catch {
+    // Ignore cache errors.
+  }
+}
+
 savePreset.addEventListener('click', () => {
   const name = presetName.value.trim();
   const content = configJson.value.trim();
@@ -1116,7 +1281,8 @@ document.getElementById('apply').addEventListener('click', async () => {
 
 updateOperationHint();
 refreshPresets();
-updateControls();";
+updateControls();
+loadUsageCache();";
 
     private const string StylesCss = @"body {
   margin: 0;

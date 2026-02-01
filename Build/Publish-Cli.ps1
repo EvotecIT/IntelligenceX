@@ -102,7 +102,9 @@ if (-not $DoNotSign -and $Runtime -like 'win-*') {
         throw "SignTool not found. Install the Windows SDK or pass -SignToolPath."
     }
     $SignToolPath = $resolvedSignTool
-    $exe = Get-ChildItem -Path $OutDir -Filter '*.exe' -File | Where-Object { $_.Name -like 'intelligencex*.exe' } | Select-Object -First 1
+    $exe = Get-ChildItem -Path $OutDir -Filter '*.exe' -File |
+        Where-Object { $_.Name -like 'intelligencex*.exe' -or $_.Name -like 'IntelligenceX.Cli*.exe' } |
+        Select-Object -First 1
     if ($exe) {
         Write-Step "Signing -> $($exe.FullName)"
         $signArgs = @('sign', '/fd', 'sha256', '/v')

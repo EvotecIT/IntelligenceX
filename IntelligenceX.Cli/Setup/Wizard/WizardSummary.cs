@@ -4,7 +4,8 @@ using IntelligenceX.Cli.Setup.Host;
 namespace IntelligenceX.Cli.Setup.Wizard;
 
 internal static class WizardSummary {
-    public static void Render(SetupPlan plan, IReadOnlyList<string> repos, string? workflowStatus = null, string? configSource = null, string? authLabel = null) {
+    public static void Render(SetupPlan plan, IReadOnlyList<string> repos, string? workflowStatus = null, string? configSource = null,
+        string? authLabel = null, string? usageLabel = null) {
         var table = new Table()
             .RoundedBorder()
             .AddColumn("Setting")
@@ -34,6 +35,9 @@ internal static class WizardSummary {
         table.AddRow("Dry run", plan.DryRun ? "yes" : "no");
         table.AddRow("Branch", string.IsNullOrWhiteSpace(plan.BranchName) ? "(auto)" : plan.BranchName);
         table.AddRow("GitHub auth", string.IsNullOrWhiteSpace(authLabel) ? "token" : authLabel);
+        if (!string.IsNullOrWhiteSpace(usageLabel)) {
+            table.AddRow("Usage (cached)", usageLabel!);
+        }
 
         AnsiConsole.Write(table);
         AnsiConsole.WriteLine();

@@ -13,6 +13,8 @@ public sealed class OpenAINativeOptions {
         "https://chatgpt.com/backend-api/codex/models",
         "https://chatgpt.com/backend-api/models"
     };
+    public string ChatGptApiBaseUrl { get; set; } =
+        Environment.GetEnvironmentVariable("INTELLIGENCEX_CHATGPT_API_BASE_URL") ?? "https://chatgpt.com/backend-api";
     public string ClientVersion { get; set; } =
         Environment.GetEnvironmentVariable("INTELLIGENCEX_CLIENT_VERSION") ?? "0.0.0";
     public string Instructions { get; set; } =
@@ -45,6 +47,9 @@ public sealed class OpenAINativeOptions {
         }
         if (string.IsNullOrWhiteSpace(ResponsesUrl)) {
             throw new ArgumentException("ResponsesUrl cannot be null or whitespace.", nameof(ResponsesUrl));
+        }
+        if (string.IsNullOrWhiteSpace(ChatGptApiBaseUrl)) {
+            throw new ArgumentException("ChatGptApiBaseUrl cannot be null or whitespace.", nameof(ChatGptApiBaseUrl));
         }
         if (ModelUrls is null || ModelUrls.Length == 0) {
             throw new ArgumentException("ModelUrls cannot be null or empty.", nameof(ModelUrls));

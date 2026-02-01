@@ -321,4 +321,12 @@ internal static class WizardPrompts {
     public static bool PromptConfirmApply() {
         return AnsiConsole.Confirm("Apply these changes?", true);
     }
+
+    public static bool PromptCheckUsage() {
+        return AnsiConsole.Confirm("Check ChatGPT usage/credits now?", true);
+    }
+
+    public static bool PromptIncludeUsageEvents() {
+        return AnsiConsole.Confirm("Include credit usage events?", false);
+    }
 }

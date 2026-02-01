@@ -12,6 +12,7 @@ using IntelligenceX.Cli.Setup.Host;
 #endif
 using IntelligenceX.Copilot;
 using IntelligenceX.Json;
+using IntelligenceX.OpenAI.Usage;
 using IntelligenceX.Rpc;
 #if INTELLIGENCEX_REVIEWER
 using IntelligenceX.Reviewer;
@@ -32,6 +33,7 @@ internal static class Program {
         failed += Run("Header transport message", TestHeaderTransportMessage);
         failed += Run("Header transport truncated", TestHeaderTransportTruncated);
         failed += Run("Copilot idle event", TestCopilotIdleEvent);
+        failed += Run("ChatGPT usage parse", TestChatGptUsageParse);
 #if !NET472
         failed += Run("Setup args reject skip+update", TestSetupArgsRejectSkipUpdate);
         failed += Run("GitHub secrets reject empty value", TestGitHubSecretsRejectEmptyValue);
@@ -135,6 +137,26 @@ internal static class Program {
         var parsedItems = items!;
         AssertEqual("a", parsedItems[0].AsString(), "items[0]");
         AssertEqual("b", parsedItems[1].AsString(), "items[1]");
+    }
+
+    private static void TestChatGptUsageParse() {
+        const string json = "{"
+            + "\"plan_type\":\"pro\","
+            + "\"rate_limit\":{\"allowed\":true,\"limit_reached\":false,\"primary_window\":{\"used_percent\":12.5,\"limit_window_seconds\":18000,\"reset_after_seconds\":120}},"
+            + "\"code_review_rate_limit\":{\"allowed\":true,\"limit_reached\":false},"
+            + "\"credits\":{\"has_credits\":true,\"unlimited\":false,\"balance\":4.52,\"approx_local_messages\":[1,6]}"
+            + "}";
+        var obj = JsonLite.Parse(json).AsObject();
+        AssertNotNull(obj, "usage json");
+        var snapshot = ChatGptUsageSnapshot.FromJson(obj!);
+        AssertEqual("pro", snapshot.PlanType, "plan type");
+        AssertNotNull(snapshot.RateLimit, "rate limit");
+        AssertEqual(true, snapshot.RateLimit!.Allowed, "rate allowed");
+        AssertNotNull(snapshot.RateLimit.PrimaryWindow, "primary window");
+        AssertEqual(18000L, snapshot.RateLimit.PrimaryWindow!.LimitWindowSeconds, "window seconds");
+        AssertNotNull(snapshot.CodeReviewRateLimit, "code review rate limit");
+        AssertNotNull(snapshot.Credits, "credits");
+        AssertEqual(true, snapshot.Credits!.HasCredits, "credits has");
     }
 
     private static void TestEscapeHandling() {

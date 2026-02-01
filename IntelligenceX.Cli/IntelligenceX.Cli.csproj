@@ -1,14 +1,27 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <AssemblyName>intelligencex</AssemblyName>
-    <TargetName>intelligencex</TargetName>
+    <AssemblyName>IntelligenceX.Cli</AssemblyName>
     <PackageId>IntelligenceX.Cli</PackageId>
     <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(PublishDir)' != '' ">
+    <TargetName>intelligencex</TargetName>
+  </PropertyGroup>
+
+  <Target Name="CopyCliAlias" AfterTargets="Build" Condition=" '$(PublishDir)' == '' ">
+    <Copy SourceFiles="$(TargetPath)" DestinationFiles="$(TargetDir)intelligencex$(TargetExt)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(TargetDir)$(AssemblyName).dll" DestinationFiles="$(TargetDir)intelligencex.dll"
+          SkipUnchangedFiles="true" Condition="Exists('$(TargetDir)$(AssemblyName).dll') and '$(TargetExt)' != '.dll'" />
+    <Copy SourceFiles="$(TargetDir)$(AssemblyName).deps.json" DestinationFiles="$(TargetDir)intelligencex.deps.json"
+          SkipUnchangedFiles="true" Condition="Exists('$(TargetDir)$(AssemblyName).deps.json')" />
+    <Copy SourceFiles="$(TargetDir)$(AssemblyName).runtimeconfig.json" DestinationFiles="$(TargetDir)intelligencex.runtimeconfig.json"
+          SkipUnchangedFiles="true" Condition="Exists('$(TargetDir)$(AssemblyName).runtimeconfig.json')" />
+  </Target>
 
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
