@@ -1228,7 +1228,8 @@ public static class ReviewerApp {
         if (string.IsNullOrWhiteSpace(author)) {
             return false;
         }
-        var normalizedAuthor = NormalizeBotLogin(author);
+        var trimmedAuthor = author.Trim();
+        var normalizedAuthor = NormalizeBotLogin(trimmedAuthor);
         if (settings.ReviewThreadsAutoResolveBotLogins.Count > 0) {
             foreach (var login in settings.ReviewThreadsAutoResolveBotLogins) {
                 if (string.IsNullOrWhiteSpace(login)) {
@@ -1243,12 +1244,12 @@ public static class ReviewerApp {
                 }
             }
         }
-        if (author.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase) ||
-            author.EndsWith("bot", StringComparison.OrdinalIgnoreCase)) {
+        if (trimmedAuthor.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase) ||
+            trimmedAuthor.EndsWith("bot", StringComparison.OrdinalIgnoreCase)) {
             return true;
         }
-        return author.Equals("github-actions", StringComparison.OrdinalIgnoreCase) ||
-            author.Equals("intelligencex-review", StringComparison.OrdinalIgnoreCase);
+        return trimmedAuthor.Equals("github-actions", StringComparison.OrdinalIgnoreCase) ||
+            trimmedAuthor.Equals("intelligencex-review", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeBotLogin(string login) {

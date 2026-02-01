@@ -95,7 +95,9 @@ internal sealed class GitHubClient : IDisposable {
         }
 
         var files = new List<PullRequestFile>();
+        var seenFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var page = 1;
+        const int MaxPages = 20;
         while (true) {
             var baseToken = Uri.EscapeDataString(baseSha);
             var headToken = Uri.EscapeDataString(headSha);
@@ -106,6 +108,7 @@ internal sealed class GitHubClient : IDisposable {
             if (array is null || array.Count == 0) {
                 break;
             }
+            var added = 0;
             foreach (var item in array) {
                 var fileObj = item.AsObject();
                 if (fileObj is null) {
@@ -114,9 +117,16 @@ internal sealed class GitHubClient : IDisposable {
                 var filename = fileObj.GetString("filename") ?? string.Empty;
                 var status = fileObj.GetString("status") ?? string.Empty;
                 var patch = fileObj.GetString("patch");
+                if (string.IsNullOrWhiteSpace(filename) || !seenFiles.Add(filename)) {
+                    continue;
+                }
                 files.Add(new PullRequestFile(filename, status, patch));
+                added++;
             }
-            if (array.Count < 100) {
+            if (array.Count < 100 || added == 0) {
+                break;
+            }
+            if (page >= MaxPages) {
                 break;
             }
             page++;
