@@ -98,7 +98,17 @@ public static class ChatGptUsageCache {
         var tempPath = resolved + "." + Guid.NewGuid().ToString("N") + ".tmp";
         File.WriteAllText(tempPath, json);
         TrySetOwnerOnlyPermissions(tempPath);
-        ReplaceFile(tempPath, resolved);
+        try {
+            ReplaceFile(tempPath, resolved);
+        } finally {
+            try {
+                if (File.Exists(tempPath)) {
+                    File.Delete(tempPath);
+                }
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
         TrySetOwnerOnlyPermissions(resolved);
     }
 
