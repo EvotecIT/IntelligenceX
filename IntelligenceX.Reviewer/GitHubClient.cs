@@ -97,6 +97,7 @@ internal sealed class GitHubClient : IDisposable {
         var files = new List<PullRequestFile>();
         var seenFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var page = 1;
+        var truncated = false;
         const int MaxPages = 20;
         while (true) {
             var baseToken = Uri.EscapeDataString(baseSha);
@@ -127,11 +128,15 @@ internal sealed class GitHubClient : IDisposable {
                 break;
             }
             if (page >= MaxPages) {
+                truncated = true;
                 break;
             }
             page++;
         }
 
+        if (truncated) {
+            Console.Error.WriteLine("Compare API results truncated after 2000 files. Consider using pull request files endpoint for full coverage.");
+        }
         return files;
     }
 

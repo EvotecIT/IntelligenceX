@@ -15,7 +15,7 @@ internal static class ReviewFormatter {
         var inlineNote = string.Empty;
         if (!inlineSupported && settings.Mode != "summary") {
             inlineNote = "> Inline comments are not enabled yet; posting summary only.\n";
-        } else if (inlineSuppressed) {
+        } else if (inlineSuppressed && settings.Mode != "summary") {
             inlineNote = "> Inline comments were skipped due to a failed review; posting summary only.\n";
         }
         var autoResolveLine = string.IsNullOrWhiteSpace(autoResolveNote)
