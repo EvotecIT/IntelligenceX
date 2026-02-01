@@ -135,7 +135,8 @@ internal static class ReviewConfigLoader {
         settings.RetryDelaySeconds = ReadInt(obj, "retryDelaySeconds", settings.RetryDelaySeconds);
         settings.RetryMaxDelaySeconds = ReadInt(obj, "retryMaxDelaySeconds", settings.RetryMaxDelaySeconds);
         settings.PreflightTimeoutSeconds = ReadInt(obj, "preflightTimeoutSeconds", settings.PreflightTimeoutSeconds);
-        settings.ReviewUsageSummaryCacheMinutes = ReadInt(obj, "reviewUsageSummaryCacheMinutes", settings.ReviewUsageSummaryCacheMinutes);
+        settings.ReviewUsageSummaryCacheMinutes = Math.Max(0,
+            ReadInt(obj, "reviewUsageSummaryCacheMinutes", settings.ReviewUsageSummaryCacheMinutes));
         settings.ReviewUsageSummaryTimeoutSeconds = Math.Max(1,
             ReadInt(obj, "reviewUsageSummaryTimeoutSeconds", settings.ReviewUsageSummaryTimeoutSeconds));
     }

@@ -782,7 +782,10 @@ public static class ReviewerApp {
 
         using var cts = new CancellationTokenSource(
             TimeSpan.FromSeconds(Math.Max(1, settings.ReviewUsageSummaryTimeoutSeconds)));
-        using var service = new ChatGptUsageService(new OpenAINativeOptions());
+        var options = new OpenAINativeOptions {
+            AuthStore = new FileAuthBundleStore()
+        };
+        using var service = new ChatGptUsageService(options);
         var snapshot = await service.GetUsageSnapshotAsync(cts.Token).ConfigureAwait(false);
         try {
             ChatGptUsageCache.Save(snapshot);
