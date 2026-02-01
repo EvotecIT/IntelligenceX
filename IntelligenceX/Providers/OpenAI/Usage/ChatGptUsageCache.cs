@@ -1,6 +1,10 @@
 using System;
 using System.Globalization;
 using System.IO;
+#if NET6_0_OR_GREATER
+using System.Security.AccessControl;
+using System.Security.Principal;
+#endif
 using IntelligenceX.Json;
 
 namespace IntelligenceX.OpenAI.Usage;
@@ -114,6 +118,20 @@ public static class ChatGptUsageCache {
         try {
             if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS()) {
                 File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            } else if (OperatingSystem.IsWindows()) {
+                var identity = WindowsIdentity.GetCurrent();
+                var user = identity.User;
+                if (user is null) {
+                    return;
+                }
+                var fileInfo = new FileInfo(path);
+                var security = fileInfo.GetAccessControl();
+                security.SetAccessRuleProtection(true, false);
+                security.SetOwner(user);
+                security.SetAccessRule(new FileSystemAccessRule(user,
+                    FileSystemRights.Read | FileSystemRights.Write,
+                    AccessControlType.Allow));
+                fileInfo.SetAccessControl(security);
             }
         } catch {
             // Best-effort permissions.

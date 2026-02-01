@@ -981,11 +981,7 @@ loadWorkflow.addEventListener('click', async () => {
 
 checkUsage.addEventListener('click', async () => {
   const hasAuthBundle = authB64.value.trim().length > 0 || authB64Path.value.trim().length > 0;
-  if (!hasAuthBundle) {
-    writeUsage('Provide auth bundle base64 or path first.');
-    return;
-  }
-  writeUsage('Checking usage...');
+  writeUsage(hasAuthBundle ? 'Checking usage...' : 'Checking usage with stored auth...');
   try {
     const res = await fetch('/api/usage', {
       method: 'POST',

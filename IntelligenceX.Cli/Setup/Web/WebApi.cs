@@ -465,15 +465,12 @@ internal sealed class WebApi {
             await WriteJsonAsync(context, new { error = "Invalid JSON payload." }).ConfigureAwait(false);
             return;
         }
-        if (string.IsNullOrWhiteSpace(request.AuthB64) && string.IsNullOrWhiteSpace(request.AuthB64Path)) {
-            context.Response.StatusCode = 400;
-            await WriteJsonAsync(context, new { error = "Missing auth bundle (base64 or path)." }).ConfigureAwait(false);
-            return;
-        }
-
         TempFile? tempFile = null;
         try {
             var authPath = request.AuthB64Path;
+            if (string.IsNullOrWhiteSpace(authPath) && string.IsNullOrWhiteSpace(request.AuthB64)) {
+                authPath = AuthPaths.ResolveAuthPath();
+            }
             if (!string.IsNullOrWhiteSpace(request.AuthB64)) {
                 var raw = Convert.FromBase64String(request.AuthB64);
                 var content = Encoding.UTF8.GetString(raw);
