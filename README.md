@@ -640,6 +640,7 @@ Commands:
 - `intelligencex reviewer run`
 - `intelligencex reviewer resolve-threads`
 - `intelligencex release notes`
+- `intelligencex usage`
 Legacy aliases are supported: `login`, `export`, `sync-codex`.
 Defaults are built in; environment variables only override them.
 
@@ -662,6 +663,8 @@ Optional overrides:
 - `CODEX_HOME` (used by `sync-codex`)
 
 Native ChatGPT overrides (optional):
+- `INTELLIGENCEX_CHATGPT_API_BASE_URL`
+- `INTELLIGENCEX_USAGE_PATH` (optional cache path for usage snapshot)
 - `INTELLIGENCEX_INSTRUCTIONS`
 - `INTELLIGENCEX_REASONING_EFFORT` (`minimal|low|medium|high|xhigh`)
 - `INTELLIGENCEX_REASONING_SUMMARY` (`auto|concise|detailed|off`)
@@ -702,6 +705,18 @@ Write Codex auth.json (for app-server/CLI reuse):
 
 ```bash
 dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- auth sync-codex
+```
+
+Check ChatGPT usage and credits:
+
+```bash
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- usage --events
+```
+
+Skip writing the usage cache:
+
+```bash
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- usage --no-cache
 ```
 
 Generate release notes between tags (and update CHANGELOG.md):
@@ -826,6 +841,9 @@ Console.WriteLine(response);
 - This library targets the Codex app-server JSON-RPC protocol.
 - For custom app-server arguments set `CODEX_APP_SERVER_ARGS`.
 - For custom app-server path set `CODEX_APP_SERVER_PATH`.
+
+
+
 
 
 

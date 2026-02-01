@@ -6,6 +6,9 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.Setup.Wizard;
+using IntelligenceX.OpenAI.Auth;
+using IntelligenceX.OpenAI.Native;
+using IntelligenceX.OpenAI.Usage;
 
 namespace IntelligenceX.Cli.Setup.Web;
 
@@ -14,6 +17,7 @@ internal sealed class WebApi {
 
     public async Task HandleAsync(System.Net.HttpListenerContext context) {
         var path = context.Request.Url?.AbsolutePath ?? "/";
+        var normalizedPath = path.Length > 1 ? path.TrimEnd('/') : path;
         if (path.StartsWith("/api/repos", StringComparison.OrdinalIgnoreCase)) {
             await HandleReposAsync(context).ConfigureAwait(false);
             return;
@@ -56,6 +60,14 @@ internal sealed class WebApi {
         }
         if (path.StartsWith("/api/setup/apply", StringComparison.OrdinalIgnoreCase)) {
             await HandleSetupAsync(context, dryRun: false).ConfigureAwait(false);
+            return;
+        }
+        if (normalizedPath.Equals("/api/usage-cache", StringComparison.OrdinalIgnoreCase)) {
+            await HandleUsageCacheAsync(context).ConfigureAwait(false);
+            return;
+        }
+        if (normalizedPath.Equals("/api/usage", StringComparison.OrdinalIgnoreCase)) {
+            await HandleUsageAsync(context).ConfigureAwait(false);
             return;
         }
 
@@ -429,6 +441,97 @@ internal sealed class WebApi {
         }).ConfigureAwait(false);
     }
 
+    private async Task HandleUsageAsync(System.Net.HttpListenerContext context) {
+        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
+            return;
+        }
+
+        var body = await ReadBodyAsync(context).ConfigureAwait(false);
+        UsageRequest request;
+        try {
+            request = JsonSerializer.Deserialize<UsageRequest>(body, _jsonOptions) ?? new UsageRequest();
+        } catch (JsonException) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Invalid JSON payload." }).ConfigureAwait(false);
+            return;
+        }
+        TempFile? tempFile = null;
+        try {
+            var authPath = request.AuthB64Path;
+            if (string.IsNullOrWhiteSpace(authPath) && string.IsNullOrWhiteSpace(request.AuthB64)) {
+                authPath = AuthPaths.ResolveAuthPath();
+            }
+            if (!string.IsNullOrWhiteSpace(request.AuthB64)) {
+                var raw = Convert.FromBase64String(request.AuthB64);
+                var content = Encoding.UTF8.GetString(raw);
+                var tempPath = Path.Combine(Path.GetTempPath(), $"intelligencex-auth-{Guid.NewGuid():N}.json");
+                await File.WriteAllTextAsync(tempPath, content).ConfigureAwait(false);
+                tempFile = new TempFile(tempPath);
+                authPath = tempPath;
+            }
+            if (string.IsNullOrWhiteSpace(authPath) || !File.Exists(authPath)) {
+                context.Response.StatusCode = 400;
+                await WriteJsonAsync(context, new { error = "Auth bundle path not found." }).ConfigureAwait(false);
+                return;
+            }
+
+            var options = new OpenAINativeOptions {
+                AuthStore = new FileAuthBundleStore(authPath, request.AuthKey)
+            };
+            if (!string.IsNullOrWhiteSpace(request.ChatGptApiBaseUrl)) {
+                options.ChatGptApiBaseUrl = request.ChatGptApiBaseUrl!;
+            }
+
+            using var service = new ChatGptUsageService(options);
+            var report = await service.GetReportAsync(request.IncludeEvents, CancellationToken.None).ConfigureAwait(false);
+            TrySaveCache(report.Snapshot);
+            var response = BuildUsageResponse(report, DateTimeOffset.UtcNow);
+            await WriteJsonAsync(context, response).ConfigureAwait(false);
+        } catch (FormatException) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Invalid base64 auth bundle." }).ConfigureAwait(false);
+        } catch (Exception ex) {
+            context.Response.StatusCode = 500;
+            await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+        } finally {
+            tempFile?.Dispose();
+        }
+    }
+
+    private async Task HandleUsageCacheAsync(System.Net.HttpListenerContext context) {
+        try {
+            if (!ChatGptUsageCache.TryLoad(out var entry) || entry is null) {
+                await WriteJsonAsync(context, new UsageResponse()).ConfigureAwait(false);
+                return;
+            }
+            var response = new UsageResponse {
+                Usage = UsageSnapshot.From(entry.Snapshot),
+                Events = new List<UsageEvent>(),
+                UpdatedAt = entry.UpdatedAt.ToUniversalTime().ToString("u")
+            };
+            await WriteJsonAsync(context, response).ConfigureAwait(false);
+        } catch (Exception ex) {
+            context.Response.StatusCode = 500;
+            await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+        }
+    }
+
+    private static UsageResponse BuildUsageResponse(ChatGptUsageReport report, DateTimeOffset updatedAt) {
+        return new UsageResponse {
+            Usage = UsageSnapshot.From(report.Snapshot),
+            Events = UsageEvent.From(report.Events),
+            UpdatedAt = updatedAt.ToUniversalTime().ToString("u")
+        };
+    }
+
+    private static void TrySaveCache(ChatGptUsageSnapshot snapshot) {
+        try {
+            ChatGptUsageCache.Save(snapshot);
+        } catch {
+            // Best-effort cache.
+        }
+    }
+
     private static string[] BuildSetupArgs(SetupRequest request, bool dryRun, string repo) {
         var args = new List<string> {
             "--repo", repo
@@ -679,6 +782,14 @@ internal sealed class WebApi {
         public string? BranchName { get; set; }
     }
 
+    private sealed class UsageRequest {
+        public string? AuthB64 { get; set; }
+        public string? AuthB64Path { get; set; }
+        public bool IncludeEvents { get; set; }
+        public string? AuthKey { get; set; }
+        public string? ChatGptApiBaseUrl { get; set; }
+    }
+
     private sealed class SetupResponse {
         public string Repo { get; set; } = string.Empty;
         public int ExitCode { get; set; }
@@ -693,6 +804,132 @@ internal sealed class WebApi {
         public bool WorkflowManaged { get; set; }
         public bool ConfigExists { get; set; }
         public string? Error { get; set; }
+    }
+
+    private sealed class TempFile : IDisposable {
+        private readonly string _path;
+
+        public TempFile(string path) {
+            _path = path;
+        }
+
+        public void Dispose() {
+            if (string.IsNullOrWhiteSpace(_path)) {
+                return;
+            }
+            try {
+                if (File.Exists(_path)) {
+                    File.Delete(_path);
+                }
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
+    }
+
+    private sealed class UsageResponse {
+        public UsageSnapshot? Usage { get; set; }
+        public List<UsageEvent>? Events { get; set; }
+        public string? UpdatedAt { get; set; }
+    }
+
+    private sealed class UsageSnapshot {
+        public string? PlanType { get; set; }
+        public string? Email { get; set; }
+        public string? AccountId { get; set; }
+        public UsageRateLimit? RateLimit { get; set; }
+        public UsageRateLimit? CodeReviewRateLimit { get; set; }
+        public UsageCredits? Credits { get; set; }
+
+        public static UsageSnapshot From(ChatGptUsageSnapshot snapshot) {
+            return new UsageSnapshot {
+                PlanType = snapshot.PlanType,
+                Email = snapshot.Email,
+                AccountId = snapshot.AccountId,
+                RateLimit = UsageRateLimit.From(snapshot.RateLimit),
+                CodeReviewRateLimit = UsageRateLimit.From(snapshot.CodeReviewRateLimit),
+                Credits = UsageCredits.From(snapshot.Credits)
+            };
+        }
+    }
+
+    private sealed class UsageRateLimit {
+        public bool Allowed { get; set; }
+        public bool LimitReached { get; set; }
+        public UsageRateLimitWindow? Primary { get; set; }
+        public UsageRateLimitWindow? Secondary { get; set; }
+
+        public static UsageRateLimit? From(ChatGptRateLimitStatus? status) {
+            if (status is null) {
+                return null;
+            }
+            return new UsageRateLimit {
+                Allowed = status.Allowed,
+                LimitReached = status.LimitReached,
+                Primary = UsageRateLimitWindow.From(status.PrimaryWindow),
+                Secondary = UsageRateLimitWindow.From(status.SecondaryWindow)
+            };
+        }
+    }
+
+    private sealed class UsageRateLimitWindow {
+        public double? UsedPercent { get; set; }
+        public long? LimitWindowSeconds { get; set; }
+        public long? ResetAfterSeconds { get; set; }
+        public long? ResetAt { get; set; }
+
+        public static UsageRateLimitWindow? From(ChatGptRateLimitWindow? window) {
+            if (window is null) {
+                return null;
+            }
+            return new UsageRateLimitWindow {
+                UsedPercent = window.UsedPercent,
+                LimitWindowSeconds = window.LimitWindowSeconds,
+                ResetAfterSeconds = window.ResetAfterSeconds,
+                ResetAt = window.ResetAtUnixSeconds
+            };
+        }
+    }
+
+    private sealed class UsageCredits {
+        public bool HasCredits { get; set; }
+        public bool Unlimited { get; set; }
+        public double? Balance { get; set; }
+        public int[]? ApproxLocalMessages { get; set; }
+        public int[]? ApproxCloudMessages { get; set; }
+
+        public static UsageCredits? From(ChatGptCreditsSnapshot? credits) {
+            if (credits is null) {
+                return null;
+            }
+            return new UsageCredits {
+                HasCredits = credits.HasCredits,
+                Unlimited = credits.Unlimited,
+                Balance = credits.Balance,
+                ApproxLocalMessages = credits.ApproxLocalMessages,
+                ApproxCloudMessages = credits.ApproxCloudMessages
+            };
+        }
+    }
+
+    private sealed class UsageEvent {
+        public string? Date { get; set; }
+        public string? ProductSurface { get; set; }
+        public double? CreditAmount { get; set; }
+        public string? UsageId { get; set; }
+
+        public static List<UsageEvent> From(IReadOnlyList<ChatGptCreditUsageEvent> events) {
+            var result = new List<UsageEvent>();
+            foreach (var evt in events) {
+                result.Add(new UsageEvent {
+                    Date = evt.Date,
+                    ProductSurface = evt.ProductSurface,
+                    CreditAmount = evt.CreditAmount,
+                    UsageId = evt.UsageId
+                });
+            }
+            return result;
+        }
     }
 
     private static bool TryParseRepo(string repo, out string owner, out string name) {

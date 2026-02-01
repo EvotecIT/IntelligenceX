@@ -66,6 +66,7 @@ public sealed class OpenAIConfig {
     public string? Transport { get; set; }
     public string? Originator { get; set; }
     public string? ResponsesUrl { get; set; }
+    public string? ChatGptApiBaseUrl { get; set; }
     public string? Instructions { get; set; }
     public string? TextVerbosity { get; set; }
     public string? AppServerPath { get; set; }
@@ -87,6 +88,7 @@ public sealed class OpenAIConfig {
         Transport = obj.GetString("transport") ?? Transport;
         Originator = obj.GetString("originator") ?? Originator;
         ResponsesUrl = obj.GetString("responsesUrl") ?? ResponsesUrl;
+        ChatGptApiBaseUrl = obj.GetString("chatGptApiBaseUrl") ?? obj.GetString("chatgptApiBaseUrl") ?? ChatGptApiBaseUrl;
         Instructions = obj.GetString("instructions") ?? Instructions;
         TextVerbosity = obj.GetString("textVerbosity") ?? TextVerbosity;
         AppServerPath = obj.GetString("appServerPath") ?? AppServerPath;
@@ -124,6 +126,9 @@ public sealed class OpenAIConfig {
         }
         if (!string.IsNullOrWhiteSpace(ResponsesUrl)) {
             options.NativeOptions.ResponsesUrl = ResponsesUrl!;
+        }
+        if (!string.IsNullOrWhiteSpace(ChatGptApiBaseUrl)) {
+            options.NativeOptions.ChatGptApiBaseUrl = ChatGptApiBaseUrl!;
         }
         if (!string.IsNullOrWhiteSpace(Instructions)) {
             options.NativeOptions.Instructions = Instructions!;
@@ -193,6 +198,9 @@ public sealed class OpenAIConfig {
         }
         if (!string.IsNullOrWhiteSpace(ResponsesUrl)) {
             options.NativeOptions.ResponsesUrl = ResponsesUrl!;
+        }
+        if (!string.IsNullOrWhiteSpace(ChatGptApiBaseUrl)) {
+            options.NativeOptions.ChatGptApiBaseUrl = ChatGptApiBaseUrl!;
         }
         if (!string.IsNullOrWhiteSpace(Instructions)) {
             options.NativeOptions.Instructions = Instructions!;
@@ -298,3 +306,5 @@ public sealed class CopilotConfig {
         return value.AsBoolean();
     }
 }
+
+
