@@ -45,6 +45,7 @@ internal sealed class WizardState {
     public List<string> SelectedRepos { get; } = new();
     public string? GitHubClientId { get; set; }
     public string? GitHubToken { get; set; }
+    public string? AuthBundlePath { get; set; }
     public long? GitHubAppId { get; set; }
     public string? GitHubAppKeyPem { get; set; }
     public string? GitHubAppKeyPath { get; set; }

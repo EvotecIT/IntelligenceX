@@ -250,6 +250,11 @@ internal sealed class UsageOptions {
                 case "--auth-key":
                     options.AuthKey = ReadValue(args, ref i);
                     break;
+                default:
+                    if (arg.StartsWith("-", StringComparison.Ordinal)) {
+                        throw new InvalidOperationException($"Unknown option: {arg}");
+                    }
+                    break;
             }
         }
         return options;

@@ -91,6 +91,33 @@ public static class ChatGptUsageCache {
         }
         var entry = new ChatGptUsageCacheEntry(snapshot, DateTimeOffset.UtcNow);
         var json = JsonLite.Serialize(JsonValue.From(entry.ToJson()));
-        File.WriteAllText(resolved, json);
+        var tempPath = resolved + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        File.WriteAllText(tempPath, json);
+        TrySetOwnerOnlyPermissions(tempPath);
+        ReplaceFile(tempPath, resolved);
+        TrySetOwnerOnlyPermissions(resolved);
+    }
+
+    private static void ReplaceFile(string source, string destination) {
+#if NET6_0_OR_GREATER
+        File.Move(source, destination, true);
+#else
+        if (File.Exists(destination)) {
+            File.Delete(destination);
+        }
+        File.Move(source, destination);
+#endif
+    }
+
+    private static void TrySetOwnerOnlyPermissions(string path) {
+#if NET6_0_OR_GREATER
+        try {
+            if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS()) {
+                File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            }
+        } catch {
+            // Best-effort permissions.
+        }
+#endif
     }
 }

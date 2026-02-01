@@ -41,7 +41,8 @@ internal static class WizardRunner {
             BranchName = options.BranchName,
             Upgrade = options.Upgrade,
             Force = options.Force,
-            Operation = options.Operation
+            Operation = options.Operation,
+            AuthBundlePath = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH")
         };
 
         state.Operation = WizardPrompts.PromptOperation();
@@ -205,13 +206,26 @@ internal static class WizardRunner {
             return;
         }
         var includeEvents = WizardPrompts.PromptIncludeUsageEvents();
-        var authPath = AuthPaths.ResolveAuthPath();
+        var authPath = !string.IsNullOrWhiteSpace(state.AuthBundlePath)
+            ? state.AuthBundlePath!
+            : AuthPaths.ResolveAuthPath();
         if (!System.IO.File.Exists(authPath)) {
-            AnsiConsole.MarkupLine("[yellow]No local auth bundle found. Run `intelligencex auth login` first.[/]");
+            var overridePath = WizardPrompts.PromptAuthBundlePath();
+            if (string.IsNullOrWhiteSpace(overridePath)) {
+                AnsiConsole.MarkupLine("[yellow]No local auth bundle found. Run `intelligencex auth login` first.[/]");
+                return;
+            }
+            authPath = overridePath;
+            state.AuthBundlePath = overridePath;
+        }
+        if (!System.IO.File.Exists(authPath)) {
+            AnsiConsole.MarkupLine("[yellow]Auth bundle not found at the specified path.[/]");
             return;
         }
         try {
-            var options = new OpenAINativeOptions();
+            var options = new OpenAINativeOptions {
+                AuthStore = new FileAuthBundleStore(authPath)
+            };
             using var service = new ChatGptUsageService(options);
             var report = await service.GetReportAsync(includeEvents, System.Threading.CancellationToken.None).ConfigureAwait(false);
             TrySaveCache(report.Snapshot);
