@@ -344,8 +344,8 @@ Notes:
 - `reviewThreadsAutoResolveAIReply` posts per-thread replies with the triage reason (opt-in).
 - When `reviewThreadsAutoResolveAIEmbed` is true, the triage block is embedded in the main review and the extra triage comment is skipped to reduce clutter.
 - `reviewUsageSummary` appends a usage line to the review footer (ChatGPT login only; uses cache when available).
-- `reviewUsageSummaryCacheMinutes` controls how long a cached usage snapshot is reused before refreshing (default: 10).
-- `reviewUsageSummaryTimeoutSeconds` caps the usage fetch time (default: 10).
+- `reviewUsageSummaryCacheMinutes` controls how long a cached usage snapshot is reused before refreshing (default: 10, set to `0` to always refresh).
+- `reviewUsageSummaryTimeoutSeconds` caps the usage fetch time (default: 10, minimum: 1).
 - Set `reviewThreadsMax` or `reviewThreadsMaxComments` to `0` to disable review-thread context.
 - When review-thread context is included, the reviewer suppresses the separate "Review comments" block to avoid duplicate content.
 

@@ -136,7 +136,8 @@ internal static class ReviewConfigLoader {
         settings.RetryMaxDelaySeconds = ReadInt(obj, "retryMaxDelaySeconds", settings.RetryMaxDelaySeconds);
         settings.PreflightTimeoutSeconds = ReadInt(obj, "preflightTimeoutSeconds", settings.PreflightTimeoutSeconds);
         settings.ReviewUsageSummaryCacheMinutes = ReadInt(obj, "reviewUsageSummaryCacheMinutes", settings.ReviewUsageSummaryCacheMinutes);
-        settings.ReviewUsageSummaryTimeoutSeconds = ReadInt(obj, "reviewUsageSummaryTimeoutSeconds", settings.ReviewUsageSummaryTimeoutSeconds);
+        settings.ReviewUsageSummaryTimeoutSeconds = Math.Max(1,
+            ReadInt(obj, "reviewUsageSummaryTimeoutSeconds", settings.ReviewUsageSummaryTimeoutSeconds));
     }
 
     private static void ApplyBooleans(JsonObject obj, ReviewSettings settings) {

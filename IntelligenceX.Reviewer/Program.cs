@@ -8,7 +8,6 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
-using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Auth;
 using IntelligenceX.OpenAI.Native;
 using IntelligenceX.OpenAI.Usage;
@@ -753,7 +752,7 @@ public static class ReviewerApp {
         if (!settings.ReviewUsageSummary) {
             return string.Empty;
         }
-        if (settings.Provider != ReviewProvider.OpenAI || settings.OpenAITransport != OpenAITransportKind.AppServer) {
+        if (settings.Provider != ReviewProvider.OpenAI) {
             return string.Empty;
         }
 
@@ -774,10 +773,7 @@ public static class ReviewerApp {
 
     private static async Task<ChatGptUsageSnapshot?> TryGetUsageSnapshotAsync(ReviewSettings settings) {
         var cacheMinutes = Math.Max(0, settings.ReviewUsageSummaryCacheMinutes);
-        if (ChatGptUsageCache.TryLoad(out var entry) && entry is not null) {
-            if (cacheMinutes <= 0) {
-                return entry.Snapshot;
-            }
+        if (cacheMinutes > 0 && ChatGptUsageCache.TryLoad(out var entry) && entry is not null) {
             var age = DateTimeOffset.UtcNow - entry.UpdatedAt;
             if (age <= TimeSpan.FromMinutes(cacheMinutes)) {
                 return entry.Snapshot;

@@ -236,7 +236,7 @@ internal sealed class ReviewSettings {
         var usageTimeoutSeconds = GetInput("usage_summary_timeout_seconds", "REVIEW_USAGE_SUMMARY_TIMEOUT_SECONDS");
         if (!string.IsNullOrWhiteSpace(usageTimeoutSeconds)) {
             settings.ReviewUsageSummaryTimeoutSeconds =
-                ParseNonNegativeInt(usageTimeoutSeconds, settings.ReviewUsageSummaryTimeoutSeconds);
+                Math.Max(1, ParseNonNegativeInt(usageTimeoutSeconds, settings.ReviewUsageSummaryTimeoutSeconds));
         }
 
         var transport = GetInput("openai_transport", "OPENAI_TRANSPORT");
