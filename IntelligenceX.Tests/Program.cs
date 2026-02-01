@@ -510,6 +510,18 @@ internal static class Program {
         var (baseUri, graphQlPath) = IntelligenceX.Cli.ReviewThreads.ReviewThreadResolveRunner.ResolveGraphQlEndpoint("https://github.company.local/api/v3");
         AssertEqual("https://github.company.local/api/v3", baseUri.ToString(), "base uri");
         AssertEqual("/api/graphql", graphQlPath, "graphql path");
+
+        var (apiGraphBase, apiGraphPath) = IntelligenceX.Cli.ReviewThreads.ReviewThreadResolveRunner.ResolveGraphQlEndpoint("https://github.company.local/api/graphql");
+        AssertEqual("/api/graphql", apiGraphPath, "graphql path api/graphql");
+        AssertEqual("https://github.company.local", apiGraphBase.GetLeftPart(UriPartial.Authority), "base uri api/graphql");
+
+        var (rootGraphBase, rootGraphPath) = IntelligenceX.Cli.ReviewThreads.ReviewThreadResolveRunner.ResolveGraphQlEndpoint("https://github.company.local/graphql");
+        AssertEqual("/graphql", rootGraphPath, "graphql path root");
+        AssertEqual("https://github.company.local", rootGraphBase.GetLeftPart(UriPartial.Authority), "base uri /graphql");
+
+        var (defaultBase, defaultPath) = IntelligenceX.Cli.ReviewThreads.ReviewThreadResolveRunner.ResolveGraphQlEndpoint("https://github.company.local");
+        AssertEqual("/graphql", defaultPath, "graphql path default");
+        AssertEqual("https://github.company.local", defaultBase.GetLeftPart(UriPartial.Authority), "base uri default");
     }
 
     private static void TestContextDenyInvalidRegex() {

@@ -577,7 +577,7 @@ internal sealed class WebApi {
             await WriteJsonAsync(context, new { error = "Content-Type must be application/json." }).ConfigureAwait(false);
             return false;
         }
-        if (!context.Request.HasEntityBody || context.Request.ContentLength64 == 0) {
+        if (!context.Request.HasEntityBody) {
             context.Response.StatusCode = 400;
             await WriteJsonAsync(context, new { error = "Request body required." }).ConfigureAwait(false);
             return false;
