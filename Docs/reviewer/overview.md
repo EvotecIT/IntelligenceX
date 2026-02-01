@@ -9,10 +9,10 @@ The reviewer runs in GitHub Actions and posts a structured review comment on PRs
 - Local web UI (preview): `intelligencex setup web`
 
 Related docs:
-- `Docs/reviewer/onboarding-wizard.md`
-- `Docs/reviewer/setup-web.md`
-- `Docs/reviewer/configuration.md`
-- `Docs/reviewer/security-trust.md`
+- `./onboarding-wizard.md`
+- `./setup-web.md`
+- `./configuration.md`
+- `./security-trust.md`
 
 ## Trust model (short version)
 - BYO GitHub App is supported for branded bot identity.

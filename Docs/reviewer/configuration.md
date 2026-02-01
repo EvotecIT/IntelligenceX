@@ -3,7 +3,7 @@
 You can configure the reviewer with env vars **or** a repo-local file at `.intelligencex/reviewer.json`.
 The JSON file is the cleanest way to keep settings versioned with your repo.
 
-Schema: `Schemas/reviewer.schema.json`
+Schema: `../../Schemas/reviewer.schema.json`
 
 ## Minimal example
 
@@ -35,4 +35,4 @@ Schema: `Schemas/reviewer.schema.json`
 - `reviewThreadsAutoResolveDiffRange` supports `current`, `pr-base`, or `first-review`.
 
 ## Full example
-See `README.md` for a full JSON sample, or inspect the schema for all options.
+See `../../README.md` for a full JSON sample, or inspect the schema for all options.

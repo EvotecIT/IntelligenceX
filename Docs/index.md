@@ -3,23 +3,23 @@
 Use the docs by area so the library, reviewer, CLI, and PowerShell guidance stay focused.
 
 ## Quick start
-- Reviewer onboarding (recommended): `Docs/reviewer/onboarding-wizard.md`
-- Local web setup UI (preview): `Docs/reviewer/setup-web.md`
-- CLI quickstart: `Docs/cli/quickstart.md`
+- Reviewer onboarding (recommended): `reviewer/onboarding-wizard.md`
+- Local web setup UI (preview): `reviewer/setup-web.md`
+- CLI quickstart: `cli/quickstart.md`
 
 ## Reviewer (GitHub Actions)
-- Overview: `Docs/reviewer/overview.md`
-- Configuration: `Docs/reviewer/configuration.md`
-- Security & trust: `Docs/reviewer/security-trust.md`
-- Smoke tests: `Docs/reviewer/review-smoke.md`
+- Overview: `reviewer/overview.md`
+- Configuration: `reviewer/configuration.md`
+- Security & trust: `reviewer/security-trust.md`
+- Smoke tests: `reviewer/review-smoke.md`
 
 ## CLI tools
-- Overview: `Docs/cli/overview.md`
-- Quickstart: `Docs/cli/quickstart.md`
+- Overview: `cli/overview.md`
+- Quickstart: `cli/quickstart.md`
 
 ## .NET library
-- Overview + examples: `Docs/library/overview.md`
-- Providers: `Docs/library/providers.md`
+- Overview + examples: `library/overview.md`
+- Providers: `library/providers.md`
 
 ## PowerShell module
-- Overview + examples: `Docs/powershell/overview.md`
+- Overview + examples: `powershell/overview.md`

@@ -30,7 +30,7 @@ intelligencex setup --repo owner/name --update-secret
 dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -- auth login --set-github-secret
 ```
 
-The command auto-detects repo/org + token if available (see `Docs/cli/overview.md` for details).
+The command auto-detects repo/org + token if available (see `./overview.md` for details).
 
 ## Manual secret flow
 
