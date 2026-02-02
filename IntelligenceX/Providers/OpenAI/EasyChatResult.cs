@@ -7,6 +7,12 @@ namespace IntelligenceX.OpenAI;
 /// <summary>
 /// Simplified view of a chat turn, including text blocks and image outputs.
 /// </summary>
+/// <example>
+/// <code>
+/// var result = await session.AskAsync("Summarize the PR");
+/// Console.WriteLine(result.Text);
+/// </code>
+/// </example>
 public sealed class EasyChatResult {
     public EasyChatResult(string? text, IReadOnlyList<string> textBlocks, IReadOnlyList<EasyImage> images, TurnInfo turn) {
         Text = text;
@@ -56,6 +62,13 @@ public sealed class EasyChatResult {
 /// <summary>
 /// Simplified image output from a chat turn.
 /// </summary>
+/// <example>
+/// <code>
+/// foreach (var image in result.Images) {
+///     Console.WriteLine(image.Url ?? image.Path);
+/// }
+/// </code>
+/// </example>
 public sealed class EasyImage {
     public EasyImage(string? url, string? path, string? base64, string? mimeType) {
         Url = url;

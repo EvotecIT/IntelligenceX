@@ -6,6 +6,12 @@ namespace IntelligenceX.OpenAI.Chat;
 /// <summary>
 /// Builds a multi-part chat input with text and optional images.
 /// </summary>
+/// <example>
+/// <code>
+/// var input = ChatInput.FromText("Analyze the error log")
+///     .AddImagePath("C:\\temp\\screenshot.png");
+/// </code>
+/// </example>
 public sealed class ChatInput {
     private readonly JsonArray _items = new();
 
