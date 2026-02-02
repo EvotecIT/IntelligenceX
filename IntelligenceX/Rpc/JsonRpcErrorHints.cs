@@ -1,6 +1,14 @@
 namespace IntelligenceX.Rpc;
 
+/// <summary>
+/// Provides friendly descriptions for JSON-RPC error codes.
+/// </summary>
 public static class JsonRpcErrorHints {
+    /// <summary>
+    /// Returns a human-readable hint for a JSON-RPC error code, when known.
+    /// </summary>
+    /// <param name="code">JSON-RPC error code.</param>
+    /// <returns>A hint string or null when unknown.</returns>
     public static string? GetHint(int code) {
         return code switch {
             -32700 => "Parse error (malformed JSON)",
