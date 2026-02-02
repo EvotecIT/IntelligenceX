@@ -96,6 +96,18 @@ Schema: `../../Schemas/reviewer.schema.json`
 }
 ```
 
+## Output style example
+
+```json
+{
+  "review": {
+    "outputStyle": "claude",
+    "style": "colorful",
+    "tone": "friendly"
+  }
+}
+```
+
 ## Common knobs
 - `provider`: `openai` or `copilot`
 - `model`: model name for the selected provider

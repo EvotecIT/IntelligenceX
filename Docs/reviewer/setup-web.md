@@ -53,6 +53,11 @@ If you want to avoid personal access tokens, you can use the GitHub App manifest
 - Inline hints describe what is missing before plan/apply can run.
 - Status badges show auth, repo selection, and auth bundle readiness.
 
+## Tips
+
+- Use the "Load workflow preview" button before applying changes.
+- If you want zero secret handling in the UI, enable "Skip OpenAI secret" and paste secrets manually in GitHub.
+
 ## Security notes
 
 - The server listens on 127.0.0.1 only over HTTP (no HTTPS binding).

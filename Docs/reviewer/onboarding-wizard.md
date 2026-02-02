@@ -63,6 +63,15 @@ See `./setup-web.md` for limitations and security notes.
 5) Click "Use installation token"
 ```
 
+## Example: one-repo device flow
+
+```text
+1) Run: intelligencex setup wizard
+2) Pick "Device flow"
+3) Authenticate and select a single repo
+4) Plan + Apply (creates PR)
+```
+
 ## Manual secret mode
 
 If you do not want the CLI to upload secrets automatically:
