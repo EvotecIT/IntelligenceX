@@ -13,6 +13,10 @@
       "clean": true
     },
     {
+      "task": "verify",
+      "config": "./site.json"
+    },
+    {
       "task": "apidocs",
       "xml": "../IntelligenceX/bin/Release/net8.0/IntelligenceX.xml",
       "assembly": "../IntelligenceX/bin/Release/net8.0/IntelligenceX.dll",
