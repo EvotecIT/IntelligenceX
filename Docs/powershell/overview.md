@@ -45,4 +45,11 @@ Connect-IntelligenceX -Diagnostics
 Get-IntelligenceXHealth
 ```
 
+## Skills and MCP
+
+```powershell
+Get-IntelligenceXSkill
+Get-IntelligenceXMcpServerStatus
+```
+
 Examples live in `Module/Examples`.

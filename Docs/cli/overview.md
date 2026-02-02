@@ -4,6 +4,12 @@ The CLI (`intelligencex`) handles auth, onboarding, reviewer runs, and utilities
 
 Quickstart: `./quickstart.md`
 
+Commands:
+- `./commands/auth.md`
+- `./commands/setup.md`
+- `./commands/reviewer.md`
+- `./commands/release.md`
+
 ## Common commands
 
 ```bash
