@@ -1,14 +1,34 @@
 {
   "steps": [
     {
+      "task": "dotnet-build",
+      "project": "../IntelligenceX/IntelligenceX.csproj",
+      "configuration": "Release",
+      "framework": "net8.0"
+    },
+    {
       "task": "build",
       "config": "./site.json",
       "out": "./_site",
       "clean": true
     },
     {
+      "task": "apidocs",
+      "xml": "../IntelligenceX/bin/Release/net8.0/IntelligenceX.xml",
+      "assembly": "../IntelligenceX/bin/Release/net8.0/IntelligenceX.dll",
+      "out": "./_site/api",
+      "title": "IntelligenceX API Reference",
+      "baseUrl": "/api",
+      "format": "both",
+      "template": "docs",
+      "nav": "./site.json"
+    },
+    {
       "task": "llms",
       "siteRoot": "./_site",
+      "project": "../IntelligenceX/IntelligenceX.csproj",
+      "apiIndex": "./_site/api/index.json",
+      "apiBase": "/api",
       "name": "IntelligenceX",
       "license": "MIT",
       "targets": ".NET 8+, .NET 10+, .NET Standard 2.0, .NET Framework 4.7.2"
@@ -27,7 +47,8 @@
         { "path": "/docs/reviewer/overview/", "priority": "0.9", "changefreq": "weekly" },
         { "path": "/docs/cli/overview/", "priority": "0.8", "changefreq": "weekly" },
         { "path": "/docs/library/overview/", "priority": "0.8", "changefreq": "weekly" },
-        { "path": "/docs/powershell/overview/", "priority": "0.8", "changefreq": "weekly" }
+        { "path": "/docs/powershell/overview/", "priority": "0.8", "changefreq": "weekly" },
+        { "path": "/api/", "priority": "0.8", "changefreq": "weekly" }
       ]
     },
     {
