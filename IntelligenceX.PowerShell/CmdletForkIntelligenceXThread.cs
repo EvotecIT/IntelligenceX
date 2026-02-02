@@ -9,6 +9,11 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Forks an existing thread.</para>
+/// <para type="description">Creates a new thread using the current thread history as a starting point.</para>
+/// <example>
+///  <para>Fork a thread</para>
+///  <code>New-IntelligenceXThreadFork -ThreadId $thread.id</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.New, "IntelligenceXThreadFork")]
 [OutputType(typeof(ThreadInfo), typeof(JsonValue))]
@@ -31,6 +36,7 @@ public sealed class CmdletForkIntelligenceXThread : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter Raw { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         if (Raw.IsPresent) {

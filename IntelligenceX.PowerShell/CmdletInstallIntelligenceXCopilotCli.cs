@@ -6,6 +6,11 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Installs GitHub Copilot CLI (opt-in).</para>
+/// <para type="description">Runs the platform-appropriate install command for the Copilot CLI.</para>
+/// <example>
+///  <para>Install Copilot CLI using the auto method</para>
+///  <code>Install-IntelligenceXCopilotCli</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Install, "IntelligenceXCopilotCli", SupportsShouldProcess = true)]
 [OutputType(typeof(CopilotCliInstallCommand))]
@@ -28,6 +33,7 @@ public sealed class CmdletInstallIntelligenceXCopilotCli : PSCmdlet {
     [Parameter]
     public SwitchParameter PassThru { get; set; }
 
+    /// <inheritdoc/>
     protected override void ProcessRecord() {
         var command = CopilotCliInstall.GetCommand(Method, Prerelease.IsPresent);
         if (!ShouldProcess($"{command.FileName} {command.Arguments}", "Install Copilot CLI")) {

@@ -3,7 +3,16 @@ using System.Collections.Generic;
 
 namespace IntelligenceX.Json;
 
+/// <summary>
+/// Extension helpers for <see cref="JsonObject"/>.
+/// </summary>
 public static class JsonObjectExtensions {
+    /// <summary>
+    /// Returns a new object containing properties that are not in <paramref name="knownKeys"/>.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <param name="knownKeys">Keys to exclude from the result.</param>
+    /// <returns>A new object containing unknown keys, or null when none exist.</returns>
     public static JsonObject? ExtractAdditional(this JsonObject obj, params string[] knownKeys) {
         if (obj is null) {
             throw new ArgumentNullException(nameof(obj));

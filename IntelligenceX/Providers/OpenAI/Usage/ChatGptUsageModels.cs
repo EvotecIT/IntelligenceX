@@ -5,7 +5,13 @@ using IntelligenceX.Json;
 
 namespace IntelligenceX.OpenAI.Usage;
 
+/// <summary>
+/// Represents a usage snapshot returned by ChatGPT usage endpoints.
+/// </summary>
 public sealed class ChatGptUsageSnapshot {
+    /// <summary>
+    /// Initializes a new usage snapshot.
+    /// </summary>
     public ChatGptUsageSnapshot(string? userId, string? accountId, string? email, string? planType,
         ChatGptRateLimitStatus? rateLimit, ChatGptRateLimitStatus? codeReviewRateLimit,
         ChatGptCreditsSnapshot? credits, JsonObject raw, JsonObject? additional) {
@@ -20,16 +26,48 @@ public sealed class ChatGptUsageSnapshot {
         Additional = additional;
     }
 
+    /// <summary>
+    /// Gets the user id.
+    /// </summary>
     public string? UserId { get; }
+    /// <summary>
+    /// Gets the account id.
+    /// </summary>
     public string? AccountId { get; }
+    /// <summary>
+    /// Gets the account email.
+    /// </summary>
     public string? Email { get; }
+    /// <summary>
+    /// Gets the plan type identifier.
+    /// </summary>
     public string? PlanType { get; }
+    /// <summary>
+    /// Gets the main rate limit status.
+    /// </summary>
     public ChatGptRateLimitStatus? RateLimit { get; }
+    /// <summary>
+    /// Gets the code review rate limit status.
+    /// </summary>
     public ChatGptRateLimitStatus? CodeReviewRateLimit { get; }
+    /// <summary>
+    /// Gets the credits snapshot.
+    /// </summary>
     public ChatGptCreditsSnapshot? Credits { get; }
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>
+    /// Creates a snapshot from a JSON object.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed snapshot.</returns>
     public static ChatGptUsageSnapshot FromJson(JsonObject obj) {
         var userId = obj.GetString("user_id") ?? obj.GetString("userId");
         var accountId = obj.GetString("account_id") ?? obj.GetString("accountId");
@@ -44,6 +82,9 @@ public sealed class ChatGptUsageSnapshot {
         return new ChatGptUsageSnapshot(userId, accountId, email, planType, rateLimit, codeReview, credits, obj, additional);
     }
 
+    /// <summary>
+    /// Serializes the snapshot to a JSON object.
+    /// </summary>
     public JsonObject ToJson() {
         if (Raw is not null) {
             return Raw;
@@ -74,7 +115,13 @@ public sealed class ChatGptUsageSnapshot {
     }
 }
 
+/// <summary>
+/// Represents rate limit status information.
+/// </summary>
 public sealed class ChatGptRateLimitStatus {
+    /// <summary>
+    /// Initializes a new rate limit status.
+    /// </summary>
     public ChatGptRateLimitStatus(bool allowed, bool limitReached, ChatGptRateLimitWindow? primary, ChatGptRateLimitWindow? secondary,
         JsonObject raw, JsonObject? additional) {
         Allowed = allowed;
@@ -85,13 +132,36 @@ public sealed class ChatGptRateLimitStatus {
         Additional = additional;
     }
 
+    /// <summary>
+    /// Gets a value indicating whether requests are allowed.
+    /// </summary>
     public bool Allowed { get; }
+    /// <summary>
+    /// Gets a value indicating whether the limit has been reached.
+    /// </summary>
     public bool LimitReached { get; }
+    /// <summary>
+    /// Gets the primary rate limit window.
+    /// </summary>
     public ChatGptRateLimitWindow? PrimaryWindow { get; }
+    /// <summary>
+    /// Gets the secondary rate limit window.
+    /// </summary>
     public ChatGptRateLimitWindow? SecondaryWindow { get; }
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>
+    /// Parses a rate limit status from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed status or null.</returns>
     public static ChatGptRateLimitStatus? FromJson(JsonObject? obj) {
         if (obj is null) {
             return null;
@@ -105,6 +175,9 @@ public sealed class ChatGptRateLimitStatus {
         return new ChatGptRateLimitStatus(allowed, limitReached, primary, secondary, obj, additional);
     }
 
+    /// <summary>
+    /// Serializes the status to a JSON object.
+    /// </summary>
     public JsonObject ToJson() {
         if (Raw is not null) {
             return Raw;
@@ -122,7 +195,13 @@ public sealed class ChatGptRateLimitStatus {
     }
 }
 
+/// <summary>
+/// Represents a rate limit window.
+/// </summary>
 public sealed class ChatGptRateLimitWindow {
+    /// <summary>
+    /// Initializes a new rate limit window.
+    /// </summary>
     public ChatGptRateLimitWindow(double? usedPercent, long? limitWindowSeconds, long? resetAfterSeconds, long? resetAt,
         JsonObject raw, JsonObject? additional) {
         UsedPercent = usedPercent;
@@ -133,13 +212,36 @@ public sealed class ChatGptRateLimitWindow {
         Additional = additional;
     }
 
+    /// <summary>
+    /// Gets the percentage of usage consumed.
+    /// </summary>
     public double? UsedPercent { get; }
+    /// <summary>
+    /// Gets the window length in seconds.
+    /// </summary>
     public long? LimitWindowSeconds { get; }
+    /// <summary>
+    /// Gets the seconds remaining until reset.
+    /// </summary>
     public long? ResetAfterSeconds { get; }
+    /// <summary>
+    /// Gets the reset time in Unix seconds.
+    /// </summary>
     public long? ResetAtUnixSeconds { get; }
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>
+    /// Parses a rate limit window from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed window or null.</returns>
     public static ChatGptRateLimitWindow? FromJson(JsonObject? obj) {
         if (obj is null) {
             return null;
@@ -153,6 +255,9 @@ public sealed class ChatGptRateLimitWindow {
         return new ChatGptRateLimitWindow(usedPercent, limitWindowSeconds, resetAfterSeconds, resetAt, obj, additional);
     }
 
+    /// <summary>
+    /// Serializes the window to a JSON object.
+    /// </summary>
     public JsonObject ToJson() {
         if (Raw is not null) {
             return Raw;
@@ -174,7 +279,13 @@ public sealed class ChatGptRateLimitWindow {
     }
 }
 
+/// <summary>
+/// Represents a credits snapshot for a ChatGPT account.
+/// </summary>
 public sealed class ChatGptCreditsSnapshot {
+    /// <summary>
+    /// Initializes a new credits snapshot.
+    /// </summary>
     public ChatGptCreditsSnapshot(bool hasCredits, bool unlimited, double? balance, int[]? approxLocalMessages,
         int[]? approxCloudMessages, JsonObject raw, JsonObject? additional) {
         HasCredits = hasCredits;
@@ -186,14 +297,40 @@ public sealed class ChatGptCreditsSnapshot {
         Additional = additional;
     }
 
+    /// <summary>
+    /// Gets a value indicating whether the account has credits.
+    /// </summary>
     public bool HasCredits { get; }
+    /// <summary>
+    /// Gets a value indicating whether credits are unlimited.
+    /// </summary>
     public bool Unlimited { get; }
+    /// <summary>
+    /// Gets the credits balance, when available.
+    /// </summary>
     public double? Balance { get; }
+    /// <summary>
+    /// Gets approximate local message counts.
+    /// </summary>
     public int[]? ApproxLocalMessages { get; }
+    /// <summary>
+    /// Gets approximate cloud message counts.
+    /// </summary>
     public int[]? ApproxCloudMessages { get; }
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>
+    /// Parses a credits snapshot from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed snapshot or null.</returns>
     public static ChatGptCreditsSnapshot? FromJson(JsonObject? obj) {
         if (obj is null) {
             return null;
@@ -208,6 +345,9 @@ public sealed class ChatGptCreditsSnapshot {
         return new ChatGptCreditsSnapshot(hasCredits, unlimited, balance, approxLocal, approxCloud, obj, additional);
     }
 
+    /// <summary>
+    /// Serializes the credits snapshot to a JSON object.
+    /// </summary>
     public JsonObject ToJson() {
         if (Raw is not null) {
             return Raw;
@@ -270,7 +410,13 @@ public sealed class ChatGptCreditsSnapshot {
     }
 }
 
+/// <summary>
+/// Represents a single credit usage event.
+/// </summary>
 public sealed class ChatGptCreditUsageEvent {
+    /// <summary>
+    /// Initializes a new credit usage event.
+    /// </summary>
     public ChatGptCreditUsageEvent(string? date, string? productSurface, double? creditAmount, string? usageId, JsonObject raw,
         JsonObject? additional) {
         Date = date;
@@ -281,13 +427,36 @@ public sealed class ChatGptCreditUsageEvent {
         Additional = additional;
     }
 
+    /// <summary>
+    /// Gets the event date.
+    /// </summary>
     public string? Date { get; }
+    /// <summary>
+    /// Gets the product surface identifier.
+    /// </summary>
     public string? ProductSurface { get; }
+    /// <summary>
+    /// Gets the credit amount for the event.
+    /// </summary>
     public double? CreditAmount { get; }
+    /// <summary>
+    /// Gets the usage id when present.
+    /// </summary>
     public string? UsageId { get; }
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>
+    /// Parses a credit usage event from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed credit usage event.</returns>
     public static ChatGptCreditUsageEvent FromJson(JsonObject obj) {
         var date = obj.GetString("date");
         var surface = obj.GetString("product_surface") ?? obj.GetString("productSurface");
@@ -297,6 +466,9 @@ public sealed class ChatGptCreditUsageEvent {
         return new ChatGptCreditUsageEvent(date, surface, creditAmount, usageId, obj, additional);
     }
 
+    /// <summary>
+    /// Serializes the event to a JSON object.
+    /// </summary>
     public JsonObject ToJson() {
         if (Raw is not null) {
             return Raw;
@@ -318,15 +490,30 @@ public sealed class ChatGptCreditUsageEvent {
     }
 }
 
+/// <summary>
+/// Represents a combined usage snapshot and usage events report.
+/// </summary>
 public sealed class ChatGptUsageReport {
+    /// <summary>
+    /// Initializes a new usage report.
+    /// </summary>
     public ChatGptUsageReport(ChatGptUsageSnapshot snapshot, IReadOnlyList<ChatGptCreditUsageEvent> events) {
         Snapshot = snapshot;
         Events = events;
     }
 
+    /// <summary>
+    /// Gets the usage snapshot.
+    /// </summary>
     public ChatGptUsageSnapshot Snapshot { get; }
+    /// <summary>
+    /// Gets the credit usage events.
+    /// </summary>
     public IReadOnlyList<ChatGptCreditUsageEvent> Events { get; }
 
+    /// <summary>
+    /// Serializes the report to a JSON object.
+    /// </summary>
     public JsonObject ToJson() {
         var obj = new JsonObject()
             .Add("usage", Snapshot.ToJson());

@@ -8,6 +8,15 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Waits for the login flow to complete.</para>
+/// <para type="description">Polls the app-server for login completion. Use after Start-IntelligenceXChatGptLogin.</para>
+/// <example>
+///  <para>Wait for the current login to finish</para>
+///  <code>Wait-IntelligenceXLogin</code>
+/// </example>
+/// <example>
+///  <para>Wait for a specific login with a shorter timeout</para>
+///  <code>Wait-IntelligenceXLogin -LoginId $login.id -TimeoutSeconds 120</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Wait, "IntelligenceXLogin")]
 public sealed class CmdletWaitIntelligenceXLogin : IntelligenceXCmdlet {
@@ -29,6 +38,7 @@ public sealed class CmdletWaitIntelligenceXLogin : IntelligenceXCmdlet {
     [Parameter]
     public int TimeoutSeconds { get; set; } = 300;
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(TimeoutSeconds));

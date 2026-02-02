@@ -7,6 +7,11 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Enables or disables a skill.</para>
+/// <para type="description">Updates a skill configuration file to enable or disable it.</para>
+/// <example>
+///  <para>Disable a skill by config path</para>
+///  <code>Set-IntelligenceXSkill -Path ".intelligencex/skills/my-skill/skill.json" -Enabled $false</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Set, "IntelligenceXSkill")]
 public sealed class CmdletSetIntelligenceXSkill : IntelligenceXCmdlet {
@@ -28,6 +33,7 @@ public sealed class CmdletSetIntelligenceXSkill : IntelligenceXCmdlet {
     [Parameter(Mandatory = true)]
     public bool Enabled { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         await resolved.WriteSkillConfigAsync(Path, Enabled, CancelToken).ConfigureAwait(false);

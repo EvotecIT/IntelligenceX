@@ -28,7 +28,6 @@
         <RepositoryUrl>https://github.com/EvotecIT/IntelligenceX</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <GenerateDocumentationFile>True</GenerateDocumentationFile>
-        <NoWarn>$(NoWarn);1591</NoWarn>
         <NeutralLanguage>en</NeutralLanguage>
         <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>

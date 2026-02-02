@@ -9,6 +9,20 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Creates a new conversation thread.</para>
+/// <para type="description">Starts a fresh thread on the app-server with a selected model and optional execution
+/// settings like sandbox and approval policy.</para>
+/// <example>
+///  <para>Start a thread with the default model</para>
+///  <code>Start-IntelligenceXThread -Model "gpt-5.2-codex"</code>
+/// </example>
+/// <example>
+///  <para>Start a thread scoped to a repo and sandboxed</para>
+///  <code>Start-IntelligenceXThread -Model "gpt-5.2-codex" -CurrentDirectory "C:\repo" -Sandbox "workspace"</code>
+/// </example>
+/// <example>
+///  <para>Start a thread with an approval policy</para>
+///  <code>Start-IntelligenceXThread -Model "gpt-5.2-codex" -ApprovalPolicy "auto"</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Start, "IntelligenceXThread")]
 [OutputType(typeof(ThreadInfo), typeof(JsonValue))]
@@ -49,6 +63,7 @@ public sealed class CmdletStartIntelligenceXThread : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter Raw { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         if (Raw.IsPresent) {

@@ -9,6 +9,15 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Lists MCP server status entries.</para>
+/// <para type="description">Returns recent status information for configured MCP servers.</para>
+/// <example>
+///  <para>List MCP server status</para>
+///  <code>Get-IntelligenceXMcpServerStatus -Limit 50</code>
+/// </example>
+/// <example>
+///  <para>Continue with a cursor</para>
+///  <code>Get-IntelligenceXMcpServerStatus -Cursor $result.cursor</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXMcpServerStatus")]
 [OutputType(typeof(McpServerStatusListResult), typeof(JsonValue))]
@@ -37,6 +46,7 @@ public sealed class CmdletGetIntelligenceXMcpServerStatus : IntelligenceXCmdlet 
     [Parameter]
     public SwitchParameter Raw { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         if (Raw.IsPresent) {

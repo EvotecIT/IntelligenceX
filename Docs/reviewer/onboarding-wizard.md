@@ -53,6 +53,25 @@ See `./setup-web.md` for limitations and security notes.
 - Load existing config from a repo
 - Custom JSON (editor, path, or paste)
 
+## Example: org-wide GitHub App flow
+
+```text
+1) Click "Create App (manifest)" in the wizard
+2) Install the app in the org
+3) Click "List installations"
+4) Pick the org installation
+5) Click "Use installation token"
+```
+
+## Example: one-repo device flow
+
+```text
+1) Run: intelligencex setup wizard
+2) Pick "Device flow"
+3) Authenticate and select a single repo
+4) Plan + Apply (creates PR)
+```
+
 ## Manual secret mode
 
 If you do not want the CLI to upload secrets automatically:

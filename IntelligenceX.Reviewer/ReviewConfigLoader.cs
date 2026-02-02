@@ -73,6 +73,10 @@ internal static class ReviewConfigLoader {
         settings.Persona = obj.GetString("persona") ?? settings.Persona;
         settings.Notes = obj.GetString("notes") ?? settings.Notes;
         settings.Model = obj.GetString("model") ?? settings.Model;
+        var reviewDiffRange = obj.GetString("reviewDiffRange");
+        if (!string.IsNullOrWhiteSpace(reviewDiffRange)) {
+            settings.ReviewDiffRange = ReviewSettings.NormalizeDiffRange(reviewDiffRange, settings.ReviewDiffRange);
+        }
         var reasoningEffort = obj.GetString("reasoningEffort");
         if (!string.IsNullOrWhiteSpace(reasoningEffort)) {
             var parsed = IntelligenceX.OpenAI.Chat.ChatEnumParser.ParseReasoningEffort(reasoningEffort);
@@ -117,6 +121,16 @@ internal static class ReviewConfigLoader {
             settings.SkipPaths = skipPaths;
         }
 
+        var includePaths = ReadStringList(obj, "includePaths");
+        if (includePaths is not null) {
+            settings.IncludePaths = includePaths;
+        }
+
+        var excludePaths = ReadStringList(obj, "excludePaths");
+        if (excludePaths is not null) {
+            settings.ExcludePaths = excludePaths;
+        }
+
         var redactionPatterns = ReadStringList(obj, "redactionPatterns");
         if (redactionPatterns is not null) {
             settings.RedactionPatterns = redactionPatterns;
@@ -134,6 +148,9 @@ internal static class ReviewConfigLoader {
         settings.RetryCount = ReadInt(obj, "retryCount", settings.RetryCount);
         settings.RetryDelaySeconds = ReadInt(obj, "retryDelaySeconds", settings.RetryDelaySeconds);
         settings.RetryMaxDelaySeconds = ReadInt(obj, "retryMaxDelaySeconds", settings.RetryMaxDelaySeconds);
+        settings.RetryBackoffMultiplier = ReadDouble(obj, "retryBackoffMultiplier", settings.RetryBackoffMultiplier);
+        settings.RetryJitterMinMs = ReadNonNegativeInt(obj, "retryJitterMinMs", settings.RetryJitterMinMs);
+        settings.RetryJitterMaxMs = ReadNonNegativeInt(obj, "retryJitterMaxMs", settings.RetryJitterMaxMs);
         settings.PreflightTimeoutSeconds = ReadInt(obj, "preflightTimeoutSeconds", settings.PreflightTimeoutSeconds);
         settings.ReviewUsageSummaryCacheMinutes = Math.Max(0,
             ReadInt(obj, "reviewUsageSummaryCacheMinutes", settings.ReviewUsageSummaryCacheMinutes));
@@ -301,6 +318,14 @@ internal static class ReviewConfigLoader {
         var value = obj.GetInt64(key);
         if (value.HasValue && value.Value >= 0) {
             return (int)value.Value;
+        }
+        return fallback;
+    }
+
+    private static double ReadDouble(JsonObject obj, string key, double fallback) {
+        var value = obj.GetDouble(key);
+        if (value.HasValue && value.Value >= 1) {
+            return value.Value;
         }
         return fallback;
     }

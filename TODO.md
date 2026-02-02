@@ -2,6 +2,9 @@
 
 Status: In progress
 
+## Related roadmaps
+- Engine improvements: `TODO.engine.md`
+
 ## Phase 0 — Goals & constraints
 - [ ] Confirm onboarding goals (wizard + PR-only path + upgrade path)
 - [ ] Confirm default auth choice (vendor OAuth for single repo, BYO App for org)

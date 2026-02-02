@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net;
 using System.Text;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Auth;
@@ -95,6 +96,37 @@ internal sealed class ReviewDiagnosticsSession : IDisposable {
 internal static class ReviewDiagnostics {
     public const string FailureMarker = "<!-- intelligencex:failure -->";
 
+    /// <summary>
+    /// Categorizes reviewer failures for reporting and retry logic.
+    /// </summary>
+    public enum ReviewErrorCategory {
+        /// <summary>Review cancelled by user or host.</summary>
+        Cancelled,
+        /// <summary>Operation timed out.</summary>
+        Timeout,
+        /// <summary>Provider rate limit hit.</summary>
+        RateLimit,
+        /// <summary>Provider service unavailable.</summary>
+        ServiceUnavailable,
+        /// <summary>Authentication failure.</summary>
+        Auth,
+        /// <summary>Configuration or request validation failure.</summary>
+        Config,
+        /// <summary>Network or transport failure.</summary>
+        Network,
+        /// <summary>Response ended unexpectedly (connection reset).</summary>
+        ResponseEnded,
+        /// <summary>Provider-specific failure not captured above.</summary>
+        Provider,
+        /// <summary>Unknown failure.</summary>
+        Unknown
+    }
+
+    /// <summary>
+    /// Structured summary of a classified review failure.
+    /// </summary>
+    public readonly record struct ReviewErrorInfo(ReviewErrorCategory Category, bool IsTransient, string Summary);
+
     public static bool IsFailureBody(string? body) {
         return !string.IsNullOrWhiteSpace(body) &&
                body.Contains(FailureMarker, StringComparison.OrdinalIgnoreCase);
@@ -108,20 +140,63 @@ internal static class ReviewDiagnostics {
         return ex.InnerException is not null && IsResponseEnded(ex.InnerException);
     }
 
+    public static ReviewErrorInfo Classify(Exception ex) {
+        var root = Unwrap(ex);
+        if (root is OperationCanceledException) {
+            return new ReviewErrorInfo(ReviewErrorCategory.Cancelled, false, "Cancelled");
+        }
+        if (root is TimeoutException) {
+            return new ReviewErrorInfo(ReviewErrorCategory.Timeout, true, "Timeout");
+        }
+        if (IsResponseEnded(root)) {
+            return new ReviewErrorInfo(ReviewErrorCategory.ResponseEnded, true, "Response ended prematurely");
+        }
+        if (root is UnauthorizedAccessException) {
+            return new ReviewErrorInfo(ReviewErrorCategory.Auth, false, "Unauthorized");
+        }
+        if (root is HttpRequestException httpRequest) {
+            if (httpRequest.StatusCode.HasValue) {
+                var code = (int)httpRequest.StatusCode.Value;
+                return ClassifyStatusCode(code);
+            }
+            return new ReviewErrorInfo(ReviewErrorCategory.Network, true, "Network error");
+        }
+        if (root is IOException) {
+            return new ReviewErrorInfo(ReviewErrorCategory.Network, true, "I/O error");
+        }
+        var message = root.Message ?? string.Empty;
+        if (message.Contains("auth bundle", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("INTELLIGENCEX_AUTH", StringComparison.OrdinalIgnoreCase)) {
+            return new ReviewErrorInfo(ReviewErrorCategory.Auth, false, "Auth bundle missing or invalid");
+        }
+        if (message.Contains("configuration", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("invalid", StringComparison.OrdinalIgnoreCase)) {
+            return new ReviewErrorInfo(ReviewErrorCategory.Config, false, "Invalid configuration");
+        }
+        return new ReviewErrorInfo(ReviewErrorCategory.Unknown, false, root.GetType().Name);
+    }
+
     public static string FormatExceptionSummary(Exception ex, bool includeInner) {
         var sb = new StringBuilder();
         AppendException(sb, ex, includeInner, 0);
         return sb.ToString();
     }
 
-    public static string BuildFailureBody(Exception ex, ReviewSettings settings, ReviewDiagnosticsSnapshot? snapshot) {
+    public static string BuildFailureBody(Exception ex, ReviewSettings settings, ReviewDiagnosticsSnapshot? snapshot,
+        ReviewRetryState? retryState) {
+        var classification = Classify(ex);
         var summary = settings.Diagnostics ? FormatExceptionSummary(ex, true) : string.Empty;
         var sb = new StringBuilder();
         sb.AppendLine(FailureMarker);
-        sb.AppendLine("WARNING: Review failed to complete due to an OpenAI request error.");
+        sb.AppendLine("WARNING: Review failed to complete due to a provider request error.");
         sb.AppendLine();
+        sb.AppendLine($"- Provider: {settings.Provider.ToString().ToLowerInvariant()}");
         sb.AppendLine($"- Transport: {settings.OpenAITransport}");
         sb.AppendLine($"- Model: {settings.Model}");
+        sb.AppendLine($"- Category: {classification.Category} ({(classification.IsTransient ? "transient" : "non-transient")})");
+        if (retryState is not null && retryState.LastAttempt > 0) {
+            sb.AppendLine($"- Retry: {retryState.LastAttempt}/{retryState.MaxAttempts}");
+        }
         if (settings.Diagnostics && !string.IsNullOrWhiteSpace(summary)) {
             sb.AppendLine($"- Error: {summary}");
         }
@@ -133,9 +208,15 @@ internal static class ReviewDiagnostics {
         return sb.ToString().TrimEnd();
     }
 
-    public static void LogFailure(Exception ex, ReviewSettings settings, ReviewDiagnosticsSnapshot? snapshot) {
-        Console.Error.WriteLine("OpenAI request failed.");
-        Console.Error.WriteLine($"Transport: {settings.OpenAITransport} | Model: {settings.Model}");
+    public static void LogFailure(Exception ex, ReviewSettings settings, ReviewDiagnosticsSnapshot? snapshot,
+        ReviewRetryState? retryState) {
+        var classification = Classify(ex);
+        Console.Error.WriteLine("Provider request failed.");
+        Console.Error.WriteLine($"Provider: {settings.Provider.ToString().ToLowerInvariant()} | Transport: {settings.OpenAITransport} | Model: {settings.Model}");
+        Console.Error.WriteLine($"Category: {classification.Category} ({(classification.IsTransient ? "transient" : "non-transient")})");
+        if (retryState is not null && retryState.LastAttempt > 0) {
+            Console.Error.WriteLine($"Retry: {retryState.LastAttempt}/{retryState.MaxAttempts}");
+        }
         var summary = FormatExceptionSummary(ex, settings.Diagnostics);
         if (!string.IsNullOrWhiteSpace(summary)) {
             Console.Error.WriteLine($"Cause: {summary}");
@@ -196,5 +277,31 @@ internal static class ReviewDiagnostics {
         if (includeInner && ex.InnerException is not null && depth < 2) {
             AppendException(sb, ex.InnerException, true, depth + 1);
         }
+    }
+
+    private static Exception Unwrap(Exception ex) {
+        if (ex is AggregateException aggregate && aggregate.InnerExceptions.Count == 1) {
+            return Unwrap(aggregate.InnerExceptions[0]);
+        }
+        return ex.InnerException is not null ? Unwrap(ex.InnerException) : ex;
+    }
+
+    private static ReviewErrorInfo ClassifyStatusCode(int code) {
+        if (code == (int)HttpStatusCode.Unauthorized || code == (int)HttpStatusCode.Forbidden) {
+            return new ReviewErrorInfo(ReviewErrorCategory.Auth, false, $"HTTP {code}");
+        }
+        if (code == (int)HttpStatusCode.TooManyRequests) {
+            return new ReviewErrorInfo(ReviewErrorCategory.RateLimit, true, $"HTTP {code}");
+        }
+        if (code == (int)HttpStatusCode.RequestTimeout) {
+            return new ReviewErrorInfo(ReviewErrorCategory.Timeout, true, $"HTTP {code}");
+        }
+        if (code >= 500 && code <= 599) {
+            return new ReviewErrorInfo(ReviewErrorCategory.ServiceUnavailable, true, $"HTTP {code}");
+        }
+        if (code == (int)HttpStatusCode.BadRequest || code == (int)HttpStatusCode.UnprocessableEntity) {
+            return new ReviewErrorInfo(ReviewErrorCategory.Config, false, $"HTTP {code}");
+        }
+        return new ReviewErrorInfo(ReviewErrorCategory.Provider, false, $"HTTP {code}");
     }
 }

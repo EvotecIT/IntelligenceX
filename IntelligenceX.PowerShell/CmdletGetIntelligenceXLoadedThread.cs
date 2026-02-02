@@ -9,6 +9,15 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Lists currently loaded threads.</para>
+/// <para type="description">Shows threads currently loaded in the app-server process.</para>
+/// <example>
+///  <para>List loaded threads</para>
+///  <code>Get-IntelligenceXLoadedThread</code>
+/// </example>
+/// <example>
+///  <para>Get raw JSON output</para>
+///  <code>Get-IntelligenceXLoadedThread -Raw</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXLoadedThread")]
 [OutputType(typeof(ThreadIdListResult), typeof(JsonValue))]
@@ -25,6 +34,7 @@ public sealed class CmdletGetIntelligenceXLoadedThread : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter Raw { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         if (Raw.IsPresent) {

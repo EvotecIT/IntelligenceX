@@ -4,7 +4,13 @@ using IntelligenceX.Json;
 
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
+/// <summary>
+/// Represents a list of MCP server statuses.
+/// </summary>
 public sealed class McpServerStatusListResult {
+    /// <summary>
+    /// Initializes a new MCP server status list result.
+    /// </summary>
     public McpServerStatusListResult(IReadOnlyList<McpServerStatus> servers, string? nextCursor,
         JsonObject raw, JsonObject? additional) {
         Servers = servers;
@@ -13,11 +19,28 @@ public sealed class McpServerStatusListResult {
         Additional = additional;
     }
 
+    /// <summary>
+    /// Gets the server status list.
+    /// </summary>
     public IReadOnlyList<McpServerStatus> Servers { get; }
+    /// <summary>
+    /// Gets the pagination cursor for the next page.
+    /// </summary>
     public string? NextCursor { get; }
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>
+    /// Parses an MCP server status list from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed list result.</returns>
     public static McpServerStatusListResult FromJson(JsonObject obj) {
         var servers = new List<McpServerStatus>();
         var data = obj.GetArray("data") ?? obj.GetArray("items");
@@ -36,7 +59,13 @@ public sealed class McpServerStatusListResult {
     }
 }
 
+/// <summary>
+/// Represents the status of a single MCP server.
+/// </summary>
 public sealed class McpServerStatus {
+    /// <summary>
+    /// Initializes a new MCP server status.
+    /// </summary>
     public McpServerStatus(string name, IReadOnlyDictionary<string, McpToolInfo> tools, IReadOnlyList<McpResourceInfo> resources,
         IReadOnlyList<McpResourceTemplateInfo> resourceTemplates, McpAuthStatus authStatus, JsonObject raw, JsonObject? additional) {
         Name = name;
@@ -48,14 +77,40 @@ public sealed class McpServerStatus {
         Additional = additional;
     }
 
+    /// <summary>
+    /// Gets the server name.
+    /// </summary>
     public string Name { get; }
+    /// <summary>
+    /// Gets the available tools.
+    /// </summary>
     public IReadOnlyDictionary<string, McpToolInfo> Tools { get; }
+    /// <summary>
+    /// Gets the available resources.
+    /// </summary>
     public IReadOnlyList<McpResourceInfo> Resources { get; }
+    /// <summary>
+    /// Gets the resource templates.
+    /// </summary>
     public IReadOnlyList<McpResourceTemplateInfo> ResourceTemplates { get; }
+    /// <summary>
+    /// Gets the auth status.
+    /// </summary>
     public McpAuthStatus AuthStatus { get; }
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>
+    /// Parses a server status from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed server status.</returns>
     public static McpServerStatus FromJson(JsonObject obj) {
         var name = obj.GetString("name") ?? string.Empty;
 
@@ -104,7 +159,13 @@ public sealed class McpServerStatus {
     }
 }
 
+/// <summary>
+/// Describes an MCP tool.
+/// </summary>
 public sealed class McpToolInfo {
+    /// <summary>
+    /// Initializes a new MCP tool info.
+    /// </summary>
     public McpToolInfo(string name, string? title, string? description, JsonObject? inputSchema,
         JsonObject? outputSchema, JsonObject? annotations, JsonObject? meta, JsonObject raw, JsonObject? additional) {
         Name = name;
@@ -118,16 +179,49 @@ public sealed class McpToolInfo {
         Additional = additional;
     }
 
+    /// <summary>
+    /// Gets the tool name.
+    /// </summary>
     public string Name { get; }
+    /// <summary>
+    /// Gets the tool title.
+    /// </summary>
     public string? Title { get; }
+    /// <summary>
+    /// Gets the tool description.
+    /// </summary>
     public string? Description { get; }
+    /// <summary>
+    /// Gets the input schema.
+    /// </summary>
     public JsonObject? InputSchema { get; }
+    /// <summary>
+    /// Gets the output schema.
+    /// </summary>
     public JsonObject? OutputSchema { get; }
+    /// <summary>
+    /// Gets tool annotations.
+    /// </summary>
     public JsonObject? Annotations { get; }
+    /// <summary>
+    /// Gets tool metadata.
+    /// </summary>
     public JsonObject? Meta { get; }
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>
+    /// Parses tool info from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <param name="fallbackName">Fallback tool name.</param>
+    /// <returns>The parsed tool info.</returns>
     public static McpToolInfo FromJson(JsonObject obj, string? fallbackName = null) {
         var name = obj.GetString("name") ?? fallbackName ?? string.Empty;
         var title = obj.GetString("title");
@@ -142,7 +236,13 @@ public sealed class McpToolInfo {
     }
 }
 
+/// <summary>
+/// Describes an MCP resource.
+/// </summary>
 public sealed class McpResourceInfo {
+    /// <summary>
+    /// Initializes a new MCP resource info.
+    /// </summary>
     public McpResourceInfo(string? uri, string? name, string? title, string? description, string? mimeType,
         long? size, JsonObject? annotations, JsonObject? meta, JsonObject raw, JsonObject? additional) {
         Uri = uri;
@@ -157,17 +257,52 @@ public sealed class McpResourceInfo {
         Additional = additional;
     }
 
+    /// <summary>
+    /// Gets the resource URI.
+    /// </summary>
     public string? Uri { get; }
+    /// <summary>
+    /// Gets the resource name.
+    /// </summary>
     public string? Name { get; }
+    /// <summary>
+    /// Gets the resource title.
+    /// </summary>
     public string? Title { get; }
+    /// <summary>
+    /// Gets the resource description.
+    /// </summary>
     public string? Description { get; }
+    /// <summary>
+    /// Gets the mime type.
+    /// </summary>
     public string? MimeType { get; }
+    /// <summary>
+    /// Gets the resource size in bytes.
+    /// </summary>
     public long? Size { get; }
+    /// <summary>
+    /// Gets resource annotations.
+    /// </summary>
     public JsonObject? Annotations { get; }
+    /// <summary>
+    /// Gets resource metadata.
+    /// </summary>
     public JsonObject? Meta { get; }
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>
+    /// Parses resource info from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed resource info.</returns>
     public static McpResourceInfo FromJson(JsonObject obj) {
         var uri = obj.GetString("uri");
         var name = obj.GetString("name");
@@ -183,7 +318,13 @@ public sealed class McpResourceInfo {
     }
 }
 
+/// <summary>
+/// Describes an MCP resource template.
+/// </summary>
 public sealed class McpResourceTemplateInfo {
+    /// <summary>
+    /// Initializes a new MCP resource template info.
+    /// </summary>
     public McpResourceTemplateInfo(string? uriTemplate, string? name, string? title, string? description,
         string? mimeType, JsonObject? annotations, JsonObject? meta, JsonObject raw, JsonObject? additional) {
         UriTemplate = uriTemplate;
@@ -197,16 +338,48 @@ public sealed class McpResourceTemplateInfo {
         Additional = additional;
     }
 
+    /// <summary>
+    /// Gets the URI template.
+    /// </summary>
     public string? UriTemplate { get; }
+    /// <summary>
+    /// Gets the template name.
+    /// </summary>
     public string? Name { get; }
+    /// <summary>
+    /// Gets the template title.
+    /// </summary>
     public string? Title { get; }
+    /// <summary>
+    /// Gets the template description.
+    /// </summary>
     public string? Description { get; }
+    /// <summary>
+    /// Gets the mime type.
+    /// </summary>
     public string? MimeType { get; }
+    /// <summary>
+    /// Gets template annotations.
+    /// </summary>
     public JsonObject? Annotations { get; }
+    /// <summary>
+    /// Gets template metadata.
+    /// </summary>
     public JsonObject? Meta { get; }
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>
+    /// Parses a resource template from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed resource template.</returns>
     public static McpResourceTemplateInfo FromJson(JsonObject obj) {
         var uriTemplate = obj.GetString("uriTemplate") ?? obj.GetString("uri_template");
         var name = obj.GetString("name");
@@ -221,11 +394,29 @@ public sealed class McpResourceTemplateInfo {
     }
 }
 
+/// <summary>
+/// Authentication status for an MCP server.
+/// </summary>
 public enum McpAuthStatus {
+    /// <summary>
+    /// Unknown auth status.
+    /// </summary>
     Unknown,
+    /// <summary>
+    /// Authentication is not supported.
+    /// </summary>
     Unsupported,
+    /// <summary>
+    /// Not logged in.
+    /// </summary>
     NotLoggedIn,
+    /// <summary>
+    /// Bearer token authentication.
+    /// </summary>
     BearerToken,
+    /// <summary>
+    /// OAuth authentication.
+    /// </summary>
     OAuth
 }
 

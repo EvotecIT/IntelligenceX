@@ -2,6 +2,7 @@
 
 The core library provides a Codex app-server client, ChatGPT auth helpers, and a lightweight Copilot client.
 
+Quickstart: `./quickstart.md`  
 Providers: `./providers.md`
 
 ## Quick start (app-server)
@@ -23,6 +24,23 @@ var thread = await client.StartThreadAsync("gpt-5.2-codex");
 await client.StartTurnAsync(thread.Id, "Hello from IntelligenceX");
 ```
 
+## Quick start (native ChatGPT)
+
+```csharp
+using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.Native;
+
+var options = new IntelligenceXClientOptions {
+    TransportKind = OpenAITransportKind.Native
+};
+options.NativeOptions.UserAgent = "IntelligenceX/0.1.0";
+await using var client = await IntelligenceXClient.ConnectAsync(options);
+
+await client.LoginChatGptAndWaitAsync(url => Console.WriteLine(url));
+var turn = await client.ChatAsync("Summarize the latest PR");
+Console.WriteLine(turn.Outputs.Count);
+```
+
 ## Easy session (one-liner)
 
 ```csharp
@@ -30,6 +48,53 @@ using IntelligenceX.OpenAI;
 
 var result = await Easy.ChatAsync("Hello!");
 Console.WriteLine(result.Text);
+```
+
+## Streaming deltas
+
+```csharp
+using IntelligenceX.OpenAI;
+
+var session = await EasySession.StartAsync();
+using var subscription = session.SubscribeDelta(Console.Write);
+await session.ChatAsync("Stream a short answer.");
+```
+
+## Usage & limits
+
+```csharp
+using IntelligenceX.OpenAI.Native;
+using IntelligenceX.OpenAI.Usage;
+
+using var usage = new ChatGptUsageService(new OpenAINativeOptions());
+var report = await usage.GetReportAsync(includeEvents: true);
+Console.WriteLine(report.Snapshot.PlanType);
+Console.WriteLine(report.Snapshot.RateLimit?.PrimaryWindow?.UsedPercent);
+```
+
+## Sandbox policy (app-server)
+
+```csharp
+using IntelligenceX.OpenAI.AppServer;
+
+await using var client = await AppServerClient.StartAsync();
+await client.InitializeAsync(new ClientInfo("IntelligenceX", "Demo", "0.1.0"));
+var thread = await client.StartThreadAsync("gpt-5.2-codex");
+var sandbox = new SandboxPolicy("workspace", allowNetwork: true, writableRoots: new[] { "C:\\repo" });
+await client.StartTurnAsync(thread.Id, "Run tests", sandboxPolicy: sandbox);
+```
+
+## Streaming deltas (native)
+
+```csharp
+using IntelligenceX.OpenAI;
+
+await using var client = await IntelligenceXClient.ConnectAsync(new IntelligenceXClientOptions {
+    TransportKind = OpenAITransportKind.Native
+});
+
+using var subscription = client.SubscribeDelta(text => Console.Write(text));
+await client.ChatAsync("Stream a short answer.");
 ```
 
 ## Config overrides

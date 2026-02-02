@@ -9,6 +9,15 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Reads configuration requirements.</para>
+/// <para type="description">Returns required/optional settings for the current app-server configuration.</para>
+/// <example>
+///  <para>Get config requirements</para>
+///  <code>Get-IntelligenceXConfigRequirements</code>
+/// </example>
+/// <example>
+///  <para>Get raw JSON output</para>
+///  <code>Get-IntelligenceXConfigRequirements -Raw</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXConfigRequirements")]
 [OutputType(typeof(ConfigRequirementsReadResult), typeof(JsonValue))]
@@ -25,6 +34,7 @@ public sealed class CmdletGetIntelligenceXConfigRequirements : IntelligenceXCmdl
     [Parameter]
     public SwitchParameter Raw { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         if (Raw.IsPresent) {

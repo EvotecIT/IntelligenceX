@@ -60,6 +60,11 @@ internal static class Program {
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
+        failed += Run("Filter files include-only", TestFilterFilesIncludeOnly);
+        failed += Run("Filter files exclude-only", TestFilterFilesExcludeOnly);
+        failed += Run("Filter files include+exclude", TestFilterFilesIncludeExclude);
+        failed += Run("Filter files glob patterns", TestFilterFilesGlobPatterns);
+        failed += Run("Filter files empty filters", TestFilterFilesEmptyFilters);
         failed += Run("Context deny invalid regex", TestContextDenyInvalidRegex);
         failed += Run("Context deny timeout", TestContextDenyTimeout);
         failed += Run("Review summary parser", TestReviewSummaryParser);
@@ -426,10 +431,14 @@ internal static class Program {
             maxAttempts: 3,
             retryDelaySeconds: 1,
             retryMaxDelaySeconds: 1,
+            backoffMultiplier: 2,
+            retryJitterMinMs: 0,
+            retryJitterMaxMs: 0,
             CancellationToken.None,
             describeError: null,
             extraAttempts: 0,
-            extraRetryPredicate: null).GetAwaiter().GetResult();
+            extraRetryPredicate: null,
+            retryState: null).GetAwaiter().GetResult();
 
         AssertEqual("ok", result, "retry result");
         AssertEqual(3, attempts, "retry attempts");
@@ -447,10 +456,14 @@ internal static class Program {
                 maxAttempts: 3,
                 retryDelaySeconds: 1,
                 retryMaxDelaySeconds: 1,
+                backoffMultiplier: 2,
+                retryJitterMinMs: 0,
+                retryJitterMaxMs: 0,
                 CancellationToken.None,
                 describeError: null,
                 extraAttempts: 0,
-                extraRetryPredicate: null).GetAwaiter().GetResult();
+                extraRetryPredicate: null,
+                retryState: null).GetAwaiter().GetResult();
         } catch (InvalidOperationException) {
             thrown = true;
         }
@@ -471,10 +484,14 @@ internal static class Program {
                 maxAttempts: 2,
                 retryDelaySeconds: 1,
                 retryMaxDelaySeconds: 1,
+                backoffMultiplier: 2,
+                retryJitterMinMs: 0,
+                retryJitterMaxMs: 0,
                 CancellationToken.None,
                 describeError: null,
                 extraAttempts: 0,
-                extraRetryPredicate: null).GetAwaiter().GetResult();
+                extraRetryPredicate: null,
+                retryState: null).GetAwaiter().GetResult();
             throw new InvalidOperationException("Expected exception.");
         } catch (IOException caught) {
             AssertEqual(true, ReferenceEquals(ex, caught), "retry exception instance");
@@ -496,10 +513,14 @@ internal static class Program {
             maxAttempts: 1,
             retryDelaySeconds: 1,
             retryMaxDelaySeconds: 1,
+            backoffMultiplier: 2,
+            retryJitterMinMs: 0,
+            retryJitterMaxMs: 0,
             CancellationToken.None,
             describeError: null,
             extraAttempts: 1,
-            extraRetryPredicate: ReviewDiagnostics.IsResponseEnded).GetAwaiter().GetResult();
+            extraRetryPredicate: ReviewDiagnostics.IsResponseEnded,
+            retryState: null).GetAwaiter().GetResult();
 
         AssertEqual("ok", result, "retry extra result");
         AssertEqual(2, attempts, "retry extra attempts");
@@ -507,7 +528,7 @@ internal static class Program {
 
     private static void TestReviewFailureMarker() {
         var settings = new ReviewSettings { Diagnostics = true };
-        var body = ReviewDiagnostics.BuildFailureBody(new IOException("ResponseEnded"), settings, null);
+        var body = ReviewDiagnostics.BuildFailureBody(new IOException("ResponseEnded"), settings, null, null);
         AssertEqual(true, ReviewDiagnostics.IsFailureBody(body), "failure marker");
     }
 
@@ -563,6 +584,58 @@ internal static class Program {
         var (defaultBase, defaultPath) = IntelligenceX.Cli.ReviewThreads.ReviewThreadResolveRunner.ResolveGraphQlEndpoint("https://github.company.local");
         AssertEqual("/graphql", defaultPath, "graphql path default");
         AssertEqual("https://github.company.local", defaultBase.GetLeftPart(UriPartial.Authority), "base uri default");
+    }
+
+    private static void TestFilterFilesIncludeOnly() {
+        var files = BuildFiles("src/app.cs", "docs/readme.md", "tests/test.cs");
+        var filtered = ReviewerApp.FilterFilesByPaths(files, new[] { "src/**", "tests/*.cs" }, Array.Empty<string>());
+        AssertSequenceEqual(new[] { "src/app.cs", "tests/test.cs" }, GetFilenames(filtered), "include-only");
+    }
+
+    private static void TestFilterFilesExcludeOnly() {
+        var files = BuildFiles("src/app.cs", "docs/readme.md", "tests/test.cs");
+        var filtered = ReviewerApp.FilterFilesByPaths(files, Array.Empty<string>(), new[] { "**/*.md" });
+        AssertSequenceEqual(new[] { "src/app.cs", "tests/test.cs" }, GetFilenames(filtered), "exclude-only");
+    }
+
+    private static void TestFilterFilesIncludeExclude() {
+        var files = BuildFiles("src/app.cs", "src/appTest.cs", "tests/test.cs");
+        var filtered = ReviewerApp.FilterFilesByPaths(files, new[] { "**/*.cs" }, new[] { "**/*Test.cs", "tests/**" });
+        AssertSequenceEqual(new[] { "src/app.cs" }, GetFilenames(filtered), "include+exclude");
+    }
+
+    private static void TestFilterFilesGlobPatterns() {
+        var files = BuildFiles("docs/readme.md", "docs/nested/guide.md", "docs/notes.txt");
+        var filteredSingle = ReviewerApp.FilterFilesByPaths(files, new[] { "docs/*.md" }, Array.Empty<string>());
+        AssertSequenceEqual(new[] { "docs/readme.md" }, GetFilenames(filteredSingle), "glob single");
+
+        var filteredDeep = ReviewerApp.FilterFilesByPaths(files, new[] { "docs/**/*.md" }, Array.Empty<string>());
+        AssertSequenceEqual(new[] { "docs/nested/guide.md" }, GetFilenames(filteredDeep), "glob deep");
+
+        var filteredAll = ReviewerApp.FilterFilesByPaths(files, new[] { "docs/*.md", "docs/**/*.md" }, Array.Empty<string>());
+        AssertSequenceEqual(new[] { "docs/readme.md", "docs/nested/guide.md" }, GetFilenames(filteredAll), "glob combined");
+    }
+
+    private static void TestFilterFilesEmptyFilters() {
+        var files = BuildFiles("src/app.cs", "docs/readme.md");
+        var filtered = ReviewerApp.FilterFilesByPaths(files, Array.Empty<string>(), Array.Empty<string>());
+        AssertSequenceEqual(new[] { "src/app.cs", "docs/readme.md" }, GetFilenames(filtered), "empty filters");
+    }
+
+    private static PullRequestFile[] BuildFiles(params string[] paths) {
+        var files = new PullRequestFile[paths.Length];
+        for (var i = 0; i < paths.Length; i++) {
+            files[i] = new PullRequestFile(paths[i], "modified", null);
+        }
+        return files;
+    }
+
+    private static IReadOnlyList<string> GetFilenames(IReadOnlyList<PullRequestFile> files) {
+        var names = new List<string>(files.Count);
+        foreach (var file in files) {
+            names.Add(file.Filename);
+        }
+        return names;
     }
 
     private static void TestContextDenyInvalidRegex() {
@@ -624,6 +697,7 @@ internal static class Program {
             }
         }
     }
+
 
     private static void AssertContains(IReadOnlyList<string> values, string expected, string name) {
         foreach (var value in values) {

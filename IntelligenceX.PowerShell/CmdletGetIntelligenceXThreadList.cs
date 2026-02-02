@@ -9,6 +9,19 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Lists available threads.</para>
+/// <para type="description">Returns paged threads with optional filtering by model provider.</para>
+/// <example>
+///  <para>List recent threads</para>
+///  <code>Get-IntelligenceXThread -Limit 20 -SortKey updated_at</code>
+/// </example>
+/// <example>
+///  <para>Continue a previous page</para>
+///  <code>Get-IntelligenceXThread -Cursor $result.cursor -Limit 20</code>
+/// </example>
+/// <example>
+///  <para>Filter by model provider</para>
+///  <code>Get-IntelligenceXThread -ModelProvider "openai","anthropic"</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXThread")]
 [OutputType(typeof(ThreadListResult), typeof(JsonValue))]
@@ -49,6 +62,7 @@ public sealed class CmdletGetIntelligenceXThreadList : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter Raw { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         if (Raw.IsPresent) {

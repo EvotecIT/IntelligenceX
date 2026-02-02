@@ -7,6 +7,11 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Reloads MCP server configuration.</para>
+/// <para type="description">Refreshes MCP server configuration files without restarting the app-server.</para>
+/// <example>
+///  <para>Reload MCP server config</para>
+///  <code>Invoke-IntelligenceXMcpServerConfigReload</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Invoke, "IntelligenceXMcpServerConfigReload")]
 public sealed class CmdletReloadIntelligenceXMcpServerConfig : IntelligenceXCmdlet {
@@ -16,6 +21,7 @@ public sealed class CmdletReloadIntelligenceXMcpServerConfig : IntelligenceXCmdl
     [Parameter(ValueFromPipeline = true)]
     public IntelligenceXClient? Client { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         await resolved.ReloadMcpServerConfigAsync(CancelToken).ConfigureAwait(false);

@@ -8,10 +8,18 @@ using System.Threading.Tasks;
 
 namespace IntelligenceX.OpenAI.Auth;
 
+/// <summary>
+/// File-based authentication bundle store with optional encryption.
+/// </summary>
 public sealed class FileAuthBundleStore : IAuthBundleStore {
     private readonly string _path;
     private readonly byte[]? _encryptionKey;
 
+    /// <summary>
+    /// Initializes a file-based auth bundle store.
+    /// </summary>
+    /// <param name="path">Optional override path.</param>
+    /// <param name="encryptionKeyBase64">Optional base64 encryption key.</param>
     public FileAuthBundleStore(string? path = null, string? encryptionKeyBase64 = null) {
         _path = path ?? AuthPaths.ResolveAuthPath();
         _encryptionKey = ParseKey(encryptionKeyBase64 ?? Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_KEY"));
@@ -20,6 +28,12 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
         }
     }
 
+    /// <summary>
+    /// Retrieves a bundle for the specified provider and account.
+    /// </summary>
+    /// <param name="provider">Provider identifier.</param>
+    /// <param name="accountId">Optional account id.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<AuthBundle?> GetAsync(string provider, string? accountId = null, CancellationToken cancellationToken = default) {
         var file = await ReadFileAsync(cancellationToken).ConfigureAwait(false);
         if (file is null) {
@@ -37,6 +51,11 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
         return null;
     }
 
+    /// <summary>
+    /// Saves an authentication bundle to disk.
+    /// </summary>
+    /// <param name="bundle">Bundle to save.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task SaveAsync(AuthBundle bundle, CancellationToken cancellationToken = default) {
         var file = await ReadFileAsync(cancellationToken).ConfigureAwait(false)
                    ?? new AuthBundleFile(1, new Dictionary<string, AuthBundle>(StringComparer.OrdinalIgnoreCase));
@@ -45,6 +64,9 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
         await WriteFileAsync(file, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Deletes the auth store file if it exists.
+    /// </summary>
     public void Delete() {
         if (File.Exists(_path)) {
             File.Delete(_path);

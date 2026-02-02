@@ -10,6 +10,24 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Connects to IntelligenceX (native or app-server) and returns a client instance.</para>
+/// <para type="description">Use Native for ChatGPT OAuth login (no local Codex binary). Use AppServer to talk to a locally
+/// running Codex app-server process. The cmdlet sets the active default client, so subsequent cmdlets can omit -Client.</para>
+/// <example>
+///  <para>Native transport (ChatGPT OAuth)</para>
+///  <code>Connect-IntelligenceX -Transport Native</code>
+/// </example>
+/// <example>
+///  <para>App-server transport with explicit executable path</para>
+///  <code>Connect-IntelligenceX -Transport AppServer -ExecutablePath "C:\tools\codex.exe"</code>
+/// </example>
+/// <example>
+///  <para>App-server transport with custom working directory and args</para>
+///  <code>Connect-IntelligenceX -Transport AppServer -WorkingDirectory "C:\repo" -Arguments "app-server --verbose"</code>
+/// </example>
+/// <example>
+///  <para>Enable diagnostics output</para>
+///  <code>Connect-IntelligenceX -Transport Native -Diagnostics</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommunications.Connect, "IntelligenceX")]
 [OutputType(typeof(IntelligenceXClient))]
@@ -50,6 +68,7 @@ public sealed class CmdletConnectIntelligenceX : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter NoConfig { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var options = new IntelligenceXClientOptions();
         if (!NoConfig.IsPresent && IntelligenceXConfig.TryLoad(out var config)) {

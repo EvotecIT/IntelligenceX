@@ -8,6 +8,15 @@ intelligencex setup web
 
 This starts a local web server and opens the wizard in your browser (http://127.0.0.1 only).
 
+## Quick flow
+
+```text
+1) Start the web UI
+2) Authenticate with GitHub (device flow or app install)
+3) Select repos
+4) Plan + Apply
+```
+
 Operations available:
 - Setup / update workflow + config
 - Update OpenAI secret only (requires auth bundle)
@@ -43,6 +52,11 @@ If you want to avoid personal access tokens, you can use the GitHub App manifest
 - Buttons are disabled until required inputs are provided (token, repo selection, auth bundle).
 - Inline hints describe what is missing before plan/apply can run.
 - Status badges show auth, repo selection, and auth bundle readiness.
+
+## Tips
+
+- Use the "Load workflow preview" button before applying changes.
+- If you want zero secret handling in the UI, enable "Skip OpenAI secret" and paste secrets manually in GitHub.
 
 ## Security notes
 

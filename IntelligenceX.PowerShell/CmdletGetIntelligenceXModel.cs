@@ -10,6 +10,15 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Lists available models.</para>
+/// <para type="description">Returns the models available for the current transport (Native or AppServer).</para>
+/// <example>
+///  <para>List available models</para>
+///  <code>Get-IntelligenceXModel</code>
+/// </example>
+/// <example>
+///  <para>List models as raw JSON (app-server transport only)</para>
+///  <code>Get-IntelligenceXModel -Raw</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXModel")]
 [OutputType(typeof(ModelListResult), typeof(JsonValue))]
@@ -26,6 +35,7 @@ public sealed class CmdletGetIntelligenceXModel : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter Raw { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var client = ResolveClient(Client);
         if (client.TransportKind == OpenAITransportKind.AppServer) {

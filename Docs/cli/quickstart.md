@@ -1,9 +1,21 @@
 # CLI Quickstart
 
+> If `dotnet run` complains about multiple frameworks, add `-f net8.0`.
+
 ## Single repository (wizard)
 
 ```powershell
 intelligencex setup wizard
+```
+
+## Review a PR (local)
+
+The reviewer reads inputs from environment variables (or `GITHUB_EVENT_PATH`).
+
+```powershell
+$env:INPUT_REPO = "owner/name"
+$env:INPUT_PR_NUMBER = "123"
+intelligencex reviewer run
 ```
 
 ## Web UI (preview)
@@ -31,6 +43,18 @@ dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -- au
 ```
 
 The command auto-detects repo/org + token if available (see `./overview.md` for details).
+
+## Usage snapshot (limits + credits)
+
+```powershell
+intelligencex usage --events
+```
+
+## Usage snapshot (JSON)
+
+```powershell
+intelligencex usage --json --no-cache
+```
 
 ## Manual secret flow
 
@@ -66,3 +90,9 @@ Inputs are mapped to environment variables to keep YAML minimal.
 Use `.github/workflows/release-reviewer.yml`.
 Inputs like `release_tag`, `release_title`, `release_repo`, and `rids` map to env vars.
 Token env: `INTELLIGENCEX_REVIEWER_TOKEN` (fallback: `INTELLIGENCEX_RELEASE_TOKEN`, `GITHUB_TOKEN`).
+
+## Resolve stale review threads (local)
+
+```powershell
+intelligencex reviewer resolve-threads --repo owner/name --pr 123
+```

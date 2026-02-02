@@ -9,6 +9,15 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Starts an OAuth login for an MCP server.</para>
+/// <para type="description">Initiates the OAuth flow for a configured MCP server by id or name.</para>
+/// <example>
+///  <para>Start login by server name</para>
+///  <code>Start-IntelligenceXMcpOAuthLogin -ServerName "my-mcp-server"</code>
+/// </example>
+/// <example>
+///  <para>Return raw JSON response</para>
+///  <code>Start-IntelligenceXMcpOAuthLogin -ServerId "srv_123" -Raw</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Start, "IntelligenceXMcpOAuthLogin")]
 [OutputType(typeof(McpOauthLoginStart), typeof(JsonValue))]
@@ -37,6 +46,7 @@ public sealed class CmdletStartIntelligenceXMcpOAuthLogin : IntelligenceXCmdlet 
     [Parameter]
     public SwitchParameter Raw { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         if (Raw.IsPresent) {

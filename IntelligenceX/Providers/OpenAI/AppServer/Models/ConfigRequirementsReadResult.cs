@@ -3,17 +3,37 @@ using IntelligenceX.Json;
 
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
+/// <summary>
+/// Represents the response containing configuration requirements.
+/// </summary>
 public sealed class ConfigRequirementsReadResult {
+    /// <summary>
+    /// Initializes a new requirements read result.
+    /// </summary>
     public ConfigRequirementsReadResult(ConfigRequirements? requirements, JsonObject raw, JsonObject? additional) {
         Requirements = requirements;
         Raw = raw;
         Additional = additional;
     }
 
+    /// <summary>
+    /// Gets the configuration requirements.
+    /// </summary>
     public ConfigRequirements? Requirements { get; }
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>
+    /// Parses a requirements result from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed result.</returns>
     public static ConfigRequirementsReadResult FromJson(JsonObject obj) {
         var requirementsObj = obj.GetObject("requirements");
         var requirements = requirementsObj is null ? null : ConfigRequirements.FromJson(requirementsObj);
@@ -22,7 +42,13 @@ public sealed class ConfigRequirementsReadResult {
     }
 }
 
+/// <summary>
+/// Describes allowed configuration values.
+/// </summary>
 public sealed class ConfigRequirements {
+    /// <summary>
+    /// Initializes a new configuration requirements model.
+    /// </summary>
     public ConfigRequirements(IReadOnlyList<string>? allowedApprovalPolicies, IReadOnlyList<string>? allowedSandboxModes,
         JsonObject raw, JsonObject? additional) {
         AllowedApprovalPolicies = allowedApprovalPolicies;
@@ -31,11 +57,28 @@ public sealed class ConfigRequirements {
         Additional = additional;
     }
 
+    /// <summary>
+    /// Gets the allowed approval policies.
+    /// </summary>
     public IReadOnlyList<string>? AllowedApprovalPolicies { get; }
+    /// <summary>
+    /// Gets the allowed sandbox modes.
+    /// </summary>
     public IReadOnlyList<string>? AllowedSandboxModes { get; }
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>
+    /// Parses requirements from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed requirements.</returns>
     public static ConfigRequirements FromJson(JsonObject obj) {
         var approvalPolicies = ReadStringArray(obj, "allowedApprovalPolicies", "allowed_approval_policies");
         var sandboxModes = ReadStringArray(obj, "allowedSandboxModes", "allowed_sandbox_modes");

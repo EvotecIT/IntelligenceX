@@ -4,7 +4,13 @@ using IntelligenceX.Json;
 
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
+/// <summary>
+/// Represents a single output item in a chat turn.
+/// </summary>
 public sealed class TurnOutput {
+    /// <summary>
+    /// Initializes a new turn output.
+    /// </summary>
     public TurnOutput(string type, string? text, string? imageUrl, string? imagePath, string? base64, string? mimeType,
         JsonObject raw, JsonObject? additional) {
         Type = type;
@@ -17,16 +23,46 @@ public sealed class TurnOutput {
         Additional = additional;
     }
 
+    /// <summary>
+    /// Gets the output type.
+    /// </summary>
     public string Type { get; }
+    /// <summary>
+    /// Gets the text content when present.
+    /// </summary>
     public string? Text { get; }
+    /// <summary>
+    /// Gets the image URL when present.
+    /// </summary>
     public string? ImageUrl { get; }
+    /// <summary>
+    /// Gets the local image path when present.
+    /// </summary>
     public string? ImagePath { get; }
+    /// <summary>
+    /// Gets the base64 payload when present.
+    /// </summary>
     public string? Base64 { get; }
+    /// <summary>
+    /// Gets the mime type when present.
+    /// </summary>
     public string? MimeType { get; }
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>
+    /// Gets a value indicating whether this output is text.
+    /// </summary>
     public bool IsText => string.Equals(Type, "text", StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// Gets a value indicating whether this output is an image.
+    /// </summary>
     public bool IsImage => string.Equals(Type, "image", StringComparison.OrdinalIgnoreCase);
 
     internal static IReadOnlyList<TurnOutput> FromTurn(JsonObject turnObj) {

@@ -7,25 +7,45 @@ using IntelligenceX.OpenAI.Native;
 
 namespace IntelligenceX.OpenAI.Usage;
 
+/// <summary>
+/// Retrieves ChatGPT usage, rate limits, and credit usage events.
+/// </summary>
 public sealed class ChatGptUsageService : IDisposable {
     private readonly OpenAINativeOptions _options;
     private readonly OpenAINativeAuthManager _auth;
     private readonly ChatGptUsageClient _client = new();
 
+    /// <summary>
+    /// Initializes a new usage service using native auth options.
+    /// </summary>
+    /// <param name="options">Native options used for authentication and endpoints.</param>
     public ChatGptUsageService(OpenAINativeOptions options) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _options.Validate();
         _auth = new OpenAINativeAuthManager(_options);
     }
 
+    /// <summary>
+    /// Retrieves the current usage snapshot.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public Task<ChatGptUsageSnapshot> GetUsageSnapshotAsync(CancellationToken cancellationToken = default) {
         return GetUsageSnapshotInternalAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Retrieves recent credit usage events.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public Task<IReadOnlyList<ChatGptCreditUsageEvent>> GetCreditUsageEventsAsync(CancellationToken cancellationToken = default) {
         return GetCreditUsageEventsInternalAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Retrieves a combined usage report.
+    /// </summary>
+    /// <param name="includeEvents">Whether to include credit usage events.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<ChatGptUsageReport> GetReportAsync(bool includeEvents, CancellationToken cancellationToken = default) {
         var snapshot = await GetUsageSnapshotInternalAsync(cancellationToken).ConfigureAwait(false);
         IReadOnlyList<ChatGptCreditUsageEvent> events = Array.Empty<ChatGptCreditUsageEvent>();
@@ -58,6 +78,9 @@ public sealed class ChatGptUsageService : IDisposable {
         throw new InvalidOperationException("Not logged in. Run ChatGPT login first.");
     }
 
+    /// <summary>
+    /// Disposes the underlying usage client.
+    /// </summary>
     public void Dispose() {
         _client.Dispose();
     }

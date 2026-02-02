@@ -22,6 +22,8 @@ Send-IntelligenceXMessage -Client $client -ThreadId $thread.Id -Text 'Hello from
 Disconnect-IntelligenceX -Client $client
 ```
 
+Quickstart: `./quickstart.md`
+
 ## Diagnostics
 
 ```powershell

@@ -9,6 +9,19 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Executes a command through the app-server.</para>
+/// <para type="description">Runs a process via the app-server with optional sandbox settings and timeout.</para>
+/// <example>
+///  <para>Run a command in the repository root</para>
+///  <code>Invoke-IntelligenceXCommand -Command @("git","status") -WorkingDirectory "C:\repo"</code>
+/// </example>
+/// <example>
+///  <para>Run a command in a sandboxed workspace</para>
+///  <code>Invoke-IntelligenceXCommand -Command @("dotnet","test") -SandboxType "workspace" -WorkingDirectory "C:\repo"</code>
+/// </example>
+/// <example>
+///  <para>Run a command with a timeout</para>
+///  <code>Invoke-IntelligenceXCommand -Command @("git","status") -TimeoutMs 5000</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Invoke, "IntelligenceXCommand")]
 [OutputType(typeof(CommandExecResult), typeof(JsonValue))]
@@ -61,6 +74,7 @@ public sealed class CmdletInvokeIntelligenceXCommand : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter Raw { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         var request = new CommandExecRequest(Command) {

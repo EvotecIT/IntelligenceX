@@ -14,10 +14,25 @@ using IntelligenceX.OpenAI.Usage;
 
 namespace IntelligenceX.Reviewer;
 
+/// <summary>
+/// Entry point for running the IntelligenceX GitHub review workflow.
+/// </summary>
 public static class ReviewerApp {
     private const string ThreadReplyMarker = "<!-- intelligencex:thread-reply -->";
+    /// <summary>
+    /// Executes the reviewer workflow with the provided arguments.
+    /// </summary>
+    /// <param name="args">Command-line arguments.</param>
+    /// <returns>Process exit code (0 for success).</returns>
     public static async Task<int> RunAsync(string[] args) {
+        using var cts = new CancellationTokenSource();
+        ConsoleCancelEventHandler? cancelHandler = (_, evt) => {
+            evt.Cancel = true;
+            cts.Cancel();
+        };
+        Console.CancelKeyPress += cancelHandler;
         try {
+            var cancellationToken = cts.Token;
             if (!await TryWriteAuthFromEnvAsync().ConfigureAwait(false)) {
                 return 1;
             }
@@ -60,7 +75,7 @@ public static class ReviewerApp {
                     return 1;
                 }
                 var (owner, repo) = SplitRepo(repoName!);
-                context = await github.GetPullRequestAsync(owner, repo, prNumber.Value, CancellationToken.None)
+                context = await github.GetPullRequestAsync(owner, repo, prNumber.Value, cancellationToken)
                     .ConfigureAwait(false);
             }
 
@@ -77,13 +92,13 @@ public static class ReviewerApp {
                 return 0;
             }
 
-            context = await CleanupService.RunAsync(github, context, settings, CancellationToken.None)
+            context = await CleanupService.RunAsync(github, context, settings, cancellationToken)
                 .ConfigureAwait(false);
 
             var progress = new ReviewProgress {
                 StatusLine = "Starting review."
             };
-            var files = await github.GetPullRequestFilesAsync(context.Owner, context.Repo, context.Number, CancellationToken.None)
+            var files = await github.GetPullRequestFilesAsync(context.Owner, context.Repo, context.Number, cancellationToken)
                 .ConfigureAwait(false);
 
             if (files.Count == 0) {
@@ -96,17 +111,28 @@ public static class ReviewerApp {
                 return 0;
             }
 
+            var allFiles = files;
+            var (reviewFiles, diffNote) = await ResolveReviewFilesAsync(github, context, settings, files, cancellationToken)
+                .ConfigureAwait(false);
+            reviewFiles = FilterFilesByPaths(reviewFiles, settings.IncludePaths, settings.ExcludePaths);
+            if (reviewFiles.Count == 0) {
+                progress.Context = ReviewProgressState.Complete;
+                Console.WriteLine("No files matched include/exclude filters.");
+                return 0;
+            }
+            files = reviewFiles;
+
             progress.Context = ReviewProgressState.Complete;
             progress.Files = ReviewProgressState.Complete;
             progress.StatusLine = "Analyzed changed files.";
 
-            var extras = await BuildExtrasAsync(github, fallbackGithub, context, settings, CancellationToken.None)
+            var extras = await BuildExtrasAsync(github, fallbackGithub, context, settings, cancellationToken)
                 .ConfigureAwait(false);
             var inlineSupported = !string.Equals(settings.Mode, "summary", StringComparison.OrdinalIgnoreCase) &&
                                   settings.MaxInlineComments > 0 &&
                                   !string.IsNullOrWhiteSpace(context.HeadSha);
             var limitedFiles = PrepareFiles(files, settings.MaxFiles, settings.MaxPatchChars);
-            var prompt = PromptBuilder.Build(context, limitedFiles, settings, extras, inlineSupported);
+            var prompt = PromptBuilder.Build(context, limitedFiles, settings, diffNote, extras, inlineSupported);
             if (settings.RedactPii) {
                 prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
             }
@@ -114,7 +140,7 @@ public static class ReviewerApp {
             long? commentId = null;
             if (settings.ProgressUpdates) {
                 var progressBody = ReviewFormatter.BuildProgressComment(context, settings, progress, null, inlineSupported);
-                commentId = await CreateOrUpdateProgressCommentAsync(github, context, settings, progressBody, CancellationToken.None)
+                commentId = await CreateOrUpdateProgressCommentAsync(github, context, settings, progressBody, cancellationToken)
                     .ConfigureAwait(false);
             }
 
@@ -126,13 +152,13 @@ public static class ReviewerApp {
             if (settings.ProgressUpdates && commentId.HasValue) {
                 onPartial = async partial => {
                     var body = ReviewFormatter.BuildProgressComment(context, settings, progress, partial, inlineSupported);
-                    await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, body, CancellationToken.None)
+                    await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, body, cancellationToken)
                         .ConfigureAwait(false);
                 };
             }
 
             var reviewBody = await runner.RunAsync(prompt, onPartial, TimeSpan.FromSeconds(settings.ProgressUpdateSeconds),
-                CancellationToken.None).ConfigureAwait(false);
+                cancellationToken).ConfigureAwait(false);
 
             var reviewFailed = ReviewDiagnostics.IsFailureBody(reviewBody);
             var inlineAllowed = inlineSupported && !reviewFailed;
@@ -148,20 +174,21 @@ public static class ReviewerApp {
 
             HashSet<string>? inlineKeys = null;
             if (inlineAllowed) {
-                inlineKeys = await PostInlineCommentsAsync(github, context, files, settings, inlineComments, CancellationToken.None)
+                inlineKeys = await PostInlineCommentsAsync(github, context, files, settings, inlineComments, cancellationToken)
                     .ConfigureAwait(false);
                 if (settings.ReviewThreadsAutoResolveMissingInline &&
                     !string.IsNullOrWhiteSpace(context.HeadSha) &&
                     inlineKeys is not null &&
                     inlineKeys.Count > 0) {
-                    await AutoResolveMissingInlineThreadsAsync(github, fallbackGithub, context, inlineKeys, settings, CancellationToken.None)
+                    await AutoResolveMissingInlineThreadsAsync(github, fallbackGithub, context, inlineKeys, settings, cancellationToken)
                         .ConfigureAwait(false);
                 }
             }
 
-            var (triageFiles, triageNote) = await ResolveThreadTriageFilesAsync(github, context, settings, files, CancellationToken.None)
+            var (triageFiles, triageNote) = await ResolveThreadTriageFilesAsync(github, context, settings, allFiles, cancellationToken)
                 .ConfigureAwait(false);
-            var triageResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, runner, context, triageFiles, settings, extras, reviewFailed, triageNote)
+            var triageResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, runner, context, triageFiles,
+                    settings, extras, reviewFailed, triageNote, cancellationToken)
                 .ConfigureAwait(false);
             if (settings.ReviewThreadsAutoResolveAIEmbed && !string.IsNullOrWhiteSpace(triageResult.EmbeddedBlock)) {
                 summaryBody = summaryBody.TrimEnd() + "\n\n" + triageResult.EmbeddedBlock.Trim();
@@ -176,28 +203,28 @@ public static class ReviewerApp {
             progress.StatusLine = "Finalizing summary.";
 
             if (commentId.HasValue) {
-                await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, commentBody, CancellationToken.None)
+                await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, commentBody, cancellationToken)
                     .ConfigureAwait(false);
                 Console.WriteLine("Updated review comment.");
             } else if (settings.CommentMode == ReviewCommentMode.Sticky) {
                 var shouldSearch = settings.OverwriteSummary || settings.OverwriteSummaryOnNewCommit;
                 IssueComment? existing = null;
                 if (shouldSearch) {
-                    existing = await FindExistingSummaryAsync(github, context, settings, CancellationToken.None).ConfigureAwait(false);
+                    existing = await FindExistingSummaryAsync(github, context, settings, cancellationToken).ConfigureAwait(false);
                 }
                 var shouldOverwrite = settings.OverwriteSummary ||
                                       (settings.OverwriteSummaryOnNewCommit && IsSummaryOutdated(existing, context.HeadSha));
                 if (existing is not null && shouldOverwrite) {
-                    await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, commentBody, CancellationToken.None)
+                    await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, commentBody, cancellationToken)
                         .ConfigureAwait(false);
                     Console.WriteLine("Updated existing review comment.");
                     return 0;
                 }
-                await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, CancellationToken.None)
+                await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, cancellationToken)
                     .ConfigureAwait(false);
                 Console.WriteLine("Posted review comment.");
             } else {
-                await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, CancellationToken.None)
+                await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, cancellationToken)
                     .ConfigureAwait(false);
                 Console.WriteLine("Posted review comment.");
             }
@@ -206,6 +233,8 @@ public static class ReviewerApp {
         } catch (Exception ex) {
             Console.Error.WriteLine(ex.Message);
             return 1;
+        } finally {
+            Console.CancelKeyPress -= cancelHandler;
         }
     }
 
@@ -382,6 +411,44 @@ public static class ReviewerApp {
             count++;
         }
         return list;
+    }
+
+    /// <summary>
+    /// Filters pull request files using include/exclude glob patterns.
+    /// Include patterns are evaluated first; exclude patterns are applied to the remaining files.
+    /// </summary>
+    internal static IReadOnlyList<PullRequestFile> FilterFilesByPaths(IReadOnlyList<PullRequestFile> files,
+        IReadOnlyList<string> includePaths, IReadOnlyList<string> excludePaths) {
+        if (files.Count == 0) {
+            return files;
+        }
+        includePaths ??= Array.Empty<string>();
+        excludePaths ??= Array.Empty<string>();
+        var hasInclude = includePaths.Count > 0;
+        var hasExclude = excludePaths.Count > 0;
+        if (!hasInclude && !hasExclude) {
+            return files;
+        }
+        var filtered = new List<PullRequestFile>();
+        foreach (var file in files) {
+            var filename = file.Filename.Replace('\\', '/');
+            if (hasInclude && !includePaths.Any(pattern => GlobMatcher.IsMatch(pattern, filename))) {
+                continue;
+            }
+            if (hasExclude && excludePaths.Any(pattern => GlobMatcher.IsMatch(pattern, filename))) {
+                continue;
+            }
+            filtered.Add(file);
+        }
+        return filtered;
+    }
+
+    private static async Task<(IReadOnlyList<PullRequestFile> Files, string DiffNote)> ResolveReviewFilesAsync(
+        GitHubClient github, PullRequestContext context, ReviewSettings settings, IReadOnlyList<PullRequestFile> currentFiles,
+        CancellationToken cancellationToken) {
+        var range = ReviewSettings.NormalizeDiffRange(settings.ReviewDiffRange, "current");
+        return await ResolveDiffRangeFilesAsync(github, context, range, currentFiles, settings, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private static async Task<ReviewContextExtras> BuildExtrasAsync(GitHubClient github, GitHubClient? fallbackGithub,
@@ -610,6 +677,13 @@ public static class ReviewerApp {
         GitHubClient github, PullRequestContext context, ReviewSettings settings, IReadOnlyList<PullRequestFile> currentFiles,
         CancellationToken cancellationToken) {
         var range = ReviewSettings.NormalizeDiffRange(settings.ReviewThreadsAutoResolveDiffRange, "current");
+        return await ResolveDiffRangeFilesAsync(github, context, range, currentFiles, settings, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task<(IReadOnlyList<PullRequestFile> Files, string DiffNote)> ResolveDiffRangeFilesAsync(
+        GitHubClient github, PullRequestContext context, string range, IReadOnlyList<PullRequestFile> currentFiles,
+        ReviewSettings settings, CancellationToken cancellationToken) {
         if (range == "current") {
             return (currentFiles, "current PR files");
         }
@@ -627,7 +701,12 @@ public static class ReviewerApp {
                 if (compareFiles.Count == 0) {
                     return (false, Array.Empty<PullRequestFile>(), $"{label} diff empty");
                 }
-                return (true, compareFiles, $"{label} → head ({ShortSha(baseSha)}..{ShortSha(context.HeadSha)})");
+                var filtered = FilterFilesByPaths(compareFiles, settings.IncludePaths, settings.ExcludePaths);
+                var note = $"{label} → head ({ShortSha(baseSha)}..{ShortSha(context.HeadSha)})";
+                if (filtered.Count == 0) {
+                    note += " (filtered empty)";
+                }
+                return (true, filtered, note);
             } catch (Exception ex) {
                 Console.Error.WriteLine($"Failed to load {label} diff: {ex.Message}");
                 return (false, Array.Empty<PullRequestFile>(), $"failed to load {label} diff");
@@ -642,26 +721,34 @@ public static class ReviewerApp {
         }
 
         var firstReviewSha = await FindOldestSummaryCommitAsync(github, context, settings, cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(firstReviewSha)) {
+            var prBaseResult = await TryCompareAsync(context.BaseSha, "PR base fallback").ConfigureAwait(false);
+            if (prBaseResult.Success) {
+                return (prBaseResult.Files, prBaseResult.Note);
+            }
+            return (currentFiles, $"current PR files (missing first review commit; {prBaseResult.Note})");
+        }
+
         var firstReviewResult = await TryCompareAsync(firstReviewSha, "first review").ConfigureAwait(false);
         if (firstReviewResult.Success) {
             return (firstReviewResult.Files, firstReviewResult.Note);
         }
 
-        var prBaseResult = await TryCompareAsync(context.BaseSha, "PR base fallback").ConfigureAwait(false);
-        if (prBaseResult.Success) {
-            return (prBaseResult.Files, prBaseResult.Note);
+        var prBaseFallback = await TryCompareAsync(context.BaseSha, "PR base fallback").ConfigureAwait(false);
+        if (prBaseFallback.Success) {
+            return (prBaseFallback.Files, prBaseFallback.Note);
         }
 
         var note = firstReviewResult.Note;
-        if (!string.IsNullOrWhiteSpace(prBaseResult.Note)) {
-            note = string.IsNullOrWhiteSpace(note) ? prBaseResult.Note : $"{note}; {prBaseResult.Note}";
+        if (!string.IsNullOrWhiteSpace(prBaseFallback.Note)) {
+            note = string.IsNullOrWhiteSpace(note) ? prBaseFallback.Note : $"{note}; {prBaseFallback.Note}";
         }
         return (currentFiles, $"current PR files ({note})");
     }
 
     private static async Task<ThreadTriageResult> MaybeAutoResolveAssessedThreadsAsync(GitHubClient github, GitHubClient? fallbackGithub,
         ReviewRunner runner, PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
-        ReviewContextExtras extras, bool reviewFailed, string? diffNote) {
+        ReviewContextExtras extras, bool reviewFailed, string? diffNote, CancellationToken cancellationToken) {
         if (!settings.ReviewThreadsAutoResolveAI || reviewFailed) {
             return ThreadTriageResult.Empty;
         }
@@ -679,7 +766,7 @@ public static class ReviewerApp {
             prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
         }
 
-        var output = await runner.RunAsync(prompt, null, null, CancellationToken.None).ConfigureAwait(false);
+        var output = await runner.RunAsync(prompt, null, null, cancellationToken).ConfigureAwait(false);
         if (ReviewDiagnostics.IsFailureBody(output)) {
             return ThreadTriageResult.Empty;
         }
@@ -711,7 +798,7 @@ public static class ReviewerApp {
             if (!byId.TryGetValue(thread.Id, out var assessment) || assessment.Action != "resolve") {
                 continue;
             }
-            var result = await TryResolveThreadAsync(github, fallbackGithub, thread.Id, CancellationToken.None).ConfigureAwait(false);
+            var result = await TryResolveThreadAsync(github, fallbackGithub, thread.Id, cancellationToken).ConfigureAwait(false);
             if (result.Resolved) {
                 resolvedCount++;
                 resolved.Add(assessment);
@@ -729,11 +816,12 @@ public static class ReviewerApp {
         var commentPosted = false;
         var triageBody = BuildThreadAssessmentComment(resolved, kept, context.HeadSha, diffNote);
         if (settings.ReviewThreadsAutoResolveAIReply && kept.Count > 0) {
-            await ReplyToKeptThreadsAsync(github, context, candidates, byId, context.HeadSha, diffNote, settings).ConfigureAwait(false);
+            await ReplyToKeptThreadsAsync(github, context, candidates, byId, context.HeadSha, diffNote, settings, cancellationToken)
+                .ConfigureAwait(false);
         }
         if (settings.ReviewThreadsAutoResolveAIPostComment && !settings.ReviewThreadsAutoResolveAIEmbed && kept.Count > 0) {
             var body = triageBody;
-            await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, CancellationToken.None)
+            await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, cancellationToken)
                 .ConfigureAwait(false);
             commentPosted = true;
         }
@@ -762,7 +850,7 @@ public static class ReviewerApp {
                 return string.Empty;
             }
             var summary = FormatUsageSummary(snapshot);
-            return string.IsNullOrWhiteSpace(summary) ? string.Empty : $"Usage: {summary}";
+            return string.IsNullOrWhiteSpace(summary) ? string.Empty : summary;
         } catch (Exception ex) {
             if (settings.Diagnostics) {
                 Console.Error.WriteLine($"Usage summary failed: {ex.Message}");
@@ -796,29 +884,91 @@ public static class ReviewerApp {
     }
 
     private static string FormatUsageSummary(ChatGptUsageSnapshot snapshot) {
-        var parts = new List<string>();
+        var lines = new List<string>();
 
-        var rate = FormatRemainingPercent(snapshot.RateLimit?.PrimaryWindow?.UsedPercent);
-        if (!string.IsNullOrWhiteSpace(rate)) {
-            parts.Add($"rate {rate}% remaining");
+        var primary = FormatRateLimitLine(snapshot.RateLimit?.PrimaryWindow, "rate limit");
+        if (!string.IsNullOrWhiteSpace(primary)) {
+            lines.Add(primary);
         }
 
-        var codeReview = FormatRemainingPercent(snapshot.CodeReviewRateLimit?.PrimaryWindow?.UsedPercent);
-        if (!string.IsNullOrWhiteSpace(codeReview)) {
-            parts.Add($"code review {codeReview}% remaining");
+        var secondary = FormatRateLimitLine(snapshot.RateLimit?.SecondaryWindow, "rate limit (secondary)");
+        if (!string.IsNullOrWhiteSpace(secondary)) {
+            lines.Add(secondary);
         }
 
         if (snapshot.Credits is not null) {
             if (snapshot.Credits.Unlimited) {
-                parts.Add("credits unlimited");
+                lines.Add("credits: unlimited");
             } else if (snapshot.Credits.Balance.HasValue) {
-                parts.Add($"credits {snapshot.Credits.Balance.Value.ToString("0.####", CultureInfo.InvariantCulture)}");
+                lines.Add($"credits: {snapshot.Credits.Balance.Value.ToString("0.####", CultureInfo.InvariantCulture)}");
             } else if (!snapshot.Credits.HasCredits) {
-                parts.Add("credits none");
+                lines.Add("credits: none");
             }
         }
 
-        return string.Join(", ", parts);
+        if (lines.Count == 0) {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine("Usage:");
+        foreach (var line in lines) {
+            sb.AppendLine($"- {line}");
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    private static string? FormatRateLimitLine(ChatGptRateLimitWindow? window, string fallbackLabel) {
+        if (window is null) {
+            return null;
+        }
+        var remaining = FormatRemainingPercent(window.UsedPercent);
+        if (string.IsNullOrWhiteSpace(remaining)) {
+            return null;
+        }
+        var label = FormatWindowLabel(window) ?? fallbackLabel;
+        return $"{label}: {remaining}% remaining";
+    }
+
+    private static string? FormatWindowLabel(ChatGptRateLimitWindow window) {
+        if (!window.LimitWindowSeconds.HasValue) {
+            return null;
+        }
+        var seconds = Math.Max(0, window.LimitWindowSeconds.Value);
+        if (IsWithin(seconds, 5 * 3600, 600)) {
+            return "5h limit";
+        }
+        if (IsWithin(seconds, 7 * 24 * 3600, 3600)) {
+            return "weekly limit";
+        }
+        if (IsWithin(seconds, 24 * 3600, 3600)) {
+            return "daily limit";
+        }
+        if (IsWithin(seconds, 3600, 120)) {
+            return "hourly limit";
+        }
+        return $"{FormatDuration(seconds)} limit";
+    }
+
+    private static bool IsWithin(long value, long target, long tolerance) {
+        return Math.Abs(value - target) <= tolerance;
+    }
+
+    private static string FormatDuration(long seconds) {
+        if (seconds <= 0) {
+            return "0s";
+        }
+        var span = TimeSpan.FromSeconds(seconds);
+        if (span.TotalDays >= 1 && span.TotalDays % 1 == 0) {
+            return $"{(int)span.TotalDays}d";
+        }
+        if (span.TotalHours >= 1 && span.TotalHours % 1 == 0) {
+            return $"{(int)span.TotalHours}h";
+        }
+        if (span.TotalMinutes >= 1) {
+            return $"{(int)Math.Round(span.TotalMinutes)}m";
+        }
+        return $"{(int)Math.Round(span.TotalSeconds)}s";
     }
 
     private static string? FormatRemainingPercent(double? usedPercent) {
@@ -1047,7 +1197,7 @@ public static class ReviewerApp {
 
     private static async Task ReplyToKeptThreadsAsync(GitHubClient github, PullRequestContext context,
         IReadOnlyList<PullRequestReviewThread> candidates, IReadOnlyDictionary<string, ThreadAssessment> assessments,
-        string? headSha, string? diffNote, ReviewSettings settings) {
+        string? headSha, string? diffNote, ReviewSettings settings, CancellationToken cancellationToken) {
         var replies = 0;
         foreach (var thread in candidates) {
             if (replies >= settings.ReviewThreadsAutoResolveMax) {
@@ -1069,7 +1219,7 @@ public static class ReviewerApp {
             var body = BuildThreadReply(assessment, headSha, diffNote);
             try {
                 await github.CreatePullRequestReviewCommentReplyAsync(context.Owner, context.Repo, context.Number,
-                        target.DatabaseId.Value, body, CancellationToken.None)
+                        target.DatabaseId.Value, body, cancellationToken)
                     .ConfigureAwait(false);
                 replies++;
             } catch (Exception ex) {
