@@ -334,6 +334,13 @@ internal sealed class ReviewRunner {
                 .ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) {
                 var code = (int)response.StatusCode;
+                if (response.StatusCode == HttpStatusCode.Unauthorized ||
+                    response.StatusCode == HttpStatusCode.Forbidden) {
+                    if (_settings.Diagnostics) {
+                        Console.Error.WriteLine($"Connectivity preflight returned HTTP {code} for {uri.Host} (reachable, auth required).");
+                    }
+                    return;
+                }
                 if (response.StatusCode == HttpStatusCode.TooManyRequests ||
                     response.StatusCode == HttpStatusCode.RequestTimeout ||
                     response.StatusCode == HttpStatusCode.ServiceUnavailable ||
@@ -342,9 +349,7 @@ internal sealed class ReviewRunner {
                     response.StatusCode == HttpStatusCode.InternalServerError) {
                     throw new HttpRequestException($"Connectivity preflight returned HTTP {code} for {uri.Host}.", null, response.StatusCode);
                 }
-                if (_settings.Diagnostics) {
-                    Console.Error.WriteLine($"Connectivity preflight returned HTTP {code} for {uri.Host}.");
-                }
+                throw new HttpRequestException($"Connectivity preflight returned HTTP {code} for {uri.Host}.", null, response.StatusCode);
             }
         } catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested) {
             throw new TimeoutException($"Connectivity preflight timed out after {timeout.TotalSeconds:0.#}s for {uri.Host}.", ex);
