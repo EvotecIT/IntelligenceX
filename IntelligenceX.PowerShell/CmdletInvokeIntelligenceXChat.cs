@@ -12,6 +12,24 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Super-easy chat command that handles connect, init, login, thread, and send.</para>
+/// <para type="description">Convenience entry point for quick chat: it connects, logs in (if needed), creates or
+/// reuses a thread, sends input, and returns the resulting turn. Supports streaming output and
+/// a simple DSL for text/image inputs.</para>
+/// <example>
+///  <para>Quick chat</para>
+///  <code>Invoke-IntelligenceXChat -Text "Summarize these changes."</code>
+/// </example>
+/// <example>
+///  <para>Chat with streaming output</para>
+///  <code>Invoke-IntelligenceXChat -Text "List risks." -Stream -WaitSeconds 10</code>
+/// </example>
+/// <example>
+///  <para>Use the DSL to mix text and an image</para>
+///  <code>@"
+/// text: Describe the image
+/// image: C:\temp\diagram.png
+/// "@ | Invoke-IntelligenceXChat -Dsl</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Invoke, "IntelligenceXChat", DefaultParameterSetName = "Text")]
 [OutputType(typeof(TurnInfo), typeof(JsonValue))]

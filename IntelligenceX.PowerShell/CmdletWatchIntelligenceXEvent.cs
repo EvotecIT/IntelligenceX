@@ -10,6 +10,15 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Watches JSON-RPC notifications from the app-server.</para>
+/// <para type="description">Streams notification events until the cmdlet is cancelled. Optionally filter by method.</para>
+/// <example>
+///  <para>Watch all events</para>
+///  <code>Watch-IntelligenceXEvent</code>
+/// </example>
+/// <example>
+///  <para>Watch only turn deltas</para>
+///  <code>Watch-IntelligenceXEvent -Method "turn/delta"</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Watch, "IntelligenceXEvent")]
 [OutputType(typeof(RpcNotificationRecord))]

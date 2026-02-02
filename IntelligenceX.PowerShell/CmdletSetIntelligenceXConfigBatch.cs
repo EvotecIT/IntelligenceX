@@ -10,6 +10,11 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Writes multiple configuration values.</para>
+/// <para type="description">Updates several config keys in a single request.</para>
+/// <example>
+///  <para>Set multiple values at once</para>
+///  <code>Set-IntelligenceXConfigBatch -Values @{ model = "gpt-5.2-codex"; approvalPolicy = "auto" }</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Set, "IntelligenceXConfigBatch")]
 public sealed class CmdletSetIntelligenceXConfigBatch : IntelligenceXCmdlet {
