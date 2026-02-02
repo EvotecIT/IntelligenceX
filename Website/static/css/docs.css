@@ -1,8 +1,20 @@
 /* ===== Docs Layout ===== */
-.docs-layout { display: grid; grid-template-columns: 260px 1fr; min-height: calc(100vh - 64px); max-width: var(--pf-max-width); margin: 0 auto; }
+.docs-layout { display: grid; grid-template-columns: 260px 1fr; min-height: calc(100vh - 64px); max-width: var(--pf-max-width); margin: 0 auto; position: relative; gap: 1.5rem; }
 
 /* ===== Sidebar ===== */
-.docs-sidebar { border-right: 1px solid var(--pf-border); padding: 1.5rem 1rem; position: sticky; top: 64px; height: calc(100vh - 64px); overflow-y: auto; background: var(--pf-bg); }
+.docs-sidebar {
+  border-right: 1px solid var(--pf-border);
+  padding: 1.5rem 1rem;
+  position: sticky;
+  top: 64px;
+  height: calc(100vh - 64px);
+  overflow-y: auto;
+  background: rgba(10, 14, 26, 0.8);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border-radius: var(--pf-radius);
+  box-shadow: var(--pf-shadow-panel);
+}
 .docs-nav-top + .docs-nav-group { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--pf-border); }
 .docs-nav-group { margin-bottom: 1.5rem; }
 .docs-nav-heading { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--pf-ink); margin-bottom: 0.5rem; padding: 0 0.75rem; font-weight: 600; }
@@ -15,7 +27,16 @@
 .docs-nav-top.active { background: var(--pf-glow-primary); color: var(--pf-accent); border-left-color: var(--pf-accent); font-weight: 500; }
 
 /* ===== Docs Main Content ===== */
-.docs-main { padding: 2rem 2.5rem 4rem; max-width: 850px; min-width: 0; }
+.docs-main { padding: 1.5rem 0 4rem; max-width: 900px; min-width: 0; }
+.docs-article {
+  background: var(--pf-panel);
+  border: 1px solid var(--pf-border);
+  border-radius: var(--pf-radius-lg);
+  padding: 2.25rem 2.5rem;
+  box-shadow: var(--pf-shadow-panel);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
 .docs-article-header { margin-bottom: 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--pf-border); }
 .docs-article-header h1 { font-size: 2rem; }
 .docs-article-desc { font-size: 1.05rem; color: var(--pf-muted); margin: 0; }
@@ -53,7 +74,8 @@
 
 /* ===== Responsive ===== */
 @media (max-width: 768px) {
-  .docs-layout { grid-template-columns: 1fr; }
-  .docs-sidebar { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--pf-border); padding: 1rem; }
-  .docs-main { padding: 1.5rem; }
+  .docs-layout { grid-template-columns: 1fr; gap: 1rem; }
+  .docs-sidebar { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--pf-border); padding: 1rem; border-radius: var(--pf-radius); }
+  .docs-main { padding: 1rem; }
+  .docs-article { padding: 1.5rem; border-radius: var(--pf-radius); }
 }
