@@ -19,6 +19,7 @@ Use the docs by area so the library, reviewer, CLI, and PowerShell guidance stay
 
 ## .NET library
 - Overview + examples: `library/overview.md`
+- Quickstart: `library/quickstart.md`
 - Providers: `library/providers.md`
 
 ## PowerShell module
