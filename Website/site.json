@@ -23,7 +23,7 @@
       "Input": "content/docs",
       "Output": "/docs",
       "DefaultLayout": "docs",
-      "TocFile": "content/docs/toc.json",
+      "UseToc": false,
       "Include": ["*.md", "**/*.md"]
     }
   ],
@@ -101,7 +101,7 @@
   },
   "Navigation": {
     "Auto": [
-      { "Collection": "docs", "Menu": "docs" }
+      { "Collection": "docs", "Menu": "docs", "Sort": "order,title" }
     ],
     "Menus": [
       {
