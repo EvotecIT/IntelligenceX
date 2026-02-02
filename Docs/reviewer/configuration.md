@@ -20,6 +20,49 @@ Schema: `../../Schemas/reviewer.schema.json`
 }
 ```
 
+## Auto-resolve + triage example
+
+```json
+{
+  "review": {
+    "mode": "inline",
+    "length": "long",
+    "reviewDiffRange": "current",
+    "includeReviewThreads": true,
+    "reviewThreadsAutoResolveAI": true,
+    "reviewThreadsAutoResolveAIPostComment": true,
+    "reviewThreadsAutoResolveAISummary": true,
+    "reviewThreadsAutoResolveBotLogins": [
+      "intelligencex-review",
+      "copilot-pull-request-reviewer"
+    ]
+  }
+}
+```
+
+## Path filters example
+
+```json
+{
+  "review": {
+    "includePaths": ["src/**", "tests/**"],
+    "excludePaths": ["**/*.md", "**/*.snap"],
+    "skipPaths": ["**/*.lock"]
+  }
+}
+```
+
+## Usage summary line
+
+```json
+{
+  "review": {
+    "reviewUsageSummary": true,
+    "reviewUsageSummaryCacheMinutes": 30
+  }
+}
+```
+
 ## Common knobs
 - `provider`: `openai` or `copilot`
 - `model`: model name for the selected provider
