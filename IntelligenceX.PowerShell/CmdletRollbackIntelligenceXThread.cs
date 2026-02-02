@@ -9,6 +9,11 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Rolls back the last N turns from a thread.</para>
+/// <para type="description">Removes recent turns from a thread so you can re-run or correct the conversation.</para>
+/// <example>
+///  <para>Rollback the last two turns</para>
+///  <code>Restore-IntelligenceXThread -ThreadId $thread.id -Turns 2</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsData.Restore, "IntelligenceXThread")]
 [OutputType(typeof(ThreadInfo), typeof(JsonValue))]
@@ -37,6 +42,7 @@ public sealed class CmdletRollbackIntelligenceXThread : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter Raw { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         if (Raw.IsPresent) {

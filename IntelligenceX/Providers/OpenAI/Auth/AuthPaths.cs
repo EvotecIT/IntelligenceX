@@ -4,10 +4,12 @@ using System.IO;
 namespace IntelligenceX.OpenAI.Auth;
 
 /// <summary>
-/// Resolves default storage paths for IntelligenceX auth bundles.
+/// Provides common paths used for auth storage.
 /// </summary>
 public static class AuthPaths {
-    /// <summary>Resolves the default auth.json path.</summary>
+    /// <summary>
+    /// Resolves the default auth bundle path, honoring INTELLIGENCEX_AUTH_PATH when set.
+    /// </summary>
     public static string ResolveAuthPath() {
         var overridePath = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH");
         if (!string.IsNullOrWhiteSpace(overridePath)) {

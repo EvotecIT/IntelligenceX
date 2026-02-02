@@ -5,64 +5,55 @@ using IntelligenceX.Utils;
 namespace IntelligenceX.OpenAI.AppServer;
 
 /// <summary>
-/// Options for launching and communicating with the Codex app-server process.
+/// Options for starting and configuring the app-server process.
 /// </summary>
-/// <example>
-/// <code>
-/// var options = new AppServerOptions {
-///     ExecutablePath = "codex",
-///     Arguments = "app-server",
-///     HealthCheckOnStart = true
-/// };
-/// </code>
-/// </example>
 public sealed class AppServerOptions {
     /// <summary>
     /// Path to the app-server executable.
     /// </summary>
     public string ExecutablePath { get; set; } = "codex";
     /// <summary>
-    /// Arguments passed to the app-server process.
+    /// Arguments passed to the executable.
     /// </summary>
     public string Arguments { get; set; } = "app-server";
     /// <summary>
-    /// Optional working directory for the process.
+    /// Working directory for the process.
     /// </summary>
     public string? WorkingDirectory { get; set; }
     /// <summary>
-    /// Environment variables injected into the process.
+    /// Environment variables passed to the process.
     /// </summary>
     public Dictionary<string, string> Environment { get; } = new();
     /// <summary>
-    /// Whether to redirect standard error output.
+    /// Whether to redirect standard error.
     /// </summary>
     public bool RedirectStandardError { get; set; } = true;
     /// <summary>
-    /// Whether to run a health check immediately after startup.
+    /// Whether to perform a health check after start.
     /// </summary>
     public bool HealthCheckOnStart { get; set; }
     /// <summary>
-    /// RPC method used for health checks.
+    /// Health check method name.
     /// </summary>
     public string HealthCheckMethod { get; set; } = "config/read";
     /// <summary>
-    /// Maximum time allowed for process startup.
+    /// Timeout for the app-server start.
     /// </summary>
     public TimeSpan StartTimeout { get; set; } = TimeSpan.FromSeconds(30);
     /// <summary>
-    /// Timeout for the health check call.
+    /// Timeout for health check calls.
     /// </summary>
     public TimeSpan HealthCheckTimeout { get; set; } = TimeSpan.FromSeconds(10);
     /// <summary>
-    /// Number of retries for connecting to the process.
+    /// Retry count for connect attempts.
     /// </summary>
     public int ConnectRetryCount { get; set; } = 2;
     /// <summary>
-    /// Initial delay between connect retries.
+    /// Initial delay for connect retries.
     /// </summary>
     public TimeSpan ConnectRetryInitialDelay { get; set; } = TimeSpan.FromMilliseconds(250);
     /// <summary>
-    /// Maximum delay between connect retries.
+    /// Maximum delay for connect retries.
     /// </summary>
     public TimeSpan ConnectRetryMaxDelay { get; set; } = TimeSpan.FromSeconds(2);
     /// <summary>
@@ -70,12 +61,12 @@ public sealed class AppServerOptions {
     /// </summary>
     public TimeSpan ShutdownTimeout { get; set; } = TimeSpan.FromSeconds(2);
     /// <summary>
-    /// RPC retry options for idempotent calls.
+    /// Retry options for RPC calls.
     /// </summary>
     public RpcRetryOptions RpcRetry { get; } = new();
 
     /// <summary>
-    /// Validates the option values and throws on invalid configuration.
+    /// Validates the configuration and throws on invalid values.
     /// </summary>
     public void Validate() {
         if (string.IsNullOrWhiteSpace(ExecutablePath)) {

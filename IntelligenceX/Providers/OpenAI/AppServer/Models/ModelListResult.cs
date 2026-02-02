@@ -4,17 +4,12 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
 /// <summary>
-/// Represents a paged list of models from the app-server.
+/// Represents the result of a model list request.
 /// </summary>
-/// <example>
-/// <code>
-/// var models = await client.ListModelsAsync();
-/// foreach (var model in models.Models) {
-///     Console.WriteLine(model.Model);
-/// }
-/// </code>
-/// </example>
 public sealed class ModelListResult {
+    /// <summary>
+    /// Initializes a new model list result.
+    /// </summary>
     public ModelListResult(IReadOnlyList<ModelInfo> models, string? nextCursor, JsonObject raw, JsonObject? additional) {
         Models = models;
         NextCursor = nextCursor;
@@ -22,16 +17,28 @@ public sealed class ModelListResult {
         Additional = additional;
     }
 
-    /// <summary>Models returned by the service.</summary>
+    /// <summary>
+    /// Gets the list of models.
+    /// </summary>
     public IReadOnlyList<ModelInfo> Models { get; }
-    /// <summary>Cursor for the next page, if any.</summary>
+    /// <summary>
+    /// Gets the pagination cursor for the next page.
+    /// </summary>
     public string? NextCursor { get; }
-    /// <summary>Raw JSON payload from the service.</summary>
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
-    /// <summary>Additional unmapped fields from the payload.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses a model list from JSON.</summary>
+    /// <summary>
+    /// Parses a model list result from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed model list result.</returns>
     public static ModelListResult FromJson(JsonObject obj) {
         var models = new List<ModelInfo>();
         var items = obj.GetArray("items") ?? obj.GetArray("data") ?? obj.GetArray("models");
@@ -56,15 +63,12 @@ public sealed class ModelListResult {
 }
 
 /// <summary>
-/// Describes a model returned by the app-server.
+/// Represents a single model entry.
 /// </summary>
-/// <example>
-/// <code>
-/// var info = models.Models[0];
-/// Console.WriteLine(info.DisplayName);
-/// </code>
-/// </example>
 public sealed class ModelInfo {
+    /// <summary>
+    /// Initializes a new model info entry.
+    /// </summary>
     public ModelInfo(string id, string model, string displayName, string description,
         IReadOnlyList<ReasoningEffortOption> supportedReasoningEfforts, string? defaultReasoningEffort, bool isDefault,
         JsonObject raw, JsonObject? additional) {
@@ -79,26 +83,48 @@ public sealed class ModelInfo {
         Additional = additional;
     }
 
-    /// <summary>Model identifier.</summary>
+    /// <summary>
+    /// Gets the model id.
+    /// </summary>
     public string Id { get; }
-    /// <summary>Model name.</summary>
+    /// <summary>
+    /// Gets the model name.
+    /// </summary>
     public string Model { get; }
-    /// <summary>Human-friendly display name.</summary>
+    /// <summary>
+    /// Gets the display name.
+    /// </summary>
     public string DisplayName { get; }
-    /// <summary>Model description.</summary>
+    /// <summary>
+    /// Gets the model description.
+    /// </summary>
     public string Description { get; }
-    /// <summary>Supported reasoning effort options.</summary>
+    /// <summary>
+    /// Gets the supported reasoning effort options.
+    /// </summary>
     public IReadOnlyList<ReasoningEffortOption> SupportedReasoningEfforts { get; }
-    /// <summary>Default reasoning effort (if provided).</summary>
+    /// <summary>
+    /// Gets the default reasoning effort value.
+    /// </summary>
     public string? DefaultReasoningEffort { get; }
-    /// <summary>True when this model is the default.</summary>
+    /// <summary>
+    /// Gets a value indicating whether this is the default model.
+    /// </summary>
     public bool IsDefault { get; }
-    /// <summary>Raw JSON payload from the service.</summary>
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
-    /// <summary>Additional unmapped fields from the payload.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses a model descriptor from JSON.</summary>
+    /// <summary>
+    /// Parses a model entry from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed model entry.</returns>
     public static ModelInfo FromJson(JsonObject obj) {
         var displayName = GetString(obj, "displayName", "display_name");
         var id = GetString(obj, "id")
@@ -140,6 +166,9 @@ public sealed class ModelInfo {
 /// Describes a supported reasoning effort option for a model.
 /// </summary>
 public sealed class ReasoningEffortOption {
+    /// <summary>
+    /// Initializes a new reasoning effort option.
+    /// </summary>
     public ReasoningEffortOption(string reasoningEffort, string description, JsonObject raw, JsonObject? additional) {
         ReasoningEffort = reasoningEffort;
         Description = description;
@@ -147,16 +176,28 @@ public sealed class ReasoningEffortOption {
         Additional = additional;
     }
 
-    /// <summary>Reasoning effort value.</summary>
+    /// <summary>
+    /// Gets the reasoning effort identifier.
+    /// </summary>
     public string ReasoningEffort { get; }
-    /// <summary>Human-friendly description.</summary>
+    /// <summary>
+    /// Gets the description of the effort level.
+    /// </summary>
     public string Description { get; }
-    /// <summary>Raw JSON payload from the service.</summary>
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
-    /// <summary>Additional unmapped fields from the payload.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses a reasoning effort option from JSON.</summary>
+    /// <summary>
+    /// Parses a reasoning effort option from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed option.</returns>
     public static ReasoningEffortOption FromJson(JsonObject obj) {
         var effort = obj.GetString("reasoningEffort") ?? obj.GetString("reasoning_effort") ?? string.Empty;
         var description = obj.GetString("description") ?? string.Empty;

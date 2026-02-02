@@ -8,30 +8,38 @@ using System.Threading.Tasks;
 namespace IntelligenceX.Copilot;
 
 /// <summary>
-/// Describes the installation method for the Copilot CLI.
+/// Supported Copilot CLI install methods.
 /// </summary>
 public enum CopilotCliInstallMethod {
-    /// <summary>Automatically choose the best method for the platform.</summary>
+    /// <summary>
+    /// Automatically choose the best method for the OS.
+    /// </summary>
     Auto,
-    /// <summary>Install via WinGet.</summary>
+    /// <summary>
+    /// Install via WinGet.
+    /// </summary>
     Winget,
-    /// <summary>Install via Homebrew.</summary>
+    /// <summary>
+    /// Install via Homebrew.
+    /// </summary>
     Homebrew,
-    /// <summary>Install via npm.</summary>
+    /// <summary>
+    /// Install via npm.
+    /// </summary>
     Npm,
-    /// <summary>Install via the official shell script.</summary>
+    /// <summary>
+    /// Install via script.
+    /// </summary>
     Script
 }
 
 /// <summary>
-/// Represents a single installation command for the Copilot CLI.
+/// Describes a CLI install command.
 /// </summary>
 public sealed class CopilotCliInstallCommand {
-    /// <summary>Creates a new install command descriptor.</summary>
-    /// <param name="method">The installation method.</param>
-    /// <param name="fileName">The executable name.</param>
-    /// <param name="arguments">The arguments to pass.</param>
-    /// <param name="description">A human-friendly description.</param>
+    /// <summary>
+    /// Initializes a new install command descriptor.
+    /// </summary>
     public CopilotCliInstallCommand(CopilotCliInstallMethod method, string fileName, string arguments, string description) {
         Method = method;
         FileName = fileName;
@@ -39,22 +47,32 @@ public sealed class CopilotCliInstallCommand {
         Description = description;
     }
 
-    /// <summary>Gets the installation method.</summary>
+    /// <summary>
+    /// Gets the install method.
+    /// </summary>
     public CopilotCliInstallMethod Method { get; }
-    /// <summary>Gets the executable name to run.</summary>
+    /// <summary>
+    /// Gets the executable name.
+    /// </summary>
     public string FileName { get; }
-    /// <summary>Gets the arguments passed to the executable.</summary>
+    /// <summary>
+    /// Gets the command arguments.
+    /// </summary>
     public string Arguments { get; }
-    /// <summary>Gets the display description for this command.</summary>
+    /// <summary>
+    /// Gets the human-readable description.
+    /// </summary>
     public string Description { get; }
 }
 
 /// <summary>
-/// Provides helpers for installing the Copilot CLI.
+/// Utilities for installing the Copilot CLI.
 /// </summary>
 public static class CopilotCliInstall {
-    /// <summary>Gets all recommended install commands for the current platform.</summary>
-    /// <param name="prerelease">Whether to use prerelease packages.</param>
+    /// <summary>
+    /// Returns install commands suitable for the current OS.
+    /// </summary>
+    /// <param name="prerelease">Whether to use prerelease versions.</param>
     public static IReadOnlyList<CopilotCliInstallCommand> GetInstallCommands(bool prerelease = false) {
         var list = new List<CopilotCliInstallCommand>();
         if (IsWindows()) {
@@ -82,8 +100,10 @@ public static class CopilotCliInstall {
         return list;
     }
 
-    /// <summary>Gets the default install command for the current platform.</summary>
-    /// <param name="prerelease">Whether to use prerelease packages.</param>
+    /// <summary>
+    /// Returns the default install command for the current OS.
+    /// </summary>
+    /// <param name="prerelease">Whether to use prerelease versions.</param>
     public static CopilotCliInstallCommand GetDefaultCommand(bool prerelease = false) {
         if (IsWindows()) {
             return new CopilotCliInstallCommand(
@@ -102,9 +122,11 @@ public static class CopilotCliInstall {
         return Npm(prerelease);
     }
 
-    /// <summary>Gets the install command for the specified method.</summary>
-    /// <param name="method">The installation method.</param>
-    /// <param name="prerelease">Whether to use prerelease packages.</param>
+    /// <summary>
+    /// Returns a specific install command.
+    /// </summary>
+    /// <param name="method">Install method.</param>
+    /// <param name="prerelease">Whether to use prerelease versions.</param>
     public static CopilotCliInstallCommand GetCommand(CopilotCliInstallMethod method, bool prerelease = false) {
         if (method == CopilotCliInstallMethod.Auto) {
             return GetDefaultCommand(prerelease);
@@ -130,9 +152,11 @@ public static class CopilotCliInstall {
         };
     }
 
-    /// <summary>Runs the install command and returns the exit code.</summary>
-    /// <param name="command">The install command to run.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <summary>
+    /// Executes the provided install command.
+    /// </summary>
+    /// <param name="command">Install command.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public static async Task<int> InstallAsync(CopilotCliInstallCommand command, CancellationToken cancellationToken = default) {
         if (command is null) {
             throw new ArgumentNullException(nameof(command));
@@ -155,8 +179,10 @@ public static class CopilotCliInstall {
         return process.ExitCode;
     }
 
-    /// <summary>Builds a human-friendly string listing available install commands.</summary>
-    /// <param name="prerelease">Whether to use prerelease packages.</param>
+    /// <summary>
+    /// Returns human-readable install instructions.
+    /// </summary>
+    /// <param name="prerelease">Whether to use prerelease versions.</param>
     public static string GetInstallInstructions(bool prerelease = false) {
         var commands = GetInstallCommands(prerelease);
         var lines = new List<string>();

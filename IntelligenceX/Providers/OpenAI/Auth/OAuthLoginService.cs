@@ -11,30 +11,15 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.Auth;
 
 /// <summary>
-/// OAuth PKCE login flow for ChatGPT.
+/// Implements the OAuth login flow and token refresh.
 /// </summary>
-/// <example>
-/// <code>
-/// var service = new OAuthLoginService();
-/// var result = await service.LoginAsync(new OAuthLoginOptions(OAuthConfig.FromEnvironment()));
-/// </code>
-/// </example>
 public sealed class OAuthLoginService {
     private readonly HttpClient _httpClient = new();
 
     /// <summary>
-    /// Starts an OAuth login flow and returns the resulting auth bundle.
+    /// Performs an OAuth login flow.
     /// </summary>
-    /// <example>
-    /// <code>
-    /// var service = new OAuthLoginService();
-    /// var options = new OAuthLoginOptions(OAuthConfig.FromEnvironment()) {
-    ///     OnAuthUrl = url => { Console.WriteLine(url); return Task.CompletedTask; },
-    ///     OnPrompt = prompt => Task.FromResult(Console.ReadLine() ?? string.Empty)
-    /// };
-    /// var result = await service.LoginAsync(options);
-    /// </code>
-    /// </example>
+    /// <param name="options">Login options.</param>
     public async Task<OAuthLoginResult> LoginAsync(OAuthLoginOptions options) {
         options.Config.Validate();
         var config = options.Config;
@@ -75,14 +60,11 @@ public sealed class OAuthLoginService {
     }
 
     /// <summary>
-    /// Refreshes the access token for an existing bundle.
+    /// Refreshes an OAuth access token.
     /// </summary>
-    /// <example>
-    /// <code>
-    /// var service = new OAuthLoginService();
-    /// var refreshed = await service.RefreshAsync(OAuthConfig.FromEnvironment(), bundle);
-    /// </code>
-    /// </example>
+    /// <param name="config">OAuth configuration.</param>
+    /// <param name="bundle">Existing auth bundle to update.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<OAuthLoginResult> RefreshAsync(OAuthConfig config, AuthBundle bundle, CancellationToken cancellationToken = default) {
         config.Validate();
         var tokenResponse = await RefreshTokenAsync(config, bundle.RefreshToken, cancellationToken).ConfigureAwait(false);

@@ -10,23 +10,25 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.Usage;
 
 /// <summary>
-/// Cached usage snapshot with a timestamp.
+/// Represents a cached usage snapshot entry.
 /// </summary>
 public sealed class ChatGptUsageCacheEntry {
     /// <summary>
-    /// Creates a cache entry for the given snapshot.
+    /// Initializes a new cache entry.
     /// </summary>
+    /// <param name="snapshot">Usage snapshot.</param>
+    /// <param name="updatedAt">Timestamp when the snapshot was stored.</param>
     public ChatGptUsageCacheEntry(ChatGptUsageSnapshot snapshot, DateTimeOffset updatedAt) {
         Snapshot = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
         UpdatedAt = updatedAt;
     }
 
     /// <summary>
-    /// The cached usage snapshot.
+    /// Gets the cached usage snapshot.
     /// </summary>
     public ChatGptUsageSnapshot Snapshot { get; }
     /// <summary>
-    /// When the snapshot was captured.
+    /// Gets the timestamp when the snapshot was updated.
     /// </summary>
     public DateTimeOffset UpdatedAt { get; }
 
@@ -42,6 +44,8 @@ public sealed class ChatGptUsageCacheEntry {
     /// <summary>
     /// Parses a cache entry from JSON.
     /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed cache entry or null.</returns>
     public static ChatGptUsageCacheEntry? FromJson(JsonObject obj) {
         if (obj is null) {
             return null;
@@ -70,21 +74,11 @@ public sealed class ChatGptUsageCacheEntry {
 }
 
 /// <summary>
-/// File-backed cache for ChatGPT usage snapshots.
+/// Helpers for reading and writing the local usage cache.
 /// </summary>
-/// <example>
-/// <code>
-/// using var usage = new ChatGptUsageService(new OpenAINativeOptions());
-/// var snapshot = await usage.GetUsageSnapshotAsync();
-/// ChatGptUsageCache.Save(snapshot);
-/// if (ChatGptUsageCache.TryLoad(out var cached)) {
-///     Console.WriteLine(cached?.Snapshot.PlanType);
-/// }
-/// </code>
-/// </example>
 public static class ChatGptUsageCache {
     /// <summary>
-    /// Resolves the default cache path (or an override from INTELLIGENCEX_USAGE_PATH).
+    /// Resolves the default cache path, honoring INTELLIGENCEX_USAGE_PATH when present.
     /// </summary>
     public static string ResolveCachePath() {
         var overridePath = Environment.GetEnvironmentVariable("INTELLIGENCEX_USAGE_PATH");
@@ -99,8 +93,11 @@ public static class ChatGptUsageCache {
     }
 
     /// <summary>
-    /// Attempts to load a cached snapshot from disk.
+    /// Attempts to load a cached usage snapshot.
     /// </summary>
+    /// <param name="entry">The cache entry when found.</param>
+    /// <param name="path">Optional override path.</param>
+    /// <returns><c>true</c> when a cache entry was loaded.</returns>
     public static bool TryLoad(out ChatGptUsageCacheEntry? entry, string? path = null) {
         entry = null;
         try {
@@ -125,8 +122,10 @@ public static class ChatGptUsageCache {
     }
 
     /// <summary>
-    /// Saves a snapshot to disk (best-effort permissions).
+    /// Saves a usage snapshot to the cache.
     /// </summary>
+    /// <param name="snapshot">Snapshot to persist.</param>
+    /// <param name="path">Optional override path.</param>
     public static void Save(ChatGptUsageSnapshot snapshot, string? path = null) {
         var resolved = path ?? ResolveCachePath();
         var dir = Path.GetDirectoryName(resolved);

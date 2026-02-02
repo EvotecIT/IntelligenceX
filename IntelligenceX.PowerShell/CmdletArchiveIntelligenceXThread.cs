@@ -7,6 +7,11 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Archives a thread.</para>
+/// <para type="description">Marks a thread as archived so it is no longer active in listings.</para>
+/// <example>
+///  <para>Archive a thread</para>
+///  <code>Backup-IntelligenceXThread -ThreadId $thread.id</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsData.Backup, "IntelligenceXThread")]
 public sealed class CmdletArchiveIntelligenceXThread : IntelligenceXCmdlet {
@@ -22,6 +27,7 @@ public sealed class CmdletArchiveIntelligenceXThread : IntelligenceXCmdlet {
     [Parameter(Mandatory = true)]
     public string ThreadId { get; set; } = string.Empty;
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         await resolved.ArchiveThreadAsync(ThreadId, CancelToken).ConfigureAwait(false);

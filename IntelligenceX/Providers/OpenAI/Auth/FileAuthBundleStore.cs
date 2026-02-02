@@ -9,22 +9,17 @@ using System.Threading.Tasks;
 namespace IntelligenceX.OpenAI.Auth;
 
 /// <summary>
-/// File-based auth bundle store with optional encryption.
+/// File-based authentication bundle store with optional encryption.
 /// </summary>
-/// <example>
-/// <code>
-/// var store = new FileAuthBundleStore();
-/// await store.SaveAsync(bundle);
-/// var loaded = await store.GetAsync(bundle.Provider, bundle.AccountId);
-/// </code>
-/// </example>
 public sealed class FileAuthBundleStore : IAuthBundleStore {
     private readonly string _path;
     private readonly byte[]? _encryptionKey;
 
     /// <summary>
-    /// Creates a file-backed auth store.
+    /// Initializes a file-based auth bundle store.
     /// </summary>
+    /// <param name="path">Optional override path.</param>
+    /// <param name="encryptionKeyBase64">Optional base64 encryption key.</param>
     public FileAuthBundleStore(string? path = null, string? encryptionKeyBase64 = null) {
         _path = path ?? AuthPaths.ResolveAuthPath();
         _encryptionKey = ParseKey(encryptionKeyBase64 ?? Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_KEY"));
@@ -34,8 +29,11 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
     }
 
     /// <summary>
-    /// Loads a bundle by provider (and optional account id).
+    /// Retrieves a bundle for the specified provider and account.
     /// </summary>
+    /// <param name="provider">Provider identifier.</param>
+    /// <param name="accountId">Optional account id.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<AuthBundle?> GetAsync(string provider, string? accountId = null, CancellationToken cancellationToken = default) {
         var file = await ReadFileAsync(cancellationToken).ConfigureAwait(false);
         if (file is null) {
@@ -54,8 +52,10 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
     }
 
     /// <summary>
-    /// Saves a bundle to disk.
+    /// Saves an authentication bundle to disk.
     /// </summary>
+    /// <param name="bundle">Bundle to save.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task SaveAsync(AuthBundle bundle, CancellationToken cancellationToken = default) {
         var file = await ReadFileAsync(cancellationToken).ConfigureAwait(false)
                    ?? new AuthBundleFile(1, new Dictionary<string, AuthBundle>(StringComparer.OrdinalIgnoreCase));
@@ -65,14 +65,8 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
     }
 
     /// <summary>
-    /// Deletes the auth store file.
+    /// Deletes the auth store file if it exists.
     /// </summary>
-    /// <example>
-    /// <code>
-    /// var store = new FileAuthBundleStore();
-    /// store.Delete();
-    /// </code>
-    /// </example>
     public void Delete() {
         if (File.Exists(_path)) {
             File.Delete(_path);

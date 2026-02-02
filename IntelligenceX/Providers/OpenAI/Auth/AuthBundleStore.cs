@@ -4,21 +4,20 @@ using System.Threading.Tasks;
 namespace IntelligenceX.OpenAI.Auth;
 
 /// <summary>
-/// Storage abstraction for auth bundles.
+/// Abstraction for storing authentication bundles.
 /// </summary>
-/// <example>
-/// <code>
-/// IAuthBundleStore store = new FileAuthBundleStore();
-/// var bundle = await store.GetAsync("openai");
-/// </code>
-/// </example>
 public interface IAuthBundleStore {
     /// <summary>
-    /// Loads a bundle for the provider (optionally by account id).
+    /// Retrieves a bundle for the specified provider and account.
     /// </summary>
+    /// <param name="provider">Provider identifier.</param>
+    /// <param name="accountId">Optional account id.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     Task<AuthBundle?> GetAsync(string provider, string? accountId = null, CancellationToken cancellationToken = default);
     /// <summary>
-    /// Saves a bundle.
+    /// Saves an authentication bundle.
     /// </summary>
+    /// <param name="bundle">Bundle to save.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     Task SaveAsync(AuthBundle bundle, CancellationToken cancellationToken = default);
 }

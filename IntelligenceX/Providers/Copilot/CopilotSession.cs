@@ -7,6 +7,9 @@ using IntelligenceX.Json;
 
 namespace IntelligenceX.Copilot;
 
+/// <summary>
+/// Represents an active Copilot session.
+/// </summary>
 public sealed class CopilotSession : IDisposable {
     private readonly CopilotClient _client;
     private readonly List<Action<CopilotSessionEvent>> _handlers = new();
@@ -17,8 +20,16 @@ public sealed class CopilotSession : IDisposable {
         _client = client;
     }
 
+    /// <summary>
+    /// Gets the session id.
+    /// </summary>
     public string SessionId { get; }
 
+    /// <summary>
+    /// Subscribes to session events.
+    /// </summary>
+    /// <param name="handler">Event handler.</param>
+    /// <returns>A subscription token that should be disposed to unsubscribe.</returns>
     public IDisposable OnEvent(Action<CopilotSessionEvent> handler) {
         if (handler is null) {
             throw new ArgumentNullException(nameof(handler));
@@ -27,6 +38,11 @@ public sealed class CopilotSession : IDisposable {
         return new Subscription(() => _handlers.Remove(handler));
     }
 
+    /// <summary>
+    /// Sends a message to the session.
+    /// </summary>
+    /// <param name="options">Message options.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<string> SendAsync(CopilotMessageOptions options, CancellationToken cancellationToken = default) {
         if (_disposed) {
             throw new ObjectDisposedException(nameof(CopilotSession));
@@ -63,6 +79,12 @@ public sealed class CopilotSession : IDisposable {
         return messageId ?? string.Empty;
     }
 
+    /// <summary>
+    /// Sends a message and waits for the response.
+    /// </summary>
+    /// <param name="options">Message options.</param>
+    /// <param name="timeout">Optional timeout.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<string?> SendAndWaitAsync(CopilotMessageOptions options, TimeSpan? timeout = null,
         CancellationToken cancellationToken = default) {
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -106,6 +128,9 @@ public sealed class CopilotSession : IDisposable {
         }
     }
 
+    /// <summary>
+    /// Disposes the session and clears handlers.
+    /// </summary>
     public void Dispose() {
         _disposed = true;
         _handlers.Clear();

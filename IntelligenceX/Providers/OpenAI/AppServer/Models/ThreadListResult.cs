@@ -4,17 +4,12 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
 /// <summary>
-/// Represents a paged thread list response.
+/// Represents a list of chat threads.
 /// </summary>
-/// <example>
-/// <code>
-/// var list = await client.ListThreadsAsync(limit: 10);
-/// foreach (var thread in list.Data) {
-///     Console.WriteLine(thread.Id);
-/// }
-/// </code>
-/// </example>
 public sealed class ThreadListResult {
+    /// <summary>
+    /// Initializes a new thread list result.
+    /// </summary>
     public ThreadListResult(IReadOnlyList<ThreadInfo> data, string? nextCursor, JsonObject raw, JsonObject? additional) {
         Data = data;
         NextCursor = nextCursor;
@@ -22,16 +17,28 @@ public sealed class ThreadListResult {
         Additional = additional;
     }
 
-    /// <summary>Threads returned by the service.</summary>
+    /// <summary>
+    /// Gets the thread list.
+    /// </summary>
     public IReadOnlyList<ThreadInfo> Data { get; }
-    /// <summary>Cursor for the next page, if any.</summary>
+    /// <summary>
+    /// Gets the pagination cursor for the next page.
+    /// </summary>
     public string? NextCursor { get; }
-    /// <summary>Raw JSON payload from the service.</summary>
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
-    /// <summary>Additional unmapped fields from the payload.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses a thread list from JSON.</summary>
+    /// <summary>
+    /// Parses a thread list from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed thread list result.</returns>
     public static ThreadListResult FromJson(JsonObject obj) {
         var dataArray = obj.GetArray("data") ?? obj.GetArray("items");
         var items = new List<ThreadInfo>();

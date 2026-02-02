@@ -12,6 +12,32 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Super-easy chat command that handles connect, init, login, thread, and send.</para>
+/// <para type="description">Convenience entry point for quick chat: it connects, logs in (if needed), creates or
+/// reuses a thread, sends input, and returns the resulting turn. Supports streaming output and
+/// a simple DSL for text/image inputs.</para>
+/// <example>
+///  <para>Quick chat</para>
+///  <code>Invoke-IntelligenceXChat -Text "Summarize these changes."</code>
+/// </example>
+/// <example>
+///  <para>Chat with streaming output</para>
+///  <code>Invoke-IntelligenceXChat -Text "List risks." -Stream -WaitSeconds 10</code>
+/// </example>
+/// <example>
+///  <para>Use the DSL to mix text and an image</para>
+///  <code>@"
+/// text: Describe the image
+/// image: C:\temp\diagram.png
+/// "@ | Invoke-IntelligenceXChat -Dsl</code>
+/// </example>
+/// <example>
+///  <para>Use API key login</para>
+///  <code>Invoke-IntelligenceXChat -Text "Hello" -Login ApiKey -ApiKey $env:OPENAI_API_KEY</code>
+/// </example>
+/// <example>
+///  <para>Run with a workspace sandbox and network access</para>
+///  <code>Invoke-IntelligenceXChat -Text "Run tests" -Workspace "C:\repo" -AllowNetwork</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Invoke, "IntelligenceXChat", DefaultParameterSetName = "Text")]
 [OutputType(typeof(TurnInfo), typeof(JsonValue))]
@@ -206,6 +232,7 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter Raw { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         if (ParameterSetName.Equals("Pipeline", StringComparison.OrdinalIgnoreCase)) {
             var inputObject = InputObject;
@@ -219,6 +246,7 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
         await SendAsync(input).ConfigureAwait(false);
     }
 
+    /// <inheritdoc/>
     protected override async Task EndProcessingAsync() {
         if (!ParameterSetName.Equals("Pipeline", StringComparison.OrdinalIgnoreCase) || _pipelineInputs.Count == 0) {
             return;

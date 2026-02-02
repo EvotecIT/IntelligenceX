@@ -4,15 +4,12 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
 /// <summary>
-/// Represents the current configuration state returned by the app-server.
+/// Represents the configuration read response.
 /// </summary>
-/// <example>
-/// <code>
-/// var config = await client.ReadConfigAsync();
-/// Console.WriteLine(config.Config.GetString("model"));
-/// </code>
-/// </example>
 public sealed class ConfigReadResult {
+    /// <summary>
+    /// Initializes a new configuration read result.
+    /// </summary>
     public ConfigReadResult(JsonObject config, IReadOnlyDictionary<string, ConfigLayerMetadata> origins,
         IReadOnlyList<ConfigLayer> layers, JsonObject raw, JsonObject? additional) {
         Config = config;
@@ -22,18 +19,32 @@ public sealed class ConfigReadResult {
         Additional = additional;
     }
 
-    /// <summary>Resolved configuration object.</summary>
+    /// <summary>
+    /// Gets the merged configuration.
+    /// </summary>
     public JsonObject Config { get; }
-    /// <summary>Origin metadata by layer name.</summary>
+    /// <summary>
+    /// Gets metadata about configuration origins.
+    /// </summary>
     public IReadOnlyDictionary<string, ConfigLayerMetadata> Origins { get; }
-    /// <summary>Raw config layers used to build the final config.</summary>
+    /// <summary>
+    /// Gets the configuration layers.
+    /// </summary>
     public IReadOnlyList<ConfigLayer> Layers { get; }
-    /// <summary>Raw JSON payload from the service.</summary>
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
-    /// <summary>Additional unmapped fields from the payload.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses a config response from JSON.</summary>
+    /// <summary>
+    /// Parses a configuration read result from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed result.</returns>
     public static ConfigReadResult FromJson(JsonObject obj) {
         var config = obj.GetObject("config") ?? new JsonObject();
         var origins = new Dictionary<string, ConfigLayerMetadata>();
@@ -66,9 +77,12 @@ public sealed class ConfigReadResult {
 }
 
 /// <summary>
-/// Metadata describing a configuration layer origin.
+/// Metadata about a configuration layer.
 /// </summary>
 public sealed class ConfigLayerMetadata {
+    /// <summary>
+    /// Initializes a new layer metadata instance.
+    /// </summary>
     public ConfigLayerMetadata(ConfigLayerSourceInfo source, string? version, JsonObject raw, JsonObject? additional) {
         Source = source;
         Version = version;
@@ -76,16 +90,28 @@ public sealed class ConfigLayerMetadata {
         Additional = additional;
     }
 
-    /// <summary>Source information for the layer.</summary>
+    /// <summary>
+    /// Gets the source information.
+    /// </summary>
     public ConfigLayerSourceInfo Source { get; }
-    /// <summary>Config layer version (if provided).</summary>
+    /// <summary>
+    /// Gets the configuration version.
+    /// </summary>
     public string? Version { get; }
-    /// <summary>Raw JSON payload from the service.</summary>
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
-    /// <summary>Additional unmapped fields from the payload.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses layer metadata from JSON.</summary>
+    /// <summary>
+    /// Parses layer metadata from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed metadata.</returns>
     public static ConfigLayerMetadata FromJson(JsonObject obj) {
         var source = ConfigLayerSourceInfo.FromJson(obj.TryGetValue("name", out var value) ? value : null);
         var version = obj.GetString("version");
@@ -98,6 +124,9 @@ public sealed class ConfigLayerMetadata {
 /// Represents a single configuration layer.
 /// </summary>
 public sealed class ConfigLayer {
+    /// <summary>
+    /// Initializes a new configuration layer.
+    /// </summary>
     public ConfigLayer(ConfigLayerSourceInfo source, string? version, JsonValue? config, string? disabledReason,
         JsonObject raw, JsonObject? additional) {
         Source = source;
@@ -108,20 +137,36 @@ public sealed class ConfigLayer {
         Additional = additional;
     }
 
-    /// <summary>Source information for the layer.</summary>
+    /// <summary>
+    /// Gets the source information.
+    /// </summary>
     public ConfigLayerSourceInfo Source { get; }
-    /// <summary>Layer version (if provided).</summary>
+    /// <summary>
+    /// Gets the configuration version.
+    /// </summary>
     public string? Version { get; }
-    /// <summary>Layer configuration payload.</summary>
+    /// <summary>
+    /// Gets the configuration payload.
+    /// </summary>
     public JsonValue? Config { get; }
-    /// <summary>Reason the layer was disabled (if any).</summary>
+    /// <summary>
+    /// Gets the disabled reason when the layer is not active.
+    /// </summary>
     public string? DisabledReason { get; }
-    /// <summary>Raw JSON payload from the service.</summary>
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
-    /// <summary>Additional unmapped fields from the payload.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses a config layer from JSON.</summary>
+    /// <summary>
+    /// Parses a configuration layer from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed layer.</returns>
     public static ConfigLayer FromJson(JsonObject obj) {
         var source = ConfigLayerSourceInfo.FromJson(obj.TryGetValue("name", out var value) ? value : null);
         var version = obj.GetString("version");
@@ -133,23 +178,36 @@ public sealed class ConfigLayer {
 }
 
 /// <summary>
-/// Describes the origin of a configuration layer.
+/// Represents the source descriptor for a configuration layer.
 /// </summary>
 public sealed class ConfigLayerSourceInfo {
+    /// <summary>
+    /// Initializes a new source info instance.
+    /// </summary>
     public ConfigLayerSourceInfo(string? type, JsonValue? raw, JsonObject? additional) {
         Type = type;
         Raw = raw;
         Additional = additional;
     }
 
-    /// <summary>Source type name (if available).</summary>
+    /// <summary>
+    /// Gets the source type.
+    /// </summary>
     public string? Type { get; }
-    /// <summary>Raw JSON payload for the source.</summary>
+    /// <summary>
+    /// Gets the raw source payload.
+    /// </summary>
     public JsonValue? Raw { get; }
-    /// <summary>Additional unmapped fields from the payload.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses a source descriptor from JSON.</summary>
+    /// <summary>
+    /// Parses a source info value from JSON.
+    /// </summary>
+    /// <param name="value">Source JSON value.</param>
+    /// <returns>The parsed source info.</returns>
     public static ConfigLayerSourceInfo FromJson(JsonValue? value) {
         if (value is null) {
             return new ConfigLayerSourceInfo(null, null, null);

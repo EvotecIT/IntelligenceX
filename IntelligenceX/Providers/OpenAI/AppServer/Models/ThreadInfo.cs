@@ -4,16 +4,12 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
 /// <summary>
-/// Represents a single thread returned by the app-server.
+/// Represents a chat thread summary.
 /// </summary>
-/// <example>
-/// <code>
-/// var threads = await client.ListThreadsAsync();
-/// var first = threads.Data.Count > 0 ? threads.Data[0] : null;
-/// Console.WriteLine(first?.Id);
-/// </code>
-/// </example>
 public sealed class ThreadInfo {
+    /// <summary>
+    /// Initializes a new thread info model.
+    /// </summary>
     public ThreadInfo(string id, string? preview, string? modelProvider, DateTimeOffset? createdAt, DateTimeOffset? updatedAt,
         JsonObject raw, JsonObject? additional) {
         Id = id;
@@ -25,22 +21,40 @@ public sealed class ThreadInfo {
         Additional = additional;
     }
 
-    /// <summary>Thread identifier.</summary>
+    /// <summary>
+    /// Gets the thread id.
+    /// </summary>
     public string Id { get; }
-    /// <summary>Preview text for the thread (if available).</summary>
+    /// <summary>
+    /// Gets the preview text.
+    /// </summary>
     public string? Preview { get; }
-    /// <summary>Model provider name (if available).</summary>
+    /// <summary>
+    /// Gets the model provider identifier.
+    /// </summary>
     public string? ModelProvider { get; }
-    /// <summary>Creation timestamp (if provided).</summary>
+    /// <summary>
+    /// Gets the creation time (UTC).
+    /// </summary>
     public DateTimeOffset? CreatedAt { get; }
-    /// <summary>Last update timestamp (if provided).</summary>
+    /// <summary>
+    /// Gets the last update time (UTC).
+    /// </summary>
     public DateTimeOffset? UpdatedAt { get; }
-    /// <summary>Raw JSON payload from the service.</summary>
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
-    /// <summary>Additional unmapped fields from the payload.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses a thread from JSON.</summary>
+    /// <summary>
+    /// Parses a thread info model from JSON.
+    /// </summary>
+    /// <param name="threadObj">Source JSON object.</param>
+    /// <returns>The parsed thread info.</returns>
     public static ThreadInfo FromJson(JsonObject threadObj) {
         var id = threadObj.GetString("id") ?? string.Empty;
         var preview = threadObj.GetString("preview");

@@ -9,6 +9,15 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Requests user input through the app-server.</para>
+/// <para type="description">Prompts for one to three questions and returns the responses.</para>
+/// <example>
+///  <para>Ask for two inputs</para>
+///  <code>Request-IntelligenceXUserInput -Questions "Repo name?", "Branch?"</code>
+/// </example>
+/// <example>
+///  <para>Return raw JSON response</para>
+///  <code>Request-IntelligenceXUserInput -Questions "Continue?" -Raw</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Request, "IntelligenceXUserInput")]
 [OutputType(typeof(UserInputResponse), typeof(JsonValue))]
@@ -31,6 +40,7 @@ public sealed class CmdletRequestIntelligenceXUserInput : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter Raw { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         if (Raw.IsPresent) {

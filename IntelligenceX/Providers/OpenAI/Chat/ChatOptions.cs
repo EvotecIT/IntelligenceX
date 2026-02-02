@@ -3,32 +3,23 @@ using IntelligenceX.OpenAI.AppServer;
 namespace IntelligenceX.OpenAI.Chat;
 
 /// <summary>
-/// Options for a chat request.
+/// Options for chat requests.
 /// </summary>
-/// <example>
-/// <code>
-/// var options = new ChatOptions {
-///     Model = "gpt-5.2-codex",
-///     Instructions = "Be concise.",
-///     AllowNetwork = false
-/// };
-/// </code>
-/// </example>
 public sealed class ChatOptions {
     /// <summary>
-    /// Model name for the request.
+    /// Model name override.
     /// </summary>
     public string? Model { get; set; }
     /// <summary>
-    /// System instructions applied to the request.
+    /// System instructions.
     /// </summary>
     public string? Instructions { get; set; }
     /// <summary>
-    /// Reasoning effort hint (if supported by the model).
+    /// Reasoning effort hint.
     /// </summary>
     public ReasoningEffort? ReasoningEffort { get; set; }
     /// <summary>
-    /// Reasoning summary verbosity hint.
+    /// Reasoning summary hint.
     /// </summary>
     public ReasoningSummary? ReasoningSummary { get; set; }
     /// <summary>
@@ -40,35 +31,35 @@ public sealed class ChatOptions {
     /// </summary>
     public double? Temperature { get; set; }
     /// <summary>
-    /// Working directory used for file operations.
+    /// Working directory for file operations.
     /// </summary>
     public string? WorkingDirectory { get; set; }
     /// <summary>
-    /// Workspace root for file access.
+    /// Workspace path for tool access.
     /// </summary>
     public string? Workspace { get; set; }
     /// <summary>
-    /// Whether network access is allowed for tools.
+    /// Whether network access is allowed.
     /// </summary>
     public bool AllowNetwork { get; set; }
     /// <summary>
-    /// Approval policy hint used by tool execution.
+    /// Approval policy string passed to the app-server.
     /// </summary>
     public string? ApprovalPolicy { get; set; }
     /// <summary>
-    /// Sandbox policy used when launching tools.
+    /// Sandbox policy for the request.
     /// </summary>
     public SandboxPolicy? SandboxPolicy { get; set; }
     /// <summary>
-    /// Whether to start a new thread for this request.
+    /// Whether to force a new thread.
     /// </summary>
     public bool NewThread { get; set; }
     /// <summary>
-    /// Maximum image size (bytes) for local image inputs.
+    /// Maximum allowed image size in bytes.
     /// </summary>
     public long? MaxImageBytes { get; set; }
     /// <summary>
-    /// Whether file access requires a workspace.
+    /// Whether a workspace is required for file access.
     /// </summary>
     public bool RequireWorkspaceForFileAccess { get; set; }
 }

@@ -4,13 +4,6 @@ The CLI (`intelligencex`) handles auth, onboarding, reviewer runs, and utilities
 
 Quickstart: `./quickstart.md`
 
-Commands:
-- `./commands/auth.md`
-- `./commands/setup.md`
-- `./commands/reviewer.md`
-- `./commands/release.md`
-- Install: `./install.md`
-
 ## Common commands
 
 ```bash
@@ -23,12 +16,16 @@ intelligencex reviewer resolve-threads
 intelligencex usage
 ```
 
-## Run from source
+## Run a review locally
 
-If the `intelligencex` binary is not on your PATH, run commands with `dotnet run`:
+```bash
+intelligencex reviewer run --repo owner/name --pr 123
+```
 
-```powershell
-dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -- auth login
+## Resolve stale threads locally
+
+```bash
+intelligencex reviewer resolve-threads --repo owner/name --pr 123
 ```
 
 ## Auth export for GitHub Secrets
@@ -37,26 +34,10 @@ dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -- au
 intelligencex auth export --format store-base64
 ```
 
-## Auth login (print URL)
-
-```bash
-intelligencex auth login --print
-```
-
-## Auth sync for Codex CLI
-
-```bash
-intelligencex auth sync-codex
-```
-
 ## Usage and credits
 
 ```bash
 intelligencex usage --events
-```
-
-```bash
-intelligencex usage --json --no-cache
 ```
 
 ## GitHub secret upload (optional)

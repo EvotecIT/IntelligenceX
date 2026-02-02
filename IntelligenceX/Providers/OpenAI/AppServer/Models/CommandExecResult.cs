@@ -3,16 +3,12 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
 /// <summary>
-/// Represents the result of an app-server command execution.
+/// Represents the result of a command execution.
 /// </summary>
-/// <example>
-/// <code>
-/// var result = await client.ExecuteCommandAsync(request);
-/// Console.WriteLine(result.ExitCode);
-/// Console.WriteLine(result.Stdout);
-/// </code>
-/// </example>
 public sealed class CommandExecResult {
+    /// <summary>
+    /// Initializes a new command execution result.
+    /// </summary>
     public CommandExecResult(int? exitCode, string? stdout, string? stderr, JsonObject raw, JsonObject? additional) {
         ExitCode = exitCode;
         Stdout = stdout;
@@ -21,18 +17,32 @@ public sealed class CommandExecResult {
         Additional = additional;
     }
 
-    /// <summary>Process exit code (if available).</summary>
+    /// <summary>
+    /// Gets the exit code when available.
+    /// </summary>
     public int? ExitCode { get; }
-    /// <summary>Captured standard output.</summary>
+    /// <summary>
+    /// Gets standard output.
+    /// </summary>
     public string? Stdout { get; }
-    /// <summary>Captured standard error.</summary>
+    /// <summary>
+    /// Gets standard error.
+    /// </summary>
     public string? Stderr { get; }
-    /// <summary>Raw JSON payload from the service.</summary>
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
-    /// <summary>Additional unmapped fields from the payload.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses a command result from JSON.</summary>
+    /// <summary>
+    /// Parses a command execution result from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed result.</returns>
     public static CommandExecResult FromJson(JsonObject obj) {
         var exitCodeValue = obj.GetInt64("exitCode") ?? obj.GetInt64("exit_code");
         var exitCode = exitCodeValue.HasValue ? (int?)exitCodeValue.Value : null;

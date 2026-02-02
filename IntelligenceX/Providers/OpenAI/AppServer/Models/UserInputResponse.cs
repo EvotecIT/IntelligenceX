@@ -6,13 +6,10 @@ namespace IntelligenceX.OpenAI.AppServer.Models;
 /// <summary>
 /// Represents a response to a user input prompt.
 /// </summary>
-/// <example>
-/// <code>
-/// var response = await client.SubmitUserInputAsync("prompt-id", new[] { "yes" });
-/// Console.WriteLine(response.Answers.Count);
-/// </code>
-/// </example>
 public sealed class UserInputResponse {
+    /// <summary>
+    /// Initializes a new user input response.
+    /// </summary>
     public UserInputResponse(IReadOnlyList<string> answers, IReadOnlyDictionary<string, IReadOnlyList<string>>? answersById,
         JsonObject raw, JsonObject? additional) {
         Answers = answers;
@@ -21,16 +18,28 @@ public sealed class UserInputResponse {
         Additional = additional;
     }
 
-    /// <summary>Flat list of answers.</summary>
+    /// <summary>
+    /// Gets the answers as a flat list.
+    /// </summary>
     public IReadOnlyList<string> Answers { get; }
-    /// <summary>Answers grouped by id (if provided).</summary>
+    /// <summary>
+    /// Gets answers grouped by id when provided.
+    /// </summary>
     public IReadOnlyDictionary<string, IReadOnlyList<string>>? AnswersById { get; }
-    /// <summary>Raw JSON payload from the service.</summary>
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
-    /// <summary>Additional unmapped fields from the payload.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses a user input response from JSON.</summary>
+    /// <summary>
+    /// Parses a user input response from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed response.</returns>
     public static UserInputResponse FromJson(JsonObject obj) {
         var answers = new List<string>();
         IReadOnlyDictionary<string, IReadOnlyList<string>>? answersById = null;

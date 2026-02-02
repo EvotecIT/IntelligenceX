@@ -4,29 +4,36 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
 /// <summary>
-/// Represents a list of thread identifiers.
+/// Represents a list of thread ids.
 /// </summary>
-/// <example>
-/// <code>
-/// var ids = await client.ListThreadIdsAsync();
-/// Console.WriteLine(ids.Data.Count);
-/// </code>
-/// </example>
 public sealed class ThreadIdListResult {
+    /// <summary>
+    /// Initializes a new thread id list result.
+    /// </summary>
     public ThreadIdListResult(IReadOnlyList<string> data, JsonObject raw, JsonObject? additional) {
         Data = data;
         Raw = raw;
         Additional = additional;
     }
 
-    /// <summary>Thread identifiers returned by the service.</summary>
+    /// <summary>
+    /// Gets the thread id list.
+    /// </summary>
     public IReadOnlyList<string> Data { get; }
-    /// <summary>Raw JSON payload from the service.</summary>
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
-    /// <summary>Additional unmapped fields from the payload.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses a thread id list from JSON.</summary>
+    /// <summary>
+    /// Parses a thread id list from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed thread id list result.</returns>
     public static ThreadIdListResult FromJson(JsonObject obj) {
         var dataArray = obj.GetArray("data") ?? obj.GetArray("items");
         var items = new List<string>();

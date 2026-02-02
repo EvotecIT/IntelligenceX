@@ -5,14 +5,12 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
 /// <summary>
-/// Represents a paged list of MCP server statuses.
+/// Represents a list of MCP server statuses.
 /// </summary>
 public sealed class McpServerStatusListResult {
-    /// <summary>Creates a server status list result.</summary>
-    /// <param name="servers">The servers returned by the API.</param>
-    /// <param name="nextCursor">The cursor for the next page, if any.</param>
-    /// <param name="raw">The raw JSON payload.</param>
-    /// <param name="additional">Additional unmodeled JSON data.</param>
+    /// <summary>
+    /// Initializes a new MCP server status list result.
+    /// </summary>
     public McpServerStatusListResult(IReadOnlyList<McpServerStatus> servers, string? nextCursor,
         JsonObject raw, JsonObject? additional) {
         Servers = servers;
@@ -21,17 +19,28 @@ public sealed class McpServerStatusListResult {
         Additional = additional;
     }
 
-    /// <summary>Gets the servers returned by the API.</summary>
+    /// <summary>
+    /// Gets the server status list.
+    /// </summary>
     public IReadOnlyList<McpServerStatus> Servers { get; }
-    /// <summary>Gets the pagination cursor for the next page, if any.</summary>
+    /// <summary>
+    /// Gets the pagination cursor for the next page.
+    /// </summary>
     public string? NextCursor { get; }
-    /// <summary>Gets the raw JSON payload.</summary>
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
-    /// <summary>Gets additional unmodeled JSON data.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses a list result from JSON.</summary>
-    /// <param name="obj">The JSON object to parse.</param>
+    /// <summary>
+    /// Parses an MCP server status list from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed list result.</returns>
     public static McpServerStatusListResult FromJson(JsonObject obj) {
         var servers = new List<McpServerStatus>();
         var data = obj.GetArray("data") ?? obj.GetArray("items");
@@ -54,14 +63,9 @@ public sealed class McpServerStatusListResult {
 /// Represents the status of a single MCP server.
 /// </summary>
 public sealed class McpServerStatus {
-    /// <summary>Creates a new MCP server status.</summary>
-    /// <param name="name">The server name.</param>
-    /// <param name="tools">The tool list keyed by name.</param>
-    /// <param name="resources">The available resources.</param>
-    /// <param name="resourceTemplates">The available resource templates.</param>
-    /// <param name="authStatus">The authentication status.</param>
-    /// <param name="raw">The raw JSON payload.</param>
-    /// <param name="additional">Additional unmodeled JSON data.</param>
+    /// <summary>
+    /// Initializes a new MCP server status.
+    /// </summary>
     public McpServerStatus(string name, IReadOnlyDictionary<string, McpToolInfo> tools, IReadOnlyList<McpResourceInfo> resources,
         IReadOnlyList<McpResourceTemplateInfo> resourceTemplates, McpAuthStatus authStatus, JsonObject raw, JsonObject? additional) {
         Name = name;
@@ -73,23 +77,40 @@ public sealed class McpServerStatus {
         Additional = additional;
     }
 
-    /// <summary>Gets the server name.</summary>
+    /// <summary>
+    /// Gets the server name.
+    /// </summary>
     public string Name { get; }
-    /// <summary>Gets the tools supported by the server.</summary>
+    /// <summary>
+    /// Gets the available tools.
+    /// </summary>
     public IReadOnlyDictionary<string, McpToolInfo> Tools { get; }
-    /// <summary>Gets the resources provided by the server.</summary>
+    /// <summary>
+    /// Gets the available resources.
+    /// </summary>
     public IReadOnlyList<McpResourceInfo> Resources { get; }
-    /// <summary>Gets the resource templates provided by the server.</summary>
+    /// <summary>
+    /// Gets the resource templates.
+    /// </summary>
     public IReadOnlyList<McpResourceTemplateInfo> ResourceTemplates { get; }
-    /// <summary>Gets the authentication status.</summary>
+    /// <summary>
+    /// Gets the auth status.
+    /// </summary>
     public McpAuthStatus AuthStatus { get; }
-    /// <summary>Gets the raw JSON payload.</summary>
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
-    /// <summary>Gets additional unmodeled JSON data.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses a server status from JSON.</summary>
-    /// <param name="obj">The JSON object to parse.</param>
+    /// <summary>
+    /// Parses a server status from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed server status.</returns>
     public static McpServerStatus FromJson(JsonObject obj) {
         var name = obj.GetString("name") ?? string.Empty;
 
@@ -139,19 +160,12 @@ public sealed class McpServerStatus {
 }
 
 /// <summary>
-/// Represents a tool provided by an MCP server.
+/// Describes an MCP tool.
 /// </summary>
 public sealed class McpToolInfo {
-    /// <summary>Creates a new MCP tool descriptor.</summary>
-    /// <param name="name">The tool name.</param>
-    /// <param name="title">The tool title.</param>
-    /// <param name="description">The tool description.</param>
-    /// <param name="inputSchema">The input JSON schema.</param>
-    /// <param name="outputSchema">The output JSON schema.</param>
-    /// <param name="annotations">Additional annotations.</param>
-    /// <param name="meta">The metadata object.</param>
-    /// <param name="raw">The raw JSON payload.</param>
-    /// <param name="additional">Additional unmodeled JSON data.</param>
+    /// <summary>
+    /// Initializes a new MCP tool info.
+    /// </summary>
     public McpToolInfo(string name, string? title, string? description, JsonObject? inputSchema,
         JsonObject? outputSchema, JsonObject? annotations, JsonObject? meta, JsonObject raw, JsonObject? additional) {
         Name = name;
@@ -165,28 +179,49 @@ public sealed class McpToolInfo {
         Additional = additional;
     }
 
-    /// <summary>Gets the tool name.</summary>
+    /// <summary>
+    /// Gets the tool name.
+    /// </summary>
     public string Name { get; }
-    /// <summary>Gets the tool title.</summary>
+    /// <summary>
+    /// Gets the tool title.
+    /// </summary>
     public string? Title { get; }
-    /// <summary>Gets the tool description.</summary>
+    /// <summary>
+    /// Gets the tool description.
+    /// </summary>
     public string? Description { get; }
-    /// <summary>Gets the input schema.</summary>
+    /// <summary>
+    /// Gets the input schema.
+    /// </summary>
     public JsonObject? InputSchema { get; }
-    /// <summary>Gets the output schema.</summary>
+    /// <summary>
+    /// Gets the output schema.
+    /// </summary>
     public JsonObject? OutputSchema { get; }
-    /// <summary>Gets the annotations object.</summary>
+    /// <summary>
+    /// Gets tool annotations.
+    /// </summary>
     public JsonObject? Annotations { get; }
-    /// <summary>Gets the metadata object.</summary>
+    /// <summary>
+    /// Gets tool metadata.
+    /// </summary>
     public JsonObject? Meta { get; }
-    /// <summary>Gets the raw JSON payload.</summary>
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
-    /// <summary>Gets additional unmodeled JSON data.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses a tool descriptor from JSON.</summary>
-    /// <param name="obj">The JSON object to parse.</param>
-    /// <param name="fallbackName">The fallback name to use when the JSON is missing a name.</param>
+    /// <summary>
+    /// Parses tool info from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <param name="fallbackName">Fallback tool name.</param>
+    /// <returns>The parsed tool info.</returns>
     public static McpToolInfo FromJson(JsonObject obj, string? fallbackName = null) {
         var name = obj.GetString("name") ?? fallbackName ?? string.Empty;
         var title = obj.GetString("title");
@@ -202,20 +237,12 @@ public sealed class McpToolInfo {
 }
 
 /// <summary>
-/// Represents a resource provided by an MCP server.
+/// Describes an MCP resource.
 /// </summary>
 public sealed class McpResourceInfo {
-    /// <summary>Creates a new resource descriptor.</summary>
-    /// <param name="uri">The resource URI.</param>
-    /// <param name="name">The resource name.</param>
-    /// <param name="title">The resource title.</param>
-    /// <param name="description">The resource description.</param>
-    /// <param name="mimeType">The resource MIME type.</param>
-    /// <param name="size">The resource size in bytes.</param>
-    /// <param name="annotations">Additional annotations.</param>
-    /// <param name="meta">The metadata object.</param>
-    /// <param name="raw">The raw JSON payload.</param>
-    /// <param name="additional">Additional unmodeled JSON data.</param>
+    /// <summary>
+    /// Initializes a new MCP resource info.
+    /// </summary>
     public McpResourceInfo(string? uri, string? name, string? title, string? description, string? mimeType,
         long? size, JsonObject? annotations, JsonObject? meta, JsonObject raw, JsonObject? additional) {
         Uri = uri;
@@ -230,29 +257,52 @@ public sealed class McpResourceInfo {
         Additional = additional;
     }
 
-    /// <summary>Gets the resource URI.</summary>
+    /// <summary>
+    /// Gets the resource URI.
+    /// </summary>
     public string? Uri { get; }
-    /// <summary>Gets the resource name.</summary>
+    /// <summary>
+    /// Gets the resource name.
+    /// </summary>
     public string? Name { get; }
-    /// <summary>Gets the resource title.</summary>
+    /// <summary>
+    /// Gets the resource title.
+    /// </summary>
     public string? Title { get; }
-    /// <summary>Gets the resource description.</summary>
+    /// <summary>
+    /// Gets the resource description.
+    /// </summary>
     public string? Description { get; }
-    /// <summary>Gets the MIME type.</summary>
+    /// <summary>
+    /// Gets the mime type.
+    /// </summary>
     public string? MimeType { get; }
-    /// <summary>Gets the size in bytes.</summary>
+    /// <summary>
+    /// Gets the resource size in bytes.
+    /// </summary>
     public long? Size { get; }
-    /// <summary>Gets the annotations object.</summary>
+    /// <summary>
+    /// Gets resource annotations.
+    /// </summary>
     public JsonObject? Annotations { get; }
-    /// <summary>Gets the metadata object.</summary>
+    /// <summary>
+    /// Gets resource metadata.
+    /// </summary>
     public JsonObject? Meta { get; }
-    /// <summary>Gets the raw JSON payload.</summary>
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
-    /// <summary>Gets additional unmodeled JSON data.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses a resource descriptor from JSON.</summary>
-    /// <param name="obj">The JSON object to parse.</param>
+    /// <summary>
+    /// Parses resource info from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed resource info.</returns>
     public static McpResourceInfo FromJson(JsonObject obj) {
         var uri = obj.GetString("uri");
         var name = obj.GetString("name");
@@ -269,19 +319,12 @@ public sealed class McpResourceInfo {
 }
 
 /// <summary>
-/// Represents a resource template provided by an MCP server.
+/// Describes an MCP resource template.
 /// </summary>
 public sealed class McpResourceTemplateInfo {
-    /// <summary>Creates a new resource template descriptor.</summary>
-    /// <param name="uriTemplate">The resource URI template.</param>
-    /// <param name="name">The resource name.</param>
-    /// <param name="title">The resource title.</param>
-    /// <param name="description">The resource description.</param>
-    /// <param name="mimeType">The resource MIME type.</param>
-    /// <param name="annotations">Additional annotations.</param>
-    /// <param name="meta">The metadata object.</param>
-    /// <param name="raw">The raw JSON payload.</param>
-    /// <param name="additional">Additional unmodeled JSON data.</param>
+    /// <summary>
+    /// Initializes a new MCP resource template info.
+    /// </summary>
     public McpResourceTemplateInfo(string? uriTemplate, string? name, string? title, string? description,
         string? mimeType, JsonObject? annotations, JsonObject? meta, JsonObject raw, JsonObject? additional) {
         UriTemplate = uriTemplate;
@@ -295,27 +338,48 @@ public sealed class McpResourceTemplateInfo {
         Additional = additional;
     }
 
-    /// <summary>Gets the resource URI template.</summary>
+    /// <summary>
+    /// Gets the URI template.
+    /// </summary>
     public string? UriTemplate { get; }
-    /// <summary>Gets the resource name.</summary>
+    /// <summary>
+    /// Gets the template name.
+    /// </summary>
     public string? Name { get; }
-    /// <summary>Gets the resource title.</summary>
+    /// <summary>
+    /// Gets the template title.
+    /// </summary>
     public string? Title { get; }
-    /// <summary>Gets the resource description.</summary>
+    /// <summary>
+    /// Gets the template description.
+    /// </summary>
     public string? Description { get; }
-    /// <summary>Gets the MIME type.</summary>
+    /// <summary>
+    /// Gets the mime type.
+    /// </summary>
     public string? MimeType { get; }
-    /// <summary>Gets the annotations object.</summary>
+    /// <summary>
+    /// Gets template annotations.
+    /// </summary>
     public JsonObject? Annotations { get; }
-    /// <summary>Gets the metadata object.</summary>
+    /// <summary>
+    /// Gets template metadata.
+    /// </summary>
     public JsonObject? Meta { get; }
-    /// <summary>Gets the raw JSON payload.</summary>
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
-    /// <summary>Gets additional unmodeled JSON data.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses a resource template descriptor from JSON.</summary>
-    /// <param name="obj">The JSON object to parse.</param>
+    /// <summary>
+    /// Parses a resource template from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed resource template.</returns>
     public static McpResourceTemplateInfo FromJson(JsonObject obj) {
         var uriTemplate = obj.GetString("uriTemplate") ?? obj.GetString("uri_template");
         var name = obj.GetString("name");
@@ -331,18 +395,28 @@ public sealed class McpResourceTemplateInfo {
 }
 
 /// <summary>
-/// Describes the authentication status for an MCP server.
+/// Authentication status for an MCP server.
 /// </summary>
 public enum McpAuthStatus {
-    /// <summary>The status is unknown.</summary>
+    /// <summary>
+    /// Unknown auth status.
+    /// </summary>
     Unknown,
-    /// <summary>The server does not support authentication.</summary>
+    /// <summary>
+    /// Authentication is not supported.
+    /// </summary>
     Unsupported,
-    /// <summary>The server requires auth and no login is present.</summary>
+    /// <summary>
+    /// Not logged in.
+    /// </summary>
     NotLoggedIn,
-    /// <summary>The server is authenticated with a bearer token.</summary>
+    /// <summary>
+    /// Bearer token authentication.
+    /// </summary>
     BearerToken,
-    /// <summary>The server is authenticated with OAuth.</summary>
+    /// <summary>
+    /// OAuth authentication.
+    /// </summary>
     OAuth
 }
 

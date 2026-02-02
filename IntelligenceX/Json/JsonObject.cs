@@ -5,90 +5,106 @@ using System.Collections.Generic;
 namespace IntelligenceX.Json;
 
 /// <summary>
-/// Represents a JSON object.
+/// Represents a mutable JSON object.
 /// </summary>
 public sealed class JsonObject : IEnumerable<KeyValuePair<string, JsonValue>> {
     private readonly Dictionary<string, JsonValue> _values;
 
-    /// <summary>Creates an empty JSON object with ordinal key comparison.</summary>
+    /// <summary>
+    /// Initializes an empty JSON object with ordinal key comparison.
+    /// </summary>
     public JsonObject() : this(StringComparer.Ordinal) { }
 
-    /// <summary>Creates an empty JSON object with the specified comparer.</summary>
-    /// <param name="comparer">The key comparer.</param>
+    /// <summary>
+    /// Initializes an empty JSON object with a custom key comparer.
+    /// </summary>
+    /// <param name="comparer">Comparer used for key lookup.</param>
     public JsonObject(StringComparer comparer) {
         _values = new Dictionary<string, JsonValue>(comparer);
     }
 
-    /// <summary>Gets the number of properties in the object.</summary>
+    /// <summary>
+    /// Gets the number of properties in the object.
+    /// </summary>
     public int Count => _values.Count;
 
-    /// <summary>Gets or sets the value for the specified key.</summary>
-    /// <param name="key">The property name.</param>
+    /// <summary>
+    /// Gets or sets a value by property key.
+    /// </summary>
     public JsonValue this[string key] {
         get => _values[key];
         set => _values[key] = value;
     }
 
-    /// <summary>Adds or replaces a property value.</summary>
-    /// <param name="key">The property name.</param>
-    /// <param name="value">The value to set.</param>
+    /// <summary>
+    /// Adds or replaces a JSON value for the specified key.
+    /// </summary>
     public JsonObject Add(string key, JsonValue value) {
         _values[key] = value;
         return this;
     }
 
-    /// <summary>Adds or replaces a string property.</summary>
-    /// <param name="key">The property name.</param>
-    /// <param name="value">The value to set.</param>
+    /// <summary>
+    /// Adds or replaces a string value for the specified key.
+    /// </summary>
     public JsonObject Add(string key, string? value) => Add(key, JsonValue.From(value));
-    /// <summary>Adds or replaces a boolean property.</summary>
-    /// <param name="key">The property name.</param>
-    /// <param name="value">The value to set.</param>
+    /// <summary>
+    /// Adds or replaces a boolean value for the specified key.
+    /// </summary>
     public JsonObject Add(string key, bool value) => Add(key, JsonValue.From(value));
-    /// <summary>Adds or replaces a 64-bit integer property.</summary>
-    /// <param name="key">The property name.</param>
-    /// <param name="value">The value to set.</param>
+    /// <summary>
+    /// Adds or replaces an integer value for the specified key.
+    /// </summary>
     public JsonObject Add(string key, long value) => Add(key, JsonValue.From(value));
-    /// <summary>Adds or replaces a double property.</summary>
-    /// <param name="key">The property name.</param>
-    /// <param name="value">The value to set.</param>
+    /// <summary>
+    /// Adds or replaces a double value for the specified key.
+    /// </summary>
     public JsonObject Add(string key, double value) => Add(key, JsonValue.From(value));
-    /// <summary>Adds or replaces a JSON object property.</summary>
-    /// <param name="key">The property name.</param>
-    /// <param name="value">The value to set.</param>
+    /// <summary>
+    /// Adds or replaces a JSON object value for the specified key.
+    /// </summary>
     public JsonObject Add(string key, JsonObject value) => Add(key, JsonValue.From(value));
-    /// <summary>Adds or replaces a JSON array property.</summary>
-    /// <param name="key">The property name.</param>
-    /// <param name="value">The value to set.</param>
+    /// <summary>
+    /// Adds or replaces a JSON array value for the specified key.
+    /// </summary>
     public JsonObject Add(string key, JsonArray value) => Add(key, JsonValue.From(value));
 
-    /// <summary>Attempts to get a property value.</summary>
-    /// <param name="key">The property name.</param>
-    /// <param name="value">The value if found.</param>
+    /// <summary>
+    /// Attempts to retrieve a JSON value by key.
+    /// </summary>
     public bool TryGetValue(string key, out JsonValue? value) => _values.TryGetValue(key, out value);
 
-    /// <summary>Gets a string property or null when missing.</summary>
-    /// <param name="key">The property name.</param>
+    /// <summary>
+    /// Returns a string value for the specified key.
+    /// </summary>
     public string? GetString(string key) => _values.TryGetValue(key, out var value) ? value?.AsString() : null;
-    /// <summary>Gets a 64-bit integer property or null when missing.</summary>
-    /// <param name="key">The property name.</param>
+    /// <summary>
+    /// Returns an integer value for the specified key.
+    /// </summary>
     public long? GetInt64(string key) => _values.TryGetValue(key, out var value) ? value?.AsInt64() : null;
-    /// <summary>Gets a double property or null when missing.</summary>
-    /// <param name="key">The property name.</param>
+    /// <summary>
+    /// Returns a double value for the specified key.
+    /// </summary>
     public double? GetDouble(string key) => _values.TryGetValue(key, out var value) ? value?.AsDouble() : null;
-    /// <summary>Gets a boolean property or the default when missing.</summary>
-    /// <param name="key">The property name.</param>
-    /// <param name="defaultValue">The fallback value.</param>
+    /// <summary>
+    /// Returns a boolean value for the specified key or a default when missing.
+    /// </summary>
     public bool GetBoolean(string key, bool defaultValue = false) => _values.TryGetValue(key, out var value) ? value?.AsBoolean(defaultValue) ?? defaultValue : defaultValue;
-    /// <summary>Gets a JSON object property or null when missing.</summary>
-    /// <param name="key">The property name.</param>
+    /// <summary>
+    /// Returns a JSON object value for the specified key.
+    /// </summary>
     public JsonObject? GetObject(string key) => _values.TryGetValue(key, out var value) ? value?.AsObject() : null;
-    /// <summary>Gets a JSON array property or null when missing.</summary>
-    /// <param name="key">The property name.</param>
+    /// <summary>
+    /// Returns a JSON array value for the specified key.
+    /// </summary>
     public JsonArray? GetArray(string key) => _values.TryGetValue(key, out var value) ? value?.AsArray() : null;
 
-    /// <summary>Returns an enumerator for the object.</summary>
+    /// <summary>
+    /// Returns a typed enumerator over the object's properties.
+    /// </summary>
     public IEnumerator<KeyValuePair<string, JsonValue>> GetEnumerator() => _values.GetEnumerator();
-    /// <summary>Returns an enumerator for the object.</summary>
+    /// <summary>
+    /// Returns a non-generic enumerator over the object's properties.
+    /// </summary>
     IEnumerator IEnumerable.GetEnumerator() => _values.GetEnumerator();
 }

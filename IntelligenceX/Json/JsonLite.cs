@@ -7,11 +7,14 @@ using System.Text;
 namespace IntelligenceX.Json;
 
 /// <summary>
-/// Minimal JSON parser/serializer used by IntelligenceX.
+/// Lightweight JSON parsing and serialization helpers.
 /// </summary>
 public static class JsonLite {
-    /// <summary>Parses JSON text into a <see cref="JsonValue"/>.</summary>
-    /// <param name="json">The JSON string to parse.</param>
+    /// <summary>
+    /// Parses a JSON string into a <see cref="JsonValue"/>.
+    /// </summary>
+    /// <param name="json">JSON text to parse.</param>
+    /// <returns>The parsed JSON value.</returns>
     public static JsonValue Parse(string json) {
         if (json is null) {
             throw new ArgumentNullException(nameof(json));
@@ -25,16 +28,22 @@ public static class JsonLite {
         return value;
     }
 
-    /// <summary>Serializes a <see cref="JsonValue"/> into JSON text.</summary>
-    /// <param name="value">The value to serialize.</param>
+    /// <summary>
+    /// Serializes a <see cref="JsonValue"/> to JSON text.
+    /// </summary>
+    /// <param name="value">Value to serialize.</param>
+    /// <returns>JSON string.</returns>
     public static string Serialize(JsonValue value) {
         var builder = new StringBuilder();
         AppendValue(builder, value);
         return builder.ToString();
     }
 
-    /// <summary>Serializes a CLR object into JSON text.</summary>
-    /// <param name="value">The value to serialize.</param>
+    /// <summary>
+    /// Serializes a supported object into JSON text.
+    /// </summary>
+    /// <param name="value">Object to serialize.</param>
+    /// <returns>JSON string.</returns>
     public static string Serialize(object? value) {
         var builder = new StringBuilder();
         AppendObject(builder, value);

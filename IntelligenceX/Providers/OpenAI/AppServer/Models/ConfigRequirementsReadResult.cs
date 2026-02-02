@@ -4,29 +4,36 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
 /// <summary>
-/// Represents configuration requirements returned by the app-server.
+/// Represents the response containing configuration requirements.
 /// </summary>
-/// <example>
-/// <code>
-/// var req = await client.ReadConfigRequirementsAsync();
-/// Console.WriteLine(req.Requirements?.AllowedApprovalPolicies?.Count);
-/// </code>
-/// </example>
 public sealed class ConfigRequirementsReadResult {
+    /// <summary>
+    /// Initializes a new requirements read result.
+    /// </summary>
     public ConfigRequirementsReadResult(ConfigRequirements? requirements, JsonObject raw, JsonObject? additional) {
         Requirements = requirements;
         Raw = raw;
         Additional = additional;
     }
 
-    /// <summary>Parsed requirement values.</summary>
+    /// <summary>
+    /// Gets the configuration requirements.
+    /// </summary>
     public ConfigRequirements? Requirements { get; }
-    /// <summary>Raw JSON payload from the service.</summary>
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
-    /// <summary>Additional unmapped fields from the payload.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses requirements from JSON.</summary>
+    /// <summary>
+    /// Parses a requirements result from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed result.</returns>
     public static ConfigRequirementsReadResult FromJson(JsonObject obj) {
         var requirementsObj = obj.GetObject("requirements");
         var requirements = requirementsObj is null ? null : ConfigRequirements.FromJson(requirementsObj);
@@ -36,9 +43,12 @@ public sealed class ConfigRequirementsReadResult {
 }
 
 /// <summary>
-/// Allowed values for configuration settings.
+/// Describes allowed configuration values.
 /// </summary>
 public sealed class ConfigRequirements {
+    /// <summary>
+    /// Initializes a new configuration requirements model.
+    /// </summary>
     public ConfigRequirements(IReadOnlyList<string>? allowedApprovalPolicies, IReadOnlyList<string>? allowedSandboxModes,
         JsonObject raw, JsonObject? additional) {
         AllowedApprovalPolicies = allowedApprovalPolicies;
@@ -47,16 +57,28 @@ public sealed class ConfigRequirements {
         Additional = additional;
     }
 
-    /// <summary>Allowed approval policies (if provided).</summary>
+    /// <summary>
+    /// Gets the allowed approval policies.
+    /// </summary>
     public IReadOnlyList<string>? AllowedApprovalPolicies { get; }
-    /// <summary>Allowed sandbox modes (if provided).</summary>
+    /// <summary>
+    /// Gets the allowed sandbox modes.
+    /// </summary>
     public IReadOnlyList<string>? AllowedSandboxModes { get; }
-    /// <summary>Raw JSON payload from the service.</summary>
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
-    /// <summary>Additional unmapped fields from the payload.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses requirements from JSON.</summary>
+    /// <summary>
+    /// Parses requirements from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed requirements.</returns>
     public static ConfigRequirements FromJson(JsonObject obj) {
         var approvalPolicies = ReadStringArray(obj, "allowedApprovalPolicies", "allowed_approval_policies");
         var sandboxModes = ReadStringArray(obj, "allowedSandboxModes", "allowed_sandbox_modes");

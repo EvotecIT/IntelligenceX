@@ -3,14 +3,8 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
 /// <summary>
-/// Describes the target for a review request.
+/// Describes what content should be reviewed.
 /// </summary>
-/// <example>
-/// <code>
-/// var target = ReviewTarget.BaseBranch("main");
-/// var result = await client.StartReviewAsync(target);
-/// </code>
-/// </example>
 public sealed class ReviewTarget {
     private ReviewTarget(JsonObject payload) {
         Payload = payload;
@@ -18,26 +12,37 @@ public sealed class ReviewTarget {
 
     internal JsonObject Payload { get; }
 
-    /// <summary>Reviews uncommitted changes.</summary>
+    /// <summary>
+    /// Targets uncommitted working tree changes.
+    /// </summary>
     public static ReviewTarget UncommittedChanges() {
         return new ReviewTarget(new JsonObject().Add("type", "uncommittedChanges"));
     }
 
-    /// <summary>Reviews changes against a base branch.</summary>
+    /// <summary>
+    /// Targets a base branch.
+    /// </summary>
+    /// <param name="branch">Branch name.</param>
     public static ReviewTarget BaseBranch(string branch) {
         return new ReviewTarget(new JsonObject()
             .Add("type", "baseBranch")
             .Add("branch", branch));
     }
 
-    /// <summary>Reviews a specific commit.</summary>
+    /// <summary>
+    /// Targets a specific commit by SHA.
+    /// </summary>
+    /// <param name="sha">Commit SHA.</param>
     public static ReviewTarget Commit(string sha) {
         return new ReviewTarget(new JsonObject()
             .Add("type", "commit")
             .Add("sha", sha));
     }
 
-    /// <summary>Uses a custom review target text.</summary>
+    /// <summary>
+    /// Targets a custom text payload.
+    /// </summary>
+    /// <param name="text">Custom text to review.</param>
     public static ReviewTarget Custom(string text) {
         return new ReviewTarget(new JsonObject()
             .Add("type", "custom")

@@ -4,35 +4,30 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.Chat;
 
 /// <summary>
-/// Builds a multi-part chat input with text and optional images.
+/// Represents structured chat input content.
 /// </summary>
-/// <example>
-/// <code>
-/// var input = ChatInput.FromText("Analyze the error log")
-///     .AddImagePath("C:\\temp\\screenshot.png");
-/// </code>
-/// </example>
 public sealed class ChatInput {
     private readonly JsonArray _items = new();
 
     /// <summary>
-    /// Creates a text-only input.
+    /// Creates a chat input from a text prompt.
     /// </summary>
     public static ChatInput FromText(string text) => new ChatInput().AddText(text);
 
     /// <summary>
-    /// Creates a text input with a local image path.
+    /// Creates a chat input from text and a local image path.
     /// </summary>
     public static ChatInput FromTextWithImagePath(string text, string path) => new ChatInput().AddText(text).AddImagePath(path);
 
     /// <summary>
-    /// Creates a text input with an image URL.
+    /// Creates a chat input from text and an image URL.
     /// </summary>
     public static ChatInput FromTextWithImageUrl(string text, string url) => new ChatInput().AddText(text).AddImageUrl(url);
 
     /// <summary>
-    /// Adds a text block to the input.
+    /// Adds a text item to the input.
     /// </summary>
+    /// <param name="text">Text content.</param>
     public ChatInput AddText(string text) {
         if (string.IsNullOrWhiteSpace(text)) {
             throw new ArgumentException("Text cannot be empty.", nameof(text));
@@ -44,8 +39,9 @@ public sealed class ChatInput {
     }
 
     /// <summary>
-    /// Adds an image URL to the input.
+    /// Adds an image URL item to the input.
     /// </summary>
+    /// <param name="url">Image URL.</param>
     public ChatInput AddImageUrl(string url) {
         if (string.IsNullOrWhiteSpace(url)) {
             throw new ArgumentException("URL cannot be empty.", nameof(url));
@@ -57,8 +53,9 @@ public sealed class ChatInput {
     }
 
     /// <summary>
-    /// Adds a local image path to the input.
+    /// Adds a local image path item to the input.
     /// </summary>
+    /// <param name="path">Local image path.</param>
     public ChatInput AddImagePath(string path) {
         if (string.IsNullOrWhiteSpace(path)) {
             throw new ArgumentException("Path cannot be empty.", nameof(path));
@@ -70,8 +67,9 @@ public sealed class ChatInput {
     }
 
     /// <summary>
-    /// Adds a raw JSON item to the input payload.
+    /// Adds a raw JSON item to the input.
     /// </summary>
+    /// <param name="item">JSON item.</param>
     public ChatInput AddRaw(JsonObject item) {
         if (item is null) {
             throw new ArgumentNullException(nameof(item));

@@ -15,6 +15,9 @@ using IntelligenceX.Utils;
 
 namespace IntelligenceX.Copilot;
 
+/// <summary>
+/// Client for the GitHub Copilot CLI protocol.
+/// </summary>
 public sealed class CopilotClient : IDisposable
 #if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
     , IAsyncDisposable
@@ -40,13 +43,36 @@ public sealed class CopilotClient : IDisposable
         _rpcRetry = options.RpcRetry;
     }
 
+    /// <summary>
+    /// Raised when standard error output is received.
+    /// </summary>
     public event EventHandler<string>? StandardErrorReceived;
+    /// <summary>
+    /// Raised when standard output is received.
+    /// </summary>
     public event EventHandler<string>? StandardOutputReceived;
+    /// <summary>
+    /// Raised when a protocol message is received.
+    /// </summary>
     public event EventHandler<string>? ProtocolMessageReceived;
+    /// <summary>
+    /// Raised when a protocol message is sent.
+    /// </summary>
     public event EventHandler<string>? ProtocolMessageSent;
+    /// <summary>
+    /// Raised when an RPC call starts.
+    /// </summary>
     public event EventHandler<RpcCallStartedEventArgs>? RpcCallStarted;
+    /// <summary>
+    /// Raised when an RPC call completes.
+    /// </summary>
     public event EventHandler<RpcCallCompletedEventArgs>? RpcCallCompleted;
 
+    /// <summary>
+    /// Starts the Copilot client.
+    /// </summary>
+    /// <param name="options">Optional client options.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public static async Task<CopilotClient> StartAsync(CopilotClientOptions? options = null, CancellationToken cancellationToken = default) {
         options ??= new CopilotClientOptions();
         options.Validate();
@@ -55,6 +81,10 @@ public sealed class CopilotClient : IDisposable
         return client;
     }
 
+    /// <summary>
+    /// Retrieves Copilot CLI status information.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<CopilotStatus> GetStatusAsync(CancellationToken cancellationToken = default) {
         var result = await CallWithRetryAsync("status.get", JsonValue.From(new JsonArray()), true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
@@ -64,6 +94,10 @@ public sealed class CopilotClient : IDisposable
         return CopilotStatus.FromJson(obj);
     }
 
+    /// <summary>
+    /// Retrieves Copilot authentication status.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<CopilotAuthStatus> GetAuthStatusAsync(CancellationToken cancellationToken = default) {
         var result = await CallWithRetryAsync("auth.getStatus", JsonValue.From(new JsonArray()), true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
@@ -73,6 +107,10 @@ public sealed class CopilotClient : IDisposable
         return CopilotAuthStatus.FromJson(obj);
     }
 
+    /// <summary>
+    /// Lists available Copilot models.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<IReadOnlyList<CopilotModelInfo>> ListModelsAsync(CancellationToken cancellationToken = default) {
         var result = await CallWithRetryAsync("models.list", JsonValue.From(new JsonArray()), true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
@@ -92,6 +130,11 @@ public sealed class CopilotClient : IDisposable
         return list;
     }
 
+    /// <summary>
+    /// Creates a new Copilot session.
+    /// </summary>
+    /// <param name="options">Session options.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<CopilotSession> CreateSessionAsync(CopilotSessionOptions? options = null, CancellationToken cancellationToken = default) {
         options ??= new CopilotSessionOptions();
         var request = new JsonObject();
@@ -122,6 +165,11 @@ public sealed class CopilotClient : IDisposable
         return session;
     }
 
+    /// <summary>
+    /// Deletes a Copilot session.
+    /// </summary>
+    /// <param name="sessionId">Session id.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task DeleteSessionAsync(string sessionId, CancellationToken cancellationToken = default) {
         var request = new JsonObject().Add("sessionId", sessionId);
         var parameters = new JsonArray().Add(request);
@@ -466,6 +514,11 @@ public sealed class CopilotClient : IDisposable
         return await readTask.ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Executes a health check call.
+    /// </summary>
+    /// <param name="timeout">Optional timeout.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<HealthCheckResult> HealthCheckAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default) {
         var sw = Stopwatch.StartNew();
         var token = CreateTimeoutToken(timeout ?? _options.ConnectTimeout, cancellationToken, out var cts);
@@ -521,6 +574,9 @@ public sealed class CopilotClient : IDisposable
         }
     }
 
+    /// <summary>
+    /// Disposes the client synchronously.
+    /// </summary>
     public void Dispose() {
 #if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
         DisposeAsync().AsTask().GetAwaiter().GetResult();
@@ -530,8 +586,14 @@ public sealed class CopilotClient : IDisposable
     }
 
 #if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+    /// <summary>
+    /// Disposes the client asynchronously.
+    /// </summary>
     public async ValueTask DisposeAsync() {
 #else
+    /// <summary>
+    /// Disposes the client asynchronously.
+    /// </summary>
     public async Task DisposeAsync() {
 #endif
         if (_disposed) {

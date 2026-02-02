@@ -5,15 +5,12 @@ using IntelligenceX.OpenAI.AppServer.Models;
 namespace IntelligenceX.OpenAI;
 
 /// <summary>
-/// Simplified view of a chat turn, including text blocks and image outputs.
+/// Represents the simplified result of an easy chat call.
 /// </summary>
-/// <example>
-/// <code>
-/// var result = await session.AskAsync("Summarize the PR");
-/// Console.WriteLine(result.Text);
-/// </code>
-/// </example>
 public sealed class EasyChatResult {
+    /// <summary>
+    /// Initializes a new easy chat result.
+    /// </summary>
     public EasyChatResult(string? text, IReadOnlyList<string> textBlocks, IReadOnlyList<EasyImage> images, TurnInfo turn) {
         Text = text;
         TextBlocks = textBlocks;
@@ -22,25 +19,26 @@ public sealed class EasyChatResult {
     }
 
     /// <summary>
-    /// Combined text output (if any).
+    /// Gets the concatenated text response.
     /// </summary>
     public string? Text { get; }
     /// <summary>
-    /// Individual text blocks returned by the model.
+    /// Gets the individual text blocks.
     /// </summary>
     public IReadOnlyList<string> TextBlocks { get; }
     /// <summary>
-    /// Image outputs returned by the model.
+    /// Gets any image outputs.
     /// </summary>
     public IReadOnlyList<EasyImage> Images { get; }
     /// <summary>
-    /// Raw turn info for advanced use cases.
+    /// Gets the underlying turn information.
     /// </summary>
     public TurnInfo Turn { get; }
 
     /// <summary>
-    /// Builds a result from a raw turn.
+    /// Creates an <see cref="EasyChatResult"/> from a turn.
     /// </summary>
+    /// <param name="turn">Turn info to convert.</param>
     public static EasyChatResult FromTurn(TurnInfo turn) {
         var textBlocks = new List<string>();
         foreach (var output in turn.Outputs) {
@@ -60,16 +58,12 @@ public sealed class EasyChatResult {
 }
 
 /// <summary>
-/// Simplified image output from a chat turn.
+/// Represents an image output from a chat call.
 /// </summary>
-/// <example>
-/// <code>
-/// foreach (var image in result.Images) {
-///     Console.WriteLine(image.Url ?? image.Path);
-/// }
-/// </code>
-/// </example>
 public sealed class EasyImage {
+    /// <summary>
+    /// Initializes a new image output.
+    /// </summary>
     public EasyImage(string? url, string? path, string? base64, string? mimeType) {
         Url = url;
         Path = path;
@@ -78,19 +72,19 @@ public sealed class EasyImage {
     }
 
     /// <summary>
-    /// Public URL for the image (if provided).
+    /// Gets the image URL when available.
     /// </summary>
     public string? Url { get; }
     /// <summary>
-    /// Local file path for the image (if written to disk).
+    /// Gets the local file path when available.
     /// </summary>
     public string? Path { get; }
     /// <summary>
-    /// Base64 image data (if provided).
+    /// Gets the base64 payload when provided.
     /// </summary>
     public string? Base64 { get; }
     /// <summary>
-    /// MIME type for the image (if known).
+    /// Gets the mime type when available.
     /// </summary>
     public string? MimeType { get; }
 

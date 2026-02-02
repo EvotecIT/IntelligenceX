@@ -3,15 +3,12 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
 /// <summary>
-/// Account details returned by the app-server.
+/// Represents account metadata returned by the app-server.
 /// </summary>
-/// <example>
-/// <code>
-/// var account = await client.ReadAccountAsync();
-/// Console.WriteLine(account.Email);
-/// </code>
-/// </example>
 public sealed class AccountInfo {
+    /// <summary>
+    /// Initializes a new account info model.
+    /// </summary>
     public AccountInfo(string? email, string? planType, string? accountId, JsonObject raw, JsonObject? additional) {
         Email = email;
         PlanType = planType;
@@ -20,18 +17,32 @@ public sealed class AccountInfo {
         Additional = additional;
     }
 
-    /// <summary>Account email (if available).</summary>
+    /// <summary>
+    /// Gets the account email.
+    /// </summary>
     public string? Email { get; }
-    /// <summary>Plan type name (if available).</summary>
+    /// <summary>
+    /// Gets the plan type identifier.
+    /// </summary>
     public string? PlanType { get; }
-    /// <summary>Account identifier (if available).</summary>
+    /// <summary>
+    /// Gets the account id.
+    /// </summary>
     public string? AccountId { get; }
-    /// <summary>Raw JSON payload from the service.</summary>
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
-    /// <summary>Additional unmapped fields from the payload.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses account info from JSON.</summary>
+    /// <summary>
+    /// Parses account info from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed account info.</returns>
     public static AccountInfo FromJson(JsonObject obj) {
         var email = obj.GetString("email");
         var planType = obj.GetString("planType") ?? obj.GetString("plan_type");

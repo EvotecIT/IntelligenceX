@@ -8,23 +8,17 @@ using IntelligenceX.OpenAI.Native;
 namespace IntelligenceX.OpenAI.Usage;
 
 /// <summary>
-/// Retrieves usage, limits, and credit information from ChatGPT using native auth.
+/// Retrieves ChatGPT usage, rate limits, and credit usage events.
 /// </summary>
-/// <example>
-/// <code>
-/// var options = new OpenAINativeOptions();
-/// using var usage = new ChatGptUsageService(options);
-/// var report = await usage.GetReportAsync(includeEvents: true);
-/// </code>
-/// </example>
 public sealed class ChatGptUsageService : IDisposable {
     private readonly OpenAINativeOptions _options;
     private readonly OpenAINativeAuthManager _auth;
     private readonly ChatGptUsageClient _client = new();
 
     /// <summary>
-    /// Creates a usage service using the provided native options.
+    /// Initializes a new usage service using native auth options.
     /// </summary>
+    /// <param name="options">Native options used for authentication and endpoints.</param>
     public ChatGptUsageService(OpenAINativeOptions options) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _options.Validate();
@@ -32,22 +26,26 @@ public sealed class ChatGptUsageService : IDisposable {
     }
 
     /// <summary>
-    /// Fetches the current usage snapshot (rate limits, credits, plan info).
+    /// Retrieves the current usage snapshot.
     /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public Task<ChatGptUsageSnapshot> GetUsageSnapshotAsync(CancellationToken cancellationToken = default) {
         return GetUsageSnapshotInternalAsync(cancellationToken);
     }
 
     /// <summary>
-    /// Fetches recent credit usage events (if available for the account).
+    /// Retrieves recent credit usage events.
     /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public Task<IReadOnlyList<ChatGptCreditUsageEvent>> GetCreditUsageEventsAsync(CancellationToken cancellationToken = default) {
         return GetCreditUsageEventsInternalAsync(cancellationToken);
     }
 
     /// <summary>
-    /// Builds a combined report from the current snapshot and optional credit events.
+    /// Retrieves a combined usage report.
     /// </summary>
+    /// <param name="includeEvents">Whether to include credit usage events.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<ChatGptUsageReport> GetReportAsync(bool includeEvents, CancellationToken cancellationToken = default) {
         var snapshot = await GetUsageSnapshotInternalAsync(cancellationToken).ConfigureAwait(false);
         IReadOnlyList<ChatGptCreditUsageEvent> events = Array.Empty<ChatGptCreditUsageEvent>();
@@ -80,6 +78,9 @@ public sealed class ChatGptUsageService : IDisposable {
         throw new InvalidOperationException("Not logged in. Run ChatGPT login first.");
     }
 
+    /// <summary>
+    /// Disposes the underlying usage client.
+    /// </summary>
     public void Dispose() {
         _client.Dispose();
     }

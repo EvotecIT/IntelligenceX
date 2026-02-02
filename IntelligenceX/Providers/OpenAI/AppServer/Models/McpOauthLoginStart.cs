@@ -3,15 +3,12 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
 /// <summary>
-/// Represents the start of an MCP OAuth login flow.
+/// Represents the initial response from an MCP OAuth login start.
 /// </summary>
-/// <example>
-/// <code>
-/// var login = await client.StartMcpOAuthLoginAsync("server-name");
-/// Console.WriteLine(login.AuthUrl);
-/// </code>
-/// </example>
 public sealed class McpOauthLoginStart {
+    /// <summary>
+    /// Initializes a new MCP OAuth login start model.
+    /// </summary>
     public McpOauthLoginStart(string? loginId, string? authUrl, JsonObject raw, JsonObject? additional) {
         LoginId = loginId;
         AuthUrl = authUrl;
@@ -19,16 +16,28 @@ public sealed class McpOauthLoginStart {
         Additional = additional;
     }
 
-    /// <summary>Login identifier (if provided).</summary>
+    /// <summary>
+    /// Gets the login id.
+    /// </summary>
     public string? LoginId { get; }
-    /// <summary>Authorization URL for completing login (if provided).</summary>
+    /// <summary>
+    /// Gets the authorization URL.
+    /// </summary>
     public string? AuthUrl { get; }
-    /// <summary>Raw JSON payload from the service.</summary>
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
-    /// <summary>Additional unmapped fields from the payload.</summary>
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
-    /// <summary>Parses a login response from JSON.</summary>
+    /// <summary>
+    /// Parses the MCP OAuth login start payload from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed login start model.</returns>
     public static McpOauthLoginStart FromJson(JsonObject obj) {
         var loginId = obj.GetString("loginId");
         var authUrl = obj.GetString("authUrl") ?? obj.GetString("authorization_url");

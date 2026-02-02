@@ -3,22 +3,25 @@ using System.Collections.Generic;
 namespace IntelligenceX.OpenAI.Auth;
 
 /// <summary>
-/// Result from an OAuth login or refresh call.
+/// Represents the result of an OAuth login flow.
 /// </summary>
-/// <example>
-/// <code>
-/// var result = await service.LoginAsync(options);
-/// Console.WriteLine(result.Bundle.AccountId);
-/// </code>
-/// </example>
 public sealed class OAuthLoginResult {
+    /// <summary>
+    /// Initializes a new OAuth login result.
+    /// </summary>
+    /// <param name="bundle">Authentication bundle.</param>
+    /// <param name="raw">Raw response key/value data.</param>
     public OAuthLoginResult(AuthBundle bundle, Dictionary<string, string> raw) {
         Bundle = bundle;
         Raw = raw;
     }
 
-    /// <summary>Auth bundle with tokens.</summary>
+    /// <summary>
+    /// Gets the authentication bundle.
+    /// </summary>
     public AuthBundle Bundle { get; }
-    /// <summary>Raw token response fields.</summary>
+    /// <summary>
+    /// Gets the raw response data.
+    /// </summary>
     public Dictionary<string, string> Raw { get; }
 }

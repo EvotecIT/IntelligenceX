@@ -8,6 +8,15 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Returns the current account details.</para>
+/// <para type="description">Shows account metadata for the active client.</para>
+/// <example>
+///  <para>Get account info</para>
+///  <code>Get-IntelligenceXAccount</code>
+/// </example>
+/// <example>
+///  <para>Get raw JSON account payload</para>
+///  <code>Get-IntelligenceXAccount -Raw</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXAccount")]
 [OutputType(typeof(AccountInfo), typeof(JsonValue))]
@@ -24,6 +33,7 @@ public sealed class CmdletGetIntelligenceXAccount : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter Raw { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveClient(Client);
         if (Raw.IsPresent) {

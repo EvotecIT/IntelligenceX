@@ -5,26 +5,27 @@ using IntelligenceX.OpenAI.AppServer.Models;
 namespace IntelligenceX.OpenAI.Fluent;
 
 /// <summary>
-/// Fluent wrapper for a ChatGPT login session.
+/// Represents a fluent login session wrapper.
 /// </summary>
-/// <example>
-/// <code>
-/// var login = await session.LoginChatGptAsync();
-/// await login.WaitAsync();
-/// </code>
-/// </example>
 public sealed class FluentLoginSession {
     internal FluentLoginSession(FluentSession session, ChatGptLoginStart login) {
         Session = session;
         Login = login;
     }
 
-    /// <summary>Parent fluent session.</summary>
+    /// <summary>
+    /// Gets the parent fluent session.
+    /// </summary>
     public FluentSession Session { get; }
-    /// <summary>Login details returned by the server.</summary>
+    /// <summary>
+    /// Gets the login start response.
+    /// </summary>
     public ChatGptLoginStart Login { get; }
 
-    /// <summary>Waits for the login flow to complete.</summary>
+    /// <summary>
+    /// Waits for login completion and returns the fluent session.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<FluentSession> WaitAsync(CancellationToken cancellationToken = default) {
         await Session.Client.WaitForLoginCompletionAsync(Login.LoginId, cancellationToken).ConfigureAwait(false);
         return Session;
