@@ -6,7 +6,12 @@ using System.Text;
 
 namespace IntelligenceX.Json;
 
+/// <summary>
+/// Minimal JSON parser/serializer used by IntelligenceX.
+/// </summary>
 public static class JsonLite {
+    /// <summary>Parses JSON text into a <see cref="JsonValue"/>.</summary>
+    /// <param name="json">The JSON string to parse.</param>
     public static JsonValue Parse(string json) {
         if (json is null) {
             throw new ArgumentNullException(nameof(json));
@@ -20,12 +25,16 @@ public static class JsonLite {
         return value;
     }
 
+    /// <summary>Serializes a <see cref="JsonValue"/> into JSON text.</summary>
+    /// <param name="value">The value to serialize.</param>
     public static string Serialize(JsonValue value) {
         var builder = new StringBuilder();
         AppendValue(builder, value);
         return builder.ToString();
     }
 
+    /// <summary>Serializes a CLR object into JSON text.</summary>
+    /// <param name="value">The value to serialize.</param>
     public static string Serialize(object? value) {
         var builder = new StringBuilder();
         AppendObject(builder, value);

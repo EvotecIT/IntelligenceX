@@ -36,14 +36,20 @@ public enum TextVerbosity {
 /// Helpers for parsing chat enum values from strings.
 /// </summary>
 public static class ChatEnumParser {
+    /// <summary>Parses a reasoning effort value from a string.</summary>
+    /// <param name="value">The input string.</param>
     public static ReasoningEffort? ParseReasoningEffort(string? value) {
         return TryParseEnum(value, out ReasoningEffort result) ? result : null;
     }
 
+    /// <summary>Parses a reasoning summary value from a string.</summary>
+    /// <param name="value">The input string.</param>
     public static ReasoningSummary? ParseReasoningSummary(string? value) {
         return TryParseEnum(value, out ReasoningSummary result) ? result : null;
     }
 
+    /// <summary>Parses a text verbosity value from a string.</summary>
+    /// <param name="value">The input string.</param>
     public static TextVerbosity? ParseTextVerbosity(string? value) {
         return TryParseEnum(value, out TextVerbosity result) ? result : null;
     }

@@ -95,9 +95,21 @@ public sealed class EasySessionOptions {
     /// Default model used for chat requests.
     /// </summary>
     public string DefaultModel { get; set; } = "gpt-5.2-codex";
+    /// <summary>
+    /// Working directory used for file access when a workspace is not set.
+    /// </summary>
     public string? WorkingDirectory { get; set; }
+    /// <summary>
+    /// Root workspace path used to resolve file operations.
+    /// </summary>
     public string? Workspace { get; set; }
+    /// <summary>
+    /// Whether network access is allowed for tools that require it.
+    /// </summary>
     public bool AllowNetwork { get; set; }
+    /// <summary>
+    /// Approval policy hint passed to the model/tooling layer.
+    /// </summary>
     public string? ApprovalPolicy { get; set; }
 
     /// <summary>
@@ -126,6 +138,12 @@ public sealed class EasySessionOptions {
         }
     }
 
+    /// <summary>
+    /// Applies settings from a config file if available.
+    /// </summary>
+    /// <param name="path">Optional config path override.</param>
+    /// <param name="baseDirectory">Optional base directory for relative paths.</param>
+    /// <returns>true when configuration was loaded; otherwise false.</returns>
     public bool TryApplyConfig(string? path = null, string? baseDirectory = null) {
         if (!IntelligenceXConfig.TryLoad(out var config, path, baseDirectory)) {
             return false;
@@ -134,6 +152,11 @@ public sealed class EasySessionOptions {
         return true;
     }
 
+    /// <summary>
+    /// Loads settings from config and returns the configured options.
+    /// </summary>
+    /// <param name="path">Optional config path override.</param>
+    /// <param name="baseDirectory">Optional base directory for relative paths.</param>
     public static EasySessionOptions FromConfig(string? path = null, string? baseDirectory = null) {
         var options = new EasySessionOptions();
         options.TryApplyConfig(path, baseDirectory);
