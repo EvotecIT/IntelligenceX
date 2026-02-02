@@ -60,10 +60,16 @@
     {
       "task": "optimize",
       "siteRoot": "./_site",
+      "config": "./site.json",
       "criticalCss": "./themes/intelligencex/critical.css",
       "minifyHtml": true,
       "minifyCss": true,
-      "minifyJs": true
+      "minifyJs": true,
+      "hashAssets": true,
+      "hashExtensions": [".css", ".js"],
+      "hashExclude": ["**/assets/prism/components/**"],
+      "cacheHeaders": true,
+      "cacheHeadersOut": "_headers"
     }
   ]
 }

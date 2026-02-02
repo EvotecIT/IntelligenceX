@@ -65,6 +65,29 @@
       { "Name": "intelligencex", "Path": "themes/intelligencex/critical.css" }
     ]
   },
+  "AssetPolicy": {
+    "Mode": "local",
+    "Hashing": {
+      "Enabled": true,
+      "Extensions": [".css", ".js"],
+      "Exclude": ["**/assets/prism/components/**"]
+    },
+    "CacheHeaders": {
+      "Enabled": true,
+      "OutputPath": "_headers"
+    }
+  },
+  "Prism": {
+    "Mode": "auto",
+    "Source": "local",
+    "Local": {
+      "ThemeLight": "/assets/prism/prism.css",
+      "ThemeDark": "/assets/prism/prism-okaidia.css",
+      "Core": "/assets/prism/prism-core.min.js",
+      "Autoloader": "/assets/prism/prism-autoloader.min.js",
+      "LanguagesPath": "/assets/prism/components/"
+    }
+  },
   "A11y": {
     "SkipLinkLabel": "Skip to content",
     "ExternalLinkLabel": "Opens in a new tab",
