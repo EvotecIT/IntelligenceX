@@ -9,21 +9,43 @@ using IntelligenceX.Json;
 
 namespace IntelligenceX.OpenAI.Usage;
 
+/// <summary>
+/// Represents a cached usage snapshot entry.
+/// </summary>
 public sealed class ChatGptUsageCacheEntry {
+    /// <summary>
+    /// Initializes a new cache entry.
+    /// </summary>
+    /// <param name="snapshot">Usage snapshot.</param>
+    /// <param name="updatedAt">Timestamp when the snapshot was stored.</param>
     public ChatGptUsageCacheEntry(ChatGptUsageSnapshot snapshot, DateTimeOffset updatedAt) {
         Snapshot = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
         UpdatedAt = updatedAt;
     }
 
+    /// <summary>
+    /// Gets the cached usage snapshot.
+    /// </summary>
     public ChatGptUsageSnapshot Snapshot { get; }
+    /// <summary>
+    /// Gets the timestamp when the snapshot was updated.
+    /// </summary>
     public DateTimeOffset UpdatedAt { get; }
 
+    /// <summary>
+    /// Serializes the cache entry to JSON.
+    /// </summary>
     public JsonObject ToJson() {
         return new JsonObject()
             .Add("updated_at", UpdatedAt.ToUnixTimeSeconds())
             .Add("usage", Snapshot.ToJson());
     }
 
+    /// <summary>
+    /// Parses a cache entry from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed cache entry or null.</returns>
     public static ChatGptUsageCacheEntry? FromJson(JsonObject obj) {
         if (obj is null) {
             return null;
@@ -51,7 +73,13 @@ public sealed class ChatGptUsageCacheEntry {
     }
 }
 
+/// <summary>
+/// Helpers for reading and writing the local usage cache.
+/// </summary>
 public static class ChatGptUsageCache {
+    /// <summary>
+    /// Resolves the default cache path, honoring INTELLIGENCEX_USAGE_PATH when present.
+    /// </summary>
     public static string ResolveCachePath() {
         var overridePath = Environment.GetEnvironmentVariable("INTELLIGENCEX_USAGE_PATH");
         if (!string.IsNullOrWhiteSpace(overridePath)) {
@@ -64,6 +92,12 @@ public static class ChatGptUsageCache {
         return Path.Combine(home, ".intelligencex", "usage.json");
     }
 
+    /// <summary>
+    /// Attempts to load a cached usage snapshot.
+    /// </summary>
+    /// <param name="entry">The cache entry when found.</param>
+    /// <param name="path">Optional override path.</param>
+    /// <returns><c>true</c> when a cache entry was loaded.</returns>
     public static bool TryLoad(out ChatGptUsageCacheEntry? entry, string? path = null) {
         entry = null;
         try {
@@ -87,6 +121,11 @@ public static class ChatGptUsageCache {
         }
     }
 
+    /// <summary>
+    /// Saves a usage snapshot to the cache.
+    /// </summary>
+    /// <param name="snapshot">Snapshot to persist.</param>
+    /// <param name="path">Optional override path.</param>
     public static void Save(ChatGptUsageSnapshot snapshot, string? path = null) {
         var resolved = path ?? ResolveCachePath();
         var dir = Path.GetDirectoryName(resolved);
