@@ -14,6 +14,10 @@ namespace IntelligenceX.PowerShell;
 ///  <para>Ask for two inputs</para>
 ///  <code>Request-IntelligenceXUserInput -Questions "Repo name?", "Branch?"</code>
 /// </example>
+/// <example>
+///  <para>Return raw JSON response</para>
+///  <code>Request-IntelligenceXUserInput -Questions "Continue?" -Raw</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Request, "IntelligenceXUserInput")]
 [OutputType(typeof(UserInputResponse), typeof(JsonValue))]

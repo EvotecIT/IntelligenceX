@@ -13,6 +13,10 @@ namespace IntelligenceX.PowerShell;
 ///  <para>Get account info</para>
 ///  <code>Get-IntelligenceXAccount</code>
 /// </example>
+/// <example>
+///  <para>Get raw JSON account payload</para>
+///  <code>Get-IntelligenceXAccount -Raw</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXAccount")]
 [OutputType(typeof(AccountInfo), typeof(JsonValue))]

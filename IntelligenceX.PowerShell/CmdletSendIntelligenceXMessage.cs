@@ -23,6 +23,10 @@ namespace IntelligenceX.PowerShell;
 ///  <para>Send a message with a workspace sandbox</para>
 ///  <code>Send-IntelligenceXMessage -ThreadId $thread.id -Text "Run tests" -SandboxType "workspace" -NetworkAccess -WritableRoot "C:\repo"</code>
 /// </example>
+/// <example>
+///  <para>Return raw JSON output</para>
+///  <code>Send-IntelligenceXMessage -ThreadId $thread.id -Text "Status?" -Raw</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommunications.Send, "IntelligenceXMessage")]
 [OutputType(typeof(TurnInfo), typeof(JsonValue))]

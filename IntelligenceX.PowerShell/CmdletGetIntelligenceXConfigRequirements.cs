@@ -14,6 +14,10 @@ namespace IntelligenceX.PowerShell;
 ///  <para>Get config requirements</para>
 ///  <code>Get-IntelligenceXConfigRequirements</code>
 /// </example>
+/// <example>
+///  <para>Get raw JSON output</para>
+///  <code>Get-IntelligenceXConfigRequirements -Raw</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXConfigRequirements")]
 [OutputType(typeof(ConfigRequirementsReadResult), typeof(JsonValue))]

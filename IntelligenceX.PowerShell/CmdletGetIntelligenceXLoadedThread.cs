@@ -14,6 +14,10 @@ namespace IntelligenceX.PowerShell;
 ///  <para>List loaded threads</para>
 ///  <code>Get-IntelligenceXLoadedThread</code>
 /// </example>
+/// <example>
+///  <para>Get raw JSON output</para>
+///  <code>Get-IntelligenceXLoadedThread -Raw</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXLoadedThread")]
 [OutputType(typeof(ThreadIdListResult), typeof(JsonValue))]

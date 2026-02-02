@@ -18,6 +18,10 @@ namespace IntelligenceX.PowerShell;
 ///  <para>Force reload skills</para>
 ///  <code>Get-IntelligenceXSkill -Cwd "C:\repo" -ForceReload</code>
 /// </example>
+/// <example>
+///  <para>Return raw JSON output</para>
+///  <code>Get-IntelligenceXSkill -Cwd "C:\repo" -Raw</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXSkill")]
 [OutputType(typeof(SkillListResult), typeof(JsonValue))]

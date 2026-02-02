@@ -23,6 +23,10 @@ namespace IntelligenceX.PowerShell;
 ///  <para>Review a base branch</para>
 ///  <code>Start-IntelligenceXReview -ThreadId $thread.id -Delivery immediate -TargetType baseBranch -TargetValue "main"</code>
 /// </example>
+/// <example>
+///  <para>Return raw JSON output</para>
+///  <code>Start-IntelligenceXReview -ThreadId $thread.id -Delivery immediate -TargetType commit -TargetValue 3f2a9c1 -Raw</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Start, "IntelligenceXReview")]
 [OutputType(typeof(ReviewStartResult), typeof(JsonValue))]

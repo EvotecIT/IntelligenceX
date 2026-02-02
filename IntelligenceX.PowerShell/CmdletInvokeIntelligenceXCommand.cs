@@ -18,6 +18,10 @@ namespace IntelligenceX.PowerShell;
 ///  <para>Run a command in a sandboxed workspace</para>
 ///  <code>Invoke-IntelligenceXCommand -Command @("dotnet","test") -SandboxType "workspace" -WorkingDirectory "C:\repo"</code>
 /// </example>
+/// <example>
+///  <para>Run a command with a timeout</para>
+///  <code>Invoke-IntelligenceXCommand -Command @("git","status") -TimeoutMs 5000</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Invoke, "IntelligenceXCommand")]
 [OutputType(typeof(CommandExecResult), typeof(JsonValue))]

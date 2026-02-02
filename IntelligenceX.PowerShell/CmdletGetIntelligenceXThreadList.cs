@@ -18,6 +18,10 @@ namespace IntelligenceX.PowerShell;
 ///  <para>Continue a previous page</para>
 ///  <code>Get-IntelligenceXThread -Cursor $result.cursor -Limit 20</code>
 /// </example>
+/// <example>
+///  <para>Filter by model provider</para>
+///  <code>Get-IntelligenceXThread -ModelProvider "openai","anthropic"</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXThread")]
 [OutputType(typeof(ThreadListResult), typeof(JsonValue))]

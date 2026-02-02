@@ -15,6 +15,10 @@ namespace IntelligenceX.PowerShell;
 ///  <para>List available models</para>
 ///  <code>Get-IntelligenceXModel</code>
 /// </example>
+/// <example>
+///  <para>List models as raw JSON (app-server transport only)</para>
+///  <code>Get-IntelligenceXModel -Raw</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXModel")]
 [OutputType(typeof(ModelListResult), typeof(JsonValue))]

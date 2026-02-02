@@ -14,6 +14,10 @@ namespace IntelligenceX.PowerShell;
 ///  <para>Start login by server name</para>
 ///  <code>Start-IntelligenceXMcpOAuthLogin -ServerName "my-mcp-server"</code>
 /// </example>
+/// <example>
+///  <para>Return raw JSON response</para>
+///  <code>Start-IntelligenceXMcpOAuthLogin -ServerId "srv_123" -Raw</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Start, "IntelligenceXMcpOAuthLogin")]
 [OutputType(typeof(McpOauthLoginStart), typeof(JsonValue))]

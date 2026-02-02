@@ -14,6 +14,10 @@ namespace IntelligenceX.PowerShell;
 ///  <para>List MCP server status</para>
 ///  <code>Get-IntelligenceXMcpServerStatus -Limit 50</code>
 /// </example>
+/// <example>
+///  <para>Continue with a cursor</para>
+///  <code>Get-IntelligenceXMcpServerStatus -Cursor $result.cursor</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXMcpServerStatus")]
 [OutputType(typeof(McpServerStatusListResult), typeof(JsonValue))]
