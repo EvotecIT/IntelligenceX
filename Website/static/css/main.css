@@ -96,6 +96,22 @@ code { font-family: var(--pf-font-mono); font-size: 0.875em; }
 .callout, blockquote { background: var(--pf-card-bg); border-left: 3px solid var(--pf-accent); border-radius: 0 var(--pf-radius-sm) var(--pf-radius-sm) 0; padding: 1rem 1.25rem; margin: 0 0 1.5rem; }
 blockquote p:last-child { margin-bottom: 0; }
 
+/* ===== Markdown Body (engine wrapper) ===== */
+.markdown-body table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: 0.9rem; }
+.markdown-body thead { border-bottom: 2px solid var(--pf-border); }
+.markdown-body th { text-align: left; padding: 0.625rem 0.75rem; font-weight: 600; color: var(--pf-ink-strong, #fff); }
+.markdown-body td { padding: 0.625rem 0.75rem; color: var(--pf-muted); border-bottom: 1px solid var(--pf-border); }
+.markdown-body tbody tr:hover { background: var(--pf-card-bg); }
+.markdown-body dl { margin: 0 0 1.5rem; }
+.markdown-body dt { font-weight: 600; color: var(--pf-ink-strong, #fff); margin-bottom: 0.25rem; }
+.markdown-body dd { margin: 0 0 1rem 1.5rem; color: var(--pf-muted); }
+.markdown-body ul ul, .markdown-body ol ul, .markdown-body ul ol, .markdown-body ol ol { margin-top: 0.375rem; margin-bottom: 0.375rem; }
+.markdown-body ul, .markdown-body ol { padding-left: 1.5rem; margin-bottom: 1rem; color: var(--pf-muted); }
+.markdown-body li { margin-bottom: 0.375rem; }
+.markdown-body li code, .markdown-body p code, .markdown-body td code { background: var(--pf-code-bg); border: 1px solid var(--pf-code-border); padding: 0.15em 0.35em; border-radius: 4px; font-family: var(--pf-font-mono); font-size: 0.875em; }
+.markdown-body h2 { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--pf-border); }
+.markdown-body h3 { margin-top: 2rem; }
+
 /* ===== Responsive ===== */
 @media (max-width: 768px) {
   .ix-nav { display: none; }

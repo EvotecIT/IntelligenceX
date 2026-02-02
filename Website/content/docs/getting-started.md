@@ -1,9 +1,8 @@
 ---
 title: Getting Started
 description: Set up AI-powered code reviews with IntelligenceX in under a minute
-slug: getting-started
-collection: pages
-layout: page
+collection: docs
+layout: docs
 ---
 
 # Getting Started with IntelligenceX
@@ -92,6 +91,6 @@ See [Reviewer Configuration](/docs/reviewer/configuration/) for all options.
 ## Next Steps
 
 - [Reviewer Overview](/docs/reviewer/overview/) - Understand review modes and output
-- [Security & Trust](/security/) - Learn about the zero-trust model
+- [Security & Trust](/docs/security/) - Learn about the zero-trust model
 - [CLI Commands](/docs/cli/overview/) - Full CLI reference
 - [.NET Library](/docs/library/overview/) - Build custom integrations

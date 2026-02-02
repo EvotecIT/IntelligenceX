@@ -22,7 +22,7 @@ meta.raw_html: true
     </p>
 
     <div class="hero-buttons">
-        <a href="/getting-started/" class="btn btn-primary">
+        <a href="/docs/getting-started/" class="btn btn-primary">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
             Get Started
         </a>
@@ -133,7 +133,7 @@ meta.raw_html: true
                 <span><strong>All changes via PRs</strong> &mdash; review every workflow change before it's applied</span>
             </div>
         </div>
-        <a href="/security/" class="btn btn-ghost" style="border-color: rgba(16, 185, 129, 0.4); color: #10B981;">Learn About Our Security Model &rarr;</a>
+        <a href="/docs/security/" class="btn btn-ghost" style="border-color: rgba(16, 185, 129, 0.4); color: #10B981;">Learn About Our Security Model &rarr;</a>
     </div>
 </section>
 
@@ -224,7 +224,7 @@ Disconnect-IntelligenceX</code></pre>
     <h2>Ready to Get Started?</h2>
     <p style="max-width: 500px; margin: 0 auto 1.5rem;">Set up AI-powered code reviews in under a minute. No backend, no API keys, just your own credentials.</p>
     <div class="hero-buttons">
-        <a href="/getting-started/" class="btn btn-primary">Get Started</a>
+        <a href="/docs/getting-started/" class="btn btn-primary">Get Started</a>
         <a href="/docs/" class="btn btn-secondary">Read the Docs</a>
     </div>
 </section>
