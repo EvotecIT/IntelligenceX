@@ -310,7 +310,7 @@ internal static class ReviewConfigLoader {
 
     private static double ReadDouble(JsonObject obj, string key, double fallback) {
         var value = obj.GetDouble(key);
-        if (value.HasValue && value.Value > 0) {
+        if (value.HasValue && value.Value >= 1) {
             return value.Value;
         }
         return fallback;

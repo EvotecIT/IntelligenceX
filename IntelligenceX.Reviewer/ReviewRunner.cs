@@ -161,6 +161,14 @@ internal sealed class ReviewRunner {
     }
 
     internal static class ReviewRetryPolicy {
+        public static Task<string> RunAsync(Func<Task<string>> action, Func<Exception, bool> isTransient,
+            int maxAttempts, int retryDelaySeconds, int retryMaxDelaySeconds, CancellationToken cancellationToken,
+            Func<Exception, string>? describeError, int extraAttempts, Func<Exception, bool>? extraRetryPredicate,
+            ReviewRetryState? retryState) {
+            return RunAsync(action, isTransient, maxAttempts, retryDelaySeconds, retryMaxDelaySeconds,
+                2.0, 200, 800, cancellationToken, describeError, extraAttempts, extraRetryPredicate, retryState);
+        }
+
         public static async Task<string> RunAsync(Func<Task<string>> action, Func<Exception, bool> isTransient,
             int maxAttempts, int retryDelaySeconds, int retryMaxDelaySeconds, double backoffMultiplier,
             int retryJitterMinMs, int retryJitterMaxMs, CancellationToken cancellationToken,
@@ -199,9 +207,13 @@ internal sealed class ReviewRunner {
                         }
                     }
 
-                    var jitterMs = jitterMax > jitterMin
-                        ? Random.Shared.Next(jitterMin, jitterMax + 1)
-                        : jitterMin;
+                    int jitterMs;
+                    if (jitterMax > jitterMin) {
+                        var upperExclusive = jitterMax == int.MaxValue ? jitterMax : jitterMax + 1;
+                        jitterMs = Random.Shared.Next(jitterMin, upperExclusive);
+                    } else {
+                        jitterMs = jitterMin;
+                    }
                     var jitter = TimeSpan.FromMilliseconds(jitterMs);
                     var wait = delay + jitter;
                     var summary = describeError is not null ? describeError(ex) : ex.Message;

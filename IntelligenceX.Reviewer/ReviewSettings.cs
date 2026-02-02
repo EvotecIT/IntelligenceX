@@ -717,7 +717,7 @@ internal sealed class ReviewSettings {
         if (string.IsNullOrWhiteSpace(value)) {
             return fallback;
         }
-        if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) && parsed > 0) {
+        if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) && parsed >= 1) {
             return parsed;
         }
         return fallback;
