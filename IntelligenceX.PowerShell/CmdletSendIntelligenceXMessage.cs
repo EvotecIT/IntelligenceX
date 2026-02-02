@@ -9,6 +9,16 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Sends a message to a thread and starts a turn.</para>
+/// <para type="description">Queues a user message on an existing thread. Returns the created turn so you can
+/// poll for output with Get-IntelligenceXTurnOutput.</para>
+/// <example>
+///  <para>Send a message in an existing thread</para>
+///  <code>Send-IntelligenceXMessage -ThreadId $thread.id -Text "Review this diff."</code>
+/// </example>
+/// <example>
+///  <para>Send a message with a temporary model override</para>
+///  <code>Send-IntelligenceXMessage -ThreadId $thread.id -Text "Summarize changes." -Model "gpt-5.2-codex"</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommunications.Send, "IntelligenceXMessage")]
 [OutputType(typeof(TurnInfo), typeof(JsonValue))]

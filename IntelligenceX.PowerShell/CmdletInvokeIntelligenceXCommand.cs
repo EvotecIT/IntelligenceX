@@ -9,6 +9,15 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Executes a command through the app-server.</para>
+/// <para type="description">Runs a process via the app-server with optional sandbox settings and timeout.</para>
+/// <example>
+///  <para>Run a command in the repository root</para>
+///  <code>Invoke-IntelligenceXCommand -Command @("git","status") -WorkingDirectory "C:\repo"</code>
+/// </example>
+/// <example>
+///  <para>Run a command in a sandboxed workspace</para>
+///  <code>Invoke-IntelligenceXCommand -Command @("dotnet","test") -SandboxType "workspace" -WorkingDirectory "C:\repo"</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Invoke, "IntelligenceXCommand")]
 [OutputType(typeof(CommandExecResult), typeof(JsonValue))]

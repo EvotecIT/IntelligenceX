@@ -6,6 +6,11 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Stops the Codex app-server client and releases resources.</para>
+/// <para type="description">Clears the default client and any diagnostic subscriptions. If no client is active, no action is taken.</para>
+/// <example>
+///  <para>Disconnect the active client</para>
+///  <code>Disconnect-IntelligenceX</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommunications.Disconnect, "IntelligenceX")]
 public sealed class CmdletDisconnectIntelligenceX : IntelligenceXCmdlet {

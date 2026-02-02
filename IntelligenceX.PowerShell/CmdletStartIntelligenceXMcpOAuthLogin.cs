@@ -9,6 +9,11 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Starts an OAuth login for an MCP server.</para>
+/// <para type="description">Initiates the OAuth flow for a configured MCP server by id or name.</para>
+/// <example>
+///  <para>Start login by server name</para>
+///  <code>Start-IntelligenceXMcpOAuthLogin -ServerName "my-mcp-server"</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Start, "IntelligenceXMcpOAuthLogin")]
 [OutputType(typeof(McpOauthLoginStart), typeof(JsonValue))]

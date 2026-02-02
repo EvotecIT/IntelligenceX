@@ -9,6 +9,16 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Starts the ChatGPT login flow and returns the authorization URL.</para>
+/// <para type="description">Opens the browser to complete the ChatGPT OAuth flow. Pair with Wait-IntelligenceXLogin
+/// to poll for completion and store the resulting credentials.</para>
+/// <example>
+///  <para>Start login and open the browser</para>
+///  <code>Start-IntelligenceXChatGptLogin</code>
+/// </example>
+/// <example>
+///  <para>Return the raw JSON response for custom handling</para>
+///  <code>Start-IntelligenceXChatGptLogin -Raw</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Start, "IntelligenceXChatGptLogin")]
 [OutputType(typeof(ChatGptLoginStart), typeof(JsonValue))]

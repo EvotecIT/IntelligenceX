@@ -9,6 +9,16 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Starts a review flow for a thread.</para>
+/// <para type="description">Triggers the app-server review pipeline for a thread and target. Use <c>TargetType</c> to
+/// choose what to review (uncommitted changes, a branch, a commit, or custom text).</para>
+/// <example>
+///  <para>Review uncommitted changes</para>
+///  <code>Start-IntelligenceXReview -ThreadId $thread.id -Delivery immediate -TargetType uncommittedChanges</code>
+/// </example>
+/// <example>
+///  <para>Review a specific commit</para>
+///  <code>Start-IntelligenceXReview -ThreadId $thread.id -Delivery immediate -TargetType commit -TargetValue 3f2a9c1</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Start, "IntelligenceXReview")]
 [OutputType(typeof(ReviewStartResult), typeof(JsonValue))]

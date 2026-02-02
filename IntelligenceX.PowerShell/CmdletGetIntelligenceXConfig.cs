@@ -9,6 +9,15 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Reads the current configuration.</para>
+/// <para type="description">Retrieves the app-server configuration currently in effect.</para>
+/// <example>
+///  <para>Read config as structured output</para>
+///  <code>Get-IntelligenceXConfig</code>
+/// </example>
+/// <example>
+///  <para>Read raw JSON for custom handling</para>
+///  <code>Get-IntelligenceXConfig -Raw</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXConfig")]
 [OutputType(typeof(ConfigReadResult), typeof(JsonValue))]

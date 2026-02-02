@@ -6,6 +6,12 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Authenticates using an OpenAI API key.</para>
+/// <para type="description">Stores the API key in the active client for API-based requests. Use only if ChatGPT OAuth
+/// is not desired or available.</para>
+/// <example>
+///  <para>Log in with an API key</para>
+///  <code>Start-IntelligenceXApiKeyLogin -ApiKey $env:OPENAI_API_KEY</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Start, "IntelligenceXApiKeyLogin")]
 public sealed class CmdletStartIntelligenceXApiKeyLogin : IntelligenceXCmdlet {

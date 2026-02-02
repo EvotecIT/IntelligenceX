@@ -7,6 +7,11 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Writes a configuration value.</para>
+/// <para type="description">Updates a single config key on the app-server. Use Get-IntelligenceXConfig to inspect current values.</para>
+/// <example>
+///  <para>Set the model used by default</para>
+///  <code>Set-IntelligenceXConfigValue -Key "model" -Value "gpt-5.2-codex"</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Set, "IntelligenceXConfigValue")]
 public sealed class CmdletSetIntelligenceXConfigValue : IntelligenceXCmdlet {
