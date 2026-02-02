@@ -1,5 +1,7 @@
 # CLI Quickstart
 
+> If `dotnet run` complains about multiple frameworks, add `-f net8.0`.
+
 ## Single repository (wizard)
 
 ```powershell
@@ -31,6 +33,18 @@ dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -- au
 ```
 
 The command auto-detects repo/org + token if available (see `./overview.md` for details).
+
+## Usage snapshot (limits + credits)
+
+```powershell
+intelligencex usage --events
+```
+
+## Usage snapshot (JSON)
+
+```powershell
+intelligencex usage --json --no-cache
+```
 
 ## Manual secret flow
 
