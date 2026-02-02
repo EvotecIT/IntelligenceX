@@ -23,7 +23,7 @@ Console.WriteLine(result.Text);
 ```csharp
 using IntelligenceX.OpenAI.AppServer;
 
-var client = await AppServerClient.StartAsync();
+await using var client = await AppServerClient.StartAsync();
 await client.InitializeAsync(new ClientInfo("IntelligenceX", "Demo", "1.0"));
 var thread = await client.StartThreadAsync("gpt-5.2-codex");
 await client.StartTurnAsync(thread.Id, "Hello from app-server");
