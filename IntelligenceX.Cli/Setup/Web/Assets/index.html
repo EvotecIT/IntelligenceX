@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>IntelligenceX Setup</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <!-- Theme toggle -->
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">
+      <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+
+    <main class="container">
+      <header>
+        <h1>IntelligenceX Setup</h1>
+        <p>Guided onboarding wizard</p>
+      </header>
+
+      <!-- Progress bar -->
+      <div class="progress-bar" id="progressBar">
+        <div class="progress-step active" data-step="0">
+          <div class="dot">1</div>
+          <span class="step-label">Auth</span>
+        </div>
+        <div class="progress-line" data-line="0"></div>
+        <div class="progress-step" data-step="1">
+          <div class="dot">2</div>
+          <span class="step-label">Repos</span>
+        </div>
+        <div class="progress-line" data-line="1"></div>
+        <div class="progress-step" data-step="2">
+          <div class="dot">3</div>
+          <span class="step-label">Configure</span>
+        </div>
+        <div class="progress-line" data-line="2"></div>
+        <div class="progress-step" data-step="3">
+          <div class="dot">4</div>
+          <span class="step-label">Secrets</span>
+        </div>
+        <div class="progress-line" data-line="3"></div>
+        <div class="progress-step" data-step="4">
+          <div class="dot">5</div>
+          <span class="step-label">Review</span>
+        </div>
+      </div>
+
+      <!-- ═══════════ Step 1: Auth ═══════════ -->
+      <div class="wizard-step active" data-wizard-step="0">
+        <div class="card">
+          <h2>GitHub Authentication</h2>
+          <p class="hint">Choose how to authenticate with GitHub.</p>
+
+          <div class="card-grid cols-3">
+            <div class="option-card" data-auth="device" onclick="selectAuth('device')">
+              <div class="card-icon">&#x1F511;</div>
+              <div class="card-title">Sign in with GitHub</div>
+              <div class="card-desc">Recommended. OAuth device flow &mdash; get a code to enter on github.com.</div>
+            </div>
+            <div class="option-card" data-auth="app" onclick="selectAuth('app')">
+              <div class="card-icon">&#x1F4E6;</div>
+              <div class="card-title">GitHub App</div>
+              <div class="card-desc">For organizations. Creates a GitHub App with proper permissions.</div>
+            </div>
+            <div class="option-card" data-auth="token" onclick="selectAuth('token')">
+              <div class="card-icon">&#x1F4CB;</div>
+              <div class="card-title">Paste a Token</div>
+              <div class="card-desc">Have a PAT? Just paste it.</div>
+            </div>
+          </div>
+
+          <!-- Device flow sub-flow -->
+          <div class="sub-flow" id="authDeviceFlow">
+            <label>GitHub Client ID</label>
+            <input id="clientId" placeholder="Ov23li..." />
+            <div class="row">
+              <button id="deviceStart">Start Device Flow</button>
+              <button id="devicePoll" disabled class="secondary">Poll for Token</button>
+            </div>
+            <div id="deviceInfo" class="hint" style="margin-top:10px;"></div>
+          </div>
+
+          <!-- App flow sub-flow -->
+          <div class="sub-flow" id="authAppFlow">
+            <label>App name</label>
+            <input id="appName" placeholder="IntelligenceX Reviewer" />
+            <label>App owner (org login)</label>
+            <input id="appOwner" placeholder="my-org" />
+            <div class="row">
+              <button id="createApp">Create App (manifest)</button>
+              <button id="listInstalls" disabled class="secondary">List Installations</button>
+            </div>
+            <label>App ID</label>
+            <input id="appId" placeholder="123456" />
+            <label>App PEM</label>
+            <textarea id="appPem" rows="4" placeholder="-----BEGIN PRIVATE KEY-----"></textarea>
+            <label>Installation</label>
+            <select id="installation"></select>
+            <button id="useInstallationToken" disabled style="margin-top:8px;">Use Installation Token</button>
+          </div>
+
+          <!-- Token paste sub-flow -->
+          <div class="sub-flow" id="authTokenFlow">
+            <label>GitHub Token (PAT)</label>
+            <input id="token" type="password" placeholder="ghp_..." />
+          </div>
+        </div>
+
+        <div class="nav-buttons">
+          <span class="spacer"></span>
+          <button onclick="goNext()" id="nextBtn0">Next &rarr;</button>
+        </div>
+      </div>
+
+      <!-- ═══════════ Step 2: Repos ═══════════ -->
+      <div class="wizard-step" data-wizard-step="1">
+        <div class="card">
+          <h2>Select Repositories</h2>
+          <div class="repo-search">
+            <input id="repoFilter" placeholder="Search repositories..." />
+          </div>
+          <select id="repoList" multiple size="8"></select>
+          <div class="repo-count" id="repoCount">0 repos selected</div>
+
+          <span class="manual-entry-toggle" onclick="toggleManualEntry()">Enter manually</span>
+          <div class="manual-entry" id="manualEntry">
+            <label>Repository (owner/name)</label>
+            <input id="repo" placeholder="owner/repo" />
+          </div>
+        </div>
+
+        <div class="nav-buttons">
+          <button class="secondary" onclick="goPrev()">&larr; Back</button>
+          <button onclick="goNext()" id="nextBtn1">Next &rarr;</button>
+        </div>
+      </div>
+
+      <!-- ═══════════ Step 3: Configure ═══════════ -->
+      <div class="wizard-step" data-wizard-step="2">
+        <div class="card">
+          <h2>Operation</h2>
+          <div class="card-grid cols-3">
+            <div class="option-card selected" data-op="setup" onclick="selectOperation('setup')">
+              <div class="card-icon">&#x1F680;</div>
+              <div class="card-title">Setup</div>
+              <div class="card-desc">Create or update workflow and config.</div>
+            </div>
+            <div class="option-card" data-op="update-secret" onclick="selectOperation('update-secret')">
+              <div class="card-icon">&#x1F504;</div>
+              <div class="card-title">Update Secret</div>
+              <div class="card-desc">Only update the INTELLIGENCEX_AUTH_B64 secret.</div>
+            </div>
+            <div class="option-card" data-op="cleanup" onclick="selectOperation('cleanup')">
+              <div class="card-icon">&#x1F9F9;</div>
+              <div class="card-title">Cleanup</div>
+              <div class="card-desc">Remove workflow and config files.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Setup-specific options -->
+        <div class="card" id="setupOptions">
+          <h2>Configuration</h2>
+
+          <label>Provider</label>
+          <div class="toggle-group">
+            <button class="active" data-provider="openai" onclick="selectProvider('openai')">OpenAI</button>
+            <button data-provider="copilot" onclick="selectProvider('copilot')">Copilot</button>
+          </div>
+
+          <label>Review profile</label>
+          <div class="preset-grid" id="presetGrid">
+            <div class="preset-card selected" data-preset="balanced" onclick="selectPreset('balanced')">
+              <div class="preset-name">Balanced</div>
+              <div class="preset-desc">General purpose, moderate strictness</div>
+            </div>
+            <div class="preset-card" data-preset="picky" onclick="selectPreset('picky')">
+              <div class="preset-name">Strict</div>
+              <div class="preset-desc">Catches more issues, more comments</div>
+            </div>
+            <div class="preset-card" data-preset="security" onclick="selectPreset('security')">
+              <div class="preset-name">Security</div>
+              <div class="preset-desc">Focus on security vulnerabilities</div>
+            </div>
+            <div class="preset-card" data-preset="highlevel" onclick="selectPreset('highlevel')">
+              <div class="preset-name">Minimal</div>
+              <div class="preset-desc">High-level feedback only</div>
+            </div>
+            <div class="preset-card" data-preset="performance" onclick="selectPreset('performance')">
+              <div class="preset-name">Performance</div>
+              <div class="preset-desc">Focus on performance issues</div>
+            </div>
+            <div class="preset-card" data-preset="tests" onclick="selectPreset('tests')">
+              <div class="preset-name">Tests</div>
+              <div class="preset-desc">Focus on test coverage and quality</div>
+            </div>
+          </div>
+
+          <details>
+            <summary>Advanced options</summary>
+            <label>Review mode</label>
+            <select id="reviewMode">
+              <option value="">default</option>
+              <option value="hybrid">hybrid</option>
+              <option value="summary">summary</option>
+              <option value="inline">inline</option>
+            </select>
+
+            <label>Comment mode</label>
+            <select id="reviewCommentMode">
+              <option value="">default</option>
+              <option value="sticky">sticky</option>
+              <option value="fresh">fresh</option>
+            </select>
+
+            <label>Branch name (optional)</label>
+            <input id="branchName" placeholder="setup/intelligencex" />
+
+            <div class="row">
+              <label class="inline"><input type="checkbox" id="withConfig" /> Create config</label>
+              <label class="inline"><input type="checkbox" id="force" /> Force overwrite</label>
+              <label class="inline"><input type="checkbox" id="upgrade" /> Upgrade managed sections</label>
+              <label class="inline"><input type="checkbox" id="explicitSecrets" /> Explicit secrets block</label>
+            </div>
+
+            <label>Config JSON</label>
+            <textarea id="configJson" rows="5" placeholder="{ ... }"></textarea>
+            <label>Config path</label>
+            <input id="configPath" placeholder="path to config.json" />
+            <p class="hint">Config JSON/path will auto-enable "Create config".</p>
+
+            <label>Config preset name</label>
+            <div class="row">
+              <input id="presetName" placeholder="my preset" style="flex:1" />
+              <button id="savePreset" class="secondary" disabled>Save</button>
+              <button id="loadPreset" class="secondary" disabled>Load</button>
+              <button id="deletePreset" class="secondary" disabled>Delete</button>
+            </div>
+            <div class="row">
+              <button id="exportPresets" class="secondary">Export presets</button>
+              <button id="importPresets" class="secondary">Import presets</button>
+            </div>
+            <input id="importFile" type="file" accept="application/json" style="display:none" />
+            <label>Saved presets</label>
+            <select id="presetList"></select>
+            <p class="hint">Presets are stored locally in your browser.</p>
+          </details>
+        </div>
+
+        <!-- Cleanup options -->
+        <div class="card hidden" id="cleanupOptions">
+          <h2>Cleanup Options</h2>
+          <label class="inline"><input type="checkbox" id="keepSecret" /> Keep existing secret</label>
+        </div>
+
+        <div class="nav-buttons">
+          <button class="secondary" onclick="goPrev()">&larr; Back</button>
+          <button onclick="goNext()" id="nextBtn2">Next &rarr;</button>
+        </div>
+      </div>
+
+      <!-- ═══════════ Step 4: Secrets (conditional) ═══════════ -->
+      <div class="wizard-step" data-wizard-step="3">
+        <div class="card">
+          <h2>OpenAI Authentication</h2>
+          <p class="hint">Provide an auth bundle for the INTELLIGENCEX_AUTH_B64 secret.</p>
+
+          <div class="card-grid cols-3">
+            <div class="option-card selected" data-secret="skip" onclick="selectSecretOption('skip')">
+              <div class="card-icon">&#x23ED;</div>
+              <div class="card-title">Skip for now</div>
+              <div class="card-desc">Set up the secret later manually.</div>
+            </div>
+            <div class="option-card" data-secret="paste" onclick="selectSecretOption('paste')">
+              <div class="card-icon">&#x1F4CB;</div>
+              <div class="card-title">Paste auth bundle</div>
+              <div class="card-desc">Paste base64-encoded auth data.</div>
+            </div>
+            <div class="option-card" data-secret="file" onclick="selectSecretOption('file')">
+              <div class="card-icon">&#x1F4C1;</div>
+              <div class="card-title">Use file path</div>
+              <div class="card-desc">Point to an auth bundle file on disk.</div>
+            </div>
+          </div>
+
+          <div class="sub-flow" id="secretPasteFlow">
+            <label>Auth bundle (base64)</label>
+            <textarea id="authB64" rows="4" placeholder="paste auth bundle base64"></textarea>
+          </div>
+
+          <div class="sub-flow" id="secretFileFlow">
+            <label>Auth bundle path</label>
+            <input id="authB64Path" placeholder="path to auth bundle file" />
+          </div>
+
+          <p class="hint">Browser-based ChatGPT login coming soon. For now, provide an auth bundle or skip.</p>
+
+          <details>
+            <summary>ChatGPT usage (optional)</summary>
+            <div class="row">
+              <label class="inline"><input type="checkbox" id="usageEvents" /> Include credit usage events</label>
+              <button id="checkUsage" class="secondary" disabled>Check usage</button>
+            </div>
+            <div id="usageSummary" class="summary" style="margin-top:8px;">No usage data yet.</div>
+          </details>
+        </div>
+
+        <div class="nav-buttons">
+          <button class="secondary" onclick="goPrev()">&larr; Back</button>
+          <button onclick="goNext()" id="nextBtn3">Next &rarr;</button>
+        </div>
+      </div>
+
+      <!-- ═══════════ Step 5: Review & Apply ═══════════ -->
+      <div class="wizard-step" data-wizard-step="4">
+        <div class="card">
+          <h2>Review</h2>
+          <table class="review-table" id="reviewTable">
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <h2>Output</h2>
+          <pre class="output" id="output"></pre>
+        </div>
+
+        <div class="card" id="summaryCard">
+          <h2>Summary</h2>
+          <div id="summary" class="summary">Ready to preview or apply.</div>
+        </div>
+
+        <div class="nav-buttons">
+          <button class="secondary" onclick="goPrev()">&larr; Back</button>
+          <span class="spacer"></span>
+          <button class="secondary" id="inspectBtn" onclick="doInspect()">Check Existing</button>
+          <button class="secondary" id="planBtn" onclick="doPlan()">Preview (Dry Run)</button>
+          <button class="success" id="applyBtn" onclick="doApply()">Apply</button>
+        </div>
+      </div>
+
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
