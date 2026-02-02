@@ -17,7 +17,14 @@ namespace IntelligenceX.Reviewer;
 public static class ReviewerApp {
     private const string ThreadReplyMarker = "<!-- intelligencex:thread-reply -->";
     public static async Task<int> RunAsync(string[] args) {
+        using var cts = new CancellationTokenSource();
+        ConsoleCancelEventHandler? cancelHandler = (_, evt) => {
+            evt.Cancel = true;
+            cts.Cancel();
+        };
+        Console.CancelKeyPress += cancelHandler;
         try {
+            var cancellationToken = cts.Token;
             if (!await TryWriteAuthFromEnvAsync().ConfigureAwait(false)) {
                 return 1;
             }
@@ -60,7 +67,7 @@ public static class ReviewerApp {
                     return 1;
                 }
                 var (owner, repo) = SplitRepo(repoName!);
-                context = await github.GetPullRequestAsync(owner, repo, prNumber.Value, CancellationToken.None)
+                context = await github.GetPullRequestAsync(owner, repo, prNumber.Value, cancellationToken)
                     .ConfigureAwait(false);
             }
 
@@ -77,13 +84,13 @@ public static class ReviewerApp {
                 return 0;
             }
 
-            context = await CleanupService.RunAsync(github, context, settings, CancellationToken.None)
+            context = await CleanupService.RunAsync(github, context, settings, cancellationToken)
                 .ConfigureAwait(false);
 
             var progress = new ReviewProgress {
                 StatusLine = "Starting review."
             };
-            var files = await github.GetPullRequestFilesAsync(context.Owner, context.Repo, context.Number, CancellationToken.None)
+            var files = await github.GetPullRequestFilesAsync(context.Owner, context.Repo, context.Number, cancellationToken)
                 .ConfigureAwait(false);
 
             if (files.Count == 0) {
@@ -96,7 +103,8 @@ public static class ReviewerApp {
                 return 0;
             }
 
-            var (reviewFiles, diffNote) = await ResolveReviewFilesAsync(github, context, settings, files, CancellationToken.None)
+            var allFiles = files;
+            var (reviewFiles, diffNote) = await ResolveReviewFilesAsync(github, context, settings, files, cancellationToken)
                 .ConfigureAwait(false);
             files = reviewFiles;
 
@@ -104,7 +112,7 @@ public static class ReviewerApp {
             progress.Files = ReviewProgressState.Complete;
             progress.StatusLine = "Analyzed changed files.";
 
-            var extras = await BuildExtrasAsync(github, fallbackGithub, context, settings, CancellationToken.None)
+            var extras = await BuildExtrasAsync(github, fallbackGithub, context, settings, cancellationToken)
                 .ConfigureAwait(false);
             var inlineSupported = !string.Equals(settings.Mode, "summary", StringComparison.OrdinalIgnoreCase) &&
                                   settings.MaxInlineComments > 0 &&
@@ -118,7 +126,7 @@ public static class ReviewerApp {
             long? commentId = null;
             if (settings.ProgressUpdates) {
                 var progressBody = ReviewFormatter.BuildProgressComment(context, settings, progress, null, inlineSupported);
-                commentId = await CreateOrUpdateProgressCommentAsync(github, context, settings, progressBody, CancellationToken.None)
+                commentId = await CreateOrUpdateProgressCommentAsync(github, context, settings, progressBody, cancellationToken)
                     .ConfigureAwait(false);
             }
 
@@ -130,13 +138,13 @@ public static class ReviewerApp {
             if (settings.ProgressUpdates && commentId.HasValue) {
                 onPartial = async partial => {
                     var body = ReviewFormatter.BuildProgressComment(context, settings, progress, partial, inlineSupported);
-                    await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, body, CancellationToken.None)
+                    await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, body, cancellationToken)
                         .ConfigureAwait(false);
                 };
             }
 
             var reviewBody = await runner.RunAsync(prompt, onPartial, TimeSpan.FromSeconds(settings.ProgressUpdateSeconds),
-                CancellationToken.None).ConfigureAwait(false);
+                cancellationToken).ConfigureAwait(false);
 
             var reviewFailed = ReviewDiagnostics.IsFailureBody(reviewBody);
             var inlineAllowed = inlineSupported && !reviewFailed;
@@ -152,18 +160,18 @@ public static class ReviewerApp {
 
             HashSet<string>? inlineKeys = null;
             if (inlineAllowed) {
-                inlineKeys = await PostInlineCommentsAsync(github, context, files, settings, inlineComments, CancellationToken.None)
+                inlineKeys = await PostInlineCommentsAsync(github, context, files, settings, inlineComments, cancellationToken)
                     .ConfigureAwait(false);
                 if (settings.ReviewThreadsAutoResolveMissingInline &&
                     !string.IsNullOrWhiteSpace(context.HeadSha) &&
                     inlineKeys is not null &&
                     inlineKeys.Count > 0) {
-                    await AutoResolveMissingInlineThreadsAsync(github, fallbackGithub, context, inlineKeys, settings, CancellationToken.None)
+                    await AutoResolveMissingInlineThreadsAsync(github, fallbackGithub, context, inlineKeys, settings, cancellationToken)
                         .ConfigureAwait(false);
                 }
             }
 
-            var (triageFiles, triageNote) = await ResolveThreadTriageFilesAsync(github, context, settings, files, CancellationToken.None)
+            var (triageFiles, triageNote) = await ResolveThreadTriageFilesAsync(github, context, settings, allFiles, cancellationToken)
                 .ConfigureAwait(false);
             var triageResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, runner, context, triageFiles, settings, extras, reviewFailed, triageNote)
                 .ConfigureAwait(false);
@@ -180,28 +188,28 @@ public static class ReviewerApp {
             progress.StatusLine = "Finalizing summary.";
 
             if (commentId.HasValue) {
-                await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, commentBody, CancellationToken.None)
+                await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, commentBody, cancellationToken)
                     .ConfigureAwait(false);
                 Console.WriteLine("Updated review comment.");
             } else if (settings.CommentMode == ReviewCommentMode.Sticky) {
                 var shouldSearch = settings.OverwriteSummary || settings.OverwriteSummaryOnNewCommit;
                 IssueComment? existing = null;
                 if (shouldSearch) {
-                    existing = await FindExistingSummaryAsync(github, context, settings, CancellationToken.None).ConfigureAwait(false);
+                    existing = await FindExistingSummaryAsync(github, context, settings, cancellationToken).ConfigureAwait(false);
                 }
                 var shouldOverwrite = settings.OverwriteSummary ||
                                       (settings.OverwriteSummaryOnNewCommit && IsSummaryOutdated(existing, context.HeadSha));
                 if (existing is not null && shouldOverwrite) {
-                    await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, commentBody, CancellationToken.None)
+                    await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, commentBody, cancellationToken)
                         .ConfigureAwait(false);
                     Console.WriteLine("Updated existing review comment.");
                     return 0;
                 }
-                await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, CancellationToken.None)
+                await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, cancellationToken)
                     .ConfigureAwait(false);
                 Console.WriteLine("Posted review comment.");
             } else {
-                await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, CancellationToken.None)
+                await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, cancellationToken)
                     .ConfigureAwait(false);
                 Console.WriteLine("Posted review comment.");
             }
@@ -210,6 +218,8 @@ public static class ReviewerApp {
         } catch (Exception ex) {
             Console.Error.WriteLine(ex.Message);
             return 1;
+        } finally {
+            Console.CancelKeyPress -= cancelHandler;
         }
     }
 
@@ -424,19 +434,27 @@ public static class ReviewerApp {
         }
 
         var firstReviewSha = await FindOldestSummaryCommitAsync(github, context, settings, cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(firstReviewSha)) {
+            var prBaseResult = await TryCompareAsync(context.BaseSha, "PR base fallback").ConfigureAwait(false);
+            if (prBaseResult.Success) {
+                return (prBaseResult.Files, prBaseResult.Note);
+            }
+            return (currentFiles, $"current PR files (missing first review commit; {prBaseResult.Note})");
+        }
+
         var firstReviewResult = await TryCompareAsync(firstReviewSha, "first review").ConfigureAwait(false);
         if (firstReviewResult.Success) {
             return (firstReviewResult.Files, firstReviewResult.Note);
         }
 
-        var prBaseResult = await TryCompareAsync(context.BaseSha, "PR base fallback").ConfigureAwait(false);
-        if (prBaseResult.Success) {
-            return (prBaseResult.Files, prBaseResult.Note);
+        var prBaseFallback = await TryCompareAsync(context.BaseSha, "PR base fallback").ConfigureAwait(false);
+        if (prBaseFallback.Success) {
+            return (prBaseFallback.Files, prBaseFallback.Note);
         }
 
         var note = firstReviewResult.Note;
-        if (!string.IsNullOrWhiteSpace(prBaseResult.Note)) {
-            note = string.IsNullOrWhiteSpace(note) ? prBaseResult.Note : $"{note}; {prBaseResult.Note}";
+        if (!string.IsNullOrWhiteSpace(prBaseFallback.Note)) {
+            note = string.IsNullOrWhiteSpace(note) ? prBaseFallback.Note : $"{note}; {prBaseFallback.Note}";
         }
         return (currentFiles, $"current PR files ({note})");
     }
@@ -699,19 +717,27 @@ public static class ReviewerApp {
         }
 
         var firstReviewSha = await FindOldestSummaryCommitAsync(github, context, settings, cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(firstReviewSha)) {
+            var prBaseResult = await TryCompareAsync(context.BaseSha, "PR base fallback").ConfigureAwait(false);
+            if (prBaseResult.Success) {
+                return (prBaseResult.Files, prBaseResult.Note);
+            }
+            return (currentFiles, $"current PR files (missing first review commit; {prBaseResult.Note})");
+        }
+
         var firstReviewResult = await TryCompareAsync(firstReviewSha, "first review").ConfigureAwait(false);
         if (firstReviewResult.Success) {
             return (firstReviewResult.Files, firstReviewResult.Note);
         }
 
-        var prBaseResult = await TryCompareAsync(context.BaseSha, "PR base fallback").ConfigureAwait(false);
-        if (prBaseResult.Success) {
-            return (prBaseResult.Files, prBaseResult.Note);
+        var prBaseFallback = await TryCompareAsync(context.BaseSha, "PR base fallback").ConfigureAwait(false);
+        if (prBaseFallback.Success) {
+            return (prBaseFallback.Files, prBaseFallback.Note);
         }
 
         var note = firstReviewResult.Note;
-        if (!string.IsNullOrWhiteSpace(prBaseResult.Note)) {
-            note = string.IsNullOrWhiteSpace(note) ? prBaseResult.Note : $"{note}; {prBaseResult.Note}";
+        if (!string.IsNullOrWhiteSpace(prBaseFallback.Note)) {
+            note = string.IsNullOrWhiteSpace(note) ? prBaseFallback.Note : $"{note}; {prBaseFallback.Note}";
         }
         return (currentFiles, $"current PR files ({note})");
     }
