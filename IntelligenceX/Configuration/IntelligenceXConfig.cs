@@ -60,7 +60,7 @@ public sealed class IntelligenceXConfig {
     /// <param name="path">Optional explicit config path.</param>
     /// <param name="baseDirectory">Optional base directory for resolving the default config path.</param>
     /// <returns>The loaded configuration.</returns>
-    /// <exception cref="FileNotFoundException">Thrown when the configuration file cannot be found.</exception>
+    /// <exception cref="FileNotFoundException">Thrown when the configuration file cannot be found or parsed.</exception>
     public static IntelligenceXConfig Load(string? path = null, string? baseDirectory = null) {
         if (!TryLoad(out var config, path, baseDirectory)) {
             throw new FileNotFoundException("IntelligenceX config not found.");
