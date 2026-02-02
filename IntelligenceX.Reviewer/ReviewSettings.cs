@@ -67,6 +67,9 @@ internal sealed class ReviewSettings {
     public int RetryCount { get; set; } = 3;
     public int RetryDelaySeconds { get; set; } = 5;
     public int RetryMaxDelaySeconds { get; set; } = 30;
+    public double RetryBackoffMultiplier { get; set; } = 2.0;
+    public int RetryJitterMinMs { get; set; } = 200;
+    public int RetryJitterMaxMs { get; set; } = 800;
     public bool RetryExtraOnResponseEnded { get; set; } = true;
     public bool FailOpen { get; set; } = true;
     public bool Diagnostics { get; set; }
@@ -349,6 +352,18 @@ internal sealed class ReviewSettings {
         var retryMaxDelaySeconds = GetInput("retry_max_delay_seconds", "REVIEW_RETRY_MAX_DELAY_SECONDS");
         if (!string.IsNullOrWhiteSpace(retryMaxDelaySeconds)) {
             settings.RetryMaxDelaySeconds = ParsePositiveInt(retryMaxDelaySeconds, settings.RetryMaxDelaySeconds);
+        }
+        var retryBackoffMultiplier = GetInput("retry_backoff_multiplier", "REVIEW_RETRY_BACKOFF_MULTIPLIER");
+        if (!string.IsNullOrWhiteSpace(retryBackoffMultiplier)) {
+            settings.RetryBackoffMultiplier = ParsePositiveDouble(retryBackoffMultiplier, settings.RetryBackoffMultiplier);
+        }
+        var retryJitterMinMs = GetInput("retry_jitter_min_ms", "REVIEW_RETRY_JITTER_MIN_MS");
+        if (!string.IsNullOrWhiteSpace(retryJitterMinMs)) {
+            settings.RetryJitterMinMs = ParseNonNegativeInt(retryJitterMinMs, settings.RetryJitterMinMs);
+        }
+        var retryJitterMaxMs = GetInput("retry_jitter_max_ms", "REVIEW_RETRY_JITTER_MAX_MS");
+        if (!string.IsNullOrWhiteSpace(retryJitterMaxMs)) {
+            settings.RetryJitterMaxMs = ParseNonNegativeInt(retryJitterMaxMs, settings.RetryJitterMaxMs);
         }
         var retryExtraResponseEnded = GetInput("retry_extra_response_ended", "REVIEW_RETRY_EXTRA_RESPONSE_ENDED");
         if (!string.IsNullOrWhiteSpace(retryExtraResponseEnded)) {
@@ -693,6 +708,16 @@ internal sealed class ReviewSettings {
             return fallback;
         }
         if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed >= 0) {
+            return parsed;
+        }
+        return fallback;
+    }
+
+    private static double ParsePositiveDouble(string? value, double fallback) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return fallback;
+        }
+        if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) && parsed > 0) {
             return parsed;
         }
         return fallback;

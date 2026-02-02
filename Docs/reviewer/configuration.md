@@ -27,6 +27,9 @@ Schema: `../../Schemas/reviewer.schema.json`
 - `length`: `short|medium|long`
 - `outputStyle`: rendering style preset
 - `reviewUsageSummary`: append usage line to the footer (ChatGPT auth only)
+- `retryCount`: total attempts for provider requests
+- `retryBackoffMultiplier`: exponential backoff multiplier (default 2.0)
+- `retryJitterMinMs`/`retryJitterMaxMs`: retry jitter bounds
 - `includeReviewThreads`: include existing review threads in context
 - `reviewThreadsAutoResolve*`: auto-resolve rules for bot threads
 
