@@ -21,7 +21,8 @@
     "title": ".NET Library",
     "items": [
       { "title": "Overview", "href": "/docs/library/overview/" },
-      { "title": "Providers", "href": "/docs/library/providers/" }
+      { "title": "Providers", "href": "/docs/library/providers/" },
+      { "title": "API Reference", "href": "/api/" }
     ]
   },
   {

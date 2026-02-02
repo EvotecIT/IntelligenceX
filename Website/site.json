@@ -95,6 +95,7 @@
           { "Title": "Reviewer", "Url": "/docs/reviewer/overview/" },
           { "Title": "CLI Tools", "Url": "/docs/cli/overview/" },
           { "Title": ".NET Library", "Url": "/docs/library/overview/" },
+          { "Title": "API Reference", "Url": "/api/" },
           { "Title": "PowerShell", "Url": "/docs/powershell/overview/" }
         ]
       },

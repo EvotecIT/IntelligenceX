@@ -39,6 +39,7 @@ Build AI-powered tools with the Codex app-server client:
 
 - [Overview](/docs/library/overview/) - API usage and examples
 - [Providers](/docs/library/providers/) - ChatGPT and Copilot support
+- [API Reference](/api/) - Auto-generated reference docs
 
 ## PowerShell Module
 
