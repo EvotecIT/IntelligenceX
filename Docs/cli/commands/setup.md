@@ -18,6 +18,12 @@ intelligencex setup web
 intelligencex setup --repo owner/name --with-config
 ```
 
+## Managed workflow (release assets)
+
+```powershell
+intelligencex setup --repo owner/name --reviewer-source release --reviewer-release-repo EvotecIT/github-actions --reviewer-release-tag latest
+```
+
 ## Update secret only
 
 ```powershell
@@ -47,3 +53,4 @@ intelligencex setup --repo owner/name --cleanup --keep-secret
 - Default workflow path: `.github/workflows/review-intelligencex.yml`
 - Default config path: `.intelligencex/config.json`
 - Setup uses PRs by default (safe review before merge).
+- Use `--reviewer-source local` if you want to run the repo-local reviewer binary.

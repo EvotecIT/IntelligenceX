@@ -6,6 +6,12 @@
 intelligencex release notes --update-changelog
 ```
 
+## Release notes (range)
+
+```powershell
+intelligencex release notes --from v0.1.0 --to v0.2.0 --version 0.2.0 --commit
+```
+
 ## Release reviewer assets
 
 ```powershell

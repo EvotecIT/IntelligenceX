@@ -1,6 +1,6 @@
-# Web Onboarding Flow (TODO)
+# Web Onboarding Flow
 
-> TODO: align copy with the final UI and add screenshots.
+> This flow runs locally and never uploads tokens to a backend.
 
 ## Overview
 
@@ -20,7 +20,8 @@ intelligencex setup web
 4) Plan changes and review the summary.
 5) Apply changes (PRs are created by default).
 
-## Screenshots
+## Screenshots (placeholders)
 
-- TODO: add setup UI screenshots
-- TODO: add plan/apply output screenshot
+- `Docs/screenshots/setup-web-start.png`
+- `Docs/screenshots/setup-web-plan.png`
+- `Docs/screenshots/setup-web-apply.png`

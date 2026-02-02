@@ -33,6 +33,21 @@ jobs:
     secrets: inherit
 ```
 
+## Inputs → environment mapping (short)
+
+The reusable workflow maps `with:` inputs to environment variables the reviewer reads.
+
+| Workflow input | Environment variable |
+| --- | --- |
+| `repo` | `INPUT_REPO` |
+| `pr_number` | `INPUT_PR_NUMBER` |
+| `reviewer_token` | `INTELLIGENCEX_GITHUB_TOKEN` |
+| `reviewer_source` | `REVIEWER_SOURCE` |
+| `reviewer_release_repo` | `REVIEWER_RELEASE_REPO` |
+| `reviewer_release_tag` | `REVIEWER_RELEASE_TAG` |
+| `reviewer_release_asset` | `REVIEWER_RELEASE_ASSET` |
+| `reviewer_release_url` | `REVIEWER_RELEASE_URL` |
+
 ## Minimal config (native ChatGPT)
 
 ```json
@@ -63,3 +78,7 @@ intelligencex setup wizard
 - Review length and strictness
 - Auto-resolve/triage behavior for bot threads
 - Usage summary line (optional)
+
+## Usage and credits line
+
+Enable `reviewUsageSummary` to append limits/credits (ChatGPT native only). See `./configuration.md`.

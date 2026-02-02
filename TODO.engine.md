@@ -52,6 +52,15 @@ Status: Draft (needs priorities + owners)
 - [ ] Add opt-in provider fallback (e.g., OpenAI → Copilot).
 - [ ] Add provider health checks and circuit breaker.
 
+## Phase 5.5 — Code host support (Azure DevOps Services)
+- [ ] Define code-host interface (PR metadata, files, diff, comments, threads).
+- [ ] Add ADO auth options (PAT, System.AccessToken) + env var mapping.
+- [ ] Phase 1: summary-only PR comments (no inline) using ADO REST APIs.
+- [ ] Phase 2: inline comments with iteration + line mapping support.
+- [ ] Phase 3: thread triage + auto-resolve via thread status updates.
+- [ ] Add CLI flags/config: `provider=azure`, `azureOrg`, `azureProject`, `azureRepo`, `azureBaseUrl`, `azureTokenEnv`.
+- [ ] Add ADO pipeline templates + docs (onboarding, permissions, secrets).
+
 ## Phase 6 — Performance + cost
 - [ ] Add response streaming where supported (show partial progress).
 - [ ] Add cache for context artifacts (diff, file lists, PR metadata).

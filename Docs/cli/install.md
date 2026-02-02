@@ -1,6 +1,6 @@
-# CLI Install (TODO)
+# CLI Install
 
-> TODO: replace placeholders once packages are published.
+> Placeholder commands below will be updated once packages are published.
 
 ## Windows (winget)
 
@@ -23,9 +23,10 @@ curl -fsSL https://evotec.it/intelligencex/install.sh | bash
 ## After install
 
 ```powershell
-intelligencex setup web
+intelligencex setup wizard
 ```
 
 Notes:
+- The web UI can be launched with `intelligencex setup web`.
 - The website can detect a running local wizard on `http://127.0.0.1`.
 - If the browser doesn’t open automatically, use the URL shown in the CLI output.

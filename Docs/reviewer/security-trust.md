@@ -40,3 +40,9 @@ The CLI prints the base64 auth store for manual paste into GitHub secrets.
 - Optionally adds `.intelligencex/config.json`
 
 All changes are made via PRs by default.
+
+## Secret handling options
+
+- Auto-upload secrets via the CLI or wizard (`--set-github-secret`).
+- Manual paste flow (`--manual-secret`) for maximum control.
+- Explicit secrets block (`--explicit-secrets`) to avoid `secrets: inherit`.

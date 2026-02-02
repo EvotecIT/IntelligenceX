@@ -20,6 +20,39 @@ Schema: `../../Schemas/reviewer.schema.json`
 }
 ```
 
+## Strict (security-first) example
+
+```json
+{
+  "review": {
+    "mode": "inline",
+    "length": "long",
+    "strictness": "high",
+    "focus": ["security", "correctness"],
+    "reviewDiffRange": "current",
+    "includeReviewThreads": true,
+    "reviewThreadsIncludeBots": false,
+    "maxInlineComments": 20,
+    "reviewUsageSummary": true
+  }
+}
+```
+
+## Fast (cost-aware) example
+
+```json
+{
+  "review": {
+    "mode": "summary",
+    "length": "short",
+    "maxFiles": 30,
+    "maxPatchChars": 4000,
+    "progressUpdates": false,
+    "reviewUsageSummary": true
+  }
+}
+```
+
 ## Auto-resolve + triage example
 
 ```json
@@ -59,6 +92,18 @@ Schema: `../../Schemas/reviewer.schema.json`
   "review": {
     "reviewUsageSummary": true,
     "reviewUsageSummaryCacheMinutes": 30
+  }
+}
+```
+
+## Output style example
+
+```json
+{
+  "review": {
+    "outputStyle": "claude",
+    "style": "colorful",
+    "tone": "friendly"
   }
 }
 ```

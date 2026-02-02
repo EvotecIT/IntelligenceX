@@ -19,7 +19,16 @@ intelligencex usage
 ## Run a review locally
 
 ```bash
-intelligencex reviewer run --repo owner/name --pr 123
+export INPUT_REPO=owner/name
+export INPUT_PR_NUMBER=123
+intelligencex reviewer run
+```
+
+Or point to a GitHub event payload:
+
+```bash
+export GITHUB_EVENT_PATH=/path/to/event.json
+intelligencex reviewer run
 ```
 
 ## Resolve stale threads locally

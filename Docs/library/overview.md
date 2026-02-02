@@ -72,6 +72,31 @@ Console.WriteLine(report.Snapshot.PlanType);
 Console.WriteLine(report.Snapshot.RateLimit?.PrimaryWindow?.UsedPercent);
 ```
 
+## Sandbox policy (app-server)
+
+```csharp
+using IntelligenceX.OpenAI.AppServer;
+
+await using var client = await AppServerClient.StartAsync();
+await client.InitializeAsync(new ClientInfo("IntelligenceX", "Demo", "0.1.0"));
+var thread = await client.StartThreadAsync("gpt-5.2-codex");
+var sandbox = new SandboxPolicy("workspace", allowNetwork: true, writableRoots: new[] { "C:\\repo" });
+await client.StartTurnAsync(thread.Id, "Run tests", sandboxPolicy: sandbox);
+```
+
+## Streaming deltas (native)
+
+```csharp
+using IntelligenceX.OpenAI;
+
+await using var client = await IntelligenceXClient.ConnectAsync(new IntelligenceXClientOptions {
+    TransportKind = OpenAITransportKind.Native
+});
+
+using var subscription = client.SubscribeDelta(text => Console.Write(text));
+await client.ChatAsync("Stream a short answer.");
+```
+
 ## Config overrides
 
 Add `.intelligencex/config.json` (or set `INTELLIGENCEX_CONFIG_PATH`) to avoid hardcoding.

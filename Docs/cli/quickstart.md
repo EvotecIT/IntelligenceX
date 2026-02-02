@@ -10,8 +10,12 @@ intelligencex setup wizard
 
 ## Review a PR (local)
 
+The reviewer reads inputs from environment variables (or `GITHUB_EVENT_PATH`).
+
 ```powershell
-intelligencex reviewer run --repo owner/name --pr 123
+$env:INPUT_REPO = "owner/name"
+$env:INPUT_PR_NUMBER = "123"
+intelligencex reviewer run
 ```
 
 ## Web UI (preview)
