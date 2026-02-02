@@ -117,25 +117,60 @@ internal sealed class GitHubRepoClient : IDisposable {
         return true;
     }
 
+    /// <summary>
+    /// Repository metadata returned by the GitHub API.
+    /// </summary>
     public sealed class RepositoryInfo {
+        /// <summary>
+        /// Initializes a new repository info record.
+        /// </summary>
+        /// <param name="fullName">Repository full name in owner/name format.</param>
+        /// <param name="isPrivate">True when the repository is private.</param>
+        /// <param name="updatedAt">Last update timestamp if available.</param>
         public RepositoryInfo(string fullName, bool isPrivate, DateTimeOffset? updatedAt) {
             FullName = fullName;
             Private = isPrivate;
             UpdatedAt = updatedAt;
         }
 
+        /// <summary>
+        /// Repository full name in owner/name format.
+        /// </summary>
         public string FullName { get; }
+
+        /// <summary>
+        /// Indicates whether the repository is private.
+        /// </summary>
         public bool Private { get; }
+
+        /// <summary>
+        /// Last update timestamp if provided by the API.
+        /// </summary>
         public DateTimeOffset? UpdatedAt { get; }
     }
 
+    /// <summary>
+    /// Represents a file payload returned by the GitHub contents API.
+    /// </summary>
     public sealed class RepoFile {
+        /// <summary>
+        /// Initializes a new repository file payload.
+        /// </summary>
+        /// <param name="sha">Git blob SHA for the file.</param>
+        /// <param name="content">Decoded file content.</param>
         public RepoFile(string sha, string content) {
             Sha = sha;
             Content = content;
         }
 
+        /// <summary>
+        /// Git blob SHA for the file.
+        /// </summary>
         public string Sha { get; }
+
+        /// <summary>
+        /// Decoded file content.
+        /// </summary>
         public string Content { get; }
     }
 }

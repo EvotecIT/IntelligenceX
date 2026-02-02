@@ -14,8 +14,16 @@ using IntelligenceX.OpenAI.Usage;
 
 namespace IntelligenceX.Reviewer;
 
+/// <summary>
+/// Entry point for running the IntelligenceX GitHub review workflow.
+/// </summary>
 public static class ReviewerApp {
     private const string ThreadReplyMarker = "<!-- intelligencex:thread-reply -->";
+    /// <summary>
+    /// Executes the reviewer workflow with the provided arguments.
+    /// </summary>
+    /// <param name="args">Command-line arguments.</param>
+    /// <returns>Process exit code (0 for success).</returns>
     public static async Task<int> RunAsync(string[] args) {
         using var cts = new CancellationTokenSource();
         ConsoleCancelEventHandler? cancelHandler = (_, evt) => {

@@ -96,19 +96,35 @@ internal sealed class ReviewDiagnosticsSession : IDisposable {
 internal static class ReviewDiagnostics {
     public const string FailureMarker = "<!-- intelligencex:failure -->";
 
+    /// <summary>
+    /// Categorizes reviewer failures for reporting and retry logic.
+    /// </summary>
     public enum ReviewErrorCategory {
+        /// <summary>Review cancelled by user or host.</summary>
         Cancelled,
+        /// <summary>Operation timed out.</summary>
         Timeout,
+        /// <summary>Provider rate limit hit.</summary>
         RateLimit,
+        /// <summary>Provider service unavailable.</summary>
         ServiceUnavailable,
+        /// <summary>Authentication failure.</summary>
         Auth,
+        /// <summary>Configuration or request validation failure.</summary>
         Config,
+        /// <summary>Network or transport failure.</summary>
         Network,
+        /// <summary>Response ended unexpectedly (connection reset).</summary>
         ResponseEnded,
+        /// <summary>Provider-specific failure not captured above.</summary>
         Provider,
+        /// <summary>Unknown failure.</summary>
         Unknown
     }
 
+    /// <summary>
+    /// Structured summary of a classified review failure.
+    /// </summary>
     public readonly record struct ReviewErrorInfo(ReviewErrorCategory Category, bool IsTransient, string Summary);
 
     public static bool IsFailureBody(string? body) {
