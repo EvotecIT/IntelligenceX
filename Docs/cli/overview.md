@@ -16,6 +16,18 @@ intelligencex reviewer resolve-threads
 intelligencex usage
 ```
 
+## Run a review locally
+
+```bash
+intelligencex reviewer run --repo owner/name --pr 123
+```
+
+## Resolve stale threads locally
+
+```bash
+intelligencex reviewer resolve-threads --repo owner/name --pr 123
+```
+
 ## Auth export for GitHub Secrets
 
 ```bash

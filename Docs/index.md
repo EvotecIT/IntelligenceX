@@ -23,3 +23,4 @@ Use the docs by area so the library, reviewer, CLI, and PowerShell guidance stay
 
 ## PowerShell module
 - Overview + examples: `powershell/overview.md`
+- Quickstart: `powershell/quickstart.md`

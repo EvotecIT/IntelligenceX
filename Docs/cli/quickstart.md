@@ -6,6 +6,12 @@
 intelligencex setup wizard
 ```
 
+## Review a PR (local)
+
+```powershell
+intelligencex reviewer run --repo owner/name --pr 123
+```
+
 ## Web UI (preview)
 
 ```powershell
@@ -66,3 +72,9 @@ Inputs are mapped to environment variables to keep YAML minimal.
 Use `.github/workflows/release-reviewer.yml`.
 Inputs like `release_tag`, `release_title`, `release_repo`, and `rids` map to env vars.
 Token env: `INTELLIGENCEX_REVIEWER_TOKEN` (fallback: `INTELLIGENCEX_RELEASE_TOKEN`, `GITHUB_TOKEN`).
+
+## Resolve stale review threads (local)
+
+```powershell
+intelligencex reviewer resolve-threads --repo owner/name --pr 123
+```
