@@ -108,6 +108,7 @@ public static class ReviewerApp {
                 .ConfigureAwait(false);
             reviewFiles = FilterFilesByPaths(reviewFiles, settings.IncludePaths, settings.ExcludePaths);
             if (reviewFiles.Count == 0) {
+                progress.Context = ReviewProgressState.Complete;
                 Console.WriteLine("No files matched include/exclude filters.");
                 return 0;
             }
@@ -413,6 +414,8 @@ public static class ReviewerApp {
         if (files.Count == 0) {
             return files;
         }
+        includePaths ??= Array.Empty<string>();
+        excludePaths ??= Array.Empty<string>();
         var hasInclude = includePaths.Count > 0;
         var hasExclude = excludePaths.Count > 0;
         if (!hasInclude && !hasExclude) {
@@ -420,7 +423,7 @@ public static class ReviewerApp {
         }
         var filtered = new List<PullRequestFile>();
         foreach (var file in files) {
-            var filename = file.Filename;
+            var filename = file.Filename.Replace('\\', '/');
             if (hasInclude && !includePaths.Any(pattern => GlobMatcher.IsMatch(pattern, filename))) {
                 continue;
             }
