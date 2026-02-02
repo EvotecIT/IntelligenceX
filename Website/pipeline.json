@@ -21,7 +21,10 @@
       "baseUrl": "/api",
       "format": "both",
       "template": "docs",
-      "nav": "./site.json"
+      "nav": "./site.json",
+      "css": "/css/api.css",
+      "headerHtml": "./themes/intelligencex/partials/api-header.html",
+      "footerHtml": "./themes/intelligencex/partials/api-footer.html"
     },
     {
       "task": "llms",
@@ -41,8 +44,10 @@
       "htmlTitle": "IntelligenceX Sitemap",
       "entries": [
         { "path": "/", "priority": "1.0", "changefreq": "weekly" },
-        { "path": "/getting-started/", "priority": "0.9", "changefreq": "weekly" },
-        { "path": "/security/", "priority": "0.8", "changefreq": "monthly" },
+        { "path": "/docs/getting-started/", "priority": "0.9", "changefreq": "weekly" },
+        { "path": "/docs/security/", "priority": "0.8", "changefreq": "monthly" },
+        { "path": "/faq/", "priority": "0.7", "changefreq": "monthly" },
+        { "path": "/changelog/", "priority": "0.6", "changefreq": "weekly" },
         { "path": "/docs/", "priority": "0.9", "changefreq": "weekly" },
         { "path": "/docs/reviewer/overview/", "priority": "0.9", "changefreq": "weekly" },
         { "path": "/docs/cli/overview/", "priority": "0.8", "changefreq": "weekly" },

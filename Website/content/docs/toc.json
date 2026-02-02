@@ -1,5 +1,7 @@
 [
   { "title": "Documentation", "href": "/docs/" },
+  { "title": "Getting Started", "href": "/docs/getting-started/" },
+  { "title": "Security & Trust", "href": "/docs/security/" },
   {
     "title": "GitHub Actions Reviewer",
     "items": [
@@ -29,6 +31,13 @@
     "title": "PowerShell Module",
     "items": [
       { "title": "Overview", "href": "/docs/powershell/overview/" }
+    ]
+  },
+  {
+    "title": "Guides",
+    "items": [
+      { "title": "Examples", "href": "/docs/examples/" },
+      { "title": "Troubleshooting", "href": "/docs/troubleshooting/" }
     ]
   }
 ]

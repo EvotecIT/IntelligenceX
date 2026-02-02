@@ -12,7 +12,7 @@ Welcome to the IntelligenceX documentation. Choose your area below.
 
 ## Quick Start
 
-- [Getting Started](/getting-started/) - Set up AI reviews in under a minute
+- [Getting Started](/docs/getting-started/) - Set up AI reviews in under a minute
 - [Reviewer Onboarding Wizard](/docs/reviewer/onboarding-wizard/) - Guided CLI setup
 - [CLI Quick Start](/docs/cli/quickstart/) - Essential commands
 
@@ -46,3 +46,8 @@ Build AI-powered tools with the Codex app-server client:
 Binary cmdlets for automation:
 
 - [Overview](/docs/powershell/overview/) - Module usage and diagnostics
+
+## Guides
+
+- [Examples](/docs/examples/) - Real-world configuration examples
+- [Troubleshooting](/docs/troubleshooting/) - Common errors and solutions

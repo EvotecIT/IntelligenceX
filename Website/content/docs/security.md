@@ -1,9 +1,8 @@
 ---
 title: Security & Trust Model
 description: IntelligenceX zero-trust design - no backend, your credentials, your control
-slug: security
-collection: pages
-layout: page
+collection: docs
+layout: docs
 ---
 
 # Security and Trust Model

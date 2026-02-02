@@ -43,4 +43,4 @@ The CLI prints the base64 auth store for manual paste into GitHub secrets.
 
 All changes are made via PRs by default.
 
-For the complete security overview, see [Security & Trust](/security/).
+For the complete security overview, see [Security & Trust](/docs/security/).
