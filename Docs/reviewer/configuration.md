@@ -27,6 +27,9 @@ Schema: `../../Schemas/reviewer.schema.json`
 - `length`: `short|medium|long`
 - `outputStyle`: rendering style preset
 - `reviewUsageSummary`: append usage line to the footer (ChatGPT auth only)
+- `retryCount`: total attempts for provider requests
+- `retryBackoffMultiplier`: exponential backoff multiplier (default 2.0)
+- `retryJitterMinMs`/`retryJitterMaxMs`: retry jitter bounds
 - `skipPaths`: if **all** changed files in a PR match these globs, skip reviewing the entire PR
 - `includePaths`: only review files matching these globs
 - `excludePaths`: ignore files matching these globs
