@@ -73,6 +73,23 @@
 .docs-article-body a { color: var(--pf-accent); }
 .docs-article-body a:hover { text-decoration: underline; }
 
+/* ===== Prism Code Blocks (unify with theme) ===== */
+.docs-article pre[class*="language-"],
+.docs-article code[class*="language-"] {
+  background: var(--pf-code-bg);
+  color: var(--pf-ink);
+  text-shadow: none;
+}
+.docs-article pre[class*="language-"] {
+  border: 1px solid var(--pf-code-border);
+  border-radius: var(--pf-radius-sm);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+.docs-article :not(pre) > code[class*="language-"] {
+  border-radius: 4px;
+  padding: 0.15em 0.35em;
+}
+
 /* ===== Edit Link ===== */
 .docs-article-footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--pf-border); }
 .docs-edit-link { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--pf-muted); }
