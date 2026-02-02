@@ -106,6 +106,12 @@ public static class ReviewerApp {
             var allFiles = files;
             var (reviewFiles, diffNote) = await ResolveReviewFilesAsync(github, context, settings, files, cancellationToken)
                 .ConfigureAwait(false);
+            reviewFiles = FilterFilesByPaths(reviewFiles, settings.IncludePaths, settings.ExcludePaths);
+            if (reviewFiles.Count == 0) {
+                progress.Context = ReviewProgressState.Complete;
+                Console.WriteLine("No files matched include/exclude filters.");
+                return 0;
+            }
             files = reviewFiles;
 
             progress.Context = ReviewProgressState.Complete;
@@ -399,6 +405,36 @@ public static class ReviewerApp {
         return list;
     }
 
+    /// <summary>
+    /// Filters pull request files using include/exclude glob patterns.
+    /// Include patterns are evaluated first; exclude patterns are applied to the remaining files.
+    /// </summary>
+    internal static IReadOnlyList<PullRequestFile> FilterFilesByPaths(IReadOnlyList<PullRequestFile> files,
+        IReadOnlyList<string> includePaths, IReadOnlyList<string> excludePaths) {
+        if (files.Count == 0) {
+            return files;
+        }
+        includePaths ??= Array.Empty<string>();
+        excludePaths ??= Array.Empty<string>();
+        var hasInclude = includePaths.Count > 0;
+        var hasExclude = excludePaths.Count > 0;
+        if (!hasInclude && !hasExclude) {
+            return files;
+        }
+        var filtered = new List<PullRequestFile>();
+        foreach (var file in files) {
+            var filename = file.Filename.Replace('\\', '/');
+            if (hasInclude && !includePaths.Any(pattern => GlobMatcher.IsMatch(pattern, filename))) {
+                continue;
+            }
+            if (hasExclude && excludePaths.Any(pattern => GlobMatcher.IsMatch(pattern, filename))) {
+                continue;
+            }
+            filtered.Add(file);
+        }
+        return filtered;
+    }
+
     private static async Task<(IReadOnlyList<PullRequestFile> Files, string DiffNote)> ResolveReviewFilesAsync(
         GitHubClient github, PullRequestContext context, ReviewSettings settings, IReadOnlyList<PullRequestFile> currentFiles,
         CancellationToken cancellationToken) {
@@ -657,7 +693,12 @@ public static class ReviewerApp {
                 if (compareFiles.Count == 0) {
                     return (false, Array.Empty<PullRequestFile>(), $"{label} diff empty");
                 }
-                return (true, compareFiles, $"{label} → head ({ShortSha(baseSha)}..{ShortSha(context.HeadSha)})");
+                var filtered = FilterFilesByPaths(compareFiles, settings.IncludePaths, settings.ExcludePaths);
+                var note = $"{label} → head ({ShortSha(baseSha)}..{ShortSha(context.HeadSha)})";
+                if (filtered.Count == 0) {
+                    note += " (filtered empty)";
+                }
+                return (true, filtered, note);
             } catch (Exception ex) {
                 Console.Error.WriteLine($"Failed to load {label} diff: {ex.Message}");
                 return (false, Array.Empty<PullRequestFile>(), $"failed to load {label} diff");

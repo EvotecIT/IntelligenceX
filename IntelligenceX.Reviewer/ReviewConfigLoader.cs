@@ -121,6 +121,16 @@ internal static class ReviewConfigLoader {
             settings.SkipPaths = skipPaths;
         }
 
+        var includePaths = ReadStringList(obj, "includePaths");
+        if (includePaths is not null) {
+            settings.IncludePaths = includePaths;
+        }
+
+        var excludePaths = ReadStringList(obj, "excludePaths");
+        if (excludePaths is not null) {
+            settings.ExcludePaths = excludePaths;
+        }
+
         var redactionPatterns = ReadStringList(obj, "redactionPatterns");
         if (redactionPatterns is not null) {
             settings.RedactionPatterns = redactionPatterns;

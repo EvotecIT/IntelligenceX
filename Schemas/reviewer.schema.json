@@ -75,6 +75,8 @@
         "skipTitles": { "type": "array", "items": { "type": "string" } },
         "skipLabels": { "type": "array", "items": { "type": "string" } },
         "skipPaths": { "type": "array", "items": { "type": "string" } },
+        "includePaths": { "type": "array", "items": { "type": "string" } },
+        "excludePaths": { "type": "array", "items": { "type": "string" } },
         "redactPii": { "type": "boolean" },
         "redactionPatterns": { "type": "array", "items": { "type": "string" } },
         "redactionReplacement": { "type": "string" },
