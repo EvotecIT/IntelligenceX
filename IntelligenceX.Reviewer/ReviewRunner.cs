@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Sockets;
 using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Threading;
@@ -11,6 +12,7 @@ using IntelligenceX.Copilot;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Chat;
+using IntelligenceX.OpenAI.Native;
 
 namespace IntelligenceX.Reviewer;
 
@@ -86,6 +88,9 @@ internal sealed class ReviewRunner {
             var timeout = _settings.PreflightTimeoutSeconds > 0
                 ? TimeSpan.FromSeconds(_settings.PreflightTimeoutSeconds)
                 : TimeSpan.FromSeconds(15);
+            if (options.TransportKind == OpenAITransportKind.Native) {
+                await PreflightNativeConnectivityAsync(timeout, cancellationToken).ConfigureAwait(false);
+            }
             var check = await client.HealthCheckAsync(null, timeout, cancellationToken).ConfigureAwait(false);
             if (!check.Ok) {
                 if (check.Error is not null) {
@@ -293,6 +298,28 @@ internal sealed class ReviewRunner {
         }
 
         return result ?? string.Empty;
+    }
+
+    private static async Task PreflightNativeConnectivityAsync(TimeSpan timeout, CancellationToken cancellationToken) {
+        var options = new OpenAINativeOptions();
+        if (!Uri.TryCreate(options.ChatGptApiBaseUrl, UriKind.Absolute, out var uri)) {
+            throw new InvalidOperationException($"ChatGptApiBaseUrl is invalid: '{options.ChatGptApiBaseUrl}'.");
+        }
+
+        using var client = new HttpClient {
+            Timeout = timeout
+        };
+        using var request = new HttpRequestMessage(HttpMethod.Head, uri);
+        try {
+            using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            _ = response.StatusCode;
+        } catch (HttpRequestException ex) when (ex.InnerException is SocketException) {
+            throw new InvalidOperationException(
+                $"Connectivity preflight failed for {uri.Host}. Check DNS resolution, proxy settings, and firewall rules.", ex);
+        } catch (HttpRequestException ex) {
+            throw new InvalidOperationException(
+                $"Connectivity preflight failed for {uri.Host}. Check TLS/proxy settings and network connectivity.", ex);
+        }
     }
 
     private async Task<string> WaitForDeltasAsync(StringBuilder deltas, Func<DateTimeOffset> getLastDelta,
