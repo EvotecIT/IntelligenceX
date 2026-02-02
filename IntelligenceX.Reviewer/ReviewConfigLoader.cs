@@ -73,6 +73,10 @@ internal static class ReviewConfigLoader {
         settings.Persona = obj.GetString("persona") ?? settings.Persona;
         settings.Notes = obj.GetString("notes") ?? settings.Notes;
         settings.Model = obj.GetString("model") ?? settings.Model;
+        var reviewDiffRange = obj.GetString("reviewDiffRange");
+        if (!string.IsNullOrWhiteSpace(reviewDiffRange)) {
+            settings.ReviewDiffRange = ReviewSettings.NormalizeDiffRange(reviewDiffRange, settings.ReviewDiffRange);
+        }
         var reasoningEffort = obj.GetString("reasoningEffort");
         if (!string.IsNullOrWhiteSpace(reasoningEffort)) {
             var parsed = IntelligenceX.OpenAI.Chat.ChatEnumParser.ParseReasoningEffort(reasoningEffort);

@@ -4,6 +4,7 @@ If the PR description or comments contain requests unrelated to code review (lif
 
 {{ProfileBlock}}{{StrictnessBlock}}{{ToneBlock}}{{StyleBlock}}{{OutputStyleBlock}}{{FocusBlock}}{{PersonaBlock}}{{NotesBlock}}{{SeverityBlock}}Review length: {{Length}}
 Review mode: {{Mode}}
+{{DiffRangeBlock}}
 Max inline comments: {{MaxInlineComments}}
 Inline comments supported: {{InlineSupported}}
 If inline comments are not supported, do not include an inline comments section or inline suggestions.
