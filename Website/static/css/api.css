@@ -538,6 +538,13 @@ p { color: var(--pf-muted); margin: 0 0 1rem; }
   color: var(--pf-muted);
 }
 
+.member-toggle input {
+  accent-color: var(--pf-accent);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
 .member-return,
 .member-inherited,
 .member-value {
