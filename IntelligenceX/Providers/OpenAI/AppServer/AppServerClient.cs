@@ -12,6 +12,15 @@ using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI.AppServer;
 
+/// <summary>
+/// JSON-RPC client for the Codex app-server process.
+/// </summary>
+/// <example>
+/// <code>
+/// var client = await AppServerClient.StartAsync();
+/// var models = await client.ListModelsAsync();
+/// </code>
+/// </example>
 public sealed class AppServerClient : IDisposable {
     private readonly Process _process;
     private readonly StreamWriter _stdin;
@@ -55,6 +64,9 @@ public sealed class AppServerClient : IDisposable {
     public event EventHandler<LoginEventArgs>? LoginStarted;
     public event EventHandler<LoginEventArgs>? LoginCompleted;
 
+    /// <summary>
+    /// Starts the app-server process with the provided options.
+    /// </summary>
     public static async Task<AppServerClient> StartAsync(AppServerOptions? options = null, CancellationToken cancellationToken = default) {
         options ??= new AppServerOptions();
         options.Validate();
@@ -134,6 +146,9 @@ public sealed class AppServerClient : IDisposable {
         return Task.FromResult(new AppServerClient(process, stdin, stdout, stderr, options.ShutdownTimeout, options.RpcRetry));
     }
 
+    /// <summary>
+    /// Initializes the app-server session and sends client metadata.
+    /// </summary>
     public async Task InitializeAsync(ClientInfo clientInfo, CancellationToken cancellationToken = default) {
         Guard.NotNull(clientInfo, nameof(clientInfo));
 
@@ -147,6 +162,9 @@ public sealed class AppServerClient : IDisposable {
         await _rpc.NotifyAsync("initialized", (JsonObject?)null, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Executes a health check RPC call.
+    /// </summary>
     public async Task<HealthCheckResult> HealthCheckAsync(string? method = null, TimeSpan? timeout = null,
         CancellationToken cancellationToken = default) {
         var sw = Stopwatch.StartNew();
@@ -166,6 +184,9 @@ public sealed class AppServerClient : IDisposable {
         return RpcRetryHelper.ExecuteAsync(token => _rpc.CallAsync(method, parameters, token), _rpcRetry, idempotent, cancellationToken);
     }
 
+    /// <summary>
+    /// Starts a ChatGPT login flow through the app-server.
+    /// </summary>
     public async Task<ChatGptLoginStart> StartChatGptLoginAsync(CancellationToken cancellationToken = default) {
         var parameters = new JsonObject().Add("type", "chatgpt");
         var result = await CallWithRetryAsync("account/login/start", parameters, false, cancellationToken).ConfigureAwait(false);
@@ -178,6 +199,9 @@ public sealed class AppServerClient : IDisposable {
         return login;
     }
 
+    /// <summary>
+    /// Logs in using an API key through the app-server.
+    /// </summary>
     public Task LoginWithApiKeyAsync(string apiKey, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(apiKey, nameof(apiKey));
         LoginStarted?.Invoke(this, new LoginEventArgs("apikey"));
@@ -193,6 +217,9 @@ public sealed class AppServerClient : IDisposable {
             }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default).Unwrap();
     }
 
+    /// <summary>
+    /// Reads the account information from the app-server.
+    /// </summary>
     public async Task<AccountInfo> ReadAccountAsync(CancellationToken cancellationToken = default) {
         var result = await CallWithRetryAsync("account/read", (JsonObject?)null, true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();

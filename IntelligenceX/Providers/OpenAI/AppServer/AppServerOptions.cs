@@ -4,22 +4,79 @@ using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI.AppServer;
 
+/// <summary>
+/// Options for launching and communicating with the Codex app-server process.
+/// </summary>
+/// <example>
+/// <code>
+/// var options = new AppServerOptions {
+///     ExecutablePath = "codex",
+///     Arguments = "app-server",
+///     HealthCheckOnStart = true
+/// };
+/// </code>
+/// </example>
 public sealed class AppServerOptions {
+    /// <summary>
+    /// Path to the app-server executable.
+    /// </summary>
     public string ExecutablePath { get; set; } = "codex";
+    /// <summary>
+    /// Arguments passed to the app-server process.
+    /// </summary>
     public string Arguments { get; set; } = "app-server";
+    /// <summary>
+    /// Optional working directory for the process.
+    /// </summary>
     public string? WorkingDirectory { get; set; }
+    /// <summary>
+    /// Environment variables injected into the process.
+    /// </summary>
     public Dictionary<string, string> Environment { get; } = new();
+    /// <summary>
+    /// Whether to redirect standard error output.
+    /// </summary>
     public bool RedirectStandardError { get; set; } = true;
+    /// <summary>
+    /// Whether to run a health check immediately after startup.
+    /// </summary>
     public bool HealthCheckOnStart { get; set; }
+    /// <summary>
+    /// RPC method used for health checks.
+    /// </summary>
     public string HealthCheckMethod { get; set; } = "config/read";
+    /// <summary>
+    /// Maximum time allowed for process startup.
+    /// </summary>
     public TimeSpan StartTimeout { get; set; } = TimeSpan.FromSeconds(30);
+    /// <summary>
+    /// Timeout for the health check call.
+    /// </summary>
     public TimeSpan HealthCheckTimeout { get; set; } = TimeSpan.FromSeconds(10);
+    /// <summary>
+    /// Number of retries for connecting to the process.
+    /// </summary>
     public int ConnectRetryCount { get; set; } = 2;
+    /// <summary>
+    /// Initial delay between connect retries.
+    /// </summary>
     public TimeSpan ConnectRetryInitialDelay { get; set; } = TimeSpan.FromMilliseconds(250);
+    /// <summary>
+    /// Maximum delay between connect retries.
+    /// </summary>
     public TimeSpan ConnectRetryMaxDelay { get; set; } = TimeSpan.FromSeconds(2);
+    /// <summary>
+    /// Timeout for graceful shutdown.
+    /// </summary>
     public TimeSpan ShutdownTimeout { get; set; } = TimeSpan.FromSeconds(2);
+    /// <summary>
+    /// RPC retry options for idempotent calls.
+    /// </summary>
     public RpcRetryOptions RpcRetry { get; } = new();
 
+    /// <summary>
+    /// Validates the option values and throws on invalid configuration.
+    /// </summary>
     public void Validate() {
         if (string.IsNullOrWhiteSpace(ExecutablePath)) {
             throw new ArgumentException("ExecutablePath cannot be null or whitespace.", nameof(ExecutablePath));
