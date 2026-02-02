@@ -16,7 +16,7 @@ Get up and running with AI-powered code reviews in under a minute.
 - GitHub account with repository access
 - ChatGPT account **or** GitHub Copilot access
 
-## Option 1: CLI Wizard (Recommended)
+## Option 1 - CLI Wizard (Recommended)
 
 The fastest way to set up IntelligenceX:
 
@@ -35,7 +35,7 @@ The wizard guides you through:
 4. **Choosing a review preset** (balanced, picky, security, minimal, etc.)
 5. **Creating a PR** with the GitHub Actions workflow
 
-## Option 2: Local Web UI (Preview)
+## Option 2 - Local Web UI (Preview)
 
 For a visual setup experience:
 
@@ -45,7 +45,7 @@ intelligencex setup web
 
 This starts a local web server (localhost only) with a step-by-step UI. See [Web Setup UI](/docs/reviewer/setup-web/) for details.
 
-## Option 3: Manual Setup
+## Option 3 - Manual Setup
 
 For full control:
 
