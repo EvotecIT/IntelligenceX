@@ -8,6 +8,14 @@ namespace IntelligenceX.OpenAI.Usage;
 /// <summary>
 /// Snapshot of ChatGPT usage, limits, and credits for the authenticated account.
 /// </summary>
+/// <example>
+/// <code>
+/// using var usage = new ChatGptUsageService(new OpenAINativeOptions());
+/// var report = await usage.GetReportAsync(includeEvents: true);
+/// Console.WriteLine(report.Snapshot.PlanType);
+/// Console.WriteLine(report.Snapshot.RateLimit?.PrimaryWindow?.UsedPercent);
+/// </code>
+/// </example>
 public sealed class ChatGptUsageSnapshot {
     public ChatGptUsageSnapshot(string? userId, string? accountId, string? email, string? planType,
         ChatGptRateLimitStatus? rateLimit, ChatGptRateLimitStatus? codeReviewRateLimit,
@@ -113,6 +121,14 @@ public sealed class ChatGptUsageSnapshot {
 /// <summary>
 /// Rate limit status for a usage category.
 /// </summary>
+/// <example>
+/// <code>
+/// var status = report.Snapshot.RateLimit;
+/// if (status?.LimitReached == true) {
+///     Console.WriteLine("Rate limit reached.");
+/// }
+/// </code>
+/// </example>
 public sealed class ChatGptRateLimitStatus {
     public ChatGptRateLimitStatus(bool allowed, bool limitReached, ChatGptRateLimitWindow? primary, ChatGptRateLimitWindow? secondary,
         JsonObject raw, JsonObject? additional) {
@@ -188,6 +204,12 @@ public sealed class ChatGptRateLimitStatus {
 /// <summary>
 /// Rate limit window details (usage percentage, window size, and reset timings).
 /// </summary>
+/// <example>
+/// <code>
+/// var window = report.Snapshot.RateLimit?.PrimaryWindow;
+/// Console.WriteLine($"Used: {window?.UsedPercent}%");
+/// </code>
+/// </example>
 public sealed class ChatGptRateLimitWindow {
     public ChatGptRateLimitWindow(double? usedPercent, long? limitWindowSeconds, long? resetAfterSeconds, long? resetAt,
         JsonObject raw, JsonObject? additional) {
@@ -267,6 +289,12 @@ public sealed class ChatGptRateLimitWindow {
 /// <summary>
 /// Credits snapshot for the account, including balance and message estimates.
 /// </summary>
+/// <example>
+/// <code>
+/// var credits = report.Snapshot.Credits;
+/// Console.WriteLine($"Balance: {credits?.Balance}");
+/// </code>
+/// </example>
 public sealed class ChatGptCreditsSnapshot {
     public ChatGptCreditsSnapshot(bool hasCredits, bool unlimited, double? balance, int[]? approxLocalMessages,
         int[]? approxCloudMessages, JsonObject raw, JsonObject? additional) {
@@ -393,6 +421,13 @@ public sealed class ChatGptCreditsSnapshot {
 /// <summary>
 /// A single credit usage event.
 /// </summary>
+/// <example>
+/// <code>
+/// foreach (var evt in report.Events) {
+///     Console.WriteLine($"{evt.Date} {evt.ProductSurface} {evt.CreditAmount}");
+/// }
+/// </code>
+/// </example>
 public sealed class ChatGptCreditUsageEvent {
     public ChatGptCreditUsageEvent(string? date, string? productSurface, double? creditAmount, string? usageId, JsonObject raw,
         JsonObject? additional) {
@@ -468,6 +503,14 @@ public sealed class ChatGptCreditUsageEvent {
 /// <summary>
 /// Combined usage report with the latest snapshot and optional credit events.
 /// </summary>
+/// <example>
+/// <code>
+/// using var usage = new ChatGptUsageService(new OpenAINativeOptions());
+/// var report = await usage.GetReportAsync(includeEvents: true);
+/// Console.WriteLine(report.Snapshot.Email);
+/// Console.WriteLine(report.Events.Count);
+/// </code>
+/// </example>
 public sealed class ChatGptUsageReport {
     public ChatGptUsageReport(ChatGptUsageSnapshot snapshot, IReadOnlyList<ChatGptCreditUsageEvent> events) {
         Snapshot = snapshot;
