@@ -31,6 +31,7 @@ internal sealed class ReviewRunner {
     private async Task<string> RunOpenAiWithRetryAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
         CancellationToken cancellationToken) {
         ReviewDiagnosticsSnapshot? snapshot = null;
+        var retryState = new ReviewRetryState();
         try {
             return await ReviewRetryPolicy.RunAsync(async () => {
                     var output = await RunOpenAiOnceAsync(prompt, onPartial, updateInterval, cancellationToken,
@@ -48,11 +49,12 @@ internal sealed class ReviewRunner {
                 cancellationToken,
                 ex => ReviewDiagnostics.FormatExceptionSummary(ex, _settings.Diagnostics),
                 _settings.RetryExtraOnResponseEnded ? 1 : 0,
-                ReviewDiagnostics.IsResponseEnded).ConfigureAwait(false);
+                ReviewDiagnostics.IsResponseEnded,
+                retryState).ConfigureAwait(false);
         } catch (Exception ex) {
-            ReviewDiagnostics.LogFailure(ex, _settings, snapshot);
+            ReviewDiagnostics.LogFailure(ex, _settings, snapshot, retryState);
             if (_settings.FailOpen && IsTransient(ex)) {
-                return ReviewDiagnostics.BuildFailureBody(ex, _settings, snapshot);
+                return ReviewDiagnostics.BuildFailureBody(ex, _settings, snapshot, retryState);
             }
             throw;
         }
@@ -152,29 +154,14 @@ internal sealed class ReviewRunner {
     }
 
     internal static bool IsTransient(Exception ex) {
-        if (ex is OperationCanceledException) {
-            return false;
-        }
-        if (ex is HttpRequestException httpRequestException) {
-            if (httpRequestException.StatusCode.HasValue) {
-                var code = (int)httpRequestException.StatusCode.Value;
-                return code == 408 || code == 429 || (code >= 500 && code <= 599);
-            }
-            return true;
-        }
-        if (ex is IOException || ex is TimeoutException) {
-            return true;
-        }
-        if (ReviewDiagnostics.IsResponseEnded(ex)) {
-            return true;
-        }
-        return ex.InnerException is not null && IsTransient(ex.InnerException);
+        return ReviewDiagnostics.Classify(ex).IsTransient;
     }
 
     internal static class ReviewRetryPolicy {
         public static async Task<string> RunAsync(Func<Task<string>> action, Func<Exception, bool> isTransient,
             int maxAttempts, int retryDelaySeconds, int retryMaxDelaySeconds, CancellationToken cancellationToken,
-            Func<Exception, string>? describeError, int extraAttempts, Func<Exception, bool>? extraRetryPredicate) {
+            Func<Exception, string>? describeError, int extraAttempts, Func<Exception, bool>? extraRetryPredicate,
+            ReviewRetryState? retryState) {
             // maxAttempts includes the initial attempt.
             var attempts = Math.Max(1, maxAttempts);
             var extraRemaining = Math.Max(0, extraAttempts);
@@ -184,6 +171,10 @@ internal sealed class ReviewRunner {
 
             Exception? lastError = null;
             for (var attempt = 1; attempt <= attempts; attempt++) {
+                if (retryState is not null) {
+                    retryState.LastAttempt = attempt;
+                    retryState.MaxAttempts = attempts;
+                }
                 try {
                     return await action().ConfigureAwait(false);
                 } catch (Exception ex) when (isTransient(ex) &&
@@ -196,6 +187,9 @@ internal sealed class ReviewRunner {
                     if (attempt >= attempts) {
                         attempts += extraRemaining;
                         extraRemaining = 0;
+                        if (retryState is not null) {
+                            retryState.MaxAttempts = attempts;
+                        }
                     }
 
                     var jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(200, 800));
@@ -215,6 +209,7 @@ internal sealed class ReviewRunner {
             throw new InvalidOperationException("OpenAI request failed without a captured exception.");
         }
     }
+
 
     private async Task<string> RunCopilotAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
         CancellationToken cancellationToken) {

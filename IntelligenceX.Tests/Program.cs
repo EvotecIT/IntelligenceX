@@ -429,7 +429,8 @@ internal static class Program {
             CancellationToken.None,
             describeError: null,
             extraAttempts: 0,
-            extraRetryPredicate: null).GetAwaiter().GetResult();
+            extraRetryPredicate: null,
+            retryState: null).GetAwaiter().GetResult();
 
         AssertEqual("ok", result, "retry result");
         AssertEqual(3, attempts, "retry attempts");
@@ -450,7 +451,8 @@ internal static class Program {
                 CancellationToken.None,
                 describeError: null,
                 extraAttempts: 0,
-                extraRetryPredicate: null).GetAwaiter().GetResult();
+                extraRetryPredicate: null,
+                retryState: null).GetAwaiter().GetResult();
         } catch (InvalidOperationException) {
             thrown = true;
         }
@@ -474,7 +476,8 @@ internal static class Program {
                 CancellationToken.None,
                 describeError: null,
                 extraAttempts: 0,
-                extraRetryPredicate: null).GetAwaiter().GetResult();
+                extraRetryPredicate: null,
+                retryState: null).GetAwaiter().GetResult();
             throw new InvalidOperationException("Expected exception.");
         } catch (IOException caught) {
             AssertEqual(true, ReferenceEquals(ex, caught), "retry exception instance");
@@ -499,7 +502,8 @@ internal static class Program {
             CancellationToken.None,
             describeError: null,
             extraAttempts: 1,
-            extraRetryPredicate: ReviewDiagnostics.IsResponseEnded).GetAwaiter().GetResult();
+            extraRetryPredicate: ReviewDiagnostics.IsResponseEnded,
+            retryState: null).GetAwaiter().GetResult();
 
         AssertEqual("ok", result, "retry extra result");
         AssertEqual(2, attempts, "retry extra attempts");
@@ -507,7 +511,7 @@ internal static class Program {
 
     private static void TestReviewFailureMarker() {
         var settings = new ReviewSettings { Diagnostics = true };
-        var body = ReviewDiagnostics.BuildFailureBody(new IOException("ResponseEnded"), settings, null);
+        var body = ReviewDiagnostics.BuildFailureBody(new IOException("ResponseEnded"), settings, null, null);
         AssertEqual(true, ReviewDiagnostics.IsFailureBody(body), "failure marker");
     }
 
