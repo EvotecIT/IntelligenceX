@@ -39,7 +39,11 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          direct_prompt: ${{ github.event.comment.body || github.event.review.body || github.event.issue.body || github.event.issue.title }}
+          direct_prompt: |
+            You are responding to a user-triggered @claude request. Follow the request below and keep the response focused and actionable.
+
+            Request:
+            ${{ github.event.comment.body || github.event.review.body || github.event.issue.body || github.event.issue.title }}
           use_sticky_comment: true
 
           # This is an optional setting that allows Claude to read CI results on PRs
