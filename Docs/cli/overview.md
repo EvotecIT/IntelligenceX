@@ -9,6 +9,7 @@ Commands:
 - `./commands/setup.md`
 - `./commands/reviewer.md`
 - `./commands/release.md`
+- Install: `./install.md`
 
 ## Common commands
 
