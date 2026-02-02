@@ -18,6 +18,7 @@ using IntelligenceX.OpenAI.Native;
 namespace IntelligenceX.Reviewer;
 
 internal sealed class ReviewRunner {
+    // Infinite timeout here; each preflight call applies its own CTS-based timeout.
     private static readonly HttpClient PreflightHttp = new() {
         Timeout = Timeout.InfiniteTimeSpan
     };
@@ -339,7 +340,7 @@ internal sealed class ReviewRunner {
                     response.StatusCode == HttpStatusCode.BadGateway ||
                     response.StatusCode == HttpStatusCode.GatewayTimeout ||
                     response.StatusCode == HttpStatusCode.InternalServerError) {
-                    throw new HttpRequestException($"Connectivity preflight returned HTTP {code}.", null, response.StatusCode);
+                    throw new HttpRequestException($"Connectivity preflight returned HTTP {code} for {uri.Host}.", null, response.StatusCode);
                 }
                 if (_settings.Diagnostics) {
                     Console.Error.WriteLine($"Connectivity preflight returned HTTP {code} for {uri.Host}.");
