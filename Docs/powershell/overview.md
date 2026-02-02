@@ -22,6 +22,22 @@ Send-IntelligenceXMessage -Client $client -ThreadId $thread.Id -Text 'Hello from
 Disconnect-IntelligenceX -Client $client
 ```
 
+## One-liner chat
+
+```powershell
+Invoke-IntelligenceXChat -Text 'Summarize the latest PR' -OpenBrowser -Stream
+```
+
+## App-server transport
+
+```powershell
+$client = Connect-IntelligenceX -Transport AppServer -ExecutablePath 'codex' -Arguments 'app-server'
+Initialize-IntelligenceX -Client $client -Name 'IntelligenceX' -Title 'Demo' -Version '0.1.0'
+$thread = Start-IntelligenceXThread -Client $client -Model 'gpt-5.2-codex'
+Send-IntelligenceXMessage -Client $client -ThreadId $thread.Id -Text 'Hello from app-server'
+Disconnect-IntelligenceX -Client $client
+```
+
 ## Diagnostics
 
 ```powershell
