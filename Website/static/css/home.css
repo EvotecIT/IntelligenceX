@@ -66,6 +66,14 @@
 .faq-answer { padding: 1rem 1.25rem; font-size: 0.9rem; color: var(--pf-muted); line-height: 1.6; }
 .faq-answer code { background: var(--pf-code-bg); border: 1px solid var(--pf-code-border); padding: 0.1em 0.3em; border-radius: 3px; font-family: var(--pf-font-mono); font-size: 0.85em; }
 
+/* PowerForge FAQ shortcode styles */
+.pf-faq { max-width: 800px; margin: 0 auto; }
+.pf-faq-section > h2 { display: none; }
+.pf-faq-item { border: 1px solid var(--pf-border); border-radius: var(--pf-radius-sm); margin-bottom: 0.75rem; padding: 1.25rem; transition: border-color 0.2s; }
+.pf-faq-item:hover { border-color: var(--pf-accent); }
+.pf-faq-item h3 { font-size: 1rem; font-weight: 500; color: var(--pf-ink); margin: 0 0 0.5rem; }
+.pf-faq-item p { font-size: 0.9rem; color: var(--pf-muted); line-height: 1.6; margin: 0; }
+
 /* ===== Responsive ===== */
 @media (max-width: 768px) {
   .hero { padding: 3rem 1.5rem 2.5rem; }

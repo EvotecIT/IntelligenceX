@@ -215,12 +215,7 @@ Disconnect-IntelligenceX</code></pre>
     </div>
 
     <div class="faq-list">
-        {{ for item in data.faq }}
-        <details class="faq-item">
-            <summary>{{ item.question }}</summary>
-            <div class="faq-answer">{{ item.answer }}</div>
-        </details>
-        {{ end }}
+        {{< faq data="faq" >}}
     </div>
 </section>
 

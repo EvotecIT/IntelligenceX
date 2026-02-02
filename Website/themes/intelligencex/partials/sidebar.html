@@ -1,17 +1,21 @@
 <nav class="docs-nav" aria-label="Documentation">
-  {{ if toc_tree }}
-    {{ for section in toc_tree }}
-      {{ if section.items }}
-        <div class="docs-nav-group">
-          <h3 class="docs-nav-heading">{{ section.title }}</h3>
-          <ul class="docs-nav-list">
-            {{ for item in section.items }}
-              <li><a href="{{ item.href }}" class="docs-nav-item{{ if page.url == item.href }} active{{ end }}">{{ item.title }}</a></li>
-            {{ end }}
-          </ul>
-        </div>
-      {{ else }}
-        <a href="{{ section.href }}" class="docs-nav-item docs-nav-top{{ if page.url == section.href }} active{{ end }}">{{ section.title }}</a>
+  {{ if navigation.menus && navigation.menus.size > 0 }}
+    {{ for menu in navigation.menus }}
+      {{ if menu.name == "docs" }}
+        {{ for item in menu.items }}
+          {{ if item.items && item.items.size > 0 }}
+            <div class="docs-nav-group">
+              <h3 class="docs-nav-heading">{{ item.title }}</h3>
+              <ul class="docs-nav-list">
+                {{ for child in item.items }}
+                  <li><a href="{{ child.url }}" class="docs-nav-item{{ if page.url == child.url }} active{{ end }}">{{ child.title }}</a></li>
+                {{ end }}
+              </ul>
+            </div>
+          {{ else }}
+            <a href="{{ item.url }}" class="docs-nav-item docs-nav-top{{ if page.url == item.url }} active{{ end }}">{{ item.title }}</a>
+          {{ end }}
+        {{ end }}
       {{ end }}
     {{ end }}
   {{ end }}

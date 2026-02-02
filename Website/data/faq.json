@@ -1,34 +1,47 @@
 [
   {
-    "question": "Is my code safe? Do you see it?",
-    "answer": "IntelligenceX has <strong>no backend service</strong>. Your code diffs go directly from GitHub Actions to your chosen AI provider (ChatGPT or Copilot). We never see, store, or process your code. The AI provider's data handling policies apply."
-  },
-  {
-    "question": "Why do I use my own ChatGPT or Copilot login?",
-    "answer": "This is the zero-trust design. You authenticate with <strong>your own</strong> ChatGPT or Copilot account. No shared API keys, no pooled quotas, no third-party billing. You control the credentials, stored in GitHub Actions secrets that only your workflows can access."
-  },
-  {
-    "question": "What is 'Bring Your Own GitHub App'?",
-    "answer": "Instead of trusting our GitHub App, you can create your own App under your organization. This gives you branded bot identity, fine-grained permissions, and full audit control. The CLI wizard supports this flow natively."
-  },
-  {
-    "question": "Which AI providers are supported?",
-    "answer": "ChatGPT (native transport via OAuth) and GitHub Copilot (via Copilot CLI). You configure the provider and model in <code>.intelligencex/reviewer.json</code>. Models like <code>gpt-5.2-codex</code> are supported."
-  },
-  {
-    "question": "How do I get started?",
-    "answer": "Run <code>intelligencex setup wizard</code> for guided setup, or <code>intelligencex setup web</code> for a local web UI. Both run entirely on your machine and create a PR with the review workflow."
-  },
-  {
-    "question": "What platforms are supported?",
-    "answer": "Windows, macOS, and Linux. The CLI and library target .NET 8+ and .NET 10+, the PowerShell module supports netstandard2.0, net472, and net8.0. The reviewer runs on any GitHub Actions runner."
-  },
-  {
-    "question": "Can I customize the review behavior?",
-    "answer": "Yes. Choose from presets (balanced, picky, security, performance, tests, minimal) or write custom JSON config. Control review mode (inline, summary, hybrid), length, output style, auto-resolve behavior, and more."
-  },
-  {
-    "question": "Is this similar to Claude Code or Codex?",
-    "answer": "The reviewer produces structured, Codex-style output integrated into your GitHub PR workflow. It supports inline comments with code suggestions, summary reviews, and hybrid mode. The <code>outputStyle: claude</code> preset gives familiar structured output."
+    "title": "Frequently Asked Questions",
+    "items": [
+      {
+        "id": "code-safe",
+        "question": "Is my code safe? Do you see it?",
+        "answer": "IntelligenceX has no backend service. Your code diffs go directly from GitHub Actions to your chosen AI provider (ChatGPT or Copilot). We never see, store, or process your code."
+      },
+      {
+        "id": "own-login",
+        "question": "Why do I use my own ChatGPT or Copilot login?",
+        "answer": "This is the zero-trust design. You authenticate with your own account. No shared API keys, no pooled quotas, no third-party billing. You control the credentials, stored in GitHub Actions secrets that only your workflows can access."
+      },
+      {
+        "id": "byo-app",
+        "question": "What is 'Bring Your Own GitHub App'?",
+        "answer": "Instead of trusting our GitHub App, you can create your own App under your organization. This gives you branded bot identity, fine-grained permissions, and full audit control. The CLI wizard supports this flow natively."
+      },
+      {
+        "id": "providers",
+        "question": "Which AI providers are supported?",
+        "answer": "ChatGPT (native transport via OAuth) and GitHub Copilot (via Copilot CLI). You configure the provider and model in .intelligencex/reviewer.json."
+      },
+      {
+        "id": "get-started",
+        "question": "How do I get started?",
+        "answer": "Run 'intelligencex setup wizard' for guided setup, or 'intelligencex setup web' for a local web UI. Both run entirely on your machine and create a PR with the review workflow."
+      },
+      {
+        "id": "platforms",
+        "question": "What platforms are supported?",
+        "answer": "Windows, macOS, and Linux. The CLI and library target .NET 8+ and .NET 10+, the PowerShell module supports netstandard2.0, net472, and net8.0. The reviewer runs on any GitHub Actions runner."
+      },
+      {
+        "id": "customize",
+        "question": "Can I customize the review behavior?",
+        "answer": "Yes. Choose from presets (balanced, picky, security, performance, tests, minimal) or write custom JSON config. Control review mode (inline, summary, hybrid), length, output style, and auto-resolve behavior."
+      },
+      {
+        "id": "codex",
+        "question": "Is this similar to Claude Code or Codex?",
+        "answer": "The reviewer produces structured, Codex-style output integrated into your GitHub PR workflow. It supports inline comments with code suggestions, summary reviews, and hybrid mode."
+      }
+    ]
   }
 ]
