@@ -4,6 +4,18 @@ using IntelligenceX.Json;
 
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
+/// <summary>
+/// Represents a single output item from a turn.
+/// </summary>
+/// <example>
+/// <code>
+/// foreach (var output in turn.Outputs) {
+///     if (output.IsText) {
+///         Console.WriteLine(output.Text);
+///     }
+/// }
+/// </code>
+/// </example>
 public sealed class TurnOutput {
     public TurnOutput(string type, string? text, string? imageUrl, string? imagePath, string? base64, string? mimeType,
         JsonObject raw, JsonObject? additional) {
@@ -17,16 +29,26 @@ public sealed class TurnOutput {
         Additional = additional;
     }
 
+    /// <summary>Output type (e.g. text, image).</summary>
     public string Type { get; }
+    /// <summary>Text content (if present).</summary>
     public string? Text { get; }
+    /// <summary>Image URL (if present).</summary>
     public string? ImageUrl { get; }
+    /// <summary>Image file path (if present).</summary>
     public string? ImagePath { get; }
+    /// <summary>Base64 image data (if present).</summary>
     public string? Base64 { get; }
+    /// <summary>Image MIME type (if present).</summary>
     public string? MimeType { get; }
+    /// <summary>Raw JSON payload from the service.</summary>
     public JsonObject Raw { get; }
+    /// <summary>Additional unmapped fields from the payload.</summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>True when this output is text.</summary>
     public bool IsText => string.Equals(Type, "text", StringComparison.OrdinalIgnoreCase);
+    /// <summary>True when this output is an image.</summary>
     public bool IsImage => string.Equals(Type, "image", StringComparison.OrdinalIgnoreCase);
 
     internal static IReadOnlyList<TurnOutput> FromTurn(JsonObject turnObj) {
