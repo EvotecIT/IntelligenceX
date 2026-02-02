@@ -123,6 +123,14 @@ blockquote p:last-child { margin-bottom: 0; }
 .markdown-body h2 { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--pf-border); }
 .markdown-body h3 { margin-top: 2rem; }
 
+/* ===== Theme Toggle ===== */
+.ix-theme-toggle { background: none; border: 1px solid var(--pf-border); border-radius: var(--pf-radius-sm); color: var(--pf-muted); cursor: pointer; padding: 0.375rem; display: flex; align-items: center; transition: color 0.2s, border-color 0.2s; }
+.ix-theme-toggle:hover { color: var(--pf-accent); border-color: var(--pf-accent); }
+[data-theme="dark"] .icon-moon, [data-theme="light"] .icon-sun { display: none; }
+
+/* ===== Light mode link hover ===== */
+[data-theme="light"] a:hover { color: #0E7490; }
+
 /* ===== Responsive ===== */
 @media (max-width: 768px) {
   .ix-nav { display: none; }

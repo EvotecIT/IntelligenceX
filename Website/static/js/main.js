@@ -1,3 +1,10 @@
+// Theme toggle
+(function() {
+  var stored = localStorage.getItem('theme');
+  var preferred = stored || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  document.documentElement.setAttribute('data-theme', preferred);
+})();
+
 // Mobile nav toggle
 document.addEventListener('DOMContentLoaded', function () {
   var toggle = document.querySelector('.ix-nav-toggle');
@@ -6,6 +13,16 @@ document.addEventListener('DOMContentLoaded', function () {
       document.body.classList.toggle('nav-open');
     });
   }
+
+  // Theme toggle button
+  document.querySelectorAll('.ix-theme-toggle').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var current = document.documentElement.getAttribute('data-theme') || 'dark';
+      var next = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('theme', next);
+    });
+  });
 
   // Code tabs
   document.querySelectorAll('.code-tabs').forEach(function (tabBar) {
