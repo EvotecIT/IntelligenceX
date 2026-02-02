@@ -3,7 +3,13 @@ using IntelligenceX.Json;
 
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
+/// <summary>
+/// Represents a response to a user input prompt.
+/// </summary>
 public sealed class UserInputResponse {
+    /// <summary>
+    /// Initializes a new user input response.
+    /// </summary>
     public UserInputResponse(IReadOnlyList<string> answers, IReadOnlyDictionary<string, IReadOnlyList<string>>? answersById,
         JsonObject raw, JsonObject? additional) {
         Answers = answers;
@@ -12,11 +18,28 @@ public sealed class UserInputResponse {
         Additional = additional;
     }
 
+    /// <summary>
+    /// Gets the answers as a flat list.
+    /// </summary>
     public IReadOnlyList<string> Answers { get; }
+    /// <summary>
+    /// Gets answers grouped by id when provided.
+    /// </summary>
     public IReadOnlyDictionary<string, IReadOnlyList<string>>? AnswersById { get; }
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>
+    /// Parses a user input response from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed response.</returns>
     public static UserInputResponse FromJson(JsonObject obj) {
         var answers = new List<string>();
         IReadOnlyDictionary<string, IReadOnlyList<string>>? answersById = null;

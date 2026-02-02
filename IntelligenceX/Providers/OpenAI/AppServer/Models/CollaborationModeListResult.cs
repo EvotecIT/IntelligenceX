@@ -4,17 +4,37 @@ using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
+/// <summary>
+/// Represents a list of collaboration mode masks.
+/// </summary>
 public sealed class CollaborationModeListResult {
+    /// <summary>
+    /// Initializes a new list result.
+    /// </summary>
     public CollaborationModeListResult(IReadOnlyList<CollaborationModeMask> modes, JsonObject raw, JsonObject? additional) {
         Modes = modes;
         Raw = raw;
         Additional = additional;
     }
 
+    /// <summary>
+    /// Gets the available collaboration modes.
+    /// </summary>
     public IReadOnlyList<CollaborationModeMask> Modes { get; }
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>
+    /// Parses a collaboration mode list from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed result.</returns>
     public static CollaborationModeListResult FromJson(JsonObject obj) {
         var modes = new List<CollaborationModeMask>();
         var data = obj.GetArray("data") ?? obj.GetArray("items");
@@ -32,7 +52,13 @@ public sealed class CollaborationModeListResult {
     }
 }
 
+/// <summary>
+/// Describes a collaboration mode mask.
+/// </summary>
 public sealed class CollaborationModeMask {
+    /// <summary>
+    /// Initializes a new collaboration mode mask.
+    /// </summary>
     public CollaborationModeMask(string name, string? mode, string? model,
         OptionalValue<string?> reasoningEffort, OptionalValue<string?> developerInstructions,
         JsonObject raw, JsonObject? additional) {
@@ -45,14 +71,40 @@ public sealed class CollaborationModeMask {
         Additional = additional;
     }
 
+    /// <summary>
+    /// Gets the mask name.
+    /// </summary>
     public string Name { get; }
+    /// <summary>
+    /// Gets the mode identifier.
+    /// </summary>
     public string? Mode { get; }
+    /// <summary>
+    /// Gets the model name.
+    /// </summary>
     public string? Model { get; }
+    /// <summary>
+    /// Gets the optional reasoning effort setting.
+    /// </summary>
     public OptionalValue<string?> ReasoningEffort { get; }
+    /// <summary>
+    /// Gets the optional developer instructions.
+    /// </summary>
     public OptionalValue<string?> DeveloperInstructions { get; }
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
     public JsonObject Raw { get; }
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>
+    /// Parses a collaboration mode mask from JSON.
+    /// </summary>
+    /// <param name="obj">Source JSON object.</param>
+    /// <returns>The parsed mask.</returns>
     public static CollaborationModeMask FromJson(JsonObject obj) {
         var name = obj.GetString("name") ?? string.Empty;
         var mode = obj.GetString("mode");
