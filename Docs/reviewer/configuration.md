@@ -27,10 +27,16 @@ Schema: `../../Schemas/reviewer.schema.json`
 - `length`: `short|medium|long`
 - `outputStyle`: rendering style preset
 - `reviewUsageSummary`: append usage line to the footer (ChatGPT auth only)
+- `skipPaths`: if **all** changed files in a PR match these globs, skip reviewing the entire PR
 - `includePaths`: only review files matching these globs
 - `excludePaths`: ignore files matching these globs
 - `includeReviewThreads`: include existing review threads in context
 - `reviewThreadsAutoResolve*`: auto-resolve rules for bot threads
+
+**Path filter order of operations**
+1. `skipPaths` is evaluated first at the PR level. If **every** changed file matches `skipPaths`, the PR is skipped.
+2. If the PR is not skipped, `includePaths` (if set) selects which changed files are eligible for review.
+3. Finally, `excludePaths` (if set) removes any remaining files from review.
 
 ## Auto-resolve notes
 - `reviewThreadsAutoResolveBotLogins` defaults to `intelligencex-review` and `copilot-pull-request-reviewer`.

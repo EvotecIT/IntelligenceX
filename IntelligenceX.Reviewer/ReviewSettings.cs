@@ -83,8 +83,20 @@ internal sealed class ReviewSettings {
     public bool SkipDraft { get; set; } = true;
     public IReadOnlyList<string> SkipTitles { get; set; } = new[] { "[WIP]", "[skip-review]" };
     public IReadOnlyList<string> SkipLabels { get; set; } = Array.Empty<string>();
+    /// <summary>
+    /// Paths that, when matched by <b>all</b> changed files in a pull request, cause the entire PR to be skipped.
+    /// This is evaluated before <see cref="IncludePaths"/> and <see cref="ExcludePaths"/>.
+    /// </summary>
     public IReadOnlyList<string> SkipPaths { get; set; } = Array.Empty<string>();
+    /// <summary>
+    /// Glob-style patterns specifying which changed files should be considered for review.
+    /// If non-empty, only files matching these patterns are eligible for review.
+    /// </summary>
     public IReadOnlyList<string> IncludePaths { get; set; } = Array.Empty<string>();
+    /// <summary>
+    /// Glob-style patterns specifying changed files that should be excluded from review.
+    /// Matching files are removed from the review list but do not skip the entire PR.
+    /// </summary>
     public IReadOnlyList<string> ExcludePaths { get; set; } = Array.Empty<string>();
     public int MaxFiles { get; set; } = 20;
     public int MaxPatchChars { get; set; } = 4000;

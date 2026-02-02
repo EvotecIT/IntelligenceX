@@ -390,7 +390,11 @@ public static class ReviewerApp {
         return list;
     }
 
-    private static IReadOnlyList<PullRequestFile> FilterFilesByPaths(IReadOnlyList<PullRequestFile> files,
+    /// <summary>
+    /// Filters pull request files using include/exclude glob patterns.
+    /// Include patterns are evaluated first; exclude patterns are applied to the remaining files.
+    /// </summary>
+    internal static IReadOnlyList<PullRequestFile> FilterFilesByPaths(IReadOnlyList<PullRequestFile> files,
         IReadOnlyList<string> includePaths, IReadOnlyList<string> excludePaths) {
         if (files.Count == 0) {
             return files;

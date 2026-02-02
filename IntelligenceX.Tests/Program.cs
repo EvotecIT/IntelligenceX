@@ -60,6 +60,11 @@ internal static class Program {
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
+        failed += Run("Filter files include-only", TestFilterFilesIncludeOnly);
+        failed += Run("Filter files exclude-only", TestFilterFilesExcludeOnly);
+        failed += Run("Filter files include+exclude", TestFilterFilesIncludeExclude);
+        failed += Run("Filter files glob patterns", TestFilterFilesGlobPatterns);
+        failed += Run("Filter files empty filters", TestFilterFilesEmptyFilters);
         failed += Run("Context deny invalid regex", TestContextDenyInvalidRegex);
         failed += Run("Context deny timeout", TestContextDenyTimeout);
         failed += Run("Review summary parser", TestReviewSummaryParser);
@@ -569,6 +574,58 @@ internal static class Program {
         AssertEqual("https://github.company.local", defaultBase.GetLeftPart(UriPartial.Authority), "base uri default");
     }
 
+    private static void TestFilterFilesIncludeOnly() {
+        var files = BuildFiles("src/app.cs", "docs/readme.md", "tests/test.cs");
+        var filtered = ReviewerApp.FilterFilesByPaths(files, new[] { "src/**", "tests/*.cs" }, Array.Empty<string>());
+        AssertSequenceEqual(new[] { "src/app.cs", "tests/test.cs" }, GetFilenames(filtered), "include-only");
+    }
+
+    private static void TestFilterFilesExcludeOnly() {
+        var files = BuildFiles("src/app.cs", "docs/readme.md", "tests/test.cs");
+        var filtered = ReviewerApp.FilterFilesByPaths(files, Array.Empty<string>(), new[] { "**/*.md" });
+        AssertSequenceEqual(new[] { "src/app.cs", "tests/test.cs" }, GetFilenames(filtered), "exclude-only");
+    }
+
+    private static void TestFilterFilesIncludeExclude() {
+        var files = BuildFiles("src/app.cs", "src/appTest.cs", "tests/test.cs");
+        var filtered = ReviewerApp.FilterFilesByPaths(files, new[] { "**/*.cs" }, new[] { "**/*Test.cs", "tests/**" });
+        AssertSequenceEqual(new[] { "src/app.cs" }, GetFilenames(filtered), "include+exclude");
+    }
+
+    private static void TestFilterFilesGlobPatterns() {
+        var files = BuildFiles("docs/readme.md", "docs/nested/guide.md", "docs/notes.txt");
+        var filteredSingle = ReviewerApp.FilterFilesByPaths(files, new[] { "docs/*.md" }, Array.Empty<string>());
+        AssertSequenceEqual(new[] { "docs/readme.md" }, GetFilenames(filteredSingle), "glob single");
+
+        var filteredDeep = ReviewerApp.FilterFilesByPaths(files, new[] { "docs/**/*.md" }, Array.Empty<string>());
+        AssertSequenceEqual(new[] { "docs/nested/guide.md" }, GetFilenames(filteredDeep), "glob deep");
+
+        var filteredAll = ReviewerApp.FilterFilesByPaths(files, new[] { "docs/*.md", "docs/**/*.md" }, Array.Empty<string>());
+        AssertSequenceEqual(new[] { "docs/readme.md", "docs/nested/guide.md" }, GetFilenames(filteredAll), "glob combined");
+    }
+
+    private static void TestFilterFilesEmptyFilters() {
+        var files = BuildFiles("src/app.cs", "docs/readme.md");
+        var filtered = ReviewerApp.FilterFilesByPaths(files, Array.Empty<string>(), Array.Empty<string>());
+        AssertSequenceEqual(new[] { "src/app.cs", "docs/readme.md" }, GetFilenames(filtered), "empty filters");
+    }
+
+    private static PullRequestFile[] BuildFiles(params string[] paths) {
+        var files = new PullRequestFile[paths.Length];
+        for (var i = 0; i < paths.Length; i++) {
+            files[i] = new PullRequestFile(paths[i], "modified", null);
+        }
+        return files;
+    }
+
+    private static IReadOnlyList<string> GetFilenames(IReadOnlyList<PullRequestFile> files) {
+        var names = new List<string>(files.Count);
+        foreach (var file in files) {
+            names.Add(file.Filename);
+        }
+        return names;
+    }
+
     private static void TestContextDenyInvalidRegex() {
         var matched = ContextDenyMatcher.Matches("hello world", new[] { "[", "poem" });
         AssertEqual(false, matched, "invalid regex match");
@@ -628,6 +685,7 @@ internal static class Program {
             }
         }
     }
+
 
     private static void AssertContains(IReadOnlyList<string> values, string expected, string name) {
         foreach (var value in values) {
