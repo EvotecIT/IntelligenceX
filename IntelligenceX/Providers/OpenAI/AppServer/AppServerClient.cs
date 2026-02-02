@@ -12,6 +12,9 @@ using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI.AppServer;
 
+/// <summary>
+/// Low-level client for the OpenAI app-server JSON-RPC protocol.
+/// </summary>
 public sealed class AppServerClient : IDisposable {
     private readonly Process _process;
     private readonly StreamWriter _stdin;
@@ -45,16 +48,48 @@ public sealed class AppServerClient : IDisposable {
         }
     }
 
+    /// <summary>
+    /// Raised when a JSON-RPC notification is received.
+    /// </summary>
     public event EventHandler<JsonRpcNotificationEventArgs>? NotificationReceived;
+    /// <summary>
+    /// Raised when an inbound request is received.
+    /// </summary>
     public event EventHandler<JsonRpcRequestEventArgs>? RequestReceived;
+    /// <summary>
+    /// Raised when a protocol parsing error occurs.
+    /// </summary>
     public event EventHandler<Exception>? ProtocolError;
+    /// <summary>
+    /// Raised when a line is received on standard error.
+    /// </summary>
     public event EventHandler<string>? StandardErrorReceived;
+    /// <summary>
+    /// Raised when a protocol line is received.
+    /// </summary>
     public event EventHandler<string>? ProtocolLineReceived;
+    /// <summary>
+    /// Raised when an RPC call starts.
+    /// </summary>
     public event EventHandler<RpcCallStartedEventArgs>? RpcCallStarted;
+    /// <summary>
+    /// Raised when an RPC call completes.
+    /// </summary>
     public event EventHandler<RpcCallCompletedEventArgs>? RpcCallCompleted;
+    /// <summary>
+    /// Raised when a login flow starts.
+    /// </summary>
     public event EventHandler<LoginEventArgs>? LoginStarted;
+    /// <summary>
+    /// Raised when a login flow completes.
+    /// </summary>
     public event EventHandler<LoginEventArgs>? LoginCompleted;
 
+    /// <summary>
+    /// Starts the app-server process and returns a connected client.
+    /// </summary>
+    /// <param name="options">Optional app-server options.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public static async Task<AppServerClient> StartAsync(AppServerOptions? options = null, CancellationToken cancellationToken = default) {
         options ??= new AppServerOptions();
         options.Validate();
@@ -134,6 +169,11 @@ public sealed class AppServerClient : IDisposable {
         return Task.FromResult(new AppServerClient(process, stdin, stdout, stderr, options.ShutdownTimeout, options.RpcRetry));
     }
 
+    /// <summary>
+    /// Initializes the app-server with client metadata.
+    /// </summary>
+    /// <param name="clientInfo">Client identity information.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task InitializeAsync(ClientInfo clientInfo, CancellationToken cancellationToken = default) {
         Guard.NotNull(clientInfo, nameof(clientInfo));
 
@@ -147,6 +187,12 @@ public sealed class AppServerClient : IDisposable {
         await _rpc.NotifyAsync("initialized", (JsonObject?)null, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Executes a health check call.
+    /// </summary>
+    /// <param name="method">Optional method override.</param>
+    /// <param name="timeout">Optional timeout.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<HealthCheckResult> HealthCheckAsync(string? method = null, TimeSpan? timeout = null,
         CancellationToken cancellationToken = default) {
         var sw = Stopwatch.StartNew();
@@ -166,6 +212,10 @@ public sealed class AppServerClient : IDisposable {
         return RpcRetryHelper.ExecuteAsync(token => _rpc.CallAsync(method, parameters, token), _rpcRetry, idempotent, cancellationToken);
     }
 
+    /// <summary>
+    /// Starts a ChatGPT login flow.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<ChatGptLoginStart> StartChatGptLoginAsync(CancellationToken cancellationToken = default) {
         var parameters = new JsonObject().Add("type", "chatgpt");
         var result = await CallWithRetryAsync("account/login/start", parameters, false, cancellationToken).ConfigureAwait(false);
@@ -178,6 +228,11 @@ public sealed class AppServerClient : IDisposable {
         return login;
     }
 
+    /// <summary>
+    /// Logs in using an API key.
+    /// </summary>
+    /// <param name="apiKey">API key.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public Task LoginWithApiKeyAsync(string apiKey, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(apiKey, nameof(apiKey));
         LoginStarted?.Invoke(this, new LoginEventArgs("apikey"));
@@ -193,6 +248,10 @@ public sealed class AppServerClient : IDisposable {
             }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default).Unwrap();
     }
 
+    /// <summary>
+    /// Reads account information.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<AccountInfo> ReadAccountAsync(CancellationToken cancellationToken = default) {
         var result = await CallWithRetryAsync("account/read", (JsonObject?)null, true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
@@ -202,9 +261,21 @@ public sealed class AppServerClient : IDisposable {
         return AccountInfo.FromJson(obj);
     }
 
+    /// <summary>
+    /// Logs out of the current session.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public Task LogoutAsync(CancellationToken cancellationToken = default)
         => CallWithRetryAsync("account/logout", (JsonObject?)null, false, cancellationToken);
 
+    /// <summary>
+    /// Starts a new chat thread.
+    /// </summary>
+    /// <param name="model">Model name.</param>
+    /// <param name="currentDirectory">Optional working directory.</param>
+    /// <param name="approvalPolicy">Optional approval policy.</param>
+    /// <param name="sandbox">Optional sandbox mode.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<ThreadInfo> StartThreadAsync(string model, string? currentDirectory = null, string? approvalPolicy = null,
         string? sandbox = null, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(model, nameof(model));
@@ -230,10 +301,26 @@ public sealed class AppServerClient : IDisposable {
         return ThreadInfo.FromJson(threadObj);
     }
 
+    /// <summary>
+    /// Starts a turn with a text-only input.
+    /// </summary>
+    /// <param name="threadId">Thread id.</param>
+    /// <param name="text">Prompt text.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<TurnInfo> StartTurnAsync(string threadId, string text, CancellationToken cancellationToken = default) {
         return await StartTurnAsync(threadId, text, null, null, null, null, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Starts a turn with a text-only input and optional overrides.
+    /// </summary>
+    /// <param name="threadId">Thread id.</param>
+    /// <param name="text">Prompt text.</param>
+    /// <param name="model">Optional model override.</param>
+    /// <param name="currentDirectory">Optional working directory.</param>
+    /// <param name="approvalPolicy">Optional approval policy.</param>
+    /// <param name="sandboxPolicy">Optional sandbox policy.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<TurnInfo> StartTurnAsync(string threadId, string text, string? model, string? currentDirectory,
         string? approvalPolicy, SandboxPolicy? sandboxPolicy, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
@@ -249,6 +336,16 @@ public sealed class AppServerClient : IDisposable {
         return await StartTurnAsync(parameters, model, currentDirectory, approvalPolicy, sandboxPolicy, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Starts a turn with a structured input payload.
+    /// </summary>
+    /// <param name="threadId">Thread id.</param>
+    /// <param name="input">Input items.</param>
+    /// <param name="model">Optional model override.</param>
+    /// <param name="currentDirectory">Optional working directory.</param>
+    /// <param name="approvalPolicy">Optional approval policy.</param>
+    /// <param name="sandboxPolicy">Optional sandbox policy.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<TurnInfo> StartTurnAsync(string threadId, JsonArray input, string? model, string? currentDirectory,
         string? approvalPolicy, SandboxPolicy? sandboxPolicy, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
@@ -284,6 +381,11 @@ public sealed class AppServerClient : IDisposable {
         return TurnInfo.FromJson(turnObj);
     }
 
+    /// <summary>
+    /// Resumes a thread by id.
+    /// </summary>
+    /// <param name="threadId">Thread id.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<ThreadInfo> ResumeThreadAsync(string threadId, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
         var parameters = new JsonObject().Add("threadId", threadId);
@@ -296,6 +398,11 @@ public sealed class AppServerClient : IDisposable {
         return ThreadInfo.FromJson(threadObj);
     }
 
+    /// <summary>
+    /// Forks a thread by id.
+    /// </summary>
+    /// <param name="threadId">Thread id.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<ThreadInfo> ForkThreadAsync(string threadId, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
         var parameters = new JsonObject().Add("threadId", threadId);
@@ -308,6 +415,14 @@ public sealed class AppServerClient : IDisposable {
         return ThreadInfo.FromJson(threadObj);
     }
 
+    /// <summary>
+    /// Lists threads with optional filters.
+    /// </summary>
+    /// <param name="cursor">Pagination cursor.</param>
+    /// <param name="limit">Maximum number of items.</param>
+    /// <param name="sortKey">Sort key.</param>
+    /// <param name="modelProviders">Optional model provider filter.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<ThreadListResult> ListThreadsAsync(string? cursor = null, int? limit = null, string? sortKey = null,
         IReadOnlyList<string>? modelProviders = null, CancellationToken cancellationToken = default) {
         var parameters = new JsonObject();
@@ -336,6 +451,10 @@ public sealed class AppServerClient : IDisposable {
         return ThreadListResult.FromJson(obj);
     }
 
+    /// <summary>
+    /// Lists currently loaded thread ids.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<ThreadIdListResult> ListLoadedThreadsAsync(CancellationToken cancellationToken = default) {
         var result = await CallWithRetryAsync("thread/loaded/list", (JsonObject?)null, true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
@@ -345,12 +464,23 @@ public sealed class AppServerClient : IDisposable {
         return ThreadIdListResult.FromJson(obj);
     }
 
+    /// <summary>
+    /// Archives a thread by id.
+    /// </summary>
+    /// <param name="threadId">Thread id.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public Task ArchiveThreadAsync(string threadId, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
         var parameters = new JsonObject().Add("threadId", threadId);
         return CallWithRetryAsync("thread/archive", parameters, false, cancellationToken);
     }
 
+    /// <summary>
+    /// Rolls back a thread by a number of turns.
+    /// </summary>
+    /// <param name="threadId">Thread id.</param>
+    /// <param name="turns">Number of turns to roll back.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<ThreadInfo> RollbackThreadAsync(string threadId, int turns, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
         var parameters = new JsonObject()
@@ -365,6 +495,12 @@ public sealed class AppServerClient : IDisposable {
         return ThreadInfo.FromJson(threadObj);
     }
 
+    /// <summary>
+    /// Interrupts an in-flight turn.
+    /// </summary>
+    /// <param name="threadId">Thread id.</param>
+    /// <param name="turnId">Turn id.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public Task InterruptTurnAsync(string threadId, string turnId, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
         Guard.NotNullOrWhiteSpace(turnId, nameof(turnId));
@@ -374,6 +510,13 @@ public sealed class AppServerClient : IDisposable {
         return CallWithRetryAsync("turn/interrupt", parameters, false, cancellationToken);
     }
 
+    /// <summary>
+    /// Starts a review for a thread.
+    /// </summary>
+    /// <param name="threadId">Thread id.</param>
+    /// <param name="delivery">Delivery channel.</param>
+    /// <param name="target">Review target.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<ReviewStartResult> StartReviewAsync(string threadId, string delivery, ReviewTarget target, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
         Guard.NotNullOrWhiteSpace(delivery, nameof(delivery));
@@ -392,6 +535,11 @@ public sealed class AppServerClient : IDisposable {
         return ReviewStartResult.FromJson(obj);
     }
 
+    /// <summary>
+    /// Executes a command through the app-server.
+    /// </summary>
+    /// <param name="request">Command execution request.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<CommandExecResult> ExecuteCommandAsync(CommandExecRequest request, CancellationToken cancellationToken = default) {
         Guard.NotNull(request, nameof(request));
 
@@ -420,6 +568,10 @@ public sealed class AppServerClient : IDisposable {
         return CommandExecResult.FromJson(obj);
     }
 
+    /// <summary>
+    /// Lists available models.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<ModelListResult> ListModelsAsync(CancellationToken cancellationToken = default) {
         var result = await CallWithRetryAsync("model/list", (JsonObject?)null, true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
@@ -429,6 +581,10 @@ public sealed class AppServerClient : IDisposable {
         return ModelListResult.FromJson(obj);
     }
 
+    /// <summary>
+    /// Lists available collaboration modes.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<CollaborationModeListResult> ListCollaborationModesAsync(CancellationToken cancellationToken = default) {
         var result = await CallWithRetryAsync("collaborationMode/list", (JsonObject?)null, true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
@@ -438,6 +594,12 @@ public sealed class AppServerClient : IDisposable {
         return CollaborationModeListResult.FromJson(obj);
     }
 
+    /// <summary>
+    /// Lists available skills.
+    /// </summary>
+    /// <param name="cwds">Optional working directories to query.</param>
+    /// <param name="forceReload">Whether to force reload.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<SkillListResult> ListSkillsAsync(IReadOnlyList<string>? cwds = null, bool? forceReload = null,
         CancellationToken cancellationToken = default) {
         var parameters = new JsonObject();
@@ -459,6 +621,12 @@ public sealed class AppServerClient : IDisposable {
         return SkillListResult.FromJson(obj);
     }
 
+    /// <summary>
+    /// Writes a skill configuration entry.
+    /// </summary>
+    /// <param name="path">Skill path.</param>
+    /// <param name="enabled">Whether the skill is enabled.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public Task WriteSkillConfigAsync(string path, bool enabled, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(path, nameof(path));
         var parameters = new JsonObject()
@@ -467,6 +635,10 @@ public sealed class AppServerClient : IDisposable {
         return CallWithRetryAsync("skills/config/write", parameters, false, cancellationToken);
     }
 
+    /// <summary>
+    /// Reads the current configuration.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<ConfigReadResult> ReadConfigAsync(CancellationToken cancellationToken = default) {
         var result = await CallWithRetryAsync("config/read", (JsonObject?)null, true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
@@ -476,6 +648,12 @@ public sealed class AppServerClient : IDisposable {
         return ConfigReadResult.FromJson(obj);
     }
 
+    /// <summary>
+    /// Writes a single configuration value.
+    /// </summary>
+    /// <param name="key">Configuration key.</param>
+    /// <param name="value">Configuration value.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public Task WriteConfigValueAsync(string key, JsonValue value, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(key, nameof(key));
         Guard.NotNull(value, nameof(value));
@@ -485,6 +663,11 @@ public sealed class AppServerClient : IDisposable {
         return CallWithRetryAsync("config/value/write", parameters, false, cancellationToken);
     }
 
+    /// <summary>
+    /// Writes a batch of configuration values.
+    /// </summary>
+    /// <param name="entries">Entries to write.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public Task WriteConfigBatchAsync(IReadOnlyList<ConfigEntry> entries, CancellationToken cancellationToken = default) {
         Guard.NotNull(entries, nameof(entries));
         var items = new JsonArray();
@@ -497,6 +680,10 @@ public sealed class AppServerClient : IDisposable {
         return CallWithRetryAsync("config/batchWrite", parameters, false, cancellationToken);
     }
 
+    /// <summary>
+    /// Reads configuration requirements.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<ConfigRequirementsReadResult> ReadConfigRequirementsAsync(CancellationToken cancellationToken = default) {
         var result = await CallWithRetryAsync("configRequirements/read", (JsonObject?)null, true, cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
@@ -506,6 +693,12 @@ public sealed class AppServerClient : IDisposable {
         return ConfigRequirementsReadResult.FromJson(obj);
     }
 
+    /// <summary>
+    /// Starts an MCP OAuth login flow.
+    /// </summary>
+    /// <param name="serverId">Optional server id.</param>
+    /// <param name="serverName">Optional server name.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<McpOauthLoginStart> StartMcpOauthLoginAsync(string? serverId, string? serverName = null,
         CancellationToken cancellationToken = default) {
         var parameters = new JsonObject();
@@ -523,6 +716,12 @@ public sealed class AppServerClient : IDisposable {
         return McpOauthLoginStart.FromJson(obj);
     }
 
+    /// <summary>
+    /// Lists MCP server status entries.
+    /// </summary>
+    /// <param name="cursor">Pagination cursor.</param>
+    /// <param name="limit">Maximum number of items.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<McpServerStatusListResult> ListMcpServerStatusAsync(string? cursor = null, int? limit = null,
         CancellationToken cancellationToken = default) {
         var parameters = new JsonObject();
@@ -540,10 +739,19 @@ public sealed class AppServerClient : IDisposable {
         return McpServerStatusListResult.FromJson(obj);
     }
 
+    /// <summary>
+    /// Reloads MCP server configuration.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task ReloadMcpServerConfigAsync(CancellationToken cancellationToken = default) {
         await CallWithRetryAsync("config/mcpServer/reload", (JsonObject?)null, false, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Requests user input responses.
+    /// </summary>
+    /// <param name="questions">Questions to prompt.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<UserInputResponse> RequestUserInputAsync(IReadOnlyList<string> questions, CancellationToken cancellationToken = default) {
         Guard.NotNull(questions, nameof(questions));
         var array = new JsonArray();
@@ -559,20 +767,42 @@ public sealed class AppServerClient : IDisposable {
         return UserInputResponse.FromJson(obj);
     }
 
+    /// <summary>
+    /// Uploads feedback content.
+    /// </summary>
+    /// <param name="content">Feedback content.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public Task UploadFeedbackAsync(string content, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(content, nameof(content));
         var parameters = new JsonObject().Add("content", content);
         return CallWithRetryAsync("feedback/upload", parameters, false, cancellationToken);
     }
 
+    /// <summary>
+    /// Executes a raw JSON-RPC call.
+    /// </summary>
+    /// <param name="method">Method name.</param>
+    /// <param name="parameters">Optional parameters.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public Task<JsonValue?> CallAsync(string method, JsonObject? parameters, CancellationToken cancellationToken = default) {
         return _rpc.CallAsync(method, parameters, cancellationToken);
     }
 
+    /// <summary>
+    /// Sends a JSON-RPC notification.
+    /// </summary>
+    /// <param name="method">Method name.</param>
+    /// <param name="parameters">Optional parameters.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public Task NotifyAsync(string method, JsonObject? parameters, CancellationToken cancellationToken = default) {
         return _rpc.NotifyAsync(method, parameters, cancellationToken);
     }
 
+    /// <summary>
+    /// Waits for a login completion notification.
+    /// </summary>
+    /// <param name="loginId">Optional login id to match.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public Task WaitForLoginCompletionAsync(string? loginId = null, CancellationToken cancellationToken = default) {
         var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -674,6 +904,9 @@ public sealed class AppServerClient : IDisposable {
 #endif
     }
 
+    /// <summary>
+    /// Disposes the app-server client and underlying process.
+    /// </summary>
     public void Dispose() {
         if (_disposed) {
             return;
