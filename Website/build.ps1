@@ -17,29 +17,32 @@
 
 param(
     [switch]$Serve,
-    [int]$Port = 8080
+    [int]$Port = 8080,
+    [switch]$SkipBuildTool
 )
 
 $ErrorActionPreference = 'Stop'
 Push-Location $PSScriptRoot
 
-# Resolve PowerForge.Web.Cli executable
+# Resolve PowerForge.Web.Cli executable (prefer local fresh build)
 $PowerForge = $null
+$PowerForgeRoot = 'C:\Support\GitHub\PSPublishModule'
+$PowerForgeCliProject = Join-Path $PowerForgeRoot 'PowerForge.Web.Cli\PowerForge.Web.Cli.csproj'
+$PowerForgeReleaseExe = Join-Path $PowerForgeRoot 'PowerForge.Web.Cli\bin\Release\net10.0\PowerForge.Web.Cli.exe'
+$PowerForgeDebugExe = Join-Path $PowerForgeRoot 'PowerForge.Web.Cli\bin\Debug\net10.0\PowerForge.Web.Cli.exe'
 
-# 1. Check if powerforge-web is on PATH (global tool / published)
-$PowerForge = Get-Command powerforge-web -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
+if (-not $SkipBuildTool -and (Test-Path $PowerForgeCliProject)) {
+    Write-Host "Building PowerForge.Web.Cli..." -ForegroundColor Cyan
+    dotnet build $PowerForgeCliProject -c Release | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "PowerForge.Web.Cli build failed (exit code $LASTEXITCODE)" }
+}
 
-# 2. Fallback to local PSPublishModule build
-if (-not $PowerForge) {
-    $localPaths = @(
-        'C:\Support\GitHub\PSPublishModule\PowerForge.Web.Cli\bin\Release\net10.0\PowerForge.Web.Cli.exe'
-        'C:\Support\GitHub\PSPublishModule\PowerForge.Web.Cli\bin\Release\net8.0\PowerForge.Web.Cli.exe'
-        'C:\Support\GitHub\PSPublishModule\PowerForge.Web.Cli\bin\Debug\net10.0\PowerForge.Web.Cli.exe'
-        'C:\Support\GitHub\PSPublishModule\PowerForge.Web.Cli\bin\Debug\net8.0\PowerForge.Web.Cli.exe'
-    )
-    foreach ($p in $localPaths) {
-        if (Test-Path $p) { $PowerForge = $p; break }
-    }
+if (Test-Path $PowerForgeReleaseExe) {
+    $PowerForge = $PowerForgeReleaseExe
+} elseif (Test-Path $PowerForgeDebugExe) {
+    $PowerForge = $PowerForgeDebugExe
+} else {
+    $PowerForge = Get-Command powerforge-web -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
 }
 
 if (-not $PowerForge) {
