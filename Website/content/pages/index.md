@@ -152,56 +152,56 @@ meta.raw_html: true
         <button class="code-tab" data-tab="powershell">PowerShell</button>
     </div>
     <div class="code-panel active" data-panel="workflow">
-<pre><code><span style="color:#94A3B8"># .github/workflows/review-intelligencex.yml</span>
-<span style="color:#00D9FF">jobs</span>:
-  <span style="color:#00D9FF">review</span>:
-    <span style="color:#8B5CF6">uses</span>: evotecit/github-actions/.github/workflows/review-intelligencex.yml@master
-    <span style="color:#8B5CF6">with</span>:
-      <span style="color:#8B5CF6">reviewer_source</span>: release
-      <span style="color:#8B5CF6">openai_transport</span>: native
-      <span style="color:#8B5CF6">output_style</span>: claude
-      <span style="color:#8B5CF6">style</span>: colorful
-    <span style="color:#8B5CF6">secrets</span>: inherit</code></pre>
+<pre><code class="language-yaml"># .github/workflows/review-intelligencex.yml
+jobs:
+  review:
+    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@master
+    with:
+      reviewer_source: release
+      openai_transport: native
+      output_style: claude
+      style: colorful
+    secrets: inherit</code></pre>
     </div>
     <div class="code-panel" data-panel="config">
-<pre><code>{
-  <span style="color:#00D9FF">"review"</span>: {
-    <span style="color:#8B5CF6">"provider"</span>: <span style="color:#10B981">"openai"</span>,
-    <span style="color:#8B5CF6">"model"</span>: <span style="color:#10B981">"gpt-5.2-codex"</span>,
-    <span style="color:#8B5CF6">"mode"</span>: <span style="color:#10B981">"hybrid"</span>,
-    <span style="color:#8B5CF6">"length"</span>: <span style="color:#10B981">"long"</span>,
-    <span style="color:#8B5CF6">"outputStyle"</span>: <span style="color:#10B981">"claude"</span>,
-    <span style="color:#8B5CF6">"reviewUsageSummary"</span>: <span style="color:#F59E0B">false</span>
+<pre><code class="language-json">{
+  "review": {
+    "provider": "openai",
+    "model": "gpt-5.2-codex",
+    "mode": "hybrid",
+    "length": "long",
+    "outputStyle": "claude",
+    "reviewUsageSummary": false
   }
 }</code></pre>
     </div>
     <div class="code-panel" data-panel="csharp">
-<pre><code><span style="color:#8B5CF6">using</span> IntelligenceX.OpenAI;
+<pre><code class="language-csharp">using IntelligenceX.OpenAI;
 
-<span style="color:#94A3B8">// One-liner - send a message and get a response</span>
-<span style="color:#8B5CF6">var</span> result = <span style="color:#8B5CF6">await</span> Easy.ChatAsync(<span style="color:#10B981">"Review this code for security issues"</span>);
+// One-liner - send a message and get a response
+var result = await Easy.ChatAsync("Review this code for security issues");
 Console.WriteLine(result.Text);
 
-<span style="color:#94A3B8">// Full app-server client</span>
-<span style="color:#8B5CF6">var</span> client = <span style="color:#8B5CF6">await</span> AppServerClient.StartAsync(<span style="color:#8B5CF6">new</span> AppServerOptions {
-    ExecutablePath = <span style="color:#10B981">"codex"</span>,
-    Arguments = <span style="color:#10B981">"app-server"</span>
+// Full app-server client
+var client = await AppServerClient.StartAsync(new AppServerOptions {
+    ExecutablePath = "codex",
+    Arguments = "app-server"
 });
-<span style="color:#8B5CF6">var</span> thread = <span style="color:#8B5CF6">await</span> client.StartThreadAsync(<span style="color:#10B981">"gpt-5.2-codex"</span>);
-<span style="color:#8B5CF6">await</span> client.StartTurnAsync(thread.Id, <span style="color:#10B981">"Hello from IntelligenceX"</span>);</code></pre>
+var thread = await client.StartThreadAsync("gpt-5.2-codex");
+await client.StartTurnAsync(thread.Id, "Hello from IntelligenceX");</code></pre>
     </div>
     <div class="code-panel" data-panel="powershell">
-<pre><code><span style="color:#94A3B8"># Import and connect</span>
+<pre><code class="language-powershell"># Import and connect
 Import-Module IntelligenceX
 
-<span style="color:#00D9FF">$session</span> = Connect-IntelligenceX -Diagnostics
+$session = Connect-IntelligenceX -Diagnostics
 Initialize-IntelligenceX
 Start-IntelligenceXLogin
 Wait-IntelligenceXLogin
 
-<span style="color:#94A3B8"># Start a thread and send a message</span>
-<span style="color:#00D9FF">$thread</span> = Start-IntelligenceXThread -Model <span style="color:#10B981">'gpt-5.2-codex'</span>
-Send-IntelligenceXMessage -ThreadId <span style="color:#00D9FF">$thread</span>.Id -Content <span style="color:#10B981">'Analyze this code'</span>
+# Start a thread and send a message
+$thread = Start-IntelligenceXThread -Model 'gpt-5.2-codex'
+Send-IntelligenceXMessage -ThreadId $thread.Id -Content 'Analyze this code'
 
 Disconnect-IntelligenceX</code></pre>
     </div>
