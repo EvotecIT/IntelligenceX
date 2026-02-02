@@ -9,6 +9,9 @@ using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI;
 
+/// <summary>
+/// Provides a simplified session wrapper for chat interactions.
+/// </summary>
 public sealed class EasySession : IDisposable
 #if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
     , IAsyncDisposable
@@ -23,8 +26,16 @@ public sealed class EasySession : IDisposable
         _options = options;
     }
 
+    /// <summary>
+    /// Gets the underlying client instance.
+    /// </summary>
     public IntelligenceXClient Client => _client;
 
+    /// <summary>
+    /// Creates and initializes a new easy session.
+    /// </summary>
+    /// <param name="options">Optional session options.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public static async Task<EasySession> StartAsync(EasySessionOptions? options = null, CancellationToken cancellationToken = default) {
         options ??= new EasySessionOptions();
         options.Validate();
@@ -42,17 +53,40 @@ public sealed class EasySession : IDisposable
         return session;
     }
 
+    /// <summary>
+    /// Subscribes to streaming text deltas.
+    /// </summary>
+    /// <param name="onDelta">Callback invoked for each delta.</param>
+    /// <returns>A subscription token that should be disposed to unsubscribe.</returns>
     public IDisposable SubscribeDelta(Action<string> onDelta) => _client.SubscribeDelta(onDelta);
 
+    /// <summary>
+    /// Sends a text-only chat request.
+    /// </summary>
+    /// <param name="text">Prompt text.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public Task<TurnInfo> ChatAsync(string text, CancellationToken cancellationToken = default) {
         return ChatAsync(ChatInput.FromText(text), null, cancellationToken);
     }
 
+    /// <summary>
+    /// Sends a text-only chat request and returns a simplified result.
+    /// </summary>
+    /// <param name="text">Prompt text.</param>
+    /// <param name="options">Optional chat options.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<EasyChatResult> AskAsync(string text, EasyChatOptions? options = null, CancellationToken cancellationToken = default) {
         var turn = await ChatAsync(ChatInput.FromText(text), options, cancellationToken).ConfigureAwait(false);
         return EasyChatResult.FromTurn(turn);
     }
 
+    /// <summary>
+    /// Sends a chat request with a local image and returns a simplified result.
+    /// </summary>
+    /// <param name="text">Prompt text.</param>
+    /// <param name="imagePath">Local image path.</param>
+    /// <param name="options">Optional chat options.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<EasyChatResult> AskWithImagePathAsync(string text, string imagePath, EasyChatOptions? options = null,
         CancellationToken cancellationToken = default) {
         var input = ChatInput.FromTextWithImagePath(text, imagePath);
@@ -60,6 +94,13 @@ public sealed class EasySession : IDisposable
         return EasyChatResult.FromTurn(turn);
     }
 
+    /// <summary>
+    /// Sends a chat request with an image URL and returns a simplified result.
+    /// </summary>
+    /// <param name="text">Prompt text.</param>
+    /// <param name="imageUrl">Image URL.</param>
+    /// <param name="options">Optional chat options.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<EasyChatResult> AskWithImageUrlAsync(string text, string imageUrl, EasyChatOptions? options = null,
         CancellationToken cancellationToken = default) {
         var input = ChatInput.FromTextWithImageUrl(text, imageUrl);
@@ -67,18 +108,38 @@ public sealed class EasySession : IDisposable
         return EasyChatResult.FromTurn(turn);
     }
 
+    /// <summary>
+    /// Sends a chat request with a local image and returns the raw turn info.
+    /// </summary>
+    /// <param name="text">Prompt text.</param>
+    /// <param name="imagePath">Local image path.</param>
+    /// <param name="options">Optional chat options.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public Task<TurnInfo> ChatWithImagePathAsync(string text, string imagePath, EasyChatOptions? options = null,
         CancellationToken cancellationToken = default) {
         var input = ChatInput.FromTextWithImagePath(text, imagePath);
         return ChatAsync(input, options, cancellationToken);
     }
 
+    /// <summary>
+    /// Sends a chat request with an image URL and returns the raw turn info.
+    /// </summary>
+    /// <param name="text">Prompt text.</param>
+    /// <param name="imageUrl">Image URL.</param>
+    /// <param name="options">Optional chat options.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public Task<TurnInfo> ChatWithImageUrlAsync(string text, string imageUrl, EasyChatOptions? options = null,
         CancellationToken cancellationToken = default) {
         var input = ChatInput.FromTextWithImageUrl(text, imageUrl);
         return ChatAsync(input, options, cancellationToken);
     }
 
+    /// <summary>
+    /// Sends a chat request with the specified input.
+    /// </summary>
+    /// <param name="input">Chat input payload.</param>
+    /// <param name="options">Optional chat options.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<TurnInfo> ChatAsync(ChatInput input, EasyChatOptions? options = null, CancellationToken cancellationToken = default) {
         await EnsureLoggedInAsync(cancellationToken).ConfigureAwait(false);
 
@@ -107,6 +168,10 @@ public sealed class EasySession : IDisposable
         return await _client.ChatAsync(input, chatOptions, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Ensures the session is authenticated before issuing requests.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task EnsureLoggedInAsync(CancellationToken cancellationToken = default) {
         if (_options.ValidateLoginOnEachRequest && _loggedIn) {
             if (!await TryReadAccountAsync(cancellationToken).ConfigureAwait(false)) {
@@ -245,6 +310,9 @@ public sealed class EasySession : IDisposable
         }
     }
 
+    /// <summary>
+    /// Disposes the underlying client synchronously.
+    /// </summary>
     public void Dispose() {
 #if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
         _client.DisposeAsync().AsTask().GetAwaiter().GetResult();
@@ -254,8 +322,14 @@ public sealed class EasySession : IDisposable
     }
 
 #if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+    /// <summary>
+    /// Disposes the underlying client asynchronously.
+    /// </summary>
     public ValueTask DisposeAsync() => _client.DisposeAsync();
 #else
+    /// <summary>
+    /// Disposes the underlying client asynchronously.
+    /// </summary>
     public Task DisposeAsync() => _client.DisposeAsync();
 #endif
 }
