@@ -25,6 +25,7 @@ public sealed class CmdletSetIntelligenceXConfigBatch : IntelligenceXCmdlet {
     [Parameter(Mandatory = true)]
     public Hashtable Values { get; set; } = new Hashtable();
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         var entries = new List<ConfigEntry>();

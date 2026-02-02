@@ -28,6 +28,7 @@ public sealed class CmdletSetIntelligenceXConfigValue : IntelligenceXCmdlet {
     [Parameter(Mandatory = true)]
     public object? Value { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         var jsonValue = JsonConversion.ToJsonValue(Value);

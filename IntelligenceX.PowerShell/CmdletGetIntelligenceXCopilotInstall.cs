@@ -15,6 +15,7 @@ public sealed class CmdletGetIntelligenceXCopilotInstall : PSCmdlet {
     [Parameter]
     public SwitchParameter Prerelease { get; set; }
 
+    /// <inheritdoc/>
     protected override void ProcessRecord() {
         var commands = CopilotCliInstall.GetInstallCommands(Prerelease.IsPresent);
         foreach (var command in commands) {

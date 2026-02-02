@@ -16,6 +16,7 @@ public sealed class CmdletReloadIntelligenceXMcpServerConfig : IntelligenceXCmdl
     [Parameter(ValueFromPipeline = true)]
     public IntelligenceXClient? Client { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         await resolved.ReloadMcpServerConfigAsync(CancelToken).ConfigureAwait(false);

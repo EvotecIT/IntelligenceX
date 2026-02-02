@@ -206,6 +206,7 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter Raw { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         if (ParameterSetName.Equals("Pipeline", StringComparison.OrdinalIgnoreCase)) {
             var inputObject = InputObject;
@@ -219,6 +220,7 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
         await SendAsync(input).ConfigureAwait(false);
     }
 
+    /// <inheritdoc/>
     protected override async Task EndProcessingAsync() {
         if (!ParameterSetName.Equals("Pipeline", StringComparison.OrdinalIgnoreCase) || _pipelineInputs.Count == 0) {
             return;

@@ -50,6 +50,7 @@ public sealed class CmdletConnectIntelligenceX : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter NoConfig { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var options = new IntelligenceXClientOptions();
         if (!NoConfig.IsPresent && IntelligenceXConfig.TryLoad(out var config)) {

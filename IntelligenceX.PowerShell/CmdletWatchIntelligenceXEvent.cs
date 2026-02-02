@@ -26,6 +26,7 @@ public sealed class CmdletWatchIntelligenceXEvent : IntelligenceXCmdlet {
     [Parameter]
     public string[]? Method { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         void Handler(object? sender, JsonRpcNotificationEventArgs args) {

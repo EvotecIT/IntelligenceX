@@ -28,6 +28,7 @@ public sealed class CmdletInstallIntelligenceXCopilotCli : PSCmdlet {
     [Parameter]
     public SwitchParameter PassThru { get; set; }
 
+    /// <inheritdoc/>
     protected override void ProcessRecord() {
         var command = CopilotCliInstall.GetCommand(Method, Prerelease.IsPresent);
         if (!ShouldProcess($"{command.FileName} {command.Arguments}", "Install Copilot CLI")) {

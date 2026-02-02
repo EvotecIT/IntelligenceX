@@ -61,6 +61,7 @@ public sealed class CmdletInvokeIntelligenceXCommand : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter Raw { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         var request = new CommandExecRequest(Command) {

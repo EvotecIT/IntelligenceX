@@ -49,6 +49,7 @@ public sealed class CmdletStartIntelligenceXReview : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter Raw { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         var target = TargetType switch {

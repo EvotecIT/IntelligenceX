@@ -24,6 +24,7 @@ public sealed class CmdletGetIntelligenceXAccount : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter Raw { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveClient(Client);
         if (Raw.IsPresent) {

@@ -15,6 +15,7 @@ public sealed class CmdletDisconnectIntelligenceX : IntelligenceXCmdlet {
     [Parameter(ValueFromPipeline = true)]
     public IntelligenceXClient? Client { get; set; }
 
+    /// <inheritdoc/>
     protected override Task ProcessRecordAsync() {
         if (Client is null && ClientContext.DefaultClient is null) {
             return Task.CompletedTask;

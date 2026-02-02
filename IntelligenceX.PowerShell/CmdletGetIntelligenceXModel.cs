@@ -26,6 +26,7 @@ public sealed class CmdletGetIntelligenceXModel : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter Raw { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var client = ResolveClient(Client);
         if (client.TransportKind == OpenAITransportKind.AppServer) {

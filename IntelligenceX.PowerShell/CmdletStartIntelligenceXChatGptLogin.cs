@@ -25,6 +25,7 @@ public sealed class CmdletStartIntelligenceXChatGptLogin : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter Raw { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveClient(Client);
         if (Raw.IsPresent) {

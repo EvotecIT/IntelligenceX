@@ -30,6 +30,7 @@ public sealed class CmdletInvokeIntelligenceXRpc : IntelligenceXCmdlet {
     [Parameter]
     public object? Params { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         var parameters = JsonConversion.ToJsonObject(Params);

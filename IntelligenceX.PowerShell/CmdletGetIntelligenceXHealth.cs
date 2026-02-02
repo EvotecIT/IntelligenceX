@@ -67,6 +67,7 @@ public sealed class CmdletGetIntelligenceXHealth : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter CopilotInstallPrerelease { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         HealthCheckResult? openAi = null;
         HealthCheckResult? copilot = null;

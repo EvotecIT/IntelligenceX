@@ -34,6 +34,7 @@ public sealed class CmdletInitializeIntelligenceX : IntelligenceXCmdlet {
     [Parameter(Mandatory = true)]
     public string Version { get; set; } = string.Empty;
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveClient(Client);
         var info = new ClientInfo(Name, Title, Version);

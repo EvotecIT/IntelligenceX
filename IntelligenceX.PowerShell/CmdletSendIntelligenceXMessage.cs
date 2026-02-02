@@ -73,6 +73,7 @@ public sealed class CmdletSendIntelligenceXMessage : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter Raw { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         SandboxPolicy? sandbox = null;

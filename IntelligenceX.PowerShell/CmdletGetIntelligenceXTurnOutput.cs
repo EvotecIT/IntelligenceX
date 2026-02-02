@@ -64,6 +64,7 @@ public sealed class CmdletGetIntelligenceXTurnOutput : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter PassThru { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         if (Turn is null) {
             return;

@@ -22,6 +22,7 @@ public sealed class CmdletSendIntelligenceXFeedback : IntelligenceXCmdlet {
     [Parameter(Mandatory = true)]
     public string Content { get; set; } = string.Empty;
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         await resolved.UploadFeedbackAsync(Content, CancelToken).ConfigureAwait(false);

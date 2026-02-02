@@ -28,6 +28,7 @@ public sealed class CmdletSetIntelligenceXSkill : IntelligenceXCmdlet {
     [Parameter(Mandatory = true)]
     public bool Enabled { get; set; }
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         await resolved.WriteSkillConfigAsync(Path, Enabled, CancelToken).ConfigureAwait(false);

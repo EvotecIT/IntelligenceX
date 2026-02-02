@@ -28,6 +28,7 @@ public sealed class CmdletStopIntelligenceXTurn : IntelligenceXCmdlet {
     [Parameter(Mandatory = true)]
     public string TurnId { get; set; } = string.Empty;
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         await resolved.InterruptTurnAsync(ThreadId, TurnId, CancelToken).ConfigureAwait(false);

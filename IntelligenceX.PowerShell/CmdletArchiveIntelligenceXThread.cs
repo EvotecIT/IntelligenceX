@@ -22,6 +22,7 @@ public sealed class CmdletArchiveIntelligenceXThread : IntelligenceXCmdlet {
     [Parameter(Mandatory = true)]
     public string ThreadId { get; set; } = string.Empty;
 
+    /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
         await resolved.ArchiveThreadAsync(ThreadId, CancelToken).ConfigureAwait(false);
