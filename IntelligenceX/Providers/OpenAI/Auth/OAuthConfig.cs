@@ -2,6 +2,15 @@ using System;
 
 namespace IntelligenceX.OpenAI.Auth;
 
+/// <summary>
+/// OAuth configuration values used for ChatGPT login.
+/// </summary>
+/// <example>
+/// <code>
+/// var config = OAuthConfig.FromEnvironment();
+/// config.Validate();
+/// </code>
+/// </example>
 public sealed class OAuthConfig {
     public string AuthorizeUrl { get; set; } = OpenAICodexDefaults.AuthorizeUrl;
     public string TokenUrl { get; set; } = OpenAICodexDefaults.TokenUrl;
@@ -15,6 +24,9 @@ public sealed class OAuthConfig {
     public bool CodexCliSimplifiedFlow { get; set; } = true;
     public string Originator { get; set; } = "pi";
 
+    /// <summary>
+    /// Loads configuration overrides from environment variables.
+    /// </summary>
     public static OAuthConfig FromEnvironment() {
         var cfg = new OAuthConfig {
             AuthorizeUrl = Environment.GetEnvironmentVariable("OPENAI_AUTH_AUTHORIZE_URL") ?? OpenAICodexDefaults.AuthorizeUrl,
@@ -26,6 +38,9 @@ public sealed class OAuthConfig {
         return cfg;
     }
 
+    /// <summary>
+    /// Validates required OAuth settings.
+    /// </summary>
     public void Validate() {
         if (string.IsNullOrWhiteSpace(AuthorizeUrl)) {
             throw new InvalidOperationException("Missing OPENAI_AUTH_AUTHORIZE_URL.");

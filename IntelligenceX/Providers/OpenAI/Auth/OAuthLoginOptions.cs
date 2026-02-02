@@ -7,6 +7,13 @@ namespace IntelligenceX.OpenAI.Auth;
 /// <summary>
 /// Options for an OAuth login flow.
 /// </summary>
+/// <example>
+/// <code>
+/// var options = new OAuthLoginOptions(OAuthConfig.FromEnvironment()) {
+///     OnAuthUrl = url => { Console.WriteLine(url); return Task.CompletedTask; }
+/// };
+/// </code>
+/// </example>
 public sealed class OAuthLoginOptions {
     /// <summary>
     /// Creates options for the given OAuth configuration.

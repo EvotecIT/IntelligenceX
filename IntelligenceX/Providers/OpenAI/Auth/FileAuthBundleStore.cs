@@ -11,6 +11,13 @@ namespace IntelligenceX.OpenAI.Auth;
 /// <summary>
 /// File-based auth bundle store with optional encryption.
 /// </summary>
+/// <example>
+/// <code>
+/// var store = new FileAuthBundleStore();
+/// await store.SaveAsync(bundle);
+/// var loaded = await store.GetAsync(bundle.Provider, bundle.AccountId);
+/// </code>
+/// </example>
 public sealed class FileAuthBundleStore : IAuthBundleStore {
     private readonly string _path;
     private readonly byte[]? _encryptionKey;
@@ -60,6 +67,12 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
     /// <summary>
     /// Deletes the auth store file.
     /// </summary>
+    /// <example>
+    /// <code>
+    /// var store = new FileAuthBundleStore();
+    /// store.Delete();
+    /// </code>
+    /// </example>
     public void Delete() {
         if (File.Exists(_path)) {
             File.Delete(_path);
