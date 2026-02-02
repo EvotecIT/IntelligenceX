@@ -58,6 +58,15 @@ public sealed class EasySession : IDisposable
         return session;
     }
 
+    /// <summary>
+    /// Subscribes to streamed delta text emitted by the current session.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// using var subscription = session.SubscribeDelta(Console.Write);
+    /// await session.ChatAsync("Write a short haiku about code.");
+    /// </code>
+    /// </example>
     public IDisposable SubscribeDelta(Action<string> onDelta) => _client.SubscribeDelta(onDelta);
 
     /// <summary>
@@ -85,6 +94,15 @@ public sealed class EasySession : IDisposable
         return EasyChatResult.FromTurn(turn);
     }
 
+    /// <summary>
+    /// Sends a text request with an image from a URL.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// var result = await session.AskWithImageUrlAsync("Describe this diagram", "https://example.com/diagram.png");
+    /// Console.WriteLine(result.Text);
+    /// </code>
+    /// </example>
     public async Task<EasyChatResult> AskWithImageUrlAsync(string text, string imageUrl, EasyChatOptions? options = null,
         CancellationToken cancellationToken = default) {
         var input = ChatInput.FromTextWithImageUrl(text, imageUrl);
@@ -92,12 +110,18 @@ public sealed class EasySession : IDisposable
         return EasyChatResult.FromTurn(turn);
     }
 
+    /// <summary>
+    /// Sends a text request with an image from a local path and returns the raw turn.
+    /// </summary>
     public Task<TurnInfo> ChatWithImagePathAsync(string text, string imagePath, EasyChatOptions? options = null,
         CancellationToken cancellationToken = default) {
         var input = ChatInput.FromTextWithImagePath(text, imagePath);
         return ChatAsync(input, options, cancellationToken);
     }
 
+    /// <summary>
+    /// Sends a text request with an image from a URL and returns the raw turn.
+    /// </summary>
     public Task<TurnInfo> ChatWithImageUrlAsync(string text, string imageUrl, EasyChatOptions? options = null,
         CancellationToken cancellationToken = default) {
         var input = ChatInput.FromTextWithImageUrl(text, imageUrl);
