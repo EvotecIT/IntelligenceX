@@ -63,3 +63,7 @@ intelligencex setup wizard
 - Review length and strictness
 - Auto-resolve/triage behavior for bot threads
 - Usage summary line (optional)
+
+## Usage and credits line
+
+Enable `reviewUsageSummary` to append limits/credits (ChatGPT native only). See `./configuration.md`.

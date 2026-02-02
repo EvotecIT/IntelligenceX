@@ -30,6 +30,12 @@ Upload to org secrets (all repos):
 intelligencex auth login --set-github-secret --org my-org --visibility all --github-token $TOKEN
 ```
 
+Set a custom secret name:
+
+```powershell
+intelligencex auth login --set-github-secret MY_AUTH --repo owner/name --github-token $TOKEN
+```
+
 ## Export (manual secret flow)
 
 ```powershell
@@ -47,3 +53,5 @@ intelligencex auth sync-codex
 - Auth store path: `~/.intelligencex/auth.json` (override with `INTELLIGENCEX_AUTH_PATH`)
 - Encryption key: `INTELLIGENCEX_AUTH_KEY` (base64, 32 bytes, .NET 8+)
 - `auth login` uses OAuth PKCE and a loopback redirect by default.
+- GitHub token can come from `--github-token`, `INTELLIGENCEX_GITHUB_TOKEN`, `GITHUB_TOKEN`, or `GH_TOKEN`.
+- Repo/org can be inferred from `GITHUB_REPOSITORY`, `INTELLIGENCEX_GITHUB_REPO`, or git remotes.
