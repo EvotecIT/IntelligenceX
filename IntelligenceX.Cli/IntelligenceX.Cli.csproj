@@ -44,4 +44,10 @@
     <EmbeddedResource Include="Templates\\review-intelligencex.managed.yml" LogicalName="review-intelligencex.managed.yml" />
     <EmbeddedResource Include="Templates\\review-intelligencex.managed.explicit.yml" LogicalName="review-intelligencex.managed.explicit.yml" />
   </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Setup\Web\Assets\index.html" LogicalName="Setup.Web.index.html" />
+    <EmbeddedResource Include="Setup\Web\Assets\wizard.js" LogicalName="Setup.Web.wizard.js" />
+    <EmbeddedResource Include="Setup\Web\Assets\wizard.css" LogicalName="Setup.Web.wizard.css" />
+  </ItemGroup>
 </Project>
