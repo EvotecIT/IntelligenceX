@@ -9,21 +9,39 @@ using IntelligenceX.Json;
 
 namespace IntelligenceX.OpenAI.Usage;
 
+/// <summary>
+/// Cached usage snapshot with a timestamp.
+/// </summary>
 public sealed class ChatGptUsageCacheEntry {
+    /// <summary>
+    /// Creates a cache entry for the given snapshot.
+    /// </summary>
     public ChatGptUsageCacheEntry(ChatGptUsageSnapshot snapshot, DateTimeOffset updatedAt) {
         Snapshot = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
         UpdatedAt = updatedAt;
     }
 
+    /// <summary>
+    /// The cached usage snapshot.
+    /// </summary>
     public ChatGptUsageSnapshot Snapshot { get; }
+    /// <summary>
+    /// When the snapshot was captured.
+    /// </summary>
     public DateTimeOffset UpdatedAt { get; }
 
+    /// <summary>
+    /// Serializes the cache entry to JSON.
+    /// </summary>
     public JsonObject ToJson() {
         return new JsonObject()
             .Add("updated_at", UpdatedAt.ToUnixTimeSeconds())
             .Add("usage", Snapshot.ToJson());
     }
 
+    /// <summary>
+    /// Parses a cache entry from JSON.
+    /// </summary>
     public static ChatGptUsageCacheEntry? FromJson(JsonObject obj) {
         if (obj is null) {
             return null;
@@ -51,7 +69,13 @@ public sealed class ChatGptUsageCacheEntry {
     }
 }
 
+/// <summary>
+/// File-backed cache for ChatGPT usage snapshots.
+/// </summary>
 public static class ChatGptUsageCache {
+    /// <summary>
+    /// Resolves the default cache path (or an override from INTELLIGENCEX_USAGE_PATH).
+    /// </summary>
     public static string ResolveCachePath() {
         var overridePath = Environment.GetEnvironmentVariable("INTELLIGENCEX_USAGE_PATH");
         if (!string.IsNullOrWhiteSpace(overridePath)) {
@@ -64,6 +88,9 @@ public static class ChatGptUsageCache {
         return Path.Combine(home, ".intelligencex", "usage.json");
     }
 
+    /// <summary>
+    /// Attempts to load a cached snapshot from disk.
+    /// </summary>
     public static bool TryLoad(out ChatGptUsageCacheEntry? entry, string? path = null) {
         entry = null;
         try {
@@ -87,6 +114,9 @@ public static class ChatGptUsageCache {
         }
     }
 
+    /// <summary>
+    /// Saves a snapshot to disk (best-effort permissions).
+    /// </summary>
     public static void Save(ChatGptUsageSnapshot snapshot, string? path = null) {
         var resolved = path ?? ResolveCachePath();
         var dir = Path.GetDirectoryName(resolved);
