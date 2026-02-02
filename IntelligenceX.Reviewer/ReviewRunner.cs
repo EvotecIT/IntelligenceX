@@ -46,6 +46,9 @@ internal sealed class ReviewRunner {
                 _settings.RetryCount,
                 _settings.RetryDelaySeconds,
                 _settings.RetryMaxDelaySeconds,
+                Math.Max(1.0, _settings.RetryBackoffMultiplier),
+                Math.Max(0, _settings.RetryJitterMinMs),
+                Math.Max(0, _settings.RetryJitterMaxMs),
                 cancellationToken,
                 ex => ReviewDiagnostics.FormatExceptionSummary(ex, _settings.Diagnostics),
                 _settings.RetryExtraOnResponseEnded ? 1 : 0,
@@ -158,8 +161,17 @@ internal sealed class ReviewRunner {
     }
 
     internal static class ReviewRetryPolicy {
-        public static async Task<string> RunAsync(Func<Task<string>> action, Func<Exception, bool> isTransient,
+        public static Task<string> RunAsync(Func<Task<string>> action, Func<Exception, bool> isTransient,
             int maxAttempts, int retryDelaySeconds, int retryMaxDelaySeconds, CancellationToken cancellationToken,
+            Func<Exception, string>? describeError, int extraAttempts, Func<Exception, bool>? extraRetryPredicate,
+            ReviewRetryState? retryState) {
+            return RunAsync(action, isTransient, maxAttempts, retryDelaySeconds, retryMaxDelaySeconds,
+                2.0, 200, 800, cancellationToken, describeError, extraAttempts, extraRetryPredicate, retryState);
+        }
+
+        public static async Task<string> RunAsync(Func<Task<string>> action, Func<Exception, bool> isTransient,
+            int maxAttempts, int retryDelaySeconds, int retryMaxDelaySeconds, double backoffMultiplier,
+            int retryJitterMinMs, int retryJitterMaxMs, CancellationToken cancellationToken,
             Func<Exception, string>? describeError, int extraAttempts, Func<Exception, bool>? extraRetryPredicate,
             ReviewRetryState? retryState) {
             // maxAttempts includes the initial attempt.
@@ -168,6 +180,9 @@ internal sealed class ReviewRunner {
             var delaySeconds = Math.Max(1, retryDelaySeconds);
             var maxDelaySeconds = Math.Max(delaySeconds, retryMaxDelaySeconds);
             var delay = TimeSpan.FromSeconds(delaySeconds);
+            var jitterMin = Math.Max(0, retryJitterMinMs);
+            var jitterMax = Math.Max(jitterMin, retryJitterMaxMs);
+            var backoff = Math.Max(1.0, backoffMultiplier);
 
             Exception? lastError = null;
             for (var attempt = 1; attempt <= attempts; attempt++) {
@@ -192,12 +207,19 @@ internal sealed class ReviewRunner {
                         }
                     }
 
-                    var jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(200, 800));
+                    int jitterMs;
+                    if (jitterMax > jitterMin) {
+                        var upperExclusive = jitterMax == int.MaxValue ? jitterMax : jitterMax + 1;
+                        jitterMs = Random.Shared.Next(jitterMin, upperExclusive);
+                    } else {
+                        jitterMs = jitterMin;
+                    }
+                    var jitter = TimeSpan.FromMilliseconds(jitterMs);
                     var wait = delay + jitter;
                     var summary = describeError is not null ? describeError(ex) : ex.Message;
                     Console.Error.WriteLine($"OpenAI request failed (attempt {attempt}/{attempts}): {summary}. Retrying in {wait.TotalSeconds:0.0}s.");
                     await Task.Delay(wait, cancellationToken).ConfigureAwait(false);
-                    var nextDelaySeconds = Math.Min(maxDelaySeconds, delay.TotalSeconds * 2);
+                    var nextDelaySeconds = Math.Min(maxDelaySeconds, delay.TotalSeconds * backoff);
                     delay = TimeSpan.FromSeconds(nextDelaySeconds);
                 }
             }

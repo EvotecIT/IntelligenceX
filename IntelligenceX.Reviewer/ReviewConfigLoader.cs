@@ -134,6 +134,9 @@ internal static class ReviewConfigLoader {
         settings.RetryCount = ReadInt(obj, "retryCount", settings.RetryCount);
         settings.RetryDelaySeconds = ReadInt(obj, "retryDelaySeconds", settings.RetryDelaySeconds);
         settings.RetryMaxDelaySeconds = ReadInt(obj, "retryMaxDelaySeconds", settings.RetryMaxDelaySeconds);
+        settings.RetryBackoffMultiplier = ReadDouble(obj, "retryBackoffMultiplier", settings.RetryBackoffMultiplier);
+        settings.RetryJitterMinMs = ReadNonNegativeInt(obj, "retryJitterMinMs", settings.RetryJitterMinMs);
+        settings.RetryJitterMaxMs = ReadNonNegativeInt(obj, "retryJitterMaxMs", settings.RetryJitterMaxMs);
         settings.PreflightTimeoutSeconds = ReadInt(obj, "preflightTimeoutSeconds", settings.PreflightTimeoutSeconds);
         settings.ReviewUsageSummaryCacheMinutes = Math.Max(0,
             ReadInt(obj, "reviewUsageSummaryCacheMinutes", settings.ReviewUsageSummaryCacheMinutes));
@@ -301,6 +304,14 @@ internal static class ReviewConfigLoader {
         var value = obj.GetInt64(key);
         if (value.HasValue && value.Value >= 0) {
             return (int)value.Value;
+        }
+        return fallback;
+    }
+
+    private static double ReadDouble(JsonObject obj, string key, double fallback) {
+        var value = obj.GetDouble(key);
+        if (value.HasValue && value.Value >= 1) {
+            return value.Value;
         }
         return fallback;
     }
