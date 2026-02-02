@@ -73,6 +73,10 @@ internal static class ReviewConfigLoader {
         settings.Persona = obj.GetString("persona") ?? settings.Persona;
         settings.Notes = obj.GetString("notes") ?? settings.Notes;
         settings.Model = obj.GetString("model") ?? settings.Model;
+        var reviewDiffRange = obj.GetString("reviewDiffRange");
+        if (!string.IsNullOrWhiteSpace(reviewDiffRange)) {
+            settings.ReviewDiffRange = ReviewSettings.NormalizeDiffRange(reviewDiffRange, settings.ReviewDiffRange);
+        }
         var reasoningEffort = obj.GetString("reasoningEffort");
         if (!string.IsNullOrWhiteSpace(reasoningEffort)) {
             var parsed = IntelligenceX.OpenAI.Chat.ChatEnumParser.ParseReasoningEffort(reasoningEffort);
@@ -115,6 +119,16 @@ internal static class ReviewConfigLoader {
         var skipPaths = ReadStringList(obj, "skipPaths");
         if (skipPaths is not null) {
             settings.SkipPaths = skipPaths;
+        }
+
+        var includePaths = ReadStringList(obj, "includePaths");
+        if (includePaths is not null) {
+            settings.IncludePaths = includePaths;
+        }
+
+        var excludePaths = ReadStringList(obj, "excludePaths");
+        if (excludePaths is not null) {
+            settings.ExcludePaths = excludePaths;
         }
 
         var redactionPatterns = ReadStringList(obj, "redactionPatterns");

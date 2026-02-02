@@ -25,13 +25,22 @@ Schema: `../../Schemas/reviewer.schema.json`
 - `model`: model name for the selected provider
 - `mode`: `inline`, `summary`, or `hybrid`
 - `length`: `short|medium|long`
+- `reviewDiffRange`: `current`, `pr-base`, or `first-review`
 - `outputStyle`: rendering style preset
 - `reviewUsageSummary`: append usage line to the footer (ChatGPT auth only)
 - `retryCount`: total attempts for provider requests
 - `retryBackoffMultiplier`: exponential backoff multiplier (default 2.0)
 - `retryJitterMinMs`/`retryJitterMaxMs`: retry jitter bounds
+- `skipPaths`: if **all** changed files in a PR match these globs, skip reviewing the entire PR
+- `includePaths`: only review files matching these globs
+- `excludePaths`: ignore files matching these globs
 - `includeReviewThreads`: include existing review threads in context
 - `reviewThreadsAutoResolve*`: auto-resolve rules for bot threads
+
+**Path filter order of operations**
+1. `skipPaths` is evaluated first at the PR level. If **every** changed file matches `skipPaths`, the PR is skipped.
+2. If the PR is not skipped, `includePaths` (if set) selects which changed files are eligible for review.
+3. Finally, `excludePaths` (if set) removes any remaining files from review.
 
 ## Auto-resolve notes
 - `reviewThreadsAutoResolveBotLogins` defaults to `intelligencex-review` and `copilot-pull-request-reviewer`.

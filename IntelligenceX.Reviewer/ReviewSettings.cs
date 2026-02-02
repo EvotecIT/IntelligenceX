@@ -86,7 +86,29 @@ internal sealed class ReviewSettings {
     public bool SkipDraft { get; set; } = true;
     public IReadOnlyList<string> SkipTitles { get; set; } = new[] { "[WIP]", "[skip-review]" };
     public IReadOnlyList<string> SkipLabels { get; set; } = Array.Empty<string>();
+    /// <summary>
+    /// Paths that, when matched by <b>all</b> changed files in a pull request, cause the entire PR to be skipped.
+    /// This is evaluated before <see cref="IncludePaths"/> and <see cref="ExcludePaths"/>.
+    /// </summary>
     public IReadOnlyList<string> SkipPaths { get; set; } = Array.Empty<string>();
+    /// <summary>
+    /// Glob-style patterns specifying which changed files should be considered for review.
+    /// If non-empty, only files matching these patterns are eligible for review.
+    /// </summary>
+    public IReadOnlyList<string> IncludePaths { get; set; } = Array.Empty<string>();
+    /// <summary>
+    /// Glob-style patterns specifying changed files that should be excluded from review.
+    /// Matching files are removed from the review list but do not skip the entire PR.
+    /// </summary>
+    public IReadOnlyList<string> ExcludePaths { get; set; } = Array.Empty<string>();
+    /// Controls which diff range is used to build the review context.
+    /// <list type="bullet">
+    /// <item><description><c>current</c>: use the current PR files.</description></item>
+    /// <item><description><c>pr-base</c>: compare the PR base to head.</description></item>
+    /// <item><description><c>first-review</c>: compare the oldest review summary commit to head, falling back to PR base.</description></item>
+    /// </list>
+    /// </summary>
+    public string ReviewDiffRange { get; set; } = "current";
     public int MaxFiles { get; set; } = 20;
     public int MaxPatchChars { get; set; } = 4000;
     public int MaxInlineComments { get; set; } = 10;
@@ -114,6 +136,10 @@ internal sealed class ReviewSettings {
     public bool ReviewThreadsAutoResolveMissingInline { get; set; }
     public bool ReviewThreadsAutoResolveBotsOnly { get; set; } = true;
     public IReadOnlyList<string> ReviewThreadsAutoResolveBotLogins { get; set; } = DefaultReviewThreadsBotLogins;
+    /// <summary>
+    /// Controls which diff range is used when assessing review threads for auto-resolve.
+    /// Uses the same values as <see cref="ReviewDiffRange"/>.
+    /// </summary>
     public string ReviewThreadsAutoResolveDiffRange { get; set; } = "current";
     public int ReviewThreadsAutoResolveMax { get; set; } = 10;
     public bool ReviewThreadsAutoResolveAI { get; set; } = true;
@@ -274,6 +300,21 @@ internal sealed class ReviewSettings {
         var skipPaths = GetInput("skip_paths", "SKIP_PATHS");
         if (!string.IsNullOrWhiteSpace(skipPaths)) {
             settings.SkipPaths = ParseList(skipPaths, settings.SkipPaths);
+        }
+
+        var includePaths = GetInput("include_paths", "INCLUDE_PATHS");
+        if (!string.IsNullOrWhiteSpace(includePaths)) {
+            settings.IncludePaths = ParseList(includePaths, settings.IncludePaths);
+        }
+
+        var excludePaths = GetInput("exclude_paths", "EXCLUDE_PATHS");
+        if (!string.IsNullOrWhiteSpace(excludePaths)) {
+            settings.ExcludePaths = ParseList(excludePaths, settings.ExcludePaths);
+        }
+
+        var reviewDiffRange = GetInput("review_diff_range", "REVIEW_DIFF_RANGE");
+        if (!string.IsNullOrWhiteSpace(reviewDiffRange)) {
+            settings.ReviewDiffRange = NormalizeDiffRange(reviewDiffRange, settings.ReviewDiffRange);
         }
 
         var maxFiles = GetInput("max_files", "OPENAI_MAX_FILES");
