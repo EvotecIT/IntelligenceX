@@ -173,7 +173,8 @@ public static class ReviewerApp {
 
             var (triageFiles, triageNote) = await ResolveThreadTriageFilesAsync(github, context, settings, allFiles, cancellationToken)
                 .ConfigureAwait(false);
-            var triageResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, runner, context, triageFiles, settings, extras, reviewFailed, triageNote)
+            var triageResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, runner, context, triageFiles,
+                    settings, extras, reviewFailed, triageNote, cancellationToken)
                 .ConfigureAwait(false);
             if (settings.ReviewThreadsAutoResolveAIEmbed && !string.IsNullOrWhiteSpace(triageResult.EmbeddedBlock)) {
                 summaryBody = summaryBody.TrimEnd() + "\n\n" + triageResult.EmbeddedBlock.Trim();
@@ -698,7 +699,7 @@ public static class ReviewerApp {
 
     private static async Task<ThreadTriageResult> MaybeAutoResolveAssessedThreadsAsync(GitHubClient github, GitHubClient? fallbackGithub,
         ReviewRunner runner, PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
-        ReviewContextExtras extras, bool reviewFailed, string? diffNote) {
+        ReviewContextExtras extras, bool reviewFailed, string? diffNote, CancellationToken cancellationToken) {
         if (!settings.ReviewThreadsAutoResolveAI || reviewFailed) {
             return ThreadTriageResult.Empty;
         }
@@ -716,7 +717,7 @@ public static class ReviewerApp {
             prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
         }
 
-        var output = await runner.RunAsync(prompt, null, null, CancellationToken.None).ConfigureAwait(false);
+        var output = await runner.RunAsync(prompt, null, null, cancellationToken).ConfigureAwait(false);
         if (ReviewDiagnostics.IsFailureBody(output)) {
             return ThreadTriageResult.Empty;
         }
@@ -748,7 +749,7 @@ public static class ReviewerApp {
             if (!byId.TryGetValue(thread.Id, out var assessment) || assessment.Action != "resolve") {
                 continue;
             }
-            var result = await TryResolveThreadAsync(github, fallbackGithub, thread.Id, CancellationToken.None).ConfigureAwait(false);
+            var result = await TryResolveThreadAsync(github, fallbackGithub, thread.Id, cancellationToken).ConfigureAwait(false);
             if (result.Resolved) {
                 resolvedCount++;
                 resolved.Add(assessment);
@@ -766,11 +767,12 @@ public static class ReviewerApp {
         var commentPosted = false;
         var triageBody = BuildThreadAssessmentComment(resolved, kept, context.HeadSha, diffNote);
         if (settings.ReviewThreadsAutoResolveAIReply && kept.Count > 0) {
-            await ReplyToKeptThreadsAsync(github, context, candidates, byId, context.HeadSha, diffNote, settings).ConfigureAwait(false);
+            await ReplyToKeptThreadsAsync(github, context, candidates, byId, context.HeadSha, diffNote, settings, cancellationToken)
+                .ConfigureAwait(false);
         }
         if (settings.ReviewThreadsAutoResolveAIPostComment && !settings.ReviewThreadsAutoResolveAIEmbed && kept.Count > 0) {
             var body = triageBody;
-            await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, CancellationToken.None)
+            await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, cancellationToken)
                 .ConfigureAwait(false);
             commentPosted = true;
         }
@@ -1146,7 +1148,7 @@ public static class ReviewerApp {
 
     private static async Task ReplyToKeptThreadsAsync(GitHubClient github, PullRequestContext context,
         IReadOnlyList<PullRequestReviewThread> candidates, IReadOnlyDictionary<string, ThreadAssessment> assessments,
-        string? headSha, string? diffNote, ReviewSettings settings) {
+        string? headSha, string? diffNote, ReviewSettings settings, CancellationToken cancellationToken) {
         var replies = 0;
         foreach (var thread in candidates) {
             if (replies >= settings.ReviewThreadsAutoResolveMax) {
@@ -1168,7 +1170,7 @@ public static class ReviewerApp {
             var body = BuildThreadReply(assessment, headSha, diffNote);
             try {
                 await github.CreatePullRequestReviewCommentReplyAsync(context.Owner, context.Repo, context.Number,
-                        target.DatabaseId.Value, body, CancellationToken.None)
+                        target.DatabaseId.Value, body, cancellationToken)
                     .ConfigureAwait(false);
                 replies++;
             } catch (Exception ex) {
