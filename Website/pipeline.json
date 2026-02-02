@@ -32,7 +32,7 @@
       "project": "../IntelligenceX/IntelligenceX.csproj",
       "apiIndex": "./_site/api/index.json",
       "apiBase": "/api",
-      "apiLevel": "Summary",
+      "apiLevel": "Full",
       "name": "IntelligenceX",
       "license": "MIT",
       "targets": ".NET 8+, .NET 10+, .NET Standard 2.0, .NET Framework 4.7.2"
