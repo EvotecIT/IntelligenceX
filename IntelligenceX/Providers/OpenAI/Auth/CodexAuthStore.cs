@@ -4,7 +4,13 @@ using IntelligenceX.Json;
 
 namespace IntelligenceX.OpenAI.Auth;
 
+/// <summary>
+/// Utilities for working with Codex auth.json files.
+/// </summary>
 public static class CodexAuthStore {
+    /// <summary>
+    /// Resolves the Codex home directory, honoring CODEX_HOME when set.
+    /// </summary>
     public static string ResolveCodexHome() {
         var overridePath = Environment.GetEnvironmentVariable("CODEX_HOME");
         if (!string.IsNullOrWhiteSpace(overridePath)) {
@@ -17,11 +23,21 @@ public static class CodexAuthStore {
         return Path.Combine(home, ".codex");
     }
 
+    /// <summary>
+    /// Resolves the Codex auth.json path.
+    /// </summary>
+    /// <param name="codexHome">Optional override Codex home.</param>
     public static string ResolveAuthPath(string? codexHome = null) {
         var home = string.IsNullOrWhiteSpace(codexHome) ? ResolveCodexHome() : codexHome!;
         return Path.Combine(home, "auth.json");
     }
 
+    /// <summary>
+    /// Builds Codex auth.json content from an auth bundle.
+    /// </summary>
+    /// <param name="bundle">Auth bundle.</param>
+    /// <param name="lastRefresh">Optional refresh timestamp.</param>
+    /// <param name="openAiApiKey">Optional API key to embed.</param>
     public static string BuildAuthJson(AuthBundle bundle, DateTimeOffset? lastRefresh = null, string? openAiApiKey = null) {
         if (bundle is null) {
             throw new ArgumentNullException(nameof(bundle));
@@ -50,6 +66,13 @@ public static class CodexAuthStore {
         return JsonLite.Serialize(JsonValue.From(root));
     }
 
+    /// <summary>
+    /// Writes Codex auth.json to disk.
+    /// </summary>
+    /// <param name="bundle">Auth bundle.</param>
+    /// <param name="codexHome">Optional Codex home override.</param>
+    /// <param name="lastRefresh">Optional refresh timestamp.</param>
+    /// <param name="openAiApiKey">Optional API key to embed.</param>
     public static void WriteAuthJson(AuthBundle bundle, string? codexHome = null, DateTimeOffset? lastRefresh = null,
         string? openAiApiKey = null) {
         var path = ResolveAuthPath(codexHome);
