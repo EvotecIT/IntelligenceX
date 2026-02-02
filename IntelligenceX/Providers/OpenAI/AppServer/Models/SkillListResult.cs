@@ -3,6 +3,19 @@ using IntelligenceX.Json;
 
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
+/// <summary>
+/// Represents skill metadata returned by the app-server.
+/// </summary>
+/// <example>
+/// <code>
+/// var skills = await client.ListSkillsAsync();
+/// foreach (var group in skills.Groups) {
+///     foreach (var skill in group.Skills) {
+///         Console.WriteLine(skill.Name);
+///     }
+/// }
+/// </code>
+/// </example>
 public sealed class SkillListResult {
     public SkillListResult(IReadOnlyList<SkillGroup> groups, JsonObject raw, JsonObject? additional) {
         Groups = groups;
@@ -10,10 +23,14 @@ public sealed class SkillListResult {
         Additional = additional;
     }
 
+    /// <summary>Skill groups returned by the service.</summary>
     public IReadOnlyList<SkillGroup> Groups { get; }
+    /// <summary>Raw JSON payload from the service.</summary>
     public JsonObject Raw { get; }
+    /// <summary>Additional unmapped fields from the payload.</summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>Parses skills from JSON.</summary>
     public static SkillListResult FromJson(JsonObject obj) {
         var groups = new List<SkillGroup>();
         var data = obj.GetArray("data") ?? obj.GetArray("items");
@@ -31,6 +48,9 @@ public sealed class SkillListResult {
     }
 }
 
+/// <summary>
+/// Represents a group of skills for a working directory.
+/// </summary>
 public sealed class SkillGroup {
     public SkillGroup(string? cwd, IReadOnlyList<SkillInfo> skills, IReadOnlyList<string> errors,
         JsonObject raw, JsonObject? additional) {
@@ -41,12 +61,18 @@ public sealed class SkillGroup {
         Additional = additional;
     }
 
+    /// <summary>Working directory for the group (if available).</summary>
     public string? Cwd { get; }
+    /// <summary>Skills discovered for this group.</summary>
     public IReadOnlyList<SkillInfo> Skills { get; }
+    /// <summary>Errors encountered while loading skills.</summary>
     public IReadOnlyList<string> Errors { get; }
+    /// <summary>Raw JSON payload from the service.</summary>
     public JsonObject Raw { get; }
+    /// <summary>Additional unmapped fields from the payload.</summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>Parses a skill group from JSON.</summary>
     public static SkillGroup FromJson(JsonObject obj) {
         var cwd = obj.GetString("cwd");
         var skills = new List<SkillInfo>();
@@ -77,6 +103,9 @@ public sealed class SkillGroup {
     }
 }
 
+/// <summary>
+/// Describes a single skill.
+/// </summary>
 public sealed class SkillInfo {
     public SkillInfo(string name, string? description, bool enabled, SkillInterfaceInfo? @interface,
         JsonObject raw, JsonObject? additional) {
@@ -88,13 +117,20 @@ public sealed class SkillInfo {
         Additional = additional;
     }
 
+    /// <summary>Skill name.</summary>
     public string Name { get; }
+    /// <summary>Skill description (if available).</summary>
     public string? Description { get; }
+    /// <summary>True when the skill is enabled.</summary>
     public bool Enabled { get; }
+    /// <summary>UI metadata for the skill (if available).</summary>
     public SkillInterfaceInfo? Interface { get; }
+    /// <summary>Raw JSON payload from the service.</summary>
     public JsonObject Raw { get; }
+    /// <summary>Additional unmapped fields from the payload.</summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>Parses a skill from JSON.</summary>
     public static SkillInfo FromJson(JsonObject obj) {
         var name = obj.GetString("name") ?? string.Empty;
         var description = obj.GetString("description");
@@ -106,6 +142,9 @@ public sealed class SkillInfo {
     }
 }
 
+/// <summary>
+/// UI metadata for a skill.
+/// </summary>
 public sealed class SkillInterfaceInfo {
     public SkillInterfaceInfo(string? displayName, string? shortDescription, string? iconSmall, string? iconLarge,
         string? brandColor, string? defaultPrompt, JsonObject raw, JsonObject? additional) {
@@ -119,15 +158,24 @@ public sealed class SkillInterfaceInfo {
         Additional = additional;
     }
 
+    /// <summary>Display name (if provided).</summary>
     public string? DisplayName { get; }
+    /// <summary>Short description (if provided).</summary>
     public string? ShortDescription { get; }
+    /// <summary>Small icon URL (if provided).</summary>
     public string? IconSmall { get; }
+    /// <summary>Large icon URL (if provided).</summary>
     public string? IconLarge { get; }
+    /// <summary>Brand color (if provided).</summary>
     public string? BrandColor { get; }
+    /// <summary>Default prompt (if provided).</summary>
     public string? DefaultPrompt { get; }
+    /// <summary>Raw JSON payload from the service.</summary>
     public JsonObject Raw { get; }
+    /// <summary>Additional unmapped fields from the payload.</summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>Parses UI metadata from JSON.</summary>
     public static SkillInterfaceInfo FromJson(JsonObject obj) {
         var displayName = obj.GetString("displayName");
         var shortDescription = obj.GetString("shortDescription");
