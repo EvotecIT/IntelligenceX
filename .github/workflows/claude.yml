@@ -24,8 +24,8 @@ jobs:
     runs-on: [self-hosted, ubuntu]
     permissions:
       contents: read
-      pull-requests: read
-      issues: read
+      pull-requests: write
+      issues: write
       id-token: write
       actions: read # Required for Claude to read CI results on PRs
     steps:
@@ -39,7 +39,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          direct_prompt: |
+          prompt: |
             You are responding to a user-triggered @claude request. Follow the request below and keep the response focused and actionable.
 
             Request:
