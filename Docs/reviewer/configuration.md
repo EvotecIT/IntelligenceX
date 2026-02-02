@@ -25,6 +25,7 @@ Schema: `../../Schemas/reviewer.schema.json`
 - `model`: model name for the selected provider
 - `mode`: `inline`, `summary`, or `hybrid`
 - `length`: `short|medium|long`
+- `reviewDiffRange`: `current`, `pr-base`, or `first-review`
 - `outputStyle`: rendering style preset
 - `reviewUsageSummary`: append usage line to the footer (ChatGPT auth only)
 - `retryCount`: total attempts for provider requests

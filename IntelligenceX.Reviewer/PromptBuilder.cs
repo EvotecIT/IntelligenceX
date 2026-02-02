@@ -7,7 +7,7 @@ namespace IntelligenceX.Reviewer;
 
 internal static class PromptBuilder {
     public static string Build(PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
-        ReviewContextExtras? extras = null, bool inlineSupported = false) {
+        string? diffNote, ReviewContextExtras? extras = null, bool inlineSupported = false) {
         var template = ResolveTemplate(settings);
         var profileBlock = string.IsNullOrWhiteSpace(settings.Profile) ? string.Empty : $"Profile: {settings.Profile}\n";
         var strictnessBlock = string.IsNullOrWhiteSpace(settings.Strictness) ? string.Empty : $"Strictness: {settings.Strictness}\n";
@@ -21,6 +21,7 @@ internal static class PromptBuilder {
             ? string.Empty
             : $"Only include issues with severity >= {settings.SeverityThreshold}.\n";
         var nextStepsSection = settings.IncludeNextSteps ? "- Next Steps 🚀\n" : string.Empty;
+        var diffRangeBlock = string.IsNullOrWhiteSpace(diffNote) ? string.Empty : $"Diff range: {diffNote}\n";
 
         var tokens = new Dictionary<string, string> {
             ["ProfileBlock"] = profileBlock,
@@ -36,6 +37,7 @@ internal static class PromptBuilder {
             ["Mode"] = settings.Mode,
             ["MaxInlineComments"] = settings.MaxInlineComments.ToString(),
             ["InlineSupported"] = inlineSupported ? "true" : "false",
+            ["DiffRangeBlock"] = diffRangeBlock,
             ["NextStepsSection"] = nextStepsSection,
             ["Title"] = context.Title ?? string.Empty,
             ["Body"] = string.IsNullOrWhiteSpace(context.Body) ? "<no description>" : context.Body,

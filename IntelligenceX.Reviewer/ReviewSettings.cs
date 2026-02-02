@@ -87,6 +87,7 @@ internal sealed class ReviewSettings {
     public IReadOnlyList<string> SkipTitles { get; set; } = new[] { "[WIP]", "[skip-review]" };
     public IReadOnlyList<string> SkipLabels { get; set; } = Array.Empty<string>();
     public IReadOnlyList<string> SkipPaths { get; set; } = Array.Empty<string>();
+    public string ReviewDiffRange { get; set; } = "current";
     public int MaxFiles { get; set; } = 20;
     public int MaxPatchChars { get; set; } = 4000;
     public int MaxInlineComments { get; set; } = 10;
@@ -274,6 +275,11 @@ internal sealed class ReviewSettings {
         var skipPaths = GetInput("skip_paths", "SKIP_PATHS");
         if (!string.IsNullOrWhiteSpace(skipPaths)) {
             settings.SkipPaths = ParseList(skipPaths, settings.SkipPaths);
+        }
+
+        var reviewDiffRange = GetInput("review_diff_range", "REVIEW_DIFF_RANGE");
+        if (!string.IsNullOrWhiteSpace(reviewDiffRange)) {
+            settings.ReviewDiffRange = NormalizeDiffRange(reviewDiffRange, settings.ReviewDiffRange);
         }
 
         var maxFiles = GetInput("max_files", "OPENAI_MAX_FILES");

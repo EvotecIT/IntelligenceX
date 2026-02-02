@@ -12,6 +12,7 @@
         "profile": { "type": "string" },
         "length": { "type": "string", "enum": ["short", "medium", "long"] },
         "mode": { "type": "string" },
+        "reviewDiffRange": { "type": "string" },
         "strictness": { "type": "string" },
         "tone": { "type": "string" },
         "style": { "type": "string", "enum": ["direct", "friendly", "funny", "colorful", "formal"] },

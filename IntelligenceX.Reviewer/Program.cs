@@ -96,6 +96,10 @@ public static class ReviewerApp {
                 return 0;
             }
 
+            var (reviewFiles, diffNote) = await ResolveReviewFilesAsync(github, context, settings, files, CancellationToken.None)
+                .ConfigureAwait(false);
+            files = reviewFiles;
+
             progress.Context = ReviewProgressState.Complete;
             progress.Files = ReviewProgressState.Complete;
             progress.StatusLine = "Analyzed changed files.";
@@ -106,7 +110,7 @@ public static class ReviewerApp {
                                   settings.MaxInlineComments > 0 &&
                                   !string.IsNullOrWhiteSpace(context.HeadSha);
             var limitedFiles = PrepareFiles(files, settings.MaxFiles, settings.MaxPatchChars);
-            var prompt = PromptBuilder.Build(context, limitedFiles, settings, extras, inlineSupported);
+            var prompt = PromptBuilder.Build(context, limitedFiles, settings, diffNote, extras, inlineSupported);
             if (settings.RedactPii) {
                 prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
             }
@@ -382,6 +386,59 @@ public static class ReviewerApp {
             count++;
         }
         return list;
+    }
+
+    private static async Task<(IReadOnlyList<PullRequestFile> Files, string DiffNote)> ResolveReviewFilesAsync(
+        GitHubClient github, PullRequestContext context, ReviewSettings settings, IReadOnlyList<PullRequestFile> currentFiles,
+        CancellationToken cancellationToken) {
+        var range = ReviewSettings.NormalizeDiffRange(settings.ReviewDiffRange, "current");
+        if (range == "current") {
+            return (currentFiles, "current PR files");
+        }
+        if (string.IsNullOrWhiteSpace(context.HeadSha)) {
+            return (currentFiles, "current PR files (missing head SHA)");
+        }
+
+        async Task<(bool Success, IReadOnlyList<PullRequestFile> Files, string Note)> TryCompareAsync(string? baseSha, string label) {
+            if (string.IsNullOrWhiteSpace(baseSha)) {
+                return (false, Array.Empty<PullRequestFile>(), $"missing {label} commit");
+            }
+            try {
+                var compareFiles = await github.GetCompareFilesAsync(context.Owner, context.Repo, baseSha, context.HeadSha!, cancellationToken)
+                    .ConfigureAwait(false);
+                if (compareFiles.Count == 0) {
+                    return (false, Array.Empty<PullRequestFile>(), $"{label} diff empty");
+                }
+                return (true, compareFiles, $"{label} → head ({ShortSha(baseSha)}..{ShortSha(context.HeadSha)})");
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Failed to load {label} diff: {ex.Message}");
+                return (false, Array.Empty<PullRequestFile>(), $"failed to load {label} diff");
+            }
+        }
+
+        if (range == "pr-base") {
+            var result = await TryCompareAsync(context.BaseSha, "PR base").ConfigureAwait(false);
+            return result.Success
+                ? (result.Files, result.Note)
+                : (currentFiles, $"current PR files ({result.Note})");
+        }
+
+        var firstReviewSha = await FindOldestSummaryCommitAsync(github, context, settings, cancellationToken).ConfigureAwait(false);
+        var firstReviewResult = await TryCompareAsync(firstReviewSha, "first review").ConfigureAwait(false);
+        if (firstReviewResult.Success) {
+            return (firstReviewResult.Files, firstReviewResult.Note);
+        }
+
+        var prBaseResult = await TryCompareAsync(context.BaseSha, "PR base fallback").ConfigureAwait(false);
+        if (prBaseResult.Success) {
+            return (prBaseResult.Files, prBaseResult.Note);
+        }
+
+        var note = firstReviewResult.Note;
+        if (!string.IsNullOrWhiteSpace(prBaseResult.Note)) {
+            note = string.IsNullOrWhiteSpace(note) ? prBaseResult.Note : $"{note}; {prBaseResult.Note}";
+        }
+        return (currentFiles, $"current PR files ({note})");
     }
 
     private static async Task<ReviewContextExtras> BuildExtrasAsync(GitHubClient github, GitHubClient? fallbackGithub,
