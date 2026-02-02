@@ -4,7 +4,7 @@
     Build and serve the IntelligenceX website.
 
 .PARAMETER Serve
-    Start the development server after building.
+    Build the full pipeline and start the development server.
 
 .PARAMETER Port
     Server port (default: 8080).
@@ -54,8 +54,11 @@ Write-Host "Using: $PowerForge" -ForegroundColor DarkGray
 
 try {
     if ($Serve) {
+        Write-Host 'Building website...' -ForegroundColor Cyan
+        & $PowerForge pipeline --config pipeline.json
+        if ($LASTEXITCODE -ne 0) { throw "Build failed (exit code $LASTEXITCODE)" }
         Write-Host "Starting dev server on http://localhost:$Port ..." -ForegroundColor Cyan
-        & $PowerForge serve --config site.json --out _site --port $Port
+        & $PowerForge serve --path _site --port $Port
     } else {
         Write-Host 'Building website...' -ForegroundColor Cyan
         & $PowerForge pipeline --config pipeline.json
