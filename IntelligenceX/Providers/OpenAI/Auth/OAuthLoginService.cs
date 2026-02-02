@@ -10,9 +10,16 @@ using IntelligenceX.Json;
 
 namespace IntelligenceX.OpenAI.Auth;
 
+/// <summary>
+/// Implements the OAuth login flow and token refresh.
+/// </summary>
 public sealed class OAuthLoginService {
     private readonly HttpClient _httpClient = new();
 
+    /// <summary>
+    /// Performs an OAuth login flow.
+    /// </summary>
+    /// <param name="options">Login options.</param>
     public async Task<OAuthLoginResult> LoginAsync(OAuthLoginOptions options) {
         options.Config.Validate();
         var config = options.Config;
@@ -52,6 +59,12 @@ public sealed class OAuthLoginService {
         return new OAuthLoginResult(bundle, tokenResponse);
     }
 
+    /// <summary>
+    /// Refreshes an OAuth access token.
+    /// </summary>
+    /// <param name="config">OAuth configuration.</param>
+    /// <param name="bundle">Existing auth bundle to update.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<OAuthLoginResult> RefreshAsync(OAuthConfig config, AuthBundle bundle, CancellationToken cancellationToken = default) {
         config.Validate();
         var tokenResponse = await RefreshTokenAsync(config, bundle.RefreshToken, cancellationToken).ConfigureAwait(false);
