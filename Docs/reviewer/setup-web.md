@@ -8,6 +8,15 @@ intelligencex setup web
 
 This starts a local web server and opens the wizard in your browser (http://127.0.0.1 only).
 
+## Quick flow
+
+```text
+1) Start the web UI
+2) Authenticate with GitHub (device flow or app install)
+3) Select repos
+4) Plan + Apply
+```
+
 Operations available:
 - Setup / update workflow + config
 - Update OpenAI secret only (requires auth bundle)

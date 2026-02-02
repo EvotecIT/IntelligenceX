@@ -18,6 +18,12 @@
 - Secret stored in the repo or org as `INTELLIGENCEX_AUTH_B64`
 - Optional `INTELLIGENCEX_AUTH_KEY` if you encrypt the local store
 
+## Why local-only?
+
+- GitHub and ChatGPT require explicit user consent.
+- Running the wizard locally keeps tokens off any vendor backend.
+- All changes are applied via PRs so you can review before merging.
+
 ## Manual secret mode
 
 If you prefer not to upload secrets automatically, use manual secret mode:
