@@ -30,6 +30,14 @@ namespace IntelligenceX.PowerShell;
 /// image: C:\temp\diagram.png
 /// "@ | Invoke-IntelligenceXChat -Dsl</code>
 /// </example>
+/// <example>
+///  <para>Use API key login</para>
+///  <code>Invoke-IntelligenceXChat -Text "Hello" -Login ApiKey -ApiKey $env:OPENAI_API_KEY</code>
+/// </example>
+/// <example>
+///  <para>Run with a workspace sandbox and network access</para>
+///  <code>Invoke-IntelligenceXChat -Text "Run tests" -Workspace "C:\repo" -AllowNetwork</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Invoke, "IntelligenceXChat", DefaultParameterSetName = "Text")]
 [OutputType(typeof(TurnInfo), typeof(JsonValue))]

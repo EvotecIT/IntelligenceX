@@ -19,6 +19,10 @@ namespace IntelligenceX.PowerShell;
 ///  <para>Start a thread scoped to a repo and sandboxed</para>
 ///  <code>Start-IntelligenceXThread -Model "gpt-5.2-codex" -CurrentDirectory "C:\repo" -Sandbox "workspace"</code>
 /// </example>
+/// <example>
+///  <para>Start a thread with an approval policy</para>
+///  <code>Start-IntelligenceXThread -Model "gpt-5.2-codex" -ApprovalPolicy "auto"</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Start, "IntelligenceXThread")]
 [OutputType(typeof(ThreadInfo), typeof(JsonValue))]

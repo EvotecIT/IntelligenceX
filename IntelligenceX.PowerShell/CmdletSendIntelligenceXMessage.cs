@@ -19,6 +19,10 @@ namespace IntelligenceX.PowerShell;
 ///  <para>Send a message with a temporary model override</para>
 ///  <code>Send-IntelligenceXMessage -ThreadId $thread.id -Text "Summarize changes." -Model "gpt-5.2-codex"</code>
 /// </example>
+/// <example>
+///  <para>Send a message with a workspace sandbox</para>
+///  <code>Send-IntelligenceXMessage -ThreadId $thread.id -Text "Run tests" -SandboxType "workspace" -NetworkAccess -WritableRoot "C:\repo"</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommunications.Send, "IntelligenceXMessage")]
 [OutputType(typeof(TurnInfo), typeof(JsonValue))]

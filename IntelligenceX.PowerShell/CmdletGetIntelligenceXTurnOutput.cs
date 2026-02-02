@@ -15,6 +15,10 @@ namespace IntelligenceX.PowerShell;
 ///  <para>Save image outputs to disk</para>
 ///  <code>$turn | Get-IntelligenceXTurnOutput -Images -SaveImagesTo "C:\temp\ix"</code>
 /// </example>
+/// <example>
+///  <para>Return only the first text output</para>
+///  <code>$turn | Get-IntelligenceXTurnOutput -Text -First 1</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXTurnOutput")]
 [OutputType(typeof(TurnOutput))]

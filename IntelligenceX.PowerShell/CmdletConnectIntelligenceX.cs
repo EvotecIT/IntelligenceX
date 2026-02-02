@@ -24,6 +24,10 @@ namespace IntelligenceX.PowerShell;
 ///  <para>App-server transport with custom working directory and args</para>
 ///  <code>Connect-IntelligenceX -Transport AppServer -WorkingDirectory "C:\repo" -Arguments "app-server --verbose"</code>
 /// </example>
+/// <example>
+///  <para>Enable diagnostics output</para>
+///  <code>Connect-IntelligenceX -Transport Native -Diagnostics</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommunications.Connect, "IntelligenceX")]
 [OutputType(typeof(IntelligenceXClient))]
