@@ -1,6 +1,17 @@
 /* ===== Reset & Base ===== */
 *, *::before, *::after { box-sizing: border-box; }
-body { margin: 0; font-family: var(--pf-font-body); background: var(--pf-bg); color: var(--pf-ink); line-height: 1.6; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+body {
+  margin: 0;
+  font-family: var(--pf-font-body);
+  background:
+    radial-gradient(900px circle at 15% -10%, var(--pf-glow-primary), transparent 60%),
+    radial-gradient(800px circle at 85% 0%, var(--pf-glow-secondary), transparent 55%),
+    var(--pf-bg);
+  color: var(--pf-ink);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
 a { color: var(--pf-accent); text-decoration: none; transition: color 0.2s; }
 a:hover { color: #33E0FF; }
 img { max-width: 100%; height: auto; }
