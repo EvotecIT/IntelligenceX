@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Runtime.ExceptionServices;
@@ -17,10 +18,32 @@ using IntelligenceX.OpenAI.Native;
 namespace IntelligenceX.Reviewer;
 
 internal sealed class ReviewRunner {
+    private static readonly HttpClient PreflightHttp = new() {
+        Timeout = Timeout.InfiniteTimeSpan
+    };
     private readonly ReviewSettings _settings;
 
     public ReviewRunner(ReviewSettings settings) {
         _settings = settings;
+    }
+
+    private IntelligenceXClientOptions BuildClientOptions() {
+        var options = new IntelligenceXClientOptions {
+            DefaultModel = _settings.Model,
+            TransportKind = _settings.OpenAITransport
+        };
+        if (options.TransportKind == OpenAITransportKind.AppServer) {
+            if (!string.IsNullOrWhiteSpace(_settings.CodexPath)) {
+                options.AppServerOptions.ExecutablePath = _settings.CodexPath!;
+            }
+            if (!string.IsNullOrWhiteSpace(_settings.CodexArgs)) {
+                options.AppServerOptions.Arguments = _settings.CodexArgs!;
+            }
+            if (!string.IsNullOrWhiteSpace(_settings.CodexWorkingDirectory)) {
+                options.AppServerOptions.WorkingDirectory = _settings.CodexWorkingDirectory;
+            }
+        }
+        return options;
     }
 
     public async Task<string> RunAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
@@ -34,9 +57,16 @@ internal sealed class ReviewRunner {
         CancellationToken cancellationToken) {
         ReviewDiagnosticsSnapshot? snapshot = null;
         var retryState = new ReviewRetryState();
+        var options = BuildClientOptions();
         try {
+            if (_settings.Preflight) {
+                var timeout = _settings.PreflightTimeoutSeconds > 0
+                    ? TimeSpan.FromSeconds(_settings.PreflightTimeoutSeconds)
+                    : TimeSpan.FromSeconds(15);
+                await RunOpenAiPreflightAsync(options, timeout, cancellationToken).ConfigureAwait(false);
+            }
             return await ReviewRetryPolicy.RunAsync(async () => {
-                    var output = await RunOpenAiOnceAsync(prompt, onPartial, updateInterval, cancellationToken,
+                    var output = await RunOpenAiOnceAsync(options, prompt, onPartial, updateInterval, cancellationToken,
                             latest => snapshot = latest)
                         .ConfigureAwait(false);
                     if (string.IsNullOrWhiteSpace(output)) {
@@ -62,43 +92,12 @@ internal sealed class ReviewRunner {
         }
     }
 
-    private async Task<string> RunOpenAiOnceAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
+    private async Task<string> RunOpenAiOnceAsync(IntelligenceXClientOptions options, string prompt, Func<string, Task>? onPartial,
+        TimeSpan? updateInterval,
         CancellationToken cancellationToken, Action<ReviewDiagnosticsSnapshot?>? captureSnapshot) {
-        var options = new IntelligenceXClientOptions {
-            DefaultModel = _settings.Model,
-            TransportKind = _settings.OpenAITransport
-        };
-        if (options.TransportKind == OpenAITransportKind.AppServer) {
-            if (!string.IsNullOrWhiteSpace(_settings.CodexPath)) {
-                options.AppServerOptions.ExecutablePath = _settings.CodexPath!;
-            }
-            if (!string.IsNullOrWhiteSpace(_settings.CodexArgs)) {
-                options.AppServerOptions.Arguments = _settings.CodexArgs!;
-            }
-            if (!string.IsNullOrWhiteSpace(_settings.CodexWorkingDirectory)) {
-                options.AppServerOptions.WorkingDirectory = _settings.CodexWorkingDirectory;
-            }
-        }
-
         await using var client = await IntelligenceXClient.ConnectAsync(options, cancellationToken)
             .ConfigureAwait(false);
         using var diagnostics = ReviewDiagnosticsSession.TryStart(_settings, client);
-
-        if (_settings.Preflight) {
-            var timeout = _settings.PreflightTimeoutSeconds > 0
-                ? TimeSpan.FromSeconds(_settings.PreflightTimeoutSeconds)
-                : TimeSpan.FromSeconds(15);
-            if (options.TransportKind == OpenAITransportKind.Native) {
-                await PreflightNativeConnectivityAsync(timeout, cancellationToken).ConfigureAwait(false);
-            }
-            var check = await client.HealthCheckAsync(null, timeout, cancellationToken).ConfigureAwait(false);
-            if (!check.Ok) {
-                if (check.Error is not null) {
-                    throw check.Error;
-                }
-                throw new InvalidOperationException(check.Message ?? "OpenAI preflight check failed.");
-            }
-        }
 
         var deltas = new StringBuilder();
         var lastDelta = DateTimeOffset.UtcNow;
@@ -155,6 +154,22 @@ internal sealed class ReviewRunner {
                 }
                 progressCts.Dispose();
             }
+        }
+    }
+
+    private async Task RunOpenAiPreflightAsync(IntelligenceXClientOptions options, TimeSpan timeout, CancellationToken cancellationToken) {
+        if (options.TransportKind == OpenAITransportKind.Native) {
+            await PreflightNativeConnectivityAsync(options.NativeOptions, timeout, cancellationToken).ConfigureAwait(false);
+        }
+
+        await using var client = await IntelligenceXClient.ConnectAsync(options, cancellationToken)
+            .ConfigureAwait(false);
+        var check = await client.HealthCheckAsync(null, timeout, cancellationToken).ConfigureAwait(false);
+        if (!check.Ok) {
+            if (check.Error is not null) {
+                throw check.Error;
+            }
+            throw new InvalidOperationException(check.Message ?? "OpenAI preflight check failed.");
         }
     }
 
@@ -300,19 +315,40 @@ internal sealed class ReviewRunner {
         return result ?? string.Empty;
     }
 
-    private static async Task PreflightNativeConnectivityAsync(TimeSpan timeout, CancellationToken cancellationToken) {
-        var options = new OpenAINativeOptions();
+    private async Task PreflightNativeConnectivityAsync(OpenAINativeOptions options, TimeSpan timeout, CancellationToken cancellationToken) {
         if (!Uri.TryCreate(options.ChatGptApiBaseUrl, UriKind.Absolute, out var uri)) {
             throw new InvalidOperationException($"ChatGptApiBaseUrl is invalid: '{options.ChatGptApiBaseUrl}'.");
         }
 
-        using var client = new HttpClient {
-            Timeout = timeout
-        };
-        using var request = new HttpRequestMessage(HttpMethod.Head, uri);
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(timeout);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        if (!string.IsNullOrWhiteSpace(options.UserAgent)) {
+            request.Headers.TryAddWithoutValidation("User-Agent", options.UserAgent);
+        }
+
         try {
-            using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
-            _ = response.StatusCode;
+            using var response = await PreflightHttp.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token)
+                .ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) {
+                var code = (int)response.StatusCode;
+                if (response.StatusCode == HttpStatusCode.TooManyRequests ||
+                    response.StatusCode == HttpStatusCode.RequestTimeout ||
+                    response.StatusCode == HttpStatusCode.ServiceUnavailable ||
+                    response.StatusCode == HttpStatusCode.BadGateway ||
+                    response.StatusCode == HttpStatusCode.GatewayTimeout ||
+                    response.StatusCode == HttpStatusCode.InternalServerError) {
+                    throw new HttpRequestException($"Connectivity preflight returned HTTP {code}.", null, response.StatusCode);
+                }
+                if (_settings.Diagnostics) {
+                    Console.Error.WriteLine($"Connectivity preflight returned HTTP {code} for {uri.Host}.");
+                }
+            }
+        } catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested) {
+            throw new TimeoutException($"Connectivity preflight timed out after {timeout.TotalSeconds:0.#}s for {uri.Host}.", ex);
+        } catch (HttpRequestException ex) when (ex.InnerException is TaskCanceledException && !cancellationToken.IsCancellationRequested) {
+            throw new TimeoutException($"Connectivity preflight timed out after {timeout.TotalSeconds:0.#}s for {uri.Host}.", ex);
         } catch (HttpRequestException ex) when (ex.InnerException is SocketException) {
             throw new InvalidOperationException(
                 $"Connectivity preflight failed for {uri.Host}. Check DNS resolution, proxy settings, and firewall rules.", ex);
