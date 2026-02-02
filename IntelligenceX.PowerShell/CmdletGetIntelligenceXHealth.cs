@@ -9,6 +9,15 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Runs health checks for OpenAI app-server and optional Copilot CLI.</para>
+/// <para type="description">Returns status for the active IntelligenceX client and, optionally, the Copilot CLI.</para>
+/// <example>
+///  <para>Check OpenAI app-server health</para>
+///  <code>Get-IntelligenceXHealth</code>
+/// </example>
+/// <example>
+///  <para>Check OpenAI and Copilot CLI health</para>
+///  <code>Get-IntelligenceXHealth -Copilot</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXHealth")]
 [OutputType(typeof(HealthReportRecord))]

@@ -9,6 +9,15 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Lists available threads.</para>
+/// <para type="description">Returns paged threads with optional filtering by model provider.</para>
+/// <example>
+///  <para>List recent threads</para>
+///  <code>Get-IntelligenceXThread -Limit 20 -SortKey updated_at</code>
+/// </example>
+/// <example>
+///  <para>Continue a previous page</para>
+///  <code>Get-IntelligenceXThread -Cursor $result.cursor -Limit 20</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXThread")]
 [OutputType(typeof(ThreadListResult), typeof(JsonValue))]

@@ -9,6 +9,11 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Lists collaboration modes.</para>
+/// <para type="description">Returns available collaboration modes for the app-server.</para>
+/// <example>
+///  <para>List collaboration modes</para>
+///  <code>Get-IntelligenceXCollaborationMode</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXCollaborationMode")]
 [OutputType(typeof(CollaborationModeListResult), typeof(JsonValue))]

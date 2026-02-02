@@ -9,6 +9,15 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Lists available skills.</para>
+/// <para type="description">Scans for skills in the provided working directories and returns the resolved list.</para>
+/// <example>
+///  <para>List skills in the current workspace</para>
+///  <code>Get-IntelligenceXSkill -Cwd "C:\repo"</code>
+/// </example>
+/// <example>
+///  <para>Force reload skills</para>
+///  <code>Get-IntelligenceXSkill -Cwd "C:\repo" -ForceReload</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXSkill")]
 [OutputType(typeof(SkillListResult), typeof(JsonValue))]

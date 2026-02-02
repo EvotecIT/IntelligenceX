@@ -7,6 +7,11 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Archives a thread.</para>
+/// <para type="description">Marks a thread as archived so it is no longer active in listings.</para>
+/// <example>
+///  <para>Archive a thread</para>
+///  <code>Backup-IntelligenceXThread -ThreadId $thread.id</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsData.Backup, "IntelligenceXThread")]
 public sealed class CmdletArchiveIntelligenceXThread : IntelligenceXCmdlet {

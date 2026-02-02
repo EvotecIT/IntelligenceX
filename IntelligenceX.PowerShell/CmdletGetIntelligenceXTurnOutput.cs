@@ -6,6 +6,15 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Extracts outputs from a turn.</para>
+/// <para type="description">Filters and saves outputs from a completed turn, including images and text.</para>
+/// <example>
+///  <para>Get all outputs</para>
+///  <code>$turn | Get-IntelligenceXTurnOutput</code>
+/// </example>
+/// <example>
+///  <para>Save image outputs to disk</para>
+///  <code>$turn | Get-IntelligenceXTurnOutput -Images -SaveImagesTo "C:\temp\ix"</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXTurnOutput")]
 [OutputType(typeof(TurnOutput))]

@@ -9,6 +9,11 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Requests user input through the app-server.</para>
+/// <para type="description">Prompts for one to three questions and returns the responses.</para>
+/// <example>
+///  <para>Ask for two inputs</para>
+///  <code>Request-IntelligenceXUserInput -Questions "Repo name?", "Branch?"</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Request, "IntelligenceXUserInput")]
 [OutputType(typeof(UserInputResponse), typeof(JsonValue))]

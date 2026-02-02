@@ -7,6 +7,11 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Interrupts a running turn.</para>
+/// <para type="description">Stops execution for a turn that is still in progress.</para>
+/// <example>
+///  <para>Stop a running turn</para>
+///  <code>Stop-IntelligenceXTurn -ThreadId $thread.id -TurnId $turn.id</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Stop, "IntelligenceXTurn")]
 public sealed class CmdletStopIntelligenceXTurn : IntelligenceXCmdlet {

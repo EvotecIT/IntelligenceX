@@ -9,6 +9,11 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Reads configuration requirements.</para>
+/// <para type="description">Returns required/optional settings for the current app-server configuration.</para>
+/// <example>
+///  <para>Get config requirements</para>
+///  <code>Get-IntelligenceXConfigRequirements</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXConfigRequirements")]
 [OutputType(typeof(ConfigRequirementsReadResult), typeof(JsonValue))]

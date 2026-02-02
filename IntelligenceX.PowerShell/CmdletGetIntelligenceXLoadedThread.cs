@@ -9,6 +9,11 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Lists currently loaded threads.</para>
+/// <para type="description">Shows threads currently loaded in the app-server process.</para>
+/// <example>
+///  <para>List loaded threads</para>
+///  <code>Get-IntelligenceXLoadedThread</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXLoadedThread")]
 [OutputType(typeof(ThreadIdListResult), typeof(JsonValue))]

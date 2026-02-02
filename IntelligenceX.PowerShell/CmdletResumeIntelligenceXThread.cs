@@ -9,6 +9,11 @@ namespace IntelligenceX.PowerShell;
 
 /// <summary>
 /// <para type="synopsis">Resumes an existing thread.</para>
+/// <para type="description">Reopens an existing thread so you can continue sending messages.</para>
+/// <example>
+///  <para>Resume a thread by id</para>
+///  <code>Resume-IntelligenceXThread -ThreadId $thread.id</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Resume, "IntelligenceXThread")]
 [OutputType(typeof(ThreadInfo), typeof(JsonValue))]
