@@ -402,61 +402,8 @@ public static class ReviewerApp {
         GitHubClient github, PullRequestContext context, ReviewSettings settings, IReadOnlyList<PullRequestFile> currentFiles,
         CancellationToken cancellationToken) {
         var range = ReviewSettings.NormalizeDiffRange(settings.ReviewDiffRange, "current");
-        if (range == "current") {
-            return (currentFiles, "current PR files");
-        }
-        if (string.IsNullOrWhiteSpace(context.HeadSha)) {
-            return (currentFiles, "current PR files (missing head SHA)");
-        }
-
-        async Task<(bool Success, IReadOnlyList<PullRequestFile> Files, string Note)> TryCompareAsync(string? baseSha, string label) {
-            if (string.IsNullOrWhiteSpace(baseSha)) {
-                return (false, Array.Empty<PullRequestFile>(), $"missing {label} commit");
-            }
-            try {
-                var compareFiles = await github.GetCompareFilesAsync(context.Owner, context.Repo, baseSha, context.HeadSha!, cancellationToken)
-                    .ConfigureAwait(false);
-                if (compareFiles.Count == 0) {
-                    return (false, Array.Empty<PullRequestFile>(), $"{label} diff empty");
-                }
-                return (true, compareFiles, $"{label} → head ({ShortSha(baseSha)}..{ShortSha(context.HeadSha)})");
-            } catch (Exception ex) {
-                Console.Error.WriteLine($"Failed to load {label} diff: {ex.Message}");
-                return (false, Array.Empty<PullRequestFile>(), $"failed to load {label} diff");
-            }
-        }
-
-        if (range == "pr-base") {
-            var result = await TryCompareAsync(context.BaseSha, "PR base").ConfigureAwait(false);
-            return result.Success
-                ? (result.Files, result.Note)
-                : (currentFiles, $"current PR files ({result.Note})");
-        }
-
-        var firstReviewSha = await FindOldestSummaryCommitAsync(github, context, settings, cancellationToken).ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(firstReviewSha)) {
-            var prBaseResult = await TryCompareAsync(context.BaseSha, "PR base fallback").ConfigureAwait(false);
-            if (prBaseResult.Success) {
-                return (prBaseResult.Files, prBaseResult.Note);
-            }
-            return (currentFiles, $"current PR files (missing first review commit; {prBaseResult.Note})");
-        }
-
-        var firstReviewResult = await TryCompareAsync(firstReviewSha, "first review").ConfigureAwait(false);
-        if (firstReviewResult.Success) {
-            return (firstReviewResult.Files, firstReviewResult.Note);
-        }
-
-        var prBaseFallback = await TryCompareAsync(context.BaseSha, "PR base fallback").ConfigureAwait(false);
-        if (prBaseFallback.Success) {
-            return (prBaseFallback.Files, prBaseFallback.Note);
-        }
-
-        var note = firstReviewResult.Note;
-        if (!string.IsNullOrWhiteSpace(prBaseFallback.Note)) {
-            note = string.IsNullOrWhiteSpace(note) ? prBaseFallback.Note : $"{note}; {prBaseFallback.Note}";
-        }
-        return (currentFiles, $"current PR files ({note})");
+        return await ResolveDiffRangeFilesAsync(github, context, range, currentFiles, settings, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private static async Task<ReviewContextExtras> BuildExtrasAsync(GitHubClient github, GitHubClient? fallbackGithub,
@@ -685,6 +632,13 @@ public static class ReviewerApp {
         GitHubClient github, PullRequestContext context, ReviewSettings settings, IReadOnlyList<PullRequestFile> currentFiles,
         CancellationToken cancellationToken) {
         var range = ReviewSettings.NormalizeDiffRange(settings.ReviewThreadsAutoResolveDiffRange, "current");
+        return await ResolveDiffRangeFilesAsync(github, context, range, currentFiles, settings, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task<(IReadOnlyList<PullRequestFile> Files, string DiffNote)> ResolveDiffRangeFilesAsync(
+        GitHubClient github, PullRequestContext context, string range, IReadOnlyList<PullRequestFile> currentFiles,
+        ReviewSettings settings, CancellationToken cancellationToken) {
         if (range == "current") {
             return (currentFiles, "current PR files");
         }
