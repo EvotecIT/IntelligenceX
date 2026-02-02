@@ -8,10 +8,26 @@ using IntelligenceX.OpenAI.Chat;
 
 namespace IntelligenceX.Configuration;
 
+/// <summary>
+/// Loads and holds the IntelligenceX configuration from disk.
+/// </summary>
 public sealed class IntelligenceXConfig {
+    /// <summary>
+    /// OpenAI provider configuration.
+    /// </summary>
     public OpenAIConfig OpenAI { get; } = new();
+    /// <summary>
+    /// Copilot provider configuration.
+    /// </summary>
     public CopilotConfig Copilot { get; } = new();
 
+    /// <summary>
+    /// Attempts to load configuration from the provided path, the environment, or the default location.
+    /// </summary>
+    /// <param name="config">The populated configuration on success.</param>
+    /// <param name="path">Optional explicit config path.</param>
+    /// <param name="baseDirectory">Optional base directory for resolving the default config path.</param>
+    /// <returns><c>true</c> when the configuration was loaded; otherwise <c>false</c>.</returns>
     public static bool TryLoad(out IntelligenceXConfig config, string? path = null, string? baseDirectory = null) {
         config = new IntelligenceXConfig();
         var resolved = ResolvePath(path, baseDirectory);
@@ -38,6 +54,13 @@ public sealed class IntelligenceXConfig {
         return true;
     }
 
+    /// <summary>
+    /// Loads configuration or throws if it cannot be found or parsed.
+    /// </summary>
+    /// <param name="path">Optional explicit config path.</param>
+    /// <param name="baseDirectory">Optional base directory for resolving the default config path.</param>
+    /// <returns>The loaded configuration.</returns>
+    /// <exception cref="FileNotFoundException">Thrown when the configuration file cannot be found.</exception>
     public static IntelligenceXConfig Load(string? path = null, string? baseDirectory = null) {
         if (!TryLoad(out var config, path, baseDirectory)) {
             throw new FileNotFoundException("IntelligenceX config not found.");
@@ -58,27 +81,93 @@ public sealed class IntelligenceXConfig {
     }
 }
 
+/// <summary>
+/// OpenAI-specific configuration that can be applied to client and session options.
+/// </summary>
 public sealed class OpenAIConfig {
+    /// <summary>
+    /// Default model name to use for new sessions.
+    /// </summary>
     public string? DefaultModel { get; set; }
+    /// <summary>
+    /// Default working directory for file operations.
+    /// </summary>
     public string? WorkingDirectory { get; set; }
+    /// <summary>
+    /// Default approval policy string (for example, "never" or "auto").
+    /// </summary>
     public string? ApprovalPolicy { get; set; }
+    /// <summary>
+    /// Enables or disables network access for tools that can use it.
+    /// </summary>
     public bool? AllowNetwork { get; set; }
+    /// <summary>
+    /// Transport identifier (for example, "native" or "appserver").
+    /// </summary>
     public string? Transport { get; set; }
+    /// <summary>
+    /// Originator value reported for native OpenAI requests.
+    /// </summary>
     public string? Originator { get; set; }
+    /// <summary>
+    /// Overrides the OpenAI responses endpoint URL.
+    /// </summary>
     public string? ResponsesUrl { get; set; }
+    /// <summary>
+    /// Overrides the ChatGPT API base URL for native transport.
+    /// </summary>
     public string? ChatGptApiBaseUrl { get; set; }
+    /// <summary>
+    /// Default system instructions for native sessions.
+    /// </summary>
     public string? Instructions { get; set; }
+    /// <summary>
+    /// Text verbosity hint for native requests.
+    /// </summary>
     public string? TextVerbosity { get; set; }
+    /// <summary>
+    /// Path to the OpenAI app-server executable.
+    /// </summary>
     public string? AppServerPath { get; set; }
+    /// <summary>
+    /// Arguments passed to the app-server executable.
+    /// </summary>
     public string? AppServerArgs { get; set; }
+    /// <summary>
+    /// Working directory for the app-server process.
+    /// </summary>
     public string? AppServerWorkingDirectory { get; set; }
+    /// <summary>
+    /// Opens a browser during ChatGPT login flows when enabled.
+    /// </summary>
     public bool? OpenBrowser { get; set; }
+    /// <summary>
+    /// Prints the login URL to the console during ChatGPT login flows when enabled.
+    /// </summary>
     public bool? PrintLoginUrl { get; set; }
+    /// <summary>
+    /// Attempts automatic login when enabled.
+    /// </summary>
     public bool? AutoLogin { get; set; }
+    /// <summary>
+    /// Login mode override ("chatgpt", "api", or "none").
+    /// </summary>
     public string? LoginMode { get; set; }
+    /// <summary>
+    /// Maximum allowed image payload size in bytes.
+    /// </summary>
     public long? MaxImageBytes { get; set; }
+    /// <summary>
+    /// Requires the workspace path to be set before file access is allowed.
+    /// </summary>
     public bool? RequireWorkspaceForFileAccess { get; set; }
+    /// <summary>
+    /// Reasoning effort hint ("low", "medium", "high").
+    /// </summary>
     public string? ReasoningEffort { get; set; }
+    /// <summary>
+    /// Reasoning summary hint ("auto", "concise", "detailed").
+    /// </summary>
     public string? ReasoningSummary { get; set; }
 
     internal void ReadFrom(JsonObject obj) {
@@ -105,6 +194,10 @@ public sealed class OpenAIConfig {
         ReasoningSummary = obj.GetString("reasoningSummary") ?? ReasoningSummary;
     }
 
+    /// <summary>
+    /// Applies settings to an <see cref="EasySessionOptions"/> instance.
+    /// </summary>
+    /// <param name="options">Session options to populate.</param>
     public void ApplyTo(EasySessionOptions options) {
         if (!string.IsNullOrWhiteSpace(DefaultModel)) {
             options.DefaultModel = DefaultModel!;
@@ -180,6 +273,10 @@ public sealed class OpenAIConfig {
         }
     }
 
+    /// <summary>
+    /// Applies settings to an <see cref="IntelligenceXClientOptions"/> instance.
+    /// </summary>
+    /// <param name="options">Client options to populate.</param>
     public void ApplyTo(IntelligenceXClientOptions options) {
         if (!string.IsNullOrWhiteSpace(DefaultModel)) {
             options.DefaultModel = DefaultModel!;
@@ -234,6 +331,10 @@ public sealed class OpenAIConfig {
         }
     }
 
+    /// <summary>
+    /// Applies app-server related settings to an <see cref="AppServerOptions"/> instance.
+    /// </summary>
+    /// <param name="options">App server options to populate.</param>
     public void ApplyTo(AppServerOptions options) {
         if (!string.IsNullOrWhiteSpace(AppServerPath)) {
             options.ExecutablePath = AppServerPath!;
@@ -276,9 +377,21 @@ public sealed class OpenAIConfig {
     }
 }
 
+/// <summary>
+/// GitHub Copilot-specific configuration.
+/// </summary>
 public sealed class CopilotConfig {
+    /// <summary>
+    /// Path to the Copilot CLI executable.
+    /// </summary>
     public string? CliPath { get; set; }
+    /// <summary>
+    /// Download URL for the Copilot CLI.
+    /// </summary>
     public string? CliUrl { get; set; }
+    /// <summary>
+    /// Automatically installs the Copilot CLI when missing.
+    /// </summary>
     public bool? AutoInstall { get; set; }
 
     internal void ReadFrom(JsonObject obj) {
@@ -287,6 +400,10 @@ public sealed class CopilotConfig {
         AutoInstall = ReadBool(obj, "autoInstall", AutoInstall);
     }
 
+    /// <summary>
+    /// Applies settings to a <see cref="CopilotClientOptions"/> instance.
+    /// </summary>
+    /// <param name="options">Copilot client options to populate.</param>
     public void ApplyTo(CopilotClientOptions options) {
         if (!string.IsNullOrWhiteSpace(CliPath)) {
             options.CliPath = CliPath;
