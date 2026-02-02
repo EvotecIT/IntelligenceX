@@ -3,6 +3,15 @@ using IntelligenceX.Json;
 
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
+/// <summary>
+/// Represents configuration requirements returned by the app-server.
+/// </summary>
+/// <example>
+/// <code>
+/// var req = await client.ReadConfigRequirementsAsync();
+/// Console.WriteLine(req.Requirements?.AllowedApprovalPolicies?.Count);
+/// </code>
+/// </example>
 public sealed class ConfigRequirementsReadResult {
     public ConfigRequirementsReadResult(ConfigRequirements? requirements, JsonObject raw, JsonObject? additional) {
         Requirements = requirements;
@@ -10,10 +19,14 @@ public sealed class ConfigRequirementsReadResult {
         Additional = additional;
     }
 
+    /// <summary>Parsed requirement values.</summary>
     public ConfigRequirements? Requirements { get; }
+    /// <summary>Raw JSON payload from the service.</summary>
     public JsonObject Raw { get; }
+    /// <summary>Additional unmapped fields from the payload.</summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>Parses requirements from JSON.</summary>
     public static ConfigRequirementsReadResult FromJson(JsonObject obj) {
         var requirementsObj = obj.GetObject("requirements");
         var requirements = requirementsObj is null ? null : ConfigRequirements.FromJson(requirementsObj);
@@ -22,6 +35,9 @@ public sealed class ConfigRequirementsReadResult {
     }
 }
 
+/// <summary>
+/// Allowed values for configuration settings.
+/// </summary>
 public sealed class ConfigRequirements {
     public ConfigRequirements(IReadOnlyList<string>? allowedApprovalPolicies, IReadOnlyList<string>? allowedSandboxModes,
         JsonObject raw, JsonObject? additional) {
@@ -31,11 +47,16 @@ public sealed class ConfigRequirements {
         Additional = additional;
     }
 
+    /// <summary>Allowed approval policies (if provided).</summary>
     public IReadOnlyList<string>? AllowedApprovalPolicies { get; }
+    /// <summary>Allowed sandbox modes (if provided).</summary>
     public IReadOnlyList<string>? AllowedSandboxModes { get; }
+    /// <summary>Raw JSON payload from the service.</summary>
     public JsonObject Raw { get; }
+    /// <summary>Additional unmapped fields from the payload.</summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>Parses requirements from JSON.</summary>
     public static ConfigRequirements FromJson(JsonObject obj) {
         var approvalPolicies = ReadStringArray(obj, "allowedApprovalPolicies", "allowed_approval_policies");
         var sandboxModes = ReadStringArray(obj, "allowedSandboxModes", "allowed_sandbox_modes");

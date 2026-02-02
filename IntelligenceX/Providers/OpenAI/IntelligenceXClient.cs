@@ -11,6 +11,15 @@ using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI;
 
+/// <summary>
+/// Core client for OpenAI transports (native ChatGPT or app-server).
+/// </summary>
+/// <example>
+/// <code>
+/// var client = await IntelligenceXClient.ConnectAsync();
+/// var turn = await client.ChatAsync("Hello");
+/// </code>
+/// </example>
 public sealed class IntelligenceXClient : IDisposable
 #if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
     , IAsyncDisposable
@@ -38,6 +47,9 @@ public sealed class IntelligenceXClient : IDisposable
         _transport.StandardErrorReceived += OnStandardErrorReceived;
     }
 
+    /// <summary>
+    /// Raised as streaming deltas are received.
+    /// </summary>
     public event EventHandler<string>? DeltaReceived;
     public event EventHandler<RpcCallStartedEventArgs>? RpcCallStarted;
     public event EventHandler<RpcCallCompletedEventArgs>? RpcCallCompleted;
@@ -46,8 +58,14 @@ public sealed class IntelligenceXClient : IDisposable
     public event EventHandler<string>? ProtocolLineReceived;
     public event EventHandler<string>? StandardErrorReceived;
 
+    /// <summary>
+    /// Active transport kind.
+    /// </summary>
     public OpenAITransportKind TransportKind => _transport.Kind;
 
+    /// <summary>
+    /// Gets the underlying app-server client (only when using AppServer transport).
+    /// </summary>
     public AppServerClient RawClient => RequireAppServer();
 
     public AppServerClient RequireAppServer() {
@@ -58,6 +76,17 @@ public sealed class IntelligenceXClient : IDisposable
         return client;
     }
 
+    /// <summary>
+    /// Connects a client with the provided options.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// var options = new IntelligenceXClientOptions {
+    ///     TransportKind = OpenAITransportKind.Native
+    /// };
+    /// var client = await IntelligenceXClient.ConnectAsync(options);
+    /// </code>
+    /// </example>
     public static async Task<IntelligenceXClient> ConnectAsync(IntelligenceXClientOptions? options = null, CancellationToken cancellationToken = default) {
         options ??= new IntelligenceXClientOptions();
         options.Validate();
@@ -76,46 +105,87 @@ public sealed class IntelligenceXClient : IDisposable
         return wrapper;
     }
 
+    /// <summary>
+    /// Initializes the transport with client metadata.
+    /// </summary>
     public Task InitializeAsync(ClientInfo clientInfo, CancellationToken cancellationToken = default) {
         return _transport.InitializeAsync(clientInfo, cancellationToken);
     }
 
+    /// <summary>
+    /// Executes a health check against the active transport.
+    /// </summary>
     public Task<HealthCheckResult> HealthCheckAsync(string? method = null, TimeSpan? timeout = null,
         CancellationToken cancellationToken = default) {
         return _transport.HealthCheckAsync(method, timeout, cancellationToken);
     }
 
+    /// <summary>
+    /// Gets account information for the current auth context.
+    /// </summary>
     public Task<AccountInfo> GetAccountAsync(CancellationToken cancellationToken = default) {
         return _transport.GetAccountAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Logs out the current session.
+    /// </summary>
     public Task LogoutAsync(CancellationToken cancellationToken = default) {
         return _transport.LogoutAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Lists models available to the account.
+    /// </summary>
     public Task<ModelListResult> ListModelsAsync(CancellationToken cancellationToken = default) {
         return _transport.ListModelsAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Starts a ChatGPT login flow.
+    /// </summary>
     public Task<ChatGptLoginStart> LoginChatGptAsync(CancellationToken cancellationToken = default) {
         return LoginChatGptAsync(null, null, true, null, cancellationToken);
     }
 
+    /// <summary>
+    /// Starts a ChatGPT login flow with callbacks for URL and prompts.
+    /// </summary>
     public Task<ChatGptLoginStart> LoginChatGptAsync(Action<string>? onUrl, Func<string, Task<string>>? onPrompt,
         bool useLocalListener = true, TimeSpan? timeout = null, CancellationToken cancellationToken = default) {
         var resolvedTimeout = timeout ?? TimeSpan.FromMinutes(3);
         return _transport.LoginChatGptAsync(onUrl, onPrompt, useLocalListener, resolvedTimeout, cancellationToken);
     }
 
+    /// <summary>
+    /// Starts a ChatGPT login flow and waits for completion.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// await client.LoginChatGptAndWaitAsync(url => Console.WriteLine(url));
+    /// </code>
+    /// </example>
     public async Task LoginChatGptAndWaitAsync(Action<string>? onUrl = null, Func<string, Task<string>>? onPrompt = null,
         bool useLocalListener = true, TimeSpan? timeout = null, CancellationToken cancellationToken = default) {
         await LoginChatGptAsync(onUrl, onPrompt, useLocalListener, timeout, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Logs in using an API key (AppServer transport only).
+    /// </summary>
     public Task LoginApiKeyAsync(string apiKey, CancellationToken cancellationToken = default) {
         return _transport.LoginApiKeyAsync(apiKey, cancellationToken);
     }
 
+    /// <summary>
+    /// Starts a new thread and makes it the active thread.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// var thread = await client.StartNewThreadAsync(model: "gpt-5.2-codex");
+    /// Console.WriteLine(thread.Id);
+    /// </code>
+    /// </example>
     public async Task<ThreadInfo> StartNewThreadAsync(string? model = null, string? currentDirectory = null, string? approvalPolicy = null,
         string? sandbox = null, CancellationToken cancellationToken = default) {
         var thread = await _transport.StartThreadAsync(model ?? _defaultModel, currentDirectory, approvalPolicy, sandbox, cancellationToken)
@@ -124,18 +194,33 @@ public sealed class IntelligenceXClient : IDisposable
         return thread;
     }
 
+    /// <summary>
+    /// Switches to an existing thread by ID.
+    /// </summary>
     public Task<ThreadInfo> UseThreadAsync(string threadId, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(threadId, nameof(threadId));
         _currentThreadId = threadId;
         return _transport.ResumeThreadAsync(threadId, cancellationToken);
     }
 
+    /// <summary>
+    /// Sends a text-only chat request.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// var turn = await client.ChatAsync("Summarize the diff");
+    /// Console.WriteLine(turn.Outputs.Count);
+    /// </code>
+    /// </example>
     public async Task<TurnInfo> ChatAsync(string text, string? model = null, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(text, nameof(text));
         var input = Chat.ChatInput.FromText(text);
         return await ChatAsync(input, new Chat.ChatOptions { Model = model }, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Sends a chat request with an image from a local path.
+    /// </summary>
     public async Task<TurnInfo> ChatWithImagePathAsync(string text, string imagePath, Chat.ChatOptions? options = null,
         CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(text, nameof(text));
@@ -144,6 +229,9 @@ public sealed class IntelligenceXClient : IDisposable
         return await ChatAsync(input, options, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Sends a chat request with an image from a URL.
+    /// </summary>
     public async Task<TurnInfo> ChatWithImageUrlAsync(string text, string imageUrl, Chat.ChatOptions? options = null,
         CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(text, nameof(text));
@@ -152,6 +240,9 @@ public sealed class IntelligenceXClient : IDisposable
         return await ChatAsync(input, options, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Sends a chat request with a fully constructed input payload.
+    /// </summary>
     public async Task<TurnInfo> ChatAsync(Chat.ChatInput input, Chat.ChatOptions? options = null, CancellationToken cancellationToken = default) {
         Guard.NotNull(input, nameof(input));
         options ??= new Chat.ChatOptions();
@@ -184,6 +275,14 @@ public sealed class IntelligenceXClient : IDisposable
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Configures a workspace for file access and optional network use.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// client.ConfigureWorkspace("C:\\repo", allowNetwork: false);
+    /// </code>
+    /// </example>
     public IntelligenceXClient ConfigureWorkspace(string workingDirectory, bool allowNetwork = false) {
         _defaultWorkingDirectory = workingDirectory;
         _defaultApprovalPolicy = _defaultApprovalPolicy ?? "auto";
@@ -191,6 +290,9 @@ public sealed class IntelligenceXClient : IDisposable
         return this;
     }
 
+    /// <summary>
+    /// Updates default model/workspace/approval settings.
+    /// </summary>
     public IntelligenceXClient ConfigureDefaults(string? model = null, string? workingDirectory = null, string? approvalPolicy = null,
         SandboxPolicy? sandboxPolicy = null) {
         if (!string.IsNullOrWhiteSpace(model)) {
@@ -208,6 +310,15 @@ public sealed class IntelligenceXClient : IDisposable
         return this;
     }
 
+    /// <summary>
+    /// Subscribes to streaming delta text events.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// using var subscription = client.SubscribeDelta(Console.Write);
+    /// await client.ChatAsync("Stream a short answer.");
+    /// </code>
+    /// </example>
     public IDisposable SubscribeDelta(Action<string> onDelta) {
         Guard.NotNull(onDelta, nameof(onDelta));
         void Handler(object? sender, string text) => onDelta(text);

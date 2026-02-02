@@ -4,6 +4,17 @@ using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
+/// <summary>
+/// Represents collaboration modes returned by the app-server.
+/// </summary>
+/// <example>
+/// <code>
+/// var modes = await client.ListCollaborationModesAsync();
+/// foreach (var mode in modes.Modes) {
+///     Console.WriteLine(mode.Name);
+/// }
+/// </code>
+/// </example>
 public sealed class CollaborationModeListResult {
     public CollaborationModeListResult(IReadOnlyList<CollaborationModeMask> modes, JsonObject raw, JsonObject? additional) {
         Modes = modes;
@@ -11,10 +22,14 @@ public sealed class CollaborationModeListResult {
         Additional = additional;
     }
 
+    /// <summary>Collaboration modes returned by the service.</summary>
     public IReadOnlyList<CollaborationModeMask> Modes { get; }
+    /// <summary>Raw JSON payload from the service.</summary>
     public JsonObject Raw { get; }
+    /// <summary>Additional unmapped fields from the payload.</summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>Parses collaboration modes from JSON.</summary>
     public static CollaborationModeListResult FromJson(JsonObject obj) {
         var modes = new List<CollaborationModeMask>();
         var data = obj.GetArray("data") ?? obj.GetArray("items");
@@ -32,6 +47,9 @@ public sealed class CollaborationModeListResult {
     }
 }
 
+/// <summary>
+/// Represents a collaboration mode mask.
+/// </summary>
 public sealed class CollaborationModeMask {
     public CollaborationModeMask(string name, string? mode, string? model,
         OptionalValue<string?> reasoningEffort, OptionalValue<string?> developerInstructions,
@@ -45,14 +63,22 @@ public sealed class CollaborationModeMask {
         Additional = additional;
     }
 
+    /// <summary>Mode name.</summary>
     public string Name { get; }
+    /// <summary>Mode identifier (if provided).</summary>
     public string? Mode { get; }
+    /// <summary>Model override (if provided).</summary>
     public string? Model { get; }
+    /// <summary>Optional reasoning effort override.</summary>
     public OptionalValue<string?> ReasoningEffort { get; }
+    /// <summary>Optional developer instructions override.</summary>
     public OptionalValue<string?> DeveloperInstructions { get; }
+    /// <summary>Raw JSON payload from the service.</summary>
     public JsonObject Raw { get; }
+    /// <summary>Additional unmapped fields from the payload.</summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>Parses a mode mask from JSON.</summary>
     public static CollaborationModeMask FromJson(JsonObject obj) {
         var name = obj.GetString("name") ?? string.Empty;
         var mode = obj.GetString("mode");

@@ -4,7 +4,12 @@ using IntelligenceX.Json;
 
 namespace IntelligenceX.OpenAI.Auth;
 
+/// <summary>
+/// Serializes and deserializes <see cref="AuthBundle"/> instances.
+/// </summary>
 public static class AuthBundleSerializer {
+    /// <summary>Serializes an auth bundle to JSON.</summary>
+    /// <param name="bundle">The bundle to serialize.</param>
     public static string Serialize(AuthBundle bundle) {
         var obj = ToJson(bundle);
         return JsonLite.Serialize(JsonValue.From(obj));
@@ -17,6 +22,8 @@ public static class AuthBundleSerializer {
         return JsonLite.Serialize(JsonValue.From(obj));
     }
 
+    /// <summary>Deserializes an auth bundle from JSON.</summary>
+    /// <param name="json">The JSON payload.</param>
     public static AuthBundle? Deserialize(string json) {
         var value = JsonLite.Parse(json);
         var obj = value?.AsObject();

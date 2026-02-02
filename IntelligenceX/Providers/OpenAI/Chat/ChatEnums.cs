@@ -2,6 +2,9 @@ using System;
 
 namespace IntelligenceX.OpenAI.Chat;
 
+/// <summary>
+/// Controls the model's reasoning effort.
+/// </summary>
 public enum ReasoningEffort {
     Minimal,
     Low,
@@ -10,6 +13,9 @@ public enum ReasoningEffort {
     XHigh
 }
 
+/// <summary>
+/// Controls the verbosity of the reasoning summary.
+/// </summary>
 public enum ReasoningSummary {
     Auto,
     Concise,
@@ -17,21 +23,33 @@ public enum ReasoningSummary {
     Off
 }
 
+/// <summary>
+/// Controls response verbosity for text outputs.
+/// </summary>
 public enum TextVerbosity {
     Low,
     Medium,
     High
 }
 
+/// <summary>
+/// Helpers for parsing chat enum values from strings.
+/// </summary>
 public static class ChatEnumParser {
+    /// <summary>Parses a reasoning effort value from a string.</summary>
+    /// <param name="value">The input string.</param>
     public static ReasoningEffort? ParseReasoningEffort(string? value) {
         return TryParseEnum(value, out ReasoningEffort result) ? result : null;
     }
 
+    /// <summary>Parses a reasoning summary value from a string.</summary>
+    /// <param name="value">The input string.</param>
     public static ReasoningSummary? ParseReasoningSummary(string? value) {
         return TryParseEnum(value, out ReasoningSummary result) ? result : null;
     }
 
+    /// <summary>Parses a text verbosity value from a string.</summary>
+    /// <param name="value">The input string.</param>
     public static TextVerbosity? ParseTextVerbosity(string? value) {
         return TryParseEnum(value, out TextVerbosity result) ? result : null;
     }

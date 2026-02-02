@@ -9,6 +9,16 @@ using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI;
 
+/// <summary>
+/// High-level convenience wrapper for ChatGPT sessions.
+/// </summary>
+/// <example>
+/// <code>
+/// var session = await EasySession.StartAsync();
+/// var result = await session.AskAsync("Summarize this PR");
+/// Console.WriteLine(result.Text);
+/// </code>
+/// </example>
 public sealed class EasySession : IDisposable
 #if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
     , IAsyncDisposable
@@ -23,8 +33,14 @@ public sealed class EasySession : IDisposable
         _options = options;
     }
 
+    /// <summary>
+    /// Underlying client instance used by the session.
+    /// </summary>
     public IntelligenceXClient Client => _client;
 
+    /// <summary>
+    /// Starts a new session and optionally logs in (based on <see cref="EasySessionOptions.AutoLogin"/>).
+    /// </summary>
     public static async Task<EasySession> StartAsync(EasySessionOptions? options = null, CancellationToken cancellationToken = default) {
         options ??= new EasySessionOptions();
         options.Validate();
@@ -42,17 +58,35 @@ public sealed class EasySession : IDisposable
         return session;
     }
 
+    /// <summary>
+    /// Subscribes to streamed delta text emitted by the current session.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// using var subscription = session.SubscribeDelta(Console.Write);
+    /// await session.ChatAsync("Write a short haiku about code.");
+    /// </code>
+    /// </example>
     public IDisposable SubscribeDelta(Action<string> onDelta) => _client.SubscribeDelta(onDelta);
 
+    /// <summary>
+    /// Sends a text-only chat request.
+    /// </summary>
     public Task<TurnInfo> ChatAsync(string text, CancellationToken cancellationToken = default) {
         return ChatAsync(ChatInput.FromText(text), null, cancellationToken);
     }
 
+    /// <summary>
+    /// Sends a text-only request and returns a simplified response.
+    /// </summary>
     public async Task<EasyChatResult> AskAsync(string text, EasyChatOptions? options = null, CancellationToken cancellationToken = default) {
         var turn = await ChatAsync(ChatInput.FromText(text), options, cancellationToken).ConfigureAwait(false);
         return EasyChatResult.FromTurn(turn);
     }
 
+    /// <summary>
+    /// Sends a text request with an image from a local path.
+    /// </summary>
     public async Task<EasyChatResult> AskWithImagePathAsync(string text, string imagePath, EasyChatOptions? options = null,
         CancellationToken cancellationToken = default) {
         var input = ChatInput.FromTextWithImagePath(text, imagePath);
@@ -60,6 +94,15 @@ public sealed class EasySession : IDisposable
         return EasyChatResult.FromTurn(turn);
     }
 
+    /// <summary>
+    /// Sends a text request with an image from a URL.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// var result = await session.AskWithImageUrlAsync("Describe this diagram", "https://example.com/diagram.png");
+    /// Console.WriteLine(result.Text);
+    /// </code>
+    /// </example>
     public async Task<EasyChatResult> AskWithImageUrlAsync(string text, string imageUrl, EasyChatOptions? options = null,
         CancellationToken cancellationToken = default) {
         var input = ChatInput.FromTextWithImageUrl(text, imageUrl);
@@ -67,18 +110,27 @@ public sealed class EasySession : IDisposable
         return EasyChatResult.FromTurn(turn);
     }
 
+    /// <summary>
+    /// Sends a text request with an image from a local path and returns the raw turn.
+    /// </summary>
     public Task<TurnInfo> ChatWithImagePathAsync(string text, string imagePath, EasyChatOptions? options = null,
         CancellationToken cancellationToken = default) {
         var input = ChatInput.FromTextWithImagePath(text, imagePath);
         return ChatAsync(input, options, cancellationToken);
     }
 
+    /// <summary>
+    /// Sends a text request with an image from a URL and returns the raw turn.
+    /// </summary>
     public Task<TurnInfo> ChatWithImageUrlAsync(string text, string imageUrl, EasyChatOptions? options = null,
         CancellationToken cancellationToken = default) {
         var input = ChatInput.FromTextWithImageUrl(text, imageUrl);
         return ChatAsync(input, options, cancellationToken);
     }
 
+    /// <summary>
+    /// Sends a fully constructed input payload.
+    /// </summary>
     public async Task<TurnInfo> ChatAsync(ChatInput input, EasyChatOptions? options = null, CancellationToken cancellationToken = default) {
         await EnsureLoggedInAsync(cancellationToken).ConfigureAwait(false);
 

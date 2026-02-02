@@ -8,10 +8,23 @@ using System.Threading.Tasks;
 
 namespace IntelligenceX.OpenAI.Auth;
 
+/// <summary>
+/// File-based auth bundle store with optional encryption.
+/// </summary>
+/// <example>
+/// <code>
+/// var store = new FileAuthBundleStore();
+/// await store.SaveAsync(bundle);
+/// var loaded = await store.GetAsync(bundle.Provider, bundle.AccountId);
+/// </code>
+/// </example>
 public sealed class FileAuthBundleStore : IAuthBundleStore {
     private readonly string _path;
     private readonly byte[]? _encryptionKey;
 
+    /// <summary>
+    /// Creates a file-backed auth store.
+    /// </summary>
     public FileAuthBundleStore(string? path = null, string? encryptionKeyBase64 = null) {
         _path = path ?? AuthPaths.ResolveAuthPath();
         _encryptionKey = ParseKey(encryptionKeyBase64 ?? Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_KEY"));
@@ -20,6 +33,9 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
         }
     }
 
+    /// <summary>
+    /// Loads a bundle by provider (and optional account id).
+    /// </summary>
     public async Task<AuthBundle?> GetAsync(string provider, string? accountId = null, CancellationToken cancellationToken = default) {
         var file = await ReadFileAsync(cancellationToken).ConfigureAwait(false);
         if (file is null) {
@@ -37,6 +53,9 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
         return null;
     }
 
+    /// <summary>
+    /// Saves a bundle to disk.
+    /// </summary>
     public async Task SaveAsync(AuthBundle bundle, CancellationToken cancellationToken = default) {
         var file = await ReadFileAsync(cancellationToken).ConfigureAwait(false)
                    ?? new AuthBundleFile(1, new Dictionary<string, AuthBundle>(StringComparer.OrdinalIgnoreCase));
@@ -45,6 +64,15 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
         await WriteFileAsync(file, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Deletes the auth store file.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// var store = new FileAuthBundleStore();
+    /// store.Delete();
+    /// </code>
+    /// </example>
     public void Delete() {
         if (File.Exists(_path)) {
             File.Delete(_path);

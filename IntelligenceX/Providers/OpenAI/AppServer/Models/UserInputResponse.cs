@@ -3,6 +3,15 @@ using IntelligenceX.Json;
 
 namespace IntelligenceX.OpenAI.AppServer.Models;
 
+/// <summary>
+/// Represents a response to a user input prompt.
+/// </summary>
+/// <example>
+/// <code>
+/// var response = await client.SubmitUserInputAsync("prompt-id", new[] { "yes" });
+/// Console.WriteLine(response.Answers.Count);
+/// </code>
+/// </example>
 public sealed class UserInputResponse {
     public UserInputResponse(IReadOnlyList<string> answers, IReadOnlyDictionary<string, IReadOnlyList<string>>? answersById,
         JsonObject raw, JsonObject? additional) {
@@ -12,11 +21,16 @@ public sealed class UserInputResponse {
         Additional = additional;
     }
 
+    /// <summary>Flat list of answers.</summary>
     public IReadOnlyList<string> Answers { get; }
+    /// <summary>Answers grouped by id (if provided).</summary>
     public IReadOnlyDictionary<string, IReadOnlyList<string>>? AnswersById { get; }
+    /// <summary>Raw JSON payload from the service.</summary>
     public JsonObject Raw { get; }
+    /// <summary>Additional unmapped fields from the payload.</summary>
     public JsonObject? Additional { get; }
 
+    /// <summary>Parses a user input response from JSON.</summary>
     public static UserInputResponse FromJson(JsonObject obj) {
         var answers = new List<string>();
         IReadOnlyDictionary<string, IReadOnlyList<string>>? answersById = null;

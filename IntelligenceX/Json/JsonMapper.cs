@@ -4,7 +4,12 @@ using System.Collections.Generic;
 
 namespace IntelligenceX.Json;
 
+/// <summary>
+/// Converts CLR values into <see cref="JsonValue"/> representations.
+/// </summary>
 public static class JsonMapper {
+    /// <summary>Converts a CLR value to a <see cref="JsonValue"/>.</summary>
+    /// <param name="value">The value to convert.</param>
     public static JsonValue FromObject(object? value) {
         if (value is null) {
             return JsonValue.Null;
@@ -34,6 +39,8 @@ public static class JsonMapper {
         }
     }
 
+    /// <summary>Converts a dictionary into a <see cref="JsonObject"/>.</summary>
+    /// <param name="dictionary">The dictionary to convert.</param>
     public static JsonObject FromDictionary(IDictionary dictionary) {
         var obj = new JsonObject();
         foreach (DictionaryEntry entry in dictionary) {
@@ -43,6 +50,8 @@ public static class JsonMapper {
         return obj;
     }
 
+    /// <summary>Converts an enumerable into a <see cref="JsonArray"/>.</summary>
+    /// <param name="enumerable">The enumerable to convert.</param>
     public static JsonArray FromEnumerable(IEnumerable enumerable) {
         var array = new JsonArray();
         foreach (var item in enumerable) {
@@ -51,6 +60,8 @@ public static class JsonMapper {
         return array;
     }
 
+    /// <summary>Converts a read-only dictionary into a <see cref="JsonObject"/>.</summary>
+    /// <param name="dictionary">The dictionary to convert.</param>
     public static JsonObject FromDictionary(IReadOnlyDictionary<string, object?> dictionary) {
         var obj = new JsonObject();
         foreach (var entry in dictionary) {

@@ -33,6 +33,31 @@ jobs:
     secrets: inherit
 ```
 
+## Minimal config (native ChatGPT)
+
+```json
+{
+  "review": {
+    "provider": "openai",
+    "openaiTransport": "native",
+    "model": "gpt-5.2-codex",
+    "mode": "inline",
+    "length": "long",
+    "reviewUsageSummary": true
+  }
+}
+```
+
+## Quick flow (end-to-end)
+
+```powershell
+# 1) Auth login (stores tokens locally)
+intelligencex auth login
+
+# 2) Setup reviewer (creates PR)
+intelligencex setup wizard
+```
+
 ## What to configure next
 - Model/provider + output style
 - Review length and strictness

@@ -10,9 +10,31 @@ using IntelligenceX.Json;
 
 namespace IntelligenceX.OpenAI.Auth;
 
+/// <summary>
+/// OAuth PKCE login flow for ChatGPT.
+/// </summary>
+/// <example>
+/// <code>
+/// var service = new OAuthLoginService();
+/// var result = await service.LoginAsync(new OAuthLoginOptions(OAuthConfig.FromEnvironment()));
+/// </code>
+/// </example>
 public sealed class OAuthLoginService {
     private readonly HttpClient _httpClient = new();
 
+    /// <summary>
+    /// Starts an OAuth login flow and returns the resulting auth bundle.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// var service = new OAuthLoginService();
+    /// var options = new OAuthLoginOptions(OAuthConfig.FromEnvironment()) {
+    ///     OnAuthUrl = url => { Console.WriteLine(url); return Task.CompletedTask; },
+    ///     OnPrompt = prompt => Task.FromResult(Console.ReadLine() ?? string.Empty)
+    /// };
+    /// var result = await service.LoginAsync(options);
+    /// </code>
+    /// </example>
     public async Task<OAuthLoginResult> LoginAsync(OAuthLoginOptions options) {
         options.Config.Validate();
         var config = options.Config;
@@ -52,6 +74,15 @@ public sealed class OAuthLoginService {
         return new OAuthLoginResult(bundle, tokenResponse);
     }
 
+    /// <summary>
+    /// Refreshes the access token for an existing bundle.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// var service = new OAuthLoginService();
+    /// var refreshed = await service.RefreshAsync(OAuthConfig.FromEnvironment(), bundle);
+    /// </code>
+    /// </example>
     public async Task<OAuthLoginResult> RefreshAsync(OAuthConfig config, AuthBundle bundle, CancellationToken cancellationToken = default) {
         config.Validate();
         var tokenResponse = await RefreshTokenAsync(config, bundle.RefreshToken, cancellationToken).ConfigureAwait(false);
