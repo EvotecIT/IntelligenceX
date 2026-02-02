@@ -49,7 +49,7 @@ internal static class ReviewFormatter {
             ["Length"] = settings.Length.ToString().ToLowerInvariant(),
             ["Mode"] = settings.Mode,
             ["ReasoningLine"] = reasoningLine,
-            ["UsageLine"] = string.IsNullOrWhiteSpace(usageLine) ? string.Empty : $" | {usageLine.Trim()}"
+            ["UsageLine"] = string.IsNullOrWhiteSpace(usageLine) ? string.Empty : usageLine.Trim()
         };
 
         return TemplateRenderer.Render(template, tokens).TrimEnd();

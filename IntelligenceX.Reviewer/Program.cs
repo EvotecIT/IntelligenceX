@@ -762,7 +762,7 @@ public static class ReviewerApp {
                 return string.Empty;
             }
             var summary = FormatUsageSummary(snapshot);
-            return string.IsNullOrWhiteSpace(summary) ? string.Empty : $"Usage: {summary}";
+            return string.IsNullOrWhiteSpace(summary) ? string.Empty : summary;
         } catch (Exception ex) {
             if (settings.Diagnostics) {
                 Console.Error.WriteLine($"Usage summary failed: {ex.Message}");
@@ -796,29 +796,91 @@ public static class ReviewerApp {
     }
 
     private static string FormatUsageSummary(ChatGptUsageSnapshot snapshot) {
-        var parts = new List<string>();
+        var lines = new List<string>();
 
-        var rate = FormatRemainingPercent(snapshot.RateLimit?.PrimaryWindow?.UsedPercent);
-        if (!string.IsNullOrWhiteSpace(rate)) {
-            parts.Add($"rate {rate}% remaining");
+        var primary = FormatRateLimitLine(snapshot.RateLimit?.PrimaryWindow, "rate limit");
+        if (!string.IsNullOrWhiteSpace(primary)) {
+            lines.Add(primary);
         }
 
-        var codeReview = FormatRemainingPercent(snapshot.CodeReviewRateLimit?.PrimaryWindow?.UsedPercent);
-        if (!string.IsNullOrWhiteSpace(codeReview)) {
-            parts.Add($"code review {codeReview}% remaining");
+        var secondary = FormatRateLimitLine(snapshot.RateLimit?.SecondaryWindow, "rate limit (secondary)");
+        if (!string.IsNullOrWhiteSpace(secondary)) {
+            lines.Add(secondary);
         }
 
         if (snapshot.Credits is not null) {
             if (snapshot.Credits.Unlimited) {
-                parts.Add("credits unlimited");
+                lines.Add("credits: unlimited");
             } else if (snapshot.Credits.Balance.HasValue) {
-                parts.Add($"credits {snapshot.Credits.Balance.Value.ToString("0.####", CultureInfo.InvariantCulture)}");
+                lines.Add($"credits: {snapshot.Credits.Balance.Value.ToString("0.####", CultureInfo.InvariantCulture)}");
             } else if (!snapshot.Credits.HasCredits) {
-                parts.Add("credits none");
+                lines.Add("credits: none");
             }
         }
 
-        return string.Join(", ", parts);
+        if (lines.Count == 0) {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine("Usage:");
+        foreach (var line in lines) {
+            sb.AppendLine($"- {line}");
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    private static string? FormatRateLimitLine(ChatGptRateLimitWindow? window, string fallbackLabel) {
+        if (window is null) {
+            return null;
+        }
+        var remaining = FormatRemainingPercent(window.UsedPercent);
+        if (string.IsNullOrWhiteSpace(remaining)) {
+            return null;
+        }
+        var label = FormatWindowLabel(window) ?? fallbackLabel;
+        return $"{label}: {remaining}% remaining";
+    }
+
+    private static string? FormatWindowLabel(ChatGptRateLimitWindow window) {
+        if (!window.LimitWindowSeconds.HasValue) {
+            return null;
+        }
+        var seconds = Math.Max(0, window.LimitWindowSeconds.Value);
+        if (IsWithin(seconds, 5 * 3600, 600)) {
+            return "5h limit";
+        }
+        if (IsWithin(seconds, 7 * 24 * 3600, 3600)) {
+            return "weekly limit";
+        }
+        if (IsWithin(seconds, 24 * 3600, 3600)) {
+            return "daily limit";
+        }
+        if (IsWithin(seconds, 3600, 120)) {
+            return "hourly limit";
+        }
+        return $"{FormatDuration(seconds)} limit";
+    }
+
+    private static bool IsWithin(long value, long target, long tolerance) {
+        return Math.Abs(value - target) <= tolerance;
+    }
+
+    private static string FormatDuration(long seconds) {
+        if (seconds <= 0) {
+            return "0s";
+        }
+        var span = TimeSpan.FromSeconds(seconds);
+        if (span.TotalDays >= 1 && span.TotalDays % 1 == 0) {
+            return $"{(int)span.TotalDays}d";
+        }
+        if (span.TotalHours >= 1 && span.TotalHours % 1 == 0) {
+            return $"{(int)span.TotalHours}h";
+        }
+        if (span.TotalMinutes >= 1) {
+            return $"{(int)Math.Round(span.TotalMinutes)}m";
+        }
+        return $"{(int)Math.Round(span.TotalSeconds)}s";
     }
 
     private static string? FormatRemainingPercent(double? usedPercent) {
