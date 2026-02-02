@@ -72,6 +72,16 @@ public sealed class ChatGptUsageCacheEntry {
 /// <summary>
 /// File-backed cache for ChatGPT usage snapshots.
 /// </summary>
+/// <example>
+/// <code>
+/// using var usage = new ChatGptUsageService(new OpenAINativeOptions());
+/// var snapshot = await usage.GetUsageSnapshotAsync();
+/// ChatGptUsageCache.Save(snapshot);
+/// if (ChatGptUsageCache.TryLoad(out var cached)) {
+///     Console.WriteLine(cached?.Snapshot.PlanType);
+/// }
+/// </code>
+/// </example>
 public static class ChatGptUsageCache {
     /// <summary>
     /// Resolves the default cache path (or an override from INTELLIGENCEX_USAGE_PATH).
