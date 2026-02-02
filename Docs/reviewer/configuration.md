@@ -27,6 +27,8 @@ Schema: `../../Schemas/reviewer.schema.json`
 - `length`: `short|medium|long`
 - `outputStyle`: rendering style preset
 - `reviewUsageSummary`: append usage line to the footer (ChatGPT auth only)
+- `includePaths`: only review files matching these globs
+- `excludePaths`: ignore files matching these globs
 - `includeReviewThreads`: include existing review threads in context
 - `reviewThreadsAutoResolve*`: auto-resolve rules for bot threads
 

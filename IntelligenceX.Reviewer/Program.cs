@@ -96,6 +96,12 @@ public static class ReviewerApp {
                 return 0;
             }
 
+            files = FilterFilesByPaths(files, settings.IncludePaths, settings.ExcludePaths);
+            if (files.Count == 0) {
+                Console.WriteLine("No files matched include/exclude filters.");
+                return 0;
+            }
+
             progress.Context = ReviewProgressState.Complete;
             progress.Files = ReviewProgressState.Complete;
             progress.StatusLine = "Analyzed changed files.";
@@ -384,6 +390,30 @@ public static class ReviewerApp {
         return list;
     }
 
+    private static IReadOnlyList<PullRequestFile> FilterFilesByPaths(IReadOnlyList<PullRequestFile> files,
+        IReadOnlyList<string> includePaths, IReadOnlyList<string> excludePaths) {
+        if (files.Count == 0) {
+            return files;
+        }
+        var hasInclude = includePaths.Count > 0;
+        var hasExclude = excludePaths.Count > 0;
+        if (!hasInclude && !hasExclude) {
+            return files;
+        }
+        var filtered = new List<PullRequestFile>();
+        foreach (var file in files) {
+            var filename = file.Filename;
+            if (hasInclude && !includePaths.Any(pattern => GlobMatcher.IsMatch(pattern, filename))) {
+                continue;
+            }
+            if (hasExclude && excludePaths.Any(pattern => GlobMatcher.IsMatch(pattern, filename))) {
+                continue;
+            }
+            filtered.Add(file);
+        }
+        return filtered;
+    }
+
     private static async Task<ReviewContextExtras> BuildExtrasAsync(GitHubClient github, GitHubClient? fallbackGithub,
         PullRequestContext context, ReviewSettings settings, CancellationToken cancellationToken) {
         var extras = new ReviewContextExtras();
@@ -627,7 +657,12 @@ public static class ReviewerApp {
                 if (compareFiles.Count == 0) {
                     return (false, Array.Empty<PullRequestFile>(), $"{label} diff empty");
                 }
-                return (true, compareFiles, $"{label} → head ({ShortSha(baseSha)}..{ShortSha(context.HeadSha)})");
+                var filtered = FilterFilesByPaths(compareFiles, settings.IncludePaths, settings.ExcludePaths);
+                var note = $"{label} → head ({ShortSha(baseSha)}..{ShortSha(context.HeadSha)})";
+                if (filtered.Count == 0) {
+                    note += " (filtered empty)";
+                }
+                return (true, filtered, note);
             } catch (Exception ex) {
                 Console.Error.WriteLine($"Failed to load {label} diff: {ex.Message}");
                 return (false, Array.Empty<PullRequestFile>(), $"failed to load {label} diff");
