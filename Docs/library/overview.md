@@ -23,6 +23,23 @@ var thread = await client.StartThreadAsync("gpt-5.2-codex");
 await client.StartTurnAsync(thread.Id, "Hello from IntelligenceX");
 ```
 
+## Quick start (native ChatGPT)
+
+```csharp
+using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.Native;
+
+var options = new IntelligenceXClientOptions {
+    TransportKind = OpenAITransportKind.Native
+};
+options.NativeOptions.UserAgent = "IntelligenceX/0.1.0";
+await using var client = await IntelligenceXClient.ConnectAsync(options);
+
+await client.LoginChatGptAndWaitAsync(url => Console.WriteLine(url));
+var turn = await client.ChatAsync("Summarize the latest PR");
+Console.WriteLine(turn.Outputs.Count);
+```
+
 ## Easy session (one-liner)
 
 ```csharp
@@ -30,6 +47,28 @@ using IntelligenceX.OpenAI;
 
 var result = await Easy.ChatAsync("Hello!");
 Console.WriteLine(result.Text);
+```
+
+## Streaming deltas
+
+```csharp
+using IntelligenceX.OpenAI;
+
+var session = await EasySession.StartAsync();
+using var subscription = session.SubscribeDelta(Console.Write);
+await session.ChatAsync("Stream a short answer.");
+```
+
+## Usage & limits
+
+```csharp
+using IntelligenceX.OpenAI.Native;
+using IntelligenceX.OpenAI.Usage;
+
+using var usage = new ChatGptUsageService(new OpenAINativeOptions());
+var report = await usage.GetReportAsync(includeEvents: true);
+Console.WriteLine(report.Snapshot.PlanType);
+Console.WriteLine(report.Snapshot.RateLimit?.PrimaryWindow?.UsedPercent);
 ```
 
 ## Config overrides
