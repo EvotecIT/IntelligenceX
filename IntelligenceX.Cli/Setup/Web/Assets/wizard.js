@@ -20,15 +20,18 @@ applyTheme(getPreferredTheme());
 // ── State ──
 let currentStep = 0;
 const totalSteps = 5;
-let authMethod = null;        // 'device' | 'app' | 'token'
+let authMethod = 'device';    // 'device' | 'app' | 'token' | 'custom'
 let selectedOperation = 'setup';
 let selectedProvider = 'openai';
 let selectedPresetProfile = 'balanced';
-let secretOption = 'skip';    // 'skip' | 'paste' | 'file'
+let secretOption = 'login';   // 'login' | 'paste' | 'file' | 'skip'
 let deviceState = null;
 let lastRecommendation = null;
 let lastSummaryBase = 'Ready to preview or apply.';
 let lastUsageSummary = null;
+
+// Default IntelligenceX GitHub App Client ID
+const DEFAULT_GITHUB_CLIENT_ID = 'Iv23li0wcHDzWa25HKz3';
 
 // ── DOM refs ──
 const $ = id => document.getElementById(id);
@@ -153,6 +156,18 @@ function selectAuth(method) {
   $('authDeviceFlow').classList.toggle('visible', method === 'device');
   $('authAppFlow').classList.toggle('visible', method === 'app');
   $('authTokenFlow').classList.toggle('visible', method === 'token');
+  const customFlow = $('authCustomFlow');
+  if (customFlow) customFlow.classList.toggle('visible', method === 'custom');
+}
+
+// ── Get effective client ID ──
+function getEffectiveClientId() {
+  if (authMethod === 'custom') {
+    const customId = $('customClientId');
+    return customId ? customId.value.trim() : '';
+  }
+  // Default: use IntelligenceX app
+  return DEFAULT_GITHUB_CLIENT_ID;
 }
 
 // ── Operation selection ──
@@ -171,6 +186,13 @@ function selectProvider(p) {
   document.querySelectorAll('[data-provider]').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.provider === p);
   });
+  // Update hint text
+  const hint = $('providerHint');
+  if (hint) {
+    hint.textContent = p === 'openai'
+      ? 'Recommended. Uses your ChatGPT account for reviews.'
+      : 'Uses GitHub Copilot CLI. Requires Copilot subscription and CLI installed.';
+  }
 }
 
 // ── Preset selection ──
@@ -187,8 +209,48 @@ function selectSecretOption(opt) {
   document.querySelectorAll('[data-secret]').forEach(c => {
     c.classList.toggle('selected', c.dataset.secret === opt);
   });
-  $('secretPasteFlow').classList.toggle('visible', opt === 'paste');
-  $('secretFileFlow').classList.toggle('visible', opt === 'file');
+  const loginFlow = $('secretLoginFlow');
+  const pasteFlow = $('secretPasteFlow');
+  const fileFlow = $('secretFileFlow');
+  if (loginFlow) loginFlow.classList.toggle('visible', opt === 'login');
+  if (pasteFlow) pasteFlow.classList.toggle('visible', opt === 'paste');
+  if (fileFlow) fileFlow.classList.toggle('visible', opt === 'file');
+}
+
+// ── ChatGPT Login ──
+const chatgptLoginBtn = $('chatgptLogin');
+if (chatgptLoginBtn) {
+  chatgptLoginBtn.addEventListener('click', async () => {
+    const statusEl = $('chatgptLoginStatus');
+    statusEl.innerHTML = '<span class="spinner"></span> Opening ChatGPT login...';
+    chatgptLoginBtn.disabled = true;
+
+    try {
+      const res = await fetch('/api/openai-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      const data = await res.json();
+      if (data.error) {
+        statusEl.innerHTML = `<span style="color: var(--pf-danger);">Error: ${data.error}</span>`;
+        chatgptLoginBtn.disabled = false;
+        return;
+      }
+      if (data.authB64) {
+        authB64.value = data.authB64;
+        statusEl.innerHTML = '<span style="color: var(--pf-success);">&#x2713; Authenticated with ChatGPT</span>';
+        chatgptLoginBtn.textContent = 'Signed in';
+        chatgptLoginBtn.classList.add('success');
+      } else {
+        statusEl.innerHTML = 'Login window opened. Complete login in browser...';
+        // Would need to poll for completion
+      }
+    } catch (e) {
+      statusEl.innerHTML = `<span style="color: var(--pf-danger);">Error: ${e.message || e}</span>`;
+      chatgptLoginBtn.disabled = false;
+    }
+  });
 }
 
 // ── Manual entry toggle ──
@@ -209,7 +271,10 @@ function selectedRepos() {
 }
 
 function write(text) {
-  output.textContent = text;
+  const outputEl = $('output');
+  const outputCard = $('outputCard');
+  if (outputEl) outputEl.textContent = text;
+  if (outputCard && text) outputCard.style.display = 'block';
 }
 
 function setSummary(text) {
@@ -236,38 +301,83 @@ function updateRepoCount() {
   if (el) el.textContent = `${count} repo${count !== 1 ? 's' : ''} selected`;
 }
 
-// ── Build review table ──
+// ── Build review grid ──
 function buildReviewTable() {
-  const tbody = document.querySelector('#reviewTable tbody');
-  tbody.innerHTML = '';
-  const rows = [
-    ['Auth method', authMethod || 'none'],
-    ['Token', getToken() ? 'provided' : 'missing'],
-    ['Repositories', selectedRepos().join(', ') || 'none'],
-    ['Operation', selectedOperation],
-  ];
-  if (selectedOperation === 'setup') {
-    rows.push(['Provider', selectedProvider]);
-    rows.push(['Review profile', selectedPresetProfile]);
-    if (reviewMode.value) rows.push(['Review mode', reviewMode.value]);
-    if (reviewCommentMode.value) rows.push(['Comment mode', reviewCommentMode.value]);
-    if (branchName.value.trim()) rows.push(['Branch', branchName.value.trim()]);
-    if (withConfig.checked) rows.push(['Create config', 'yes']);
-    if (force.checked) rows.push(['Force overwrite', 'yes']);
-    if (upgrade.checked) rows.push(['Upgrade managed', 'yes']);
-    if (explicitSecrets.checked) rows.push(['Explicit secrets', 'yes']);
-  }
-  if (selectedOperation === 'cleanup' && keepSecret.checked) {
-    rows.push(['Keep secret', 'yes']);
-  }
+  const grid = $('reviewGrid');
+  if (!grid) return;
+
+  const repos = selectedRepos();
+  const providerLabel = selectedProvider === 'openai' ? 'ChatGPT / OpenAI' : 'GitHub Copilot';
+  const profileLabels = {
+    balanced: 'Balanced',
+    picky: 'Strict',
+    security: 'Security',
+    highlevel: 'Minimal',
+    performance: 'Performance',
+    tests: 'Tests'
+  };
+
+  let html = `
+    <div class="review-section">
+      <div class="review-section-title">GitHub</div>
+      <div class="review-item">
+        <span class="review-label">Authentication</span>
+        <span class="review-value">${getToken() ? '<span class="badge badge-ok">&#x2713; Connected</span>' : '<span class="badge badge-warn">Not connected</span>'}</span>
+      </div>
+      <div class="review-item">
+        <span class="review-label">Repositories</span>
+        <span class="review-value">${repos.length > 0 ? `<strong>${repos.length}</strong> selected` : '<span class="badge badge-warn">None</span>'}</span>
+      </div>
+      ${repos.length > 0 && repos.length <= 5 ? `<div class="review-repos">${repos.map(r => `<code>${r}</code>`).join(' ')}</div>` : ''}
+    </div>
+
+    <div class="review-section">
+      <div class="review-section-title">Configuration</div>
+      <div class="review-item">
+        <span class="review-label">Operation</span>
+        <span class="review-value"><strong>${selectedOperation}</strong></span>
+      </div>
+      <div class="review-item">
+        <span class="review-label">AI Provider</span>
+        <span class="review-value">${providerLabel}</span>
+      </div>
+      <div class="review-item">
+        <span class="review-label">Review Profile</span>
+        <span class="review-value">${profileLabels[selectedPresetProfile] || selectedPresetProfile}</span>
+      </div>
+    </div>
+  `;
+
   if (!shouldSkipSecrets()) {
-    rows.push(['Secret', secretOption]);
+    const secretLabels = {
+      login: 'ChatGPT browser login',
+      paste: 'Auth bundle (pasted)',
+      file: 'Auth bundle (file path)',
+      skip: 'Skipped (set up later)'
+    };
+    html += `
+      <div class="review-section">
+        <div class="review-section-title">AI Authentication</div>
+        <div class="review-item">
+          <span class="review-label">Method</span>
+          <span class="review-value">${secretLabels[secretOption] || secretOption}</span>
+        </div>
+      </div>
+    `;
   }
-  rows.forEach(([label, value]) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${label}</td><td>${value}</td>`;
-    tbody.appendChild(tr);
-  });
+
+  grid.innerHTML = html;
+}
+
+function clearOutput() {
+  $('output').textContent = '';
+  $('summary').textContent = '';
+  $('outputCard').style.display = 'none';
+}
+
+function showOutput(text) {
+  $('output').textContent = text;
+  $('outputCard').style.display = 'block';
 }
 
 // ── Build request body ──
@@ -436,6 +546,10 @@ function formatWindow(w) {
   return s.join(', ');
 }
 
+// ── Repo data ──
+let allRepos = [];
+let reposByOrg = {};
+
 // ── API calls ──
 async function loadRepos() {
   write('Loading repos...');
@@ -447,63 +561,241 @@ async function loadRepos() {
     });
     const data = await res.json();
     if (data.error) { write('Repo error: ' + data.error); return; }
-    repoList.innerHTML = '';
-    (data.repos || []).forEach(r => {
-      const opt = document.createElement('option');
-      opt.value = r.name;
-      opt.textContent = r.name;
-      repoList.appendChild(opt);
+
+    // Filter to only repos where user has admin access (required for setting secrets)
+    const accessibleRepos = (data.repos || []).filter(r => r.canAdmin);
+    const pushOnlyCount = (data.repos || []).filter(r => r.canPush && !r.canAdmin).length;
+    const readOnlyCount = (data.repos || []).filter(r => !r.canPush && !r.canAdmin).length;
+
+    allRepos = accessibleRepos.map(r => r.name);
+
+    // Group repos by organization/owner
+    reposByOrg = {};
+    allRepos.forEach(repoName => {
+      const [org] = repoName.split('/');
+      if (!reposByOrg[org]) reposByOrg[org] = [];
+      reposByOrg[org].push(repoName);
     });
-    write(`Repos loaded (${data.source || 'user'}).`);
+
+    renderRepoList();
+    renderOrgFilter();
+    let msg = `Loaded ${allRepos.length} repos with admin access.`;
+    const hiddenParts = [];
+    if (pushOnlyCount > 0) hiddenParts.push(`${pushOnlyCount} write-only`);
+    if (readOnlyCount > 0) hiddenParts.push(`${readOnlyCount} read-only`);
+    if (hiddenParts.length > 0) {
+      msg += ` Hidden: ${hiddenParts.join(', ')} (admin access required to set secrets).`;
+    }
+    write(msg);
     updateRepoCount();
   } catch (e) {
     write('Failed to load repos: ' + (e.message || e));
   }
 }
 
+function renderRepoList(filterOrg = null, filterText = '') {
+  repoList.innerHTML = '';
+  const orgs = Object.keys(reposByOrg).sort();
+
+  orgs.forEach(org => {
+    if (filterOrg && filterOrg !== org) return;
+
+    const repos = reposByOrg[org].filter(r =>
+      !filterText || r.toLowerCase().includes(filterText.toLowerCase())
+    );
+    if (repos.length === 0) return;
+
+    // Add org header as optgroup
+    const group = document.createElement('optgroup');
+    group.label = `${org} (${repos.length})`;
+
+    repos.forEach(repoName => {
+      const opt = document.createElement('option');
+      opt.value = repoName;
+      opt.textContent = repoName.split('/')[1]; // Just show repo name, org is in group
+      group.appendChild(opt);
+    });
+
+    repoList.appendChild(group);
+  });
+}
+
+function renderOrgFilter() {
+  const container = $('orgFilter');
+  if (!container) return;
+
+  const orgs = Object.keys(reposByOrg).sort();
+  if (orgs.length <= 1) {
+    container.style.display = 'none';
+    return;
+  }
+
+  container.style.display = 'flex';
+  container.innerHTML = '<button class="org-btn active" data-org="">All</button>';
+  orgs.forEach(org => {
+    const count = reposByOrg[org].length;
+    const btn = document.createElement('button');
+    btn.className = 'org-btn';
+    btn.dataset.org = org;
+    btn.textContent = `${org} (${count})`;
+    btn.onclick = () => selectOrgFilter(org);
+    container.appendChild(btn);
+  });
+}
+
+function selectOrgFilter(org) {
+  document.querySelectorAll('.org-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.org === org);
+  });
+  const filterText = repoFilter ? repoFilter.value : '';
+  renderRepoList(org || null, filterText);
+}
+
 // ── Device flow ──
-$('deviceStart').addEventListener('click', async () => {
+let pollingActive = false;
+
+async function startDeviceFlow(clientIdValue, infoElement) {
   write('Starting device flow...');
+  const startBtn = $('deviceStart');
+  if (startBtn) {
+    startBtn.disabled = true;
+    startBtn.textContent = 'Opening browser...';
+  }
   try {
     const res = await fetch('/api/device-code', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientId: clientId.value })
+      body: JSON.stringify({ clientId: clientIdValue })
     });
     const data = await res.json();
-    if (data.error) { write('Error: ' + data.error); return; }
+    if (data.error) {
+      write('Error: ' + data.error);
+      if (startBtn) {
+        startBtn.disabled = false;
+        startBtn.textContent = 'Sign in with GitHub';
+      }
+      return null;
+    }
     deviceState = data;
-    $('deviceInfo').textContent = `Open ${data.verificationUri} and enter code ${data.userCode}`;
-    $('devicePoll').disabled = false;
+    deviceState.clientId = clientIdValue;
+    if (infoElement) {
+      infoElement.innerHTML = `
+        <div class="device-code-display">
+          <div class="device-code-label">Your code:</div>
+          <div class="device-code-value">${data.userCode}</div>
+          <div class="device-code-hint">Enter this code at <a href="${data.verificationUri}" target="_blank">github.com/login/device</a></div>
+        </div>
+        <div class="polling-status">
+          <span class="spinner"></span> Waiting for authorization...
+        </div>
+      `;
+    }
     window.open(data.verificationUri, '_blank');
+    // Auto-start polling
+    startAutoPolling();
+    return data;
   } catch (e) {
     write('Device flow error: ' + (e.message || e));
+    if (startBtn) {
+      startBtn.disabled = false;
+      startBtn.textContent = 'Sign in with GitHub';
+    }
+    return null;
   }
-});
+}
 
-$('devicePoll').addEventListener('click', async () => {
-  if (!deviceState) return;
-  write('Polling for token...');
+function startAutoPolling() {
+  if (pollingActive || !deviceState) return;
+  pollingActive = true;
+  pollLoop();
+}
+
+async function pollLoop() {
+  if (!pollingActive || !deviceState) return;
+
   try {
     const res = await fetch('/api/device-poll', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        clientId: clientId.value,
+        clientId: deviceState.clientId,
         deviceCode: deviceState.deviceCode,
-        intervalSeconds: deviceState.intervalSeconds,
-        expiresIn: deviceState.expiresIn
+        intervalSeconds: 2, // Poll faster for better UX
+        expiresIn: 30 // Short timeout per poll, we'll retry
       })
     });
     const data = await res.json();
-    if (data.error) { write('Poll error: ' + data.error); return; }
-    token.value = data.token || '';
-    write('Token acquired!');
-    goToStep(1); // Auto-advance
+
+    if (data.token) {
+      // Success!
+      pollingActive = false;
+      token.value = data.token;
+      write('Signed in successfully!');
+      $('deviceInfo').innerHTML = '<div class="auth-success"><span class="check-icon">&#x2713;</span> Authenticated with GitHub</div>';
+      const startBtn = $('deviceStart');
+      if (startBtn) {
+        startBtn.textContent = 'Signed in';
+        startBtn.classList.add('success');
+      }
+      // Auto-advance after short delay
+      setTimeout(() => goToStep(1), 500);
+      return;
+    }
+
+    if (data.error && !data.error.includes('authorization_pending') && !data.error.includes('expired')) {
+      // Real error
+      write('Auth error: ' + data.error);
+      pollingActive = false;
+      resetDeviceFlow();
+      return;
+    }
+
+    // Still waiting, poll again after interval
+    if (pollingActive) {
+      setTimeout(pollLoop, (deviceState.intervalSeconds || 5) * 1000);
+    }
   } catch (e) {
-    write('Poll error: ' + (e.message || e));
+    // Network error, retry
+    if (pollingActive) {
+      setTimeout(pollLoop, 5000);
+    }
   }
+}
+
+function resetDeviceFlow() {
+  pollingActive = false;
+  deviceState = null;
+  const startBtn = $('deviceStart');
+  if (startBtn) {
+    startBtn.disabled = false;
+    startBtn.textContent = 'Sign in with GitHub';
+    startBtn.classList.remove('success');
+  }
+  $('deviceInfo').innerHTML = '';
+}
+
+$('deviceStart').addEventListener('click', async () => {
+  if (pollingActive) return; // Already in progress
+  const effectiveClientId = getEffectiveClientId();
+  if (!effectiveClientId) {
+    write('No Client ID available.');
+    return;
+  }
+  await startDeviceFlow(effectiveClientId, $('deviceInfo'));
 });
+
+// Custom device flow handlers
+const customDeviceStart = $('customDeviceStart');
+if (customDeviceStart) {
+  customDeviceStart.addEventListener('click', async () => {
+    const customId = $('customClientId');
+    if (!customId || !customId.value.trim()) {
+      write('Please enter a Client ID.');
+      return;
+    }
+    await startDeviceFlow(customId.value.trim(), $('customDeviceInfo'));
+  });
+}
 
 // ── App flow ──
 $('createApp').addEventListener('click', async () => {
@@ -589,10 +881,10 @@ if (token) {
 
 // ── Repo filter ──
 repoFilter.addEventListener('input', () => {
-  const filter = repoFilter.value.toLowerCase();
-  Array.from(repoList.options).forEach(opt => {
-    opt.hidden = filter && !opt.value.toLowerCase().includes(filter);
-  });
+  const filterText = repoFilter.value;
+  const activeOrgBtn = document.querySelector('.org-btn.active');
+  const filterOrg = activeOrgBtn ? activeOrgBtn.dataset.org : null;
+  renderRepoList(filterOrg || null, filterText);
 });
 
 repoList.addEventListener('change', updateRepoCount);
@@ -813,6 +1105,19 @@ async function doPlan() {
   }
 }
 
+function confirmApply() {
+  const repos = selectedRepos();
+  if (repos.length === 0) { write('Select repos first.'); return; }
+  if (!getToken()) { write('Token required.'); return; }
+
+  const msg = repos.length === 1
+    ? `Apply changes to ${repos[0]}?\n\nThis will create a PR with the workflow and upload secrets.`
+    : `Apply changes to ${repos.length} repositories?\n\nThis will create PRs with the workflow and upload secrets.`;
+
+  if (!confirm(msg)) return;
+  doApply();
+}
+
 async function doApply() {
   const repos = selectedRepos();
   if (repos.length === 0) { write('Select repos first.'); return; }
@@ -835,3 +1140,7 @@ async function doApply() {
 refreshPresets();
 loadUsageCache();
 updateProgressBar();
+
+// Show default secret option sub-flow
+const loginFlow = $('secretLoginFlow');
+if (loginFlow) loginFlow.classList.add('visible');

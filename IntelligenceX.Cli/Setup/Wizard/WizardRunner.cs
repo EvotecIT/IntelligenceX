@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.Setup.Host;
 using IntelligenceX.OpenAI.Auth;
@@ -13,7 +14,6 @@ namespace IntelligenceX.Cli.Setup.Wizard;
 internal static class WizardRunner {
     private const string DefaultGitHubApi = "https://api.github.com";
     private const string DefaultGitHubAuth = "https://github.com";
-    private const string DefaultGitHubScopes = "repo workflow read:org";
 
     public static async Task<int> RunAsync(string[] args) {
         var options = WizardOptions.Parse(args);
@@ -46,6 +46,9 @@ internal static class WizardRunner {
         };
 
         state.Operation = WizardPrompts.PromptOperation();
+
+        // Show trust info before auth mode selection
+        WizardPrompts.ShowTrustInfo();
         state.AuthMode = WizardPrompts.PromptAuthMode();
 
         if (!await EnsureGitHubTokenAsync(state).ConfigureAwait(false)) {
@@ -169,8 +172,9 @@ internal static class WizardRunner {
 
     private static string DescribeAuth(WizardState state) {
         return state.AuthMode switch {
+            GitHubAuthMode.DefaultDeviceFlow => "IntelligenceX app (device flow)",
             GitHubAuthMode.AppInstallation => "app installation token",
-            GitHubAuthMode.DeviceFlow => "device flow",
+            GitHubAuthMode.CustomDeviceFlow => "custom device flow",
             GitHubAuthMode.PersonalAccessToken => "personal access token",
             _ => "token"
         };
@@ -372,100 +376,113 @@ internal static class WizardRunner {
         }
 
         if (state.AuthMode == GitHubAuthMode.AppInstallation) {
-            var store = new GitHubAppStore();
-            var savedProfiles = store.LoadAll();
-            if (savedProfiles.Count > 0) {
-                var selectedProfile = WizardPrompts.PromptSavedApp(savedProfiles);
-                if (selectedProfile is not null) {
-                    state.GitHubAppId = selectedProfile.AppId;
-                    state.GitHubAppKeyPath = selectedProfile.KeyPath;
-                    if (!string.IsNullOrWhiteSpace(selectedProfile.KeyPath) && System.IO.File.Exists(selectedProfile.KeyPath)) {
-                        state.GitHubAppKeyPem = System.IO.File.ReadAllText(selectedProfile.KeyPath);
-                    }
-                    state.GitHubInstallationId = selectedProfile.DefaultInstallationId;
-                }
-            }
+            return await EnsureGitHubAppTokenAsync(state).ConfigureAwait(false);
+        }
 
-            if (!state.GitHubAppId.HasValue && WizardPrompts.PromptCreateAppFromManifest()) {
-                var appName = WizardPrompts.PromptAppName("IntelligenceX Reviewer");
-                var owner = WizardPrompts.PromptAppOwner();
-                var result = await GitHubAppManifestFlow.RunAsync(new GitHubAppManifestOptions {
-                    AppName = appName,
-                    Owner = owner,
-                    AuthBaseUrl = DefaultGitHubAuth,
-                    ApiBaseUrl = DefaultGitHubApi
-                }, CancellationToken.None).ConfigureAwait(false);
-                if (result is not null) {
-                    state.GitHubAppId = result.AppId;
-                    state.GitHubAppKeyPem = result.Pem;
-                    state.GitHubAppKeyPath = SavePemToDisk(result.Pem);
-                }
-            }
-            if (!state.GitHubAppId.HasValue) {
-                state.GitHubAppId = WizardPrompts.PromptGitHubAppId();
-            }
-            if (!state.GitHubAppId.HasValue) {
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(state.GitHubAppKeyPem)) {
-                var keyPath = WizardPrompts.PromptGitHubAppKeyPath();
-                if (!string.IsNullOrWhiteSpace(keyPath)) {
-                    try {
-                        state.GitHubAppKeyPem = System.IO.File.ReadAllText(keyPath);
-                        state.GitHubAppKeyPath = keyPath;
-                    } catch {
-                        return false;
-                    }
-                } else {
-                    state.GitHubAppKeyPem = WizardPrompts.PromptGitHubAppKeyPem();
-                }
-            }
-
-            if (string.IsNullOrWhiteSpace(state.GitHubAppKeyPem)) {
-                return false;
-            }
-
-            try {
-                using var appClient = new GitHubAppClient(state.GitHubAppId.Value, state.GitHubAppKeyPem, DefaultGitHubApi);
-                var installs = await appClient.ListInstallationsAsync().ConfigureAwait(false);
-                if (installs.Count == 0) {
-                    WizardPrompts.ShowInstallAppHint(state.GitHubAppId.Value);
-                    return false;
-                }
-                var selected = state.GitHubInstallationId ?? WizardPrompts.PromptInstallation(installs);
-                if (!selected.HasValue) {
-                    return false;
-                }
-                state.GitHubInstallationId = selected;
-                state.GitHubToken = await appClient.CreateInstallationTokenAsync(selected.Value).ConfigureAwait(false);
-
-                if (!string.IsNullOrWhiteSpace(state.GitHubAppKeyPath) && WizardPrompts.PromptSaveApp()) {
-                    var name = WizardPrompts.PromptAppProfileName($"app-{state.GitHubAppId}");
-                    store.Save(new GitHubAppProfile {
-                        Name = name ?? $"app-{state.GitHubAppId}",
-                        AppId = state.GitHubAppId.Value,
-                        KeyPath = state.GitHubAppKeyPath,
-                        DefaultInstallationId = state.GitHubInstallationId
-                    }, makeDefault: true);
-                }
-
-                return !string.IsNullOrWhiteSpace(state.GitHubToken);
-            } catch {
+        // DefaultDeviceFlow or CustomDeviceFlow
+        if (state.AuthMode == GitHubAuthMode.DefaultDeviceFlow) {
+            // Use the built-in IntelligenceX GitHub App Client ID
+            state.GitHubClientId = IntelligenceXDefaults.GetEffectiveGitHubClientId();
+            AnsiConsole.MarkupLine($"[dim]Using IntelligenceX GitHub App for authentication[/]");
+        } else {
+            // CustomDeviceFlow - prompt for Client ID
+            var fallback = Environment.GetEnvironmentVariable(IntelligenceXDefaults.GitHubClientIdEnvVar);
+            state.GitHubClientId = WizardPrompts.PromptGitHubClientId(fallback);
+            if (string.IsNullOrWhiteSpace(state.GitHubClientId)) {
+                AnsiConsole.MarkupLine("[yellow]No Client ID provided. Cannot proceed with device flow.[/]");
                 return false;
             }
         }
 
-        var fallback = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_CLIENT_ID");
-        state.GitHubClientId = WizardPrompts.PromptGitHubClientId(fallback);
-        if (string.IsNullOrWhiteSpace(state.GitHubClientId)) {
-            return false;
-        }
-
-        var token = await GitHubAuth.DeviceFlowAsync(state.GitHubClientId!, DefaultGitHubAuth, DefaultGitHubScopes)
+        var token = await GitHubAuth.DeviceFlowAsync(state.GitHubClientId!, DefaultGitHubAuth, IntelligenceXDefaults.GitHubScopes)
             .ConfigureAwait(false);
         state.GitHubToken = token;
         return !string.IsNullOrWhiteSpace(state.GitHubToken);
+    }
+
+    private static async Task<bool> EnsureGitHubAppTokenAsync(WizardState state) {
+        var store = new GitHubAppStore();
+        var savedProfiles = store.LoadAll();
+        if (savedProfiles.Count > 0) {
+            var selectedProfile = WizardPrompts.PromptSavedApp(savedProfiles);
+            if (selectedProfile is not null) {
+                state.GitHubAppId = selectedProfile.AppId;
+                state.GitHubAppKeyPath = selectedProfile.KeyPath;
+                if (!string.IsNullOrWhiteSpace(selectedProfile.KeyPath) && System.IO.File.Exists(selectedProfile.KeyPath)) {
+                    state.GitHubAppKeyPem = System.IO.File.ReadAllText(selectedProfile.KeyPath);
+                }
+                state.GitHubInstallationId = selectedProfile.DefaultInstallationId;
+            }
+        }
+
+        if (!state.GitHubAppId.HasValue && WizardPrompts.PromptCreateAppFromManifest()) {
+            var appName = WizardPrompts.PromptAppName("IntelligenceX Reviewer");
+            var owner = WizardPrompts.PromptAppOwner();
+            var result = await GitHubAppManifestFlow.RunAsync(new GitHubAppManifestOptions {
+                AppName = appName,
+                Owner = owner,
+                AuthBaseUrl = DefaultGitHubAuth,
+                ApiBaseUrl = DefaultGitHubApi
+            }, CancellationToken.None).ConfigureAwait(false);
+            if (result is not null) {
+                state.GitHubAppId = result.AppId;
+                state.GitHubAppKeyPem = result.Pem;
+                state.GitHubAppKeyPath = SavePemToDisk(result.Pem);
+            }
+        }
+        if (!state.GitHubAppId.HasValue) {
+            state.GitHubAppId = WizardPrompts.PromptGitHubAppId();
+        }
+        if (!state.GitHubAppId.HasValue) {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(state.GitHubAppKeyPem)) {
+            var keyPath = WizardPrompts.PromptGitHubAppKeyPath();
+            if (!string.IsNullOrWhiteSpace(keyPath)) {
+                try {
+                    state.GitHubAppKeyPem = System.IO.File.ReadAllText(keyPath);
+                    state.GitHubAppKeyPath = keyPath;
+                } catch {
+                    return false;
+                }
+            } else {
+                state.GitHubAppKeyPem = WizardPrompts.PromptGitHubAppKeyPem();
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(state.GitHubAppKeyPem)) {
+            return false;
+        }
+
+        try {
+            using var appClient = new GitHubAppClient(state.GitHubAppId.Value, state.GitHubAppKeyPem, DefaultGitHubApi);
+            var installs = await appClient.ListInstallationsAsync().ConfigureAwait(false);
+            if (installs.Count == 0) {
+                WizardPrompts.ShowInstallAppHint(state.GitHubAppId.Value);
+                return false;
+            }
+            var selected = state.GitHubInstallationId ?? WizardPrompts.PromptInstallation(installs);
+            if (!selected.HasValue) {
+                return false;
+            }
+            state.GitHubInstallationId = selected;
+            state.GitHubToken = await appClient.CreateInstallationTokenAsync(selected.Value).ConfigureAwait(false);
+
+            if (!string.IsNullOrWhiteSpace(state.GitHubAppKeyPath) && WizardPrompts.PromptSaveApp()) {
+                var name = WizardPrompts.PromptAppProfileName($"app-{state.GitHubAppId}");
+                store.Save(new GitHubAppProfile {
+                    Name = name ?? $"app-{state.GitHubAppId}",
+                    AppId = state.GitHubAppId.Value,
+                    KeyPath = state.GitHubAppKeyPath,
+                    DefaultInstallationId = state.GitHubInstallationId
+                }, makeDefault: true);
+            }
+
+            return !string.IsNullOrWhiteSpace(state.GitHubToken);
+        } catch {
+            return false;
+        }
     }
 
     private static string SavePemToDisk(string pem) {

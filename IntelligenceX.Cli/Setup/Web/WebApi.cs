@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -70,6 +72,10 @@ internal sealed class WebApi {
             await HandleUsageAsync(context).ConfigureAwait(false);
             return;
         }
+        if (normalizedPath.Equals("/api/openai-login", StringComparison.OrdinalIgnoreCase)) {
+            await HandleOpenAILoginAsync(context).ConfigureAwait(false);
+            return;
+        }
 
         context.Response.StatusCode = 404;
         await WriteJsonAsync(context, new { error = "Not found" }).ConfigureAwait(false);
@@ -114,7 +120,12 @@ internal sealed class WebApi {
             }
 
             await WriteJsonAsync(context, new {
-                repos = repos.ConvertAll(r => new { name = r.FullName, updatedAt = r.UpdatedAt }),
+                repos = repos.ConvertAll(r => new {
+                    name = r.FullName,
+                    updatedAt = r.UpdatedAt,
+                    canPush = r.CanPush,
+                    canAdmin = r.CanAdmin
+                }),
                 source
             }).ConfigureAwait(false);
         } catch (Exception ex) {
@@ -259,14 +270,15 @@ internal sealed class WebApi {
             return;
         }
         var request = JsonSerializer.Deserialize<DeviceCodeRequest>(body, _jsonOptions) ?? new DeviceCodeRequest();
-        if (string.IsNullOrWhiteSpace(request.ClientId)) {
+        var effectiveClientId = request.GetEffectiveClientId();
+        if (string.IsNullOrWhiteSpace(effectiveClientId)) {
             context.Response.StatusCode = 400;
             await WriteJsonAsync(context, new { error = "Missing clientId" }).ConfigureAwait(false);
             return;
         }
 
         try {
-            var result = await GitHubDeviceFlowClient.RequestCodeAsync(request.ClientId!, request.AuthBaseUrl, request.Scopes)
+            var result = await GitHubDeviceFlowClient.RequestCodeAsync(effectiveClientId, request.AuthBaseUrl, request.Scopes)
                 .ConfigureAwait(false);
             await WriteJsonAsync(context, result).ConfigureAwait(false);
         } catch (Exception ex) {
@@ -281,14 +293,15 @@ internal sealed class WebApi {
             return;
         }
         var request = JsonSerializer.Deserialize<DevicePollRequest>(body, _jsonOptions) ?? new DevicePollRequest();
-        if (string.IsNullOrWhiteSpace(request.ClientId) || string.IsNullOrWhiteSpace(request.DeviceCode)) {
+        var effectiveClientId = request.GetEffectiveClientId();
+        if (string.IsNullOrWhiteSpace(effectiveClientId) || string.IsNullOrWhiteSpace(request.DeviceCode)) {
             context.Response.StatusCode = 400;
             await WriteJsonAsync(context, new { error = "Missing clientId or deviceCode" }).ConfigureAwait(false);
             return;
         }
 
         try {
-            var token = await GitHubDeviceFlowClient.PollTokenAsync(request.ClientId!, request.DeviceCode!, request.AuthBaseUrl, request.IntervalSeconds, request.ExpiresIn)
+            var token = await GitHubDeviceFlowClient.PollTokenAsync(effectiveClientId, request.DeviceCode!, request.AuthBaseUrl, request.IntervalSeconds, request.ExpiresIn)
                 .ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(token)) {
                 context.Response.StatusCode = 408;
@@ -516,6 +529,77 @@ internal sealed class WebApi {
         }
     }
 
+    private async Task HandleOpenAILoginAsync(System.Net.HttpListenerContext context) {
+        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
+            return;
+        }
+
+        var body = await ReadBodyAsync(context).ConfigureAwait(false);
+        OpenAILoginRequest request;
+        try {
+            request = string.IsNullOrWhiteSpace(body)
+                ? new OpenAILoginRequest()
+                : JsonSerializer.Deserialize<OpenAILoginRequest>(body, _jsonOptions) ?? new OpenAILoginRequest();
+        } catch (JsonException) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Invalid JSON payload." }).ConfigureAwait(false);
+            return;
+        }
+
+        try {
+            var config = OAuthConfig.FromEnvironment();
+            if (!string.IsNullOrWhiteSpace(request.ClientId)) {
+                config.ClientId = request.ClientId!;
+            }
+            if (request.RedirectPort > 0) {
+                config.RedirectPort = request.RedirectPort;
+            }
+            if (request.TimeoutSeconds > 0) {
+                config.RedirectPort = 1455; // Default port for OAuth callback
+            }
+
+            var service = new OAuthLoginService();
+            var options = new OAuthLoginOptions(config) {
+                UseLocalListener = true,
+                Timeout = TimeSpan.FromSeconds(request.TimeoutSeconds > 0 ? request.TimeoutSeconds : 180),
+                OnAuthUrl = url => {
+                    OpenBrowser(url);
+                    return Task.CompletedTask;
+                }
+            };
+
+            var result = await service.LoginAsync(options).ConfigureAwait(false);
+            var json = AuthBundleSerializer.Serialize(result.Bundle);
+            var authB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+
+            await WriteJsonAsync(context, new {
+                authB64,
+                accountId = result.Bundle.AccountId,
+                expiresAt = result.Bundle.ExpiresAt?.ToUniversalTime().ToString("u")
+            }).ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            context.Response.StatusCode = 408;
+            await WriteJsonAsync(context, new { error = "Login timed out. Please try again." }).ConfigureAwait(false);
+        } catch (Exception ex) {
+            context.Response.StatusCode = 500;
+            await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+        }
+    }
+
+    private static void OpenBrowser(string url) {
+        try {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) {
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            } else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) {
+                Process.Start("open", url);
+            } else {
+                Process.Start("xdg-open", url);
+            }
+        } catch {
+            // Best effort - user may need to open URL manually
+        }
+    }
+
     private static UsageResponse BuildUsageResponse(ChatGptUsageReport report, DateTimeOffset updatedAt) {
         return new UsageResponse {
             Usage = UsageSnapshot.From(report.Snapshot),
@@ -725,7 +809,14 @@ internal sealed class WebApi {
     private sealed class DeviceCodeRequest {
         public string? ClientId { get; set; }
         public string? AuthBaseUrl { get; set; } = "https://github.com";
-        public string? Scopes { get; set; } = "repo workflow read:org";
+        public string? Scopes { get; set; } = IntelligenceXDefaults.GitHubScopes;
+
+        public string GetEffectiveClientId() {
+            if (!string.IsNullOrWhiteSpace(ClientId)) {
+                return ClientId!;
+            }
+            return IntelligenceXDefaults.GetEffectiveGitHubClientId();
+        }
     }
 
     private sealed class DevicePollRequest {
@@ -734,6 +825,13 @@ internal sealed class WebApi {
         public string? AuthBaseUrl { get; set; } = "https://github.com";
         public int IntervalSeconds { get; set; } = 5;
         public int ExpiresIn { get; set; }
+
+        public string GetEffectiveClientId() {
+            if (!string.IsNullOrWhiteSpace(ClientId)) {
+                return ClientId!;
+            }
+            return IntelligenceXDefaults.GetEffectiveGitHubClientId();
+        }
     }
 
     private sealed class AppManifestRequest {
@@ -788,6 +886,12 @@ internal sealed class WebApi {
         public bool IncludeEvents { get; set; }
         public string? AuthKey { get; set; }
         public string? ChatGptApiBaseUrl { get; set; }
+    }
+
+    private sealed class OpenAILoginRequest {
+        public string? ClientId { get; set; }
+        public int RedirectPort { get; set; }
+        public int TimeoutSeconds { get; set; }
     }
 
     private sealed class SetupResponse {
