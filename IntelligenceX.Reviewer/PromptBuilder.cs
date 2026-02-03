@@ -15,7 +15,6 @@ internal static class PromptBuilder {
         var toneBlock = string.IsNullOrWhiteSpace(settings.Tone) ? string.Empty : $"Tone: {settings.Tone}\n";
         var outputStyleBlock = string.IsNullOrWhiteSpace(settings.OutputStyle) ? string.Empty : $"Output style: {settings.OutputStyle}\n";
         var focusBlock = settings.Focus.Count == 0 ? string.Empty : $"Focus areas: {string.Join(", ", settings.Focus)}\n";
-        var languageHintsBlock = BuildLanguageHintsBlock(files);
         var personaBlock = string.IsNullOrWhiteSpace(settings.Persona) ? string.Empty : $"Persona: {settings.Persona}\n";
         var notesBlock = string.IsNullOrWhiteSpace(settings.Notes) ? string.Empty : $"Additional guidance: {settings.Notes}\n";
         var languageHintsBlock = LanguageHints.Build(files, settings.IncludeLanguageHints);
@@ -35,7 +34,6 @@ internal static class PromptBuilder {
             ["ToneBlock"] = toneBlock,
             ["OutputStyleBlock"] = outputStyleBlock,
             ["FocusBlock"] = focusBlock,
-            ["LanguageHintsBlock"] = languageHintsBlock,
             ["PersonaBlock"] = personaBlock,
             ["NotesBlock"] = notesBlock,
             ["LanguageHintsBlock"] = languageHintsBlock,
@@ -95,67 +93,5 @@ internal static class PromptBuilder {
         return sb.ToString().TrimEnd();
     }
 
-    private static string BuildLanguageHintsBlock(IReadOnlyList<PullRequestFile> files) {
-        if (files.Count == 0) {
-            return string.Empty;
-        }
-        var languages = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var file in files) {
-            var language = GetLanguageHint(file.Filename);
-            if (!string.IsNullOrWhiteSpace(language)) {
-                languages.Add(language);
-            }
-        }
-        if (languages.Count == 0) {
-            return string.Empty;
-        }
-        return $"Languages detected: {string.Join(", ", languages)}\n";
-    }
-
-    private static string? GetLanguageHint(string path) {
-        if (string.IsNullOrWhiteSpace(path)) {
-            return null;
-        }
-        var fileName = Path.GetFileName(path);
-        if (string.Equals(fileName, "Dockerfile", StringComparison.OrdinalIgnoreCase)) {
-            return "Dockerfile";
-        }
-        if (string.Equals(fileName, "Makefile", StringComparison.OrdinalIgnoreCase)) {
-            return "Makefile";
-        }
-        var ext = Path.GetExtension(path);
-        if (string.IsNullOrWhiteSpace(ext)) {
-            return null;
-        }
-        ext = ext.ToLowerInvariant();
-        return ext switch {
-            ".cs" or ".csx" => "C#",
-            ".fs" or ".fsx" => "F#",
-            ".vb" => "VB.NET",
-            ".ps1" or ".psm1" or ".psd1" => "PowerShell",
-            ".js" or ".mjs" or ".cjs" => "JavaScript",
-            ".ts" or ".tsx" => "TypeScript",
-            ".jsx" => "JavaScript",
-            ".json" => "JSON",
-            ".yaml" or ".yml" => "YAML",
-            ".md" => "Markdown",
-            ".toml" => "TOML",
-            ".ini" => "INI",
-            ".xml" or ".config" => "XML",
-            ".html" or ".htm" => "HTML",
-            ".css" or ".scss" or ".sass" or ".less" => "CSS",
-            ".sql" => "SQL",
-            ".py" => "Python",
-            ".rb" => "Ruby",
-            ".php" => "PHP",
-            ".java" => "Java",
-            ".kt" or ".kts" => "Kotlin",
-            ".swift" => "Swift",
-            ".go" => "Go",
-            ".rs" => "Rust",
-            ".sh" => "Shell",
-            ".bat" or ".cmd" => "Batch",
-            _ => null
-        };
-    }
+    
 }

@@ -85,7 +85,6 @@ internal static class Program {
         failed += Run("Trim patch tail hunk (two hunks)", TestTrimPatchKeepsTailHunkTwoHunks);
         failed += Run("Trim patch CRLF", TestTrimPatchPreservesCrlf);
         failed += Run("Trim patch keeps last hunk", TestTrimPatchKeepsLastHunk);
-        failed += Run("Trim patch tail hunk (two hunks)", TestTrimPatchKeepsTailHunkTwoHunks);
         failed += Run("Review intent applies focus", TestReviewIntentAppliesFocus);
         failed += Run("Review intent respects focus", TestReviewIntentRespectsFocus);
         failed += Run("Triage-only loads threads", TestTriageOnlyLoadsThreads);
@@ -757,8 +756,8 @@ internal static class Program {
         });
         var cutIndex = patch.IndexOf("@@ -10", StringComparison.Ordinal);
         var trimmed = CallTrimPatch(patch, cutIndex + 4);
-        AssertEqual(true, trimmed.Contains("@@ -1,2 +1,2 @@", StringComparison.Ordinal), "first hunk kept");
-        AssertEqual(false, trimmed.Contains("@@ -10,2 +10,2 @@", StringComparison.Ordinal), "second hunk removed");
+        AssertEqual(false, trimmed.Contains("@@ -1,2 +1,2 @@", StringComparison.Ordinal), "first hunk removed");
+        AssertEqual(true, trimmed.Contains("@@ -10,2 +10,2 @@", StringComparison.Ordinal), "tail hunk kept");
     }
 
     private static void TestTrimPatchKeepsTailHunk() {
@@ -801,40 +800,6 @@ internal static class Program {
         AssertEqual(true, trimmed.Contains("@@ -1,2 +1,2 @@", StringComparison.Ordinal), "first hunk kept");
         AssertEqual(false, trimmed.Contains("@@ -10,2 +10,2 @@", StringComparison.Ordinal), "middle hunk removed");
         AssertEqual(true, trimmed.Contains("@@ -20,2 +20,2 @@", StringComparison.Ordinal), "tail hunk kept");
-    }
-
-    private static void TestTrimPatchKeepsTailHunkTwoHunks() {
-        var newline = "\n";
-        var headerLines = new[] {
-            "diff --git a/file.txt b/file.txt",
-            "index 123..456 100644",
-            "--- a/file.txt",
-            "+++ b/file.txt"
-        };
-        var hunk1Lines = new[] {
-            "@@ -1,2 +1,2 @@",
-            "-line1",
-            "+line1a"
-        };
-        var hunk2Lines = new[] {
-            "@@ -10,2 +10,2 @@",
-            "-line10",
-            "+line10a"
-        };
-        var header = string.Join(newline, headerLines);
-        var hunk1 = string.Join(newline, hunk1Lines);
-        var hunk2 = string.Join(newline, hunk2Lines);
-        var patch = string.Join(newline, headerLines)
-                    + newline + hunk1
-                    + newline + hunk2;
-        var marker = "... (truncated) ...";
-        var maxChars = header.Length
-                       + newline.Length + marker.Length
-                       + newline.Length + hunk2.Length;
-        var trimmed = CallTrimPatch(patch, maxChars);
-        AssertEqual(false, trimmed.Contains("@@ -1,2 +1,2 @@", StringComparison.Ordinal), "first hunk removed");
-        AssertEqual(true, trimmed.Contains("@@ -10,2 +10,2 @@", StringComparison.Ordinal), "tail hunk kept");
-        AssertEqual(true, trimmed.Contains(marker, StringComparison.Ordinal), "marker added");
     }
 
     private static void TestTrimPatchPreservesCrlf() {
