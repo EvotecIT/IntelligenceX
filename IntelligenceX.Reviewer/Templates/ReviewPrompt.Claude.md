@@ -25,7 +25,7 @@ replacement text
 ```
 Only use suggestions when you are confident the replacement is correct and limited to the referenced lines.
 
-Return your review in markdown with these sections in this exact order, using markdown headings (use the emoji shown):
+{{SummaryStabilityBlock}}Return your review in markdown with these sections in this exact order, using markdown headings (use the emoji shown):
 - Inline Comments 🔍
 - Todo List ✅
 - Review Summary 📝

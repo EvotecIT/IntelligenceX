@@ -119,6 +119,16 @@ public static class ReviewerApp {
             context = await CleanupService.RunAsync(github, context, settings, cancellationToken)
                 .ConfigureAwait(false);
 
+            IssueComment? existingSummary = null;
+            string? previousSummary = null;
+            if (settings.SummaryStability && !string.IsNullOrWhiteSpace(context.HeadSha)) {
+                existingSummary = await FindExistingSummaryAsync(github, context, settings, cancellationToken)
+                    .ConfigureAwait(false);
+                if (existingSummary is not null && !IsSummaryOutdated(existingSummary, context.HeadSha)) {
+                    previousSummary = ExtractSummaryBody(existingSummary.Body, settings.MaxCommentChars);
+                }
+            }
+
             var progress = new ReviewProgress {
                 StatusLine = "Starting review."
             };
@@ -172,7 +182,7 @@ public static class ReviewerApp {
                                   settings.MaxInlineComments > 0 &&
                                   !string.IsNullOrWhiteSpace(context.HeadSha);
             var limitedFiles = PrepareFiles(files, settings.MaxFiles, settings.MaxPatchChars);
-            var prompt = PromptBuilder.Build(context, limitedFiles, settings, diffNote, extras, inlineSupported);
+            var prompt = PromptBuilder.Build(context, limitedFiles, settings, diffNote, extras, inlineSupported, previousSummary);
             if (settings.RedactPii) {
                 prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
             }
@@ -252,7 +262,8 @@ public static class ReviewerApp {
                 var shouldSearch = settings.OverwriteSummary || settings.OverwriteSummaryOnNewCommit;
                 IssueComment? existing = null;
                 if (shouldSearch) {
-                    existing = await FindExistingSummaryAsync(github, context, settings, cancellationToken).ConfigureAwait(false);
+                    existing = existingSummary ?? await FindExistingSummaryAsync(github, context, settings, cancellationToken)
+                        .ConfigureAwait(false);
                 }
                 var shouldOverwrite = settings.OverwriteSummary ||
                                       (settings.OverwriteSummaryOnNewCommit && IsSummaryOutdated(existing, context.HeadSha));
@@ -1917,6 +1928,52 @@ public static class ReviewerApp {
 
     private static string? ExtractReviewedCommit(string body) {
         return ReviewSummaryParser.TryGetReviewedCommit(body, out var commit) ? commit : null;
+    }
+
+    private static string? ExtractSummaryBody(string? body, int maxChars) {
+        if (string.IsNullOrWhiteSpace(body)) {
+            return null;
+        }
+
+        var lines = body.Replace("\r", "").Split('\n');
+        var endIndex = lines.Length;
+        for (var i = 0; i < lines.Length; i++) {
+            if (lines[i].IndexOf("_Model:", StringComparison.OrdinalIgnoreCase) >= 0) {
+                endIndex = i;
+                break;
+            }
+        }
+
+        var startIndex = 0;
+        for (var i = 0; i < endIndex; i++) {
+            var trimmed = lines[i].Trim();
+            if (trimmed.Length == 0) {
+                startIndex = i + 1;
+                continue;
+            }
+            if (trimmed.Contains(ReviewFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("## IntelligenceX Review", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("Reviewing PR #", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith(ReviewFormatter.ReviewedCommitMarker, StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith(">")) {
+                startIndex = i + 1;
+                continue;
+            }
+            break;
+        }
+
+        if (startIndex >= endIndex) {
+            return null;
+        }
+
+        var block = string.Join("\n", lines, startIndex, endIndex - startIndex).Trim();
+        if (string.IsNullOrWhiteSpace(block)) {
+            return null;
+        }
+        if (maxChars > 0 && block.Length > maxChars) {
+            return block.Substring(0, maxChars) + "...";
+        }
+        return block;
     }
 
     private static async Task<long?> CreateOrUpdateProgressCommentAsync(GitHubClient github, PullRequestContext context,

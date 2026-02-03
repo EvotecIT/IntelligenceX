@@ -2,6 +2,7 @@
 ## IntelligenceX Review
 Reviewing PR #{{Number}}: **{{Title}}**
 {{CommitLine}}
+{{ReasoningLabel}}
 
 {{InlineNote}}
 {{AutoResolveNote}}

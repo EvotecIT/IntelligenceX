@@ -44,8 +44,6 @@ internal static class AzureDevOpsReviewRunner {
 
         var iterationIds = await client.GetIterationIdsAsync(project, repositoryId, pr.PullRequestId, cancellationToken)
             .ConfigureAwait(false);
-        var minIterationId = iterationIds.Count == 0 ? (int?)null : iterationIds.Min();
-        var maxIterationId = iterationIds.Count == 0 ? (int?)null : iterationIds.Max();
         var files = await client.GetPullRequestChangesAsync(project, repositoryId, pr.PullRequestId, cancellationToken)
             .ConfigureAwait(false);
         if (files.Count == 0) {
@@ -67,11 +65,7 @@ internal static class AzureDevOpsReviewRunner {
         var limited = LimitFiles(filtered, settings.MaxFiles);
         var context = new PullRequestContext($"{pr.Project}/{pr.RepositoryName}", pr.Project, pr.RepositoryName,
             pr.PullRequestId, pr.Title, pr.Description, pr.IsDraft, pr.SourceCommit, pr.TargetCommit, Array.Empty<string>());
-        var diffNote = iterationIds.Count switch {
-            0 => "pull request changes",
-            1 => $"iteration {maxIterationId}",
-            _ => $"iterations {minIterationId}-{maxIterationId} (count {iterationIds.Count})"
-        };
+        var diffNote = BuildDiffNote(iterationIds);
         var prompt = PromptBuilder.Build(context, limited, settings, diffNote, null, inlineSupported: false);
         if (settings.RedactPii) {
             prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
@@ -106,6 +100,17 @@ internal static class AzureDevOpsReviewRunner {
             return files;
         }
         return files.Take(maxFiles).ToList();
+    }
+
+    internal static string BuildDiffNote(IReadOnlyList<int> iterationIds) {
+        if (iterationIds.Count == 0) {
+            return "pull request changes";
+        }
+        var minIterationId = iterationIds.Min();
+        var maxIterationId = iterationIds.Max();
+        return iterationIds.Count == 1
+            ? $"iteration {maxIterationId}"
+            : $"iterations {minIterationId}-{maxIterationId} (count {iterationIds.Count})";
     }
 
     private static AzureDevOpsOptions ResolveOptions(ReviewSettings settings) {

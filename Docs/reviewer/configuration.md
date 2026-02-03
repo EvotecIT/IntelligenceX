@@ -148,6 +148,16 @@ Use this to skip the main review and only assess existing review threads.
 }
 ```
 
+## Summary stability (avoid noisy reruns)
+
+```json
+{
+  "review": {
+    "summaryStability": true
+  }
+}
+```
+
 ## Output style example
 
 ```json
@@ -163,6 +173,7 @@ Use this to skip the main review and only assess existing review threads.
 ## Common knobs
 - `provider`: `openai` or `copilot`
 - `model`: model name for the selected provider
+- `reasoningEffort`: `minimal|low|medium|high|xhigh` (when set to low/medium/high, the header shows a reasoning level label)
 - `mode`: `inline`, `summary`, or `hybrid`
 - `length`: `short|medium|long`
 - `intent`: `security|performance|perf|maintainability` (sets focus areas if none provided)
@@ -170,12 +181,13 @@ Use this to skip the main review and only assess existing review threads.
 - `reviewDiffRange`: `current`, `pr-base`, or `first-review`
 - `outputStyle`: rendering style preset
 - `reviewUsageSummary`: append usage line to the footer (ChatGPT auth only)
-- `structuredFindings`: append a JSON findings block for automation (path/line/severity/message)
 - `retryCount`: total attempts for provider requests
 - `retryBackoffMultiplier`: exponential backoff multiplier (default 2.0)
 - `retryJitterMinMs`/`retryJitterMaxMs`: retry jitter bounds
 - `failOpen`: emit a failure summary instead of failing the workflow
 - `failOpenTransientOnly`: when true, fail-open only on transient errors
+- `summaryStability`: reuse the previous summary (same commit) as prompt context to avoid noisy rewrites
+- `structuredFindings`: emit a structured findings JSON block for automation
 - `skipPaths`: if **all** changed files in a PR match these globs, skip reviewing the entire PR
 - `includePaths`: only review files matching these globs
 - `excludePaths`: ignore files matching these globs
