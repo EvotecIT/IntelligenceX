@@ -1281,9 +1281,25 @@ public static class ReviewerApp {
         }
 
         if (hunkTexts.Count == 2) {
-            if (!TryAppendSegment(sb, hunkTexts[1], maxPatchChars, newline)) {
-                TryAppendSegment(sb, marker, maxPatchChars, newline);
+            if (TryAppendSegment(sb, hunkTexts[1], maxPatchChars, newline)) {
+                return sb.ToString();
             }
+
+            var fallback = new StringBuilder(maxPatchChars + 32);
+            if (!string.IsNullOrEmpty(header)) {
+                fallback.Append(header);
+            }
+            if (CanAppendTail(fallback, maxPatchChars, newline.Length, marker, hunkTexts[1], includeMarker: true)) {
+                TryAppendSegment(fallback, marker, maxPatchChars, newline);
+                TryAppendSegment(fallback, hunkTexts[1], maxPatchChars, newline);
+                return fallback.ToString();
+            }
+            if (CanAppendTail(fallback, maxPatchChars, newline.Length, marker, hunkTexts[1], includeMarker: false)) {
+                TryAppendSegment(fallback, hunkTexts[1], maxPatchChars, newline);
+                return fallback.ToString();
+            }
+
+            TryAppendSegment(sb, marker, maxPatchChars, newline);
             return sb.ToString();
         }
 
@@ -1302,10 +1318,13 @@ public static class ReviewerApp {
 
         var needsTruncation = includedMiddle < hunkTexts.Count - 2;
         if (needsTruncation) {
-            if (TryAppendSegment(sb, marker, maxPatchChars, newline)) {
+            if (CanAppendTail(sb, maxPatchChars, newline.Length, marker, lastHunk, includeMarker: true)) {
+                TryAppendSegment(sb, marker, maxPatchChars, newline);
+                TryAppendSegment(sb, lastHunk, maxPatchChars, newline);
+            } else if (CanAppendTail(sb, maxPatchChars, newline.Length, marker, lastHunk, includeMarker: false)) {
                 TryAppendSegment(sb, lastHunk, maxPatchChars, newline);
             } else {
-                TryAppendSegment(sb, lastHunk, maxPatchChars, newline);
+                TryAppendSegment(sb, marker, maxPatchChars, newline);
             }
         } else {
             TryAppendSegment(sb, lastHunk, maxPatchChars, newline);
@@ -1326,8 +1345,40 @@ public static class ReviewerApp {
                 break;
             }
         }
-
         return sb.ToString();
+    }
+
+    private static bool CanAppendWithReserve(StringBuilder sb, string segment, int maxChars, string newline,
+        string lastText, string marker, bool includeMarker) {
+        if (string.IsNullOrEmpty(segment)) {
+            return true;
+        }
+        var extra = segment.Length + (sb.Length > 0 ? newline.Length : 0);
+        var reserve = 0;
+        if (includeMarker) {
+            reserve += marker.Length + newline.Length;
+        }
+        if (!string.IsNullOrEmpty(lastText)) {
+            reserve += lastText.Length + newline.Length;
+        }
+        return sb.Length + extra + reserve <= maxChars;
+    }
+
+    private static bool CanAppendTail(StringBuilder sb, int maxChars, string newline,
+        string lastText, string marker, bool includeMarker) {
+        var currentLength = sb.Length;
+        if (includeMarker) {
+            var markerExtra = marker.Length + (currentLength > 0 ? newline.Length : 0);
+            if (currentLength + markerExtra > maxChars) {
+                return false;
+            }
+            currentLength += markerExtra;
+        }
+        if (string.IsNullOrEmpty(lastText)) {
+            return true;
+        }
+        var lastExtra = lastText.Length + (currentLength > 0 ? newline.Length : 0);
+        return currentLength + lastExtra <= maxChars;
     }
 
     private static bool TryAppendSegment(StringBuilder sb, string segment, int maxChars, string newline) {
@@ -1348,8 +1399,24 @@ public static class ReviewerApp {
     private static bool CanAppendWithReserve(StringBuilder sb, string segment, int maxChars, string newline,
         string marker, string lastSegment) {
         var length = AppendLength(sb.Length, segment.Length, newline.Length);
-        length = AppendLength(length, marker.Length, newline.Length);
-        length = AppendLength(length, lastSegment.Length, newline.Length);
+        if (!string.IsNullOrEmpty(marker)) {
+            length = AppendLength(length, marker.Length, newline.Length);
+        }
+        if (!string.IsNullOrEmpty(lastSegment)) {
+            length = AppendLength(length, lastSegment.Length, newline.Length);
+        }
+        return length <= maxChars;
+    }
+
+    private static bool CanAppendTail(StringBuilder sb, int maxChars, int newlineLength, string marker,
+        string lastSegment, bool includeMarker) {
+        var length = sb.Length;
+        if (includeMarker && !string.IsNullOrEmpty(marker)) {
+            length = AppendLength(length, marker.Length, newlineLength);
+        }
+        if (!string.IsNullOrEmpty(lastSegment)) {
+            length = AppendLength(length, lastSegment.Length, newlineLength);
+        }
         return length <= maxChars;
     }
 

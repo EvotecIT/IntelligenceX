@@ -15,11 +15,16 @@ using IntelligenceX.Cli.Setup.Host;
 #endif
 using IntelligenceX.Copilot;
 using IntelligenceX.Json;
+using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Chat;
+using IntelligenceX.OpenAI.Transport;
 using IntelligenceX.OpenAI.Tools;
 using IntelligenceX.OpenAI.Usage;
 using IntelligenceX.Rpc;
+using IntelligenceX.Telemetry;
+using IntelligenceX.Utils;
 #if INTELLIGENCEX_REVIEWER
 using IntelligenceX.Reviewer;
 #endif
@@ -46,6 +51,9 @@ internal static class Program {
         failed += Run("Tool output input", TestToolOutputInput);
         failed += Run("Turn response_id parsing", TestTurnResponseIdParsing);
         failed += Run("Tool definitions ordered", TestToolDefinitionOrdering);
+        failed += Run("Tool runner max rounds", TestToolRunnerMaxRounds);
+        failed += Run("Tool runner unregistered tool", TestToolRunnerUnregisteredTool);
+        failed += Run("Tool runner parallel execution", TestToolRunnerParallelExecution);
 #if !NET472
         failed += Run("Setup args reject skip+update", TestSetupArgsRejectSkipUpdate);
         failed += Run("GitHub secrets reject empty value", TestGitHubSecretsRejectEmptyValue);
@@ -73,6 +81,8 @@ internal static class Program {
         failed += Run("Review config validator invalid enum", TestReviewConfigValidatorInvalidEnum);
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);
+        failed += Run("Trim patch tail hunk", TestTrimPatchKeepsTailHunk);
+        failed += Run("Trim patch tail hunk (two hunks)", TestTrimPatchKeepsTailHunkTwoHunks);
         failed += Run("Trim patch CRLF", TestTrimPatchPreservesCrlf);
         failed += Run("Trim patch keeps last hunk", TestTrimPatchKeepsLastHunk);
         failed += Run("Review intent applies focus", TestReviewIntentAppliesFocus);
@@ -206,6 +216,55 @@ internal static class Program {
         }
 
         AssertSequenceEqual(new[] { "Alpha", "beta", "zeta" }, names, "tool definition order");
+    }
+
+    private static void TestToolRunnerMaxRounds() {
+        using var client = CreateToolRunnerClient(BuildToolCallTurn(("call_1", "echo")));
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool("echo"));
+        var input = ChatInput.FromText("Run tools");
+        var options = new ChatOptions { Model = "gpt-5.2-codex" };
+
+        AssertThrows<InvalidOperationException>(() =>
+                ToolRunner.RunAsync(client, input, options, registry,
+                        new ToolRunnerOptions { MaxRounds = 1 })
+                    .GetAwaiter().GetResult(),
+            "tool runner max rounds");
+    }
+
+    private static void TestToolRunnerUnregisteredTool() {
+        using var client = CreateToolRunnerClient(BuildToolCallTurn(("call_2", "missing_tool")));
+        var registry = new ToolRegistry();
+        var input = ChatInput.FromText("Run tools");
+        var options = new ChatOptions { Model = "gpt-5.2-codex" };
+
+        AssertThrows<InvalidOperationException>(() =>
+                ToolRunner.RunAsync(client, input, options, registry,
+                        new ToolRunnerOptions { MaxRounds = 1 })
+                    .GetAwaiter().GetResult(),
+            "tool runner unregistered tool");
+    }
+
+    private static void TestToolRunnerParallelExecution() {
+        using var client = CreateToolRunnerClient(BuildToolCallTurn(("call_1", "tool_a"), ("call_2", "tool_b")));
+        var startGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = 0;
+
+        var registry = new ToolRegistry();
+        registry.Register(new GateTool("tool_a", startGate, releaseGate, () => Interlocked.Increment(ref started), 2));
+        registry.Register(new GateTool("tool_b", startGate, releaseGate, () => Interlocked.Increment(ref started), 2));
+
+        var input = ChatInput.FromText("Run tools");
+        var options = new ChatOptions { Model = "gpt-5.2-codex", ParallelToolCalls = true };
+
+        var runnerTask = ToolRunner.RunAsync(client, input, options, registry,
+            new ToolRunnerOptions { MaxRounds = 1, ParallelToolCalls = true });
+
+        AssertCompletes(startGate.Task, 1000, "tool runner parallel start");
+        releaseGate.TrySetResult(true);
+
+        AssertThrows<InvalidOperationException>(() => runnerTask.GetAwaiter().GetResult(), "tool runner parallel");
     }
 
     private static int Run(string name, Action test) {
@@ -697,8 +756,50 @@ internal static class Program {
         });
         var cutIndex = patch.IndexOf("@@ -10", StringComparison.Ordinal);
         var trimmed = CallTrimPatch(patch, cutIndex + 4);
+        AssertEqual(false, trimmed.Contains("@@ -1,2 +1,2 @@", StringComparison.Ordinal), "first hunk removed");
+        AssertEqual(true, trimmed.Contains("@@ -10,2 +10,2 @@", StringComparison.Ordinal), "tail hunk kept");
+    }
+
+    private static void TestTrimPatchKeepsTailHunk() {
+        var newline = "\n";
+        var headerLines = new[] {
+            "diff --git a/file.txt b/file.txt",
+            "index 123..456 100644",
+            "--- a/file.txt",
+            "+++ b/file.txt"
+        };
+        var hunk1Lines = new[] {
+            "@@ -1,2 +1,2 @@",
+            "-line1",
+            "+line1a"
+        };
+        var hunk2Lines = new[] {
+            "@@ -10,2 +10,2 @@",
+            "-line10",
+            "+line10a"
+        };
+        var hunk3Lines = new[] {
+            "@@ -20,2 +20,2 @@",
+            "-line20",
+            "+line20a"
+        };
+        var header = string.Join(newline, headerLines);
+        var hunk1 = string.Join(newline, hunk1Lines);
+        var hunk2 = string.Join(newline, hunk2Lines);
+        var hunk3 = string.Join(newline, hunk3Lines);
+        var patch = string.Join(newline, headerLines)
+                    + newline + hunk1
+                    + newline + hunk2
+                    + newline + hunk3;
+        var marker = "... (truncated) ...";
+        var maxChars = header.Length
+                       + newline.Length + hunk1.Length
+                       + newline.Length + marker.Length
+                       + newline.Length + hunk3.Length;
+        var trimmed = CallTrimPatch(patch, maxChars);
         AssertEqual(true, trimmed.Contains("@@ -1,2 +1,2 @@", StringComparison.Ordinal), "first hunk kept");
-        AssertEqual(false, trimmed.Contains("@@ -10,2 +10,2 @@", StringComparison.Ordinal), "second hunk removed");
+        AssertEqual(false, trimmed.Contains("@@ -10,2 +10,2 @@", StringComparison.Ordinal), "middle hunk removed");
+        AssertEqual(true, trimmed.Contains("@@ -20,2 +20,2 @@", StringComparison.Ordinal), "tail hunk kept");
     }
 
     private static void TestTrimPatchPreservesCrlf() {
@@ -757,6 +858,40 @@ internal static class Program {
         AssertEqual(true, trimmed.Contains("@@ -20,1 +20,1 @@", StringComparison.Ordinal), "last hunk kept");
         AssertEqual(false, trimmed.Contains("@@ -10,1 +10,1 @@", StringComparison.Ordinal), "middle hunk skipped");
         AssertEqual(true, trimmed.Contains(marker, StringComparison.Ordinal), "marker present");
+    }
+
+    private static void TestTrimPatchKeepsTailHunkTwoHunks() {
+        var newline = "\n";
+        var headerLines = new[] {
+            "diff --git a/file.txt b/file.txt",
+            "index 123..456 100644",
+            "--- a/file.txt",
+            "+++ b/file.txt"
+        };
+        var hunk1Lines = new[] {
+            "@@ -1,2 +1,2 @@",
+            "-line1",
+            "+line1a"
+        };
+        var hunk2Lines = new[] {
+            "@@ -10,2 +10,2 @@",
+            "-line10",
+            "+line10a"
+        };
+        var header = string.Join(newline, headerLines);
+        var hunk1 = string.Join(newline, hunk1Lines);
+        var hunk2 = string.Join(newline, hunk2Lines);
+        var patch = string.Join(newline, headerLines)
+                    + newline + hunk1
+                    + newline + hunk2;
+        var marker = "... (truncated) ...";
+        var maxChars = header.Length
+                       + newline.Length + marker.Length
+                       + newline.Length + hunk2.Length;
+        var trimmed = CallTrimPatch(patch, maxChars);
+        AssertEqual(false, trimmed.Contains("@@ -1,2 +1,2 @@", StringComparison.Ordinal), "first hunk removed");
+        AssertEqual(true, trimmed.Contains("@@ -10,2 +10,2 @@", StringComparison.Ordinal), "tail hunk kept");
+        AssertEqual(true, trimmed.Contains(marker, StringComparison.Ordinal), "marker added");
     }
 
     private static void TestReviewIntentAppliesFocus() {
@@ -1354,6 +1489,121 @@ internal static class Program {
     }
 #endif
 
+    private static IntelligenceXClient CreateToolRunnerClient(TurnInfo turn) {
+        var transport = new FakeToolTransport(turn);
+        var ctor = typeof(IntelligenceXClient).GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance,
+            null,
+            new[] { typeof(IOpenAITransport), typeof(string), typeof(string), typeof(string), typeof(SandboxPolicy) },
+            null);
+        if (ctor is null) {
+            throw new InvalidOperationException("IntelligenceXClient constructor not found.");
+        }
+        return (IntelligenceXClient)ctor.Invoke(new object?[] { transport, "gpt-5.2-codex", null, null, null });
+    }
+
+    private static TurnInfo BuildToolCallTurn(params (string CallId, string ToolName)[] calls) {
+        if (calls is null || calls.Length == 0) {
+            throw new InvalidOperationException("Tool call list cannot be empty.");
+        }
+        var output = new JsonArray();
+        foreach (var call in calls) {
+            output.Add(new JsonObject()
+                .Add("type", "custom_tool_call")
+                .Add("call_id", call.CallId)
+                .Add("name", call.ToolName)
+                .Add("input", "{}"));
+        }
+        return TurnInfo.FromJson(new JsonObject()
+            .Add("id", "turn_" + calls[0].CallId)
+            .Add("output", output));
+    }
+
+    private sealed class StubTool : ITool {
+        private readonly ToolDefinition _definition;
+
+        public StubTool(string name) {
+            _definition = new ToolDefinition(name, "Stub tool", new JsonObject().Add("type", "object"));
+        }
+
+        public ToolDefinition Definition => _definition;
+
+        public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken)
+            => Task.FromResult("ok");
+    }
+
+    private sealed class GateTool : ITool {
+        private readonly ToolDefinition _definition;
+        private readonly TaskCompletionSource<bool> _startGate;
+        private readonly TaskCompletionSource<bool> _releaseGate;
+        private readonly Func<int> _increment;
+        private readonly int _expected;
+
+        public GateTool(string name, TaskCompletionSource<bool> startGate, TaskCompletionSource<bool> releaseGate,
+            Func<int> increment, int expected) {
+            _definition = new ToolDefinition(name, "Gate tool", new JsonObject().Add("type", "object"));
+            _startGate = startGate;
+            _releaseGate = releaseGate;
+            _increment = increment;
+            _expected = expected;
+        }
+
+        public ToolDefinition Definition => _definition;
+
+        public async Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+            var count = _increment();
+            if (count >= _expected) {
+                _startGate.TrySetResult(true);
+            }
+            await _startGate.Task.ConfigureAwait(false);
+            await _releaseGate.Task.ConfigureAwait(false);
+            return "ok";
+        }
+    }
+
+    private sealed class FakeToolTransport : IOpenAITransport {
+        private readonly TurnInfo _turn;
+
+        public FakeToolTransport(TurnInfo turn) {
+            _turn = turn;
+        }
+
+        public OpenAITransportKind Kind => OpenAITransportKind.Native;
+        public AppServerClient? RawAppServerClient => null;
+
+#pragma warning disable CS0067
+        public event EventHandler<string>? DeltaReceived;
+        public event EventHandler<LoginEventArgs>? LoginStarted;
+        public event EventHandler<LoginEventArgs>? LoginCompleted;
+        public event EventHandler<string>? ProtocolLineReceived;
+        public event EventHandler<string>? StandardErrorReceived;
+        public event EventHandler<RpcCallStartedEventArgs>? RpcCallStarted;
+        public event EventHandler<RpcCallCompletedEventArgs>? RpcCallCompleted;
+#pragma warning restore CS0067
+
+        public Task InitializeAsync(ClientInfo clientInfo, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<HealthCheckResult> HealthCheckAsync(string? method, TimeSpan? timeout, CancellationToken cancellationToken)
+            => Task.FromResult(new HealthCheckResult(true));
+        public Task<AccountInfo> GetAccountAsync(CancellationToken cancellationToken)
+            => Task.FromResult(new AccountInfo(null, null, null, new JsonObject(), null));
+        public Task LogoutAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<ModelListResult> ListModelsAsync(CancellationToken cancellationToken)
+            => Task.FromResult(new ModelListResult(Array.Empty<ModelInfo>(), null, new JsonObject(), null));
+        public Task<ChatGptLoginStart> LoginChatGptAsync(Action<string>? onUrl, Func<string, Task<string>>? onPrompt,
+            bool useLocalListener, TimeSpan timeout, CancellationToken cancellationToken)
+            => Task.FromResult(new ChatGptLoginStart("login", "https://example", new JsonObject(), null));
+        public Task LoginApiKeyAsync(string apiKey, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<ThreadInfo> StartThreadAsync(string model, string? currentDirectory, string? approvalPolicy,
+            string? sandbox, CancellationToken cancellationToken)
+            => Task.FromResult(new ThreadInfo("thread1", null, null, null, null, new JsonObject(), null));
+        public Task<ThreadInfo> ResumeThreadAsync(string threadId, CancellationToken cancellationToken)
+            => Task.FromResult(new ThreadInfo(threadId, null, null, null, null, new JsonObject(), null));
+        public Task<TurnInfo> StartTurnAsync(string threadId, ChatInput input, ChatOptions? options, string? currentDirectory,
+            string? approvalPolicy, SandboxPolicy? sandboxPolicy, CancellationToken cancellationToken)
+            => Task.FromResult(_turn);
+
+        public void Dispose() { }
+    }
+
     private static void AssertEqual<T>(T expected, T? actual, string name) {
         if (!Equals(expected, actual)) {
             throw new InvalidOperationException($"Expected {name} to be '{expected}', got '{actual}'.");
@@ -1421,5 +1671,16 @@ internal static class Program {
             return;
         }
         throw new InvalidOperationException($"Expected {name} to throw {typeof(T).Name}.");
+    }
+
+    private static void AssertCompletes(Task task, int timeoutMs, string name) {
+        if (task is null) {
+            throw new InvalidOperationException($"Expected {name} task to be non-null.");
+        }
+        var completed = Task.WhenAny(task, Task.Delay(timeoutMs)).GetAwaiter().GetResult();
+        if (!ReferenceEquals(completed, task)) {
+            throw new InvalidOperationException($"Expected {name} to complete within {timeoutMs}ms.");
+        }
+        task.GetAwaiter().GetResult();
     }
 }

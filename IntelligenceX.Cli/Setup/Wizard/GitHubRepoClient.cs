@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Diagnostics;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -83,7 +84,8 @@ internal sealed class GitHubRepoClient : IDisposable {
             var bytes = Convert.FromBase64String(normalized);
             var text = Encoding.UTF8.GetString(bytes);
             return new RepoFile(sha, text);
-        } catch {
+        } catch (Exception ex) {
+            Trace.TraceWarning($"GitHub file fetch failed for {owner}/{repo}/{path}@{branch}: {ex.GetType().Name}: {ex.Message}");
             return null;
         }
     }
@@ -113,7 +115,18 @@ internal sealed class GitHubRepoClient : IDisposable {
             updatedAt = parsed;
         }
 
-        info = new RepositoryInfo(fullName, isPrivate, updatedAt);
+        bool canPush = false;
+        bool canAdmin = false;
+        if (item.TryGetProperty("permissions", out var permProp) && permProp.ValueKind == JsonValueKind.Object) {
+            if (permProp.TryGetProperty("push", out var pushProp) && pushProp.ValueKind == JsonValueKind.True) {
+                canPush = true;
+            }
+            if (permProp.TryGetProperty("admin", out var adminProp) && adminProp.ValueKind == JsonValueKind.True) {
+                canAdmin = true;
+            }
+        }
+
+        info = new RepositoryInfo(fullName, isPrivate, updatedAt, canPush, canAdmin);
         return true;
     }
 
@@ -127,10 +140,14 @@ internal sealed class GitHubRepoClient : IDisposable {
         /// <param name="fullName">Repository full name in owner/name format.</param>
         /// <param name="isPrivate">True when the repository is private.</param>
         /// <param name="updatedAt">Last update timestamp if available.</param>
-        public RepositoryInfo(string fullName, bool isPrivate, DateTimeOffset? updatedAt) {
+        /// <param name="canPush">True when the user can push to this repo.</param>
+        /// <param name="canAdmin">True when the user has admin access to this repo.</param>
+        public RepositoryInfo(string fullName, bool isPrivate, DateTimeOffset? updatedAt, bool canPush = false, bool canAdmin = false) {
             FullName = fullName;
             Private = isPrivate;
             UpdatedAt = updatedAt;
+            CanPush = canPush;
+            CanAdmin = canAdmin;
         }
 
         /// <summary>
@@ -147,6 +164,16 @@ internal sealed class GitHubRepoClient : IDisposable {
         /// Last update timestamp if provided by the API.
         /// </summary>
         public DateTimeOffset? UpdatedAt { get; }
+
+        /// <summary>
+        /// Indicates whether the user can push to this repository.
+        /// </summary>
+        public bool CanPush { get; }
+
+        /// <summary>
+        /// Indicates whether the user has admin access to this repository.
+        /// </summary>
+        public bool CanAdmin { get; }
     }
 
     /// <summary>

@@ -1,0 +1,17 @@
+[
+  {
+    "step": 1,
+    "title": "Authenticate with YOUR Account",
+    "description": "Use your existing ChatGPT or GitHub Copilot login. No API keys needed, no middleman. Your credentials go straight to the provider, stored as GitHub Actions secrets you control."
+  },
+  {
+    "step": 2,
+    "title": "Set Up in Seconds",
+    "description": "Run the CLI wizard or open the local web UI. Pick your repos, choose a review preset (balanced, picky, security, minimal), and IntelligenceX creates a PR with the GitHub Actions workflow."
+  },
+  {
+    "step": 3,
+    "title": "Get AI Reviews on Every PR",
+    "description": "The reviewer runs automatically in GitHub Actions. Inline comments, summary reviews, or hybrid mode. Auto-resolves stale threads. Configurable strictness and output style."
+  }
+]

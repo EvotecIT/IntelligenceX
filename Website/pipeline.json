@@ -1,0 +1,79 @@
+{
+  "steps": [
+    {
+      "task": "dotnet-build",
+      "project": "../IntelligenceX/IntelligenceX.csproj",
+      "configuration": "Release",
+      "framework": "net8.0"
+    },
+    {
+      "task": "build",
+      "config": "./site.json",
+      "out": "./_site",
+      "clean": true
+    },
+    {
+      "task": "verify",
+      "config": "./site.json"
+    },
+    {
+      "task": "apidocs",
+      "xml": "../IntelligenceX/bin/Release/net8.0/IntelligenceX.xml",
+      "assembly": "../IntelligenceX/bin/Release/net8.0/IntelligenceX.dll",
+      "out": "./_site/api",
+      "title": "IntelligenceX API Reference",
+      "baseUrl": "/api",
+      "format": "both",
+      "template": "docs",
+      "nav": "./site.json",
+      "css": "/css/api.css",
+      "headerHtml": "./themes/intelligencex/partials/api-header.html",
+      "footerHtml": "./themes/intelligencex/partials/api-footer.html"
+    },
+    {
+      "task": "llms",
+      "siteRoot": "./_site",
+      "project": "../IntelligenceX/IntelligenceX.csproj",
+      "apiIndex": "./_site/api/index.json",
+      "apiBase": "/api",
+      "apiLevel": "Full",
+      "name": "IntelligenceX",
+      "license": "MIT",
+      "targets": ".NET 8+, .NET 10+, .NET Standard 2.0, .NET Framework 4.7.2"
+    },
+    {
+      "task": "sitemap",
+      "siteRoot": "./_site",
+      "baseUrl": "https://intelligencex.dev",
+      "html": true,
+      "htmlTitle": "IntelligenceX Sitemap",
+      "entries": [
+        { "path": "/", "priority": "1.0", "changefreq": "weekly" },
+        { "path": "/docs/getting-started/", "priority": "0.9", "changefreq": "weekly" },
+        { "path": "/docs/security/", "priority": "0.8", "changefreq": "monthly" },
+        { "path": "/faq/", "priority": "0.7", "changefreq": "monthly" },
+        { "path": "/changelog/", "priority": "0.6", "changefreq": "weekly" },
+        { "path": "/docs/", "priority": "0.9", "changefreq": "weekly" },
+        { "path": "/docs/reviewer/overview/", "priority": "0.9", "changefreq": "weekly" },
+        { "path": "/docs/cli/overview/", "priority": "0.8", "changefreq": "weekly" },
+        { "path": "/docs/library/overview/", "priority": "0.8", "changefreq": "weekly" },
+        { "path": "/docs/powershell/overview/", "priority": "0.8", "changefreq": "weekly" },
+        { "path": "/api/", "priority": "0.8", "changefreq": "weekly" }
+      ]
+    },
+    {
+      "task": "optimize",
+      "siteRoot": "./_site",
+      "config": "./site.json",
+      "criticalCss": "./themes/intelligencex/critical.css",
+      "minifyHtml": true,
+      "minifyCss": true,
+      "minifyJs": true,
+      "hashAssets": true,
+      "hashExtensions": [".css", ".js"],
+      "hashExclude": ["**/assets/prism/components/**"],
+      "cacheHeaders": true,
+      "cacheHeadersOut": "_headers"
+    }
+  ]
+}

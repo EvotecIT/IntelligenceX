@@ -1,0 +1,43 @@
+[
+  { "title": "Documentation", "href": "/docs/" },
+  { "title": "Getting Started", "href": "/docs/getting-started/" },
+  { "title": "Security & Trust", "href": "/docs/security/" },
+  {
+    "title": "GitHub Actions Reviewer",
+    "items": [
+      { "title": "Overview", "href": "/docs/reviewer/overview/" },
+      { "title": "Onboarding Wizard", "href": "/docs/reviewer/onboarding-wizard/" },
+      { "title": "Web Setup UI", "href": "/docs/reviewer/setup-web/" },
+      { "title": "Configuration", "href": "/docs/reviewer/configuration/" },
+      { "title": "Security & Trust", "href": "/docs/reviewer/security-trust/" }
+    ]
+  },
+  {
+    "title": "CLI Tools",
+    "items": [
+      { "title": "Overview", "href": "/docs/cli/overview/" },
+      { "title": "Quick Start", "href": "/docs/cli/quickstart/" }
+    ]
+  },
+  {
+    "title": ".NET Library",
+    "items": [
+      { "title": "Overview", "href": "/docs/library/overview/" },
+      { "title": "Providers", "href": "/docs/library/providers/" },
+      { "title": "API Reference", "href": "/api/" }
+    ]
+  },
+  {
+    "title": "PowerShell Module",
+    "items": [
+      { "title": "Overview", "href": "/docs/powershell/overview/" }
+    ]
+  },
+  {
+    "title": "Guides",
+    "items": [
+      { "title": "Examples", "href": "/docs/examples/" },
+      { "title": "Troubleshooting", "href": "/docs/troubleshooting/" }
+    ]
+  }
+]

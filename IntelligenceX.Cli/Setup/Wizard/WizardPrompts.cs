@@ -19,12 +19,33 @@ internal static class WizardPrompts {
         return AnsiConsole.Prompt(
             new SelectionPrompt<GitHubAuthMode>()
                 .Title("GitHub authentication:")
-                .AddChoices(GitHubAuthMode.AppInstallation, GitHubAuthMode.DeviceFlow, GitHubAuthMode.PersonalAccessToken)
+                .AddChoices(
+                    GitHubAuthMode.DefaultDeviceFlow,
+                    GitHubAuthMode.AppInstallation,
+                    GitHubAuthMode.PersonalAccessToken,
+                    GitHubAuthMode.CustomDeviceFlow)
                 .UseConverter(mode => mode switch {
-                    GitHubAuthMode.AppInstallation => "GitHub App (installation token)",
-                    GitHubAuthMode.DeviceFlow => "OAuth device flow (recommended)",
+                    GitHubAuthMode.DefaultDeviceFlow => "Sign in with GitHub (recommended)",
+                    GitHubAuthMode.AppInstallation => "Create your own GitHub App (for bot identity)",
+                    GitHubAuthMode.PersonalAccessToken => "Personal access token",
+                    GitHubAuthMode.CustomDeviceFlow => "Advanced: Custom OAuth Client ID",
                     _ => "Personal access token"
                 }));
+    }
+
+    public static void ShowTrustInfo() {
+        var panel = new Panel(
+            "[grey]We use the IntelligenceX GitHub App to simplify setup:[/]\n" +
+            "[green]✓[/] Sign in without creating tokens manually\n" +
+            "[green]✓[/] Pre-fill settings when creating your own GitHub App\n\n" +
+            "[grey]We don't store your credentials or access repos without\n" +
+            "your approval. Everything runs locally.[/]\n\n" +
+            "[dim]Override with: INTELLIGENCEX_GITHUB_CLIENT_ID env var[/]") {
+            Header = new PanelHeader("[blue]About IntelligenceX GitHub App[/]"),
+            Border = BoxBorder.Rounded
+        };
+        AnsiConsole.Write(panel);
+        AnsiConsole.WriteLine();
     }
 
     public static SetupScope PromptScope() {
@@ -219,8 +240,9 @@ internal static class WizardPrompts {
             .Title("Review provider:")
             .AddChoices("openai", "copilot")
             .UseConverter(value => value switch {
-                "copilot" => "Copilot (uses GitHub Copilot CLI)",
-                _ => "OpenAI (Codex app-server)"
+                "openai" => "ChatGPT / OpenAI (recommended)",
+                "copilot" => "GitHub Copilot (requires Copilot CLI)",
+                _ => value
             });
         var selection = AnsiConsole.Prompt(prompt);
         return string.IsNullOrWhiteSpace(selection) ? current : selection;

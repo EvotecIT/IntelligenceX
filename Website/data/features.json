@@ -1,0 +1,31 @@
+[
+  {
+    "title": "GitHub Actions Reviewer",
+    "description": "AI-powered PR reviews using ChatGPT or GitHub Copilot. Posts structured inline comments, summaries, or hybrid reviews directly on your pull requests. Configurable presets from minimal to picky. Codex-style output with auto-resolve for stale threads.",
+    "icon": "review",
+    "link": "/docs/reviewer/overview/",
+    "tag": "Star Feature",
+    "featured": true
+  },
+  {
+    "title": "CLI Tools",
+    "description": "One-command onboarding with the setup wizard. Local web UI for visual configuration. Multi-repo support, auth management, secret rotation, and usage tracking.",
+    "icon": "cli",
+    "link": "/docs/cli/overview/",
+    "tag": "Setup"
+  },
+  {
+    "title": ".NET Library",
+    "description": "Codex app-server client with JSON-RPC support. One-liner Easy.ChatAsync API. Full threading, login flows, and config overrides for building your own AI-powered tools.",
+    "icon": "library",
+    "link": "/docs/library/overview/",
+    "tag": "Developers"
+  },
+  {
+    "title": "PowerShell Module",
+    "description": "Binary cmdlets for scripting and automation. Connect, send messages, run diagnostics, and integrate IntelligenceX into your PowerShell workflows.",
+    "icon": "powershell",
+    "link": "/docs/powershell/overview/",
+    "tag": "Automation"
+  }
+]

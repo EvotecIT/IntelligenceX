@@ -1,0 +1,22 @@
+<nav class="docs-nav" aria-label="Documentation">
+  {{ if navigation.menus && navigation.menus.size > 0 }}
+    {{ for menu in navigation.menus }}
+      {{ if menu.name == "docs" }}
+        {{ for item in menu.items }}
+          {{ if item.items && item.items.size > 0 }}
+            <div class="docs-nav-group">
+              <h3 class="docs-nav-heading">{{ item.title }}</h3>
+              <ul class="docs-nav-list">
+                {{ for child in item.items }}
+                  <li><a href="{{ child.url }}" class="docs-nav-item{{ if page.url == child.url }} active{{ end }}">{{ child.title }}</a></li>
+                {{ end }}
+              </ul>
+            </div>
+          {{ else }}
+            <a href="{{ item.url }}" class="docs-nav-item docs-nav-top{{ if page.url == item.url }} active{{ end }}">{{ item.title }}</a>
+          {{ end }}
+        {{ end }}
+      {{ end }}
+    {{ end }}
+  {{ end }}
+</nav>

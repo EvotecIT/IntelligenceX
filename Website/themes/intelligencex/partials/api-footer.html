@@ -1,0 +1,58 @@
+<footer class="ix-footer">
+  <div class="ix-footer-inner">
+    <div class="ix-footer-grid">
+      <div class="ix-footer-brand">
+        <div class="ix-footer-logo">
+          <svg viewBox="0 0 32 32" width="24" height="24" fill="none">
+            <rect width="32" height="32" rx="8" fill="var(--pf-accent)"/>
+            <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="var(--pf-bg)" font-family="var(--pf-font-display)" font-weight="700" font-size="18">IX</text>
+          </svg>
+          <span>IntelligenceX</span>
+        </div>
+        <p class="ix-footer-tagline">AI-powered code review using your own ChatGPT or Copilot account. Zero trust, full control.</p>
+      </div>
+      <div class="ix-footer-col">
+        <h4>Documentation</h4>
+        <ul>
+          <li><a href="/docs/reviewer/overview/">Reviewer</a></li>
+          <li><a href="/docs/cli/overview/">CLI Tools</a></li>
+          <li><a href="/docs/library/overview/">.NET Library</a></li>
+          <li><a href="/api/">API Reference</a></li>
+          <li><a href="/docs/powershell/overview/">PowerShell</a></li>
+        </ul>
+      </div>
+      <div class="ix-footer-col">
+        <h4>Resources</h4>
+        <ul>
+          <li><a href="/docs/getting-started/">Getting Started</a></li>
+          <li><a href="/docs/security/">Security &amp; Trust</a></li>
+          <li><a href="/faq/">FAQ</a></li>
+          <li><a href="/changelog/">Changelog</a></li>
+          <li><a href="https://github.com/EvotecIT/IntelligenceX" target="_blank" rel="noopener">GitHub Repository</a></li>
+          <li><a href="https://github.com/EvotecIT/IntelligenceX/issues" target="_blank" rel="noopener">Report Issue</a></li>
+        </ul>
+      </div>
+      <div class="ix-footer-col">
+        <h4>Company</h4>
+        <ul>
+          <li><a href="https://evotec.xyz" target="_blank" rel="noopener">Evotec Services</a></li>
+          <li><a href="https://evotec.xyz/hub" target="_blank" rel="noopener">Blog</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="ix-footer-bottom">
+      <p>MIT License. Built with <a href="https://github.com/EvotecIT/PSPublishModule">PowerForge</a>.</p>
+      <p>Developed by <a href="https://evotec.xyz" target="_blank" rel="noopener">Evotec Services</a></p>
+    </div>
+  </div>
+</footer>
+<script>
+document.querySelectorAll('.ix-theme-toggle').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    var c=document.documentElement.getAttribute('data-theme')||'dark';
+    var n=c==='dark'?'light':'dark';
+    document.documentElement.setAttribute('data-theme',n);
+    localStorage.setItem('theme',n);
+  });
+});
+</script>

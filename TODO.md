@@ -32,7 +32,7 @@ Status: Draft (needs priorities + owners)
 - [x] Add diff-range strategy options (current/pr-base/first-review) with default.
 - [x] Add file filters (include/exclude globs, binary skip, generated skip).
 - [x] Add smart chunking (keep related hunks together; avoid orphaned changes).
-- [x] Add language-aware hints (formatters and rule presets).
+- [x] Add language-aware hints (prompt includes detected languages).
 - [x] Add "review intent" presets (security/perf/maintainability).
 
 ### Phase 3 — Review output + UX

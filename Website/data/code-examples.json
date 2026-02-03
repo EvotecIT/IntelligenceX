@@ -1,0 +1,28 @@
+{
+  "tabs": [
+    {
+      "id": "workflow",
+      "label": "GitHub Actions",
+      "language": "yaml",
+      "code": "# .github/workflows/review-intelligencex.yml\njobs:\n  review:\n    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@master\n    with:\n      reviewer_source: release\n      openai_transport: native\n      output_style: claude\n      style: colorful\n    secrets: inherit"
+    },
+    {
+      "id": "config",
+      "label": "Configuration",
+      "language": "json",
+      "code": "{\n  \"review\": {\n    \"provider\": \"openai\",\n    \"model\": \"gpt-5.2-codex\",\n    \"mode\": \"hybrid\",\n    \"length\": \"long\",\n    \"outputStyle\": \"claude\",\n    \"reviewUsageSummary\": false\n  }\n}"
+    },
+    {
+      "id": "csharp",
+      "label": "C# Library",
+      "language": "csharp",
+      "code": "using IntelligenceX.OpenAI;\n\n// One-liner - send a message and get a response\nvar result = await Easy.ChatAsync(\"Review this code for security issues\");\nConsole.WriteLine(result.Text);\n\n// Or use the full app-server client\nvar client = await AppServerClient.StartAsync(new AppServerOptions {\n    ExecutablePath = \"codex\",\n    Arguments = \"app-server\"\n});\nawait client.InitializeAsync(new ClientInfo(\"MyApp\", \"Demo\", \"1.0.0\"));\nvar thread = await client.StartThreadAsync(\"gpt-5.2-codex\");\nawait client.StartTurnAsync(thread.Id, \"Hello from IntelligenceX\");"
+    },
+    {
+      "id": "powershell",
+      "label": "PowerShell",
+      "language": "powershell",
+      "code": "# Import the module\nImport-Module IntelligenceX\n\n# Connect and send a message\n$session = Connect-IntelligenceX -Diagnostics\nInitialize-IntelligenceX\nStart-IntelligenceXLogin\nWait-IntelligenceXLogin\n\n$thread = Start-IntelligenceXThread -Model 'gpt-5.2-codex'\nSend-IntelligenceXMessage -ThreadId $thread.Id -Content 'Analyze this'\n\nDisconnect-IntelligenceX"
+    }
+  ]
+}

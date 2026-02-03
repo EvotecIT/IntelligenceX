@@ -1,8 +1,21 @@
 namespace IntelligenceX.Cli.Setup.Wizard;
 
 internal enum GitHubAuthMode {
+    /// <summary>
+    /// Sign in with GitHub using the default IntelligenceX app (recommended).
+    /// </summary>
+    DefaultDeviceFlow,
+    /// <summary>
+    /// Create or use your own GitHub App for bot identity.
+    /// </summary>
     AppInstallation,
-    DeviceFlow,
+    /// <summary>
+    /// OAuth device flow with custom Client ID.
+    /// </summary>
+    CustomDeviceFlow,
+    /// <summary>
+    /// Manual personal access token.
+    /// </summary>
     PersonalAccessToken
 }
 
@@ -58,7 +71,7 @@ internal sealed class WizardState {
     public bool DryRun { get; set; }
     public string? BranchName { get; set; }
     public string Provider { get; set; } = "openai";
-    public GitHubAuthMode AuthMode { get; set; } = GitHubAuthMode.DeviceFlow;
+    public GitHubAuthMode AuthMode { get; set; } = GitHubAuthMode.DefaultDeviceFlow;
     public SetupScope Scope { get; set; } = SetupScope.SingleRepo;
     public ConfigMode ConfigMode { get; set; } = ConfigMode.Preset;
     public ConfigPreset Preset { get; set; } = ConfigPreset.Balanced;
