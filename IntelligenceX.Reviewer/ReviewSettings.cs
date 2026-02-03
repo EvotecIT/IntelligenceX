@@ -57,6 +57,16 @@ internal sealed class ReviewSettings {
         "intelligencex-review",
         "copilot-pull-request-reviewer"
     };
+    private static readonly IReadOnlyList<string> DefaultRedactionPatterns = new[] {
+        "-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]+?-----END [A-Z ]*PRIVATE KEY-----",
+        "\\b(AKIA|ASIA)[0-9A-Z]{16}\\b",
+        "\\bgh[pousr]_[A-Za-z0-9]{36}\\b",
+        "\\bgithub_pat_[A-Za-z0-9_]{20,}\\b",
+        "\\bxox[baprs]-[A-Za-z0-9-]+\\b",
+        "\\beyJ[a-zA-Z0-9_-]{10,}\\.[a-zA-Z0-9_-]{10,}\\.[a-zA-Z0-9_-]{10,}\\b",
+        "(?i)authorization\\s*:\\s*(bearer|basic)\\s+[^\\s]+",
+        "(?i)\\b(api[_-]?key|secret|token|password|passwd|pwd)\\b\\s*[:=]\\s*['\\\"]?[^\\s'\\\"]+"
+    };
 
     public string Mode { get; set; } = "hybrid";
     public ReviewProvider Provider { get; set; } = ReviewProvider.OpenAI;
@@ -146,7 +156,7 @@ internal sealed class ReviewSettings {
     public int MaxInlineComments { get; set; } = 10;
     public string? SeverityThreshold { get; set; }
     public bool RedactPii { get; set; }
-    public IReadOnlyList<string> RedactionPatterns { get; set; } = Array.Empty<string>();
+    public IReadOnlyList<string> RedactionPatterns { get; set; } = DefaultRedactionPatterns;
     public string RedactionReplacement { get; set; } = "[REDACTED]";
     public int WaitSeconds { get; set; } = 60;
     public int IdleSeconds { get; set; } = 5;
