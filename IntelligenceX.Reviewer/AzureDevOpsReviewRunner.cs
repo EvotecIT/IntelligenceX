@@ -44,7 +44,8 @@ internal static class AzureDevOpsReviewRunner {
 
         var iterationIds = await client.GetIterationIdsAsync(project, repositoryId, pr.PullRequestId, cancellationToken)
             .ConfigureAwait(false);
-        var latestIterationId = iterationIds.Count == 0 ? (int?)null : iterationIds[^1];
+        var minIterationId = iterationIds.Count == 0 ? (int?)null : iterationIds.Min();
+        var maxIterationId = iterationIds.Count == 0 ? (int?)null : iterationIds.Max();
         var files = await client.GetPullRequestChangesAsync(project, repositoryId, pr.PullRequestId, cancellationToken)
             .ConfigureAwait(false);
         if (files.Count == 0) {
@@ -68,8 +69,8 @@ internal static class AzureDevOpsReviewRunner {
             pr.PullRequestId, pr.Title, pr.Description, pr.IsDraft, pr.SourceCommit, pr.TargetCommit, Array.Empty<string>());
         var diffNote = iterationIds.Count switch {
             0 => "pull request changes",
-            1 => $"iteration {latestIterationId}",
-            _ => $"iterations {iterationIds[0]}-{latestIterationId} (count {iterationIds.Count})"
+            1 => $"iteration {maxIterationId}",
+            _ => $"iterations {minIterationId}-{maxIterationId} (count {iterationIds.Count})"
         };
         var prompt = PromptBuilder.Build(context, limited, settings, diffNote, null, inlineSupported: false);
         if (settings.RedactPii) {

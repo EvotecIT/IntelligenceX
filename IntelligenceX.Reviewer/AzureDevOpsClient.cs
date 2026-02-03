@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -98,31 +99,44 @@ internal sealed class AzureDevOpsClient : IDisposable {
     /// </summary>
     public async Task<IReadOnlyList<PullRequestFile>> GetPullRequestChangesAsync(string project, string repositoryId,
         int pullRequestId, CancellationToken cancellationToken) {
-        var url = $"{Escape(project)}/_apis/git/repositories/{Escape(repositoryId)}/pullRequests/{pullRequestId}/changes?api-version={ApiVersion}";
-        var json = await GetJsonAsync(url, cancellationToken).ConfigureAwait(false);
-        var obj = json.AsObject();
-        // ADO APIs have returned "changeEntries" and "changes" across versions.
-        var entries = obj?.GetArray("changeEntries") ?? obj?.GetArray("changes");
-        if (entries is null || entries.Count == 0) {
+        var baseUrl = $"{Escape(project)}/_apis/git/repositories/{Escape(repositoryId)}/pullRequests/{pullRequestId}/changes?api-version={ApiVersion}";
+        var files = new Dictionary<string, PullRequestFile>(StringComparer.Ordinal);
+        string? continuationToken = null;
+        do {
+            var url = baseUrl;
+            if (!string.IsNullOrWhiteSpace(continuationToken)) {
+                url += "&continuationToken=" + Uri.EscapeDataString(continuationToken);
+            }
+
+            var (json, nextToken) = await GetJsonWithContinuationAsync(url, cancellationToken).ConfigureAwait(false);
+            continuationToken = nextToken;
+            var obj = json.AsObject();
+            // ADO APIs have returned "changeEntries" and "changes" across versions.
+            var entries = obj?.GetArray("changeEntries") ?? obj?.GetArray("changes");
+            if (entries is null || entries.Count == 0) {
+                continue;
+            }
+
+            foreach (var entry in entries) {
+                var change = entry.AsObject();
+                if (change is null) {
+                    continue;
+                }
+                var item = change.GetObject("item");
+                var path = item?.GetString("path");
+                if (string.IsNullOrWhiteSpace(path)) {
+                    continue;
+                }
+                var normalized = path.TrimStart('/');
+                var changeType = change.GetString("changeType") ?? DefaultChangeType;
+                files[normalized] = new PullRequestFile(normalized, changeType, null);
+            }
+        } while (!string.IsNullOrWhiteSpace(continuationToken));
+
+        if (files.Count == 0) {
             return Array.Empty<PullRequestFile>();
         }
-
-        var files = new List<PullRequestFile>();
-        foreach (var entry in entries) {
-            var change = entry.AsObject();
-            if (change is null) {
-                continue;
-            }
-            var item = change.GetObject("item");
-            var path = item?.GetString("path");
-            if (string.IsNullOrWhiteSpace(path)) {
-                continue;
-            }
-            var normalized = path.TrimStart('/');
-            var changeType = change.GetString("changeType") ?? DefaultChangeType;
-            files.Add(new PullRequestFile(normalized, changeType, null));
-        }
-        return files;
+        return files.Values.OrderBy(file => file.Filename, StringComparer.Ordinal).ToList();
     }
 
     /// <summary>
@@ -162,6 +176,29 @@ internal sealed class AzureDevOpsClient : IDisposable {
             throw new InvalidOperationException($"Azure DevOps API request failed ({(int)response.StatusCode}): {content}");
         }
         return JsonLite.Parse(content) ?? JsonValue.Null;
+    }
+
+    private async Task<(JsonValue Json, string? ContinuationToken)> GetJsonWithContinuationAsync(string url,
+        CancellationToken cancellationToken) {
+        using var response = await _http.GetAsync(url, cancellationToken).ConfigureAwait(false);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode) {
+            throw new InvalidOperationException($"Azure DevOps API request failed ({(int)response.StatusCode}): {content}");
+        }
+
+        var token = TryGetContinuationToken(response);
+        var json = JsonLite.Parse(content) ?? JsonValue.Null;
+        return (json, token);
+    }
+
+    private static string? TryGetContinuationToken(HttpResponseMessage response) {
+        if (response.Headers.TryGetValues("x-ms-continuationtoken", out var values)) {
+            return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        }
+        if (response.Headers.TryGetValues("x-ms-continuation-token", out var alternateValues)) {
+            return alternateValues.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        }
+        return null;
     }
 
     private async Task<JsonValue> PostJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken) {
