@@ -147,6 +147,10 @@ internal sealed class ReviewSettings {
     public bool ReviewThreadsAutoResolveAIEmbed { get; set; } = true;
     public bool ReviewThreadsAutoResolveAISummary { get; set; } = true;
     public bool ReviewThreadsAutoResolveAIReply { get; set; }
+    /// <summary>
+    /// When enabled, only run thread triage/auto-resolve without generating a full review comment.
+    /// </summary>
+    public bool TriageOnly { get; set; }
     public int MaxCommentChars { get; set; } = 4000;
     public int MaxComments { get; set; } = 20;
     public int CommentSearchLimit { get; set; } = 500;
@@ -527,6 +531,10 @@ internal sealed class ReviewSettings {
         var includeReviewThreads = GetInput("include_review_threads", "REVIEW_INCLUDE_REVIEW_THREADS");
         if (!string.IsNullOrWhiteSpace(includeReviewThreads)) {
             settings.IncludeReviewThreads = ParseBoolean(includeReviewThreads, settings.IncludeReviewThreads);
+        }
+        var triageOnly = GetInput("triage_only", "REVIEW_TRIAGE_ONLY");
+        if (!string.IsNullOrWhiteSpace(triageOnly)) {
+            settings.TriageOnly = ParseBoolean(triageOnly, settings.TriageOnly);
         }
         var reviewThreadsIncludeBots = GetInput("review_threads_include_bots", "REVIEW_THREADS_INCLUDE_BOTS", "REVIEW_REVIEW_THREADS_INCLUDE_BOTS");
         if (!string.IsNullOrWhiteSpace(reviewThreadsIncludeBots)) {

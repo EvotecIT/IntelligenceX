@@ -54,7 +54,7 @@ internal static class ReviewConfigLoader {
         ApplyCleanup(root, settings);
     }
 
-    private static string? ResolveConfigPath() {
+    internal static string? ResolveConfigPath() {
         var explicitPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
         if (!string.IsNullOrWhiteSpace(explicitPath)) {
             return explicitPath;
@@ -170,6 +170,7 @@ internal static class ReviewConfigLoader {
         settings.RetryExtraOnResponseEnded = ReadBool(obj, "retryExtraResponseEnded", settings.RetryExtraOnResponseEnded);
         settings.FailOpen = ReadBool(obj, "failOpen", settings.FailOpen);
         settings.ReviewUsageSummary = ReadBool(obj, "reviewUsageSummary", settings.ReviewUsageSummary);
+        settings.TriageOnly = ReadBool(obj, "triageOnly", settings.TriageOnly);
     }
 
     private static void ApplyCommentMode(JsonObject obj, ReviewSettings settings) {

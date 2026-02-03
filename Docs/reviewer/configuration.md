@@ -5,6 +5,9 @@ The JSON file is the cleanest way to keep settings versioned with your repo.
 
 Schema: `../../Schemas/reviewer.schema.json`
 
+The reviewer validates `.intelligencex/reviewer.json` against the schema at runtime.
+Unknown properties emit warnings; invalid types or enum values fail the run.
+
 ## Minimal example
 
 ```json
@@ -73,6 +76,20 @@ Schema: `../../Schemas/reviewer.schema.json`
 }
 ```
 
+## Triage-only example
+
+Use this to skip the main review and only assess existing review threads.
+
+```json
+{
+  "review": {
+    "triageOnly": true,
+    "reviewThreadsAutoResolveAI": true,
+    "reviewThreadsAutoResolveAIPostComment": true
+  }
+}
+```
+
 ## Path filters example
 
 ```json
@@ -123,6 +140,7 @@ Schema: `../../Schemas/reviewer.schema.json`
 - `includePaths`: only review files matching these globs
 - `excludePaths`: ignore files matching these globs
 - `includeReviewThreads`: include existing review threads in context
+- `triageOnly`: run thread triage only (skip full review)
 - `reviewThreadsAutoResolve*`: auto-resolve rules for bot threads
 
 **Path filter order of operations**

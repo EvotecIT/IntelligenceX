@@ -4,13 +4,13 @@ Status: Draft (needs priorities + owners)
 
 ## Now — Phase 1–2 (concrete)
 - [ ] Add error classification enum + mapping (S)
-- [ ] Add diagnostic context in reviewer output (request id, retry count, provider) (S)
+- [x] Add diagnostic context in reviewer output (request id, retry count, provider) (S)
 - [ ] Add retry policy options in config (backoff + max attempts) (M)
 - [ ] Gate fail-open to transient errors only (S)
 - [ ] Add connectivity preflight (DNS/TLS) with actionable errors (M)
 - [ ] Add diff-range selection + default (current/pr-base/first-review) (M)
 - [ ] Add include/exclude glob filters for files (S)
-- [ ] Add smart chunking (group related hunks) (M)
+- [x] Add smart chunking (group related hunks) (M)
 - [ ] Add review intent presets (security/perf/maintainability) (S)
 
 ## Phase 0 — Scope + success criteria
@@ -20,7 +20,7 @@ Status: Draft (needs priorities + owners)
 
 ## Phase 1 — Reliability + diagnostics
 - [ ] Classify error types (transient vs auth vs config vs provider) with explicit codes.
-- [ ] Add structured diagnostics block to reviewer output (request id, retry count, provider).
+- [x] Add structured diagnostics block to reviewer output (request id, retry count, provider).
 - [ ] Add connectivity preflight (DNS/TLS) with actionable error messages.
 - [ ] Add configurable retry policy with exponential backoff + jitter.
 - [ ] Add fail-open gating for transient errors only (explicit config).
@@ -28,7 +28,7 @@ Status: Draft (needs priorities + owners)
 ## Phase 2 — Context quality
 - [ ] Add diff-range strategy options (current/pr-base/first-review) with default.
 - [ ] Add file filters (include/exclude globs, binary skip, generated skip).
-- [ ] Add smart chunking (keep related hunks together; avoid orphaned changes).
+- [x] Add smart chunking (keep related hunks together; avoid orphaned changes).
 - [ ] Add language-aware hints (formatters and rule presets).
 - [ ] Add "review intent" presets (security/perf/maintainability).
 
@@ -37,7 +37,7 @@ Status: Draft (needs priorities + owners)
 - [ ] Add optional usage/limits line near model header (opt-in; ChatGPT auth).
 - [ ] Add structured findings schema for bots/automation (severity + file + line).
 - [ ] Add summary stability (avoid noisy rewording across reruns).
-- [ ] Add “triage mode” that only checks open threads.
+- [x] Add “triage mode” that only checks open threads.
 
 ## Phase 4 — Thread triage + auto-resolve
 - [ ] Keep thread triage in main review comment (configurable placement).
@@ -83,4 +83,4 @@ Status: Draft (needs priorities + owners)
 ## Phase 9 — Developer experience
 - [ ] Provide local "engine replay" CLI (load PR snapshot + run offline).
 - [ ] Provide structured JSON output mode for integrations.
-- [ ] Add config validator with helpful errors + schema links.
+- [x] Add config validator with helpful errors + schema links.
