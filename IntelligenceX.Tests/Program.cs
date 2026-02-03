@@ -691,7 +691,7 @@ internal static class Program {
         var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-{Guid.NewGuid():N}.json");
         try {
             File.WriteAllText(path,
-                "{ \"copilot\": { \"envAllowlist\": [\"GH_TOKEN\"], \"inheritEnvironment\": true, " +
+                "{ \"copilot\": { \"envAllowlist\": [\"GH_TOKEN\"], \"inheritEnvironment\": false, " +
                 "\"env\": { \"COPILOT_DEBUG\": \"1\" }, " +
                 "\"transport\": \"direct\", \"directUrl\": \"https://example.local/api\", " +
                 "\"directTokenEnv\": \"COPILOT_DIRECT_TOKEN\", \"directTimeoutSeconds\": 12, " +
@@ -701,7 +701,7 @@ internal static class Program {
             ReviewConfigLoader.Apply(settings);
 
             AssertSequenceEqual(new[] { "GH_TOKEN" }, settings.CopilotEnvAllowlist, "copilot env allowlist");
-            AssertEqual(true, settings.CopilotInheritEnvironment, "copilot inherit environment");
+            AssertEqual(false, settings.CopilotInheritEnvironment, "copilot inherit environment");
             AssertEqual("1", settings.CopilotEnv["COPILOT_DEBUG"], "copilot env map");
             AssertEqual(CopilotTransportKind.Direct, settings.CopilotTransport, "copilot transport");
             AssertEqual("https://example.local/api", settings.CopilotDirectUrl, "copilot direct url");

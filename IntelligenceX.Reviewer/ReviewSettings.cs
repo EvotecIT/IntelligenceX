@@ -199,7 +199,7 @@ internal sealed class ReviewSettings {
     /// <summary>
     /// Whether the Copilot CLI process should inherit the current environment.
     /// </summary>
-    public bool CopilotInheritEnvironment { get; set; }
+    public bool CopilotInheritEnvironment { get; set; } = true;
     /// <summary>
     /// Additional environment variables to set for the Copilot CLI process.
     /// </summary>
