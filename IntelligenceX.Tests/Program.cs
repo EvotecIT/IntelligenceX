@@ -92,6 +92,8 @@ internal static class Program {
         failed += Run("Filter files include+exclude", TestFilterFilesIncludeExclude);
         failed += Run("Filter files glob patterns", TestFilterFilesGlobPatterns);
         failed += Run("Filter files empty filters", TestFilterFilesEmptyFilters);
+        failed += Run("Prompt language hints", TestPromptBuilderLanguageHints);
+        failed += Run("Prompt language hints disabled", TestPromptBuilderLanguageHintsDisabled);
         failed += Run("Azure DevOps changes pagination", TestAzureDevOpsChangesPagination);
         failed += Run("Azure DevOps diff note zero iterations", TestAzureDevOpsDiffNoteZeroIterations);
         failed += Run("Context deny invalid regex", TestContextDenyInvalidRegex);
@@ -1123,6 +1125,25 @@ internal static class Program {
         AssertSequenceEqual(new[] { "src/app.cs", "docs/readme.md" }, GetFilenames(filtered), "empty filters");
     }
 
+    private static void TestPromptBuilderLanguageHints() {
+        var context = BuildContext();
+        var files = BuildFiles("src/app.cs", "web/app.tsx");
+        var settings = new ReviewSettings { IncludeLanguageHints = true };
+        var prompt = PromptBuilder.Build(context, files, settings, null, null, inlineSupported: false);
+        AssertContainsText(prompt, "Language hints:", "language hints header");
+        AssertContainsText(prompt, "C#", "language hints csharp");
+    }
+
+    private static void TestPromptBuilderLanguageHintsDisabled() {
+        var context = BuildContext();
+        var files = BuildFiles("src/app.cs", "web/app.tsx");
+        var settings = new ReviewSettings { IncludeLanguageHints = false };
+        var prompt = PromptBuilder.Build(context, files, settings, null, null, inlineSupported: false);
+        if (prompt.Contains("Language hints:", StringComparison.OrdinalIgnoreCase)) {
+            throw new InvalidOperationException("Expected language hints to be omitted.");
+        }
+    }
+
     private static void TestAzureDevOpsChangesPagination() {
         var project = "project";
         var repo = "repo";
@@ -1165,6 +1186,11 @@ internal static class Program {
             files[i] = new PullRequestFile(paths[i], "modified", null);
         }
         return files;
+    }
+
+    private static PullRequestContext BuildContext() {
+        return new PullRequestContext("owner/repo", "owner", "repo", 1, "Test title", "Test body", false, "head", "base",
+            Array.Empty<string>());
     }
 
     private static IReadOnlyList<string> GetFilenames(IReadOnlyList<PullRequestFile> files) {

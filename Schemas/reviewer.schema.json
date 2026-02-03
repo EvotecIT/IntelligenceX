@@ -26,6 +26,7 @@
         "reasoningEffort": { "type": "string", "enum": ["minimal", "low", "medium", "high", "xhigh"] },
         "reasoningSummary": { "type": "string", "enum": ["auto", "concise", "detailed", "off"] },
         "reviewUsageSummary": { "type": "boolean" },
+        "languageHints": { "type": "boolean" },
         "reviewUsageSummaryCacheMinutes": { "type": "integer", "minimum": 0 },
         "reviewUsageSummaryTimeoutSeconds": { "type": "integer", "minimum": 1 },
         "structuredFindings": { "type": "boolean" },

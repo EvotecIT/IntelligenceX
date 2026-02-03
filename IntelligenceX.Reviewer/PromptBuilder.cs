@@ -17,6 +17,7 @@ internal static class PromptBuilder {
         var focusBlock = settings.Focus.Count == 0 ? string.Empty : $"Focus areas: {string.Join(", ", settings.Focus)}\n";
         var personaBlock = string.IsNullOrWhiteSpace(settings.Persona) ? string.Empty : $"Persona: {settings.Persona}\n";
         var notesBlock = string.IsNullOrWhiteSpace(settings.Notes) ? string.Empty : $"Additional guidance: {settings.Notes}\n";
+        var languageHintsBlock = LanguageHints.Build(files, settings.IncludeLanguageHints);
         var severityBlock = string.IsNullOrWhiteSpace(settings.SeverityThreshold)
             ? string.Empty
             : $"Only include issues with severity >= {settings.SeverityThreshold}.\n";
@@ -35,6 +36,7 @@ internal static class PromptBuilder {
             ["FocusBlock"] = focusBlock,
             ["PersonaBlock"] = personaBlock,
             ["NotesBlock"] = notesBlock,
+            ["LanguageHintsBlock"] = languageHintsBlock,
             ["SeverityBlock"] = severityBlock,
             ["Length"] = settings.Length.ToString().ToLowerInvariant(),
             ["Mode"] = settings.Mode,
