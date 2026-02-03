@@ -102,6 +102,9 @@ internal sealed class ReviewSettings {
     /// Adds a short language-aware hints block to the review prompt.
     /// </summary>
     public bool IncludeLanguageHints { get; set; } = true;
+    /// When enabled, include a summary note if review context was truncated by file or patch limits.
+    /// </summary>
+    public bool ReviewBudgetSummary { get; set; } = true;
     public string? PromptTemplate { get; set; }
     public string? PromptTemplatePath { get; set; }
     public string? SummaryTemplate { get; set; }
@@ -670,6 +673,10 @@ internal sealed class ReviewSettings {
         var languageHints = GetInput("language_hints", "REVIEW_LANGUAGE_HINTS");
         if (!string.IsNullOrWhiteSpace(languageHints)) {
             settings.IncludeLanguageHints = ParseBoolean(languageHints, settings.IncludeLanguageHints);
+        }
+        var budgetSummary = GetInput("review_budget_summary", "REVIEW_BUDGET_SUMMARY");
+        if (!string.IsNullOrWhiteSpace(budgetSummary)) {
+            settings.ReviewBudgetSummary = ParseBoolean(budgetSummary, settings.ReviewBudgetSummary);
         }
 
         var commentMode = GetInput("comment_mode", "REVIEW_COMMENT_MODE");

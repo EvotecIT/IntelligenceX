@@ -94,6 +94,9 @@ internal static class Program {
         failed += Run("Filter files empty filters", TestFilterFilesEmptyFilters);
         failed += Run("Prompt language hints", TestPromptBuilderLanguageHints);
         failed += Run("Prompt language hints disabled", TestPromptBuilderLanguageHintsDisabled);
+        failed += Run("Review budget note", TestReviewBudgetNote);
+        failed += Run("Review budget note empty", TestReviewBudgetNoteEmpty);
+        failed += Run("Review budget note comment", TestReviewBudgetNoteComment);
         failed += Run("Azure DevOps changes pagination", TestAzureDevOpsChangesPagination);
         failed += Run("Azure DevOps diff note zero iterations", TestAzureDevOpsDiffNoteZeroIterations);
         failed += Run("Context deny invalid regex", TestContextDenyInvalidRegex);
@@ -1142,6 +1145,27 @@ internal static class Program {
         if (prompt.Contains("Language hints:", StringComparison.OrdinalIgnoreCase)) {
             throw new InvalidOperationException("Expected language hints to be omitted.");
         }
+    }
+
+    private static void TestReviewBudgetNote() {
+        var note = ReviewerApp.BuildBudgetNote(10, 5, 2, 4000);
+        AssertContainsText(note, "first 5 of 10 files", "budget note files");
+        AssertContainsText(note, "2 patches trimmed to 4000 chars", "budget note patches");
+    }
+
+    private static void TestReviewBudgetNoteEmpty() {
+        var note = ReviewerApp.BuildBudgetNote(5, 5, 0, 4000);
+        AssertEqual(string.Empty, note, "budget note empty");
+    }
+
+    private static void TestReviewBudgetNoteComment() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Test title", "Test body", false, "head",
+            "base", Array.Empty<string>());
+        var settings = new ReviewSettings();
+        var comment = ReviewFormatter.BuildComment(context, "Body", settings, inlineSupported: false, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: "Review context truncated: showing first 1 of 2 files.",
+            usageLine: string.Empty, findingsBlock: string.Empty);
+        AssertContainsText(comment, "Review context truncated", "budget note comment");
     }
 
     private static void TestAzureDevOpsChangesPagination() {

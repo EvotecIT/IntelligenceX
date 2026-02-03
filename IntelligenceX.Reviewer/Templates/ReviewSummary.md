@@ -6,6 +6,7 @@ Reviewing PR #{{Number}}: **{{Title}}**
 
 {{InlineNote}}
 {{AutoResolveNote}}
+{{BudgetNote}}
 {{ReviewBody}}
 
 _Model: {{Model}} | Length: {{Length}} | Mode: {{Mode}}{{ReasoningLine}}_

@@ -153,6 +153,16 @@ Use this to skip the main review and only assess existing review threads.
 }
 ```
 
+## Budget summary note
+
+```json
+{
+  "review": {
+    "reviewBudgetSummary": true
+  }
+}
+```
+
 ## Structured findings (automation)
 
 ```json
@@ -240,6 +250,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `outputStyle`: rendering style preset
 - `reviewUsageSummary`: append usage line to the footer (ChatGPT auth only)
 - `languageHints`: include language-aware hint block in the prompt
+- `reviewBudgetSummary`: include a note when review context is truncated
 - `retryCount`: total attempts for provider requests
 - `retryBackoffMultiplier`: exponential backoff multiplier (default 2.0)
 - `retryJitterMinMs`/`retryJitterMaxMs`: retry jitter bounds
