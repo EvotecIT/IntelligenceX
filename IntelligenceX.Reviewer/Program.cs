@@ -1218,6 +1218,7 @@ public static class ReviewerApp {
             return TrimHard(header, maxPatchChars, newline);
         }
 
+        // Extra capacity helps when appending newlines and truncation markers.
         var sb = new StringBuilder(maxPatchChars + 32);
         if (!string.IsNullOrEmpty(header)) {
             sb.Append(header);

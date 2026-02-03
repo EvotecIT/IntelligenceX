@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -58,6 +59,10 @@ internal static class Program {
         failed += Run("Review failure marker", TestReviewFailureMarker);
         failed += Run("Review fail-open only transient", TestReviewFailOpenTransientOnly);
         failed += Run("Review fail-open decision", TestReviewFailOpenDecision);
+        failed += Run("Review config validator allows additional", TestReviewConfigValidatorAllowsAdditionalProperties);
+        failed += Run("Review config validator invalid enum", TestReviewConfigValidatorInvalidEnum);
+        failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);
+        failed += Run("Trim patch CRLF", TestTrimPatchPreservesCrlf);
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
@@ -556,11 +561,85 @@ internal static class Program {
         AssertEqual(true, ReviewRunner.ShouldFailOpen(settings, nonTransient), "fail-open non-transient allowed");
     }
 
+    private static void TestReviewConfigValidatorAllowsAdditionalProperties() {
+        var result = RunConfigValidation("{\"review\":{\"extraSetting\":true}}");
+        AssertEqual(true, result is not null, "validator result");
+        AssertEqual(0, result!.Warnings.Count, "additional properties should not warn");
+        AssertEqual(0, result.Errors.Count, "additional properties should not error");
+    }
+
+    private static void TestReviewConfigValidatorInvalidEnum() {
+        var result = RunConfigValidation("{\"review\":{\"length\":\"SHORT\"}}");
+        AssertEqual(true, result is not null, "validator result");
+        AssertEqual(true, result!.Errors.Count > 0, "invalid enum should error");
+    }
+
+    private static void TestTrimPatchStopsAtHunkBoundary() {
+        var patch = string.Join("\n", new[] {
+            "diff --git a/file.txt b/file.txt",
+            "index 123..456 100644",
+            "--- a/file.txt",
+            "+++ b/file.txt",
+            "@@ -1,2 +1,2 @@",
+            "-line1",
+            "+line1a",
+            "@@ -10,2 +10,2 @@",
+            "-line10",
+            "+line10a"
+        });
+        var cutIndex = patch.IndexOf("@@ -10", StringComparison.Ordinal);
+        var trimmed = CallTrimPatch(patch, cutIndex + 4);
+        AssertEqual(true, trimmed.Contains("@@ -1,2 +1,2 @@", StringComparison.Ordinal), "first hunk kept");
+        AssertEqual(false, trimmed.Contains("@@ -10,2 +10,2 @@", StringComparison.Ordinal), "second hunk removed");
+    }
+
+    private static void TestTrimPatchPreservesCrlf() {
+        var patch = string.Join("\r\n", new[] {
+            "diff --git a/file.txt b/file.txt",
+            "index 123..456 100644",
+            "--- a/file.txt",
+            "+++ b/file.txt",
+            "@@ -1,2 +1,2 @@",
+            "-line1",
+            "+line1a"
+        });
+        var trimmed = CallTrimPatch(patch, patch.Length - 2);
+        AssertEqual(true, trimmed.Contains("\r\n", StringComparison.Ordinal), "crlf preserved");
+    }
+
     private static void TestReviewThreadsDiffRangeNormalize() {
         AssertEqual("current", ReviewSettings.NormalizeDiffRange("current", "pr-base"), "diff current");
         AssertEqual("pr-base", ReviewSettings.NormalizeDiffRange("pr_base", "current"), "diff pr-base");
         AssertEqual("first-review", ReviewSettings.NormalizeDiffRange("first_review", "current"), "diff first-review");
         AssertEqual("current", ReviewSettings.NormalizeDiffRange("unknown", "current"), "diff fallback");
+    }
+
+    private static ReviewConfigValidationResult? RunConfigValidation(string json) {
+        var previousPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var tempDir = Path.Combine(Path.GetTempPath(), $"ix-config-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        var configPath = Path.Combine(tempDir, "reviewer.json");
+        File.WriteAllText(configPath, json);
+        Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", configPath);
+        try {
+            return ReviewConfigValidator.ValidateCurrent();
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousPath);
+            try {
+                Directory.Delete(tempDir, true);
+            } catch {
+                // best-effort cleanup
+            }
+        }
+    }
+
+    private static string CallTrimPatch(string patch, int maxChars) {
+        var method = typeof(ReviewerApp).GetMethod("TrimPatch", BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("TrimPatch method not found.");
+        }
+        var result = method.Invoke(null, new object?[] { patch, maxChars }) as string;
+        return result ?? string.Empty;
     }
 
     private static void TestResolveThreadsOptionParsing() {

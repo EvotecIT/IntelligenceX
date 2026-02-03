@@ -33,6 +33,7 @@ internal sealed class ReviewConfigValidationResult {
 }
 
 internal static class ReviewConfigValidator {
+    private const double IntegralEpsilon = 0.000001d;
     private const string EmbeddedSchemaName = "IntelligenceX.Reviewer.Schemas.reviewer.schema.json";
     private static readonly HashSet<string> RootSections = new(StringComparer.Ordinal) {
         "review",
@@ -207,7 +208,7 @@ internal static class ReviewConfigValidator {
 
         var enumValues = obj.GetArray("enum");
         if (enumValues is not null && enumValues.Count > 0) {
-            var values = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var values = new HashSet<string>(StringComparer.Ordinal);
             foreach (var item in enumValues) {
                 var text = item.AsString();
                 if (!string.IsNullOrWhiteSpace(text)) {
@@ -241,6 +242,10 @@ internal static class ReviewConfigValidator {
             var additionalObj = additionalValue?.AsObject();
             if (additionalObj is not null) {
                 node.AdditionalProperties = ParseSchema(additionalObj);
+            } else if (additionalValue is not null && additionalValue.Kind == JsonValueKind.Boolean) {
+                if (additionalValue.AsBoolean()) {
+                    node.AdditionalProperties = new SchemaNode();
+                }
             }
         }
 
@@ -296,7 +301,7 @@ internal static class ReviewConfigValidator {
                     ValidateNode(schema.AdditionalProperties, entry.Value, $"{path}.{entry.Key}", errors, warnings);
                 }
 
-                if (schema.Properties.Count > 0) {
+                if (schema.Properties.Count > 0 && schema.AdditionalProperties is null) {
                     warnings.Add(new ReviewConfigValidationIssue($"{path}.{entry.Key}", "Unknown property."));
                 }
             }
@@ -332,7 +337,8 @@ internal static class ReviewConfigValidator {
             return false;
         }
         var rounded = Math.Round(value.Value);
-        return Math.Abs(value.Value - rounded) < 0.000001d;
+        // Allow for minor floating-point drift when checking integer compatibility.
+        return Math.Abs(value.Value - rounded) < IntegralEpsilon;
     }
 
     private sealed class SchemaNode {
