@@ -94,11 +94,11 @@ internal sealed class AzureDevOpsClient : IDisposable {
     }
 
     /// <summary>
-    /// Retrieves the file changes for a specific pull request iteration.
+    /// Retrieves the file changes for the pull request (latest state across iterations).
     /// </summary>
     public async Task<IReadOnlyList<PullRequestFile>> GetPullRequestChangesAsync(string project, string repositoryId,
-        int pullRequestId, int iterationId, CancellationToken cancellationToken) {
-        var url = $"{Escape(project)}/_apis/git/repositories/{Escape(repositoryId)}/pullRequests/{pullRequestId}/iterations/{iterationId}/changes?api-version={ApiVersion}";
+        int pullRequestId, CancellationToken cancellationToken) {
+        var url = $"{Escape(project)}/_apis/git/repositories/{Escape(repositoryId)}/pullRequests/{pullRequestId}/changes?api-version={ApiVersion}";
         var json = await GetJsonAsync(url, cancellationToken).ConfigureAwait(false);
         var obj = json.AsObject();
         // ADO APIs have returned "changeEntries" and "changes" across versions.

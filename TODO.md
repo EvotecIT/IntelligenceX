@@ -58,9 +58,9 @@ Status: Draft (needs priorities + owners)
 ### Phase 5.5 — Code host support (Azure DevOps Services)
 - [ ] Define code-host interface (PR metadata, files, diff, comments, threads).
 - [x] Add ADO auth options (PAT, System.AccessToken) + env var mapping.
-- [x] Phase 1: summary-only PR comments (no inline) using ADO REST APIs (aggregate iterations for full file list).
+- [x] Phase 1: summary-only PR comments (no inline) using ADO REST APIs (PR-level changes endpoint for full file list).
 - [ ] Document Azure auth scheme heuristic + override guidance.
-- [ ] Document iteration aggregation behavior (last-iteration wins per file).
+- [ ] Document PR-level changes behavior (uses pull request changes endpoint).
 - [ ] Phase 2: inline comments with iteration + line mapping support.
 - [ ] Phase 3: thread triage + auto-resolve via thread status updates.
 - [ ] Add CLI flags/config: `provider=azure`, `azureOrg`, `azureProject`, `azureRepo`, `azureBaseUrl`, `azureTokenEnv`.
