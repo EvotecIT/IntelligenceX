@@ -27,6 +27,12 @@ internal static class ReviewConfigLoader {
             settings.Profile = profile;
         }
 
+        var intent = reviewObj.GetString("intent");
+        if (!string.IsNullOrWhiteSpace(intent)) {
+            ReviewIntents.Apply(intent!, settings);
+            settings.Intent = intent;
+        }
+
         var provider = reviewObj.GetString("provider");
         if (!string.IsNullOrWhiteSpace(provider)) {
             settings.Provider = provider.Trim().ToLowerInvariant() switch {

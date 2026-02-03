@@ -90,6 +90,16 @@ Use this to skip the main review and only assess existing review threads.
 }
 ```
 
+## Intent preset example
+
+```json
+{
+  "review": {
+    "intent": "security"
+  }
+}
+```
+
 ## Path filters example
 
 ```json
@@ -130,6 +140,7 @@ Use this to skip the main review and only assess existing review threads.
 - `model`: model name for the selected provider
 - `mode`: `inline`, `summary`, or `hybrid`
 - `length`: `short|medium|long`
+- `intent`: `security|performance|perf|maintainability` (sets focus areas if none provided)
 - `reviewDiffRange`: `current`, `pr-base`, or `first-review`
 - `outputStyle`: rendering style preset
 - `reviewUsageSummary`: append usage line to the footer (ChatGPT auth only)

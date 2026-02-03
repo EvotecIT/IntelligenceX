@@ -63,6 +63,8 @@ internal static class Program {
         failed += Run("Review config validator invalid enum", TestReviewConfigValidatorInvalidEnum);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);
         failed += Run("Trim patch CRLF", TestTrimPatchPreservesCrlf);
+        failed += Run("Review intent applies focus", TestReviewIntentAppliesFocus);
+        failed += Run("Review intent respects focus", TestReviewIntentRespectsFocus);
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
@@ -605,6 +607,18 @@ internal static class Program {
         });
         var trimmed = CallTrimPatch(patch, patch.Length - 2);
         AssertEqual(true, trimmed.Contains("\r\n", StringComparison.Ordinal), "crlf preserved");
+    }
+
+    private static void TestReviewIntentAppliesFocus() {
+        var settings = new ReviewSettings();
+        ReviewIntents.Apply("security", settings);
+        AssertSequenceEqual(new[] { "security", "auth", "secrets" }, settings.Focus, "intent focus");
+    }
+
+    private static void TestReviewIntentRespectsFocus() {
+        var settings = new ReviewSettings { Focus = new[] { "custom" } };
+        ReviewIntents.Apply("performance", settings);
+        AssertSequenceEqual(new[] { "custom" }, settings.Focus, "intent preserves focus");
     }
 
     private static void TestReviewThreadsDiffRangeNormalize() {

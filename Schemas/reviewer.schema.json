@@ -10,6 +10,7 @@
       "properties": {
         "provider": { "type": "string", "enum": ["openai", "copilot", "codex"] },
         "profile": { "type": "string" },
+        "intent": { "type": "string", "enum": ["security", "performance", "perf", "maintainability"] },
         "length": { "type": "string", "enum": ["short", "medium", "long"] },
         "mode": { "type": "string" },
         "reviewDiffRange": { "type": "string", "enum": ["current", "pr-base", "first-review"] },

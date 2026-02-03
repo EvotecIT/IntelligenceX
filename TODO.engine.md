@@ -11,7 +11,7 @@ Status: Draft (needs priorities + owners)
 - [ ] Add diff-range selection + default (current/pr-base/first-review) (M)
 - [ ] Add include/exclude glob filters for files (S)
 - [x] Add smart chunking (group related hunks) (M)
-- [ ] Add review intent presets (security/perf/maintainability) (S)
+- [x] Add review intent presets (security/perf/maintainability) (S)
 
 ## Phase 0 — Scope + success criteria
 - [ ] Define "engine" scope (review pipeline, providers, context builder, formatter, thread triage).

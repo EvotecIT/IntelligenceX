@@ -50,6 +50,10 @@ internal sealed class ReviewSettings {
     public string Mode { get; set; } = "hybrid";
     public ReviewProvider Provider { get; set; } = ReviewProvider.OpenAI;
     public string? Profile { get; set; }
+    /// <summary>
+    /// Optional high-level review intent preset (e.g., security, performance, maintainability).
+    /// </summary>
+    public string? Intent { get; set; }
     public string? Strictness { get; set; }
     public string? Tone { get; set; }
     public string? Style { get; set; }
@@ -193,6 +197,12 @@ internal sealed class ReviewSettings {
         if (!string.IsNullOrWhiteSpace(profile)) {
             ReviewProfiles.Apply(profile!, settings);
             settings.Profile = profile;
+        }
+
+        var intent = GetInput("intent", "REVIEW_INTENT");
+        if (!string.IsNullOrWhiteSpace(intent)) {
+            ReviewIntents.Apply(intent!, settings);
+            settings.Intent = intent;
         }
 
         var provider = GetInput("provider", "REVIEW_PROVIDER");
