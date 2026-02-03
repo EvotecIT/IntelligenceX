@@ -6,7 +6,7 @@ Status: Draft (needs priorities + owners)
 - [ ] Add error classification enum + mapping (S)
 - [x] Add diagnostic context in reviewer output (request id, retry count, provider) (S)
 - [ ] Add retry policy options in config (backoff + max attempts) (M)
-- [ ] Gate fail-open to transient errors only (S)
+- [x] Gate fail-open to transient errors only (S)
 - [ ] Add connectivity preflight (DNS/TLS) with actionable errors (M)
 - [ ] Add diff-range selection + default (current/pr-base/first-review) (M)
 - [ ] Add include/exclude glob filters for files (S)
@@ -23,7 +23,7 @@ Status: Draft (needs priorities + owners)
 - [x] Add structured diagnostics block to reviewer output (request id, retry count, provider).
 - [ ] Add connectivity preflight (DNS/TLS) with actionable error messages.
 - [ ] Add configurable retry policy with exponential backoff + jitter.
-- [ ] Add fail-open gating for transient errors only (explicit config).
+- [x] Add fail-open gating for transient errors only (explicit config).
 
 ## Phase 2 — Context quality
 - [ ] Add diff-range strategy options (current/pr-base/first-review) with default.

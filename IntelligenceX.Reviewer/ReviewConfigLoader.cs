@@ -169,6 +169,7 @@ internal static class ReviewConfigLoader {
         settings.Preflight = ReadBool(obj, "preflight", settings.Preflight);
         settings.RetryExtraOnResponseEnded = ReadBool(obj, "retryExtraResponseEnded", settings.RetryExtraOnResponseEnded);
         settings.FailOpen = ReadBool(obj, "failOpen", settings.FailOpen);
+        settings.FailOpenTransientOnly = ReadBool(obj, "failOpenTransientOnly", settings.FailOpenTransientOnly);
         settings.ReviewUsageSummary = ReadBool(obj, "reviewUsageSummary", settings.ReviewUsageSummary);
         settings.TriageOnly = ReadBool(obj, "triageOnly", settings.TriageOnly);
     }

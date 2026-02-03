@@ -72,6 +72,10 @@ internal sealed class ReviewSettings {
     public int RetryJitterMaxMs { get; set; } = 800;
     public bool RetryExtraOnResponseEnded { get; set; } = true;
     public bool FailOpen { get; set; } = true;
+    /// <summary>
+    /// When true, fail-open is limited to transient errors only.
+    /// </summary>
+    public bool FailOpenTransientOnly { get; set; } = true;
     public bool Diagnostics { get; set; }
     public bool Preflight { get; set; }
     public int PreflightTimeoutSeconds { get; set; } = 15;
@@ -417,6 +421,10 @@ internal sealed class ReviewSettings {
         var failOpen = GetInput("fail_open", "REVIEW_FAIL_OPEN");
         if (!string.IsNullOrWhiteSpace(failOpen)) {
             settings.FailOpen = ParseBoolean(failOpen, settings.FailOpen);
+        }
+        var failOpenTransientOnly = GetInput("fail_open_transient_only", "REVIEW_FAIL_OPEN_TRANSIENT_ONLY");
+        if (!string.IsNullOrWhiteSpace(failOpenTransientOnly)) {
+            settings.FailOpenTransientOnly = ParseBoolean(failOpenTransientOnly, settings.FailOpenTransientOnly);
         }
 
         var diagnostics = GetInput("diagnostics", "REVIEW_DIAGNOSTICS");

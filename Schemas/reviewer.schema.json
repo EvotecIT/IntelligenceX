@@ -82,6 +82,7 @@
         "redactionPatterns": { "type": "array", "items": { "type": "string" } },
         "redactionReplacement": { "type": "string" },
         "failOpen": { "type": "boolean" },
+        "failOpenTransientOnly": { "type": "boolean" },
         "promptTemplate": { "type": "string" },
         "promptTemplatePath": { "type": "string" },
         "summaryTemplate": { "type": "string" },

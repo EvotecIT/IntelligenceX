@@ -57,6 +57,7 @@ internal static class Program {
         failed += Run("Review retry extra attempt", TestReviewRetryExtraAttempt);
         failed += Run("Review failure marker", TestReviewFailureMarker);
         failed += Run("Review fail-open only transient", TestReviewFailOpenTransientOnly);
+        failed += Run("Review fail-open decision", TestReviewFailOpenDecision);
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
@@ -539,6 +540,20 @@ internal static class Program {
         AssertEqual(true, ReviewRunner.IsTransient(transient), "transient true");
         AssertEqual(true, ReviewRunner.IsTransient(responseEnded), "response ended transient");
         AssertEqual(false, ReviewRunner.IsTransient(nonTransient), "non-transient false");
+    }
+
+    private static void TestReviewFailOpenDecision() {
+        var transient = new HttpRequestException("network");
+        var nonTransient = new InvalidOperationException("logic");
+        var settings = new ReviewSettings {
+            FailOpen = true,
+            FailOpenTransientOnly = true
+        };
+        AssertEqual(true, ReviewRunner.ShouldFailOpen(settings, transient), "fail-open transient");
+        AssertEqual(false, ReviewRunner.ShouldFailOpen(settings, nonTransient), "fail-open non-transient gated");
+
+        settings.FailOpenTransientOnly = false;
+        AssertEqual(true, ReviewRunner.ShouldFailOpen(settings, nonTransient), "fail-open non-transient allowed");
     }
 
     private static void TestReviewThreadsDiffRangeNormalize() {
