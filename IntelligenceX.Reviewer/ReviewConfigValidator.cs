@@ -146,9 +146,9 @@ internal static class ReviewConfigValidator {
         warning = null;
         schemaHint = "Schemas/reviewer.schema.json";
 
-        var schemaText = TryLoadSchemaText(out var hint);
+        var schemaText = TryLoadSchemaText(out var hint, out var searchSummary);
         if (string.IsNullOrWhiteSpace(schemaText)) {
-            warning = "Schema not found; skipping validation.";
+            warning = $"Schema not found; skipping validation. Tried: {searchSummary}";
             schemaHint = hint ?? schemaHint;
             return false;
         }
@@ -157,14 +157,14 @@ internal static class ReviewConfigValidator {
         try {
             schemaValue = JsonLite.Parse(schemaText);
         } catch (Exception ex) {
-            warning = $"Schema parse failed: {ex.Message}";
+            warning = $"Schema parse failed ({hint ?? schemaHint}): {ex.Message}";
             schemaHint = hint ?? schemaHint;
             return false;
         }
 
         var schemaObj = schemaValue?.AsObject();
         if (schemaObj is null) {
-            warning = "Schema root must be an object.";
+            warning = $"Schema root must be an object ({hint ?? schemaHint}).";
             schemaHint = hint ?? schemaHint;
             return false;
         }
@@ -174,16 +174,17 @@ internal static class ReviewConfigValidator {
         return true;
     }
 
-    private static string? TryLoadSchemaText(out string? hint) {
+    private static string? TryLoadSchemaText(out string? hint, out string searchSummary) {
         hint = null;
         var cwd = Environment.CurrentDirectory;
         var cwdSchema = Path.Combine(cwd, "Schemas", "reviewer.schema.json");
+        var baseDirSchema = Path.Combine(AppContext.BaseDirectory, "Schemas", "reviewer.schema.json");
+        searchSummary = $"{cwdSchema}; {baseDirSchema}; embedded:{EmbeddedSchemaName}";
         if (File.Exists(cwdSchema)) {
             hint = Path.GetRelativePath(cwd, cwdSchema);
             return File.ReadAllText(cwdSchema);
         }
 
-        var baseDirSchema = Path.Combine(AppContext.BaseDirectory, "Schemas", "reviewer.schema.json");
         if (File.Exists(baseDirSchema)) {
             hint = baseDirSchema;
             return File.ReadAllText(baseDirSchema);

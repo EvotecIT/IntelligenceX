@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 using System.Threading;
@@ -65,6 +67,7 @@ internal static class Program {
         failed += Run("Trim patch CRLF", TestTrimPatchPreservesCrlf);
         failed += Run("Review intent applies focus", TestReviewIntentAppliesFocus);
         failed += Run("Review intent respects focus", TestReviewIntentRespectsFocus);
+        failed += Run("Triage-only loads threads", TestTriageOnlyLoadsThreads);
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
@@ -621,6 +624,24 @@ internal static class Program {
         AssertSequenceEqual(new[] { "custom" }, settings.Focus, "intent preserves focus");
     }
 
+    private static void TestTriageOnlyLoadsThreads() {
+        var response = BuildGraphQlThreadsResponse();
+        using var server = new LocalHttpServer(request => request.Path == "/graphql" ? response : null);
+        using var github = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+        var settings = new ReviewSettings {
+            IncludeIssueComments = false,
+            IncludeReviewComments = false,
+            IncludeReviewThreads = false,
+            ReviewThreadsAutoResolveAI = false,
+            ReviewThreadsAutoResolveStale = false,
+            ReviewThreadsMax = 5,
+            ReviewThreadsMaxComments = 2
+        };
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base", Array.Empty<string>());
+        var extras = CallBuildExtrasAsync(github, context, settings, true);
+        AssertEqual(1, extras.ReviewThreads.Count, "triage-only forces thread load");
+    }
+
     private static void TestReviewThreadsDiffRangeNormalize() {
         AssertEqual("current", ReviewSettings.NormalizeDiffRange("current", "pr-base"), "diff current");
         AssertEqual("pr-base", ReviewSettings.NormalizeDiffRange("pr_base", "current"), "diff pr-base");
@@ -654,6 +675,138 @@ internal static class Program {
         }
         var result = method.Invoke(null, new object?[] { patch, maxChars }) as string;
         return result ?? string.Empty;
+    }
+
+    private static ReviewContextExtras CallBuildExtrasAsync(GitHubClient github, PullRequestContext context,
+        ReviewSettings settings, bool forceReviewThreads) {
+        var method = typeof(ReviewerApp).GetMethod("BuildExtrasAsync", BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("BuildExtrasAsync method not found.");
+        }
+        var task = method.Invoke(null, new object?[] {
+            github,
+            null,
+            context,
+            settings,
+            CancellationToken.None,
+            forceReviewThreads
+        }) as Task<ReviewContextExtras>;
+        if (task is null) {
+            throw new InvalidOperationException("BuildExtrasAsync did not return a task.");
+        }
+        return task.GetAwaiter().GetResult();
+    }
+
+    private static string BuildGraphQlThreadsResponse() {
+        return "{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{\"nodes\":[{\"id\":\"thread1\",\"isResolved\":false,\"isOutdated\":false,\"comments\":{\"totalCount\":1,\"nodes\":[{\"databaseId\":1,\"createdAt\":\"2024-01-01T00:00:00Z\",\"body\":\"test\",\"path\":\"file.txt\",\"line\":10,\"author\":{\"login\":\"bot\"}}]}}],\"pageInfo\":{\"hasNextPage\":false,\"endCursor\":null}}}}}}";
+    }
+
+    private sealed record HttpRequest(string Method, string Path, string Body);
+
+    private sealed class LocalHttpServer : IDisposable {
+        private readonly TcpListener _listener;
+        private readonly Func<HttpRequest, string?> _handler;
+        private readonly Task _loopTask;
+        private bool _disposed;
+
+        public LocalHttpServer(Func<HttpRequest, string?> handler) {
+            _handler = handler;
+            _listener = new TcpListener(IPAddress.Loopback, 0);
+            _listener.Start();
+            BaseUri = new Uri($"http://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}");
+            _loopTask = Task.Run(LoopAsync);
+        }
+
+        public Uri BaseUri { get; }
+
+        private async Task LoopAsync() {
+            try {
+                while (true) {
+                    TcpClient client;
+                    try {
+                        client = await _listener.AcceptTcpClientAsync().ConfigureAwait(false);
+                    } catch (ObjectDisposedException) {
+                        break;
+                    }
+                    await HandleClientAsync(client).ConfigureAwait(false);
+                }
+            } catch {
+                // Ignore listener failures in tests.
+            }
+        }
+
+        private async Task HandleClientAsync(TcpClient client) {
+            using var _ = client;
+            using var stream = client.GetStream();
+            using var reader = new StreamReader(stream, Encoding.UTF8, false, 1024, leaveOpen: true);
+            var requestLine = await reader.ReadLineAsync().ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(requestLine)) {
+                return;
+            }
+            var parts = requestLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2) {
+                return;
+            }
+            var method = parts[0];
+            var path = parts[1];
+
+            var contentLength = 0;
+            string? line;
+            while (!string.IsNullOrEmpty(line = await reader.ReadLineAsync().ConfigureAwait(false))) {
+                var headerParts = line.Split(':', 2);
+                if (headerParts.Length == 2 &&
+                    headerParts[0].Trim().Equals("Content-Length", StringComparison.OrdinalIgnoreCase)) {
+                    int.TryParse(headerParts[1].Trim(), out contentLength);
+                }
+            }
+
+            var body = string.Empty;
+            if (contentLength > 0) {
+                var buffer = new char[contentLength];
+                var read = 0;
+                while (read < contentLength) {
+                    var count = await reader.ReadAsync(buffer, read, contentLength - read).ConfigureAwait(false);
+                    if (count == 0) {
+                        break;
+                    }
+                    read += count;
+                }
+                body = new string(buffer, 0, read);
+            }
+
+            var responseBody = _handler(new HttpRequest(method, path, body));
+            if (responseBody is null) {
+                await WriteResponseAsync(stream, 404, "Not Found", "{}").ConfigureAwait(false);
+                return;
+            }
+
+            await WriteResponseAsync(stream, 200, "OK", responseBody).ConfigureAwait(false);
+        }
+
+        private static async Task WriteResponseAsync(NetworkStream stream, int statusCode, string statusText, string body) {
+            var payload = Encoding.UTF8.GetBytes(body);
+            var headers = $"HTTP/1.1 {statusCode} {statusText}\r\n" +
+                          "Content-Type: application/json\r\n" +
+                          $"Content-Length: {payload.Length}\r\n" +
+                          "Connection: close\r\n\r\n";
+            var headerBytes = Encoding.UTF8.GetBytes(headers);
+            await stream.WriteAsync(headerBytes, 0, headerBytes.Length).ConfigureAwait(false);
+            await stream.WriteAsync(payload, 0, payload.Length).ConfigureAwait(false);
+            await stream.FlushAsync().ConfigureAwait(false);
+        }
+
+        public void Dispose() {
+            if (_disposed) {
+                return;
+            }
+            _disposed = true;
+            _listener.Stop();
+            try {
+                _loopTask.GetAwaiter().GetResult();
+            } catch {
+                // ignored
+            }
+        }
     }
 
     private static void TestResolveThreadsOptionParsing() {
