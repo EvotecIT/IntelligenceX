@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using IntelligenceX.Copilot;
 using IntelligenceX.Json;
 
 namespace IntelligenceX.Reviewer;
@@ -274,6 +275,27 @@ internal static class ReviewConfigLoader {
         settings.CopilotAutoInstall = ReadBool(copilot, "autoInstall", settings.CopilotAutoInstall);
         settings.CopilotAutoInstallMethod = copilot.GetString("autoInstallMethod") ?? settings.CopilotAutoInstallMethod;
         settings.CopilotAutoInstallPrerelease = ReadBool(copilot, "autoInstallPrerelease", settings.CopilotAutoInstallPrerelease);
+        var envAllowlist = ReadStringList(copilot, "envAllowlist");
+        if (envAllowlist is not null) {
+            settings.CopilotEnvAllowlist = envAllowlist;
+        }
+        settings.CopilotInheritEnvironment = ReadBool(copilot, "inheritEnvironment", settings.CopilotInheritEnvironment);
+        var env = ReadStringMap(copilot, "env");
+        if (env is not null) {
+            settings.CopilotEnv = env;
+        }
+        var transport = copilot.GetString("transport");
+        if (!string.IsNullOrWhiteSpace(transport)) {
+            settings.CopilotTransport = ParseCopilotTransport(transport, settings.CopilotTransport);
+        }
+        settings.CopilotDirectUrl = copilot.GetString("directUrl") ?? settings.CopilotDirectUrl;
+        settings.CopilotDirectToken = copilot.GetString("directToken") ?? settings.CopilotDirectToken;
+        settings.CopilotDirectTokenEnv = copilot.GetString("directTokenEnv") ?? settings.CopilotDirectTokenEnv;
+        settings.CopilotDirectTimeoutSeconds = ReadInt(copilot, "directTimeoutSeconds", settings.CopilotDirectTimeoutSeconds);
+        var directHeaders = ReadStringMap(copilot, "directHeaders");
+        if (directHeaders is not null) {
+            settings.CopilotDirectHeaders = directHeaders;
+        }
     }
 
     private static void ApplyAzureDevOps(JsonObject obj, ReviewSettings settings) {
@@ -332,6 +354,18 @@ internal static class ReviewConfigLoader {
         settings.Cleanup.TemplatePath = cleanup.GetString("templatePath") ?? settings.Cleanup.TemplatePath;
     }
 
+    private static CopilotTransportKind ParseCopilotTransport(string value, CopilotTransportKind fallback) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return fallback;
+        }
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "direct" or "api" or "http" => CopilotTransportKind.Direct,
+            "cli" => CopilotTransportKind.Cli,
+            _ => fallback
+        };
+    }
+
     private static IReadOnlyList<string>? ReadStringList(JsonObject obj, string key) {
         if (obj.TryGetValue(key, out var value)) {
             var array = value?.AsArray();
@@ -351,6 +385,28 @@ internal static class ReviewConfigLoader {
             }
         }
         return null;
+    }
+
+    private static IReadOnlyDictionary<string, string>? ReadStringMap(JsonObject obj, string key) {
+        if (!obj.TryGetValue(key, out var value)) {
+            return null;
+        }
+        var mapObj = value?.AsObject();
+        if (mapObj is null || mapObj.Count == 0) {
+            return null;
+        }
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in mapObj) {
+            if (string.IsNullOrWhiteSpace(entry.Key)) {
+                continue;
+            }
+            var text = entry.Value?.AsString();
+            if (text is null) {
+                continue;
+            }
+            result[entry.Key] = text;
+        }
+        return result;
     }
 
     private static int ReadInt(JsonObject obj, string key, int fallback) {

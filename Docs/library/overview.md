@@ -97,6 +97,36 @@ using var subscription = client.SubscribeDelta(text => Console.Write(text));
 await client.ChatAsync("Stream a short answer.");
 ```
 
+## Copilot chat client
+
+```csharp
+using IntelligenceX.Copilot;
+
+var options = new CopilotChatClientOptions {
+    Transport = CopilotTransportKind.Cli,
+    DefaultModel = "gpt-5.2-codex"
+};
+
+await using var chat = await CopilotChatClient.StartAsync(options);
+var answer = await chat.ChatAsync("Summarize the latest PR");
+Console.WriteLine(answer);
+```
+
+```csharp
+using IntelligenceX.Copilot;
+
+var options = new CopilotChatClientOptions {
+    Transport = CopilotTransportKind.Direct,
+    DefaultModel = "gpt-5.2-codex"
+};
+options.Direct.Url = "https://example.internal/copilot/chat";
+options.Direct.Token = Environment.GetEnvironmentVariable("COPILOT_DIRECT_TOKEN");
+
+await using var chat = await CopilotChatClient.StartAsync(options);
+var answer = await chat.ChatAsync("Summarize the latest PR");
+Console.WriteLine(answer);
+```
+
 ## Config overrides
 
 Add `.intelligencex/config.json` (or set `INTELLIGENCEX_CONFIG_PATH`) to avoid hardcoding.

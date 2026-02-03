@@ -175,6 +175,49 @@ Use this to skip the main review and only assess existing review threads.
 }
 ```
 
+## Copilot CLI auth env pass-through
+
+Use this to forward selected environment variables into the Copilot CLI process without committing secrets.
+By default the CLI process **does** inherit the runner environment. Set `inheritEnvironment` to `false` and use
+`envAllowlist`/`env` to pass only what the CLI needs when you want a strict environment.
+
+```json
+{
+  "review": {
+    "provider": "copilot"
+  },
+  "copilot": {
+    "inheritEnvironment": false,
+    "envAllowlist": ["GH_TOKEN", "GITHUB_TOKEN"]
+  }
+}
+```
+
+`copilot.env` can be used to set fixed, non-secret environment variables for the Copilot CLI.
+
+## Copilot direct (experimental)
+
+This path skips the Copilot CLI and posts directly to a compatible HTTP endpoint. It is not enabled by default.
+
+```json
+{
+  "review": {
+    "provider": "copilot"
+  },
+  "copilot": {
+    "transport": "direct",
+    "directUrl": "https://example.internal/copilot/chat",
+    "directTokenEnv": "COPILOT_DIRECT_TOKEN",
+    "directTimeoutSeconds": 60
+  }
+}
+```
+
+If `directTokenEnv` is set, the value is pulled from the environment at runtime.
+`directToken` or an `Authorization` header in `directHeaders` is required for most endpoints.
+Use `directHeaders` to attach custom headers required by your gateway.
+Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source control.
+
 ## Common knobs
 - `provider`: `openai` or `copilot`
 - `model`: model name for the selected provider
@@ -203,6 +246,8 @@ Use this to skip the main review and only assess existing review threads.
 - `azureBaseUrl`: override Azure DevOps base URL (defaults to `SYSTEM_COLLECTIONURI` or `https://dev.azure.com/{org}`)
 - `azureTokenEnv`: env var name that contains the ADO token (default `SYSTEM_ACCESSTOKEN` if set)
 - `azureAuthScheme`: `bearer` (System.AccessToken) or `basic`/`pat`
+- `copilot.transport`: `cli` or `direct` (aliases: `api`, `http`)
+- `copilot.inheritEnvironment`: inherit full runner environment for Copilot CLI (`true` by default)
 
 **Path filter order of operations**
 1. `skipPaths` is evaluated first at the PR level. If **every** changed file matches `skipPaths`, the PR is skipped.

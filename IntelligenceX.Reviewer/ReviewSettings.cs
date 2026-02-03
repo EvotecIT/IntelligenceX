@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using IntelligenceX.Copilot;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Chat;
 
@@ -194,6 +195,46 @@ internal sealed class ReviewSettings {
     public bool CopilotAutoInstall { get; set; }
     public string? CopilotAutoInstallMethod { get; set; }
     public bool CopilotAutoInstallPrerelease { get; set; }
+    /// <summary>
+    /// Environment variables to forward from the host into the Copilot CLI process.
+    /// When <see cref="CopilotInheritEnvironment"/> is false, only these variables are forwarded.
+    /// When true, these variables override any inherited values.
+    /// </summary>
+    public IReadOnlyList<string> CopilotEnvAllowlist { get; set; } = Array.Empty<string>();
+    /// <summary>
+    /// Whether the Copilot CLI process should inherit the current environment.
+    /// </summary>
+    public bool CopilotInheritEnvironment { get; set; } = true;
+    /// <summary>
+    /// Additional environment variables to set for the Copilot CLI process.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> CopilotEnv { get; set; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Copilot transport selection (CLI or direct HTTP).
+    /// </summary>
+    public CopilotTransportKind CopilotTransport { get; set; } = CopilotTransportKind.Cli;
+    /// <summary>
+    /// Copilot direct HTTP endpoint URL (experimental).
+    /// </summary>
+    public string? CopilotDirectUrl { get; set; }
+    /// <summary>
+    /// Copilot direct token value (experimental).
+    /// </summary>
+    public string? CopilotDirectToken { get; set; }
+    /// <summary>
+    /// Environment variable that holds the Copilot direct token (experimental).
+    /// </summary>
+    public string? CopilotDirectTokenEnv { get; set; }
+    /// <summary>
+    /// Additional headers to send with Copilot direct requests (experimental).
+    /// </summary>
+    public IReadOnlyDictionary<string, string> CopilotDirectHeaders { get; set; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Timeout for Copilot direct requests (seconds).
+    /// </summary>
+    public int CopilotDirectTimeoutSeconds { get; set; } = 60;
 
     public string? AzureOrganization { get; set; }
     public string? AzureProject { get; set; }
@@ -552,6 +593,36 @@ internal sealed class ReviewSettings {
         if (!string.IsNullOrWhiteSpace(copilotAutoInstallPrerelease)) {
             settings.CopilotAutoInstallPrerelease = ParseBoolean(copilotAutoInstallPrerelease, settings.CopilotAutoInstallPrerelease);
         }
+        var copilotEnvAllowlist = GetInput("copilot_env_allowlist", "COPILOT_ENV_ALLOWLIST");
+        if (!string.IsNullOrWhiteSpace(copilotEnvAllowlist)) {
+            settings.CopilotEnvAllowlist = ParseList(copilotEnvAllowlist, settings.CopilotEnvAllowlist);
+        }
+        var copilotInheritEnvironment = GetInput("copilot_inherit_environment", "COPILOT_INHERIT_ENVIRONMENT");
+        if (!string.IsNullOrWhiteSpace(copilotInheritEnvironment)) {
+            settings.CopilotInheritEnvironment =
+                ParseBoolean(copilotInheritEnvironment, settings.CopilotInheritEnvironment);
+        }
+        var copilotTransport = GetInput("copilot_transport", "COPILOT_TRANSPORT");
+        if (!string.IsNullOrWhiteSpace(copilotTransport)) {
+            settings.CopilotTransport = ParseCopilotTransport(copilotTransport, settings.CopilotTransport);
+        }
+        var copilotDirectUrl = GetInput("copilot_direct_url", "COPILOT_DIRECT_URL");
+        if (!string.IsNullOrWhiteSpace(copilotDirectUrl)) {
+            settings.CopilotDirectUrl = copilotDirectUrl;
+        }
+        var copilotDirectToken = GetInput("copilot_direct_token", "COPILOT_DIRECT_TOKEN");
+        if (!string.IsNullOrWhiteSpace(copilotDirectToken)) {
+            settings.CopilotDirectToken = copilotDirectToken;
+        }
+        var copilotDirectTokenEnv = GetInput("copilot_direct_token_env", "COPILOT_DIRECT_TOKEN_ENV");
+        if (!string.IsNullOrWhiteSpace(copilotDirectTokenEnv)) {
+            settings.CopilotDirectTokenEnv = copilotDirectTokenEnv;
+        }
+        var copilotDirectTimeout = GetInput("copilot_direct_timeout_seconds", "COPILOT_DIRECT_TIMEOUT_SECONDS");
+        if (!string.IsNullOrWhiteSpace(copilotDirectTimeout)) {
+            settings.CopilotDirectTimeoutSeconds =
+                ParsePositiveInt(copilotDirectTimeout, settings.CopilotDirectTimeoutSeconds);
+        }
 
         var azureOrg = GetInput("azure_org", "AZURE_DEVOPS_ORG");
         if (!string.IsNullOrWhiteSpace(azureOrg)) {
@@ -825,6 +896,18 @@ internal sealed class ReviewSettings {
             "current" or "pr" or "pr-files" or "pr_files" => "current",
             "pr-base" or "pr_base" or "base" or "prbase" => "pr-base",
             "first-review" or "first_review" or "first-reviewed" or "firstreview" or "first" => "first-review",
+            _ => fallback
+        };
+    }
+
+    private static CopilotTransportKind ParseCopilotTransport(string? value, CopilotTransportKind fallback) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return fallback;
+        }
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "direct" or "api" or "http" => CopilotTransportKind.Direct,
+            "cli" => CopilotTransportKind.Cli,
             _ => fallback
         };
     }
