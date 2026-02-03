@@ -100,6 +100,21 @@ Use this to skip the main review and only assess existing review threads.
 }
 ```
 
+## Azure DevOps example (summary-only)
+
+```json
+{
+  "review": {
+    "codeHost": "azure",
+    "azureOrg": "my-org",
+    "azureProject": "my-project",
+    "azureRepo": "my-repo",
+    "azureTokenEnv": "SYSTEM_ACCESSTOKEN",
+    "azureAuthScheme": "bearer"
+  }
+}
+```
+
 ## Path filters example
 
 ```json
@@ -141,6 +156,7 @@ Use this to skip the main review and only assess existing review threads.
 - `mode`: `inline`, `summary`, or `hybrid`
 - `length`: `short|medium|long`
 - `intent`: `security|performance|perf|maintainability` (sets focus areas if none provided)
+- `codeHost`: `github` or `azure`
 - `reviewDiffRange`: `current`, `pr-base`, or `first-review`
 - `outputStyle`: rendering style preset
 - `reviewUsageSummary`: append usage line to the footer (ChatGPT auth only)
@@ -155,6 +171,10 @@ Use this to skip the main review and only assess existing review threads.
 - `includeReviewThreads`: include existing review threads in context
 - `triageOnly`: run thread triage only (skip full review)
 - `reviewThreadsAutoResolve*`: auto-resolve rules for bot threads
+- `azureOrg`/`azureProject`/`azureRepo`: Azure DevOps identifiers
+- `azureBaseUrl`: override Azure DevOps base URL (defaults to `SYSTEM_COLLECTIONURI` or `https://dev.azure.com/{org}`)
+- `azureTokenEnv`: env var name that contains the ADO token (default `SYSTEM_ACCESSTOKEN` if set)
+- `azureAuthScheme`: `bearer` (System.AccessToken) or `basic`/`pat`
 
 **Path filter order of operations**
 1. `skipPaths` is evaluated first at the PR level. If **every** changed file matches `skipPaths`, the PR is skipped.

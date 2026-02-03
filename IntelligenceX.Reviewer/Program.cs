@@ -15,7 +15,7 @@ using IntelligenceX.OpenAI.Usage;
 namespace IntelligenceX.Reviewer;
 
 /// <summary>
-/// Entry point for running the IntelligenceX GitHub review workflow.
+/// Entry point for running the IntelligenceX review workflow.
 /// </summary>
 public static class ReviewerApp {
     private const string ThreadReplyMarker = "<!-- intelligencex:thread-reply -->";
@@ -57,6 +57,10 @@ public static class ReviewerApp {
             }
             if (!await ValidateAuthAsync(settings).ConfigureAwait(false)) {
                 return 1;
+            }
+
+            if (settings.CodeHost == ReviewCodeHost.AzureDevOps) {
+                return await AzureDevOpsReviewRunner.RunAsync(settings, cancellationToken).ConfigureAwait(false);
             }
             var token = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN")
                 ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN");

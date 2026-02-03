@@ -68,6 +68,7 @@ internal static class Program {
         failed += Run("Review intent applies focus", TestReviewIntentAppliesFocus);
         failed += Run("Review intent respects focus", TestReviewIntentRespectsFocus);
         failed += Run("Triage-only loads threads", TestTriageOnlyLoadsThreads);
+        failed += Run("Review code host env", TestReviewCodeHostEnv);
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
@@ -622,6 +623,17 @@ internal static class Program {
         var settings = new ReviewSettings { Focus = new[] { "custom" } };
         ReviewIntents.Apply("performance", settings);
         AssertSequenceEqual(new[] { "custom" }, settings.Focus, "intent preserves focus");
+    }
+
+    private static void TestReviewCodeHostEnv() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CODE_HOST");
+        try {
+            Environment.SetEnvironmentVariable("REVIEW_CODE_HOST", "azure");
+            var settings = ReviewSettings.FromEnvironment();
+            AssertEqual(ReviewCodeHost.AzureDevOps, settings.CodeHost, "code host azure");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CODE_HOST", previous);
+        }
     }
 
     private static void TestTriageOnlyLoadsThreads() {

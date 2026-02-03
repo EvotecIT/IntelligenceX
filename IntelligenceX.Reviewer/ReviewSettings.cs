@@ -17,6 +17,16 @@ internal enum ReviewCommentMode {
     Fresh
 }
 
+internal enum ReviewCodeHost {
+    GitHub,
+    AzureDevOps
+}
+
+internal enum AzureDevOpsAuthScheme {
+    Basic,
+    Bearer
+}
+
 internal enum ReviewProvider {
     OpenAI,
     Copilot
@@ -49,6 +59,7 @@ internal sealed class ReviewSettings {
 
     public string Mode { get; set; } = "hybrid";
     public ReviewProvider Provider { get; set; } = ReviewProvider.OpenAI;
+    public ReviewCodeHost CodeHost { get; set; } = ReviewCodeHost.GitHub;
     public string? Profile { get; set; }
     /// <summary>
     /// Optional high-level review intent preset (e.g., security, performance, maintainability).
@@ -179,6 +190,14 @@ internal sealed class ReviewSettings {
     public string? CopilotAutoInstallMethod { get; set; }
     public bool CopilotAutoInstallPrerelease { get; set; }
 
+    public string? AzureOrganization { get; set; }
+    public string? AzureProject { get; set; }
+    public string? AzureRepository { get; set; }
+    public string? AzureBaseUrl { get; set; }
+    public string? AzureTokenEnv { get; set; }
+    public AzureDevOpsAuthScheme AzureAuthScheme { get; set; } = AzureDevOpsAuthScheme.Bearer;
+    public bool AzureAuthSchemeSpecified { get; set; }
+
     public static ReviewSettings Load() {
         var settings = new ReviewSettings();
         ReviewConfigLoader.Apply(settings);
@@ -197,6 +216,11 @@ internal sealed class ReviewSettings {
         if (!string.IsNullOrWhiteSpace(profile)) {
             ReviewProfiles.Apply(profile!, settings);
             settings.Profile = profile;
+        }
+
+        var codeHost = GetInput("code_host", "REVIEW_CODE_HOST");
+        if (!string.IsNullOrWhiteSpace(codeHost)) {
+            settings.CodeHost = ParseCodeHost(codeHost);
         }
 
         var intent = GetInput("intent", "REVIEW_INTENT");
@@ -516,6 +540,32 @@ internal sealed class ReviewSettings {
             settings.CopilotAutoInstallPrerelease = ParseBoolean(copilotAutoInstallPrerelease, settings.CopilotAutoInstallPrerelease);
         }
 
+        var azureOrg = GetInput("azure_org", "AZURE_DEVOPS_ORG");
+        if (!string.IsNullOrWhiteSpace(azureOrg)) {
+            settings.AzureOrganization = azureOrg;
+        }
+        var azureProject = GetInput("azure_project", "AZURE_DEVOPS_PROJECT");
+        if (!string.IsNullOrWhiteSpace(azureProject)) {
+            settings.AzureProject = azureProject;
+        }
+        var azureRepo = GetInput("azure_repo", "AZURE_DEVOPS_REPO");
+        if (!string.IsNullOrWhiteSpace(azureRepo)) {
+            settings.AzureRepository = azureRepo;
+        }
+        var azureBaseUrl = GetInput("azure_base_url", "AZURE_DEVOPS_BASE_URL");
+        if (!string.IsNullOrWhiteSpace(azureBaseUrl)) {
+            settings.AzureBaseUrl = azureBaseUrl;
+        }
+        var azureTokenEnv = GetInput("azure_token_env", "AZURE_DEVOPS_TOKEN_ENV");
+        if (!string.IsNullOrWhiteSpace(azureTokenEnv)) {
+            settings.AzureTokenEnv = azureTokenEnv;
+        }
+        var azureAuthScheme = GetInput("azure_auth_scheme", "AZURE_DEVOPS_AUTH_SCHEME");
+        if (!string.IsNullOrWhiteSpace(azureAuthScheme)) {
+            settings.AzureAuthScheme = ParseAzureAuthScheme(azureAuthScheme);
+            settings.AzureAuthSchemeSpecified = true;
+        }
+
         var length = GetInput("length", "REVIEW_LENGTH");
         if (!string.IsNullOrWhiteSpace(length)) {
             settings.Length = length.Trim().ToLowerInvariant() switch {
@@ -695,6 +745,22 @@ internal sealed class ReviewSettings {
             "copilot" => ReviewProvider.Copilot,
             "openai" or "codex" => ReviewProvider.OpenAI,
             _ => ReviewProvider.OpenAI
+        };
+    }
+
+    private static ReviewCodeHost ParseCodeHost(string value) {
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "azure" or "azuredevops" or "azure-devops" or "ado" => ReviewCodeHost.AzureDevOps,
+            _ => ReviewCodeHost.GitHub
+        };
+    }
+
+    private static AzureDevOpsAuthScheme ParseAzureAuthScheme(string value) {
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "basic" or "pat" => AzureDevOpsAuthScheme.Basic,
+            _ => AzureDevOpsAuthScheme.Bearer
         };
     }
 
