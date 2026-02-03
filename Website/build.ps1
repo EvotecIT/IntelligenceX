@@ -34,6 +34,18 @@ if ([string]::IsNullOrWhiteSpace($PowerForgeRoot)) {
     $candidate = Join-Path $PSScriptRoot '..\PSPublishModule'
     if (Test-Path $candidate) {
         $PowerForgeRoot = (Resolve-Path $candidate).Path
+    } else {
+        $scriptRoot = (Resolve-Path $PSScriptRoot).Path
+        $parent = Split-Path -Parent $scriptRoot
+        if ($parent) {
+            $grandParent = Split-Path -Parent $parent
+            if ($grandParent) {
+                $candidate = Join-Path $grandParent 'PSPublishModule'
+                if (Test-Path $candidate) {
+                    $PowerForgeRoot = (Resolve-Path $candidate).Path
+                }
+            }
+        }
     }
 }
 if (-not [string]::IsNullOrWhiteSpace($PowerForgeRoot)) {
@@ -57,7 +69,7 @@ if ($PowerForgeReleaseExe -and (Test-Path $PowerForgeReleaseExe)) {
 }
 
 if (-not $PowerForge) {
-    Write-Error 'PowerForge.Web.Cli not found. Build PSPublishModule first or install the global tool.'
+    Write-Error 'PowerForge.Web.Cli not found. Build PSPublishModule first, install the global tool, or pass -PowerForgeRoot.'
     exit 1
 }
 
