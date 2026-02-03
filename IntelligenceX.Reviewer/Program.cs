@@ -1349,6 +1349,19 @@ public static class ReviewerApp {
         return sb.ToString();
     }
 
+    private static bool CanAppendWithReserve(StringBuilder sb, string segment, int maxChars, string newline,
+        string lastText, string marker, bool includeMarker) {
+        if (string.IsNullOrEmpty(segment)) {
+            return true;
+        }
+        var extra = segment.Length + (sb.Length > 0 ? newline.Length : 0);
+        var reserve = lastText.Length + newline.Length;
+        if (includeMarker) {
+            reserve += marker.Length + newline.Length;
+        }
+        return sb.Length + extra + reserve <= maxChars;
+    }
+
     private static bool TryAppendSegment(StringBuilder sb, string segment, int maxChars, string newline) {
         if (string.IsNullOrEmpty(segment)) {
             return true;
