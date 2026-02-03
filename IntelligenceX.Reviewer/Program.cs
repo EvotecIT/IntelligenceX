@@ -1345,7 +1345,6 @@ public static class ReviewerApp {
                 break;
             }
         }
-
         return sb.ToString();
     }
 
