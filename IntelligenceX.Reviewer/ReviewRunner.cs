@@ -356,6 +356,9 @@ internal sealed class ReviewRunner {
         if (string.IsNullOrWhiteSpace(_settings.CopilotDirectUrl)) {
             throw new InvalidOperationException("Copilot direct transport requires copilot.directUrl.");
         }
+        if (string.IsNullOrWhiteSpace(_settings.Model)) {
+            throw new InvalidOperationException("Copilot direct transport requires review.model to be set.");
+        }
         var token = ResolveCopilotDirectToken();
         if (string.IsNullOrWhiteSpace(token) && !HasAuthorizationHeader(_settings.CopilotDirectHeaders)) {
             throw new InvalidOperationException("Copilot direct transport requires a token or Authorization header.");

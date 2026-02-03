@@ -192,6 +192,7 @@ internal sealed class ReviewSettings {
     public bool CopilotAutoInstallPrerelease { get; set; }
     /// <summary>
     /// Environment variables to forward from the host into the Copilot CLI process.
+    /// This list is additive only and does not strip other inherited variables.
     /// </summary>
     public IReadOnlyList<string> CopilotEnvAllowlist { get; set; } = Array.Empty<string>();
     /// <summary>
