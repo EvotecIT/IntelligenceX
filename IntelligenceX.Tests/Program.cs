@@ -69,6 +69,7 @@ internal static class Program {
         failed += Run("Review intent respects focus", TestReviewIntentRespectsFocus);
         failed += Run("Triage-only loads threads", TestTriageOnlyLoadsThreads);
         failed += Run("Review code host env", TestReviewCodeHostEnv);
+        failed += Run("Azure auth scheme env", TestAzureAuthSchemeEnv);
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
@@ -633,6 +634,18 @@ internal static class Program {
             AssertEqual(ReviewCodeHost.AzureDevOps, settings.CodeHost, "code host azure");
         } finally {
             Environment.SetEnvironmentVariable("REVIEW_CODE_HOST", previous);
+        }
+    }
+
+    private static void TestAzureAuthSchemeEnv() {
+        var previous = Environment.GetEnvironmentVariable("AZURE_DEVOPS_AUTH_SCHEME");
+        try {
+            Environment.SetEnvironmentVariable("AZURE_DEVOPS_AUTH_SCHEME", "pat");
+            var settings = ReviewSettings.FromEnvironment();
+            AssertEqual(AzureDevOpsAuthScheme.Basic, settings.AzureAuthScheme, "azure auth scheme");
+            AssertEqual(true, settings.AzureAuthSchemeSpecified, "azure auth scheme specified");
+        } finally {
+            Environment.SetEnvironmentVariable("AZURE_DEVOPS_AUTH_SCHEME", previous);
         }
     }
 

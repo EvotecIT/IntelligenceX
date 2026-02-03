@@ -9,7 +9,7 @@ namespace IntelligenceX.Reviewer;
 internal static class AzureDevOpsReviewRunner {
     public static async Task<int> RunAsync(ReviewSettings settings, CancellationToken cancellationToken) {
         var options = ResolveOptions(settings);
-        if (!options.Success) {
+        if (!options.Success || options.BaseUri is null || options.Project is null || options.Token is null) {
             Console.Error.WriteLine(options.Error ?? "Azure DevOps configuration is incomplete.");
             return 1;
         }
@@ -22,8 +22,12 @@ internal static class AzureDevOpsReviewRunner {
             Console.WriteLine("Progress updates are not supported for Azure DevOps; skipping.");
         }
 
-        using var client = new AzureDevOpsClient(options.BaseUri!, options.Token!, options.AuthScheme);
-        var pr = await client.GetPullRequestAsync(options.Project!, options.PullRequestId, cancellationToken).ConfigureAwait(false);
+        var baseUri = options.BaseUri;
+        var project = options.Project;
+        var token = options.Token;
+
+        using var client = new AzureDevOpsClient(baseUri, token, options.AuthScheme);
+        var pr = await client.GetPullRequestAsync(project, options.PullRequestId, cancellationToken).ConfigureAwait(false);
 
         if (settings.SkipDraft && pr.IsDraft) {
             Console.WriteLine("Skipping draft pull request.");
@@ -38,14 +42,14 @@ internal static class AzureDevOpsReviewRunner {
             return 1;
         }
 
-        var iterationId = await client.GetLatestIterationIdAsync(options.Project!, repositoryId, pr.PullRequestId, cancellationToken)
+        var iterationId = await client.GetLatestIterationIdAsync(project, repositoryId, pr.PullRequestId, cancellationToken)
             .ConfigureAwait(false);
         if (!iterationId.HasValue) {
             Console.Error.WriteLine("Azure DevOps pull request iterations are unavailable.");
             return 1;
         }
 
-        var files = await client.GetPullRequestChangesAsync(options.Project!, repositoryId, pr.PullRequestId, iterationId.Value,
+        var files = await client.GetPullRequestChangesAsync(project, repositoryId, pr.PullRequestId, iterationId.Value,
             cancellationToken).ConfigureAwait(false);
         if (files.Count == 0) {
             Console.WriteLine("No files to review.");
@@ -77,7 +81,7 @@ internal static class AzureDevOpsReviewRunner {
         var commentBody = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: false,
             inlineSuppressed: false, autoResolveNote: string.Empty, usageLine: string.Empty);
 
-        await client.CreatePullRequestThreadAsync(options.Project!, repositoryId, pr.PullRequestId, commentBody, cancellationToken)
+        await client.CreatePullRequestThreadAsync(project, repositoryId, pr.PullRequestId, commentBody, cancellationToken)
             .ConfigureAwait(false);
         Console.WriteLine("Posted Azure DevOps review comment.");
         return 0;
@@ -160,6 +164,7 @@ internal static class AzureDevOpsReviewRunner {
         if (string.IsNullOrWhiteSpace(token)) {
             return false;
         }
+        // Heuristic: most JWTs have at least two dots; users can override via azureAuthScheme.
         var dotCount = token.Count(ch => ch == '.');
         return dotCount >= 2;
     }

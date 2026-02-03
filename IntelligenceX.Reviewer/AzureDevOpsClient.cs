@@ -9,9 +9,23 @@ using IntelligenceX.Json;
 
 namespace IntelligenceX.Reviewer;
 
+/// <summary>
+/// Lightweight Azure DevOps REST API client for pull request review operations.
+/// </summary>
 internal sealed class AzureDevOpsClient : IDisposable {
+    private const string ApiVersion = "7.1";
+    private const string DefaultChangeType = "edit";
+    private const int RootCommentId = 0;
+    private const int CommentTypeText = 1;
+    private const int ThreadStatusActive = 1;
     private readonly HttpClient _http;
 
+    /// <summary>
+    /// Initializes a new Azure DevOps client for the specified base URL and auth scheme.
+    /// </summary>
+    /// <param name="baseUri">Azure DevOps organization base URI.</param>
+    /// <param name="token">Authentication token (PAT or bearer).</param>
+    /// <param name="authScheme">Authentication scheme to use.</param>
     public AzureDevOpsClient(Uri baseUri, string token, AzureDevOpsAuthScheme authScheme) {
         _http = new HttpClient { BaseAddress = EnsureTrailingSlash(baseUri) };
         _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("IntelligenceX.Reviewer", "1.0"));
@@ -19,8 +33,11 @@ internal sealed class AzureDevOpsClient : IDisposable {
         _http.DefaultRequestHeaders.Authorization = BuildAuthHeader(token, authScheme);
     }
 
+    /// <summary>
+    /// Retrieves pull request metadata.
+    /// </summary>
     public async Task<AzureDevOpsPullRequest> GetPullRequestAsync(string project, int pullRequestId, CancellationToken cancellationToken) {
-        var url = $"{Escape(project)}/_apis/git/pullrequests/{pullRequestId}?api-version=7.1";
+        var url = $"{Escape(project)}/_apis/git/pullrequests/{pullRequestId}?api-version={ApiVersion}";
         var json = await GetJsonAsync(url, cancellationToken).ConfigureAwait(false);
         var obj = json.AsObject();
         if (obj is null) {
@@ -41,9 +58,12 @@ internal sealed class AzureDevOpsClient : IDisposable {
             sourceCommit, targetCommit);
     }
 
+    /// <summary>
+    /// Returns the most recent pull request iteration id.
+    /// </summary>
     public async Task<int?> GetLatestIterationIdAsync(string project, string repositoryId, int pullRequestId,
         CancellationToken cancellationToken) {
-        var url = $"{Escape(project)}/_apis/git/repositories/{Escape(repositoryId)}/pullRequests/{pullRequestId}/iterations?api-version=7.1";
+        var url = $"{Escape(project)}/_apis/git/repositories/{Escape(repositoryId)}/pullRequests/{pullRequestId}/iterations?api-version={ApiVersion}";
         var json = await GetJsonAsync(url, cancellationToken).ConfigureAwait(false);
         var array = json.AsObject()?.GetArray("value");
         if (array is null || array.Count == 0) {
@@ -55,17 +75,24 @@ internal sealed class AzureDevOpsClient : IDisposable {
             if (!id.HasValue) {
                 continue;
             }
+            if (id.Value > int.MaxValue) {
+                continue;
+            }
             var value = (int)id.Value;
             max = !max.HasValue || value > max ? value : max;
         }
         return max;
     }
 
+    /// <summary>
+    /// Retrieves the file changes for a specific pull request iteration.
+    /// </summary>
     public async Task<IReadOnlyList<PullRequestFile>> GetPullRequestChangesAsync(string project, string repositoryId,
         int pullRequestId, int iterationId, CancellationToken cancellationToken) {
-        var url = $"{Escape(project)}/_apis/git/repositories/{Escape(repositoryId)}/pullRequests/{pullRequestId}/iterations/{iterationId}/changes?api-version=7.1";
+        var url = $"{Escape(project)}/_apis/git/repositories/{Escape(repositoryId)}/pullRequests/{pullRequestId}/iterations/{iterationId}/changes?api-version={ApiVersion}";
         var json = await GetJsonAsync(url, cancellationToken).ConfigureAwait(false);
         var obj = json.AsObject();
+        // ADO APIs have returned "changeEntries" and "changes" across versions.
         var entries = obj?.GetArray("changeEntries") ?? obj?.GetArray("changes");
         if (entries is null || entries.Count == 0) {
             return Array.Empty<PullRequestFile>();
@@ -83,24 +110,30 @@ internal sealed class AzureDevOpsClient : IDisposable {
                 continue;
             }
             var normalized = path.TrimStart('/');
-            var changeType = change.GetString("changeType") ?? "edit";
+            var changeType = change.GetString("changeType") ?? DefaultChangeType;
             files.Add(new PullRequestFile(normalized, changeType, null));
         }
         return files;
     }
 
+    /// <summary>
+    /// Creates a new pull request discussion thread with a single comment.
+    /// </summary>
     public async Task CreatePullRequestThreadAsync(string project, string repositoryId, int pullRequestId, string content,
         CancellationToken cancellationToken) {
-        var url = $"{Escape(project)}/_apis/git/repositories/{Escape(repositoryId)}/pullRequests/{pullRequestId}/threads?api-version=7.1";
+        var url = $"{Escape(project)}/_apis/git/repositories/{Escape(repositoryId)}/pullRequests/{pullRequestId}/threads?api-version={ApiVersion}";
         var payload = new JsonObject()
             .Add("comments", new JsonArray().Add(new JsonObject()
-                .Add("parentCommentId", 0)
+                .Add("parentCommentId", RootCommentId)
                 .Add("content", content)
-                .Add("commentType", 1)))
-            .Add("status", 1);
+                .Add("commentType", CommentTypeText)))
+            .Add("status", ThreadStatusActive);
         await PostJsonAsync(url, payload, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Disposes of the underlying HTTP client.
+    /// </summary>
     public void Dispose() => _http.Dispose();
 
     private static AuthenticationHeaderValue BuildAuthHeader(string token, AzureDevOpsAuthScheme scheme) {
