@@ -70,7 +70,7 @@ Status: Draft (needs priorities + owners)
 - [ ] Add response streaming where supported (show partial progress).
 - [x] Add cache for context artifacts (diff, file lists, PR metadata).
 - [ ] Add concurrency controls to avoid API throttling.
-- [ ] Consider shared HttpClient/IHttpClientFactory for Azure DevOps client.
+- [x] Consider shared HttpClient/IHttpClientFactory for Azure DevOps client.
 - [ ] Add token budgeting per file/group with hard caps.
 - [x] Add optional "budget exceeded" summary behavior.
 

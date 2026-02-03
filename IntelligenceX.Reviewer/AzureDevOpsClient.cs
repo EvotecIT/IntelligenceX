@@ -20,6 +20,10 @@ internal sealed class AzureDevOpsClient : IDisposable {
     private const int RootCommentId = 0;
     private const int CommentTypeText = 1;
     private const int ThreadStatusActive = 1;
+    private static readonly SocketsHttpHandler SharedHandler = new() {
+        PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+        PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2)
+    };
     private static readonly Regex SensitiveTokenPattern =
         new Regex("(?i)(authorization|token|pat)\\s*[:=]\\s*(?:bearer\\s+|basic\\s+)?[^\\s,;]+",
             RegexOptions.Compiled);
@@ -34,7 +38,7 @@ internal sealed class AzureDevOpsClient : IDisposable {
     /// <param name="token">Authentication token (PAT or bearer).</param>
     /// <param name="authScheme">Authentication scheme to use.</param>
     public AzureDevOpsClient(Uri baseUri, string token, AzureDevOpsAuthScheme authScheme) {
-        _http = new HttpClient { BaseAddress = EnsureTrailingSlash(baseUri) };
+        _http = new HttpClient(SharedHandler, disposeHandler: false) { BaseAddress = EnsureTrailingSlash(baseUri) };
         _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("IntelligenceX.Reviewer", "1.0"));
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         _http.DefaultRequestHeaders.Authorization = BuildAuthHeader(token, authScheme);
