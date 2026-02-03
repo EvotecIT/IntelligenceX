@@ -42,6 +42,14 @@ internal static class ReviewConfigLoader {
             };
         }
 
+        var codeHost = reviewObj.GetString("codeHost");
+        if (!string.IsNullOrWhiteSpace(codeHost)) {
+            settings.CodeHost = codeHost.Trim().ToLowerInvariant() switch {
+                "azure" or "azuredevops" or "azure-devops" or "ado" => ReviewCodeHost.AzureDevOps,
+                _ => ReviewCodeHost.GitHub
+            };
+        }
+
         var style = reviewObj.GetString("style");
         if (!string.IsNullOrWhiteSpace(style)) {
             settings.Style = style;
@@ -57,6 +65,7 @@ internal static class ReviewConfigLoader {
         ApplyContext(reviewObj, settings);
         ApplyCodex(root, settings);
         ApplyCopilot(root, settings);
+        ApplyAzureDevOps(reviewObj, settings);
         ApplyCleanup(root, settings);
     }
 
@@ -263,6 +272,34 @@ internal static class ReviewConfigLoader {
         settings.CopilotAutoInstall = ReadBool(copilot, "autoInstall", settings.CopilotAutoInstall);
         settings.CopilotAutoInstallMethod = copilot.GetString("autoInstallMethod") ?? settings.CopilotAutoInstallMethod;
         settings.CopilotAutoInstallPrerelease = ReadBool(copilot, "autoInstallPrerelease", settings.CopilotAutoInstallPrerelease);
+    }
+
+    private static void ApplyAzureDevOps(JsonObject obj, ReviewSettings settings) {
+        var org = obj.GetString("azureOrg");
+        if (!string.IsNullOrWhiteSpace(org)) {
+            settings.AzureOrganization = org;
+        }
+        var project = obj.GetString("azureProject");
+        if (!string.IsNullOrWhiteSpace(project)) {
+            settings.AzureProject = project;
+        }
+        var repo = obj.GetString("azureRepo");
+        if (!string.IsNullOrWhiteSpace(repo)) {
+            settings.AzureRepository = repo;
+        }
+        var baseUrl = obj.GetString("azureBaseUrl");
+        if (!string.IsNullOrWhiteSpace(baseUrl)) {
+            settings.AzureBaseUrl = baseUrl;
+        }
+        var tokenEnv = obj.GetString("azureTokenEnv");
+        if (!string.IsNullOrWhiteSpace(tokenEnv)) {
+            settings.AzureTokenEnv = tokenEnv;
+        }
+        var authScheme = obj.GetString("azureAuthScheme");
+        if (!string.IsNullOrWhiteSpace(authScheme)) {
+            settings.AzureAuthScheme = ReviewSettings.ParseAzureAuthScheme(authScheme);
+            settings.AzureAuthSchemeSpecified = true;
+        }
     }
 
     private static void ApplyCleanup(JsonObject root, ReviewSettings settings) {

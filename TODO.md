@@ -57,8 +57,10 @@ Status: Draft (needs priorities + owners)
 
 ### Phase 5.5 — Code host support (Azure DevOps Services)
 - [ ] Define code-host interface (PR metadata, files, diff, comments, threads).
-- [ ] Add ADO auth options (PAT, System.AccessToken) + env var mapping.
-- [ ] Phase 1: summary-only PR comments (no inline) using ADO REST APIs.
+- [x] Add ADO auth options (PAT, System.AccessToken) + env var mapping.
+- [x] Phase 1: summary-only PR comments (no inline) using ADO REST APIs (aggregate iterations for full file list).
+- [ ] Document Azure auth scheme heuristic + override guidance.
+- [ ] Document iteration aggregation behavior (last-iteration wins per file).
 - [ ] Phase 2: inline comments with iteration + line mapping support.
 - [ ] Phase 3: thread triage + auto-resolve via thread status updates.
 - [ ] Add CLI flags/config: `provider=azure`, `azureOrg`, `azureProject`, `azureRepo`, `azureBaseUrl`, `azureTokenEnv`.
@@ -68,11 +70,13 @@ Status: Draft (needs priorities + owners)
 - [ ] Add response streaming where supported (show partial progress).
 - [ ] Add cache for context artifacts (diff, file lists, PR metadata).
 - [ ] Add concurrency controls to avoid API throttling.
+- [ ] Consider shared HttpClient/IHttpClientFactory for Azure DevOps client.
 - [ ] Add token budgeting per file/group with hard caps.
 - [ ] Add optional "budget exceeded" summary behavior.
 
 ### Phase 7 — Security + trust
 - [ ] Redact sensitive data before prompt (secrets, tokens, private keys).
+- [ ] Sanitize Azure DevOps API error payloads in logs.
 - [ ] Add "untrusted PR" guardrails (no secret access, no write actions).
 - [ ] Add workflow integrity check (block self-modifying workflow runs).
 - [ ] Add audit logging for secrets usage.
