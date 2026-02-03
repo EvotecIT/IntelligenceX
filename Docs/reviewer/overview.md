@@ -1,6 +1,7 @@
 # Reviewer Overview
 
-The reviewer runs in GitHub Actions (and Azure DevOps summary-only) and posts a structured review comment on PRs. It can use:
+The reviewer runs in GitHub Actions (and Azure DevOps summary-only) and posts a structured review comment on PRs. Azure DevOps summary-only uses the PR-level changes endpoint (cumulative diff).
+It can use:
 - ChatGPT (native transport) with a ChatGPT login bundle.
 - Copilot (via Copilot CLI) for teams already using GitHub Copilot.
 

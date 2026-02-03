@@ -115,6 +115,11 @@ Use this to skip the main review and only assess existing review threads.
 }
 ```
 
+## Azure DevOps notes
+- Summary-only mode uses the PR-level changes endpoint (cumulative diff for the PR), not per-iteration deltas.
+- Auth scheme heuristic when `azureAuthScheme` is not set: `SYSTEM_ACCESSTOKEN` defaults to `bearer`; otherwise a JWT-style token (two or more `.`) is treated as `bearer`; everything else is treated as `basic`/`pat`.
+- Set `azureAuthScheme` explicitly to override the heuristic.
+
 ## Path filters example
 
 ```json
