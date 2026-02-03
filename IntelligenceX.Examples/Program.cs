@@ -13,6 +13,7 @@ internal static class Program {
         new ExampleChatGptLogin(),
         new ExampleApiKeyLogin(),
         new ExampleCopilotChat(),
+        new ExampleToolRunner(),
         new ExampleChatLoop(),
         new ExampleThreadList(),
         new ExampleFluentChat(),

@@ -15,6 +15,9 @@ using IntelligenceX.Cli.Setup.Host;
 #endif
 using IntelligenceX.Copilot;
 using IntelligenceX.Json;
+using IntelligenceX.OpenAI.AppServer.Models;
+using IntelligenceX.OpenAI.Chat;
+using IntelligenceX.OpenAI.Tools;
 using IntelligenceX.OpenAI.Usage;
 using IntelligenceX.Rpc;
 #if INTELLIGENCEX_REVIEWER
@@ -38,6 +41,9 @@ internal static class Program {
         failed += Run("Copilot idle event", TestCopilotIdleEvent);
         failed += Run("ChatGPT usage parse", TestChatGptUsageParse);
         failed += Run("ChatGPT usage cache invalid JSON", TestChatGptUsageCacheInvalidJson);
+        failed += Run("Tool call parsing", TestToolCallParsing);
+        failed += Run("Tool call invalid JSON", TestToolCallParsingInvalidJson);
+        failed += Run("Tool output input", TestToolOutputInput);
 #if !NET472
         failed += Run("Setup args reject skip+update", TestSetupArgsRejectSkipUpdate);
         failed += Run("GitHub secrets reject empty value", TestGitHubSecretsRejectEmptyValue);
@@ -119,6 +125,50 @@ internal static class Program {
         }
     }
 #endif
+
+    private static void TestToolCallParsing() {
+        var output = new JsonObject()
+            .Add("type", "custom_tool_call")
+            .Add("call_id", "call_1")
+            .Add("name", "wsl_status")
+            .Add("input", "{\"name\":\"Ubuntu\"}");
+        var turn = TurnInfo.FromJson(new JsonObject()
+            .Add("id", "turn1")
+            .Add("output", new JsonArray().Add(output)));
+
+        var calls = ToolCallParser.Extract(turn);
+        AssertEqual(1, calls.Count, "tool call count");
+        AssertEqual("call_1", calls[0].CallId, "tool call id");
+        AssertEqual("wsl_status", calls[0].Name, "tool call name");
+        AssertEqual("Ubuntu", calls[0].Arguments?.GetString("name"), "tool call arg");
+    }
+
+    private static void TestToolCallParsingInvalidJson() {
+        var output = new JsonObject()
+            .Add("type", "custom_tool_call")
+            .Add("call_id", "call_2")
+            .Add("name", "wsl_status")
+            .Add("input", "{invalid");
+        var turn = TurnInfo.FromJson(new JsonObject()
+            .Add("id", "turn2")
+            .Add("output", new JsonArray().Add(output)));
+
+        var calls = ToolCallParser.Extract(turn);
+        AssertEqual(1, calls.Count, "tool call invalid count");
+        AssertEqual("call_2", calls[0].CallId, "tool call invalid id");
+        AssertEqual("wsl_status", calls[0].Name, "tool call invalid name");
+        AssertEqual(null, calls[0].Arguments, "tool call invalid args");
+    }
+
+    private static void TestToolOutputInput() {
+        var input = new ChatInput().AddToolOutput("call_42", "ok");
+        var json = CallChatInputToJson(input);
+        var item = json[0].AsObject();
+        AssertNotNull(item, "tool output item");
+        AssertEqual("custom_tool_call_output", item!.GetString("type"), "tool output type");
+        AssertEqual("call_42", item.GetString("call_id"), "tool output call id");
+        AssertEqual("ok", item.GetString("output"), "tool output value");
+    }
 
     private static int Run(string name, Action test) {
         try {
@@ -1009,6 +1059,15 @@ internal static class Program {
         if (value is null) {
             throw new InvalidOperationException($"Expected {name} to be non-null.");
         }
+    }
+
+    private static JsonArray CallChatInputToJson(ChatInput input) {
+        var method = typeof(ChatInput).GetMethod("ToJson", BindingFlags.NonPublic | BindingFlags.Instance);
+        if (method is null) {
+            throw new InvalidOperationException("ChatInput.ToJson method not found.");
+        }
+        var result = method.Invoke(input, Array.Empty<object>()) as JsonArray;
+        return result ?? new JsonArray();
     }
 
     private static void AssertThrows<T>(Action action, string name) where T : Exception {

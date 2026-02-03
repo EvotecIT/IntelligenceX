@@ -53,6 +53,22 @@ public sealed class ChatInput {
     }
 
     /// <summary>
+    /// Adds a tool output item to the input.
+    /// </summary>
+    /// <param name="callId">Tool call id.</param>
+    /// <param name="output">Tool output text.</param>
+    public ChatInput AddToolOutput(string callId, string output) {
+        if (string.IsNullOrWhiteSpace(callId)) {
+            throw new ArgumentException("Call id cannot be empty.", nameof(callId));
+        }
+        _items.Add(new JsonObject()
+            .Add("type", "custom_tool_call_output")
+            .Add("call_id", callId)
+            .Add("output", output ?? string.Empty));
+        return this;
+    }
+
+    /// <summary>
     /// Adds a local image path item to the input.
     /// </summary>
     /// <param name="path">Local image path.</param>

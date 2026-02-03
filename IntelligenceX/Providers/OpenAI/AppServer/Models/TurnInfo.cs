@@ -11,9 +11,10 @@ public sealed class TurnInfo {
     /// <summary>
     /// Initializes a new turn info model.
     /// </summary>
-    public TurnInfo(string id, string? status, IReadOnlyList<TurnOutput>? outputs, IReadOnlyList<TurnOutput>? imageOutputs,
+    public TurnInfo(string id, string? responseId, string? status, IReadOnlyList<TurnOutput>? outputs, IReadOnlyList<TurnOutput>? imageOutputs,
         JsonObject raw, JsonObject? additional) {
         Id = id;
+        ResponseId = responseId;
         Status = status;
         Outputs = outputs ?? Array.Empty<TurnOutput>();
         ImageOutputs = imageOutputs ?? Array.Empty<TurnOutput>();
@@ -22,9 +23,20 @@ public sealed class TurnInfo {
     }
 
     /// <summary>
+    /// Initializes a new turn info model.
+    /// </summary>
+    public TurnInfo(string id, string? status, IReadOnlyList<TurnOutput>? outputs, IReadOnlyList<TurnOutput>? imageOutputs,
+        JsonObject raw, JsonObject? additional)
+        : this(id, null, status, outputs, imageOutputs, raw, additional) { }
+
+    /// <summary>
     /// Gets the turn id.
     /// </summary>
     public string Id { get; }
+    /// <summary>
+    /// Gets the response id when available.
+    /// </summary>
+    public string? ResponseId { get; }
     /// <summary>
     /// Gets the turn status.
     /// </summary>
@@ -54,10 +66,12 @@ public sealed class TurnInfo {
     public static TurnInfo FromJson(JsonObject turnObj) {
         var id = turnObj.GetString("id") ?? string.Empty;
         var status = turnObj.GetString("status");
+        var responseId = turnObj.GetString("responseId")
+                         ?? turnObj.GetObject("response")?.GetString("id");
         var outputs = TurnOutput.FromTurn(turnObj);
         var images = TurnOutput.FilterImages(outputs);
         var additional = turnObj.ExtractAdditional(
-            "id", "status", "output", "outputs", "response", "result");
-        return new TurnInfo(id, status, outputs, images, turnObj, additional);
+            "id", "status", "responseId", "output", "outputs", "response", "result");
+        return new TurnInfo(id, responseId, status, outputs, images, turnObj, additional);
     }
 }
