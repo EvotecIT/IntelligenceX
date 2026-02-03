@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
@@ -19,6 +20,11 @@ internal sealed class AzureDevOpsClient : IDisposable {
     private const int RootCommentId = 0;
     private const int CommentTypeText = 1;
     private const int ThreadStatusActive = 1;
+    private static readonly Regex SensitiveTokenPattern =
+        new Regex("(?i)(authorization|token|pat)\\s*[:=]\\s*(?:bearer\\s+|basic\\s+)?[^\\s,;]+",
+            RegexOptions.Compiled);
+    private static readonly Regex SensitiveSchemePattern =
+        new Regex("(?i)\\b(bearer|basic)\\s+[^\\s,;]+", RegexOptions.Compiled);
     private readonly HttpClient _http;
 
     /// <summary>
@@ -173,7 +179,7 @@ internal sealed class AzureDevOpsClient : IDisposable {
         using var response = await _http.GetAsync(url, cancellationToken).ConfigureAwait(false);
         var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode) {
-            throw new InvalidOperationException($"Azure DevOps API request failed ({(int)response.StatusCode}): {content}");
+            throw new InvalidOperationException($"Azure DevOps API request failed ({(int)response.StatusCode}): {SanitizeErrorContent(content)}");
         }
         return JsonLite.Parse(content) ?? JsonValue.Null;
     }
@@ -183,7 +189,7 @@ internal sealed class AzureDevOpsClient : IDisposable {
         using var response = await _http.GetAsync(url, cancellationToken).ConfigureAwait(false);
         var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode) {
-            throw new InvalidOperationException($"Azure DevOps API request failed ({(int)response.StatusCode}): {content}");
+            throw new InvalidOperationException($"Azure DevOps API request failed ({(int)response.StatusCode}): {SanitizeErrorContent(content)}");
         }
 
         var token = TryGetContinuationToken(response);
@@ -207,7 +213,7 @@ internal sealed class AzureDevOpsClient : IDisposable {
         using var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
         var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode) {
-            throw new InvalidOperationException($"Azure DevOps API request failed ({(int)response.StatusCode}): {responseText}");
+            throw new InvalidOperationException($"Azure DevOps API request failed ({(int)response.StatusCode}): {SanitizeErrorContent(responseText)}");
         }
         return JsonLite.Parse(responseText) ?? JsonValue.Null;
     }
@@ -218,6 +224,55 @@ internal sealed class AzureDevOpsClient : IDisposable {
     }
 
     private static string Escape(string value) => Uri.EscapeDataString(value ?? string.Empty);
+
+    private static string SanitizeErrorContent(string? content) {
+        if (string.IsNullOrWhiteSpace(content)) {
+            return "empty response";
+        }
+
+        var text = content.Trim();
+        if (TryExtractJsonMessage(text, out var message)) {
+            text = message;
+        }
+
+        text = text.Replace("\r", " ").Replace("\n", " ").Trim();
+        text = SensitiveTokenPattern.Replace(text, "$1: ***");
+        text = SensitiveSchemePattern.Replace(text, "$1 ***");
+
+        const int maxLength = 400;
+        if (text.Length > maxLength) {
+            text = text.Substring(0, maxLength) + "...";
+        }
+
+        return text;
+    }
+
+    private static bool TryExtractJsonMessage(string text, out string message) {
+        message = string.Empty;
+        JsonValue? value;
+        try {
+            value = JsonLite.Parse(text);
+        } catch {
+            return false;
+        }
+
+        var obj = value?.AsObject();
+        if (obj is null) {
+            return false;
+        }
+
+        var result = obj.GetString("message")
+                     ?? obj.GetString("Message")
+                     ?? obj.GetString("errorMessage")
+                     ?? obj.GetString("error");
+
+        if (string.IsNullOrWhiteSpace(result)) {
+            return false;
+        }
+
+        message = result.Trim();
+        return true;
+    }
 }
 
 internal sealed record AzureDevOpsPullRequest(int PullRequestId, string Title, string? Description, bool IsDraft,

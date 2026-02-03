@@ -76,7 +76,7 @@ Status: Draft (needs priorities + owners)
 
 ### Phase 7 — Security + trust
 - [ ] Redact sensitive data before prompt (secrets, tokens, private keys).
-- [ ] Sanitize Azure DevOps API error payloads in logs.
+- [x] Sanitize Azure DevOps API error payloads in logs.
 - [ ] Add "untrusted PR" guardrails (no secret access, no write actions).
 - [ ] Add workflow integrity check (block self-modifying workflow runs).
 - [ ] Add audit logging for secrets usage.

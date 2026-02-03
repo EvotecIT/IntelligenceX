@@ -96,6 +96,7 @@ internal static class Program {
         failed += Run("Prompt language hints disabled", TestPromptBuilderLanguageHintsDisabled);
         failed += Run("Azure DevOps changes pagination", TestAzureDevOpsChangesPagination);
         failed += Run("Azure DevOps diff note zero iterations", TestAzureDevOpsDiffNoteZeroIterations);
+        failed += Run("Azure DevOps error sanitization", TestAzureDevOpsErrorSanitization);
         failed += Run("Context deny invalid regex", TestContextDenyInvalidRegex);
         failed += Run("Context deny timeout", TestContextDenyTimeout);
         failed += Run("Review summary parser", TestReviewSummaryParser);
@@ -1180,6 +1181,15 @@ internal static class Program {
         AssertEqual("pull request changes", note, "ado diff note zero");
     }
 
+    private static void TestAzureDevOpsErrorSanitization() {
+        var errorJson = "{\"message\":\"Authorization: Bearer abc123\"}";
+        var sanitized = CallAzureDevOpsSanitize(errorJson);
+        AssertContainsText(sanitized, "***", "sanitized token");
+        if (sanitized.Contains("abc123", StringComparison.OrdinalIgnoreCase)) {
+            throw new InvalidOperationException("Expected token value to be redacted.");
+        }
+    }
+
     private static PullRequestFile[] BuildFiles(params string[] paths) {
         var files = new PullRequestFile[paths.Length];
         for (var i = 0; i < paths.Length; i++) {
@@ -1191,6 +1201,15 @@ internal static class Program {
     private static PullRequestContext BuildContext() {
         return new PullRequestContext("owner/repo", "owner", "repo", 1, "Test title", "Test body", false, "head", "base",
             Array.Empty<string>());
+    }
+
+    private static string CallAzureDevOpsSanitize(string content) {
+        var method = typeof(AzureDevOpsClient).GetMethod("SanitizeErrorContent", BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("SanitizeErrorContent method not found.");
+        }
+        var result = method.Invoke(null, new object?[] { content }) as string;
+        return result ?? string.Empty;
     }
 
     private static IReadOnlyList<string> GetFilenames(IReadOnlyList<PullRequestFile> files) {
