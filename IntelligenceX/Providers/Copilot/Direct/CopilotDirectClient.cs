@@ -39,7 +39,7 @@ public sealed class CopilotDirectClient : IDisposable {
             _authorization = new AuthenticationHeaderValue("Bearer", options.Token);
         }
         foreach (var entry in options.Headers) {
-            if (string.IsNullOrWhiteSpace(entry.Key) || entry.Value is null) {
+            if (string.IsNullOrWhiteSpace(entry.Key) || string.IsNullOrWhiteSpace(entry.Value)) {
                 continue;
             }
             if (ContainsNewline(entry.Key) || ContainsNewline(entry.Value)) {

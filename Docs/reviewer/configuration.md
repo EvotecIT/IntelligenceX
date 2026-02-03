@@ -218,7 +218,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `azureBaseUrl`: override Azure DevOps base URL (defaults to `SYSTEM_COLLECTIONURI` or `https://dev.azure.com/{org}`)
 - `azureTokenEnv`: env var name that contains the ADO token (default `SYSTEM_ACCESSTOKEN` if set)
 - `azureAuthScheme`: `bearer` (System.AccessToken) or `basic`/`pat`
-- `copilot.transport`: `cli` or `direct` (experimental)
+- `copilot.transport`: `cli` or `direct` (aliases: `api`, `http`)
 - `copilot.inheritEnvironment`: inherit full runner environment for Copilot CLI (`true` by default)
 
 **Path filter order of operations**

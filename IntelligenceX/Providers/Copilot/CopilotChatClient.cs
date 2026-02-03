@@ -66,13 +66,13 @@ public sealed class CopilotChatClient : IDisposable
                 throw new InvalidOperationException("Copilot direct transport requires a model.");
             }
             if (_directClient is null) {
-                _directClient = new CopilotDirectClient(_options.Direct);
+                throw new InvalidOperationException("Copilot direct client is not initialized.");
             }
             return await _directClient.ChatAsync(prompt, effectiveModel!, cancellationToken).ConfigureAwait(false);
         }
 
         if (_cliClient is null) {
-            _cliClient = await CopilotClient.StartAsync(_options.Cli, cancellationToken).ConfigureAwait(false);
+            throw new InvalidOperationException("Copilot CLI client is not initialized.");
         }
 
         var sessionOptions = new CopilotSessionOptions();
@@ -88,7 +88,7 @@ public sealed class CopilotChatClient : IDisposable
             return response ?? string.Empty;
         } finally {
             try {
-                await _cliClient.DeleteSessionAsync(session.SessionId, cancellationToken).ConfigureAwait(false);
+                await _cliClient.DeleteSessionAsync(session.SessionId, CancellationToken.None).ConfigureAwait(false);
             } catch {
                 // Ignore session cleanup failures.
             }
@@ -106,7 +106,12 @@ public sealed class CopilotChatClient : IDisposable
     /// Disposes the client synchronously.
     /// </summary>
     public void Dispose() {
-        DisposeAsync().GetAwaiter().GetResult();
+        if (_disposed) {
+            return;
+        }
+        _disposed = true;
+        _directClient?.Dispose();
+        _cliClient?.Dispose();
     }
 
 #if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER

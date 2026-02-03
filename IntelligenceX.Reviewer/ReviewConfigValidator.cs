@@ -105,6 +105,14 @@ internal static class ReviewConfigValidator {
 
         if (copilotSchema is not null && rootObj.TryGetValue("copilot", out var copilotValue)) {
             ValidateNode(copilotSchema, copilotValue, "$.copilot", errors, warnings);
+            var copilotObj = copilotValue?.AsObject();
+            if (copilotObj is not null) {
+                var directToken = copilotObj.GetString("directToken");
+                if (!string.IsNullOrWhiteSpace(directToken)) {
+                    warnings.Add(new ReviewConfigValidationIssue("$.copilot.directToken",
+                        "Avoid storing tokens in config files; prefer copilot.directTokenEnv."));
+                }
+            }
         }
         if (cleanupSchema is not null && rootObj.TryGetValue("cleanup", out var cleanupValue)) {
             ValidateNode(cleanupSchema, cleanupValue, "$.cleanup", errors, warnings);
