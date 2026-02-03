@@ -5,6 +5,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.Setup.Wizard;
@@ -15,6 +16,7 @@ using IntelligenceX.OpenAI.Usage;
 namespace IntelligenceX.Cli.Setup.Web;
 
 internal sealed class WebApi {
+    private static readonly Regex RepoSegmentRegex = new("^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task HandleAsync(System.Net.HttpListenerContext context) {
@@ -296,9 +298,14 @@ internal sealed class WebApi {
             await WriteJsonAsync(context, new { error = "Missing clientId" }).ConfigureAwait(false);
             return;
         }
+        if (!TryGetAuthBaseUrl(request.AuthBaseUrl, out var authBaseUrl, out var authError)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = authError }).ConfigureAwait(false);
+            return;
+        }
 
         try {
-            var result = await GitHubDeviceFlowClient.RequestCodeAsync(effectiveClientId, request.AuthBaseUrl, request.Scopes)
+            var result = await GitHubDeviceFlowClient.RequestCodeAsync(effectiveClientId, authBaseUrl, request.Scopes)
                 .ConfigureAwait(false);
             await WriteJsonAsync(context, result).ConfigureAwait(false);
         } catch (Exception ex) {
@@ -319,9 +326,14 @@ internal sealed class WebApi {
             await WriteJsonAsync(context, new { error = "Missing clientId or deviceCode" }).ConfigureAwait(false);
             return;
         }
+        if (!TryGetAuthBaseUrl(request.AuthBaseUrl, out var authBaseUrl, out var authError)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = authError }).ConfigureAwait(false);
+            return;
+        }
 
         try {
-            var token = await GitHubDeviceFlowClient.PollTokenAsync(effectiveClientId, request.DeviceCode!, request.AuthBaseUrl, request.IntervalSeconds, request.ExpiresIn)
+            var token = await GitHubDeviceFlowClient.PollTokenAsync(effectiveClientId, request.DeviceCode!, authBaseUrl, request.IntervalSeconds, request.ExpiresIn)
                 .ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(token)) {
                 context.Response.StatusCode = 408;
@@ -354,7 +366,7 @@ internal sealed class WebApi {
             var result = await GitHubAppManifestFlow.RunAsync(new GitHubAppManifestOptions {
                 AppName = request.AppName!,
                 Owner = request.Owner,
-                AuthBaseUrl = request.AuthBaseUrl ?? "https://github.com",
+                AuthBaseUrl = ResolveAuthBaseUrl(request.AuthBaseUrl),
                 ApiBaseUrl = apiBaseUrl
             }, CancellationToken.None).ConfigureAwait(false);
 
@@ -514,6 +526,7 @@ internal sealed class WebApi {
                 var content = Encoding.UTF8.GetString(raw);
                 var tempPath = Path.Combine(Path.GetTempPath(), $"intelligencex-auth-{Guid.NewGuid():N}.json");
                 await File.WriteAllTextAsync(tempPath, content).ConfigureAwait(false);
+                TryHardenTempFile(tempPath);
                 tempFile = new TempFile(tempPath);
                 authPath = tempPath;
             }
@@ -527,7 +540,12 @@ internal sealed class WebApi {
                 AuthStore = new FileAuthBundleStore(authPath, request.AuthKey)
             };
             if (!string.IsNullOrWhiteSpace(request.ChatGptApiBaseUrl)) {
-                options.ChatGptApiBaseUrl = request.ChatGptApiBaseUrl!;
+                if (!TryGetChatGptApiBaseUrl(request.ChatGptApiBaseUrl, out var chatGptBaseUrl, out var chatGptError)) {
+                    context.Response.StatusCode = 400;
+                    await WriteJsonAsync(context, new { error = chatGptError }).ConfigureAwait(false);
+                    return;
+                }
+                options.ChatGptApiBaseUrl = chatGptBaseUrl;
             }
 
             using var service = new ChatGptUsageService(options);
@@ -640,8 +658,8 @@ internal sealed class WebApi {
             } else {
                 Process.Start("xdg-open", safeUrl);
             }
-        } catch {
-            // Best effort - user may need to open URL manually
+        } catch (Exception ex) {
+            Trace.TraceWarning($"Failed to open browser: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -656,8 +674,8 @@ internal sealed class WebApi {
     private static void TrySaveCache(ChatGptUsageSnapshot snapshot) {
         try {
             ChatGptUsageCache.Save(snapshot);
-        } catch {
-            // Best-effort cache.
+        } catch (Exception ex) {
+            Trace.TraceWarning($"Failed to save usage cache: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -747,7 +765,12 @@ internal sealed class WebApi {
     private static readonly SemaphoreSlim ConsoleLock = new(1, 1);
 
     private async Task<SetupResponse> RunSetupAsync(string[] args) {
-        await ConsoleLock.WaitAsync().ConfigureAwait(false);
+        if (!await ConsoleLock.WaitAsync(TimeSpan.FromMinutes(2)).ConfigureAwait(false)) {
+            return new SetupResponse {
+                ExitCode = 1,
+                Error = "Setup is busy. Please retry in a moment."
+            };
+        }
         try {
             using var output = new StringWriter();
             using var error = new StringWriter();
@@ -847,6 +870,56 @@ internal sealed class WebApi {
             return true;
         }
         error = "ApiBaseUrl must use https (http allowed only for localhost).";
+        return false;
+    }
+
+    private static bool TryGetAuthBaseUrl(string? requested, out string authBaseUrl, out string error) {
+        authBaseUrl = "https://github.com";
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(requested)) {
+            return true;
+        }
+        if (!Uri.TryCreate(requested, UriKind.Absolute, out var uri)) {
+            error = "AuthBaseUrl must be a valid absolute URL.";
+            return false;
+        }
+        if (uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)) {
+            authBaseUrl = uri.ToString().TrimEnd('/');
+            return true;
+        }
+        if (uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) && uri.IsLoopback) {
+            authBaseUrl = uri.ToString().TrimEnd('/');
+            return true;
+        }
+        error = "AuthBaseUrl must use https (http allowed only for localhost).";
+        return false;
+    }
+
+    private static string ResolveAuthBaseUrl(string? requested) {
+        return TryGetAuthBaseUrl(requested, out var resolved, out _)
+            ? resolved
+            : "https://github.com";
+    }
+
+    private static bool TryGetChatGptApiBaseUrl(string? requested, out string apiBaseUrl, out string error) {
+        apiBaseUrl = string.Empty;
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(requested)) {
+            return true;
+        }
+        if (!Uri.TryCreate(requested, UriKind.Absolute, out var uri)) {
+            error = "ChatGptApiBaseUrl must be a valid absolute URL.";
+            return false;
+        }
+        if (uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)) {
+            apiBaseUrl = uri.ToString().TrimEnd('/');
+            return true;
+        }
+        if (uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) && uri.IsLoopback) {
+            apiBaseUrl = uri.ToString().TrimEnd('/');
+            return true;
+        }
+        error = "ChatGptApiBaseUrl must use https (http allowed only for localhost).";
         return false;
     }
 
@@ -1005,9 +1078,21 @@ internal sealed class WebApi {
                 if (File.Exists(_path)) {
                     File.Delete(_path);
                 }
-            } catch {
-                // Best-effort cleanup.
+            } catch (Exception ex) {
+                Trace.TraceWarning($"Temp file cleanup failed: {ex.GetType().Name}: {ex.Message}");
             }
+        }
+    }
+
+    private static void TryHardenTempFile(string path) {
+        try {
+            if (!File.Exists(path)) {
+                return;
+            }
+            var attrs = File.GetAttributes(path);
+            File.SetAttributes(path, attrs | FileAttributes.Temporary | FileAttributes.Hidden);
+        } catch (Exception ex) {
+            Trace.TraceWarning($"Temp file harden failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -1128,7 +1213,13 @@ internal sealed class WebApi {
         }
         owner = parts[0];
         name = parts[1];
-        return !string.IsNullOrWhiteSpace(owner) && !string.IsNullOrWhiteSpace(name);
+        if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(name)) {
+            return false;
+        }
+        if (!RepoSegmentRegex.IsMatch(owner) || !RepoSegmentRegex.IsMatch(name)) {
+            return false;
+        }
+        return true;
     }
 }
 
