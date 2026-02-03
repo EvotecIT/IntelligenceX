@@ -1,7 +1,7 @@
 {
   "SchemaVersion": 1,
   "Name": "IntelligenceX",
-  "BaseUrl": "https://evotecit.github.io/IntelligenceX",
+  "BaseUrl": "https://intelligencex.dev",
   "DefaultTheme": "intelligencex",
   "TrailingSlash": "always",
   "ContentRoot": "content",
@@ -52,7 +52,7 @@
   "AssetRegistry": {
     "CssStrategy": "standard",
     "Bundles": [
-      { "Name": "global", "Css": ["/css/main.css", "/css/prism-theme.css"], "Js": ["/js/main.js"] },
+      { "Name": "global", "Css": ["/css/main.css"], "Js": ["/js/main.js"] },
       { "Name": "home", "Css": ["/css/home.css"], "Js": ["/js/main.js"] },
       { "Name": "docs", "Css": ["/css/docs.css"], "Js": ["/js/main.js"] }
     ],
@@ -80,9 +80,9 @@
   "Prism": {
     "Mode": "auto",
     "Source": "local",
+    "ThemeLight": "/css/prism-theme.css",
+    "ThemeDark": "/css/prism-theme.css",
     "Local": {
-      "ThemeLight": "/assets/prism/prism.css",
-      "ThemeDark": "/assets/prism/prism-okaidia.css",
       "Core": "/assets/prism/prism-core.min.js",
       "Autoloader": "/assets/prism/prism-autoloader.min.js",
       "LanguagesPath": "/assets/prism/components/"

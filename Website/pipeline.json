@@ -44,7 +44,7 @@
     {
       "task": "sitemap",
       "siteRoot": "./_site",
-      "baseUrl": "https://evotecit.github.io/IntelligenceX",
+      "baseUrl": "https://intelligencex.dev",
       "html": true,
       "htmlTitle": "IntelligenceX Sitemap",
       "entries": [
