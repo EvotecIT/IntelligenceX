@@ -63,25 +63,34 @@ internal sealed class AzureDevOpsClient : IDisposable {
     /// </summary>
     public async Task<int?> GetLatestIterationIdAsync(string project, string repositoryId, int pullRequestId,
         CancellationToken cancellationToken) {
+        var ids = await GetIterationIdsAsync(project, repositoryId, pullRequestId, cancellationToken).ConfigureAwait(false);
+        return ids.Count == 0 ? null : ids[^1];
+    }
+
+    /// <summary>
+    /// Returns the list of iteration ids for a pull request (ascending order).
+    /// </summary>
+    public async Task<IReadOnlyList<int>> GetIterationIdsAsync(string project, string repositoryId, int pullRequestId,
+        CancellationToken cancellationToken) {
         var url = $"{Escape(project)}/_apis/git/repositories/{Escape(repositoryId)}/pullRequests/{pullRequestId}/iterations?api-version={ApiVersion}";
         var json = await GetJsonAsync(url, cancellationToken).ConfigureAwait(false);
         var array = json.AsObject()?.GetArray("value");
         if (array is null || array.Count == 0) {
-            return null;
+            return Array.Empty<int>();
         }
-        int? max = null;
+        var ids = new List<int>();
         foreach (var entry in array) {
             var id = entry.AsObject()?.GetInt64("id");
-            if (!id.HasValue) {
+            if (!id.HasValue || id.Value <= 0 || id.Value > int.MaxValue) {
                 continue;
             }
-            if (id.Value > int.MaxValue) {
-                continue;
-            }
-            var value = (int)id.Value;
-            max = !max.HasValue || value > max ? value : max;
+            ids.Add((int)id.Value);
         }
-        return max;
+        if (ids.Count == 0) {
+            return Array.Empty<int>();
+        }
+        ids.Sort();
+        return ids;
     }
 
     /// <summary>

@@ -42,15 +42,15 @@ internal static class AzureDevOpsReviewRunner {
             return 1;
         }
 
-        var iterationId = await client.GetLatestIterationIdAsync(project, repositoryId, pr.PullRequestId, cancellationToken)
+        var iterationIds = await client.GetIterationIdsAsync(project, repositoryId, pr.PullRequestId, cancellationToken)
             .ConfigureAwait(false);
-        if (!iterationId.HasValue) {
+        if (iterationIds.Count == 0) {
             Console.Error.WriteLine("Azure DevOps pull request iterations are unavailable.");
             return 1;
         }
-
-        var files = await client.GetPullRequestChangesAsync(project, repositoryId, pr.PullRequestId, iterationId.Value,
-            cancellationToken).ConfigureAwait(false);
+        var latestIterationId = iterationIds[^1];
+        var files = await GetPullRequestChangesAcrossIterationsAsync(client, project, repositoryId, pr.PullRequestId,
+            iterationIds, cancellationToken).ConfigureAwait(false);
         if (files.Count == 0) {
             Console.WriteLine("No files to review.");
             return 0;
@@ -70,7 +70,9 @@ internal static class AzureDevOpsReviewRunner {
         var limited = LimitFiles(filtered, settings.MaxFiles);
         var context = new PullRequestContext($"{pr.Project}/{pr.RepositoryName}", pr.Project, pr.RepositoryName,
             pr.PullRequestId, pr.Title, pr.Description, pr.IsDraft, pr.SourceCommit, pr.TargetCommit, Array.Empty<string>());
-        var diffNote = $"iteration {iterationId.Value}";
+        var diffNote = iterationIds.Count == 1
+            ? $"iteration {latestIterationId}"
+            : $"iterations {iterationIds[0]}-{latestIterationId} (count {iterationIds.Count})";
         var prompt = PromptBuilder.Build(context, limited, settings, diffNote, null, inlineSupported: false);
         if (settings.RedactPii) {
             prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
@@ -105,6 +107,26 @@ internal static class AzureDevOpsReviewRunner {
             return files;
         }
         return files.Take(maxFiles).ToList();
+    }
+
+    private static async Task<IReadOnlyList<PullRequestFile>> GetPullRequestChangesAcrossIterationsAsync(
+        AzureDevOpsClient client, string project, string repositoryId, int pullRequestId, IReadOnlyList<int> iterationIds,
+        CancellationToken cancellationToken) {
+        var merged = new Dictionary<string, PullRequestFile>(StringComparer.Ordinal);
+        foreach (var iterationId in iterationIds) {
+            var changes = await client.GetPullRequestChangesAsync(project, repositoryId, pullRequestId, iterationId, cancellationToken)
+                .ConfigureAwait(false);
+            if (changes.Count == 0) {
+                continue;
+            }
+            foreach (var file in changes) {
+                merged[file.Filename] = file;
+            }
+        }
+        if (merged.Count == 0) {
+            return Array.Empty<PullRequestFile>();
+        }
+        return merged.Values.OrderBy(file => file.Filename, StringComparer.Ordinal).ToList();
     }
 
     private static AzureDevOpsOptions ResolveOptions(ReviewSettings settings) {
