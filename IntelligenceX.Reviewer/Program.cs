@@ -1354,11 +1354,31 @@ public static class ReviewerApp {
             return true;
         }
         var extra = segment.Length + (sb.Length > 0 ? newline.Length : 0);
-        var reserve = lastText.Length + newline.Length;
+        var reserve = 0;
         if (includeMarker) {
             reserve += marker.Length + newline.Length;
         }
+        if (!string.IsNullOrEmpty(lastText)) {
+            reserve += lastText.Length + newline.Length;
+        }
         return sb.Length + extra + reserve <= maxChars;
+    }
+
+    private static bool CanAppendTail(StringBuilder sb, int maxChars, string newline,
+        string lastText, string marker, bool includeMarker) {
+        var currentLength = sb.Length;
+        if (includeMarker) {
+            var markerExtra = marker.Length + (currentLength > 0 ? newline.Length : 0);
+            if (currentLength + markerExtra > maxChars) {
+                return false;
+            }
+            currentLength += markerExtra;
+        }
+        if (string.IsNullOrEmpty(lastText)) {
+            return true;
+        }
+        var lastExtra = lastText.Length + (currentLength > 0 ? newline.Length : 0);
+        return currentLength + lastExtra <= maxChars;
     }
 
     private static bool TryAppendSegment(StringBuilder sb, string segment, int maxChars, string newline) {
