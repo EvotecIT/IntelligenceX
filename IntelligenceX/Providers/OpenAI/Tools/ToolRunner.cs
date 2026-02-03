@@ -38,6 +38,7 @@ public static class ToolRunner {
 
         runnerOptions ??= new ToolRunnerOptions();
         var maxRounds = Math.Max(1, runnerOptions.MaxRounds);
+        var runInParallel = runnerOptions.ParallelToolCalls || options.ParallelToolCalls == true;
 
         var originalTools = options.Tools;
         var originalChoice = options.ToolChoice;
@@ -64,7 +65,7 @@ public static class ToolRunner {
                 }
                 allCalls.AddRange(calls);
 
-                var outputs = await ExecuteToolsAsync(calls, registry, cancellationToken).ConfigureAwait(false);
+                var outputs = await ExecuteToolsAsync(calls, registry, runInParallel, cancellationToken).ConfigureAwait(false);
                 allOutputs.AddRange(outputs);
 
                 previousResponseId = TryGetResponseId(turn);
@@ -84,16 +85,29 @@ public static class ToolRunner {
     }
 
     private static async Task<IReadOnlyList<ToolOutput>> ExecuteToolsAsync(IReadOnlyList<ToolCall> calls, ToolRegistry registry,
-        CancellationToken cancellationToken) {
-        var outputs = new List<ToolOutput>(calls.Count);
-        foreach (var call in calls) {
-            if (!registry.TryGet(call.Name, out var tool)) {
-                throw new InvalidOperationException($"Tool '{call.Name}' is not registered.");
+        bool runInParallel, CancellationToken cancellationToken) {
+        if (!runInParallel || calls.Count <= 1) {
+            var outputs = new List<ToolOutput>(calls.Count);
+            foreach (var call in calls) {
+                outputs.Add(await ExecuteToolAsync(call, registry, cancellationToken).ConfigureAwait(false));
             }
-            var result = await tool.InvokeAsync(call.Arguments, cancellationToken).ConfigureAwait(false);
-            outputs.Add(new ToolOutput(call.CallId, result ?? string.Empty));
+            return outputs;
         }
-        return outputs;
+
+        var tasks = new Task<ToolOutput>[calls.Count];
+        for (var i = 0; i < calls.Count; i++) {
+            var call = calls[i];
+            tasks[i] = ExecuteToolAsync(call, registry, cancellationToken);
+        }
+        return await Task.WhenAll(tasks).ConfigureAwait(false);
+    }
+
+    private static async Task<ToolOutput> ExecuteToolAsync(ToolCall call, ToolRegistry registry, CancellationToken cancellationToken) {
+        if (!registry.TryGet(call.Name, out var tool)) {
+            throw new InvalidOperationException($"Tool '{call.Name}' is not registered.");
+        }
+        var result = await tool.InvokeAsync(call.Arguments, cancellationToken).ConfigureAwait(false);
+        return new ToolOutput(call.CallId, result ?? string.Empty);
     }
 
     private static string? TryGetResponseId(TurnInfo turn) {
@@ -120,6 +134,10 @@ public sealed class ToolRunnerOptions {
     /// Maximum number of tool-call rounds allowed.
     /// </summary>
     public int MaxRounds { get; set; } = 3;
+    /// <summary>
+    /// Whether to execute tool calls in parallel.
+    /// </summary>
+    public bool ParallelToolCalls { get; set; }
 }
 
 /// <summary>

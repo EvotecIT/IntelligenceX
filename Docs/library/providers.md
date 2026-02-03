@@ -5,6 +5,7 @@
 - Uses ChatGPT OAuth login and stores tokens under `~/.intelligencex/auth.json`
 - Best for users with an existing ChatGPT subscription
 - Works with the `EasySession` and `IntelligenceXClient` helpers
+- Supports native tool calling via `ToolRunner` and `ToolRegistry`
 
 ```csharp
 using IntelligenceX.OpenAI;

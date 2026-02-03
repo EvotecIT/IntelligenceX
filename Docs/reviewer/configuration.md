@@ -116,8 +116,8 @@ Use this to skip the main review and only assess existing review threads.
 ```
 
 ## Azure DevOps notes
-- Summary-only mode uses the PR-level changes endpoint (cumulative diff for the PR), not per-iteration deltas.
-- Auth scheme heuristic when `azureAuthScheme` is not set: `SYSTEM_ACCESSTOKEN` defaults to `bearer`; otherwise a JWT-style token (two or more `.`) is treated as `bearer`; everything else is treated as `basic`/`pat`.
+- The reviewer uses the PR-level changes endpoint and follows continuation tokens for large diffs.
+- Auth scheme heuristic when `azureAuthScheme` is not set: `SYSTEM_ACCESSTOKEN` defaults to `bearer`; otherwise a JWT-style token (two or more `.`) is treated as `bearer`; everything else defaults to `basic`/`pat`.
 - Set `azureAuthScheme` explicitly to override the heuristic.
 
 ## Path filters example
@@ -267,7 +267,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `azureOrg`/`azureProject`/`azureRepo`: Azure DevOps identifiers
 - `azureBaseUrl`: override Azure DevOps base URL (defaults to `SYSTEM_COLLECTIONURI` or `https://dev.azure.com/{org}`)
 - `azureTokenEnv`: env var name that contains the ADO token (default `SYSTEM_ACCESSTOKEN` if set)
-- `azureAuthScheme`: `bearer` (System.AccessToken) or `basic`/`pat`
+- `azureAuthScheme`: `bearer` (System.AccessToken/JWT) or `basic`/`pat`
 - `copilot.transport`: `cli` or `direct` (aliases: `api`, `http`)
 - `copilot.inheritEnvironment`: inherit full runner environment for Copilot CLI (`true` by default)
 

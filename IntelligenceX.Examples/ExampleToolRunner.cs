@@ -25,10 +25,12 @@ internal sealed class ExampleToolRunner : IExample {
 
         var input = ChatInput.FromText("Is WSL running? Summarize the distribution status.");
         var chatOptions = new ChatOptions {
-            Model = "gpt-5.2-codex"
+            Model = "gpt-5.2-codex",
+            ParallelToolCalls = true
         };
 
-        var result = await ToolRunner.RunAsync(client, input, chatOptions, registry).ConfigureAwait(false);
+        var result = await ToolRunner.RunAsync(client, input, chatOptions, registry,
+            new ToolRunnerOptions { MaxRounds = 3, ParallelToolCalls = true }).ConfigureAwait(false);
         var summary = EasyChatResult.FromTurn(result.FinalTurn);
 
         Console.WriteLine();
