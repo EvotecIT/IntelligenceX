@@ -62,7 +62,10 @@ internal static class AzureDevOpsReviewRunner {
             return 0;
         }
 
-        var limited = LimitFiles(filtered, settings.MaxFiles);
+        var (limited, budgetNote) = LimitFiles(filtered, settings.MaxFiles, settings.MaxPatchChars);
+        if (!settings.ReviewBudgetSummary) {
+            budgetNote = string.Empty;
+        }
         var context = new PullRequestContext($"{pr.Project}/{pr.RepositoryName}", pr.Project, pr.RepositoryName,
             pr.PullRequestId, pr.Title, pr.Description, pr.IsDraft, pr.SourceCommit, pr.TargetCommit, Array.Empty<string>());
         var diffNote = BuildDiffNote(iterationIds);
@@ -74,7 +77,7 @@ internal static class AzureDevOpsReviewRunner {
         var runner = new ReviewRunner(settings);
         var reviewBody = await runner.RunAsync(prompt, null, null, cancellationToken).ConfigureAwait(false);
         var commentBody = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: false,
-            inlineSuppressed: false, autoResolveNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+            inlineSuppressed: false, autoResolveNote: string.Empty, budgetNote, usageLine: string.Empty, findingsBlock: string.Empty);
 
         await client.CreatePullRequestThreadAsync(project, repositoryId, pr.PullRequestId, commentBody, cancellationToken)
             .ConfigureAwait(false);
@@ -95,11 +98,14 @@ internal static class AzureDevOpsReviewRunner {
         return true;
     }
 
-    private static IReadOnlyList<PullRequestFile> LimitFiles(IReadOnlyList<PullRequestFile> files, int maxFiles) {
+    private static (IReadOnlyList<PullRequestFile> Files, string BudgetNote) LimitFiles(IReadOnlyList<PullRequestFile> files,
+        int maxFiles, int maxPatchChars) {
         if (maxFiles <= 0 || files.Count <= maxFiles) {
-            return files;
+            return (files, ReviewerApp.BuildBudgetNote(files.Count, files.Count, 0, maxPatchChars));
         }
-        return files.Take(maxFiles).ToList();
+        var limited = files.Take(maxFiles).ToList();
+        var note = ReviewerApp.BuildBudgetNote(files.Count, limited.Count, 0, maxPatchChars);
+        return (limited, note);
     }
 
     internal static string BuildDiffNote(IReadOnlyList<int> iterationIds) {

@@ -181,7 +181,10 @@ public static class ReviewerApp {
             var inlineSupported = !string.Equals(settings.Mode, "summary", StringComparison.OrdinalIgnoreCase) &&
                                   settings.MaxInlineComments > 0 &&
                                   !string.IsNullOrWhiteSpace(context.HeadSha);
-            var limitedFiles = PrepareFiles(files, settings.MaxFiles, settings.MaxPatchChars);
+            var (limitedFiles, budgetNote) = PrepareFiles(files, settings.MaxFiles, settings.MaxPatchChars);
+            if (!settings.ReviewBudgetSummary) {
+                budgetNote = string.Empty;
+            }
             var prompt = PromptBuilder.Build(context, limitedFiles, settings, diffNote, extras, inlineSupported, previousSummary);
             if (settings.RedactPii) {
                 prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
@@ -249,7 +252,7 @@ public static class ReviewerApp {
             var usageLine = await TryBuildUsageLineAsync(settings).ConfigureAwait(false);
             var findingsBlock = settings.StructuredFindings ? ReviewFindingsBuilder.Build(inlineComments) : string.Empty;
             var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported, inlineSuppressed,
-                autoResolveSummary, usageLine, findingsBlock);
+                autoResolveSummary, budgetNote, usageLine, findingsBlock);
             progress.Review = ReviewProgressState.Complete;
             progress.Finalize = ReviewProgressState.InProgress;
             progress.StatusLine = "Finalizing summary.";
@@ -441,8 +444,10 @@ public static class ReviewerApp {
         return allMatch;
     }
 
-    private static IReadOnlyList<PullRequestFile> PrepareFiles(IReadOnlyList<PullRequestFile> files, int maxFiles, int maxPatchChars) {
+    private static (IReadOnlyList<PullRequestFile> Files, string BudgetNote) PrepareFiles(IReadOnlyList<PullRequestFile> files,
+        int maxFiles, int maxPatchChars) {
         var list = new List<PullRequestFile>();
+        var truncatedPatches = 0;
         var count = 0;
         foreach (var file in files) {
             if (count >= maxFiles) {
@@ -450,12 +455,32 @@ public static class ReviewerApp {
             }
             var patch = file.Patch;
             if (!string.IsNullOrWhiteSpace(patch)) {
-                patch = TrimPatch(patch, maxPatchChars);
+                var trimmed = TrimPatch(patch, maxPatchChars);
+                if (!string.Equals(trimmed, patch, StringComparison.Ordinal)) {
+                    truncatedPatches++;
+                }
+                patch = trimmed;
             }
             list.Add(new PullRequestFile(file.Filename, file.Status, patch));
             count++;
         }
-        return list;
+        var budgetNote = BuildBudgetNote(files.Count, list.Count, truncatedPatches, maxPatchChars);
+        return (list, budgetNote);
+    }
+
+    internal static string BuildBudgetNote(int totalFiles, int includedFiles, int truncatedPatches, int maxPatchChars) {
+        var parts = new List<string>();
+        if (totalFiles > includedFiles) {
+            parts.Add($"showing first {includedFiles} of {totalFiles} files");
+        }
+        if (truncatedPatches > 0) {
+            var label = truncatedPatches == 1 ? "patch" : "patches";
+            parts.Add($"{truncatedPatches} {label} trimmed to {maxPatchChars} chars");
+        }
+        if (parts.Count == 0) {
+            return string.Empty;
+        }
+        return $"Review context truncated: {string.Join("; ", parts)}.";
     }
 
     /// <summary>

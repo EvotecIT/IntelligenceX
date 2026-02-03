@@ -72,7 +72,7 @@ Status: Draft (needs priorities + owners)
 - [ ] Add concurrency controls to avoid API throttling.
 - [ ] Consider shared HttpClient/IHttpClientFactory for Azure DevOps client.
 - [ ] Add token budgeting per file/group with hard caps.
-- [ ] Add optional "budget exceeded" summary behavior.
+- [x] Add optional "budget exceeded" summary behavior.
 
 ### Phase 7 — Security + trust
 - [ ] Redact sensitive data before prompt (secrets, tokens, private keys).
