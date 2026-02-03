@@ -38,7 +38,7 @@ Status: Draft (needs priorities + owners)
 ### Phase 3 — Review output + UX
 - [ ] Add optional "reasoning level" label in header (low/medium/high) when provider supports it.
 - [ ] Add optional usage/limits line near model header (opt-in; ChatGPT auth).
-- [ ] Add structured findings schema for bots/automation (severity + file + line).
+- [x] Add structured findings schema for bots/automation (severity + file + line).
 - [ ] Add summary stability (avoid noisy rewording across reruns).
 - [x] Add “triage mode” that only checks open threads.
 

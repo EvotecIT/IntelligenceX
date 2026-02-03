@@ -78,6 +78,7 @@ internal sealed class ReviewSettings {
     public bool ReviewUsageSummary { get; set; }
     public int ReviewUsageSummaryCacheMinutes { get; set; } = 10;
     public int ReviewUsageSummaryTimeoutSeconds { get; set; } = 10;
+    public bool StructuredFindings { get; set; }
     public OpenAITransportKind OpenAITransport { get; set; } = OpenAITransportKind.AppServer;
     public int RetryCount { get; set; } = 3;
     public int RetryDelaySeconds { get; set; } = 5;
@@ -308,6 +309,10 @@ internal sealed class ReviewSettings {
         if (!string.IsNullOrWhiteSpace(usageTimeoutSeconds)) {
             settings.ReviewUsageSummaryTimeoutSeconds =
                 Math.Max(1, ParseNonNegativeInt(usageTimeoutSeconds, settings.ReviewUsageSummaryTimeoutSeconds));
+        }
+        var structuredFindings = GetInput("structured_findings", "REVIEW_STRUCTURED_FINDINGS");
+        if (!string.IsNullOrWhiteSpace(structuredFindings)) {
+            settings.StructuredFindings = ParseBoolean(structuredFindings, settings.StructuredFindings);
         }
 
         var transport = GetInput("openai_transport", "OPENAI_TRANSPORT");

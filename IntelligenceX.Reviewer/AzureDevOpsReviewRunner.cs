@@ -80,7 +80,7 @@ internal static class AzureDevOpsReviewRunner {
         var runner = new ReviewRunner(settings);
         var reviewBody = await runner.RunAsync(prompt, null, null, cancellationToken).ConfigureAwait(false);
         var commentBody = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: false,
-            inlineSuppressed: false, autoResolveNote: string.Empty, usageLine: string.Empty);
+            inlineSuppressed: false, autoResolveNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
 
         await client.CreatePullRequestThreadAsync(project, repositoryId, pr.PullRequestId, commentBody, cancellationToken)
             .ConfigureAwait(false);

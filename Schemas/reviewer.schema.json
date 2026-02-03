@@ -28,6 +28,7 @@
         "reviewUsageSummary": { "type": "boolean" },
         "reviewUsageSummaryCacheMinutes": { "type": "integer", "minimum": 0 },
         "reviewUsageSummaryTimeoutSeconds": { "type": "integer", "minimum": 1 },
+        "structuredFindings": { "type": "boolean" },
         "openaiTransport": { "type": "string", "enum": ["native", "appserver"] },
         "commentMode": { "type": "string", "enum": ["sticky", "fresh"] },
         "includeIssueComments": { "type": "boolean" },
