@@ -47,7 +47,7 @@ public sealed class CopilotClientOptions {
     /// <remarks>
     /// When false, only <see cref="Environment"/> entries are passed to the CLI process.
     /// </remarks>
-    public bool InheritEnvironment { get; set; }
+    public bool InheritEnvironment { get; set; } = true;
     /// <summary>
     /// Whether to start the CLI automatically.
     /// </summary>
