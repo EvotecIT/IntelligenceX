@@ -374,6 +374,7 @@ internal sealed class ReviewRunner {
             }
             options.Headers[entry.Key] = entry.Value;
         }
+        options.Validate();
 
         using var client = new IntelligenceX.Copilot.Direct.CopilotDirectClient(options);
         return await client.ChatAsync(prompt, _settings.Model, cancellationToken).ConfigureAwait(false);
@@ -486,6 +487,8 @@ internal sealed class ReviewRunner {
     }
 
     private void ApplyCopilotEnvironment(CopilotClientOptions options) {
+        options.InheritEnvironment = _settings.CopilotInheritEnvironment;
+
         if (_settings.CopilotEnvAllowlist.Count == 0 && _settings.CopilotEnv.Count == 0) {
             return;
         }

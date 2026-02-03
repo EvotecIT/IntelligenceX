@@ -277,6 +277,7 @@ internal static class ReviewConfigLoader {
         if (envAllowlist is not null) {
             settings.CopilotEnvAllowlist = envAllowlist;
         }
+        settings.CopilotInheritEnvironment = ReadBool(copilot, "inheritEnvironment", settings.CopilotInheritEnvironment);
         var env = ReadStringMap(copilot, "env");
         if (env is not null) {
             settings.CopilotEnv = env;

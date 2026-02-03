@@ -42,6 +42,13 @@ public sealed class CopilotClientOptions {
     /// </summary>
     public Dictionary<string, string> Environment { get; } = new();
     /// <summary>
+    /// Whether to inherit the current process environment.
+    /// </summary>
+    /// <remarks>
+    /// When false, only <see cref="Environment"/> entries are passed to the CLI process.
+    /// </remarks>
+    public bool InheritEnvironment { get; set; }
+    /// <summary>
     /// Whether to start the CLI automatically.
     /// </summary>
     public bool AutoStart { get; set; } = true;

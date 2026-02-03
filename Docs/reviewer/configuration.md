@@ -153,8 +153,8 @@ Use this to skip the main review and only assess existing review threads.
 ## Copilot CLI auth env pass-through
 
 Use this to forward selected environment variables into the Copilot CLI process without committing secrets.
-`envAllowlist` is additive only; it forwards the named variables but does not strip other environment variables
-already present in the runner.
+By default the CLI process does **not** inherit the runner environment. Use `envAllowlist` and `env` to pass
+only what the CLI needs, or set `inheritEnvironment` to `true` if you intentionally want full inheritance.
 
 ```json
 {
@@ -162,7 +162,8 @@ already present in the runner.
     "provider": "copilot"
   },
   "copilot": {
-    "envAllowlist": ["GH_TOKEN", "GITHUB_TOKEN"]
+    "envAllowlist": ["GH_TOKEN", "GITHUB_TOKEN"],
+    "inheritEnvironment": false
   }
 }
 ```
@@ -217,6 +218,7 @@ Use `directHeaders` to attach custom headers required by your gateway.
 - `azureTokenEnv`: env var name that contains the ADO token (default `SYSTEM_ACCESSTOKEN` if set)
 - `azureAuthScheme`: `bearer` (System.AccessToken) or `basic`/`pat`
 - `copilot.transport`: `cli` or `direct` (experimental)
+- `copilot.inheritEnvironment`: inherit full runner environment for Copilot CLI (`false` by default)
 
 **Path filter order of operations**
 1. `skipPaths` is evaluated first at the PR level. If **every** changed file matches `skipPaths`, the PR is skipped.

@@ -192,9 +192,14 @@ internal sealed class ReviewSettings {
     public bool CopilotAutoInstallPrerelease { get; set; }
     /// <summary>
     /// Environment variables to forward from the host into the Copilot CLI process.
-    /// This list is additive only and does not strip other inherited variables.
+    /// When <see cref="CopilotInheritEnvironment"/> is false, only these variables are forwarded.
+    /// When true, these variables override any inherited values.
     /// </summary>
     public IReadOnlyList<string> CopilotEnvAllowlist { get; set; } = Array.Empty<string>();
+    /// <summary>
+    /// Whether the Copilot CLI process should inherit the current environment.
+    /// </summary>
+    public bool CopilotInheritEnvironment { get; set; }
     /// <summary>
     /// Additional environment variables to set for the Copilot CLI process.
     /// </summary>
@@ -578,6 +583,11 @@ internal sealed class ReviewSettings {
         var copilotEnvAllowlist = GetInput("copilot_env_allowlist", "COPILOT_ENV_ALLOWLIST");
         if (!string.IsNullOrWhiteSpace(copilotEnvAllowlist)) {
             settings.CopilotEnvAllowlist = ParseList(copilotEnvAllowlist, settings.CopilotEnvAllowlist);
+        }
+        var copilotInheritEnvironment = GetInput("copilot_inherit_environment", "COPILOT_INHERIT_ENVIRONMENT");
+        if (!string.IsNullOrWhiteSpace(copilotInheritEnvironment)) {
+            settings.CopilotInheritEnvironment =
+                ParseBoolean(copilotInheritEnvironment, settings.CopilotInheritEnvironment);
         }
         var copilotTransport = GetInput("copilot_transport", "COPILOT_TRANSPORT");
         if (!string.IsNullOrWhiteSpace(copilotTransport)) {
