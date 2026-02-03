@@ -10,7 +10,6 @@ using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.Tools;
 using IntelligenceX.Tools.System;
-using IntelligenceX.Tools.System;
 
 var options = new IntelligenceXClientOptions {
     TransportKind = OpenAITransportKind.Native
@@ -37,12 +36,15 @@ var result = await ToolRunner.RunAsync(
 Console.WriteLine(EasyChatResult.FromTurn(result.FinalTurn).Text);
 ```
 
+If you enable parallel tool calls, ensure your tools are thread-safe.
+
 ## Manual tool loop (advanced)
 
 ```csharp
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.Tools;
+using IntelligenceX.Tools.System;
 
 var registry = new ToolRegistry();
 registry.Register(new WslStatusTool());
