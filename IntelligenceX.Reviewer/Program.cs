@@ -77,8 +77,10 @@ public static class ReviewerApp {
                 fallbackToken = null;
             }
 
-            using var github = new GitHubClient(token);
-            using var fallbackGithub = string.IsNullOrWhiteSpace(fallbackToken) ? null : new GitHubClient(fallbackToken);
+            using var github = new GitHubClient(token, maxConcurrency: settings.GitHubMaxConcurrency);
+            using var fallbackGithub = string.IsNullOrWhiteSpace(fallbackToken)
+                ? null
+                : new GitHubClient(fallbackToken, maxConcurrency: settings.GitHubMaxConcurrency);
             PullRequestContext? context = null;
             var eventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
             if (!string.IsNullOrWhiteSpace(eventPath) && File.Exists(eventPath)) {

@@ -268,6 +268,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `reviewDiffRange`: `current`, `pr-base`, or `first-review`
 - `outputStyle`: rendering style preset
 - `reviewUsageSummary`: append usage line to the footer (ChatGPT auth only)
+- `githubMaxConcurrency`: limit concurrent GitHub API requests (default 4)
 - `languageHints`: include language-aware hint block in the prompt
 - `reviewBudgetSummary`: include a note when review context is truncated
 - `retryCount`: total attempts for provider requests

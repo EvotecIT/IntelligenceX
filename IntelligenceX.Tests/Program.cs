@@ -90,6 +90,8 @@ internal static class Program {
         failed += Run("Triage-only loads threads", TestTriageOnlyLoadsThreads);
         failed += Run("Review code host env", TestReviewCodeHostEnv);
         failed += Run("GitHub context cache", TestGitHubContextCache);
+        failed += Run("GitHub concurrency env", TestGitHubConcurrencyEnv);
+        failed += Run("GitHub client concurrency", TestGitHubClientConcurrency);
         failed += Run("Azure auth scheme env", TestAzureAuthSchemeEnv);
         failed += Run("Azure auth scheme invalid env", TestAzureAuthSchemeInvalidEnv);
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
@@ -964,6 +966,22 @@ internal static class Program {
         AssertEqual(pr1.Title, pr2.Title, "pr cache data");
         AssertEqual(files1.Count, files2.Count, "files cache data");
         AssertEqual(compare1.Count, compare2.Count, "compare cache data");
+    }
+
+    private static void TestGitHubConcurrencyEnv() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_GITHUB_MAX_CONCURRENCY");
+        try {
+            Environment.SetEnvironmentVariable("REVIEW_GITHUB_MAX_CONCURRENCY", "2");
+            var settings = ReviewSettings.FromEnvironment();
+            AssertEqual(2, settings.GitHubMaxConcurrency, "github concurrency env");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_GITHUB_MAX_CONCURRENCY", previous);
+        }
+    }
+
+    private static void TestGitHubClientConcurrency() {
+        using var client = new GitHubClient("token", "https://api.github.com", 2);
+        AssertEqual(2, client.MaxConcurrency, "github client concurrency");
     }
 
     private static void TestAzureAuthSchemeEnv() {
