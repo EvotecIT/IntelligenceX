@@ -74,6 +74,7 @@ internal static class Program {
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
         failed += Run("Copilot env allowlist config", TestCopilotEnvAllowlistConfig);
         failed += Run("Copilot inherit env default", TestCopilotInheritEnvironmentDefault);
+        failed += Run("Copilot direct timeout validation", TestCopilotDirectTimeoutValidation);
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
         failed += Run("Filter files include-only", TestFilterFilesIncludeOnly);
@@ -720,6 +721,14 @@ internal static class Program {
     private static void TestCopilotInheritEnvironmentDefault() {
         var settings = new ReviewSettings();
         AssertEqual(true, settings.CopilotInheritEnvironment, "copilot inherit environment default");
+    }
+
+    private static void TestCopilotDirectTimeoutValidation() {
+        var options = new IntelligenceX.Copilot.Direct.CopilotDirectOptions {
+            Url = "https://example.local/api",
+            Timeout = TimeSpan.Zero
+        };
+        AssertThrows<ArgumentOutOfRangeException>(() => options.Validate(), "copilot direct timeout");
     }
 
     private static ReviewConfigValidationResult? RunConfigValidation(string json) {

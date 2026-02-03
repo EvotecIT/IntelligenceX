@@ -40,8 +40,8 @@ public sealed class CopilotDirectOptions {
         if (!Uri.TryCreate(Url, UriKind.Absolute, out _)) {
             throw new ArgumentException("Copilot direct Url must be absolute.", nameof(Url));
         }
-        if (Timeout < TimeSpan.Zero) {
-            throw new ArgumentOutOfRangeException(nameof(Timeout), "Timeout cannot be negative.");
+        if (Timeout <= TimeSpan.Zero) {
+            throw new ArgumentOutOfRangeException(nameof(Timeout), "Timeout must be greater than zero.");
         }
     }
 }
