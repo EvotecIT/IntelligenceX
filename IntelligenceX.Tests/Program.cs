@@ -53,6 +53,7 @@ internal static class Program {
         failed += Run("Tool definitions ordered", TestToolDefinitionOrdering);
         failed += Run("Tool runner max rounds", TestToolRunnerMaxRounds);
         failed += Run("Tool runner unregistered tool", TestToolRunnerUnregisteredTool);
+        failed += Run("Tool runner parallel execution", TestToolRunnerParallelExecution);
 #if !NET472
         failed += Run("Setup args reject skip+update", TestSetupArgsRejectSkipUpdate);
         failed += Run("GitHub secrets reject empty value", TestGitHubSecretsRejectEmptyValue);
@@ -217,7 +218,7 @@ internal static class Program {
     }
 
     private static void TestToolRunnerMaxRounds() {
-        using var client = CreateToolRunnerClient(BuildToolCallTurn("call_1", "echo"));
+        using var client = CreateToolRunnerClient(BuildToolCallTurn(("call_1", "echo")));
         var registry = new ToolRegistry();
         registry.Register(new StubTool("echo"));
         var input = ChatInput.FromText("Run tools");
@@ -231,7 +232,7 @@ internal static class Program {
     }
 
     private static void TestToolRunnerUnregisteredTool() {
-        using var client = CreateToolRunnerClient(BuildToolCallTurn("call_2", "missing_tool"));
+        using var client = CreateToolRunnerClient(BuildToolCallTurn(("call_2", "missing_tool")));
         var registry = new ToolRegistry();
         var input = ChatInput.FromText("Run tools");
         var options = new ChatOptions { Model = "gpt-5.2-codex" };
@@ -241,6 +242,28 @@ internal static class Program {
                         new ToolRunnerOptions { MaxRounds = 1 })
                     .GetAwaiter().GetResult(),
             "tool runner unregistered tool");
+    }
+
+    private static void TestToolRunnerParallelExecution() {
+        using var client = CreateToolRunnerClient(BuildToolCallTurn(("call_1", "tool_a"), ("call_2", "tool_b")));
+        var startGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = 0;
+
+        var registry = new ToolRegistry();
+        registry.Register(new GateTool("tool_a", startGate, releaseGate, () => Interlocked.Increment(ref started), 2));
+        registry.Register(new GateTool("tool_b", startGate, releaseGate, () => Interlocked.Increment(ref started), 2));
+
+        var input = ChatInput.FromText("Run tools");
+        var options = new ChatOptions { Model = "gpt-5.2-codex", ParallelToolCalls = true };
+
+        var runnerTask = ToolRunner.RunAsync(client, input, options, registry,
+            new ToolRunnerOptions { MaxRounds = 1, ParallelToolCalls = true });
+
+        AssertCompletes(startGate.Task, 1000, "tool runner parallel start");
+        releaseGate.TrySetResult(true);
+
+        AssertThrows<InvalidOperationException>(() => runnerTask.GetAwaiter().GetResult(), "tool runner parallel");
     }
 
     private static int Run(string name, Action test) {
@@ -1435,15 +1458,21 @@ internal static class Program {
         return (IntelligenceXClient)ctor.Invoke(new object?[] { transport, "gpt-5.2-codex", null, null, null });
     }
 
-    private static TurnInfo BuildToolCallTurn(string callId, string toolName) {
-        var output = new JsonObject()
-            .Add("type", "custom_tool_call")
-            .Add("call_id", callId)
-            .Add("name", toolName)
-            .Add("input", "{}");
+    private static TurnInfo BuildToolCallTurn(params (string CallId, string ToolName)[] calls) {
+        if (calls is null || calls.Length == 0) {
+            throw new InvalidOperationException("Tool call list cannot be empty.");
+        }
+        var output = new JsonArray();
+        foreach (var call in calls) {
+            output.Add(new JsonObject()
+                .Add("type", "custom_tool_call")
+                .Add("call_id", call.CallId)
+                .Add("name", call.ToolName)
+                .Add("input", "{}"));
+        }
         return TurnInfo.FromJson(new JsonObject()
-            .Add("id", "turn_" + callId)
-            .Add("output", new JsonArray().Add(output)));
+            .Add("id", "turn_" + calls[0].CallId)
+            .Add("output", output));
     }
 
     private sealed class StubTool : ITool {
@@ -1457,6 +1486,35 @@ internal static class Program {
 
         public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken)
             => Task.FromResult("ok");
+    }
+
+    private sealed class GateTool : ITool {
+        private readonly ToolDefinition _definition;
+        private readonly TaskCompletionSource<bool> _startGate;
+        private readonly TaskCompletionSource<bool> _releaseGate;
+        private readonly Func<int> _increment;
+        private readonly int _expected;
+
+        public GateTool(string name, TaskCompletionSource<bool> startGate, TaskCompletionSource<bool> releaseGate,
+            Func<int> increment, int expected) {
+            _definition = new ToolDefinition(name, "Gate tool", new JsonObject().Add("type", "object"));
+            _startGate = startGate;
+            _releaseGate = releaseGate;
+            _increment = increment;
+            _expected = expected;
+        }
+
+        public ToolDefinition Definition => _definition;
+
+        public async Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+            var count = _increment();
+            if (count >= _expected) {
+                _startGate.TrySetResult(true);
+            }
+            await _startGate.Task.ConfigureAwait(false);
+            await _releaseGate.Task.ConfigureAwait(false);
+            return "ok";
+        }
     }
 
     private sealed class FakeToolTransport : IOpenAITransport {
@@ -1570,5 +1628,16 @@ internal static class Program {
             return;
         }
         throw new InvalidOperationException($"Expected {name} to throw {typeof(T).Name}.");
+    }
+
+    private static void AssertCompletes(Task task, int timeoutMs, string name) {
+        if (task is null) {
+            throw new InvalidOperationException($"Expected {name} task to be non-null.");
+        }
+        var completed = Task.WhenAny(task, Task.Delay(timeoutMs)).GetAwaiter().GetResult();
+        if (!ReferenceEquals(completed, task)) {
+            throw new InvalidOperationException($"Expected {name} to complete within {timeoutMs}ms.");
+        }
+        task.GetAwaiter().GetResult();
     }
 }
