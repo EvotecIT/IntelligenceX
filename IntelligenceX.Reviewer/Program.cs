@@ -1240,15 +1240,63 @@ public static class ReviewerApp {
             return TrimHard(header, maxPatchChars, newline);
         }
 
-        // Extra capacity helps when appending newlines and truncation markers.
+        var hunkTexts = hunks.Select(hunk => string.Join(newline, hunk)).ToList();
+        if (hunkTexts.Count <= 1) {
+            return AppendSequential(header, hunkTexts, maxPatchChars, newline);
+        }
+
+        var marker = "... (truncated) ...";
+        var sb = new StringBuilder(maxPatchChars + 32);
+        if (!string.IsNullOrEmpty(header)) {
+            sb.Append(header);
+        }
+
+        if (!TryAppendSegment(sb, hunkTexts[0], maxPatchChars, newline)) {
+            return TrimHard(header, maxPatchChars, newline);
+        }
+
+        if (hunkTexts.Count == 2) {
+            if (!TryAppendSegment(sb, hunkTexts[1], maxPatchChars, newline)) {
+                TryAppendSegment(sb, marker, maxPatchChars, newline);
+            }
+            return sb.ToString();
+        }
+
+        var lastHunk = hunkTexts[^1];
+        var includedMiddle = 0;
+        for (var i = 1; i < hunkTexts.Count - 1; i++) {
+            var hunkText = hunkTexts[i];
+            if (!CanAppendWithReserve(sb, hunkText, maxPatchChars, newline, marker, lastHunk)) {
+                break;
+            }
+            if (!TryAppendSegment(sb, hunkText, maxPatchChars, newline)) {
+                break;
+            }
+            includedMiddle++;
+        }
+
+        var needsTruncation = includedMiddle < hunkTexts.Count - 2;
+        if (needsTruncation) {
+            if (TryAppendSegment(sb, marker, maxPatchChars, newline)) {
+                TryAppendSegment(sb, lastHunk, maxPatchChars, newline);
+            } else {
+                TryAppendSegment(sb, lastHunk, maxPatchChars, newline);
+            }
+        } else {
+            TryAppendSegment(sb, lastHunk, maxPatchChars, newline);
+        }
+
+        return sb.ToString();
+    }
+
+    private static string AppendSequential(string header, IReadOnlyList<string> hunks, int maxPatchChars, string newline) {
         var sb = new StringBuilder(maxPatchChars + 32);
         if (!string.IsNullOrEmpty(header)) {
             sb.Append(header);
         }
 
         foreach (var hunk in hunks) {
-            var hunkText = string.Join(newline, hunk);
-            if (!TryAppendSegment(sb, hunkText, maxPatchChars, newline)) {
+            if (!TryAppendSegment(sb, hunk, maxPatchChars, newline)) {
                 TryAppendSegment(sb, "... (truncated) ...", maxPatchChars, newline);
                 break;
             }
@@ -1270,6 +1318,18 @@ public static class ReviewerApp {
         }
         sb.Append(segment);
         return true;
+    }
+
+    private static bool CanAppendWithReserve(StringBuilder sb, string segment, int maxChars, string newline,
+        string marker, string lastSegment) {
+        var length = AppendLength(sb.Length, segment.Length, newline.Length);
+        length = AppendLength(length, marker.Length, newline.Length);
+        length = AppendLength(length, lastSegment.Length, newline.Length);
+        return length <= maxChars;
+    }
+
+    private static int AppendLength(int currentLength, int segmentLength, int newlineLength) {
+        return currentLength + segmentLength + (currentLength > 0 ? newlineLength : 0);
     }
 
     private static string TrimHard(string text, int maxChars, string newline) {

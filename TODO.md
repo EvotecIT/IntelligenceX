@@ -13,7 +13,7 @@ Status: Draft (needs priorities + owners)
 - [x] Add connectivity preflight (DNS/TLS) with actionable errors (M)
 - [x] Add diff-range selection + default (current/pr-base/first-review) (M)
 - [x] Add include/exclude glob filters for files (S)
-- [ ] Add smart chunking (group related hunks) (M)
+- [x] Add smart chunking (group related hunks) (M)
 - [x] Add review intent presets (security/perf/maintainability) (S)
 
 ### Phase 0 — Scope + success criteria
@@ -31,7 +31,7 @@ Status: Draft (needs priorities + owners)
 ### Phase 2 — Context quality
 - [x] Add diff-range strategy options (current/pr-base/first-review) with default.
 - [x] Add file filters (include/exclude globs, binary skip, generated skip).
-- [ ] Add smart chunking (keep related hunks together; avoid orphaned changes).
+- [x] Add smart chunking (keep related hunks together; avoid orphaned changes).
 - [ ] Add language-aware hints (formatters and rule presets).
 - [x] Add "review intent" presets (security/perf/maintainability).
 

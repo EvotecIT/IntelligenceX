@@ -74,6 +74,7 @@ internal static class Program {
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);
         failed += Run("Trim patch CRLF", TestTrimPatchPreservesCrlf);
+        failed += Run("Trim patch keeps last hunk", TestTrimPatchKeepsLastHunk);
         failed += Run("Review intent applies focus", TestReviewIntentAppliesFocus);
         failed += Run("Review intent respects focus", TestReviewIntentRespectsFocus);
         failed += Run("Triage-only loads threads", TestTriageOnlyLoadsThreads);
@@ -705,6 +706,50 @@ internal static class Program {
         });
         var trimmed = CallTrimPatch(patch, patch.Length - 2);
         AssertEqual(true, trimmed.Contains("\r\n", StringComparison.Ordinal), "crlf preserved");
+    }
+
+    private static void TestTrimPatchKeepsLastHunk() {
+        var patch = string.Join("\n", new[] {
+            "diff --git a/file.txt b/file.txt",
+            "index 123..456 100644",
+            "--- a/file.txt",
+            "+++ b/file.txt",
+            "@@ -1,1 +1,1 @@",
+            "-line1",
+            "+line1a",
+            "@@ -10,1 +10,1 @@",
+            "-line10",
+            "+line10a",
+            "@@ -20,1 +20,1 @@",
+            "-line20",
+            "+line20a"
+        });
+
+        var header = string.Join("\n", new[] {
+            "diff --git a/file.txt b/file.txt",
+            "index 123..456 100644",
+            "--- a/file.txt",
+            "+++ b/file.txt"
+        });
+        var first = string.Join("\n", new[] {
+            "@@ -1,1 +1,1 @@",
+            "-line1",
+            "+line1a"
+        });
+        var last = string.Join("\n", new[] {
+            "@@ -20,1 +20,1 @@",
+            "-line20",
+            "+line20a"
+        });
+        var marker = "... (truncated) ...";
+        var target = string.Join("\n", new[] { header, first, marker, last });
+        var maxChars = target.Length + 1;
+
+        var trimmed = CallTrimPatch(patch, maxChars);
+        AssertEqual(true, trimmed.Contains("@@ -1,1 +1,1 @@", StringComparison.Ordinal), "first hunk kept");
+        AssertEqual(true, trimmed.Contains("@@ -20,1 +20,1 @@", StringComparison.Ordinal), "last hunk kept");
+        AssertEqual(false, trimmed.Contains("@@ -10,1 +10,1 @@", StringComparison.Ordinal), "middle hunk skipped");
+        AssertEqual(true, trimmed.Contains(marker, StringComparison.Ordinal), "marker present");
     }
 
     private static void TestReviewIntentAppliesFocus() {
