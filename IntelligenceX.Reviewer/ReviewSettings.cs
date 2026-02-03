@@ -756,11 +756,13 @@ internal sealed class ReviewSettings {
         };
     }
 
-    private static AzureDevOpsAuthScheme ParseAzureAuthScheme(string value) {
+    internal static AzureDevOpsAuthScheme ParseAzureAuthScheme(string value) {
         var normalized = value.Trim().ToLowerInvariant();
         return normalized switch {
             "basic" or "pat" => AzureDevOpsAuthScheme.Basic,
-            _ => AzureDevOpsAuthScheme.Bearer
+            "bearer" => AzureDevOpsAuthScheme.Bearer,
+            _ => throw new InvalidOperationException(
+                $"Invalid azure auth scheme '{value}'. Use 'basic', 'pat', or 'bearer'.")
         };
     }
 

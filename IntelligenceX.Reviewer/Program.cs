@@ -55,12 +55,14 @@ public static class ReviewerApp {
                     return 1;
                 }
             }
+            if (settings.CodeHost == ReviewCodeHost.AzureDevOps) {
+                if (!await ValidateAuthAsync(settings).ConfigureAwait(false)) {
+                    return 1;
+                }
+                return await AzureDevOpsReviewRunner.RunAsync(settings, cancellationToken).ConfigureAwait(false);
+            }
             if (!await ValidateAuthAsync(settings).ConfigureAwait(false)) {
                 return 1;
-            }
-
-            if (settings.CodeHost == ReviewCodeHost.AzureDevOps) {
-                return await AzureDevOpsReviewRunner.RunAsync(settings, cancellationToken).ConfigureAwait(false);
             }
             var token = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN")
                 ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN");

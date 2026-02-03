@@ -297,10 +297,7 @@ internal static class ReviewConfigLoader {
         }
         var authScheme = obj.GetString("azureAuthScheme");
         if (!string.IsNullOrWhiteSpace(authScheme)) {
-            settings.AzureAuthScheme = authScheme.Trim().ToLowerInvariant() switch {
-                "basic" or "pat" => AzureDevOpsAuthScheme.Basic,
-                _ => AzureDevOpsAuthScheme.Bearer
-            };
+            settings.AzureAuthScheme = ReviewSettings.ParseAzureAuthScheme(authScheme);
             settings.AzureAuthSchemeSpecified = true;
         }
     }
