@@ -68,7 +68,7 @@ Status: Draft (needs priorities + owners)
 
 ### Phase 6 — Performance + cost
 - [ ] Add response streaming where supported (show partial progress).
-- [ ] Add cache for context artifacts (diff, file lists, PR metadata).
+- [x] Add cache for context artifacts (diff, file lists, PR metadata).
 - [ ] Add concurrency controls to avoid API throttling.
 - [ ] Consider shared HttpClient/IHttpClientFactory for Azure DevOps client.
 - [ ] Add token budgeting per file/group with hard caps.
