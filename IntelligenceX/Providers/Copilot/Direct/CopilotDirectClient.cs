@@ -49,6 +49,10 @@ public sealed class CopilotDirectClient : IDisposable {
     /// <param name="model">Model identifier.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<string> ChatAsync(string prompt, string model, CancellationToken cancellationToken = default) {
+        if (string.IsNullOrWhiteSpace(model)) {
+            throw new ArgumentException("Model cannot be empty.", nameof(model));
+        }
+
         var payload = new JsonObject()
             .Add("model", model)
             .Add("messages", new JsonArray()

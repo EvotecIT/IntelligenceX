@@ -153,6 +153,8 @@ Use this to skip the main review and only assess existing review threads.
 ## Copilot CLI auth env pass-through
 
 Use this to forward selected environment variables into the Copilot CLI process without committing secrets.
+`envAllowlist` is additive only; it forwards the named variables but does not strip other environment variables
+already present in the runner.
 
 ```json
 {
