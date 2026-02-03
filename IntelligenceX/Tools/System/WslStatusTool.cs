@@ -12,6 +12,7 @@ namespace IntelligenceX.Tools.System;
 /// Tool that reports Windows Subsystem for Linux (WSL) distribution status.
 /// </summary>
 public sealed class WslStatusTool : ITool {
+    private const int ProcessTimeoutMs = 5000;
     private static readonly ToolDefinition DefinitionValue = new(
         "wsl_status",
         "Report Windows Subsystem for Linux (WSL) distribution status.",
@@ -97,25 +98,29 @@ public sealed class WslStatusTool : ITool {
             CreateNoWindow = true
         };
 
-        using var process = Process.Start(psi);
+        var process = Process.Start(psi);
         if (process is null) {
             return $"Failed to start {fileName}.";
         }
 
-        if (!process.WaitForExit(5000)) {
-            try {
-                process.Kill();
-            } catch {
-                // best-effort
+        using (process) {
+            if (!process.WaitForExit(ProcessTimeoutMs)) {
+                try {
+                    if (!process.HasExited) {
+                        process.Kill();
+                    }
+                } catch (Exception ex) {
+                    return $"{fileName} timed out and could not be terminated: {ex.Message}";
+                }
+                return $"{fileName} timed out.";
             }
-            return $"{fileName} timed out.";
-        }
 
-        cancellationToken.ThrowIfCancellationRequested();
-        var output = process.StandardOutput.ReadToEnd();
-        if (string.IsNullOrWhiteSpace(output)) {
-            output = process.StandardError.ReadToEnd();
+            cancellationToken.ThrowIfCancellationRequested();
+            var output = process.StandardOutput.ReadToEnd();
+            if (string.IsNullOrWhiteSpace(output)) {
+                output = process.StandardError.ReadToEnd();
+            }
+            return output;
         }
-        return output;
     }
 }

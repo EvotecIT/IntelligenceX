@@ -55,8 +55,12 @@ public sealed class ToolCall {
         var input = obj.GetString("input") ?? obj.GetString("arguments");
         JsonObject? arguments = null;
         if (!string.IsNullOrWhiteSpace(input)) {
-            var parsed = JsonLite.Parse(input!);
-            arguments = parsed?.AsObject();
+            try {
+                var parsed = JsonLite.Parse(input!);
+                arguments = parsed?.AsObject();
+            } catch {
+                arguments = null;
+            }
         } else {
             arguments = obj.GetObject("input") ?? obj.GetObject("arguments");
         }

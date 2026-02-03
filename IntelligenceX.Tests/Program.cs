@@ -42,6 +42,7 @@ internal static class Program {
         failed += Run("ChatGPT usage parse", TestChatGptUsageParse);
         failed += Run("ChatGPT usage cache invalid JSON", TestChatGptUsageCacheInvalidJson);
         failed += Run("Tool call parsing", TestToolCallParsing);
+        failed += Run("Tool call invalid JSON", TestToolCallParsingInvalidJson);
         failed += Run("Tool output input", TestToolOutputInput);
 #if !NET472
         failed += Run("Setup args reject skip+update", TestSetupArgsRejectSkipUpdate);
@@ -140,6 +141,23 @@ internal static class Program {
         AssertEqual("call_1", calls[0].CallId, "tool call id");
         AssertEqual("wsl_status", calls[0].Name, "tool call name");
         AssertEqual("Ubuntu", calls[0].Arguments?.GetString("name"), "tool call arg");
+    }
+
+    private static void TestToolCallParsingInvalidJson() {
+        var output = new JsonObject()
+            .Add("type", "custom_tool_call")
+            .Add("call_id", "call_2")
+            .Add("name", "wsl_status")
+            .Add("input", "{invalid");
+        var turn = TurnInfo.FromJson(new JsonObject()
+            .Add("id", "turn2")
+            .Add("output", new JsonArray().Add(output)));
+
+        var calls = ToolCallParser.Extract(turn);
+        AssertEqual(1, calls.Count, "tool call invalid count");
+        AssertEqual("call_2", calls[0].CallId, "tool call invalid id");
+        AssertEqual("wsl_status", calls[0].Name, "tool call invalid name");
+        AssertEqual(null, calls[0].Arguments, "tool call invalid args");
     }
 
     private static void TestToolOutputInput() {

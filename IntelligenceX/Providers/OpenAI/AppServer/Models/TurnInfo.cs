@@ -23,6 +23,13 @@ public sealed class TurnInfo {
     }
 
     /// <summary>
+    /// Initializes a new turn info model.
+    /// </summary>
+    public TurnInfo(string id, string? status, IReadOnlyList<TurnOutput>? outputs, IReadOnlyList<TurnOutput>? imageOutputs,
+        JsonObject raw, JsonObject? additional)
+        : this(id, null, status, outputs, imageOutputs, raw, additional) { }
+
+    /// <summary>
     /// Gets the turn id.
     /// </summary>
     public string Id { get; }

@@ -58,14 +58,14 @@ public static class ToolRunner {
                 }
                 options.PreviousResponseId = previousResponseId;
                 var turn = await client.ChatAsync(nextInput, options, cancellationToken).ConfigureAwait(false);
-            var calls = ToolCallParser.Extract(turn);
-            if (calls.Count == 0) {
-                return new ToolRunResult(turn, allCalls, allOutputs);
-            }
-            allCalls.AddRange(calls);
+                var calls = ToolCallParser.Extract(turn);
+                if (calls.Count == 0) {
+                    return new ToolRunResult(turn, allCalls, allOutputs);
+                }
+                allCalls.AddRange(calls);
 
-            var outputs = await ExecuteToolsAsync(calls, registry, cancellationToken).ConfigureAwait(false);
-            allOutputs.AddRange(outputs);
+                var outputs = await ExecuteToolsAsync(calls, registry, cancellationToken).ConfigureAwait(false);
+                allOutputs.AddRange(outputs);
 
                 previousResponseId = TryGetResponseId(turn);
                 nextInput = new ChatInput();
@@ -99,6 +99,9 @@ public static class ToolRunner {
     private static string? TryGetResponseId(TurnInfo turn) {
         if (turn is null) {
             return null;
+        }
+        if (!string.IsNullOrWhiteSpace(turn.ResponseId)) {
+            return turn.ResponseId;
         }
         var responseId = turn.Raw.GetString("responseId");
         if (!string.IsNullOrWhiteSpace(responseId)) {
