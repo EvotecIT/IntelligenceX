@@ -77,6 +77,7 @@ intelligencex setup wizard
 - Model/provider + output style
 - Review length and strictness
 - Auto-resolve/triage behavior for bot threads
+- Triage-only mode (skip full review, only triage threads)
 - Usage summary line (optional)
 
 ## Usage and credits line

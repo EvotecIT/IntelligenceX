@@ -37,6 +37,24 @@ public static class ReviewerApp {
                 return 1;
             }
             var settings = ReviewSettings.Load();
+            var validation = ReviewConfigValidator.ValidateCurrent();
+            if (validation is not null) {
+                if (validation.Warnings.Count > 0) {
+                    Console.Error.WriteLine($"Configuration warnings in {validation.ConfigPath}:");
+                    foreach (var warning in validation.Warnings) {
+                        Console.Error.WriteLine($"- {warning.Path}: {warning.Message}");
+                    }
+                    Console.Error.WriteLine($"Schema: {validation.SchemaHint}");
+                }
+                if (validation.Errors.Count > 0) {
+                    Console.Error.WriteLine($"Configuration errors in {validation.ConfigPath}:");
+                    foreach (var error in validation.Errors) {
+                        Console.Error.WriteLine($"- {error.Path}: {error.Message}");
+                    }
+                    Console.Error.WriteLine($"Schema: {validation.SchemaHint}");
+                    return 1;
+                }
+            }
             if (!await ValidateAuthAsync(settings).ConfigureAwait(false)) {
                 return 1;
             }
@@ -126,8 +144,24 @@ public static class ReviewerApp {
             progress.Files = ReviewProgressState.Complete;
             progress.StatusLine = "Analyzed changed files.";
 
-            var extras = await BuildExtrasAsync(github, fallbackGithub, context, settings, cancellationToken)
+            var extras = await BuildExtrasAsync(github, fallbackGithub, context, settings, cancellationToken, settings.TriageOnly)
                 .ConfigureAwait(false);
+            if (settings.TriageOnly) {
+                var triageRunner = new ReviewRunner(settings);
+                var (triageOnlyFiles, triageOnlyNote) = await ResolveThreadTriageFilesAsync(github, context, settings, allFiles, cancellationToken)
+                    .ConfigureAwait(false);
+                var triageOnlyResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, triageRunner, context, triageOnlyFiles,
+                        settings, extras, false, triageOnlyNote, cancellationToken, true, false)
+                    .ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(triageOnlyResult.EmbeddedBlock)) {
+                    await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, triageOnlyResult.EmbeddedBlock, cancellationToken)
+                        .ConfigureAwait(false);
+                    Console.WriteLine("Posted thread triage comment.");
+                } else {
+                    Console.WriteLine("No threads eligible for triage.");
+                }
+                return 0;
+            }
             var inlineSupported = !string.Equals(settings.Mode, "summary", StringComparison.OrdinalIgnoreCase) &&
                                   settings.MaxInlineComments > 0 &&
                                   !string.IsNullOrWhiteSpace(context.HeadSha);
@@ -188,7 +222,8 @@ public static class ReviewerApp {
             var (triageFiles, triageNote) = await ResolveThreadTriageFilesAsync(github, context, settings, allFiles, cancellationToken)
                 .ConfigureAwait(false);
             var triageResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, runner, context, triageFiles,
-                    settings, extras, reviewFailed, triageNote, cancellationToken)
+                    settings, extras, reviewFailed, triageNote, cancellationToken, false,
+                    settings.ReviewThreadsAutoResolveAIPostComment)
                 .ConfigureAwait(false);
             if (settings.ReviewThreadsAutoResolveAIEmbed && !string.IsNullOrWhiteSpace(triageResult.EmbeddedBlock)) {
                 summaryBody = summaryBody.TrimEnd() + "\n\n" + triageResult.EmbeddedBlock.Trim();
@@ -396,16 +431,8 @@ public static class ReviewerApp {
                 break;
             }
             var patch = file.Patch;
-            if (!string.IsNullOrWhiteSpace(patch) && patch.Length > maxPatchChars) {
-                var headSize = Math.Max(0, maxPatchChars / 2);
-                var tailSize = Math.Max(0, maxPatchChars - headSize);
-                if (headSize + tailSize > patch.Length) {
-                    patch = patch.Substring(0, maxPatchChars) + "\n... (truncated)";
-                } else {
-                    var head = patch.Substring(0, headSize);
-                    var tail = patch.Substring(patch.Length - tailSize);
-                    patch = head + "\n... (truncated) ...\n" + tail;
-                }
+            if (!string.IsNullOrWhiteSpace(patch)) {
+                patch = TrimPatch(patch, maxPatchChars);
             }
             list.Add(new PullRequestFile(file.Filename, file.Status, patch));
             count++;
@@ -452,14 +479,14 @@ public static class ReviewerApp {
     }
 
     private static async Task<ReviewContextExtras> BuildExtrasAsync(GitHubClient github, GitHubClient? fallbackGithub,
-        PullRequestContext context, ReviewSettings settings, CancellationToken cancellationToken) {
+        PullRequestContext context, ReviewSettings settings, CancellationToken cancellationToken, bool forceReviewThreads) {
         var extras = new ReviewContextExtras();
         if (settings.IncludeIssueComments) {
             var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, settings.MaxComments, cancellationToken)
                 .ConfigureAwait(false);
             extras.IssueCommentsSection = BuildIssueCommentsSection(comments, settings);
         }
-        var loadThreads = settings.IncludeReviewThreads || settings.ReviewThreadsAutoResolveAI;
+        var loadThreads = forceReviewThreads || settings.IncludeReviewThreads || settings.ReviewThreadsAutoResolveAI;
         if (loadThreads) {
             var threads = await github.ListPullRequestReviewThreadsAsync(context.Owner, context.Repo, context.Number,
                     settings.ReviewThreadsMax, settings.ReviewThreadsMaxComments, cancellationToken)
@@ -748,8 +775,9 @@ public static class ReviewerApp {
 
     private static async Task<ThreadTriageResult> MaybeAutoResolveAssessedThreadsAsync(GitHubClient github, GitHubClient? fallbackGithub,
         ReviewRunner runner, PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
-        ReviewContextExtras extras, bool reviewFailed, string? diffNote, CancellationToken cancellationToken) {
-        if (!settings.ReviewThreadsAutoResolveAI || reviewFailed) {
+        ReviewContextExtras extras, bool reviewFailed, string? diffNote, CancellationToken cancellationToken,
+        bool force, bool allowCommentPost) {
+        if ((!settings.ReviewThreadsAutoResolveAI && !force) || reviewFailed) {
             return ThreadTriageResult.Empty;
         }
         if (extras.ReviewThreads.Count == 0) {
@@ -819,7 +847,8 @@ public static class ReviewerApp {
             await ReplyToKeptThreadsAsync(github, context, candidates, byId, context.HeadSha, diffNote, settings, cancellationToken)
                 .ConfigureAwait(false);
         }
-        if (settings.ReviewThreadsAutoResolveAIPostComment && !settings.ReviewThreadsAutoResolveAIEmbed && kept.Count > 0) {
+        if (allowCommentPost && settings.ReviewThreadsAutoResolveAIPostComment &&
+            !settings.ReviewThreadsAutoResolveAIEmbed && kept.Count > 0) {
             var body = triageBody;
             await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, cancellationToken)
                 .ConfigureAwait(false);
@@ -1154,14 +1183,83 @@ public static class ReviewerApp {
         if (maxPatchChars <= 0 || patch.Length <= maxPatchChars) {
             return patch;
         }
-        var headSize = Math.Max(0, maxPatchChars / 2);
-        var tailSize = Math.Max(0, maxPatchChars - headSize);
-        if (headSize + tailSize > patch.Length) {
-            return patch.Substring(0, maxPatchChars) + "\n... (truncated)";
+        var newline = patch.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var normalized = patch.Replace("\r\n", "\n");
+        var lines = normalized.Split('\n');
+        var headerLines = new List<string>();
+        var hunks = new List<List<string>>();
+        List<string>? current = null;
+
+        foreach (var line in lines) {
+            if (line.StartsWith("@@", StringComparison.Ordinal)) {
+                if (current is not null) {
+                    hunks.Add(current);
+                }
+                current = new List<string> { line };
+                continue;
+            }
+            if (current is null) {
+                headerLines.Add(line);
+            } else {
+                current.Add(line);
+            }
         }
-        var head = patch.Substring(0, headSize);
-        var tail = patch.Substring(patch.Length - tailSize);
-        return head + "\n... (truncated) ...\n" + tail;
+
+        if (current is not null) {
+            hunks.Add(current);
+        }
+
+        if (hunks.Count == 0) {
+            return TrimHard(normalized, maxPatchChars, newline);
+        }
+
+        var header = string.Join(newline, headerLines);
+        if (header.Length > maxPatchChars) {
+            return TrimHard(header, maxPatchChars, newline);
+        }
+
+        // Extra capacity helps when appending newlines and truncation markers.
+        var sb = new StringBuilder(maxPatchChars + 32);
+        if (!string.IsNullOrEmpty(header)) {
+            sb.Append(header);
+        }
+
+        foreach (var hunk in hunks) {
+            var hunkText = string.Join(newline, hunk);
+            if (!TryAppendSegment(sb, hunkText, maxPatchChars, newline)) {
+                TryAppendSegment(sb, "... (truncated) ...", maxPatchChars, newline);
+                break;
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static bool TryAppendSegment(StringBuilder sb, string segment, int maxChars, string newline) {
+        if (string.IsNullOrEmpty(segment)) {
+            return true;
+        }
+        var extra = segment.Length + (sb.Length > 0 ? newline.Length : 0);
+        if (sb.Length + extra > maxChars) {
+            return false;
+        }
+        if (sb.Length > 0) {
+            sb.Append(newline);
+        }
+        sb.Append(segment);
+        return true;
+    }
+
+    private static string TrimHard(string text, int maxChars, string newline) {
+        if (text.Length <= maxChars) {
+            return text;
+        }
+        var suffix = $"{newline}... (truncated)";
+        if (suffix.Length >= maxChars) {
+            return text.Substring(0, maxChars);
+        }
+        var take = Math.Max(0, maxChars - suffix.Length);
+        return text.Substring(0, take) + suffix;
     }
 
     private static string BuildThreadAssessmentComment(IReadOnlyList<ThreadAssessment> resolved,
@@ -1860,4 +1958,5 @@ public static class ReviewerApp {
 internal static class Program {
     private static Task<int> Main(string[] args) => ReviewerApp.RunAsync(args);
 }
+
 

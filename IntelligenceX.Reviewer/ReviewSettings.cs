@@ -50,6 +50,10 @@ internal sealed class ReviewSettings {
     public string Mode { get; set; } = "hybrid";
     public ReviewProvider Provider { get; set; } = ReviewProvider.OpenAI;
     public string? Profile { get; set; }
+    /// <summary>
+    /// Optional high-level review intent preset (e.g., security, performance, maintainability).
+    /// </summary>
+    public string? Intent { get; set; }
     public string? Strictness { get; set; }
     public string? Tone { get; set; }
     public string? Style { get; set; }
@@ -72,6 +76,10 @@ internal sealed class ReviewSettings {
     public int RetryJitterMaxMs { get; set; } = 800;
     public bool RetryExtraOnResponseEnded { get; set; } = true;
     public bool FailOpen { get; set; } = true;
+    /// <summary>
+    /// When true, fail-open is limited to transient errors only.
+    /// </summary>
+    public bool FailOpenTransientOnly { get; set; } = true;
     public bool Diagnostics { get; set; }
     public bool Preflight { get; set; }
     public int PreflightTimeoutSeconds { get; set; } = 15;
@@ -147,6 +155,10 @@ internal sealed class ReviewSettings {
     public bool ReviewThreadsAutoResolveAIEmbed { get; set; } = true;
     public bool ReviewThreadsAutoResolveAISummary { get; set; } = true;
     public bool ReviewThreadsAutoResolveAIReply { get; set; }
+    /// <summary>
+    /// When enabled, only run thread triage/auto-resolve without generating a full review comment.
+    /// </summary>
+    public bool TriageOnly { get; set; }
     public int MaxCommentChars { get; set; } = 4000;
     public int MaxComments { get; set; } = 20;
     public int CommentSearchLimit { get; set; } = 500;
@@ -185,6 +197,12 @@ internal sealed class ReviewSettings {
         if (!string.IsNullOrWhiteSpace(profile)) {
             ReviewProfiles.Apply(profile!, settings);
             settings.Profile = profile;
+        }
+
+        var intent = GetInput("intent", "REVIEW_INTENT");
+        if (!string.IsNullOrWhiteSpace(intent)) {
+            ReviewIntents.Apply(intent!, settings);
+            settings.Intent = intent;
         }
 
         var provider = GetInput("provider", "REVIEW_PROVIDER");
@@ -414,6 +432,10 @@ internal sealed class ReviewSettings {
         if (!string.IsNullOrWhiteSpace(failOpen)) {
             settings.FailOpen = ParseBoolean(failOpen, settings.FailOpen);
         }
+        var failOpenTransientOnly = GetInput("fail_open_transient_only", "REVIEW_FAIL_OPEN_TRANSIENT_ONLY");
+        if (!string.IsNullOrWhiteSpace(failOpenTransientOnly)) {
+            settings.FailOpenTransientOnly = ParseBoolean(failOpenTransientOnly, settings.FailOpenTransientOnly);
+        }
 
         var diagnostics = GetInput("diagnostics", "REVIEW_DIAGNOSTICS");
         if (string.IsNullOrWhiteSpace(diagnostics)) {
@@ -527,6 +549,10 @@ internal sealed class ReviewSettings {
         var includeReviewThreads = GetInput("include_review_threads", "REVIEW_INCLUDE_REVIEW_THREADS");
         if (!string.IsNullOrWhiteSpace(includeReviewThreads)) {
             settings.IncludeReviewThreads = ParseBoolean(includeReviewThreads, settings.IncludeReviewThreads);
+        }
+        var triageOnly = GetInput("triage_only", "REVIEW_TRIAGE_ONLY");
+        if (!string.IsNullOrWhiteSpace(triageOnly)) {
+            settings.TriageOnly = ParseBoolean(triageOnly, settings.TriageOnly);
         }
         var reviewThreadsIncludeBots = GetInput("review_threads_include_bots", "REVIEW_THREADS_INCLUDE_BOTS", "REVIEW_REVIEW_THREADS_INCLUDE_BOTS");
         if (!string.IsNullOrWhiteSpace(reviewThreadsIncludeBots)) {

@@ -89,7 +89,7 @@ internal sealed class ReviewRunner {
                 retryState).ConfigureAwait(false);
         } catch (Exception ex) {
             ReviewDiagnostics.LogFailure(ex, _settings, snapshot, retryState);
-            if (_settings.FailOpen && IsTransient(ex)) {
+            if (ShouldFailOpen(_settings, ex)) {
                 return ReviewDiagnostics.BuildFailureBody(ex, _settings, snapshot, retryState);
             }
             throw;
@@ -179,6 +179,16 @@ internal sealed class ReviewRunner {
 
     internal static bool IsTransient(Exception ex) {
         return ReviewDiagnostics.Classify(ex).IsTransient;
+    }
+
+    internal static bool ShouldFailOpen(ReviewSettings settings, Exception ex) {
+        if (!settings.FailOpen) {
+            return false;
+        }
+        if (IsTransient(ex)) {
+            return true;
+        }
+        return !settings.FailOpenTransientOnly;
     }
 
     internal static class ReviewRetryPolicy {

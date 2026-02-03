@@ -5,6 +5,9 @@ The JSON file is the cleanest way to keep settings versioned with your repo.
 
 Schema: `../../Schemas/reviewer.schema.json`
 
+The reviewer validates `.intelligencex/reviewer.json` against the schema at runtime.
+Unknown properties emit warnings; invalid types or enum values fail the run.
+
 ## Minimal example
 
 ```json
@@ -73,6 +76,30 @@ Schema: `../../Schemas/reviewer.schema.json`
 }
 ```
 
+## Triage-only example
+
+Use this to skip the main review and only assess existing review threads.
+
+```json
+{
+  "review": {
+    "triageOnly": true,
+    "reviewThreadsAutoResolveAI": true,
+    "reviewThreadsAutoResolveAIPostComment": true
+  }
+}
+```
+
+## Intent preset example
+
+```json
+{
+  "review": {
+    "intent": "security"
+  }
+}
+```
+
 ## Path filters example
 
 ```json
@@ -113,16 +140,20 @@ Schema: `../../Schemas/reviewer.schema.json`
 - `model`: model name for the selected provider
 - `mode`: `inline`, `summary`, or `hybrid`
 - `length`: `short|medium|long`
+- `intent`: `security|performance|perf|maintainability` (sets focus areas if none provided)
 - `reviewDiffRange`: `current`, `pr-base`, or `first-review`
 - `outputStyle`: rendering style preset
 - `reviewUsageSummary`: append usage line to the footer (ChatGPT auth only)
 - `retryCount`: total attempts for provider requests
 - `retryBackoffMultiplier`: exponential backoff multiplier (default 2.0)
 - `retryJitterMinMs`/`retryJitterMaxMs`: retry jitter bounds
+- `failOpen`: emit a failure summary instead of failing the workflow
+- `failOpenTransientOnly`: when true, fail-open only on transient errors
 - `skipPaths`: if **all** changed files in a PR match these globs, skip reviewing the entire PR
 - `includePaths`: only review files matching these globs
 - `excludePaths`: ignore files matching these globs
 - `includeReviewThreads`: include existing review threads in context
+- `triageOnly`: run thread triage only (skip full review)
 - `reviewThreadsAutoResolve*`: auto-resolve rules for bot threads
 
 **Path filter order of operations**

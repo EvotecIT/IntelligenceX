@@ -13,6 +13,9 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Templates/*.md" />
+    <EmbeddedResource Include="..\Schemas\reviewer.schema.json" Link="Schemas/reviewer.schema.json">
+      <LogicalName>IntelligenceX.Reviewer.Schemas.reviewer.schema.json</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

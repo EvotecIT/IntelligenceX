@@ -27,6 +27,12 @@ internal static class ReviewConfigLoader {
             settings.Profile = profile;
         }
 
+        var intent = reviewObj.GetString("intent");
+        if (!string.IsNullOrWhiteSpace(intent)) {
+            ReviewIntents.Apply(intent!, settings);
+            settings.Intent = intent;
+        }
+
         var provider = reviewObj.GetString("provider");
         if (!string.IsNullOrWhiteSpace(provider)) {
             settings.Provider = provider.Trim().ToLowerInvariant() switch {
@@ -54,7 +60,7 @@ internal static class ReviewConfigLoader {
         ApplyCleanup(root, settings);
     }
 
-    private static string? ResolveConfigPath() {
+    internal static string? ResolveConfigPath() {
         var explicitPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
         if (!string.IsNullOrWhiteSpace(explicitPath)) {
             return explicitPath;
@@ -169,7 +175,9 @@ internal static class ReviewConfigLoader {
         settings.Preflight = ReadBool(obj, "preflight", settings.Preflight);
         settings.RetryExtraOnResponseEnded = ReadBool(obj, "retryExtraResponseEnded", settings.RetryExtraOnResponseEnded);
         settings.FailOpen = ReadBool(obj, "failOpen", settings.FailOpen);
+        settings.FailOpenTransientOnly = ReadBool(obj, "failOpenTransientOnly", settings.FailOpenTransientOnly);
         settings.ReviewUsageSummary = ReadBool(obj, "reviewUsageSummary", settings.ReviewUsageSummary);
+        settings.TriageOnly = ReadBool(obj, "triageOnly", settings.TriageOnly);
     }
 
     private static void ApplyCommentMode(JsonObject obj, ReviewSettings settings) {
