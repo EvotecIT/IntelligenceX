@@ -360,7 +360,6 @@ public sealed class CopilotClient : IDisposable
         };
 
         if (options.Environment.Count > 0) {
-            startInfo.Environment.Clear();
             foreach (var entry in options.Environment) {
                 startInfo.Environment[entry.Key] = entry.Value;
             }

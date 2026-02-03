@@ -72,6 +72,7 @@ internal static class Program {
         failed += Run("Azure auth scheme env", TestAzureAuthSchemeEnv);
         failed += Run("Azure auth scheme invalid env", TestAzureAuthSchemeInvalidEnv);
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
+        failed += Run("Copilot env allowlist config", TestCopilotEnvAllowlistConfig);
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
         failed += Run("Filter files include-only", TestFilterFilesIncludeOnly);
@@ -683,6 +684,34 @@ internal static class Program {
         AssertEqual("pr-base", ReviewSettings.NormalizeDiffRange("pr_base", "current"), "diff pr-base");
         AssertEqual("first-review", ReviewSettings.NormalizeDiffRange("first_review", "current"), "diff first-review");
         AssertEqual("current", ReviewSettings.NormalizeDiffRange("unknown", "current"), "diff fallback");
+    }
+
+    private static void TestCopilotEnvAllowlistConfig() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path,
+                "{ \"copilot\": { \"envAllowlist\": [\"GH_TOKEN\"], \"env\": { \"COPILOT_DEBUG\": \"1\" }, " +
+                "\"transport\": \"direct\", \"directUrl\": \"https://example.local/api\", " +
+                "\"directTokenEnv\": \"COPILOT_DIRECT_TOKEN\", \"directTimeoutSeconds\": 12, " +
+                "\"directHeaders\": { \"X-Test\": \"ok\" } } }");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings();
+            ReviewConfigLoader.Apply(settings);
+
+            AssertSequenceEqual(new[] { "GH_TOKEN" }, settings.CopilotEnvAllowlist, "copilot env allowlist");
+            AssertEqual("1", settings.CopilotEnv["COPILOT_DEBUG"], "copilot env map");
+            AssertEqual(CopilotTransportKind.Direct, settings.CopilotTransport, "copilot transport");
+            AssertEqual("https://example.local/api", settings.CopilotDirectUrl, "copilot direct url");
+            AssertEqual("COPILOT_DIRECT_TOKEN", settings.CopilotDirectTokenEnv ?? string.Empty, "copilot direct token env");
+            AssertEqual(12, settings.CopilotDirectTimeoutSeconds, "copilot direct timeout");
+            AssertEqual("ok", settings.CopilotDirectHeaders["X-Test"], "copilot direct header");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
     }
 
     private static ReviewConfigValidationResult? RunConfigValidation(string json) {

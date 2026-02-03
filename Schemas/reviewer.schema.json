@@ -130,7 +130,15 @@
         "workingDirectory": { "type": "string" },
         "autoInstall": { "type": "boolean" },
         "autoInstallMethod": { "type": "string" },
-        "autoInstallPrerelease": { "type": "boolean" }
+        "autoInstallPrerelease": { "type": "boolean" },
+        "envAllowlist": { "type": "array", "items": { "type": "string" } },
+        "env": { "type": "object", "additionalProperties": { "type": "string" } },
+        "transport": { "type": "string", "enum": ["cli", "direct"] },
+        "directUrl": { "type": "string" },
+        "directToken": { "type": "string" },
+        "directTokenEnv": { "type": "string" },
+        "directTimeoutSeconds": { "type": "integer", "minimum": 1 },
+        "directHeaders": { "type": "object", "additionalProperties": { "type": "string" } }
       }
     }
   }
