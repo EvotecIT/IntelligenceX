@@ -191,6 +191,7 @@ This path skips the Copilot CLI and posts directly to a compatible HTTP endpoint
 If `directTokenEnv` is set, the value is pulled from the environment at runtime.
 `directToken` or an `Authorization` header in `directHeaders` is required for most endpoints.
 Use `directHeaders` to attach custom headers required by your gateway.
+Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source control.
 
 ## Common knobs
 - `provider`: `openai` or `copilot`

@@ -134,7 +134,7 @@
         "envAllowlist": { "type": "array", "items": { "type": "string" } },
         "inheritEnvironment": { "type": "boolean" },
         "env": { "type": "object", "additionalProperties": { "type": "string" } },
-        "transport": { "type": "string", "enum": ["cli", "direct"] },
+        "transport": { "type": "string", "enum": ["cli", "direct", "api", "http"] },
         "directUrl": { "type": "string" },
         "directToken": { "type": "string" },
         "directTokenEnv": { "type": "string" },
