@@ -103,6 +103,10 @@ internal sealed class ReviewSettings {
     public string? SummaryTemplatePath { get; set; }
     public bool OverwriteSummary { get; set; } = true;
     public bool OverwriteSummaryOnNewCommit { get; set; } = true;
+    /// <summary>
+    /// When enabled, include the previous summary (same commit) in the prompt to reduce noisy rewording on reruns.
+    /// </summary>
+    public bool SummaryStability { get; set; } = true;
     public bool SkipDraft { get; set; } = true;
     public IReadOnlyList<string> SkipTitles { get; set; } = new[] { "[WIP]", "[skip-review]" };
     public IReadOnlyList<string> SkipLabels { get; set; } = Array.Empty<string>();
@@ -327,6 +331,10 @@ internal sealed class ReviewSettings {
         var overwriteSummaryOnNewCommit = GetInput("overwrite_summary_on_new_commit", "OVERWRITE_SUMMARY_ON_NEW_COMMIT");
         if (!string.IsNullOrWhiteSpace(overwriteSummaryOnNewCommit)) {
             settings.OverwriteSummaryOnNewCommit = ParseBoolean(overwriteSummaryOnNewCommit, settings.OverwriteSummaryOnNewCommit);
+        }
+        var summaryStability = GetInput("summary_stability", "REVIEW_SUMMARY_STABILITY");
+        if (!string.IsNullOrWhiteSpace(summaryStability)) {
+            settings.SummaryStability = ParseBoolean(summaryStability, settings.SummaryStability);
         }
 
         var skipDraft = GetInput("skip_draft", "SKIP_DRAFT");

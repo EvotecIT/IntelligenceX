@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using IntelligenceX.OpenAI.Chat;
 
 namespace IntelligenceX.Reviewer;
 
@@ -37,11 +38,13 @@ internal static class ReviewFormatter {
         var reasoningLine = reasoningParts.Count == 0
             ? string.Empty
             : $" | Reasoning: {string.Join(", ", reasoningParts)}";
+        var reasoningLabel = BuildReasoningLabel(settings.ReasoningEffort);
         var tokens = new Dictionary<string, string> {
             ["SummaryMarker"] = SummaryMarker,
             ["Number"] = context.Number.ToString(),
             ["Title"] = EscapeMarkdown(context.Title),
             ["CommitLine"] = FormatCommitLine(context.HeadSha),
+            ["ReasoningLabel"] = reasoningLabel,
             ["InlineNote"] = inlineNote,
             ["AutoResolveNote"] = autoResolveLine,
             ["ReviewBody"] = body,
@@ -124,6 +127,19 @@ internal static class ReviewFormatter {
         var trimmed = sha.Trim();
         var shortSha = trimmed.Length > 7 ? trimmed.Substring(0, 7) : trimmed;
         return $"{ReviewedCommitMarker} `{shortSha}`\n";
+    }
+
+    private static string BuildReasoningLabel(ReasoningEffort? effort) {
+        if (!effort.HasValue) {
+            return string.Empty;
+        }
+        var label = effort.Value switch {
+            ReasoningEffort.Low => "low",
+            ReasoningEffort.Medium => "medium",
+            ReasoningEffort.High => "high",
+            _ => null
+        };
+        return string.IsNullOrWhiteSpace(label) ? string.Empty : $"Reasoning level: {label}\n";
     }
 
     private static string BuildChecklist(ReviewProgress progress) {

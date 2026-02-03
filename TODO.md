@@ -36,10 +36,10 @@ Status: Draft (needs priorities + owners)
 - [x] Add "review intent" presets (security/perf/maintainability).
 
 ### Phase 3 — Review output + UX
-- [ ] Add optional "reasoning level" label in header (low/medium/high) when provider supports it.
+- [x] Add optional "reasoning level" label in header (low/medium/high) when provider supports it.
 - [ ] Add optional usage/limits line near model header (opt-in; ChatGPT auth).
 - [x] Add structured findings schema for bots/automation (severity + file + line).
-- [ ] Add summary stability (avoid noisy rewording across reruns).
+- [x] Add summary stability (avoid noisy rewording across reruns).
 - [x] Add “triage mode” that only checks open threads.
 
 ### Phase 4 — Thread triage + auto-resolve

@@ -88,6 +88,8 @@ internal static class Program {
         failed += Run("Filter files include+exclude", TestFilterFilesIncludeExclude);
         failed += Run("Filter files glob patterns", TestFilterFilesGlobPatterns);
         failed += Run("Filter files empty filters", TestFilterFilesEmptyFilters);
+        failed += Run("Azure DevOps changes pagination", TestAzureDevOpsChangesPagination);
+        failed += Run("Azure DevOps diff note zero iterations", TestAzureDevOpsDiffNoteZeroIterations);
         failed += Run("Context deny invalid regex", TestContextDenyInvalidRegex);
         failed += Run("Context deny timeout", TestContextDenyTimeout);
         failed += Run("Review summary parser", TestReviewSummaryParser);
@@ -824,14 +826,21 @@ internal static class Program {
     }
 
     private sealed record HttpRequest(string Method, string Path, string Body);
+    private sealed record HttpResponse(string Body, IReadOnlyDictionary<string, string>? Headers = null);
 
     private sealed class LocalHttpServer : IDisposable {
         private readonly TcpListener _listener;
-        private readonly Func<HttpRequest, string?> _handler;
+        private readonly Func<HttpRequest, HttpResponse?> _handler;
         private readonly Task _loopTask;
         private bool _disposed;
 
-        public LocalHttpServer(Func<HttpRequest, string?> handler) {
+        public LocalHttpServer(Func<HttpRequest, string?> handler)
+            : this(request => {
+                var body = handler(request);
+                return body is null ? null : new HttpResponse(body);
+            }) { }
+
+        public LocalHttpServer(Func<HttpRequest, HttpResponse?> handler) {
             _handler = handler;
             _listener = new TcpListener(IPAddress.Loopback, 0);
             _listener.Start();
@@ -896,22 +905,30 @@ internal static class Program {
                 body = new string(buffer, 0, read);
             }
 
-            var responseBody = _handler(new HttpRequest(method, path, body));
-            if (responseBody is null) {
+            var response = _handler(new HttpRequest(method, path, body));
+            if (response is null) {
                 await WriteResponseAsync(stream, 404, "Not Found", "{}").ConfigureAwait(false);
                 return;
             }
 
-            await WriteResponseAsync(stream, 200, "OK", responseBody).ConfigureAwait(false);
+            await WriteResponseAsync(stream, 200, "OK", response.Body, response.Headers).ConfigureAwait(false);
         }
 
-        private static async Task WriteResponseAsync(NetworkStream stream, int statusCode, string statusText, string body) {
+        private static async Task WriteResponseAsync(NetworkStream stream, int statusCode, string statusText, string body,
+            IReadOnlyDictionary<string, string>? headers = null) {
             var payload = Encoding.UTF8.GetBytes(body);
-            var headers = $"HTTP/1.1 {statusCode} {statusText}\r\n" +
-                          "Content-Type: application/json\r\n" +
-                          $"Content-Length: {payload.Length}\r\n" +
-                          "Connection: close\r\n\r\n";
-            var headerBytes = Encoding.UTF8.GetBytes(headers);
+            var sb = new StringBuilder();
+            sb.AppendLine($"HTTP/1.1 {statusCode} {statusText}");
+            sb.AppendLine("Content-Type: application/json");
+            sb.AppendLine($"Content-Length: {payload.Length}");
+            if (headers is not null) {
+                foreach (var header in headers) {
+                    sb.AppendLine($"{header.Key}: {header.Value}");
+                }
+            }
+            sb.AppendLine("Connection: close");
+            sb.AppendLine();
+            var headerBytes = Encoding.UTF8.GetBytes(sb.ToString());
             await stream.WriteAsync(headerBytes, 0, headerBytes.Length).ConfigureAwait(false);
             await stream.WriteAsync(payload, 0, payload.Length).ConfigureAwait(false);
             await stream.FlushAsync().ConfigureAwait(false);
@@ -1003,6 +1020,42 @@ internal static class Program {
         var files = BuildFiles("src/app.cs", "docs/readme.md");
         var filtered = ReviewerApp.FilterFilesByPaths(files, Array.Empty<string>(), Array.Empty<string>());
         AssertSequenceEqual(new[] { "src/app.cs", "docs/readme.md" }, GetFilenames(filtered), "empty filters");
+    }
+
+    private static void TestAzureDevOpsChangesPagination() {
+        var project = "project";
+        var repo = "repo";
+        var prId = 42;
+
+        var page1 = "{\"changes\":[{\"item\":{\"path\":\"/src/A.cs\"},\"changeType\":\"edit\"},{\"item\":{\"path\":\"/src/B.cs\"},\"changeType\":\"add\"}]}";
+        var page2 = "{\"changes\":[{\"item\":{\"path\":\"/src/C.cs\"},\"changeType\":\"delete\"}]}";
+
+        using var server = new LocalHttpServer(request => {
+            if (!request.Path.StartsWith($"/{project}/_apis/git/repositories/{repo}/pullRequests/{prId}/changes",
+                    StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+
+            if (request.Path.Contains("continuationToken=token1", StringComparison.OrdinalIgnoreCase)) {
+                return new HttpResponse(page2);
+            }
+
+            return new HttpResponse(page1, new Dictionary<string, string> {
+                ["x-ms-continuationtoken"] = "token1"
+            });
+        });
+
+        using var client = new AzureDevOpsClient(server.BaseUri, "token", AzureDevOpsAuthScheme.Bearer);
+        var files = client.GetPullRequestChangesAsync(project, repo, prId, CancellationToken.None)
+            .GetAwaiter().GetResult();
+
+        AssertEqual(3, files.Count, "ado page count");
+        AssertSequenceEqual(new[] { "src/A.cs", "src/B.cs", "src/C.cs" }, GetFilenames(files), "ado page files");
+    }
+
+    private static void TestAzureDevOpsDiffNoteZeroIterations() {
+        var note = AzureDevOpsReviewRunner.BuildDiffNote(Array.Empty<int>());
+        AssertEqual("pull request changes", note, "ado diff note zero");
     }
 
     private static PullRequestFile[] BuildFiles(params string[] paths) {
