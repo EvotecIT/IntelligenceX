@@ -98,6 +98,10 @@ internal sealed class ReviewSettings {
     public int PreflightTimeoutSeconds { get; set; } = 15;
     public ReviewLength Length { get; set; } = ReviewLength.Long;
     public bool IncludeNextSteps { get; set; } = true;
+    /// <summary>
+    /// Adds a short language-aware hints block to the review prompt.
+    /// </summary>
+    public bool IncludeLanguageHints { get; set; } = true;
     public string? PromptTemplate { get; set; }
     public string? PromptTemplatePath { get; set; }
     public string? SummaryTemplate { get; set; }
@@ -662,6 +666,10 @@ internal sealed class ReviewSettings {
         var includeNextSteps = GetInput("include_next_steps", "REVIEW_INCLUDE_NEXT_STEPS");
         if (!string.IsNullOrWhiteSpace(includeNextSteps)) {
             settings.IncludeNextSteps = ParseBoolean(includeNextSteps, settings.IncludeNextSteps);
+        }
+        var languageHints = GetInput("language_hints", "REVIEW_LANGUAGE_HINTS");
+        if (!string.IsNullOrWhiteSpace(languageHints)) {
+            settings.IncludeLanguageHints = ParseBoolean(languageHints, settings.IncludeLanguageHints);
         }
 
         var commentMode = GetInput("comment_mode", "REVIEW_COMMENT_MODE");

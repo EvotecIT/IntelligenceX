@@ -132,6 +132,16 @@ Use this to skip the main review and only assess existing review threads.
 }
 ```
 
+## Language hints
+
+```json
+{
+  "review": {
+    "languageHints": true
+  }
+}
+```
+
 ## Usage summary line
 
 ```json
@@ -229,6 +239,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `reviewDiffRange`: `current`, `pr-base`, or `first-review`
 - `outputStyle`: rendering style preset
 - `reviewUsageSummary`: append usage line to the footer (ChatGPT auth only)
+- `languageHints`: include language-aware hint block in the prompt
 - `retryCount`: total attempts for provider requests
 - `retryBackoffMultiplier`: exponential backoff multiplier (default 2.0)
 - `retryJitterMinMs`/`retryJitterMaxMs`: retry jitter bounds

@@ -176,6 +176,7 @@ internal static class ReviewConfigLoader {
 
     private static void ApplyBooleans(JsonObject obj, ReviewSettings settings) {
         settings.IncludeNextSteps = ReadBool(obj, "includeNextSteps", settings.IncludeNextSteps);
+        settings.IncludeLanguageHints = ReadBool(obj, "languageHints", settings.IncludeLanguageHints);
         settings.OverwriteSummary = ReadBool(obj, "overwriteSummary", settings.OverwriteSummary);
         settings.OverwriteSummaryOnNewCommit = ReadBool(obj, "overwriteSummaryOnNewCommit", settings.OverwriteSummaryOnNewCommit);
         settings.SummaryStability = ReadBool(obj, "summaryStability", settings.SummaryStability);
