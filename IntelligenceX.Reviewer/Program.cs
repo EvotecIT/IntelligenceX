@@ -237,8 +237,9 @@ public static class ReviewerApp {
             var inlineSuppressed = inlineSupported && !inlineAllowed;
             var autoResolveSummary = settings.ReviewThreadsAutoResolveAISummary ? triageResult.SummaryLine : string.Empty;
             var usageLine = await TryBuildUsageLineAsync(settings).ConfigureAwait(false);
+            var findingsBlock = settings.StructuredFindings ? ReviewFindingsBuilder.Build(inlineComments) : string.Empty;
             var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported, inlineSuppressed,
-                autoResolveSummary, usageLine);
+                autoResolveSummary, usageLine, findingsBlock);
             progress.Review = ReviewProgressState.Complete;
             progress.Finalize = ReviewProgressState.InProgress;
             progress.StatusLine = "Finalizing summary.";

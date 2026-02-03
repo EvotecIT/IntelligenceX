@@ -69,6 +69,7 @@ internal static class Program {
         failed += Run("Review fail-open decision", TestReviewFailOpenDecision);
         failed += Run("Review config validator allows additional", TestReviewConfigValidatorAllowsAdditionalProperties);
         failed += Run("Review config validator invalid enum", TestReviewConfigValidatorInvalidEnum);
+        failed += Run("Structured findings block", TestStructuredFindingsBlock);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);
         failed += Run("Trim patch CRLF", TestTrimPatchPreservesCrlf);
         failed += Run("Review intent applies focus", TestReviewIntentAppliesFocus);
@@ -630,6 +631,18 @@ internal static class Program {
         var result = RunConfigValidation("{\"review\":{\"length\":\"SHORT\"}}");
         AssertEqual(true, result is not null, "validator result");
         AssertEqual(true, result!.Errors.Count > 0, "invalid enum should error");
+    }
+
+    private static void TestStructuredFindingsBlock() {
+        var comments = new List<InlineReviewComment> {
+            new("src/app.cs", 42, "Null check is missing."),
+            new("", 0, "Snippet-only comment", "var x = 1;")
+        };
+        var block = ReviewFindingsBuilder.Build(comments);
+        AssertEqual(true, block.Contains("<!-- intelligencex:findings -->", StringComparison.Ordinal), "findings marker");
+        AssertEqual(true, block.Contains("\"path\":\"src/app.cs\"", StringComparison.Ordinal), "findings path");
+        AssertEqual(true, block.Contains("\"line\":42", StringComparison.Ordinal), "findings line");
+        AssertEqual(false, block.Contains("Snippet-only", StringComparison.Ordinal), "findings skips snippet-only");
     }
 
     private static void TestTrimPatchStopsAtHunkBoundary() {

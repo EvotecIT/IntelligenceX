@@ -9,3 +9,4 @@ Reviewing PR #{{Number}}: **{{Title}}**
 
 _Model: {{Model}} | Length: {{Length}} | Mode: {{Mode}}{{ReasoningLine}}_
 {{UsageLine}}
+{{FindingsBlock}}

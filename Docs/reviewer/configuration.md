@@ -138,6 +138,16 @@ Use this to skip the main review and only assess existing review threads.
 }
 ```
 
+## Structured findings (automation)
+
+```json
+{
+  "review": {
+    "structuredFindings": true
+  }
+}
+```
+
 ## Output style example
 
 ```json
@@ -160,6 +170,7 @@ Use this to skip the main review and only assess existing review threads.
 - `reviewDiffRange`: `current`, `pr-base`, or `first-review`
 - `outputStyle`: rendering style preset
 - `reviewUsageSummary`: append usage line to the footer (ChatGPT auth only)
+- `structuredFindings`: append a JSON findings block for automation (path/line/severity/message)
 - `retryCount`: total attempts for provider requests
 - `retryBackoffMultiplier`: exponential backoff multiplier (default 2.0)
 - `retryJitterMinMs`/`retryJitterMaxMs`: retry jitter bounds

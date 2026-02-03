@@ -186,6 +186,7 @@ internal static class ReviewConfigLoader {
         settings.FailOpen = ReadBool(obj, "failOpen", settings.FailOpen);
         settings.FailOpenTransientOnly = ReadBool(obj, "failOpenTransientOnly", settings.FailOpenTransientOnly);
         settings.ReviewUsageSummary = ReadBool(obj, "reviewUsageSummary", settings.ReviewUsageSummary);
+        settings.StructuredFindings = ReadBool(obj, "structuredFindings", settings.StructuredFindings);
         settings.TriageOnly = ReadBool(obj, "triageOnly", settings.TriageOnly);
     }
 

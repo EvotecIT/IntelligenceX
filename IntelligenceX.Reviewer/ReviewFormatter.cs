@@ -11,7 +11,7 @@ internal static class ReviewFormatter {
     private const string ProgressTemplateName = "ReviewProgress.md";
 
     public static string BuildComment(PullRequestContext context, string reviewBody, ReviewSettings settings, bool inlineSupported,
-        bool inlineSuppressed, string? autoResolveNote, string? usageLine) {
+        bool inlineSuppressed, string? autoResolveNote, string? usageLine, string? findingsBlock) {
         var inlineNote = string.Empty;
         if (!inlineSupported && settings.Mode != "summary") {
             inlineNote = "> Inline comments are not enabled yet; posting summary only.\n";
@@ -49,7 +49,8 @@ internal static class ReviewFormatter {
             ["Length"] = settings.Length.ToString().ToLowerInvariant(),
             ["Mode"] = settings.Mode,
             ["ReasoningLine"] = reasoningLine,
-            ["UsageLine"] = string.IsNullOrWhiteSpace(usageLine) ? string.Empty : usageLine.Trim()
+            ["UsageLine"] = string.IsNullOrWhiteSpace(usageLine) ? string.Empty : usageLine.Trim(),
+            ["FindingsBlock"] = string.IsNullOrWhiteSpace(findingsBlock) ? string.Empty : findingsBlock.Trim()
         };
 
         return TemplateRenderer.Render(template, tokens).TrimEnd();
