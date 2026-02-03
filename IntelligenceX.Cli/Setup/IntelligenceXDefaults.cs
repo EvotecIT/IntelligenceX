@@ -7,6 +7,7 @@ public static class IntelligenceXDefaults {
     /// <summary>
     /// Default GitHub OAuth App Client ID for device flow authentication.
     /// This is the official IntelligenceX Review app.
+    /// The Client ID is public (not a secret) and is safe to embed in source.
     /// </summary>
     public const string GitHubClientId = "Iv23li0wcHDzWa25HKz3";
 

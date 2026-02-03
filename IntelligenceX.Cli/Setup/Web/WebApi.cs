@@ -92,9 +92,14 @@ internal sealed class WebApi {
             await WriteJsonAsync(context, new { error = "Missing token" }).ConfigureAwait(false);
             return;
         }
+        if (!TryGetApiBaseUrl(request.ApiBaseUrl, out var apiBaseUrl, out var apiError)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = apiError }).ConfigureAwait(false);
+            return;
+        }
 
         try {
-            using var client = new GitHubRepoClient(request.Token!, request.ApiBaseUrl ?? "https://api.github.com");
+            using var client = new GitHubRepoClient(request.Token!, apiBaseUrl);
             Exception? userError = null;
             Exception? installError = null;
             List<GitHubRepoClient.RepositoryInfo>? repos = null;
@@ -150,10 +155,15 @@ internal sealed class WebApi {
             await WriteJsonAsync(context, new { error = "Missing repos" }).ConfigureAwait(false);
             return;
         }
+        if (!TryGetApiBaseUrl(request.ApiBaseUrl, out var apiBaseUrl, out var apiError)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = apiError }).ConfigureAwait(false);
+            return;
+        }
 
         var results = new List<RepoStatusResponse>();
         try {
-            using var client = new GitHubRepoClient(request.Token!, request.ApiBaseUrl ?? "https://api.github.com");
+            using var client = new GitHubRepoClient(request.Token!, apiBaseUrl);
             foreach (var repo in request.Repos) {
                 if (!TryParseRepo(repo, out var owner, out var name)) {
                     results.Add(new RepoStatusResponse { Repo = repo, Error = "Invalid repo name (expected owner/name)." });
@@ -203,9 +213,14 @@ internal sealed class WebApi {
             await WriteJsonAsync(context, new { error = "Invalid repo name (expected owner/name)." }).ConfigureAwait(false);
             return;
         }
+        if (!TryGetApiBaseUrl(request.ApiBaseUrl, out var apiBaseUrl, out var apiError)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = apiError }).ConfigureAwait(false);
+            return;
+        }
 
         try {
-            using var client = new GitHubRepoClient(request.Token!, request.ApiBaseUrl ?? "https://api.github.com");
+            using var client = new GitHubRepoClient(request.Token!, apiBaseUrl);
             var defaultBranch = await client.GetDefaultBranchAsync(owner, name).ConfigureAwait(false);
             var config = await client.TryGetFileAsync(owner, name, ".intelligencex/config.json", defaultBranch)
                 .ConfigureAwait(false);
@@ -241,9 +256,14 @@ internal sealed class WebApi {
             await WriteJsonAsync(context, new { error = "Invalid repo name (expected owner/name)." }).ConfigureAwait(false);
             return;
         }
+        if (!TryGetApiBaseUrl(request.ApiBaseUrl, out var apiBaseUrl, out var apiError)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = apiError }).ConfigureAwait(false);
+            return;
+        }
 
         try {
-            using var client = new GitHubRepoClient(request.Token!, request.ApiBaseUrl ?? "https://api.github.com");
+            using var client = new GitHubRepoClient(request.Token!, apiBaseUrl);
             var defaultBranch = await client.GetDefaultBranchAsync(owner, name).ConfigureAwait(false);
             var workflow = await client.TryGetFileAsync(owner, name, ".github/workflows/review-intelligencex.yml", defaultBranch)
                 .ConfigureAwait(false);
@@ -324,13 +344,18 @@ internal sealed class WebApi {
         if (string.IsNullOrWhiteSpace(request.AppName)) {
             request.AppName = "IntelligenceX Reviewer";
         }
+        if (!TryGetApiBaseUrl(request.ApiBaseUrl, out var apiBaseUrl, out var apiError)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = apiError }).ConfigureAwait(false);
+            return;
+        }
 
         try {
             var result = await GitHubAppManifestFlow.RunAsync(new GitHubAppManifestOptions {
                 AppName = request.AppName!,
                 Owner = request.Owner,
                 AuthBaseUrl = request.AuthBaseUrl ?? "https://github.com",
-                ApiBaseUrl = request.ApiBaseUrl ?? "https://api.github.com"
+                ApiBaseUrl = apiBaseUrl
             }, CancellationToken.None).ConfigureAwait(false);
 
             if (result is null) {
@@ -360,9 +385,14 @@ internal sealed class WebApi {
             await WriteJsonAsync(context, new { error = "Missing appId or pem" }).ConfigureAwait(false);
             return;
         }
+        if (!TryGetApiBaseUrl(request.ApiBaseUrl, out var apiBaseUrl, out var apiError)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = apiError }).ConfigureAwait(false);
+            return;
+        }
 
         try {
-            using var client = new GitHubAppClient(request.AppId, request.Pem!, request.ApiBaseUrl ?? "https://api.github.com");
+            using var client = new GitHubAppClient(request.AppId, request.Pem!, apiBaseUrl);
             var installs = await client.ListInstallationsAsync().ConfigureAwait(false);
             await WriteJsonAsync(context, new {
                 installations = installs.ConvertAll(i => new { id = i.Id, login = i.AccountLogin })
@@ -384,9 +414,14 @@ internal sealed class WebApi {
             await WriteJsonAsync(context, new { error = "Missing appId, pem, or installationId" }).ConfigureAwait(false);
             return;
         }
+        if (!TryGetApiBaseUrl(request.ApiBaseUrl, out var apiBaseUrl, out var apiError)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = apiError }).ConfigureAwait(false);
+            return;
+        }
 
         try {
-            using var client = new GitHubAppClient(request.AppId, request.Pem!, request.ApiBaseUrl ?? "https://api.github.com");
+            using var client = new GitHubAppClient(request.AppId, request.Pem!, apiBaseUrl);
             var token = await client.CreateInstallationTokenAsync(request.InstallationId).ConfigureAwait(false);
             await WriteJsonAsync(context, new { token }).ConfigureAwait(false);
         } catch (Exception ex) {
@@ -551,11 +586,18 @@ internal sealed class WebApi {
             if (!string.IsNullOrWhiteSpace(request.ClientId)) {
                 config.ClientId = request.ClientId!;
             }
+            if (request.RedirectPort < 0 || request.RedirectPort > 65535) {
+                context.Response.StatusCode = 400;
+                await WriteJsonAsync(context, new { error = "RedirectPort must be 0 (default) or between 1 and 65535." }).ConfigureAwait(false);
+                return;
+            }
+            if (request.TimeoutSeconds < 0) {
+                context.Response.StatusCode = 400;
+                await WriteJsonAsync(context, new { error = "TimeoutSeconds must be 0 (default) or a positive integer." }).ConfigureAwait(false);
+                return;
+            }
             if (request.RedirectPort > 0) {
                 config.RedirectPort = request.RedirectPort;
-            }
-            if (request.TimeoutSeconds > 0) {
-                config.RedirectPort = 1455; // Default port for OAuth callback
             }
 
             var service = new OAuthLoginService();
@@ -587,13 +629,16 @@ internal sealed class WebApi {
     }
 
     private static void OpenBrowser(string url) {
+        if (!TryNormalizeHttpUrl(url, out var safeUrl)) {
+            return;
+        }
         try {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) {
-                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+                Process.Start(new ProcessStartInfo(safeUrl) { UseShellExecute = true });
             } else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) {
-                Process.Start("open", url);
+                Process.Start("open", safeUrl);
             } else {
-                Process.Start("xdg-open", url);
+                Process.Start("xdg-open", safeUrl);
             }
         } catch {
             // Best effort - user may need to open URL manually
@@ -781,6 +826,41 @@ internal sealed class WebApi {
             return true;
         }
         return type.EndsWith("+json", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryGetApiBaseUrl(string? requested, out string apiBaseUrl, out string error) {
+        apiBaseUrl = "https://api.github.com";
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(requested)) {
+            return true;
+        }
+        if (!Uri.TryCreate(requested, UriKind.Absolute, out var uri)) {
+            error = "ApiBaseUrl must be a valid absolute URL.";
+            return false;
+        }
+        if (uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)) {
+            apiBaseUrl = uri.ToString().TrimEnd('/');
+            return true;
+        }
+        if (uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) && uri.IsLoopback) {
+            apiBaseUrl = uri.ToString().TrimEnd('/');
+            return true;
+        }
+        error = "ApiBaseUrl must use https (http allowed only for localhost).";
+        return false;
+    }
+
+    private static bool TryNormalizeHttpUrl(string url, out string normalized) {
+        normalized = string.Empty;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) {
+            return false;
+        }
+        if (!uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
+            !uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+        normalized = uri.ToString();
+        return true;
     }
 
     private sealed class RepoListRequest {
