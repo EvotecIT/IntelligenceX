@@ -44,6 +44,8 @@ internal static class Program {
         failed += Run("Tool call parsing", TestToolCallParsing);
         failed += Run("Tool call invalid JSON", TestToolCallParsingInvalidJson);
         failed += Run("Tool output input", TestToolOutputInput);
+        failed += Run("Turn response_id parsing", TestTurnResponseIdParsing);
+        failed += Run("Tool definitions ordered", TestToolDefinitionOrdering);
 #if !NET472
         failed += Run("Setup args reject skip+update", TestSetupArgsRejectSkipUpdate);
         failed += Run("GitHub secrets reject empty value", TestGitHubSecretsRejectEmptyValue);
@@ -169,6 +171,27 @@ internal static class Program {
         AssertEqual("custom_tool_call_output", item!.GetString("type"), "tool output type");
         AssertEqual("call_42", item.GetString("call_id"), "tool output call id");
         AssertEqual("ok", item.GetString("output"), "tool output value");
+    }
+
+    private static void TestTurnResponseIdParsing() {
+        var turn = TurnInfo.FromJson(new JsonObject()
+            .Add("id", "turn-response")
+            .Add("response_id", "resp_snake"));
+        AssertEqual("resp_snake", turn.ResponseId, "response_id");
+    }
+
+    private static void TestToolDefinitionOrdering() {
+        var registry = new ToolRegistry();
+        registry.Register(new TestTool("zeta"));
+        registry.Register(new TestTool("Alpha"));
+        registry.Register(new TestTool("beta"));
+
+        var names = new List<string>();
+        foreach (var definition in registry.GetDefinitions()) {
+            names.Add(definition.Name);
+        }
+
+        AssertSequenceEqual(new[] { "Alpha", "beta", "zeta" }, names, "tool definition order");
     }
 
     private static int Run(string name, Action test) {
@@ -1071,6 +1094,18 @@ internal static class Program {
     private static void AssertNotNull(object? value, string name) {
         if (value is null) {
             throw new InvalidOperationException($"Expected {name} to be non-null.");
+        }
+    }
+
+    private sealed class TestTool : ITool {
+        public TestTool(string name) {
+            Definition = new ToolDefinition(name, "test tool");
+        }
+
+        public ToolDefinition Definition { get; }
+
+        public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+            return Task.FromResult(string.Empty);
         }
     }
 

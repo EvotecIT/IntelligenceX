@@ -42,5 +42,8 @@ public sealed class ToolRegistry {
     /// Returns tool definitions for the registry.
     /// </summary>
     public IReadOnlyList<ToolDefinition> GetDefinitions()
-        => _tools.Values.Select(tool => tool.Definition).ToList();
+        => _tools.Values
+            .Select(tool => tool.Definition)
+            .OrderBy(definition => definition.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 }

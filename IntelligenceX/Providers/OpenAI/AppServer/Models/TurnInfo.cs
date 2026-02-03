@@ -67,11 +67,12 @@ public sealed class TurnInfo {
         var id = turnObj.GetString("id") ?? string.Empty;
         var status = turnObj.GetString("status");
         var responseId = turnObj.GetString("responseId")
+                         ?? turnObj.GetString("response_id")
                          ?? turnObj.GetObject("response")?.GetString("id");
         var outputs = TurnOutput.FromTurn(turnObj);
         var images = TurnOutput.FilterImages(outputs);
         var additional = turnObj.ExtractAdditional(
-            "id", "status", "responseId", "output", "outputs", "response", "result");
+            "id", "status", "responseId", "response_id", "output", "outputs", "response", "result");
         return new TurnInfo(id, responseId, status, outputs, images, turnObj, additional);
     }
 }
