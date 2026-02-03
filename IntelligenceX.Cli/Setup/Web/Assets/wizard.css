@@ -786,6 +786,62 @@ input[type="checkbox"]:hover {
   border-color: var(--pf-accent);
 }
 
+/* ── Trust panel ── */
+.trust-panel {
+  background: var(--pf-glow-primary);
+  border-color: var(--pf-accent);
+}
+
+.trust-panel h3 {
+  margin: 0 0 12px;
+  font-size: 0.95rem;
+  color: var(--pf-accent);
+}
+
+.trust-panel p {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  color: var(--pf-ink);
+}
+
+.trust-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+}
+
+.trust-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  margin-bottom: 4px;
+  color: var(--pf-ink);
+}
+
+.trust-list .check {
+  color: var(--pf-success);
+  font-weight: bold;
+}
+
+.trust-note {
+  font-size: 0.78rem;
+  color: var(--pf-muted);
+  margin: 0;
+}
+
+/* ── Primary action button ── */
+button.primary-action {
+  background: var(--pf-accent);
+  color: var(--pf-btn-primary-text);
+  font-size: 1rem;
+  padding: 12px 28px;
+}
+
+button.primary-action:hover:not(:disabled) {
+  box-shadow: 0 8px 32px var(--pf-glow-primary);
+}
+
 /* ── Misc ── */
 .hidden {
   display: none !important;
@@ -795,6 +851,262 @@ input[type="checkbox"]:hover {
   font-size: 13px;
   color: var(--pf-muted);
   white-space: pre-line;
+}
+
+/* ── Device code display ── */
+.device-code-display {
+  text-align: center;
+  padding: 16px;
+  background: var(--pf-bg);
+  border-radius: var(--pf-radius-sm);
+  margin-bottom: 12px;
+}
+
+.device-code-label {
+  font-size: 0.85rem;
+  color: var(--pf-muted);
+  margin-bottom: 4px;
+}
+
+.device-code-value {
+  font-family: var(--pf-font-mono);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--pf-accent);
+  letter-spacing: 0.15em;
+  margin: 8px 0;
+}
+
+.device-code-hint {
+  font-size: 0.8rem;
+  color: var(--pf-muted);
+}
+
+.polling-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--pf-muted);
+  font-size: 0.85rem;
+}
+
+.auth-success {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--pf-success);
+  font-weight: 600;
+  padding: 12px;
+}
+
+.check-icon {
+  font-size: 1.5rem;
+}
+
+/* ── Spinner ── */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--pf-border);
+  border-top-color: var(--pf-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Organization filter ── */
+.org-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.org-btn {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  background: var(--pf-bg-alt);
+  border: 1px solid var(--pf-border);
+  color: var(--pf-muted);
+  border-radius: var(--pf-radius-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.org-btn:hover {
+  border-color: var(--pf-accent);
+  color: var(--pf-ink);
+}
+
+.org-btn.active {
+  background: var(--pf-accent);
+  border-color: var(--pf-accent);
+  color: var(--pf-btn-primary-text);
+}
+
+/* ── Review grid ── */
+.review-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.review-section {
+  border-bottom: 1px solid var(--pf-border);
+  padding-bottom: 16px;
+}
+
+.review-section:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.review-section-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--pf-muted);
+  margin-bottom: 12px;
+}
+
+.review-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.review-label {
+  color: var(--pf-muted);
+  font-size: 0.9rem;
+}
+
+.review-value {
+  font-size: 0.9rem;
+  color: var(--pf-ink);
+}
+
+.review-repos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.review-repos code {
+  font-family: var(--pf-font-mono);
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  background: var(--pf-bg);
+  border-radius: 4px;
+  color: var(--pf-muted);
+}
+
+/* ── Action buttons ── */
+.action-buttons {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  background: var(--pf-bg-alt);
+  border: 1px solid var(--pf-border);
+  border-radius: var(--pf-radius-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  color: var(--pf-ink);
+}
+
+.action-btn:hover {
+  border-color: var(--pf-accent);
+  background: var(--pf-glow-primary);
+}
+
+.action-btn.primary {
+  background: var(--pf-btn-primary-bg);
+  border-color: var(--pf-btn-primary-bg);
+  color: var(--pf-btn-primary-text);
+}
+
+.action-btn.primary:hover {
+  box-shadow: var(--pf-shadow-button);
+  opacity: 0.9;
+}
+
+.action-btn.secondary {
+  background: var(--pf-bg-alt);
+  border: 1px solid var(--pf-border);
+  color: var(--pf-ink);
+}
+
+.action-btn.secondary:hover {
+  border-color: var(--pf-accent);
+  background: var(--pf-glow-primary);
+}
+
+.action-btn.danger {
+  background: var(--pf-danger-muted);
+  border-color: var(--pf-danger);
+  color: var(--pf-danger);
+}
+
+.action-btn.danger:hover {
+  background: var(--pf-danger);
+  color: white;
+}
+
+.action-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.action-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.action-desc {
+  display: none;
+}
+
+/* ── Output card ── */
+.output-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.output-header h2 {
+  margin: 0;
+}
+
+button.small {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+}
+
+/* ── Login info ── */
+.login-info {
+  margin-bottom: 16px;
+}
+
+.login-info p {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
 }
 
 /* ── Responsive ── */

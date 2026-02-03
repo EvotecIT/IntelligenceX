@@ -49,37 +49,64 @@
 
       <!-- ═══════════ Step 1: Auth ═══════════ -->
       <div class="wizard-step active" data-wizard-step="0">
+        <!-- Trust explanation panel -->
+        <div class="card trust-panel">
+          <h3>About IntelligenceX GitHub App</h3>
+          <p>We use the IntelligenceX GitHub App to simplify setup:</p>
+          <ul class="trust-list">
+            <li><span class="check">&#x2713;</span> Sign in without creating tokens manually</li>
+            <li><span class="check">&#x2713;</span> Pre-fill settings when creating your own GitHub App</li>
+          </ul>
+          <p class="trust-note">We don't store your credentials or access repos without your approval. Everything runs locally.</p>
+        </div>
+
         <div class="card">
           <h2>GitHub Authentication</h2>
           <p class="hint">Choose how to authenticate with GitHub.</p>
 
-          <div class="card-grid cols-3">
-            <div class="option-card" data-auth="device" onclick="selectAuth('device')">
+          <div class="card-grid cols-2">
+            <div class="option-card selected" data-auth="device" onclick="selectAuth('device')">
               <div class="card-icon">&#x1F511;</div>
               <div class="card-title">Sign in with GitHub</div>
-              <div class="card-desc">Recommended. OAuth device flow &mdash; get a code to enter on github.com.</div>
+              <div class="card-desc">Recommended. One-click sign in using the IntelligenceX app.</div>
             </div>
             <div class="option-card" data-auth="app" onclick="selectAuth('app')">
               <div class="card-icon">&#x1F4E6;</div>
-              <div class="card-title">GitHub App</div>
-              <div class="card-desc">For organizations. Creates a GitHub App with proper permissions.</div>
+              <div class="card-title">Create Your Own GitHub App</div>
+              <div class="card-desc">Reviews appear as your-name[bot]. For custom branding.</div>
             </div>
+          </div>
+          <div class="card-grid cols-2" style="margin-top: 12px;">
             <div class="option-card" data-auth="token" onclick="selectAuth('token')">
               <div class="card-icon">&#x1F4CB;</div>
-              <div class="card-title">Paste a Token</div>
-              <div class="card-desc">Have a PAT? Just paste it.</div>
+              <div class="card-title">Personal Access Token</div>
+              <div class="card-desc">Reviews appear as your username. Quick manual setup.</div>
+            </div>
+            <div class="option-card" data-auth="custom" onclick="selectAuth('custom')">
+              <div class="card-icon">&#x2699;</div>
+              <div class="card-title">Advanced</div>
+              <div class="card-desc">Use your own OAuth Client ID or custom configuration.</div>
             </div>
           </div>
 
-          <!-- Device flow sub-flow -->
-          <div class="sub-flow" id="authDeviceFlow">
-            <label>GitHub Client ID</label>
-            <input id="clientId" placeholder="Ov23li..." />
-            <div class="row">
-              <button id="deviceStart">Start Device Flow</button>
-              <button id="devicePoll" disabled class="secondary">Poll for Token</button>
+          <!-- Device flow sub-flow (default) -->
+          <div class="sub-flow visible" id="authDeviceFlow">
+            <input type="hidden" id="clientId" value="Iv23li0wcHDzWa25HKz3" />
+            <div style="text-align: center;">
+              <button id="deviceStart" class="primary-action">Sign in with GitHub</button>
             </div>
-            <div id="deviceInfo" class="hint" style="margin-top:10px;"></div>
+            <div id="deviceInfo" style="margin-top:16px;"></div>
+          </div>
+
+          <!-- Custom device flow sub-flow -->
+          <div class="sub-flow" id="authCustomFlow">
+            <label>GitHub OAuth Client ID</label>
+            <input id="customClientId" placeholder="Ov23li..." />
+            <p class="hint">Override: set INTELLIGENCEX_GITHUB_CLIENT_ID environment variable</p>
+            <div class="row">
+              <button id="customDeviceStart">Start Device Flow</button>
+            </div>
+            <div id="customDeviceInfo" class="hint" style="margin-top:10px;"></div>
           </div>
 
           <!-- App flow sub-flow -->
@@ -118,17 +145,25 @@
       <div class="wizard-step" data-wizard-step="1">
         <div class="card">
           <h2>Select Repositories</h2>
+
+          <!-- Organization filter -->
+          <div class="org-filter" id="orgFilter" style="display: none;"></div>
+
           <div class="repo-search">
             <input id="repoFilter" placeholder="Search repositories..." />
           </div>
-          <select id="repoList" multiple size="8"></select>
+          <select id="repoList" multiple size="10"></select>
           <div class="repo-count" id="repoCount">0 repos selected</div>
+          <p class="hint">Hold Ctrl/Cmd to select multiple repositories</p>
 
-          <span class="manual-entry-toggle" onclick="toggleManualEntry()">Enter manually</span>
-          <div class="manual-entry" id="manualEntry">
-            <label>Repository (owner/name)</label>
-            <input id="repo" placeholder="owner/repo" />
-          </div>
+          <details>
+            <summary>Manual entry</summary>
+            <div class="manual-entry visible">
+              <label>Repository (owner/name)</label>
+              <input id="repo" placeholder="owner/repo" />
+              <p class="hint">Comma-separated for multiple: owner/repo1, owner/repo2</p>
+            </div>
+          </details>
         </div>
 
         <div class="nav-buttons">
@@ -166,9 +201,10 @@
 
           <label>Provider</label>
           <div class="toggle-group">
-            <button class="active" data-provider="openai" onclick="selectProvider('openai')">OpenAI</button>
-            <button data-provider="copilot" onclick="selectProvider('copilot')">Copilot</button>
+            <button class="active" data-provider="openai" onclick="selectProvider('openai')">ChatGPT / OpenAI</button>
+            <button data-provider="copilot" onclick="selectProvider('copilot')">GitHub Copilot</button>
           </div>
+          <p class="hint" id="providerHint">Recommended. Uses your ChatGPT account for reviews.</p>
 
           <label>Review profile</label>
           <div class="preset-grid" id="presetGrid">
@@ -261,41 +297,65 @@
         </div>
       </div>
 
-      <!-- ═══════════ Step 4: Secrets (conditional) ═══════════ -->
+      <!-- ═══════════ Step 4: AI Provider Authentication ═══════════ -->
       <div class="wizard-step" data-wizard-step="3">
         <div class="card">
-          <h2>OpenAI Authentication</h2>
-          <p class="hint">Provide an auth bundle for the INTELLIGENCEX_AUTH_B64 secret.</p>
+          <h2>AI Provider Authentication</h2>
+          <p class="hint" id="secretHint">Sign in to your AI provider to enable code reviews.</p>
 
-          <div class="card-grid cols-3">
-            <div class="option-card selected" data-secret="skip" onclick="selectSecretOption('skip')">
-              <div class="card-icon">&#x23ED;</div>
-              <div class="card-title">Skip for now</div>
-              <div class="card-desc">Set up the secret later manually.</div>
+          <!-- Provider-specific auth options -->
+          <div id="openaiAuthSection">
+            <div class="card-grid cols-2">
+              <div class="option-card selected" data-secret="login" onclick="selectSecretOption('login')">
+                <div class="card-icon">&#x1F511;</div>
+                <div class="card-title">Sign in with ChatGPT</div>
+                <div class="card-desc">Authenticate with your OpenAI/ChatGPT account (recommended).</div>
+              </div>
+              <div class="option-card" data-secret="paste" onclick="selectSecretOption('paste')">
+                <div class="card-icon">&#x1F4CB;</div>
+                <div class="card-title">Paste auth bundle</div>
+                <div class="card-desc">Already have an auth bundle from CLI.</div>
+              </div>
             </div>
-            <div class="option-card" data-secret="paste" onclick="selectSecretOption('paste')">
-              <div class="card-icon">&#x1F4CB;</div>
-              <div class="card-title">Paste auth bundle</div>
-              <div class="card-desc">Paste base64-encoded auth data.</div>
+            <div class="card-grid cols-2" style="margin-top: 12px;">
+              <div class="option-card" data-secret="file" onclick="selectSecretOption('file')">
+                <div class="card-icon">&#x1F4C1;</div>
+                <div class="card-title">Use file path</div>
+                <div class="card-desc">Point to ~/.intelligencex/auth.json</div>
+              </div>
+              <div class="option-card" data-secret="skip" onclick="selectSecretOption('skip')">
+                <div class="card-icon">&#x23ED;</div>
+                <div class="card-title">Skip for now</div>
+                <div class="card-desc">Set up authentication later via CLI.</div>
+              </div>
             </div>
-            <div class="option-card" data-secret="file" onclick="selectSecretOption('file')">
-              <div class="card-icon">&#x1F4C1;</div>
-              <div class="card-title">Use file path</div>
-              <div class="card-desc">Point to an auth bundle file on disk.</div>
+          </div>
+
+          <!-- ChatGPT Login sub-flow -->
+          <div class="sub-flow" id="secretLoginFlow">
+            <div class="login-info">
+              <p>Click below to sign in with your ChatGPT account. This will:</p>
+              <ul class="trust-list">
+                <li><span class="check">&#x2713;</span> Open OpenAI's login page in your browser</li>
+                <li><span class="check">&#x2713;</span> Store tokens locally on your machine</li>
+                <li><span class="check">&#x2713;</span> Upload encrypted auth to your repo's secrets</li>
+              </ul>
             </div>
+            <button id="chatgptLogin" class="primary-action">Sign in with ChatGPT</button>
+            <div id="chatgptLoginStatus" class="hint" style="margin-top:10px;"></div>
           </div>
 
           <div class="sub-flow" id="secretPasteFlow">
             <label>Auth bundle (base64)</label>
-            <textarea id="authB64" rows="4" placeholder="paste auth bundle base64"></textarea>
+            <textarea id="authB64" rows="4" placeholder="Paste the base64-encoded auth bundle here..."></textarea>
+            <p class="hint">Run <code>intelligencex auth login</code> in CLI to get this value.</p>
           </div>
 
           <div class="sub-flow" id="secretFileFlow">
             <label>Auth bundle path</label>
-            <input id="authB64Path" placeholder="path to auth bundle file" />
+            <input id="authB64Path" placeholder="~/.intelligencex/auth.json" />
+            <p class="hint">Path to the auth.json file created by CLI login.</p>
           </div>
-
-          <p class="hint">Browser-based ChatGPT login coming soon. For now, provide an auth bundle or skip.</p>
 
           <details>
             <summary>ChatGPT usage (optional)</summary>
@@ -315,29 +375,42 @@
 
       <!-- ═══════════ Step 5: Review & Apply ═══════════ -->
       <div class="wizard-step" data-wizard-step="4">
-        <div class="card">
-          <h2>Review</h2>
-          <table class="review-table" id="reviewTable">
-            <tbody></tbody>
-          </table>
+        <div class="card review-card">
+          <h2>Review Configuration</h2>
+          <div class="review-grid" id="reviewGrid"></div>
         </div>
 
-        <div class="card">
-          <h2>Output</h2>
+        <div class="card action-card">
+          <h2>Run Setup</h2>
+          <p class="hint">First check existing setup, then preview changes before applying.</p>
+          <div class="action-buttons">
+            <button class="action-btn secondary" onclick="doInspect()">
+              <span class="action-icon">&#x1F50D;</span>
+              <span class="action-label">Check Existing</span>
+            </button>
+            <button class="action-btn secondary" onclick="doPlan()">
+              <span class="action-icon">&#x1F4DD;</span>
+              <span class="action-label">Preview (dry run)</span>
+            </button>
+            <button class="action-btn primary" onclick="confirmApply()">
+              <span class="action-icon">&#x1F680;</span>
+              <span class="action-label">Apply Changes</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="card output-card" id="outputCard" style="display: none;">
+          <div class="output-header">
+            <h2>Output</h2>
+            <button class="secondary small" onclick="clearOutput()">Clear</button>
+          </div>
           <pre class="output" id="output"></pre>
-        </div>
-
-        <div class="card" id="summaryCard">
-          <h2>Summary</h2>
-          <div id="summary" class="summary">Ready to preview or apply.</div>
+          <div id="summary" class="summary"></div>
         </div>
 
         <div class="nav-buttons">
           <button class="secondary" onclick="goPrev()">&larr; Back</button>
           <span class="spacer"></span>
-          <button class="secondary" id="inspectBtn" onclick="doInspect()">Check Existing</button>
-          <button class="secondary" id="planBtn" onclick="doPlan()">Preview (Dry Run)</button>
-          <button class="success" id="applyBtn" onclick="doApply()">Apply</button>
         </div>
       </div>
 
