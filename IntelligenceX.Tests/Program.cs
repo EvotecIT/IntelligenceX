@@ -79,6 +79,7 @@ internal static class Program {
         failed += Run("Review intent respects focus", TestReviewIntentRespectsFocus);
         failed += Run("Triage-only loads threads", TestTriageOnlyLoadsThreads);
         failed += Run("Review code host env", TestReviewCodeHostEnv);
+        failed += Run("GitHub context cache", TestGitHubContextCache);
         failed += Run("Azure auth scheme env", TestAzureAuthSchemeEnv);
         failed += Run("Azure auth scheme invalid env", TestAzureAuthSchemeInvalidEnv);
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
@@ -776,6 +777,54 @@ internal static class Program {
         } finally {
             Environment.SetEnvironmentVariable("REVIEW_CODE_HOST", previous);
         }
+    }
+
+    private static void TestGitHubContextCache() {
+        var prHits = 0;
+        var filesHits = 0;
+        var compareHits = 0;
+
+        const string prJson = "{"
+            + "\"title\":\"Test\",\"body\":\"Body\",\"draft\":false,\"number\":1,"
+            + "\"head\":{\"sha\":\"headsha\"},"
+            + "\"base\":{\"sha\":\"basesha\",\"repo\":{\"full_name\":\"owner/repo\"}},"
+            + "\"labels\":[{\"name\":\"bug\"}]"
+            + "}";
+        const string filesJson = "[{\"filename\":\"src/A.cs\",\"status\":\"modified\",\"patch\":\"@@\"}]";
+        const string compareJson = "{\"files\":[{\"filename\":\"src/A.cs\",\"status\":\"modified\",\"patch\":\"@@\"}]}";
+
+        using var server = new LocalHttpServer(request => {
+            if (request.Path.StartsWith("/repos/owner/repo/pulls/1/files", StringComparison.OrdinalIgnoreCase)) {
+                filesHits++;
+                return new HttpResponse(filesJson);
+            }
+            if (request.Path.StartsWith("/repos/owner/repo/pulls/1", StringComparison.OrdinalIgnoreCase)) {
+                prHits++;
+                return new HttpResponse(prJson);
+            }
+            if (request.Path.Contains("/repos/owner/repo/compare/", StringComparison.OrdinalIgnoreCase)) {
+                compareHits++;
+                return new HttpResponse(compareJson);
+            }
+            return null;
+        });
+
+        using var client = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+        var pr1 = client.GetPullRequestAsync("owner", "repo", 1, CancellationToken.None).GetAwaiter().GetResult();
+        var pr2 = client.GetPullRequestAsync("owner", "repo", 1, CancellationToken.None).GetAwaiter().GetResult();
+        AssertEqual(1, prHits, "pr cache hits");
+
+        var files1 = client.GetPullRequestFilesAsync("owner", "repo", 1, CancellationToken.None).GetAwaiter().GetResult();
+        var files2 = client.GetPullRequestFilesAsync("owner", "repo", 1, CancellationToken.None).GetAwaiter().GetResult();
+        AssertEqual(1, filesHits, "files cache hits");
+
+        var compare1 = client.GetCompareFilesAsync("owner", "repo", "base", "head", CancellationToken.None).GetAwaiter().GetResult();
+        var compare2 = client.GetCompareFilesAsync("owner", "repo", "base", "head", CancellationToken.None).GetAwaiter().GetResult();
+        AssertEqual(1, compareHits, "compare cache hits");
+
+        AssertEqual(pr1.Title, pr2.Title, "pr cache data");
+        AssertEqual(files1.Count, files2.Count, "files cache data");
+        AssertEqual(compare1.Count, compare2.Count, "compare cache data");
     }
 
     private static void TestAzureAuthSchemeEnv() {

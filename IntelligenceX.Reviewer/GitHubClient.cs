@@ -12,6 +12,9 @@ namespace IntelligenceX.Reviewer;
 
 internal sealed class GitHubClient : IDisposable {
     private readonly HttpClient _http;
+    private readonly Dictionary<string, PullRequestContext> _pullRequestCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, IReadOnlyList<PullRequestFile>> _pullRequestFilesCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, IReadOnlyList<PullRequestFile>> _compareFilesCache = new(StringComparer.OrdinalIgnoreCase);
 
     public GitHubClient(string token, string? baseUrl = null) {
         _http = new HttpClient {
@@ -25,6 +28,10 @@ internal sealed class GitHubClient : IDisposable {
 
     public async Task<IReadOnlyList<PullRequestFile>> GetPullRequestFilesAsync(string owner, string repo, int number,
         CancellationToken cancellationToken) {
+        var cacheKey = BuildPullRequestKey(owner, repo, number);
+        if (_pullRequestFilesCache.TryGetValue(cacheKey, out var cached)) {
+            return cached;
+        }
         var files = new List<PullRequestFile>();
         var page = 1;
         while (true) {
@@ -49,11 +56,16 @@ internal sealed class GitHubClient : IDisposable {
             }
             page++;
         }
+        _pullRequestFilesCache[cacheKey] = files;
         return files;
     }
 
     public async Task<PullRequestContext> GetPullRequestAsync(string owner, string repo, int number,
         CancellationToken cancellationToken) {
+        var cacheKey = BuildPullRequestKey(owner, repo, number);
+        if (_pullRequestCache.TryGetValue(cacheKey, out var cached)) {
+            return cached;
+        }
         var json = await GetJsonAsync($"/repos/{owner}/{repo}/pulls/{number}", cancellationToken)
             .ConfigureAwait(false);
         var obj = json.AsObject();
@@ -82,7 +94,9 @@ internal sealed class GitHubClient : IDisposable {
             }
         }
 
-        return new PullRequestContext(repoFullName, owner, repo, prNumber, title, body, draft, headSha, baseSha, labels);
+        var context = new PullRequestContext(repoFullName, owner, repo, prNumber, title, body, draft, headSha, baseSha, labels);
+        _pullRequestCache[cacheKey] = context;
+        return context;
     }
 
     public async Task<IReadOnlyList<PullRequestFile>> GetCompareFilesAsync(string owner, string repo, string baseSha, string headSha,
@@ -92,6 +106,10 @@ internal sealed class GitHubClient : IDisposable {
         }
         if (string.Equals(baseSha, headSha, StringComparison.OrdinalIgnoreCase)) {
             return Array.Empty<PullRequestFile>();
+        }
+        var compareKey = BuildCompareKey(owner, repo, baseSha, headSha);
+        if (_compareFilesCache.TryGetValue(compareKey, out var cached)) {
+            return cached;
         }
 
         var files = new List<PullRequestFile>();
@@ -137,6 +155,7 @@ internal sealed class GitHubClient : IDisposable {
         if (truncated) {
             Console.Error.WriteLine("Compare API results truncated after 2000 files. Consider using pull request files endpoint for full coverage.");
         }
+        _compareFilesCache[compareKey] = files;
         return files;
     }
 
@@ -490,5 +509,13 @@ internal sealed class GitHubClient : IDisposable {
             return string.Empty;
         }
         return $"{segments[^2]}/{segments[^1]}";
+    }
+
+    private static string BuildPullRequestKey(string owner, string repo, int number) {
+        return $"{owner}/{repo}#{number}";
+    }
+
+    private static string BuildCompareKey(string owner, string repo, string baseSha, string headSha) {
+        return $"{owner}/{repo}@{baseSha}..{headSha}";
     }
 }
