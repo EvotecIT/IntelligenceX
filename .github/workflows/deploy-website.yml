@@ -28,9 +28,10 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+          include-prerelease: true
 
       - name: Install PowerForge
-        run: dotnet tool install --global PowerForge.Web.Cli
+        run: dotnet tool install --global PowerForge.Web.Cli --version 1.0.0
 
       - name: Build website
         working-directory: Website

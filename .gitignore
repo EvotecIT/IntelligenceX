@@ -380,4 +380,3 @@ dotnet-install.sh
 
 # Website build output
 Website/_site/
-nul

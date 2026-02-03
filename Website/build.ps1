@@ -9,6 +9,9 @@
 .PARAMETER Port
     Server port (default: 8080).
 
+.PARAMETER PowerForgeRoot
+    Root folder of PSPublishModule (overrides $env:POWERFORGE_ROOT).
+
 .EXAMPLE
     ./build.ps1
     ./build.ps1 -Serve
@@ -18,7 +21,8 @@
 param(
     [switch]$Serve,
     [int]$Port = 8080,
-    [switch]$SkipBuildTool
+    [switch]$SkipBuildTool,
+    [string]$PowerForgeRoot = $env:POWERFORGE_ROOT
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,7 +30,9 @@ Push-Location $PSScriptRoot
 
 # Resolve PowerForge.Web.Cli executable (prefer local fresh build)
 $PowerForge = $null
-$PowerForgeRoot = 'C:\Support\GitHub\PSPublishModule'
+if (-not $PowerForgeRoot) {
+    $PowerForgeRoot = 'C:\Support\GitHub\PSPublishModule'
+}
 $PowerForgeCliProject = Join-Path $PowerForgeRoot 'PowerForge.Web.Cli\PowerForge.Web.Cli.csproj'
 $PowerForgeReleaseExe = Join-Path $PowerForgeRoot 'PowerForge.Web.Cli\bin\Release\net10.0\PowerForge.Web.Cli.exe'
 $PowerForgeDebugExe = Join-Path $PowerForgeRoot 'PowerForge.Web.Cli\bin\Debug\net10.0\PowerForge.Web.Cli.exe'
