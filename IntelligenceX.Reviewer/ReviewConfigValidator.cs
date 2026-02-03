@@ -32,6 +32,9 @@ internal sealed class ReviewConfigValidationResult {
     public bool HasErrors => Errors.Count > 0;
 }
 
+/// <summary>
+/// Validates reviewer configuration files against the embedded schema.
+/// </summary>
 internal static class ReviewConfigValidator {
     private const double IntegralEpsilon = 0.000001d;
     private const string EmbeddedSchemaName = "IntelligenceX.Reviewer.Schemas.reviewer.schema.json";
@@ -116,27 +119,10 @@ internal static class ReviewConfigValidator {
             }
         }
 
-        if (reviewSchema is not null && rootObj.TryGetValue("review", out var reviewObject) && reviewObject?.AsObject() is not null) {
-            foreach (var entry in rootObj) {
-                if (RootSections.Contains(entry.Key)) {
-                    continue;
-                }
-                if (reviewSchema.Properties.ContainsKey(entry.Key)) {
-                    warnings.Add(new ReviewConfigValidationIssue($"$.{entry.Key}", "Ignored because review object is present."));
-                } else {
-                    warnings.Add(new ReviewConfigValidationIssue($"$.{entry.Key}", "Unknown root property."));
-                }
-            }
-        } else {
-            foreach (var entry in rootObj) {
-                if (RootSections.Contains(entry.Key)) {
-                    continue;
-                }
-                if (reviewSchema is not null && !reviewSchema.Properties.ContainsKey(entry.Key)) {
-                    warnings.Add(new ReviewConfigValidationIssue($"$.{entry.Key}", "Unknown review setting."));
-                }
-            }
-        }
+        var hasReviewObject = reviewSchema is not null &&
+                              rootObj.TryGetValue("review", out var reviewObject) &&
+                              reviewObject?.AsObject() is not null;
+        AddUnknownRootWarnings(rootObj, reviewSchema, hasReviewObject, warnings);
 
         return new ReviewConfigValidationResult(configPath, schemaHint, errors, warnings);
     }
@@ -317,6 +303,26 @@ internal static class ReviewConfigValidator {
             foreach (var item in array) {
                 ValidateNode(schema.Items, item, $"{path}[{index}]", errors, warnings);
                 index++;
+            }
+        }
+    }
+
+    private static void AddUnknownRootWarnings(JsonObject rootObj, SchemaNode? reviewSchema, bool hasReviewObject,
+        List<ReviewConfigValidationIssue> warnings) {
+        foreach (var entry in rootObj) {
+            if (RootSections.Contains(entry.Key)) {
+                continue;
+            }
+            if (hasReviewObject) {
+                if (reviewSchema is not null && reviewSchema.Properties.ContainsKey(entry.Key)) {
+                    warnings.Add(new ReviewConfigValidationIssue($"$.{entry.Key}", "Ignored because review object is present."));
+                } else {
+                    warnings.Add(new ReviewConfigValidationIssue($"$.{entry.Key}", "Unknown root property."));
+                }
+                continue;
+            }
+            if (reviewSchema is not null && !reviewSchema.Properties.ContainsKey(entry.Key)) {
+                warnings.Add(new ReviewConfigValidationIssue($"$.{entry.Key}", "Unknown review setting."));
             }
         }
     }
