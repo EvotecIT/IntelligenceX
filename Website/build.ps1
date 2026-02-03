@@ -31,7 +31,10 @@ Push-Location $PSScriptRoot
 # Resolve PowerForge.Web.Cli executable (prefer local fresh build)
 $PowerForge = $null
 if (-not $PowerForgeRoot) {
-    $PowerForgeRoot = 'C:\Support\GitHub\PSPublishModule'
+    $candidate = Join-Path $PSScriptRoot '..\PSPublishModule'
+    if (Test-Path $candidate) {
+        $PowerForgeRoot = (Resolve-Path $candidate).Path
+    }
 }
 $PowerForgeCliProject = Join-Path $PowerForgeRoot 'PowerForge.Web.Cli\PowerForge.Web.Cli.csproj'
 $PowerForgeReleaseExe = Join-Path $PowerForgeRoot 'PowerForge.Web.Cli\bin\Release\net10.0\PowerForge.Web.Cli.exe'

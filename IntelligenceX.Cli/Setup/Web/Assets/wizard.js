@@ -226,17 +226,11 @@ if (chatgptLoginBtn) {
     chatgptLoginBtn.disabled = true;
 
     try {
-      const res = await fetch('/api/openai-login', {
+      const data = await fetchJsonSafe('/api/openai-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
       });
-      const data = await res.json();
-      if (data.error) {
-        statusEl.innerHTML = `<span style="color: var(--pf-danger);">Error: ${data.error}</span>`;
-        chatgptLoginBtn.disabled = false;
-        return;
-      }
       if (data.authB64) {
         authB64.value = data.authB64;
         statusEl.innerHTML = '<span style="color: var(--pf-success);">&#x2713; Authenticated with ChatGPT</span>';
@@ -259,6 +253,31 @@ function toggleManualEntry() {
 }
 
 // ── Helpers ──
+async function fetchJsonSafe(url, options) {
+  const res = await fetch(url, options);
+  const contentType = res.headers.get('content-type') || '';
+  let payload = null;
+  if (contentType.includes('application/json')) {
+    try {
+      payload = await res.json();
+    } catch {
+      payload = null;
+    }
+  } else {
+    const text = await res.text();
+    if (text && text.trim().length > 0) {
+      payload = { error: text };
+    }
+  }
+  if (!res.ok) {
+    const message = payload && payload.error
+      ? payload.error
+      : `Request failed (${res.status} ${res.statusText || 'Error'})`;
+    throw new Error(message);
+  }
+  return payload || {};
+}
+
 function getToken() {
   return (token ? token.value.trim() : '') || '';
 }
@@ -554,13 +573,11 @@ let reposByOrg = {};
 async function loadRepos() {
   write('Loading repos...');
   try {
-    const res = await fetch('/api/repos', {
+    const data = await fetchJsonSafe('/api/repos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token: getToken() })
     });
-    const data = await res.json();
-    if (data.error) { write('Repo error: ' + data.error); return; }
 
     // Filter to only repos where user has admin access (required for setting secrets)
     const accessibleRepos = (data.repos || []).filter(r => r.canAdmin);
@@ -662,20 +679,11 @@ async function startDeviceFlow(clientIdValue, infoElement) {
     startBtn.textContent = 'Opening browser...';
   }
   try {
-    const res = await fetch('/api/device-code', {
+    const data = await fetchJsonSafe('/api/device-code', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ clientId: clientIdValue })
     });
-    const data = await res.json();
-    if (data.error) {
-      write('Error: ' + data.error);
-      if (startBtn) {
-        startBtn.disabled = false;
-        startBtn.textContent = 'Sign in with GitHub';
-      }
-      return null;
-    }
     deviceState = data;
     deviceState.clientId = clientIdValue;
     if (infoElement) {
@@ -714,7 +722,7 @@ async function pollLoop() {
   if (!pollingActive || !deviceState) return;
 
   try {
-    const res = await fetch('/api/device-poll', {
+    const data = await fetchJsonSafe('/api/device-poll', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -724,7 +732,6 @@ async function pollLoop() {
         expiresIn: 30 // Short timeout per poll, we'll retry
       })
     });
-    const data = await res.json();
 
     if (data.token) {
       // Success!
@@ -801,7 +808,7 @@ if (customDeviceStart) {
 $('createApp').addEventListener('click', async () => {
   write('Starting GitHub App manifest flow...');
   try {
-    const res = await fetch('/api/app-manifest', {
+    const data = await fetchJsonSafe('/api/app-manifest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -809,8 +816,6 @@ $('createApp').addEventListener('click', async () => {
         owner: appOwner.value.trim()
       })
     });
-    const data = await res.json();
-    if (data.error) { write('App error: ' + data.error); return; }
     appId.value = data.appId || '';
     appPem.value = data.pem || '';
     updateAppControls();
@@ -825,13 +830,11 @@ $('listInstalls').addEventListener('click', async () => {
   const id = parseInt(appId.value, 10);
   if (!id || !appPem.value.trim()) { write('Provide App ID and PEM first.'); return; }
   try {
-    const res = await fetch('/api/app-installations', {
+    const data = await fetchJsonSafe('/api/app-installations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ appId: id, pem: appPem.value })
     });
-    const data = await res.json();
-    if (data.error) { write('Error: ' + data.error); return; }
     installation.innerHTML = '';
     (data.installations || []).forEach(item => {
       const opt = document.createElement('option');
@@ -852,13 +855,11 @@ $('useInstallationToken').addEventListener('click', async () => {
   if (!id || !installId || !appPem.value.trim()) { write('Provide App ID, PEM, and installation.'); return; }
   write('Generating installation token...');
   try {
-    const res = await fetch('/api/app-token', {
+    const data = await fetchJsonSafe('/api/app-token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ appId: id, pem: appPem.value, installationId: installId })
     });
-    const data = await res.json();
-    if (data.error) { write('Error: ' + data.error); return; }
     token.value = data.token || '';
     write('Installation token acquired!');
     goToStep(1); // Auto-advance
@@ -1032,7 +1033,7 @@ $('checkUsage').addEventListener('click', async () => {
   const usageSummaryEl = $('usageSummary');
   usageSummaryEl.textContent = 'Checking usage...';
   try {
-    const res = await fetch('/api/usage', {
+    const data = await fetchJsonSafe('/api/usage', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1041,12 +1042,6 @@ $('checkUsage').addEventListener('click', async () => {
         includeEvents: usageEvents.checked
       })
     });
-    if (!res.ok) {
-      usageSummaryEl.textContent = 'Usage error: ' + (await res.text() || res.status);
-      return;
-    }
-    const data = await res.json();
-    if (data.error) { usageSummaryEl.textContent = 'Usage error: ' + data.error; return; }
     const updated = data.updatedAt ? `Updated: ${data.updatedAt}\n\n` : '';
     usageSummaryEl.textContent = updated + formatUsageResult(data);
     setUsageSummary(formatUsageSummaryShort(data));
@@ -1057,9 +1052,7 @@ $('checkUsage').addEventListener('click', async () => {
 
 async function loadUsageCache() {
   try {
-    const res = await fetch('/api/usage-cache');
-    if (!res.ok) return;
-    const data = await res.json();
+    const data = await fetchJsonSafe('/api/usage-cache');
     if (data && data.usage) {
       const updated = data.updatedAt ? `Updated: ${data.updatedAt}\n\n` : '';
       $('usageSummary').textContent = updated + formatUsageResult(data);
@@ -1075,12 +1068,11 @@ async function doInspect() {
   if (!getToken()) { write('Token required.'); return; }
   write('Checking existing setup...');
   try {
-    const res = await fetch('/api/repo-status', {
+    const data = await fetchJsonSafe('/api/repo-status', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ repos, token: getToken() })
     });
-    const data = await res.json();
     write(formatStatus(data));
   } catch (e) {
     write('Inspect error: ' + (e.message || e));
@@ -1093,12 +1085,11 @@ async function doPlan() {
   if (!getToken()) { write('Token required.'); return; }
   write('Planning (dry run)...');
   try {
-    const res = await fetch('/api/setup/plan', {
+    const data = await fetchJsonSafe('/api/setup/plan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(buildRequestBody(true))
     });
-    const data = await res.json();
     write(formatResults(data));
   } catch (e) {
     write('Plan error: ' + (e.message || e));
@@ -1124,12 +1115,11 @@ async function doApply() {
   if (!getToken()) { write('Token required.'); return; }
   write('Applying...');
   try {
-    const res = await fetch('/api/setup/apply', {
+    const data = await fetchJsonSafe('/api/setup/apply', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(buildRequestBody(false))
     });
-    const data = await res.json();
     write(formatResults(data));
   } catch (e) {
     write('Apply error: ' + (e.message || e));
