@@ -96,6 +96,7 @@ internal static class Program {
         failed += Run("Context deny invalid regex", TestContextDenyInvalidRegex);
         failed += Run("Context deny timeout", TestContextDenyTimeout);
         failed += Run("Review summary parser", TestReviewSummaryParser);
+        failed += Run("Review usage summary line", TestReviewUsageSummaryLine);
 #endif
 
         Console.WriteLine(failed == 0 ? "All tests passed." : $"{failed} test(s) failed.");
@@ -847,6 +848,15 @@ internal static class Program {
         return result ?? string.Empty;
     }
 
+    private static string CallFormatUsageSummary(ChatGptUsageSnapshot snapshot) {
+        var method = typeof(ReviewerApp).GetMethod("FormatUsageSummary", BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("FormatUsageSummary method not found.");
+        }
+        var result = method.Invoke(null, new object?[] { snapshot }) as string;
+        return result ?? string.Empty;
+    }
+
     private static ReviewContextExtras CallBuildExtrasAsync(GitHubClient github, PullRequestContext context,
         ReviewSettings settings, bool forceReviewThreads) {
         var method = typeof(ReviewerApp).GetMethod("BuildExtrasAsync", BindingFlags.NonPublic | BindingFlags.Static);
@@ -1161,6 +1171,24 @@ internal static class Program {
         AssertEqual(true, ok, "malformed then valid");
         AssertEqual("deadbeef", commit, "malformed then valid commit");
     }
+
+    private static void TestReviewUsageSummaryLine() {
+        const string json = "{"
+            + "\"plan_type\":\"pro\","
+            + "\"rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
+            + "\"primary_window\":{\"used_percent\":12.5,\"limit_window_seconds\":18000,\"reset_after_seconds\":120}},"
+            + "\"code_review_rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
+            + "\"primary_window\":{\"used_percent\":25.0,\"limit_window_seconds\":18000,\"reset_after_seconds\":120}},"
+            + "\"credits\":{\"has_credits\":true,\"unlimited\":false,\"balance\":4.52}"
+            + "}";
+        var obj = JsonLite.Parse(json).AsObject();
+        AssertNotNull(obj, "usage summary json");
+        var snapshot = ChatGptUsageSnapshot.FromJson(obj!);
+        var line = CallFormatUsageSummary(snapshot);
+        AssertContainsText(line, "Usage:", "usage summary prefix");
+        AssertContainsText(line, "5h limit", "usage window label");
+        AssertEqual(false, line.IndexOf("\n", StringComparison.Ordinal) >= 0, "usage summary is single line");
+    }
 #endif
 
     private static void AssertEqual<T>(T expected, T? actual, string name) {
@@ -1188,6 +1216,12 @@ internal static class Program {
             }
         }
         throw new InvalidOperationException($"Expected {name} to contain '{expected}'.");
+    }
+
+    private static void AssertContainsText(string value, string expected, string name) {
+        if (string.IsNullOrWhiteSpace(value) || value.IndexOf(expected, StringComparison.Ordinal) < 0) {
+            throw new InvalidOperationException($"Expected {name} to contain '{expected}'.");
+        }
     }
 
     private static void AssertNotNull(object? value, string name) {
