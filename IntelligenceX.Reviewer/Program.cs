@@ -943,6 +943,16 @@ public static class ReviewerApp {
             lines.Add(secondary);
         }
 
+        var codePrimary = FormatRateLimitLine(snapshot.CodeReviewRateLimit?.PrimaryWindow, "code review limit");
+        if (!string.IsNullOrWhiteSpace(codePrimary)) {
+            lines.Add(codePrimary);
+        }
+
+        var codeSecondary = FormatRateLimitLine(snapshot.CodeReviewRateLimit?.SecondaryWindow, "code review limit (secondary)");
+        if (!string.IsNullOrWhiteSpace(codeSecondary)) {
+            lines.Add(codeSecondary);
+        }
+
         if (snapshot.Credits is not null) {
             if (snapshot.Credits.Unlimited) {
                 lines.Add("credits: unlimited");
@@ -956,13 +966,7 @@ public static class ReviewerApp {
         if (lines.Count == 0) {
             return string.Empty;
         }
-
-        var sb = new StringBuilder();
-        sb.AppendLine("Usage:");
-        foreach (var line in lines) {
-            sb.AppendLine($"- {line}");
-        }
-        return sb.ToString().TrimEnd();
+        return "Usage: " + string.Join(" | ", lines);
     }
 
     private static string? FormatRateLimitLine(ChatGptRateLimitWindow? window, string fallbackLabel) {
