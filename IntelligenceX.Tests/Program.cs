@@ -106,6 +106,7 @@ internal static class Program {
         failed += Run("Copilot chat timeout validation", TestCopilotChatTimeoutValidation);
         failed += Run("Copilot direct auth conflict", TestCopilotDirectAuthorizationConflict);
         failed += Run("Copilot CLI path requires env", TestCopilotCliPathRequiresEnvironment);
+        failed += Run("Copilot CLI path optional with url", TestCopilotCliPathOptionalWithUrl);
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
         failed += Run("Filter files include-only", TestFilterFilesIncludeOnly);
@@ -1218,7 +1219,7 @@ internal static class Program {
             Url = "https://example.local/api",
             Token = "token"
         };
-        options.Headers["Authorization"] = "Bearer override";
+        options.Headers["authorization"] = "Bearer override";
         AssertThrows<ArgumentException>(() => options.Validate(), "copilot direct auth conflict");
     }
 
@@ -1228,6 +1229,16 @@ internal static class Program {
             CliPath = "copilot"
         };
         AssertThrows<InvalidOperationException>(() => options.Validate(), "copilot cli path");
+    }
+
+    private static void TestCopilotCliPathOptionalWithUrl() {
+        var options = new IntelligenceX.Copilot.CopilotClientOptions {
+            InheritEnvironment = false,
+            AutoStart = false,
+            CliPath = "copilot",
+            CliUrl = "http://localhost:1234"
+        };
+        options.Validate();
     }
 
     private static ReviewConfigValidationResult? RunConfigValidation(string json) {

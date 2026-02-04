@@ -121,7 +121,11 @@ public sealed class CopilotClientOptions {
         if (RpcRetry.MaxDelay < RpcRetry.InitialDelay) {
             throw new ArgumentException("RpcRetry.MaxDelay cannot be smaller than RpcRetry.InitialDelay.");
         }
-        if (!InheritEnvironment) {
+        var usesCliProcess = string.IsNullOrWhiteSpace(CliUrl);
+        if (!AutoStart && usesCliProcess) {
+            throw new InvalidOperationException("AutoStart is disabled and no CliUrl was provided.");
+        }
+        if (!InheritEnvironment && usesCliProcess) {
             var cliPath = CliPath ?? string.Empty;
             if (string.IsNullOrWhiteSpace(cliPath) ||
                 (!Path.IsPathRooted(cliPath) &&
@@ -129,9 +133,6 @@ public sealed class CopilotClientOptions {
                  !cliPath.Contains(Path.AltDirectorySeparatorChar))) {
                 throw new InvalidOperationException("InheritEnvironment is false; set CliPath to an absolute or relative path (with separators) so PATH lookups are not required.");
             }
-        }
-        if (!AutoStart && string.IsNullOrWhiteSpace(CliUrl)) {
-            throw new InvalidOperationException("AutoStart is disabled and no CliUrl was provided.");
         }
     }
 
