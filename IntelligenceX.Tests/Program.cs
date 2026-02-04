@@ -103,6 +103,9 @@ internal static class Program {
         failed += Run("Copilot env allowlist config", TestCopilotEnvAllowlistConfig);
         failed += Run("Copilot inherit env default", TestCopilotInheritEnvironmentDefault);
         failed += Run("Copilot direct timeout validation", TestCopilotDirectTimeoutValidation);
+        failed += Run("Copilot chat timeout validation", TestCopilotChatTimeoutValidation);
+        failed += Run("Copilot direct auth conflict", TestCopilotDirectAuthorizationConflict);
+        failed += Run("Copilot CLI path requires env", TestCopilotCliPathRequiresEnvironment);
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
         failed += Run("Filter files include-only", TestFilterFilesIncludeOnly);
@@ -1203,6 +1206,30 @@ internal static class Program {
         AssertThrows<ArgumentOutOfRangeException>(() => options.Validate(), "copilot direct timeout");
     }
 
+    private static void TestCopilotChatTimeoutValidation() {
+        var options = new IntelligenceX.Copilot.CopilotChatClientOptions {
+            Timeout = TimeSpan.Zero
+        };
+        AssertThrows<ArgumentOutOfRangeException>(() => options.Validate(), "copilot chat timeout");
+    }
+
+    private static void TestCopilotDirectAuthorizationConflict() {
+        var options = new IntelligenceX.Copilot.Direct.CopilotDirectOptions {
+            Url = "https://example.local/api",
+            Token = "token"
+        };
+        options.Headers["Authorization"] = "Bearer override";
+        AssertThrows<ArgumentException>(() => options.Validate(), "copilot direct auth conflict");
+    }
+
+    private static void TestCopilotCliPathRequiresEnvironment() {
+        var options = new IntelligenceX.Copilot.CopilotClientOptions {
+            InheritEnvironment = false,
+            CliPath = "copilot"
+        };
+        AssertThrows<InvalidOperationException>(() => options.Validate(), "copilot cli path");
+    }
+
     private static ReviewConfigValidationResult? RunConfigValidation(string json) {
         var previousPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
         var tempDir = Path.Combine(Path.GetTempPath(), $"ix-config-{Guid.NewGuid():N}");
@@ -1464,6 +1491,9 @@ internal static class Program {
     private static void TestWorkflowChangesDetection() {
         var withWorkflow = BuildFiles(".github/workflows/ci.yml", "src/app.cs");
         AssertEqual(true, ReviewerApp.HasWorkflowChanges(withWorkflow), "workflow changes detected");
+
+        var withWorkflowYaml = BuildFiles(".github/workflows/ci.yaml", "src/app.cs");
+        AssertEqual(true, ReviewerApp.HasWorkflowChanges(withWorkflowYaml), "workflow changes detected yaml");
 
         var withoutWorkflow = BuildFiles(".github/workflows/README.md", "src/app.cs");
         AssertEqual(false, ReviewerApp.HasWorkflowChanges(withoutWorkflow), "workflow changes ignored");

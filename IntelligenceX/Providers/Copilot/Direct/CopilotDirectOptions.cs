@@ -40,6 +40,11 @@ public sealed class CopilotDirectOptions {
         if (!Uri.TryCreate(Url, UriKind.Absolute, out _)) {
             throw new ArgumentException("Copilot direct Url must be absolute.", nameof(Url));
         }
+        if (!string.IsNullOrWhiteSpace(Token) &&
+            Headers.TryGetValue("Authorization", out var authHeader) &&
+            !string.IsNullOrWhiteSpace(authHeader)) {
+            throw new ArgumentException("Copilot direct options cannot specify both Token and Authorization header.", nameof(Token));
+        }
         if (Timeout <= TimeSpan.Zero) {
             throw new ArgumentOutOfRangeException(nameof(Timeout), "Timeout must be greater than zero.");
         }

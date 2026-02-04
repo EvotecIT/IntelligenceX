@@ -1,4 +1,4 @@
-using System;
+using System;`r`nusing System.IO;
 using System.Collections.Generic;
 using IntelligenceX.Configuration;
 using IntelligenceX.Utils;
@@ -119,6 +119,15 @@ public sealed class CopilotClientOptions {
         }
         if (RpcRetry.MaxDelay < RpcRetry.InitialDelay) {
             throw new ArgumentException("RpcRetry.MaxDelay cannot be smaller than RpcRetry.InitialDelay.");
+        }
+        if (!InheritEnvironment) {
+            var cliPath = CliPath ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(cliPath) ||
+                (!Path.IsPathRooted(cliPath) &&
+                 !cliPath.Contains(Path.DirectorySeparatorChar) &&
+                 !cliPath.Contains(Path.AltDirectorySeparatorChar))) {
+                throw new InvalidOperationException("InheritEnvironment is false; set CliPath to an absolute or relative path (with separators) so PATH lookups are not required.");
+            }
         }
         if (!AutoStart && string.IsNullOrWhiteSpace(CliUrl)) {
             throw new InvalidOperationException("AutoStart is disabled and no CliUrl was provided.");
