@@ -94,6 +94,16 @@ public sealed class CopilotClientOptions {
     /// Validates configuration values.
     /// </summary>
     public void Validate() {
+        var cliUrlRaw = CliUrl;
+        if (!string.IsNullOrWhiteSpace(cliUrlRaw)) {
+            var cliUrl = cliUrlRaw!.Trim();
+            if (!int.TryParse(cliUrl, out _) &&
+                !Uri.TryCreate(cliUrl, UriKind.Absolute, out _) &&
+                !Uri.TryCreate("http://" + cliUrl, UriKind.Absolute, out _)) {
+                throw new ArgumentException("CliUrl must be a port, host:port, or absolute URL.", nameof(CliUrl));
+            }
+        }
+
         if (ConnectRetryCount < 0) {
             throw new ArgumentOutOfRangeException(nameof(ConnectRetryCount), "ConnectRetryCount cannot be negative.");
         }

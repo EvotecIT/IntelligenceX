@@ -52,7 +52,7 @@ public sealed class CopilotDirectOptions {
         if (!string.IsNullOrWhiteSpace(Token) &&
             hasAuthorizationHeader &&
             !string.IsNullOrWhiteSpace(authHeader)) {
-            throw new ArgumentException("Copilot direct options cannot specify both Token and Authorization header.", nameof(Token));
+            throw new ArgumentException("Copilot direct options cannot specify both Token and Authorization header.", nameof(Headers));
         }
         if (Timeout <= TimeSpan.Zero) {
             throw new ArgumentOutOfRangeException(nameof(Timeout), "Timeout must be greater than zero.");

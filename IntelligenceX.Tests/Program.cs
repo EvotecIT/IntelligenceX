@@ -107,6 +107,7 @@ internal static class Program {
         failed += Run("Copilot direct auth conflict", TestCopilotDirectAuthorizationConflict);
         failed += Run("Copilot CLI path requires env", TestCopilotCliPathRequiresEnvironment);
         failed += Run("Copilot CLI path optional with url", TestCopilotCliPathOptionalWithUrl);
+        failed += Run("Copilot CLI url validation", TestCopilotCliUrlValidation);
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
         failed += Run("Filter files include-only", TestFilterFilesIncludeOnly);
@@ -1239,6 +1240,13 @@ internal static class Program {
             CliUrl = "http://localhost:1234"
         };
         options.Validate();
+    }
+
+    private static void TestCopilotCliUrlValidation() {
+        var options = new IntelligenceX.Copilot.CopilotClientOptions {
+            CliUrl = "bad url"
+        };
+        AssertThrows<ArgumentException>(() => options.Validate(), "copilot cli url");
     }
 
     private static ReviewConfigValidationResult? RunConfigValidation(string json) {
