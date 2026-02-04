@@ -52,6 +52,7 @@
         "reviewThreadsAutoResolveRequireEvidence": { "type": "boolean" },
         "reviewThreadsAutoResolveAIPostComment": { "type": "boolean" },
         "reviewThreadsAutoResolveAIEmbed": { "type": "boolean" },
+        "reviewThreadsAutoResolveAIEmbedPlacement": { "type": "string", "enum": ["top", "bottom", "header", "footer", "above", "below"] },
         "reviewThreadsAutoResolveAISummary": { "type": "boolean" },
         "reviewThreadsAutoResolveSummaryAlways": { "type": "boolean" },
         "reviewThreadsAutoResolveAIReply": { "type": "boolean" },

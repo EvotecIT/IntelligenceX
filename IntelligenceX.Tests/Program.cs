@@ -75,7 +75,7 @@ internal static class Program {
         failed += Run("Thread triage fallback summary", TestThreadTriageFallbackSummary);
         failed += Run("Review thread inline key allowlist", TestReviewThreadInlineKeyAllowlist);
         failed += Run("Thread auto-resolve summary comment", TestThreadAutoResolveSummaryComment);
-        failed += Run("Review retry transient", TestReviewRetryTransient);
+        failed += Run("Thread triage embed placement", TestThreadTriageEmbedPlacement);        failed += Run("Review retry transient", TestReviewRetryTransient);
         failed += Run("Review retry non-transient", TestReviewRetryNonTransient);
         failed += Run("Review retry rethrows", TestReviewRetryRethrows);
         failed += Run("Review retry extra attempt", TestReviewRetryExtraAttempt);
@@ -698,6 +698,21 @@ internal static class Program {
         var thread = new PullRequestReviewThread("id", false, false, 1, new[] { comment });
         var ok = ReviewerApp.TryGetInlineThreadKey(thread, settings, out _);
         AssertEqual(false, ok, "inline key allowlist");
+    }
+
+    private static void TestThreadTriageEmbedPlacement() {
+        var method = typeof(ReviewerApp).GetMethod("ApplyEmbedPlacement", BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("ApplyEmbedPlacement not found.");
+        }
+        var top = method.Invoke(null, new object?[] { "Body", "Triage", "top" }) as string;
+        AssertEqual("Triage\n\nBody", top ?? string.Empty, "embed top");
+
+        var bottom = method.Invoke(null, new object?[] { "Body", "Triage", "bottom" }) as string;
+        AssertEqual("Body\n\nTriage", bottom ?? string.Empty, "embed bottom");
+
+        var fallback = method.Invoke(null, new object?[] { "Body", "Triage", "unknown" }) as string;
+        AssertEqual("Body\n\nTriage", fallback ?? string.Empty, "embed fallback");
     }
 
     private static void TestReviewRetryTransient() {

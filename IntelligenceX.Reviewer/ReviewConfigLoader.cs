@@ -246,6 +246,11 @@ internal static class ReviewConfigLoader {
             settings.ReviewThreadsAutoResolveRequireEvidence);
         settings.ReviewThreadsAutoResolveAIPostComment = ReadBool(obj, "reviewThreadsAutoResolveAIPostComment", settings.ReviewThreadsAutoResolveAIPostComment);
         settings.ReviewThreadsAutoResolveAIEmbed = ReadBool(obj, "reviewThreadsAutoResolveAIEmbed", settings.ReviewThreadsAutoResolveAIEmbed);
+        var embedPlacement = obj.GetString("reviewThreadsAutoResolveAIEmbedPlacement");
+        if (!string.IsNullOrWhiteSpace(embedPlacement)) {
+            settings.ReviewThreadsAutoResolveAIEmbedPlacement =
+                ReviewSettings.NormalizeEmbedPlacement(embedPlacement, settings.ReviewThreadsAutoResolveAIEmbedPlacement);
+        }
         settings.ReviewThreadsAutoResolveAISummary = ReadBool(obj, "reviewThreadsAutoResolveAISummary", settings.ReviewThreadsAutoResolveAISummary);
         settings.ReviewThreadsAutoResolveSummaryAlways = ReadBool(obj, "reviewThreadsAutoResolveSummaryAlways",
             settings.ReviewThreadsAutoResolveSummaryAlways);
