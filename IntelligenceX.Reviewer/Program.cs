@@ -883,6 +883,7 @@ public static class ReviewerApp {
         }
 
         var byId = assessments.ToDictionary(a => a.Id, StringComparer.OrdinalIgnoreCase);
+        var replyMap = new Dictionary<string, ThreadAssessment>(StringComparer.OrdinalIgnoreCase);
         var resolved = new List<ThreadAssessment>();
         var kept = new List<ThreadAssessment>();
         var failed = new List<ThreadAssessment>();
@@ -891,6 +892,7 @@ public static class ReviewerApp {
                 case "comment":
                 case "keep":
                     kept.Add(assessment);
+                    replyMap[assessment.Id] = assessment;
                     break;
             }
         }
@@ -910,7 +912,9 @@ public static class ReviewerApp {
                 continue;
             }
             var error = result.Error ?? "unknown error";
-            failed.Add(new ThreadAssessment(assessment.Id, "keep", $"{assessment.Reason} (resolve failed: {error})"));
+            var failedAssessment = new ThreadAssessment(assessment.Id, "keep", $"{assessment.Reason} (resolve failed: {error})");
+            failed.Add(failedAssessment);
+            replyMap[assessment.Id] = failedAssessment;
             Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {error}");
         }
 
@@ -920,8 +924,8 @@ public static class ReviewerApp {
 
         var commentPosted = false;
         var triageBody = BuildThreadAssessmentComment(resolved, kept, context.HeadSha, diffNote);
-        if (settings.ReviewThreadsAutoResolveAIReply && kept.Count > 0) {
-            await ReplyToKeptThreadsAsync(github, context, candidates, byId, context.HeadSha, diffNote, settings, cancellationToken)
+        if (settings.ReviewThreadsAutoResolveAIReply && replyMap.Count > 0) {
+            await ReplyToKeptThreadsAsync(github, context, candidates, replyMap, context.HeadSha, diffNote, settings, cancellationToken)
                 .ConfigureAwait(false);
         }
         if (allowCommentPost && settings.ReviewThreadsAutoResolveAIPostComment &&
