@@ -73,6 +73,7 @@ internal static class Program {
         failed += Run("GitHub event fork parsing", TestGitHubEventForkParsing);
         failed += Run("Thread assessment evidence parse", TestThreadAssessmentEvidenceParse);
         failed += Run("Thread triage fallback summary", TestThreadTriageFallbackSummary);
+        failed += Run("Review thread inline key allowlist", TestReviewThreadInlineKeyAllowlist);
         failed += Run("Review retry transient", TestReviewRetryTransient);
         failed += Run("Review retry non-transient", TestReviewRetryNonTransient);
         failed += Run("Review retry rethrows", TestReviewRetryRethrows);
@@ -671,6 +672,18 @@ internal static class Program {
             array.SetValue(item, 0);
         }
         return array;
+    }
+
+    private static void TestReviewThreadInlineKeyAllowlist() {
+        var settings = new ReviewSettings {
+            ReviewThreadsAutoResolveBotsOnly = true,
+            ReviewThreadsAutoResolveBotLogins = new[] { "intelligencex-review" }
+        };
+        var comment = new PullRequestReviewThreadComment(null, null, $"{ReviewFormatter.InlineMarker}\nFix it.",
+            "dependabot[bot]", "src/Foo.cs", 10);
+        var thread = new PullRequestReviewThread("id", false, false, 1, new[] { comment });
+        var ok = ReviewerApp.TryGetInlineThreadKey(thread, settings, out _);
+        AssertEqual(false, ok, "inline key allowlist");
     }
 
     private static void TestReviewRetryTransient() {

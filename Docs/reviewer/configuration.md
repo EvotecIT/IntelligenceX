@@ -334,7 +334,8 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 3. Finally, `excludePaths` (if set) removes any remaining files from review.
 
 ## Auto-resolve notes
-- `reviewThreadsAutoResolveBotLogins` defaults to `intelligencex-review` and `copilot-pull-request-reviewer`.
+- `reviewThreadsAutoResolveBotLogins` defaults to `intelligencex-review` and `copilot-pull-request-reviewer`. When set,
+  it acts as an allowlist for auto-resolve; set an empty list to fall back to generic bot detection.
 - `reviewThreadsAutoResolveDiffRange` supports `current`, `pr-base`, or `first-review`.
 
 ## Full example
