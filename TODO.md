@@ -43,11 +43,11 @@ Status: Draft (needs priorities + owners)
 - [x] Add “triage mode” that only checks open threads.
 
 ### Phase 4 — Thread triage + auto-resolve
-- [ ] Keep thread triage in main review comment (configurable placement).
+- [x] Keep thread triage in main review comment (configurable placement).
 - [x] Support "explain why not resolved" replies (optional).
 - [x] Add diff-based auto-resolve checks (explicit evidence required).
-- [ ] Add per-bot policies (auto-resolve only for our bot by default).
-- [ ] Add PR comment summarizing what was auto-resolved.
+- [x] Add per-bot policies (auto-resolve only for our bot by default).
+- [x] Add PR comment summarizing what was auto-resolved.
 
 ### Phase 5 — Provider abstraction
 - [ ] Centralize provider contracts (capabilities, limits, streaming, auth).

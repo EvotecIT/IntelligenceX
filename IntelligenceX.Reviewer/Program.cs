@@ -1735,7 +1735,7 @@ public static class ReviewerApp {
             if (string.IsNullOrWhiteSpace(comment.Author)) {
                 return false;
             }
-            if (!IsBotAuthor(comment.Author, settings)) {
+            if (!IsAutoResolveBot(comment.Author, settings)) {
                 return false;
             }
         }
@@ -1874,6 +1874,29 @@ public static class ReviewerApp {
         }
         return trimmedAuthor.Equals("github-actions", StringComparison.OrdinalIgnoreCase) ||
             trimmedAuthor.Equals("intelligencex-review", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsAutoResolveBot(string author, ReviewSettings settings) {
+        if (string.IsNullOrWhiteSpace(author)) {
+            return false;
+        }
+        var normalizedAuthor = NormalizeBotLogin(author.Trim());
+        if (settings.ReviewThreadsAutoResolveBotLogins.Count > 0) {
+            foreach (var login in settings.ReviewThreadsAutoResolveBotLogins) {
+                if (string.IsNullOrWhiteSpace(login)) {
+                    continue;
+                }
+                var normalizedLogin = NormalizeBotLogin(login);
+                if (string.IsNullOrWhiteSpace(normalizedLogin)) {
+                    continue;
+                }
+                if (string.Equals(normalizedAuthor, normalizedLogin, StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return IsBotAuthor(author, settings);
     }
 
     private static string NormalizeBotLogin(string login) {
