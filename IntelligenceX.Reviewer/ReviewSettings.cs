@@ -143,6 +143,10 @@ internal sealed class ReviewSettings {
     /// Matching files are removed from the review list but do not skip the entire PR.
     /// </summary>
     public IReadOnlyList<string> ExcludePaths { get; set; } = Array.Empty<string>();
+    /// <summary>
+    /// When false, pull requests that modify workflow files are skipped to prevent self-modifying workflow runs.
+    /// </summary>
+    public bool AllowWorkflowChanges { get; set; }
     /// Controls which diff range is used to build the review context.
     /// <list type="bullet">
     /// <item><description><c>current</c>: use the current PR files.</description></item>
@@ -426,6 +430,11 @@ internal sealed class ReviewSettings {
         var excludePaths = GetInput("exclude_paths", "EXCLUDE_PATHS");
         if (!string.IsNullOrWhiteSpace(excludePaths)) {
             settings.ExcludePaths = ParseList(excludePaths, settings.ExcludePaths);
+        }
+
+        var allowWorkflowChanges = GetInput("allow_workflow_changes", "REVIEW_ALLOW_WORKFLOW_CHANGES");
+        if (!string.IsNullOrWhiteSpace(allowWorkflowChanges)) {
+            settings.AllowWorkflowChanges = ParseBoolean(allowWorkflowChanges, settings.AllowWorkflowChanges);
         }
 
         var reviewDiffRange = GetInput("review_diff_range", "REVIEW_DIFF_RANGE");

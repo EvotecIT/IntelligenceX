@@ -78,7 +78,7 @@ Status: Draft (needs priorities + owners)
 - [x] Redact sensitive data before prompt (secrets, tokens, private keys).
 - [x] Sanitize Azure DevOps API error payloads in logs.
 - [x] Add "untrusted PR" guardrails (no secret access, no write actions).
-- [ ] Add workflow integrity check (block self-modifying workflow runs).
+- [x] Add workflow integrity check (block self-modifying workflow runs).
 - [ ] Add audit logging for secrets usage.
 
 ### Phase 8 — Testing + validation

@@ -78,6 +78,7 @@
         "preflight": { "type": "boolean" },
         "preflightTimeoutSeconds": { "type": "integer", "minimum": 1 },
         "skipDraft": { "type": "boolean" },
+        "allowWorkflowChanges": { "type": "boolean" },
         "overwriteSummaryOnNewCommit": { "type": "boolean" },
         "summaryStability": { "type": "boolean" },
         "skipTitles": { "type": "array", "items": { "type": "string" } },

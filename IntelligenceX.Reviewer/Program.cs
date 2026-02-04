@@ -133,6 +133,19 @@ public static class ReviewerApp {
                 return 0;
             }
 
+            var files = await github.GetPullRequestFilesAsync(context.Owner, context.Repo, context.Number, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (files.Count == 0) {
+                Console.WriteLine("No files to review.");
+                return 0;
+            }
+
+            if (!settings.AllowWorkflowChanges && HasWorkflowChanges(files)) {
+                Console.WriteLine("Workflow file changes detected; skipping review. Set allowWorkflowChanges or REVIEW_ALLOW_WORKFLOW_CHANGES=true to override.");
+                return 0;
+            }
+
             if (allowWrites) {
                 context = await CleanupService.RunAsync(github, context, settings, cancellationToken)
                     .ConfigureAwait(false);
@@ -153,13 +166,6 @@ public static class ReviewerApp {
             var progress = new ReviewProgress {
                 StatusLine = "Starting review."
             };
-            var files = await github.GetPullRequestFilesAsync(context.Owner, context.Repo, context.Number, cancellationToken)
-                .ConfigureAwait(false);
-
-            if (files.Count == 0) {
-                Console.WriteLine("No files to review.");
-                return 0;
-            }
 
             if (ShouldSkipByPaths(files, settings.SkipPaths)) {
                 Console.WriteLine("Skipping pull request due to path filter.");
@@ -476,6 +482,27 @@ public static class ReviewerApp {
             }
         }
         return allMatch;
+    }
+
+    internal static bool HasWorkflowChanges(IReadOnlyList<PullRequestFile> files) {
+        foreach (var file in files) {
+            if (IsWorkflowPath(file.Filename)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool IsWorkflowPath(string? path) {
+        if (string.IsNullOrWhiteSpace(path)) {
+            return false;
+        }
+        var normalized = path.Replace('\\', '/').TrimStart('/');
+        if (!normalized.StartsWith(".github/workflows/", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+        return normalized.EndsWith(".yml", StringComparison.OrdinalIgnoreCase) ||
+               normalized.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase);
     }
 
     private static (IReadOnlyList<PullRequestFile> Files, string BudgetNote) PrepareFiles(IReadOnlyList<PullRequestFile> files,
