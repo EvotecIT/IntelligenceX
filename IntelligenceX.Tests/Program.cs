@@ -74,6 +74,7 @@ internal static class Program {
         failed += Run("Thread assessment evidence parse", TestThreadAssessmentEvidenceParse);
         failed += Run("Thread triage fallback summary", TestThreadTriageFallbackSummary);
         failed += Run("Review thread inline key allowlist", TestReviewThreadInlineKeyAllowlist);
+        failed += Run("Thread auto-resolve summary comment", TestThreadAutoResolveSummaryComment);
         failed += Run("Review retry transient", TestReviewRetryTransient);
         failed += Run("Review retry non-transient", TestReviewRetryNonTransient);
         failed += Run("Review retry rethrows", TestReviewRetryRethrows);
@@ -647,6 +648,19 @@ internal static class Program {
         var kept = CreateThreadAssessmentArray(null, 0);
         var summary = method.Invoke(null, new object?[] { resolved, kept }) as string;
         AssertEqual("Auto-resolve: resolved 1 thread(s).", summary ?? string.Empty, "summary resolved");
+    }
+
+    private static void TestThreadAutoResolveSummaryComment() {
+        var method = typeof(ReviewerApp).GetMethod("BuildThreadAutoResolveSummaryComment",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("BuildThreadAutoResolveSummaryComment not found.");
+        }
+        var resolved = CreateThreadAssessmentArray(CreateThreadAssessment("1"), 1);
+        var kept = CreateThreadAssessmentArray(null, 0);
+        var summary = method.Invoke(null, new object?[] { resolved, kept, "abcdef1234567890", "current PR files" }) as string;
+        AssertContainsText(summary ?? string.Empty, "auto-resolve summary", "summary header");
+        AssertContainsText(summary ?? string.Empty, "Resolved:", "summary resolved label");
     }
 
     private static object CreateThreadAssessment(string id) {

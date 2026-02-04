@@ -203,6 +203,9 @@ internal sealed class ReviewSettings {
     /// When enabled, always append the auto-resolve summary line to the main review comment.
     /// </summary>
     public bool ReviewThreadsAutoResolveSummaryAlways { get; set; }
+    /// Post a standalone summary comment listing auto-resolved and kept threads.
+    /// </summary>
+    public bool ReviewThreadsAutoResolveSummaryComment { get; set; }
     /// <summary>
     /// When enabled, only run thread triage/auto-resolve without generating a full review comment.
     /// </summary>
@@ -816,6 +819,12 @@ internal sealed class ReviewSettings {
         var reviewThreadsAutoResolveAiReply = GetInput("review_threads_auto_resolve_ai_reply", "REVIEW_THREADS_AUTO_RESOLVE_AI_REPLY", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI_REPLY");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAiReply)) {
             settings.ReviewThreadsAutoResolveAIReply = ParseBoolean(reviewThreadsAutoResolveAiReply, settings.ReviewThreadsAutoResolveAIReply);
+        }
+        var reviewThreadsAutoResolveSummaryComment = GetInput("review_threads_auto_resolve_summary_comment",
+            "REVIEW_THREADS_AUTO_RESOLVE_SUMMARY_COMMENT", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_SUMMARY_COMMENT");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveSummaryComment)) {
+            settings.ReviewThreadsAutoResolveSummaryComment =
+                ParseBoolean(reviewThreadsAutoResolveSummaryComment, settings.ReviewThreadsAutoResolveSummaryComment);
         }
         var contextDenyEnabled = GetInput("context_deny_enabled", "REVIEW_CONTEXT_DENY_ENABLED");
         if (!string.IsNullOrWhiteSpace(contextDenyEnabled)) {
