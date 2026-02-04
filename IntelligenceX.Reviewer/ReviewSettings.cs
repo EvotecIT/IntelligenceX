@@ -200,6 +200,10 @@ internal sealed class ReviewSettings {
     public bool ReviewThreadsAutoResolveAISummary { get; set; } = true;
     public bool ReviewThreadsAutoResolveAIReply { get; set; }
     /// <summary>
+    /// When enabled, always append the auto-resolve summary line to the main review comment.
+    /// </summary>
+    public bool ReviewThreadsAutoResolveSummaryAlways { get; set; }
+    /// <summary>
     /// When enabled, only run thread triage/auto-resolve without generating a full review comment.
     /// </summary>
     public bool TriageOnly { get; set; }
@@ -802,6 +806,12 @@ internal sealed class ReviewSettings {
         var reviewThreadsAutoResolveAiSummary = GetInput("review_threads_auto_resolve_ai_summary", "REVIEW_THREADS_AUTO_RESOLVE_AI_SUMMARY", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI_SUMMARY");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAiSummary)) {
             settings.ReviewThreadsAutoResolveAISummary = ParseBoolean(reviewThreadsAutoResolveAiSummary, settings.ReviewThreadsAutoResolveAISummary);
+        }
+        var reviewThreadsAutoResolveSummaryAlways = GetInput("review_threads_auto_resolve_summary_always",
+            "REVIEW_THREADS_AUTO_RESOLVE_SUMMARY_ALWAYS", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_SUMMARY_ALWAYS");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveSummaryAlways)) {
+            settings.ReviewThreadsAutoResolveSummaryAlways =
+                ParseBoolean(reviewThreadsAutoResolveSummaryAlways, settings.ReviewThreadsAutoResolveSummaryAlways);
         }
         var reviewThreadsAutoResolveAiReply = GetInput("review_threads_auto_resolve_ai_reply", "REVIEW_THREADS_AUTO_RESOLVE_AI_REPLY", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI_REPLY");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAiReply)) {

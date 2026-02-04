@@ -72,6 +72,7 @@ internal static class Program {
         failed += Run("Review thread inline key bots only", TestReviewThreadInlineKeyBotsOnly);
         failed += Run("GitHub event fork parsing", TestGitHubEventForkParsing);
         failed += Run("Thread assessment evidence parse", TestThreadAssessmentEvidenceParse);
+        failed += Run("Thread triage fallback summary", TestThreadTriageFallbackSummary);
         failed += Run("Review retry transient", TestReviewRetryTransient);
         failed += Run("Review retry non-transient", TestReviewRetryNonTransient);
         failed += Run("Review retry rethrows", TestReviewRetryRethrows);
@@ -632,6 +633,44 @@ internal static class Program {
         }
         var evidence = evidenceProp.GetValue(first) as string;
         AssertEqual("42: added guard", evidence ?? string.Empty, "evidence");
+    }
+
+    private static void TestThreadTriageFallbackSummary() {
+        var method = typeof(ReviewerApp).GetMethod("BuildFallbackTriageSummary",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("BuildFallbackTriageSummary not found.");
+        }
+        var assessment = CreateThreadAssessment("1");
+        var resolved = CreateThreadAssessmentArray(assessment, 1);
+        var kept = CreateThreadAssessmentArray(null, 0);
+        var summary = method.Invoke(null, new object?[] { resolved, kept }) as string;
+        AssertEqual("Auto-resolve: resolved 1 thread(s).", summary ?? string.Empty, "summary resolved");
+    }
+
+    private static object CreateThreadAssessment(string id) {
+        var type = typeof(ReviewerApp).GetNestedType("ThreadAssessment", BindingFlags.NonPublic);
+        if (type is null) {
+            throw new InvalidOperationException("ThreadAssessment type not found.");
+        }
+        var ctor = type.GetConstructor(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance,
+            null, new[] { typeof(string), typeof(string), typeof(string) }, null);
+        if (ctor is null) {
+            throw new InvalidOperationException("ThreadAssessment constructor not found.");
+        }
+        return ctor.Invoke(new object[] { id, "resolve", "ok" });
+    }
+
+    private static Array CreateThreadAssessmentArray(object? item, int length) {
+        var type = typeof(ReviewerApp).GetNestedType("ThreadAssessment", BindingFlags.NonPublic);
+        if (type is null) {
+            throw new InvalidOperationException("ThreadAssessment type not found.");
+        }
+        var array = Array.CreateInstance(type, length);
+        if (item is not null && length > 0) {
+            array.SetValue(item, 0);
+        }
+        return array;
     }
 
     private static void TestReviewRetryTransient() {

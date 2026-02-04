@@ -283,6 +283,9 @@ public static class ReviewerApp {
             }
             var inlineSuppressed = inlineSupported && !inlineAllowed;
             var autoResolveSummary = allowWrites && settings.ReviewThreadsAutoResolveAISummary ? triageResult.SummaryLine : string.Empty;
+            if (allowWrites && settings.ReviewThreadsAutoResolveSummaryAlways && string.IsNullOrWhiteSpace(autoResolveSummary)) {
+                autoResolveSummary = triageResult.FallbackSummary;
+            }
             var usageLine = await TryBuildUsageLineAsync(settings).ConfigureAwait(false);
             var findingsBlock = settings.StructuredFindings ? ReviewFindingsBuilder.Build(inlineComments) : string.Empty;
             var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported, inlineSuppressed,
@@ -981,7 +984,8 @@ public static class ReviewerApp {
         if (commentPosted) {
             summary += " Triage comment posted.";
         }
-        return new ThreadTriageResult(summary, triageBody);
+        var fallbackSummary = BuildFallbackTriageSummary(resolved, kept);
+        return new ThreadTriageResult(summary, triageBody, fallbackSummary);
     }
 
     private static async Task<string> TryBuildUsageLineAsync(ReviewSettings settings) {
@@ -1544,6 +1548,20 @@ public static class ReviewerApp {
         return sb.ToString().TrimEnd();
     }
 
+    private static string BuildFallbackTriageSummary(IReadOnlyList<ThreadAssessment> resolved,
+        IReadOnlyList<ThreadAssessment> kept) {
+        if (resolved.Count == 0 && kept.Count == 0) {
+            return string.Empty;
+        }
+        if (resolved.Count > 0 && kept.Count == 0) {
+            return $"Auto-resolve: resolved {resolved.Count} thread(s).";
+        }
+        if (resolved.Count == 0 && kept.Count > 0) {
+            return $"Auto-resolve: kept {kept.Count} thread(s).";
+        }
+        return $"Auto-resolve: resolved {resolved.Count}, kept {kept.Count} thread(s).";
+    }
+
     private static async Task ReplyToKeptThreadsAsync(GitHubClient github, PullRequestContext context,
         IReadOnlyList<PullRequestReviewThread> candidates, IReadOnlyDictionary<string, ThreadAssessment> assessments,
         string? headSha, string? diffNote, ReviewSettings settings, CancellationToken cancellationToken) {
@@ -1614,8 +1632,8 @@ public static class ReviewerApp {
         return sb.ToString().TrimEnd();
     }
 
-    private readonly record struct ThreadTriageResult(string SummaryLine, string EmbeddedBlock) {
-        public static ThreadTriageResult Empty => new(string.Empty, string.Empty);
+    private readonly record struct ThreadTriageResult(string SummaryLine, string EmbeddedBlock, string FallbackSummary) {
+        public static ThreadTriageResult Empty => new(string.Empty, string.Empty, string.Empty);
     }
 
     private static List<ThreadAssessment> ParseThreadAssessments(string output) {
