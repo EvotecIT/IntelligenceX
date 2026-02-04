@@ -3,7 +3,7 @@
 Status: In progress
 
 ## Engine Roadmap
-Status: Draft (needs priorities + owners)
+Status: In progress
 
 ### Now — Phase 1–2 (concrete)
 - [x] Add error classification enum + mapping (S)
@@ -14,7 +14,7 @@ Status: Draft (needs priorities + owners)
 - [x] Add diff-range selection + default (current/pr-base/first-review) (M)
 - [x] Add include/exclude glob filters for files (S)
 - [x] Add smart chunking (group related hunks) (M)
-- [x] Add review intent presets (security/perf/maintainability) (S)
+- [ ] Add review intent presets (security/perf/maintainability) (S)
 
 ### Phase 0 — Scope + success criteria
 - [ ] Define "engine" scope (review pipeline, providers, context builder, formatter, thread triage).
@@ -30,14 +30,15 @@ Status: Draft (needs priorities + owners)
 
 ### Phase 2 — Context quality
 - [x] Add diff-range strategy options (current/pr-base/first-review) with default.
-- [x] Add file filters (include/exclude globs, binary skip, generated skip).
+- [x] Add file filters (include/exclude globs).
+- [ ] Add binary/generated file skipping.
 - [x] Add smart chunking (keep related hunks together; avoid orphaned changes).
 - [x] Add language-aware hints (prompt includes detected languages).
-- [x] Add "review intent" presets (security/perf/maintainability).
+- [ ] Add "review intent" presets (security/perf/maintainability).
 
 ### Phase 3 — Review output + UX
 - [x] Add optional "reasoning level" label in header (low/medium/high) when provider supports it.
- - [x] Add optional usage/limits line near model header (opt-in; ChatGPT auth).
+- [x] Add optional usage/limits line near model header (opt-in; ChatGPT auth).
 - [x] Add structured findings schema for bots/automation (severity + file + line).
 - [x] Add summary stability (avoid noisy rewording across reruns).
 - [x] Add “triage mode” that only checks open threads.
@@ -64,7 +65,7 @@ Status: Draft (needs priorities + owners)
 - [ ] Phase 2: inline comments with iteration + line mapping support.
 - [ ] Phase 3: thread triage + auto-resolve via thread status updates.
 - [ ] Add CLI flags/config: `provider=azure`, `azureOrg`, `azureProject`, `azureRepo`, `azureBaseUrl`, `azureTokenEnv`.
-- [ ] Add ADO pipeline templates + docs (onboarding, permissions, secrets).
+- [ ] Add ADO pipeline templates (onboarding, permissions, secrets).
 
 ### Phase 6 — Performance + cost
 - [ ] Add response streaming where supported (show partial progress).
@@ -110,7 +111,7 @@ Status: In progress
 
 ### Phase 2 — CLI Wizard (Spectre.Console)
 - [x] Add Spectre.Console dependency (CLI project only)
-- [ ] Implement interactive steps:
+- [x] Implement interactive steps:
   - [x] Auth mode selection
   - [x] GitHub auth flow
   - [x] Org vs repo selection
@@ -172,3 +173,23 @@ Status: In progress
 
 ### Phase 9 — DevEx automation
 - [x] Auto-resolve IntelligenceX bot review threads after fixes (CLI command or GitHub App action)
+
+## Review Feedback Backlog (Bots)
+
+Collapsed by PR. Includes only explicit checklist items found in bot reviews/comments.
+
+- [ ] PR #3 Review smoke test — checklist items: Generate review findings (in progress); Finalize summary. Links: https://github.com/EvotecIT/IntelligenceX/pull/3#issuecomment-3813472397
+- [ ] PR #21 Auto-resolve missing inline review threads — checklist items: Decide if auto-resolving should run when the latest review has zero inline comments; if yes, remove the `inlineKeys.Count > 0` guard (suggested above).. Links: https://github.com/EvotecIT/IntelligenceX/pull/21#issuecomment-3825536164
+- [ ] PR #22 Add review thread resolver and simplify release notes — checklist items: Redact or avoid posting raw exception summaries to PR comments; keep detailed errors in logs.; Ensure fail-open output is detected and used to skip inline comments / thread resolution.; Propagate compare API truncation to avoid incorrect diff-based auto-resolve decisions.. Links: https://github.com/EvotecIT/IntelligenceX/pull/22#issuecomment-3826408373
+- [ ] PR #30 Reviewer: configurable retry backoff + jitter — checklist items: Validate `retryBackoffMultiplier` is finite in config loader and env parsing to prevent invalid delays.. Links: https://github.com/EvotecIT/IntelligenceX/pull/30#issuecomment-3833603457
+- [ ] PR #31 Reviewer: add native connectivity preflight — checklist items: Simplify or differentiate the non‑success HTTP status handling in the preflight block to avoid redundant logic.; Add tests that cover preflight timeout, DNS failure, and non‑2xx responses to ensure error mapping is stable.. Links: https://github.com/EvotecIT/IntelligenceX/pull/31#issuecomment-3833692431
+- [ ] PR #33 Reviewer: add review diff-range selection — checklist items: Unregister the `Console.CancelKeyPress` handler on exit (e.g., in a `finally` block).. Links: https://github.com/EvotecIT/IntelligenceX/pull/33#issuecomment-3833798330
+- [ ] PR #36 Add Claude Code GitHub Workflow — checklist items: Generate review findings (in progress); Finalize summary. Links: https://github.com/EvotecIT/IntelligenceX/pull/36#issuecomment-3836649848
+- [ ] PR #37 Docs: clarify config load exception wording — checklist items: Align exception type/documentation for parse failures (either adjust behavior or revert doc to “not found” only).. Links: https://github.com/EvotecIT/IntelligenceX/pull/37#issuecomment-3837105937
+- [ ] PR #40 Docs: polish reviewer config and CLI usage — checklist items: Verify the correct CLI flag for reviewer auth and align the `resolve-threads` example accordingly.. Links: https://github.com/EvotecIT/IntelligenceX/pull/40#issuecomment-3837177213
+- [ ] PR #41 feat: copilot direct transport + unified roadmap — checklist items: Preserve required environment variables (or require absolute `CliPath`) when `InheritEnvironment=false`.; Reject `Timeout == TimeSpan.Zero` in `CopilotChatClientOptions.Validate()`.; Define and enforce precedence between `Token` and `Authorization` header for direct transport.. Links: https://github.com/EvotecIT/IntelligenceX/pull/41#issuecomment-3840061440
+- [ ] PR #45 OpenAI native tool calling — checklist items: Support snake_case `"response_id"` in `TurnInfo.FromJson` to avoid losing the response id on different payload formats.; Make `ToolRegistry.GetDefinitions()` return a deterministic order to avoid request/test flakiness.. Links: https://github.com/EvotecIT/IntelligenceX/pull/45#issuecomment-3842964985
+- [ ] PR #56 feat: add review budget summary note — checklist items: Align `PrepareFiles` behavior for `maxFiles <= 0` with ADO path to avoid empty context and misleading budget notes.. Links: https://github.com/EvotecIT/IntelligenceX/pull/56#issuecomment-3843966686
+- [ ] PR #62 feat: block self-modifying workflow runs — checklist items: Add a `.yaml` workflow test case to cover both supported extensions.. Links: https://github.com/EvotecIT/IntelligenceX/pull/62#issuecomment-3845835997
+- [ ] PR #63 feat: add secrets audit logging — checklist items: Prevent `SecretsAudit.Record` from queuing entries when auditing is disabled (gate with an “enabled” flag or similar).; Fix token selection to fall back on `GITHUB_TOKEN` when `INTELLIGENCEX_GITHUB_TOKEN` is empty/whitespace.. Links: https://github.com/EvotecIT/IntelligenceX/pull/63#issuecomment-3845855649
+- [ ] PR #65 feat: always summarize thread auto-resolve — checklist items: Make `BuildFallbackTriageSummary` accessible to tests without reflection (e.g., `internal` + `InternalsVisibleTo`) to reduce brittleness.; Add at least one more test case for fallback summary (e.g., kept-only and mixed resolved/kept).. Links: https://github.com/EvotecIT/IntelligenceX/pull/65#issuecomment-3845900159
