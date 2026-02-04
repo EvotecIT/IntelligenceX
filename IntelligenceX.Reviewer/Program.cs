@@ -976,6 +976,12 @@ public static class ReviewerApp {
                 .ConfigureAwait(false);
             commentPosted = true;
         }
+        if (settings.ReviewThreadsAutoResolveSummaryComment && !commentPosted && (resolved.Count > 0 || kept.Count > 0)) {
+            var body = BuildThreadAutoResolveSummaryComment(resolved, kept, context.HeadSha, diffNote);
+            await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, cancellationToken)
+                .ConfigureAwait(false);
+            commentPosted = true;
+        }
 
         if (resolvedCount == 0 && kept.Count == 0) {
             return ThreadTriageResult.Empty;
@@ -1560,6 +1566,37 @@ public static class ReviewerApp {
             return $"Auto-resolve: kept {kept.Count} thread(s).";
         }
         return $"Auto-resolve: resolved {resolved.Count}, kept {kept.Count} thread(s).";
+    }
+
+    private static string BuildThreadAutoResolveSummaryComment(IReadOnlyList<ThreadAssessment> resolved,
+        IReadOnlyList<ThreadAssessment> kept, string? headSha, string? diffNote) {
+        var sb = new StringBuilder();
+        sb.AppendLine("<!-- intelligencex:thread-autoresolve-summary -->");
+        sb.AppendLine("### IntelligenceX auto-resolve summary");
+        if (!string.IsNullOrWhiteSpace(headSha)) {
+            var trimmed = headSha.Length > 7 ? headSha.Substring(0, 7) : headSha;
+            sb.AppendLine($"_Assessed commit: `{trimmed}`_");
+            sb.AppendLine();
+        }
+        if (!string.IsNullOrWhiteSpace(diffNote)) {
+            sb.AppendLine($"_Diff range: {diffNote}_");
+            sb.AppendLine();
+        }
+        if (resolved.Count > 0) {
+            sb.AppendLine("Resolved:");
+            foreach (var item in resolved) {
+                sb.AppendLine($"- {item.Id}: {item.Reason}");
+            }
+            sb.AppendLine();
+        }
+        if (kept.Count > 0) {
+            sb.AppendLine("Kept:");
+            foreach (var item in kept) {
+                sb.AppendLine($"- {item.Id}: {item.Reason}");
+            }
+            sb.AppendLine();
+        }
+        return sb.ToString().TrimEnd();
     }
 
     private static async Task ReplyToKeptThreadsAsync(GitHubClient github, PullRequestContext context,
