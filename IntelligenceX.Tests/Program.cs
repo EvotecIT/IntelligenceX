@@ -639,16 +639,22 @@ internal static class Program {
     }
 
     private static void TestThreadTriageFallbackSummary() {
-        var method = typeof(ReviewerApp).GetMethod("BuildFallbackTriageSummary",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        if (method is null) {
-            throw new InvalidOperationException("BuildFallbackTriageSummary not found.");
-        }
         var assessment = CreateThreadAssessment("1");
         var resolved = CreateThreadAssessmentArray(assessment, 1);
         var kept = CreateThreadAssessmentArray(null, 0);
-        var summary = method.Invoke(null, new object?[] { resolved, kept }) as string;
+        var summary = ReviewerApp.BuildFallbackTriageSummary(resolved, kept);
         AssertEqual("Auto-resolve: resolved 1 thread(s).", summary ?? string.Empty, "summary resolved");
+
+        var keptOnly = CreateThreadAssessmentArray(CreateThreadAssessment("2"), 1);
+        summary = ReviewerApp.BuildFallbackTriageSummary(CreateThreadAssessmentArray(null, 0), keptOnly);
+        AssertEqual("Auto-resolve: kept 1 thread(s).", summary ?? string.Empty, "summary kept");
+
+        summary = ReviewerApp.BuildFallbackTriageSummary(resolved, keptOnly);
+        AssertEqual("Auto-resolve: resolved 1, kept 1 thread(s).", summary ?? string.Empty, "summary mixed");
+
+        summary = ReviewerApp.BuildFallbackTriageSummary(CreateThreadAssessmentArray(null, 0),
+            CreateThreadAssessmentArray(null, 0));
+        AssertEqual(string.Empty, summary ?? string.Empty, "summary empty");
     }
 
     private static void TestThreadAutoResolveSummaryComment() {
@@ -664,27 +670,15 @@ internal static class Program {
         AssertContainsText(summary ?? string.Empty, "Resolved:", "summary resolved label");
     }
 
-    private static object CreateThreadAssessment(string id) {
-        var type = typeof(ReviewerApp).GetNestedType("ThreadAssessment", BindingFlags.NonPublic);
-        if (type is null) {
-            throw new InvalidOperationException("ThreadAssessment type not found.");
-        }
-        var ctor = type.GetConstructor(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance,
-            null, new[] { typeof(string), typeof(string), typeof(string) }, null);
-        if (ctor is null) {
-            throw new InvalidOperationException("ThreadAssessment constructor not found.");
-        }
-        return ctor.Invoke(new object[] { id, "resolve", "ok" });
+    private static ReviewerApp.ThreadAssessment CreateThreadAssessment(string id) {
+        return new ReviewerApp.ThreadAssessment(id, "resolve", "ok", string.Empty);
     }
 
-    private static Array CreateThreadAssessmentArray(object? item, int length) {
-        var type = typeof(ReviewerApp).GetNestedType("ThreadAssessment", BindingFlags.NonPublic);
-        if (type is null) {
-            throw new InvalidOperationException("ThreadAssessment type not found.");
-        }
-        var array = Array.CreateInstance(type, length);
+    private static ReviewerApp.ThreadAssessment[] CreateThreadAssessmentArray(ReviewerApp.ThreadAssessment? item,
+        int length) {
+        var array = new ReviewerApp.ThreadAssessment[length];
         if (item is not null && length > 0) {
-            array.SetValue(item, 0);
+            array[0] = item;
         }
         return array;
     }

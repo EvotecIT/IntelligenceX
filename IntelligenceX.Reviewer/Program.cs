@@ -63,9 +63,11 @@ public static class ReviewerApp {
                 }
                 return await AzureDevOpsReviewRunner.RunAsync(settings, cancellationToken).ConfigureAwait(false);
             }
-            var token = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN")
-                ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN");
-            var tokenSource = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN"))
+            var primaryToken = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN");
+            var token = !string.IsNullOrWhiteSpace(primaryToken)
+                ? primaryToken
+                : Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+            var tokenSource = !string.IsNullOrWhiteSpace(primaryToken)
                 ? "INTELLIGENCEX_GITHUB_TOKEN"
                 : "GITHUB_TOKEN";
 
@@ -1582,7 +1584,7 @@ public static class ReviewerApp {
         return sb.ToString().TrimEnd();
     }
 
-    private static string BuildFallbackTriageSummary(IReadOnlyList<ThreadAssessment> resolved,
+    internal static string BuildFallbackTriageSummary(IReadOnlyList<ThreadAssessment> resolved,
         IReadOnlyList<ThreadAssessment> kept) {
         if (resolved.Count == 0 && kept.Count == 0) {
             return string.Empty;
@@ -1744,7 +1746,7 @@ public static class ReviewerApp {
         return value?.AsObject();
     }
 
-    private sealed record ThreadAssessment(string Id, string Action, string Reason, string Evidence);
+    internal sealed record ThreadAssessment(string Id, string Action, string Reason, string Evidence);
 
     private static bool HasValidResolveEvidence(string? evidence, PullRequestReviewThread thread,
         Dictionary<string, List<PatchLine>> patchIndex, IReadOnlyDictionary<string, string> patchLookup,

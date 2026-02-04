@@ -8,8 +8,10 @@ internal static class SecretsAudit {
     private static readonly object Sync = new();
     private static readonly List<string> Pending = new();
     private static readonly AsyncLocal<SecretsAuditSession?> Current = new();
+    private static readonly AsyncLocal<bool> Enabled = new();
 
     public static SecretsAuditSession? TryStart(ReviewSettings settings) {
+        Enabled.Value = settings.SecretsAudit;
         if (!settings.SecretsAudit) {
             lock (Sync) {
                 Pending.Clear();
@@ -30,6 +32,9 @@ internal static class SecretsAudit {
     }
 
     public static void Record(string message) {
+        if (!Enabled.Value) {
+            return;
+        }
         if (string.IsNullOrWhiteSpace(message)) {
             return;
         }
@@ -46,6 +51,7 @@ internal static class SecretsAudit {
     internal static void EndSession(SecretsAuditSession session) {
         if (Current.Value == session) {
             Current.Value = null;
+            Enabled.Value = false;
         }
     }
 }
