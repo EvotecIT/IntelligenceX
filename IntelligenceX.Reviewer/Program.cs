@@ -911,6 +911,8 @@ public static class ReviewerApp {
 
         var byId = assessments.ToDictionary(a => a.Id, StringComparer.OrdinalIgnoreCase);
         var replyMap = new Dictionary<string, ThreadAssessment>(StringComparer.OrdinalIgnoreCase);
+        var patchIndex = BuildInlinePatchIndex(files);
+        var patchLookup = BuildPatchLookup(files, settings.MaxPatchChars);
         var resolved = new List<ThreadAssessment>();
         var kept = new List<ThreadAssessment>();
         var failed = new List<ThreadAssessment>();
@@ -932,6 +934,14 @@ public static class ReviewerApp {
             if (!byId.TryGetValue(thread.Id, out var assessment) || assessment.Action != "resolve") {
                 continue;
             }
+            if (settings.ReviewThreadsAutoResolveRequireEvidence &&
+                !HasValidResolveEvidence(assessment.Evidence, thread, patchIndex, patchLookup, settings.MaxPatchChars)) {
+                var missingEvidence = new ThreadAssessment(assessment.Id, "keep",
+                    $"{assessment.Reason} (missing diff evidence)", assessment.Evidence);
+                kept.Add(missingEvidence);
+                replyMap[assessment.Id] = missingEvidence;
+                continue;
+            }
             var result = await TryResolveThreadAsync(github, fallbackGithub, thread.Id, cancellationToken).ConfigureAwait(false);
             if (result.Resolved) {
                 resolvedCount++;
@@ -939,7 +949,8 @@ public static class ReviewerApp {
                 continue;
             }
             var error = result.Error ?? "unknown error";
-            var failedAssessment = new ThreadAssessment(assessment.Id, "keep", $"{assessment.Reason} (resolve failed: {error})");
+            var failedAssessment = new ThreadAssessment(assessment.Id, "keep", $"{assessment.Reason} (resolve failed: {error})",
+                assessment.Evidence);
             failed.Add(failedAssessment);
             replyMap[assessment.Id] = failedAssessment;
             Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {error}");
@@ -1176,7 +1187,8 @@ public static class ReviewerApp {
         sb.AppendLine("If diff context shows `<file patch>`, it is the file-level diff because line-level context was unavailable.");
         sb.AppendLine();
         sb.AppendLine("Return JSON only in this format:");
-        sb.AppendLine("{\"threads\":[{\"id\":\"...\",\"action\":\"resolve|keep|comment\",\"reason\":\"...\"}]}");
+        sb.AppendLine("{\"threads\":[{\"id\":\"...\",\"action\":\"resolve|keep|comment\",\"reason\":\"...\",\"evidence\":\"...\"}]}");
+        sb.AppendLine("When resolving, evidence must quote a line from the diff context (e.g., \"42: fixed null check\").");
         sb.AppendLine();
         sb.AppendLine($"PR: {context.Owner}/{context.Repo} #{context.Number}");
         if (!string.IsNullOrWhiteSpace(context.Title)) {
@@ -1628,7 +1640,8 @@ public static class ReviewerApp {
                 action = "keep";
             }
             var reason = thread.GetString("reason") ?? string.Empty;
-            result.Add(new ThreadAssessment(id.Trim(), action, reason.Trim()));
+            var evidence = thread.GetString("evidence") ?? string.Empty;
+            result.Add(new ThreadAssessment(id.Trim(), action, reason.Trim(), evidence.Trim()));
         }
         return result;
     }
@@ -1648,7 +1661,27 @@ public static class ReviewerApp {
         return value?.AsObject();
     }
 
-    private sealed record ThreadAssessment(string Id, string Action, string Reason);
+    private sealed record ThreadAssessment(string Id, string Action, string Reason, string Evidence);
+
+    private static bool HasValidResolveEvidence(string? evidence, PullRequestReviewThread thread,
+        Dictionary<string, List<PatchLine>> patchIndex, IReadOnlyDictionary<string, string> patchLookup,
+        int maxPatchChars) {
+        if (string.IsNullOrWhiteSpace(evidence)) {
+            return false;
+        }
+        if (!TryGetThreadLocation(thread, out var path, out var line)) {
+            return false;
+        }
+        var context = BuildThreadDiffContext(patchIndex, patchLookup, path, line, maxPatchChars);
+        if (string.IsNullOrWhiteSpace(context) || context == "<unavailable>") {
+            return false;
+        }
+        var normalized = evidence.Trim().Trim('"');
+        if (normalized.Length == 0) {
+            return false;
+        }
+        return context.Contains(normalized, StringComparison.OrdinalIgnoreCase);
+    }
 
     private static async Task<(bool Resolved, string? Error)> TryResolveThreadAsync(GitHubClient github,
         GitHubClient? fallbackGithub, string threadId, CancellationToken cancellationToken) {

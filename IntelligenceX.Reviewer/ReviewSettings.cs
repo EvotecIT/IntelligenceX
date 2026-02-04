@@ -191,6 +191,10 @@ internal sealed class ReviewSettings {
     public string ReviewThreadsAutoResolveDiffRange { get; set; } = "current";
     public int ReviewThreadsAutoResolveMax { get; set; } = 10;
     public bool ReviewThreadsAutoResolveAI { get; set; } = true;
+    /// <summary>
+    /// Require explicit diff evidence to auto-resolve review threads.
+    /// </summary>
+    public bool ReviewThreadsAutoResolveRequireEvidence { get; set; } = true;
     public bool ReviewThreadsAutoResolveAIPostComment { get; set; }
     public bool ReviewThreadsAutoResolveAIEmbed { get; set; } = true;
     public bool ReviewThreadsAutoResolveAISummary { get; set; } = true;
@@ -782,6 +786,10 @@ internal sealed class ReviewSettings {
         var reviewThreadsAutoResolveAi = GetInput("review_threads_auto_resolve_ai", "REVIEW_THREADS_AUTO_RESOLVE_AI", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAi)) {
             settings.ReviewThreadsAutoResolveAI = ParseBoolean(reviewThreadsAutoResolveAi, settings.ReviewThreadsAutoResolveAI);
+        }
+        var reviewThreadsAutoResolveRequireEvidence = GetInput("review_threads_auto_resolve_require_evidence", "REVIEW_THREADS_AUTO_RESOLVE_REQUIRE_EVIDENCE", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_REQUIRE_EVIDENCE");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveRequireEvidence)) {
+            settings.ReviewThreadsAutoResolveRequireEvidence = ParseBoolean(reviewThreadsAutoResolveRequireEvidence, settings.ReviewThreadsAutoResolveRequireEvidence);
         }
         var reviewThreadsAutoResolveAiPost = GetInput("review_threads_auto_resolve_ai_post_comment", "REVIEW_THREADS_AUTO_RESOLVE_AI_POST_COMMENT", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI_POST_COMMENT");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAiPost)) {

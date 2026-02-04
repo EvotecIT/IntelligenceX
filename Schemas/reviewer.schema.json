@@ -49,6 +49,7 @@
         "reviewThreadsAutoResolveDiffRange": { "type": "string", "enum": ["current", "pr-base", "first-review"] },
         "reviewThreadsAutoResolveMax": { "type": "integer", "minimum": 0 },
         "reviewThreadsAutoResolveAI": { "type": "boolean" },
+        "reviewThreadsAutoResolveRequireEvidence": { "type": "boolean" },
         "reviewThreadsAutoResolveAIPostComment": { "type": "boolean" },
         "reviewThreadsAutoResolveAIEmbed": { "type": "boolean" },
         "reviewThreadsAutoResolveAISummary": { "type": "boolean" },

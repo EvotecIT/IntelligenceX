@@ -45,7 +45,7 @@ Status: Draft (needs priorities + owners)
 ### Phase 4 — Thread triage + auto-resolve
 - [ ] Keep thread triage in main review comment (configurable placement).
 - [x] Support "explain why not resolved" replies (optional).
-- [ ] Add diff-based auto-resolve checks (explicit evidence required).
+- [x] Add diff-based auto-resolve checks (explicit evidence required).
 - [ ] Add per-bot policies (auto-resolve only for our bot by default).
 - [ ] Add PR comment summarizing what was auto-resolved.
 
