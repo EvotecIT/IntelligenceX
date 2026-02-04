@@ -183,6 +183,25 @@ Use this to skip the main review and only assess existing review threads.
 }
 ```
 
+## Redaction (secrets)
+
+When `redactPii` is enabled, the reviewer applies default redaction patterns for common secrets
+(private keys, GitHub tokens, AWS access keys, JWTs, Authorization headers, and generic key/value secrets).
+Override the defaults by setting `redactionPatterns`.
+
+```json
+{
+  "review": {
+    "redactPii": true,
+    "redactionPatterns": [
+      "-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]+?-----END [A-Z ]*PRIVATE KEY-----",
+      "\\bgh[pousr]_[A-Za-z0-9]{36}\\b"
+    ],
+    "redactionReplacement": "[REDACTED]"
+  }
+}
+```
+
 ## Output style example
 
 ```json

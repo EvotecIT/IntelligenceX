@@ -105,6 +105,7 @@ internal static class Program {
         failed += Run("Filter files empty filters", TestFilterFilesEmptyFilters);
         failed += Run("Prompt language hints", TestPromptBuilderLanguageHints);
         failed += Run("Prompt language hints disabled", TestPromptBuilderLanguageHintsDisabled);
+        failed += Run("Redaction defaults", TestRedactionDefaults);
         failed += Run("Review budget note", TestReviewBudgetNote);
         failed += Run("Review budget note empty", TestReviewBudgetNoteEmpty);
         failed += Run("Review budget note comment", TestReviewBudgetNoteComment);
@@ -1330,6 +1331,13 @@ internal static class Program {
         if (prompt.Contains("Language hints:", StringComparison.OrdinalIgnoreCase)) {
             throw new InvalidOperationException("Expected language hints to be omitted.");
         }
+    }
+
+    private static void TestRedactionDefaults() {
+        var settings = new ReviewSettings { RedactPii = true };
+        var input = "Authorization: Bearer abc123";
+        var output = Redaction.Apply(input, settings.RedactionPatterns, settings.RedactionReplacement);
+        AssertEqual(settings.RedactionReplacement, output, "redaction default match");
     }
 
     private static void TestReviewBudgetNote() {

@@ -75,7 +75,7 @@ Status: Draft (needs priorities + owners)
 - [x] Add optional "budget exceeded" summary behavior.
 
 ### Phase 7 — Security + trust
-- [ ] Redact sensitive data before prompt (secrets, tokens, private keys).
+- [x] Redact sensitive data before prompt (secrets, tokens, private keys).
 - [x] Sanitize Azure DevOps API error payloads in logs.
 - [ ] Add "untrusted PR" guardrails (no secret access, no write actions).
 - [ ] Add workflow integrity check (block self-modifying workflow runs).
