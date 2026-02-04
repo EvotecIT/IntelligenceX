@@ -70,6 +70,7 @@ internal static class Program {
         failed += Run("Inline comments snippet header", TestInlineCommentsSnippetHeader);
         failed += Run("Review thread inline key", TestReviewThreadInlineKey);
         failed += Run("Review thread inline key bots only", TestReviewThreadInlineKeyBotsOnly);
+        failed += Run("GitHub event fork parsing", TestGitHubEventForkParsing);
         failed += Run("Review retry transient", TestReviewRetryTransient);
         failed += Run("Review retry non-transient", TestReviewRetryNonTransient);
         failed += Run("Review retry rethrows", TestReviewRetryRethrows);
@@ -582,6 +583,29 @@ internal static class Program {
         AssertEqual(false, ok, "inline key bots only");
     }
 
+    private static void TestGitHubEventForkParsing() {
+        var root = new JsonObject()
+            .Add("repository", new JsonObject().Add("full_name", "base/repo"))
+            .Add("pull_request", new JsonObject()
+                .Add("title", "Test")
+                .Add("number", 1)
+                .Add("draft", false)
+                .Add("author_association", "CONTRIBUTOR")
+                .Add("head", new JsonObject()
+                    .Add("sha", "head")
+                    .Add("repo", new JsonObject()
+                        .Add("full_name", "fork/repo")
+                        .Add("fork", true)))
+                .Add("base", new JsonObject()
+                    .Add("sha", "base")));
+
+        var context = GitHubEventParser.ParsePullRequest(root);
+        AssertEqual(true, context.IsFork, "fork flag");
+        AssertEqual(true, context.IsFromFork, "fork detection");
+        AssertEqual("fork/repo", context.HeadRepoFullName, "head repo");
+        AssertEqual("CONTRIBUTOR", context.AuthorAssociation, "author association");
+    }
+
     private static void TestReviewRetryTransient() {
         var attempts = 0;
         var result = ReviewRunner.ReviewRetryPolicy.RunAsync(() => {
@@ -1019,7 +1043,8 @@ internal static class Program {
             ReviewThreadsMax = 5,
             ReviewThreadsMaxComments = 2
         };
-        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base", Array.Empty<string>());
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
         var extras = CallBuildExtrasAsync(github, context, settings, true);
         AssertEqual(1, extras.ReviewThreads.Count, "triage-only forces thread load");
     }
@@ -1371,7 +1396,7 @@ internal static class Program {
 
     private static void TestReviewBudgetNoteComment() {
         var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Test title", "Test body", false, "head",
-            "base", Array.Empty<string>());
+            "base", Array.Empty<string>(), "owner/repo", false, null);
         var settings = new ReviewSettings();
         var comment = ReviewFormatter.BuildComment(context, "Body", settings, inlineSupported: false, inlineSuppressed: false,
             autoResolveNote: string.Empty, budgetNote: "Review context truncated: showing first 1 of 2 files.",
@@ -1434,7 +1459,7 @@ internal static class Program {
 
     private static PullRequestContext BuildContext() {
         return new PullRequestContext("owner/repo", "owner", "repo", 1, "Test title", "Test body", false, "head", "base",
-            Array.Empty<string>());
+            Array.Empty<string>(), "owner/repo", false, null);
     }
 
     private static string CallAzureDevOpsSanitize(string content) {

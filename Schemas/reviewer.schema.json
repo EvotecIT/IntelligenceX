@@ -88,6 +88,8 @@
         "redactPii": { "type": "boolean" },
         "redactionPatterns": { "type": "array", "items": { "type": "string" } },
         "redactionReplacement": { "type": "string" },
+        "untrustedPrAllowSecrets": { "type": "boolean" },
+        "untrustedPrAllowWrites": { "type": "boolean" },
         "failOpen": { "type": "boolean" },
         "failOpenTransientOnly": { "type": "boolean" },
         "promptTemplate": { "type": "string" },

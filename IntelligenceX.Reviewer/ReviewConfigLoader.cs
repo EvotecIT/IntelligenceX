@@ -192,6 +192,8 @@ internal static class ReviewConfigLoader {
         settings.ReviewUsageSummary = ReadBool(obj, "reviewUsageSummary", settings.ReviewUsageSummary);
         settings.StructuredFindings = ReadBool(obj, "structuredFindings", settings.StructuredFindings);
         settings.TriageOnly = ReadBool(obj, "triageOnly", settings.TriageOnly);
+        settings.UntrustedPrAllowSecrets = ReadBool(obj, "untrustedPrAllowSecrets", settings.UntrustedPrAllowSecrets);
+        settings.UntrustedPrAllowWrites = ReadBool(obj, "untrustedPrAllowWrites", settings.UntrustedPrAllowWrites);
     }
 
     private static void ApplyCommentMode(JsonObject obj, ReviewSettings settings) {

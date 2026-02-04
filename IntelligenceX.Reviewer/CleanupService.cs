@@ -64,7 +64,8 @@ internal static class CleanupService {
             await ApplyEditAsync(github, context, result, newTitle, newBody, cleanup, commentSearchLimit, cancellationToken)
                 .ConfigureAwait(false);
             return new PullRequestContext(context.RepoFullName, context.Owner, context.Repo, context.Number,
-                newTitle, newBody, context.Draft, context.HeadSha, context.BaseSha, context.Labels);
+                newTitle, newBody, context.Draft, context.HeadSha, context.BaseSha, context.Labels,
+                context.HeadRepoFullName, context.IsFork, context.AuthorAssociation);
         }
 
         if (cleanup.Mode == CleanupMode.Comment || cleanup.Mode == CleanupMode.Hybrid) {
