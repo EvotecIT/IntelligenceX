@@ -111,6 +111,7 @@ internal static class Program {
         failed += Run("Filter files glob patterns", TestFilterFilesGlobPatterns);
         failed += Run("Filter files empty filters", TestFilterFilesEmptyFilters);
         failed += Run("Workflow changes detection", TestWorkflowChangesDetection);
+        failed += Run("Secrets audit records", TestSecretsAuditRecords);
         failed += Run("Prompt language hints", TestPromptBuilderLanguageHints);
         failed += Run("Prompt language hints disabled", TestPromptBuilderLanguageHintsDisabled);
         failed += Run("Redaction defaults", TestRedactionDefaults);
@@ -1472,6 +1473,35 @@ internal static class Program {
 
         var withoutWorkflow = BuildFiles(".github/workflows/README.md", "src/app.cs");
         AssertEqual(false, ReviewerApp.HasWorkflowChanges(withoutWorkflow), "workflow changes ignored");
+    }
+
+    private static void TestSecretsAuditRecords() {
+        SecretsAudit.Record("pending secret source");
+
+        var settings = new ReviewSettings { SecretsAudit = true };
+        var session = SecretsAudit.TryStart(settings);
+        if (session is null) {
+            throw new InvalidOperationException("Secrets audit session did not start.");
+        }
+
+        SecretsAudit.Record("active secret source");
+
+        var entries = session.Entries;
+        var hasPending = false;
+        var hasActive = false;
+        foreach (var entry in entries) {
+            if (entry == "pending secret source") {
+                hasPending = true;
+            }
+            if (entry == "active secret source") {
+                hasActive = true;
+            }
+        }
+        if (!hasPending || !hasActive) {
+            throw new InvalidOperationException("Secrets audit entries were not recorded.");
+        }
+
+        session.Dispose();
     }
 
     private static void TestPromptBuilderLanguageHints() {

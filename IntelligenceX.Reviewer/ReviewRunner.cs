@@ -363,6 +363,9 @@ internal sealed class ReviewRunner {
         if (string.IsNullOrWhiteSpace(token) && !HasAuthorizationHeader(_settings.CopilotDirectHeaders)) {
             throw new InvalidOperationException("Copilot direct transport requires a token or Authorization header.");
         }
+        if (HasAuthorizationHeader(_settings.CopilotDirectHeaders)) {
+            SecretsAudit.Record("Copilot direct Authorization header from copilot.directHeaders");
+        }
         var options = new IntelligenceX.Copilot.Direct.CopilotDirectOptions {
             Url = _settings.CopilotDirectUrl,
             Token = token,
@@ -384,10 +387,15 @@ internal sealed class ReviewRunner {
         if (!string.IsNullOrWhiteSpace(_settings.CopilotDirectTokenEnv)) {
             var value = Environment.GetEnvironmentVariable(_settings.CopilotDirectTokenEnv);
             if (!string.IsNullOrWhiteSpace(value)) {
+                SecretsAudit.Record($"Copilot direct token from {_settings.CopilotDirectTokenEnv}");
                 return value;
             }
         }
-        return string.IsNullOrWhiteSpace(_settings.CopilotDirectToken) ? null : _settings.CopilotDirectToken;
+        if (!string.IsNullOrWhiteSpace(_settings.CopilotDirectToken)) {
+            SecretsAudit.Record("Copilot direct token from config (copilot.directToken)");
+            return _settings.CopilotDirectToken;
+        }
+        return null;
     }
 
     private static bool HasAuthorizationHeader(IReadOnlyDictionary<string, string> headers) {
@@ -500,6 +508,7 @@ internal sealed class ReviewRunner {
             var value = Environment.GetEnvironmentVariable(name);
             if (!string.IsNullOrWhiteSpace(value)) {
                 options.Environment[name] = value;
+                SecretsAudit.Record($"Copilot CLI env from {name}");
             }
         }
 
@@ -508,6 +517,7 @@ internal sealed class ReviewRunner {
                 continue;
             }
             options.Environment[entry.Key] = entry.Value;
+            SecretsAudit.Record($"Copilot CLI env set: {entry.Key}");
         }
     }
 }
