@@ -71,6 +71,7 @@ internal static class Program {
         failed += Run("Review thread inline key", TestReviewThreadInlineKey);
         failed += Run("Review thread inline key bots only", TestReviewThreadInlineKeyBotsOnly);
         failed += Run("GitHub event fork parsing", TestGitHubEventForkParsing);
+        failed += Run("Thread assessment evidence parse", TestThreadAssessmentEvidenceParse);
         failed += Run("Review retry transient", TestReviewRetryTransient);
         failed += Run("Review retry non-transient", TestReviewRetryNonTransient);
         failed += Run("Review retry rethrows", TestReviewRetryRethrows);
@@ -604,6 +605,32 @@ internal static class Program {
         AssertEqual(true, context.IsFromFork, "fork detection");
         AssertEqual("fork/repo", context.HeadRepoFullName, "head repo");
         AssertEqual("CONTRIBUTOR", context.AuthorAssociation, "author association");
+    }
+
+    private static void TestThreadAssessmentEvidenceParse() {
+        const string json = "{\"threads\":[{\"id\":\"t1\",\"action\":\"resolve\",\"reason\":\"fixed\",\"evidence\":\"42: added guard\"}]}";
+        var method = typeof(ReviewerApp).GetMethod("ParseThreadAssessments", BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("ParseThreadAssessments not found.");
+        }
+        var result = method.Invoke(null, new object?[] { json }) as System.Collections.IEnumerable;
+        if (result is null) {
+            throw new InvalidOperationException("ParseThreadAssessments result invalid.");
+        }
+        object? first = null;
+        foreach (var item in result) {
+            first = item;
+            break;
+        }
+        if (first is null) {
+            throw new InvalidOperationException("No assessment parsed.");
+        }
+        var evidenceProp = first.GetType().GetProperty("Evidence");
+        if (evidenceProp is null) {
+            throw new InvalidOperationException("Evidence property not found.");
+        }
+        var evidence = evidenceProp.GetValue(first) as string;
+        AssertEqual("42: added guard", evidence ?? string.Empty, "evidence");
     }
 
     private static void TestReviewRetryTransient() {

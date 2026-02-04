@@ -66,6 +66,7 @@ Unknown properties emit warnings; invalid types or enum values fail the run.
     "reviewDiffRange": "current",
     "includeReviewThreads": true,
     "reviewThreadsAutoResolveAI": true,
+    "reviewThreadsAutoResolveRequireEvidence": true,
     "reviewThreadsAutoResolveAIPostComment": true,
     "reviewThreadsAutoResolveAISummary": true,
     "reviewThreadsAutoResolveBotLogins": [
@@ -303,6 +304,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `triageOnly`: run thread triage only (skip full review)
 - `reviewThreadsAutoResolve*`: auto-resolve rules for bot threads
 - `reviewThreadsAutoResolveAIReply`: reply on kept threads to explain why they were not resolved (includes resolve failures)
+- `reviewThreadsAutoResolveRequireEvidence`: require a diff evidence snippet to resolve threads
 - `azureOrg`/`azureProject`/`azureRepo`: Azure DevOps identifiers
 - `azureBaseUrl`: override Azure DevOps base URL (defaults to `SYSTEM_COLLECTIONURI` or `https://dev.azure.com/{org}`)
 - `azureTokenEnv`: env var name that contains the ADO token (default `SYSTEM_ACCESSTOKEN` if set)
