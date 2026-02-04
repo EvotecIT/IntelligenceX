@@ -197,6 +197,10 @@ internal sealed class ReviewSettings {
     public bool ReviewThreadsAutoResolveRequireEvidence { get; set; } = true;
     public bool ReviewThreadsAutoResolveAIPostComment { get; set; }
     public bool ReviewThreadsAutoResolveAIEmbed { get; set; } = true;
+    /// <summary>
+    /// Placement for embedded thread triage blocks in the main review comment.
+    /// </summary>
+    public string ReviewThreadsAutoResolveAIEmbedPlacement { get; set; } = "bottom";
     public bool ReviewThreadsAutoResolveAISummary { get; set; } = true;
     public bool ReviewThreadsAutoResolveAIReply { get; set; }
     /// <summary>
@@ -806,6 +810,12 @@ internal sealed class ReviewSettings {
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAiEmbed)) {
             settings.ReviewThreadsAutoResolveAIEmbed = ParseBoolean(reviewThreadsAutoResolveAiEmbed, settings.ReviewThreadsAutoResolveAIEmbed);
         }
+        var reviewThreadsAutoResolveEmbedPlacement = GetInput("review_threads_auto_resolve_ai_embed_placement",
+            "REVIEW_THREADS_AUTO_RESOLVE_AI_EMBED_PLACEMENT", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI_EMBED_PLACEMENT");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveEmbedPlacement)) {
+            settings.ReviewThreadsAutoResolveAIEmbedPlacement =
+                NormalizeEmbedPlacement(reviewThreadsAutoResolveEmbedPlacement, settings.ReviewThreadsAutoResolveAIEmbedPlacement);
+        }
         var reviewThreadsAutoResolveAiSummary = GetInput("review_threads_auto_resolve_ai_summary", "REVIEW_THREADS_AUTO_RESOLVE_AI_SUMMARY", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI_SUMMARY");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAiSummary)) {
             settings.ReviewThreadsAutoResolveAISummary = ParseBoolean(reviewThreadsAutoResolveAiSummary, settings.ReviewThreadsAutoResolveAISummary);
@@ -974,6 +984,18 @@ internal sealed class ReviewSettings {
             "current" or "pr" or "pr-files" or "pr_files" => "current",
             "pr-base" or "pr_base" or "base" or "prbase" => "pr-base",
             "first-review" or "first_review" or "first-reviewed" or "firstreview" or "first" => "first-review",
+            _ => fallback
+        };
+    }
+
+    internal static string NormalizeEmbedPlacement(string? value, string fallback) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return fallback;
+        }
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "top" or "header" or "above" => "top",
+            "bottom" or "footer" or "below" => "bottom",
             _ => fallback
         };
     }

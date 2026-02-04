@@ -278,7 +278,8 @@ public static class ReviewerApp {
                         settings.ReviewThreadsAutoResolveAIPostComment)
                     .ConfigureAwait(false);
                 if (settings.ReviewThreadsAutoResolveAIEmbed && !string.IsNullOrWhiteSpace(triageResult.EmbeddedBlock)) {
-                    summaryBody = summaryBody.TrimEnd() + "\n\n" + triageResult.EmbeddedBlock.Trim();
+                    summaryBody = ApplyEmbedPlacement(summaryBody, triageResult.EmbeddedBlock,
+                        settings.ReviewThreadsAutoResolveAIEmbedPlacement);
                 }
             }
             var inlineSuppressed = inlineSupported && !inlineAllowed;
@@ -545,6 +546,19 @@ public static class ReviewerApp {
             return string.Empty;
         }
         return $"Review context truncated: {string.Join("; ", parts)}.";
+    }
+
+    private static string ApplyEmbedPlacement(string reviewBody, string embedBlock, string placement) {
+        var embed = embedBlock.Trim();
+        if (embed.Length == 0) {
+            return reviewBody;
+        }
+        var body = string.IsNullOrWhiteSpace(reviewBody) ? string.Empty : reviewBody.Trim();
+        var normalizedPlacement = ReviewSettings.NormalizeEmbedPlacement(placement, "bottom");
+        if (normalizedPlacement == "top") {
+            return string.IsNullOrWhiteSpace(body) ? embed : embed + "\n\n" + body;
+        }
+        return string.IsNullOrWhiteSpace(body) ? embed : body + "\n\n" + embed;
     }
 
     /// <summary>
