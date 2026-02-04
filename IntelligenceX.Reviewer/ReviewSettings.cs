@@ -196,6 +196,7 @@ internal sealed class ReviewSettings {
     public int MaxCommentChars { get; set; } = 4000;
     public int MaxComments { get; set; } = 20;
     public int CommentSearchLimit { get; set; } = 500;
+    public int GitHubMaxConcurrency { get; set; } = 4;
     public bool ContextDenyEnabled { get; set; } = true;
     public IReadOnlyList<string> ContextDenyPatterns { get; set; } = DefaultContextDenyPatterns;
     public bool IncludeRelatedPrs { get; set; }
@@ -796,6 +797,10 @@ internal sealed class ReviewSettings {
         var commentSearchLimit = GetInput("comment_search_limit", "REVIEW_COMMENT_SEARCH_LIMIT");
         if (!string.IsNullOrWhiteSpace(commentSearchLimit)) {
             settings.CommentSearchLimit = ParsePositiveInt(commentSearchLimit, settings.CommentSearchLimit);
+        }
+        var githubConcurrency = GetInput("github_max_concurrency", "REVIEW_GITHUB_MAX_CONCURRENCY");
+        if (!string.IsNullOrWhiteSpace(githubConcurrency)) {
+            settings.GitHubMaxConcurrency = ParsePositiveInt(githubConcurrency, settings.GitHubMaxConcurrency);
         }
         var includeRelatedPrs = GetInput("include_related_prs", "REVIEW_INCLUDE_RELATED_PRS");
         if (!string.IsNullOrWhiteSpace(includeRelatedPrs)) {

@@ -57,6 +57,7 @@
         "maxCommentChars": { "type": "integer", "minimum": 0 },
         "maxComments": { "type": "integer", "minimum": 0 },
         "commentSearchLimit": { "type": "integer", "minimum": 1 },
+        "githubMaxConcurrency": { "type": "integer", "minimum": 1 },
         "contextDenyEnabled": { "type": "boolean" },
         "contextDenyPatterns": { "type": "array", "items": { "type": "string" } },
         "maxFiles": { "type": "integer", "minimum": 0 },

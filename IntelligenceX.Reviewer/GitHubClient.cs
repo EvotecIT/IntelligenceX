@@ -11,12 +11,17 @@ using IntelligenceX.Json;
 namespace IntelligenceX.Reviewer;
 
 internal sealed class GitHubClient : IDisposable {
+    private const int DefaultMaxConcurrency = 4;
     private readonly HttpClient _http;
     private readonly Dictionary<string, PullRequestContext> _pullRequestCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IReadOnlyList<PullRequestFile>> _pullRequestFilesCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IReadOnlyList<PullRequestFile>> _compareFilesCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim _requestGate;
+    private readonly int _maxConcurrency;
 
-    public GitHubClient(string token, string? baseUrl = null) {
+    public GitHubClient(string token, string? baseUrl = null, int maxConcurrency = DefaultMaxConcurrency) {
+        _maxConcurrency = Math.Max(1, maxConcurrency);
+        _requestGate = new SemaphoreSlim(_maxConcurrency, _maxConcurrency);
         _http = new HttpClient {
             BaseAddress = new Uri(baseUrl ?? "https://api.github.com")
         };
@@ -25,6 +30,8 @@ internal sealed class GitHubClient : IDisposable {
         _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         _http.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
     }
+
+    internal int MaxConcurrency => _maxConcurrency;
 
     public async Task<IReadOnlyList<PullRequestFile>> GetPullRequestFilesAsync(string owner, string repo, int number,
         CancellationToken cancellationToken) {
@@ -448,53 +455,65 @@ internal sealed class GitHubClient : IDisposable {
             .ConfigureAwait(false);
     }
 
-    public void Dispose() => _http.Dispose();
+    public void Dispose() {
+        _http.Dispose();
+        _requestGate.Dispose();
+    }
 
     private async Task<JsonValue> GetJsonAsync(string url, CancellationToken cancellationToken) {
-        using var response = await _http.GetAsync(url, cancellationToken).ConfigureAwait(false);
-        var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode) {
-            throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {content}");
-        }
-        return JsonLite.Parse(content) ?? JsonValue.Null;
+        return await WithGateAsync(async () => {
+            using var response = await _http.GetAsync(url, cancellationToken).ConfigureAwait(false);
+            var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) {
+                throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {content}");
+            }
+            return JsonLite.Parse(content) ?? JsonValue.Null;
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<JsonValue> PostJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken) {
-        var json = JsonLite.Serialize(JsonValue.From(payload));
-        using var content = new StringContent(json, Encoding.UTF8, "application/json");
-        using var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
-        var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode) {
-            throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {responseText}");
-        }
-        return JsonLite.Parse(responseText) ?? JsonValue.Null;
+        return await WithGateAsync(async () => {
+            var json = JsonLite.Serialize(JsonValue.From(payload));
+            using var content = new StringContent(json, Encoding.UTF8, "application/json");
+            using var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
+            var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) {
+                throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {responseText}");
+            }
+            return JsonLite.Parse(responseText) ?? JsonValue.Null;
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<JsonValue> PostGraphQlAsync(JsonObject payload, CancellationToken cancellationToken) {
-        var json = JsonLite.Serialize(JsonValue.From(payload));
-        using var content = new StringContent(json, Encoding.UTF8, "application/json");
-        using var response = await _http.PostAsync("/graphql", content, cancellationToken).ConfigureAwait(false);
-        var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode) {
-            throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {responseText}");
-        }
-        var parsed = JsonLite.Parse(responseText) ?? JsonValue.Null;
-        var errors = parsed.AsObject()?.GetArray("errors");
-        if (errors is not null && errors.Count > 0) {
-            throw new InvalidOperationException($"GitHub GraphQL request returned errors: {responseText}");
-        }
-        return parsed;
+        return await WithGateAsync(async () => {
+            var json = JsonLite.Serialize(JsonValue.From(payload));
+            using var content = new StringContent(json, Encoding.UTF8, "application/json");
+            using var response = await _http.PostAsync("/graphql", content, cancellationToken).ConfigureAwait(false);
+            var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) {
+                throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {responseText}");
+            }
+            var parsed = JsonLite.Parse(responseText) ?? JsonValue.Null;
+            var errors = parsed.AsObject()?.GetArray("errors");
+            if (errors is not null && errors.Count > 0) {
+                throw new InvalidOperationException($"GitHub GraphQL request returned errors: {responseText}");
+            }
+            return parsed;
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task PatchJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken) {
-        var json = JsonLite.Serialize(JsonValue.From(payload));
-        using var content = new StringContent(json, Encoding.UTF8, "application/json");
-        using var request = new HttpRequestMessage(new HttpMethod("PATCH"), url) { Content = content };
-        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode) {
-            var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {responseText}");
-        }
+        await WithGateAsync(async () => {
+            var json = JsonLite.Serialize(JsonValue.From(payload));
+            using var content = new StringContent(json, Encoding.UTF8, "application/json");
+            using var request = new HttpRequestMessage(new HttpMethod("PATCH"), url) { Content = content };
+            using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) {
+                var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {responseText}");
+            }
+            return 0;
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     private static string ParseRepoFullName(string url) {
@@ -517,5 +536,14 @@ internal sealed class GitHubClient : IDisposable {
 
     private static string BuildCompareKey(string owner, string repo, string baseSha, string headSha) {
         return $"{owner}/{repo}@{baseSha}..{headSha}";
+    }
+
+    private async Task<T> WithGateAsync<T>(Func<Task<T>> action, CancellationToken cancellationToken) {
+        await _requestGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try {
+            return await action().ConfigureAwait(false);
+        } finally {
+            _requestGate.Release();
+        }
     }
 }

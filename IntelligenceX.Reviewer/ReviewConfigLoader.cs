@@ -246,6 +246,7 @@ internal static class ReviewConfigLoader {
         settings.MaxCommentChars = ReadInt(obj, "maxCommentChars", settings.MaxCommentChars);
         settings.MaxComments = ReadInt(obj, "maxComments", settings.MaxComments);
         settings.CommentSearchLimit = ReadInt(obj, "commentSearchLimit", settings.CommentSearchLimit);
+        settings.GitHubMaxConcurrency = Math.Max(1, ReadInt(obj, "githubMaxConcurrency", settings.GitHubMaxConcurrency));
         settings.ContextDenyEnabled = ReadBool(obj, "contextDenyEnabled", settings.ContextDenyEnabled);
         var contextDenyPatterns = ReadStringList(obj, "contextDenyPatterns");
         if (contextDenyPatterns is not null) {
