@@ -147,6 +147,10 @@ internal sealed class ReviewSettings {
     /// When false, pull requests that modify workflow files are skipped to prevent self-modifying workflow runs.
     /// </summary>
     public bool AllowWorkflowChanges { get; set; }
+    /// <summary>
+    /// When enabled, emits an audit log describing which secrets sources were accessed.
+    /// </summary>
+    public bool SecretsAudit { get; set; } = true;
     /// Controls which diff range is used to build the review context.
     /// <list type="bullet">
     /// <item><description><c>current</c>: use the current PR files.</description></item>
@@ -446,6 +450,9 @@ internal sealed class ReviewSettings {
         var allowWorkflowChanges = GetInput("allow_workflow_changes", "REVIEW_ALLOW_WORKFLOW_CHANGES");
         if (!string.IsNullOrWhiteSpace(allowWorkflowChanges)) {
             settings.AllowWorkflowChanges = ParseBoolean(allowWorkflowChanges, settings.AllowWorkflowChanges);
+        var secretsAudit = GetInput("secrets_audit", "REVIEW_SECRETS_AUDIT");
+        if (!string.IsNullOrWhiteSpace(secretsAudit)) {
+            settings.SecretsAudit = ParseBoolean(secretsAudit, settings.SecretsAudit);
         }
 
         var reviewDiffRange = GetInput("review_diff_range", "REVIEW_DIFF_RANGE");

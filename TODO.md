@@ -79,7 +79,7 @@ Status: Draft (needs priorities + owners)
 - [x] Sanitize Azure DevOps API error payloads in logs.
 - [x] Add "untrusted PR" guardrails (no secret access, no write actions).
 - [x] Add workflow integrity check (block self-modifying workflow runs).
-- [ ] Add audit logging for secrets usage.
+- [x] Add audit logging for secrets usage.
 
 ### Phase 8 — Testing + validation
 - [ ] Add deterministic test harness with recorded provider responses.

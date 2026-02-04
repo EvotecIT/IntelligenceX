@@ -161,6 +161,7 @@ internal static class AzureDevOpsReviewRunner {
         }
 
         var scheme = ResolveAuthScheme(settings, tokenEnv, token);
+        SecretsAudit.Record($"Azure DevOps token from {tokenEnv} ({scheme.ToString().ToLowerInvariant()})");
         return AzureDevOpsOptions.Ok(baseUri, project, pullRequestId.Value, token, scheme);
     }
 

@@ -236,6 +236,21 @@ Set `allowWorkflowChanges` (or `REVIEW_ALLOW_WORKFLOW_CHANGES=true`) to override
 }
 ```
 
+## Secrets audit logging
+
+When enabled, the reviewer emits a short audit log listing which secret sources were accessed
+(environment variable names, auth bundle source). Secret values are never logged.
+
+Env: `REVIEW_SECRETS_AUDIT`
+
+```json
+{
+  "review": {
+    "secretsAudit": true
+  }
+}
+```
+
 ## Output style example
 
 ```json
@@ -316,6 +331,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `includePaths`: only review files matching these globs
 - `excludePaths`: ignore files matching these globs
 - `allowWorkflowChanges`: allow reviews to run when `.github/workflows/*` changes are present
+- `secretsAudit`: emit an audit log of secret sources used (default true)
 - `includeReviewThreads`: include existing review threads in context
 - `triageOnly`: run thread triage only (skip full review)
 - `reviewThreadsAutoResolve*`: auto-resolve rules for bot threads

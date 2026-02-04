@@ -31,12 +31,14 @@ public static class ReviewerApp {
             cts.Cancel();
         };
         Console.CancelKeyPress += cancelHandler;
+        SecretsAuditSession? secretsAudit = null;
         try {
             var cancellationToken = cts.Token;
             if (!await TryWriteAuthFromEnvAsync().ConfigureAwait(false)) {
                 return 1;
             }
             var settings = ReviewSettings.Load();
+            secretsAudit = SecretsAudit.TryStart(settings);
             var validation = ReviewConfigValidator.ValidateCurrent();
             if (validation is not null) {
                 if (validation.Warnings.Count > 0) {
@@ -63,15 +65,22 @@ public static class ReviewerApp {
             }
             var token = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN")
                 ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+            var tokenSource = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN"))
+                ? "INTELLIGENCEX_GITHUB_TOKEN"
+                : "GITHUB_TOKEN";
 
             if (string.IsNullOrWhiteSpace(token)) {
                 Console.Error.WriteLine("Missing GitHub token (INTELLIGENCEX_GITHUB_TOKEN or GITHUB_TOKEN).");
                 return 1;
             }
+            SecretsAudit.Record($"GitHub token from {tokenSource}");
 
             var fallbackToken = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
             if (string.Equals(token, fallbackToken, StringComparison.Ordinal)) {
                 fallbackToken = null;
+            }
+            if (!string.IsNullOrWhiteSpace(fallbackToken)) {
+                SecretsAudit.Record("GitHub fallback token from GITHUB_TOKEN");
             }
 
             using var github = new GitHubClient(token, maxConcurrency: settings.GitHubMaxConcurrency);
@@ -333,6 +342,8 @@ public static class ReviewerApp {
             Console.Error.WriteLine(ex.Message);
             return 1;
         } finally {
+            secretsAudit?.WriteSummary();
+            secretsAudit?.Dispose();
             Console.CancelKeyPress -= cancelHandler;
         }
     }
@@ -347,10 +358,12 @@ public static class ReviewerApp {
         string content;
         if (!string.IsNullOrWhiteSpace(authJson)) {
             content = authJson!;
+            SecretsAudit.Record("Auth store loaded from INTELLIGENCEX_AUTH_JSON");
         } else {
             try {
                 var bytes = Convert.FromBase64String(authB64!);
                 content = Encoding.UTF8.GetString(bytes);
+                SecretsAudit.Record("Auth store loaded from INTELLIGENCEX_AUTH_B64");
             } catch {
                 Console.Error.WriteLine("Failed to decode INTELLIGENCEX_AUTH_B64.");
                 return false;
@@ -436,6 +449,7 @@ public static class ReviewerApp {
                 Console.Error.WriteLine("Export a store bundle with `intelligencex auth export --format store-base64`.");
                 return false;
             }
+            SecretsAudit.Record($"OpenAI auth bundle '{bundle.Provider}' from {authPath}");
             return true;
         } catch (Exception ex) {
             Console.Error.WriteLine($"Failed to load auth store: {ex.Message}");
