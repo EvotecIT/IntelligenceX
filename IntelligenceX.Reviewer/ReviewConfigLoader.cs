@@ -182,6 +182,7 @@ internal static class ReviewConfigLoader {
         settings.OverwriteSummaryOnNewCommit = ReadBool(obj, "overwriteSummaryOnNewCommit", settings.OverwriteSummaryOnNewCommit);
         settings.SummaryStability = ReadBool(obj, "summaryStability", settings.SummaryStability);
         settings.SkipDraft = ReadBool(obj, "skipDraft", settings.SkipDraft);
+        settings.AllowWorkflowChanges = ReadBool(obj, "allowWorkflowChanges", settings.AllowWorkflowChanges);
         settings.RedactPii = ReadBool(obj, "redactPii", settings.RedactPii);
         settings.ProgressUpdates = ReadBool(obj, "progressUpdates", settings.ProgressUpdates);
         settings.Diagnostics = ReadBool(obj, "diagnostics", settings.Diagnostics);

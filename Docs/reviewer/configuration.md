@@ -220,6 +220,19 @@ or have other safeguards in place.
 Set `untrustedPrAllowSecrets` to `true` to allow reviews on forked PRs. Set `untrustedPrAllowWrites` to `true`
 to allow posting comments or resolving threads on untrusted PRs (default is `false`).
 
+## Workflow integrity guardrail
+
+By default the reviewer skips PRs that modify GitHub Actions workflows. This prevents self-modifying workflow runs.
+Set `allowWorkflowChanges` (or `REVIEW_ALLOW_WORKFLOW_CHANGES=true`) to override.
+
+```json
+{
+  "review": {
+    "allowWorkflowChanges": true
+  }
+}
+```
+
 ## Output style example
 
 ```json
@@ -299,6 +312,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `skipPaths`: if **all** changed files in a PR match these globs, skip reviewing the entire PR
 - `includePaths`: only review files matching these globs
 - `excludePaths`: ignore files matching these globs
+- `allowWorkflowChanges`: allow reviews to run when `.github/workflows/*` changes are present
 - `includeReviewThreads`: include existing review threads in context
 - `triageOnly`: run thread triage only (skip full review)
 - `reviewThreadsAutoResolve*`: auto-resolve rules for bot threads

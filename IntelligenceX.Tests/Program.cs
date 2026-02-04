@@ -106,6 +106,7 @@ internal static class Program {
         failed += Run("Filter files include+exclude", TestFilterFilesIncludeExclude);
         failed += Run("Filter files glob patterns", TestFilterFilesGlobPatterns);
         failed += Run("Filter files empty filters", TestFilterFilesEmptyFilters);
+        failed += Run("Workflow changes detection", TestWorkflowChangesDetection);
         failed += Run("Prompt language hints", TestPromptBuilderLanguageHints);
         failed += Run("Prompt language hints disabled", TestPromptBuilderLanguageHintsDisabled);
         failed += Run("Redaction defaults", TestRedactionDefaults);
@@ -1355,6 +1356,14 @@ internal static class Program {
         var files = BuildFiles("src/app.cs", "docs/readme.md");
         var filtered = ReviewerApp.FilterFilesByPaths(files, Array.Empty<string>(), Array.Empty<string>());
         AssertSequenceEqual(new[] { "src/app.cs", "docs/readme.md" }, GetFilenames(filtered), "empty filters");
+    }
+
+    private static void TestWorkflowChangesDetection() {
+        var withWorkflow = BuildFiles(".github/workflows/ci.yml", "src/app.cs");
+        AssertEqual(true, ReviewerApp.HasWorkflowChanges(withWorkflow), "workflow changes detected");
+
+        var withoutWorkflow = BuildFiles(".github/workflows/README.md", "src/app.cs");
+        AssertEqual(false, ReviewerApp.HasWorkflowChanges(withoutWorkflow), "workflow changes ignored");
     }
 
     private static void TestPromptBuilderLanguageHints() {
