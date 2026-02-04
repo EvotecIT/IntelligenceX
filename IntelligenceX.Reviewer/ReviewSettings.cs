@@ -158,6 +158,8 @@ internal sealed class ReviewSettings {
     public bool RedactPii { get; set; }
     public IReadOnlyList<string> RedactionPatterns { get; set; } = DefaultRedactionPatterns;
     public string RedactionReplacement { get; set; } = "[REDACTED]";
+    public bool UntrustedPrAllowSecrets { get; set; }
+    public bool UntrustedPrAllowWrites { get; set; }
     public int WaitSeconds { get; set; } = 60;
     public int IdleSeconds { get; set; } = 5;
     public bool ProgressUpdates { get; set; } = true;
@@ -464,6 +466,16 @@ internal sealed class ReviewSettings {
         var redactionReplacement = GetInput("redaction_replacement", "REDACTION_REPLACEMENT");
         if (!string.IsNullOrWhiteSpace(redactionReplacement)) {
             settings.RedactionReplacement = redactionReplacement!;
+        }
+
+        var untrustedAllowSecrets = GetInput("untrusted_pr_allow_secrets", "REVIEW_UNTRUSTED_PR_ALLOW_SECRETS");
+        if (!string.IsNullOrWhiteSpace(untrustedAllowSecrets)) {
+            settings.UntrustedPrAllowSecrets = ParseBoolean(untrustedAllowSecrets, settings.UntrustedPrAllowSecrets);
+        }
+
+        var untrustedAllowWrites = GetInput("untrusted_pr_allow_writes", "REVIEW_UNTRUSTED_PR_ALLOW_WRITES");
+        if (!string.IsNullOrWhiteSpace(untrustedAllowWrites)) {
+            settings.UntrustedPrAllowWrites = ParseBoolean(untrustedAllowWrites, settings.UntrustedPrAllowWrites);
         }
 
         var promptTemplate = GetInput("prompt_template", "REVIEW_PROMPT_TEMPLATE");

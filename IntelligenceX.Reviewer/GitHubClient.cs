@@ -84,10 +84,16 @@ internal sealed class GitHubClient : IDisposable {
         var body = obj.GetString("body");
         var draft = obj.GetBoolean("draft");
         var prNumber = (int)(obj.GetInt64("number") ?? number);
-        var headSha = obj.GetObject("head")?.GetString("sha");
-        var baseSha = obj.GetObject("base")?.GetString("sha");
-        var repoFullName = obj.GetObject("base")?.GetObject("repo")?.GetString("full_name")
+        var head = obj.GetObject("head");
+        var baseRef = obj.GetObject("base");
+        var headSha = head?.GetString("sha");
+        var baseSha = baseRef?.GetString("sha");
+        var repoFullName = baseRef?.GetObject("repo")?.GetString("full_name")
             ?? $"{owner}/{repo}";
+        var headRepo = head?.GetObject("repo");
+        var headRepoFullName = headRepo?.GetString("full_name");
+        var isFork = headRepo?.GetBoolean("fork") ?? false;
+        var authorAssociation = obj.GetString("author_association");
 
         var labels = new List<string>();
         var labelsArray = obj.GetArray("labels");
@@ -101,7 +107,8 @@ internal sealed class GitHubClient : IDisposable {
             }
         }
 
-        var context = new PullRequestContext(repoFullName, owner, repo, prNumber, title, body, draft, headSha, baseSha, labels);
+        var context = new PullRequestContext(repoFullName, owner, repo, prNumber, title, body, draft, headSha, baseSha,
+            labels, headRepoFullName, isFork, authorAssociation);
         _pullRequestCache[cacheKey] = context;
         return context;
     }

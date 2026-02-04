@@ -23,8 +23,14 @@ internal static class GitHubEventParser {
         var body = pr.GetString("body");
         var draft = pr.GetBoolean("draft");
         var number = (int)(pr.GetInt64("number") ?? 0);
-        var headSha = pr.GetObject("head")?.GetString("sha");
-        var baseSha = pr.GetObject("base")?.GetString("sha");
+        var head = pr.GetObject("head");
+        var baseRef = pr.GetObject("base");
+        var headSha = head?.GetString("sha");
+        var baseSha = baseRef?.GetString("sha");
+        var headRepo = head?.GetObject("repo");
+        var headRepoFullName = headRepo?.GetString("full_name");
+        var isFork = headRepo?.GetBoolean("fork") ?? false;
+        var authorAssociation = pr.GetString("author_association");
 
         var labels = new List<string>();
         var labelsArray = pr.GetArray("labels");
@@ -39,7 +45,8 @@ internal static class GitHubEventParser {
         }
 
         var (owner, repo) = SplitRepo(repoFullName);
-        return new PullRequestContext(repoFullName, owner, repo, number, title, body, draft, headSha, baseSha, labels);
+        return new PullRequestContext(repoFullName, owner, repo, number, title, body, draft, headSha, baseSha,
+            labels, headRepoFullName, isFork, authorAssociation);
     }
 
     private static (string owner, string repo) SplitRepo(string fullName) {

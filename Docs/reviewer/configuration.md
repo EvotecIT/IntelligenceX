@@ -202,6 +202,24 @@ Override the defaults by setting `redactionPatterns`.
 }
 ```
 
+## Untrusted PR guardrails (forks)
+
+When a pull request comes from a fork, the reviewer treats it as untrusted. By default it **skips** the review
+to avoid accessing secrets. You can override this behavior explicitly if you are using `pull_request_target`
+or have other safeguards in place.
+
+```json
+{
+  "review": {
+    "untrustedPrAllowSecrets": false,
+    "untrustedPrAllowWrites": false
+  }
+}
+```
+
+Set `untrustedPrAllowSecrets` to `true` to allow reviews on forked PRs. Set `untrustedPrAllowWrites` to `true`
+to allow posting comments or resolving threads on untrusted PRs (default is `false`).
+
 ## Output style example
 
 ```json

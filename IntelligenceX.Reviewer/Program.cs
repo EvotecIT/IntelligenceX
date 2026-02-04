@@ -61,9 +61,6 @@ public static class ReviewerApp {
                 }
                 return await AzureDevOpsReviewRunner.RunAsync(settings, cancellationToken).ConfigureAwait(false);
             }
-            if (!await ValidateAuthAsync(settings).ConfigureAwait(false)) {
-                return 1;
-            }
             var token = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN")
                 ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN");
 
@@ -105,6 +102,24 @@ public static class ReviewerApp {
                     .ConfigureAwait(false);
             }
 
+            var isUntrusted = context.IsFromFork;
+            if (isUntrusted) {
+                Console.WriteLine("Untrusted pull request detected (fork).");
+                if (!settings.UntrustedPrAllowSecrets) {
+                    Console.WriteLine("Skipping review to avoid secret access. Set review.untrustedPrAllowSecrets=true to override.");
+                    return 0;
+                }
+            }
+
+            if (!await ValidateAuthAsync(settings).ConfigureAwait(false)) {
+                return 1;
+            }
+
+            var allowWrites = !isUntrusted || settings.UntrustedPrAllowWrites;
+            if (!allowWrites && isUntrusted) {
+                Console.WriteLine("Write actions disabled for untrusted pull requests.");
+            }
+
             if (settings.SkipDraft && context.Draft) {
                 Console.WriteLine("Skipping draft pull request.");
                 return 0;
@@ -118,8 +133,12 @@ public static class ReviewerApp {
                 return 0;
             }
 
-            context = await CleanupService.RunAsync(github, context, settings, cancellationToken)
-                .ConfigureAwait(false);
+            if (allowWrites) {
+                context = await CleanupService.RunAsync(github, context, settings, cancellationToken)
+                    .ConfigureAwait(false);
+            } else {
+                Console.WriteLine("Skipping cleanup for untrusted pull request.");
+            }
 
             IssueComment? existingSummary = null;
             string? previousSummary = null;
@@ -165,6 +184,10 @@ public static class ReviewerApp {
             var extras = await BuildExtrasAsync(github, fallbackGithub, context, settings, cancellationToken, settings.TriageOnly)
                 .ConfigureAwait(false);
             if (settings.TriageOnly) {
+                if (!allowWrites) {
+                    Console.WriteLine("Skipping thread triage for untrusted pull request.");
+                    return 0;
+                }
                 var triageRunner = new ReviewRunner(settings);
                 var (triageOnlyFiles, triageOnlyNote) = await ResolveThreadTriageFilesAsync(github, context, settings, allFiles, cancellationToken)
                     .ConfigureAwait(false);
@@ -193,7 +216,7 @@ public static class ReviewerApp {
             }
 
             long? commentId = null;
-            if (settings.ProgressUpdates) {
+            if (allowWrites && settings.ProgressUpdates) {
                 var progressBody = ReviewFormatter.BuildProgressComment(context, settings, progress, null, inlineSupported);
                 commentId = await CreateOrUpdateProgressCommentAsync(github, context, settings, progressBody, cancellationToken)
                     .ConfigureAwait(false);
@@ -204,7 +227,7 @@ public static class ReviewerApp {
             progress.StatusLine = "Generating review findings.";
 
             Func<string, Task>? onPartial = null;
-            if (settings.ProgressUpdates && commentId.HasValue) {
+            if (allowWrites && settings.ProgressUpdates && commentId.HasValue) {
                 onPartial = async partial => {
                     var body = ReviewFormatter.BuildProgressComment(context, settings, progress, partial, inlineSupported);
                     await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, body, cancellationToken)
@@ -216,7 +239,7 @@ public static class ReviewerApp {
                 cancellationToken).ConfigureAwait(false);
 
             var reviewFailed = ReviewDiagnostics.IsFailureBody(reviewBody);
-            var inlineAllowed = inlineSupported && !reviewFailed;
+            var inlineAllowed = inlineSupported && !reviewFailed && allowWrites;
             var inlineComments = Array.Empty<InlineReviewComment>();
             var summaryBody = reviewBody;
             if (inlineAllowed) {
@@ -240,17 +263,20 @@ public static class ReviewerApp {
                 }
             }
 
-            var (triageFiles, triageNote) = await ResolveThreadTriageFilesAsync(github, context, settings, allFiles, cancellationToken)
-                .ConfigureAwait(false);
-            var triageResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, runner, context, triageFiles,
-                    settings, extras, reviewFailed, triageNote, cancellationToken, false,
-                    settings.ReviewThreadsAutoResolveAIPostComment)
-                .ConfigureAwait(false);
-            if (settings.ReviewThreadsAutoResolveAIEmbed && !string.IsNullOrWhiteSpace(triageResult.EmbeddedBlock)) {
-                summaryBody = summaryBody.TrimEnd() + "\n\n" + triageResult.EmbeddedBlock.Trim();
+            var triageResult = ThreadTriageResult.Empty;
+            if (allowWrites) {
+                var (triageFiles, triageNote) = await ResolveThreadTriageFilesAsync(github, context, settings, allFiles, cancellationToken)
+                    .ConfigureAwait(false);
+                triageResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, runner, context, triageFiles,
+                        settings, extras, reviewFailed, triageNote, cancellationToken, false,
+                        settings.ReviewThreadsAutoResolveAIPostComment)
+                    .ConfigureAwait(false);
+                if (settings.ReviewThreadsAutoResolveAIEmbed && !string.IsNullOrWhiteSpace(triageResult.EmbeddedBlock)) {
+                    summaryBody = summaryBody.TrimEnd() + "\n\n" + triageResult.EmbeddedBlock.Trim();
+                }
             }
             var inlineSuppressed = inlineSupported && !inlineAllowed;
-            var autoResolveSummary = settings.ReviewThreadsAutoResolveAISummary ? triageResult.SummaryLine : string.Empty;
+            var autoResolveSummary = allowWrites && settings.ReviewThreadsAutoResolveAISummary ? triageResult.SummaryLine : string.Empty;
             var usageLine = await TryBuildUsageLineAsync(settings).ConfigureAwait(false);
             var findingsBlock = settings.StructuredFindings ? ReviewFindingsBuilder.Build(inlineComments) : string.Empty;
             var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported, inlineSuppressed,
@@ -258,6 +284,12 @@ public static class ReviewerApp {
             progress.Review = ReviewProgressState.Complete;
             progress.Finalize = ReviewProgressState.InProgress;
             progress.StatusLine = "Finalizing summary.";
+
+            if (!allowWrites) {
+                Console.WriteLine("Skipping GitHub writes for untrusted pull request.");
+                Console.WriteLine(commentBody);
+                return 0;
+            }
 
             if (commentId.HasValue) {
                 await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, commentBody, cancellationToken)

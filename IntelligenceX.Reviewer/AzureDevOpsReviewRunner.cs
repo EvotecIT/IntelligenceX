@@ -66,8 +66,10 @@ internal static class AzureDevOpsReviewRunner {
         if (!settings.ReviewBudgetSummary) {
             budgetNote = string.Empty;
         }
-        var context = new PullRequestContext($"{pr.Project}/{pr.RepositoryName}", pr.Project, pr.RepositoryName,
-            pr.PullRequestId, pr.Title, pr.Description, pr.IsDraft, pr.SourceCommit, pr.TargetCommit, Array.Empty<string>());
+        var repoFullName = $"{pr.Project}/{pr.RepositoryName}";
+        var context = new PullRequestContext(repoFullName, pr.Project, pr.RepositoryName,
+            pr.PullRequestId, pr.Title, pr.Description, pr.IsDraft, pr.SourceCommit, pr.TargetCommit, Array.Empty<string>(),
+            repoFullName, false, null);
         var diffNote = BuildDiffNote(iterationIds);
         var prompt = PromptBuilder.Build(context, limited, settings, diffNote, null, inlineSupported: false);
         if (settings.RedactPii) {
