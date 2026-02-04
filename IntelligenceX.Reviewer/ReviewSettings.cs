@@ -207,6 +207,7 @@ internal sealed class ReviewSettings {
     /// When enabled, always append the auto-resolve summary line to the main review comment.
     /// </summary>
     public bool ReviewThreadsAutoResolveSummaryAlways { get; set; }
+    /// <summary>
     /// Post a standalone summary comment listing auto-resolved and kept threads.
     /// </summary>
     public bool ReviewThreadsAutoResolveSummaryComment { get; set; }
@@ -450,6 +451,7 @@ internal sealed class ReviewSettings {
         var allowWorkflowChanges = GetInput("allow_workflow_changes", "REVIEW_ALLOW_WORKFLOW_CHANGES");
         if (!string.IsNullOrWhiteSpace(allowWorkflowChanges)) {
             settings.AllowWorkflowChanges = ParseBoolean(allowWorkflowChanges, settings.AllowWorkflowChanges);
+        }
         var secretsAudit = GetInput("secrets_audit", "REVIEW_SECRETS_AUDIT");
         if (!string.IsNullOrWhiteSpace(secretsAudit)) {
             settings.SecretsAudit = ParseBoolean(secretsAudit, settings.SecretsAudit);
@@ -803,8 +805,7 @@ internal sealed class ReviewSettings {
         }
         var reviewThreadsAutoResolveRequireEvidence = GetInput("review_threads_auto_resolve_require_evidence", "REVIEW_THREADS_AUTO_RESOLVE_REQUIRE_EVIDENCE", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_REQUIRE_EVIDENCE");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveRequireEvidence)) {
-            settings.ReviewThreadsAutoResolveRequireEvidence = ParseBoolean(reviewThreadsAutoResolveRequireEvidence, settings.ReviewThreadsAutoResolveRequireEvidence);
-        }
+            settings.ReviewThreadsAutoResolveRequireEvidence = ParseBoolean(reviewThreadsAutoResolveRequireEvidence, settings.ReviewThreadsAutoResolveRequireEvidence);        }
         var reviewThreadsAutoResolveAiPost = GetInput("review_threads_auto_resolve_ai_post_comment", "REVIEW_THREADS_AUTO_RESOLVE_AI_POST_COMMENT", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI_POST_COMMENT");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAiPost)) {
             settings.ReviewThreadsAutoResolveAIPostComment = ParseBoolean(reviewThreadsAutoResolveAiPost, settings.ReviewThreadsAutoResolveAIPostComment);
