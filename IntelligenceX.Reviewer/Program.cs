@@ -1555,7 +1555,7 @@ public static class ReviewerApp {
             UsageLimitLineKind.GeneralSecondary => "rate limit (secondary)",
             UsageLimitLineKind.CodeReviewPrimary => "code review limit",
             UsageLimitLineKind.CodeReviewSecondary => "code review limit (secondary)",
-            _ => "rate limit"
+            _ => throw new ArgumentOutOfRangeException(nameof(lineKind), lineKind, "Unsupported usage limit line kind")
         };
     }
 

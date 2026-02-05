@@ -203,6 +203,10 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Tighten secondary suffix detection (`EndsWith("(secondary)")`) to avoid accidental matches. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#discussion_r2771453336
 - [x] Make test assertions less formatting-coupled while still validating disambiguation behavior. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#issuecomment-3856748283
 - [x] Add at least one additional regression case for `(secondary)` code-review weekly labels. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#issuecomment-3856748283
+- [x] Decide whether `code review` prefix applies broadly to code-review duration labels and align tests with that intent. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#discussion_r2771495599
+- [x] Replace switch default in `GetUsageLimitFallbackLabel` with explicit `ArgumentOutOfRangeException`. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#discussion_r2771495630
+- [x] Strengthen tests with negative assertions preventing ambiguous legacy labels from reappearing. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#issuecomment-3856748283
+- [x] Add explicit usage-summary part-count assertions for duplicate-weekly scenarios. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#issuecomment-3856748283
 </details>
 <details>
 <summary>PR #85 Static analysis catalog + CLI export</summary>
