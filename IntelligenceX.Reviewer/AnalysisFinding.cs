@@ -17,12 +17,17 @@ internal static class AnalysisSeverity {
         }
         var normalized = value.Trim().ToLowerInvariant();
         return normalized switch {
+            "critical" => "error",
+            "fatal" => "error",
             "error" => "error",
+            "high" => "error",
             "warning" => "warning",
             "warn" => "warning",
+            "medium" => "warning",
             "note" => "info",
             "info" => "info",
             "information" => "info",
+            "low" => "info",
             "none" => "none",
             _ => normalized
         };

@@ -22,7 +22,6 @@ internal static class ReviewConfigLoader {
         }
 
         var reviewObj = root.GetObject("review") ?? root;
-
         var profile = reviewObj.GetString("profile");
         if (!string.IsNullOrWhiteSpace(profile)) {
             ReviewProfiles.Apply(profile!, settings);

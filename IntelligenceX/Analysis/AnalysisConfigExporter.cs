@@ -66,15 +66,15 @@ public static class AnalysisConfigExporter {
             .GroupBy(entry => entry.Rule.Language.Trim(), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
 
-        if (byLanguage.TryGetValue("csharp", out var csharpRules) ||
-            byLanguage.TryGetValue("cs", out csharpRules)) {
+        var csharpRules = CollectRules(byLanguage, "csharp", "cs");
+        if (csharpRules.Count > 0) {
             var path = Path.Combine(outputDirectory, ".editorconfig");
             WriteEditorConfig(path, csharpRules);
             files.Add(path);
         }
 
-        if (byLanguage.TryGetValue("powershell", out var psRules) ||
-            byLanguage.TryGetValue("ps", out psRules)) {
+        var psRules = CollectRules(byLanguage, "powershell", "ps");
+        if (psRules.Count > 0) {
             var path = Path.Combine(outputDirectory, "PSScriptAnalyzerSettings.psd1");
             WritePSScriptAnalyzerConfig(path, psRules);
             files.Add(path);
@@ -128,24 +128,32 @@ public static class AnalysisConfigExporter {
             "",
             "[*.cs]"
         };
-        foreach (var rule in rules.OrderBy(rule => rule.Rule.Id, StringComparer.OrdinalIgnoreCase)) {
+        foreach (var rule in rules.OrderBy(rule => GetToolRuleId(rule.Rule), StringComparer.OrdinalIgnoreCase)) {
             var severity = MapEditorConfigSeverity(rule.Severity);
             if (string.IsNullOrWhiteSpace(severity)) {
                 continue;
             }
-            lines.Add($"dotnet_diagnostic.{rule.Rule.Id}.severity = {severity}");
+            var ruleId = GetToolRuleId(rule.Rule);
+            if (string.IsNullOrWhiteSpace(ruleId)) {
+                continue;
+            }
+            lines.Add($"dotnet_diagnostic.{ruleId}.severity = {severity}");
         }
         File.WriteAllText(path, string.Join("\n", lines) + "\n");
     }
 
     private static void WritePSScriptAnalyzerConfig(string path, IReadOnlyList<AnalysisRuleSelection> rules) {
         var lines = new List<string> { "@{", "  Rules = @{" };
-        foreach (var rule in rules.OrderBy(rule => rule.Rule.Id, StringComparer.OrdinalIgnoreCase)) {
+        foreach (var rule in rules.OrderBy(rule => GetToolRuleId(rule.Rule), StringComparer.OrdinalIgnoreCase)) {
             var severity = MapPowerShellSeverity(rule.Severity);
             if (string.IsNullOrWhiteSpace(severity)) {
                 continue;
             }
-            lines.Add($"    {rule.Rule.Id} = @{{ Severity = '{severity}' }}");
+            var ruleId = GetToolRuleId(rule.Rule);
+            if (string.IsNullOrWhiteSpace(ruleId)) {
+                continue;
+            }
+            lines.Add($"    {ruleId} = @{{ Severity = '{severity}' }}");
         }
         lines.Add("  }");
         lines.Add("}");
@@ -157,11 +165,15 @@ public static class AnalysisConfigExporter {
             return "warning";
         }
         return severity.Trim().ToLowerInvariant() switch {
+            "critical" => "error",
             "error" => "error",
+            "high" => "error",
             "warning" => "warning",
             "warn" => "warning",
+            "medium" => "warning",
             "info" => "suggestion",
             "information" => "suggestion",
+            "low" => "suggestion",
             "suggestion" => "suggestion",
             "none" => "none",
             _ => "warning"
@@ -173,14 +185,43 @@ public static class AnalysisConfigExporter {
             return "Warning";
         }
         return severity.Trim().ToLowerInvariant() switch {
+            "critical" => "Error",
             "error" => "Error",
+            "high" => "Error",
             "warning" => "Warning",
             "warn" => "Warning",
+            "medium" => "Warning",
             "info" => "Information",
             "information" => "Information",
+            "low" => "Information",
             "none" => null,
             _ => "Warning"
         };
+    }
+
+    private static List<AnalysisRuleSelection> CollectRules(
+        IReadOnlyDictionary<string, List<AnalysisRuleSelection>> byLanguage,
+        params string[] keys) {
+        var combined = new Dictionary<string, AnalysisRuleSelection>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in keys) {
+            if (!byLanguage.TryGetValue(key, out var rules)) {
+                continue;
+            }
+            foreach (var rule in rules) {
+                if (rule?.Rule is null) {
+                    continue;
+                }
+                combined[rule.Rule.Id] = rule;
+            }
+        }
+        return combined.Values.ToList();
+    }
+
+    private static string GetToolRuleId(AnalysisRule rule) {
+        if (rule is null) {
+            return string.Empty;
+        }
+        return string.IsNullOrWhiteSpace(rule.ToolRuleId) ? rule.Id : rule.ToolRuleId;
     }
 
     private sealed class AnalysisRuleSelection {

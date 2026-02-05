@@ -19,7 +19,12 @@ internal static class AnalysisPolicyBuilder {
         }
 
         var workspace = ResolveWorkspaceRoot();
-        var catalog = AnalysisCatalogLoader.LoadFromWorkspace(workspace);
+        AnalysisCatalog catalog;
+        try {
+            catalog = AnalysisCatalogLoader.LoadFromWorkspace(workspace);
+        } catch {
+            return string.Empty;
+        }
         var disabled = new HashSet<string>(settings.Analysis.DisabledRules ?? Array.Empty<string>(),
             StringComparer.OrdinalIgnoreCase);
         var overrides = settings.Analysis.SeverityOverrides ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

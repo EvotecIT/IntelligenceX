@@ -347,23 +347,24 @@ public static class ReviewerApp {
                 }
             }
 
-            if (settings.Analysis.Enabled) {
-                var analysisFindings = AnalysisFindingsLoader.Load(settings, files);
+            if (settings.Analysis?.Enabled == true) {
+                var analysisFindings = AnalysisFindingsLoader.Load(settings, reviewFiles);
                 var analysisBlocks = new List<string>();
+                var analysisResults = settings.Analysis.Results;
                 var analysisPolicy = AnalysisPolicyBuilder.BuildPolicy(settings);
                 if (!string.IsNullOrWhiteSpace(analysisPolicy)) {
                     analysisBlocks.Add(analysisPolicy);
                 }
-                var analysisSummary = AnalysisSummaryBuilder.BuildSummary(analysisFindings, settings.Analysis.Results);
+                var analysisSummary = AnalysisSummaryBuilder.BuildSummary(analysisFindings, analysisResults);
                 if (!string.IsNullOrWhiteSpace(analysisSummary)) {
                     analysisBlocks.Add(analysisSummary);
                 }
                 if (analysisBlocks.Count > 0) {
                     var analysisBlock = string.Join("\n\n", analysisBlocks);
-                    summaryBody = ApplyEmbedPlacement(summaryBody, analysisBlock, settings.Analysis.Results.SummaryPlacement);
+                    summaryBody = ApplyEmbedPlacement(summaryBody, analysisBlock, analysisResults.SummaryPlacement);
                 }
                 if (inlineAllowed && analysisFindings.Count > 0) {
-                    var analysisInline = AnalysisSummaryBuilder.BuildInlineComments(analysisFindings, settings.Analysis.Results);
+                    var analysisInline = AnalysisSummaryBuilder.BuildInlineComments(analysisFindings, analysisResults);
                     if (analysisInline.Count > 0) {
                         inlineComments = inlineComments.Concat(analysisInline).ToArray();
                     }

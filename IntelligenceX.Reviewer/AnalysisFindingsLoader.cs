@@ -20,6 +20,8 @@ internal static class AnalysisFindingsLoader {
         }
 
         var workspace = ResolveWorkspaceRoot();
+        var catalog = TryLoadCatalog(workspace);
+        var toolRuleIndex = BuildToolRuleIndex(catalog);
         var minRank = AnalysisSeverity.Rank(settings.Analysis.Results.MinSeverity);
         var changed = BuildChangedPathSet(files, workspace);
         var disabledRules = new HashSet<string>(settings.Analysis.DisabledRules ?? Array.Empty<string>(),
@@ -47,24 +49,38 @@ internal static class AnalysisFindingsLoader {
                     if (string.IsNullOrWhiteSpace(normalizedPath)) {
                         continue;
                     }
-                    if (!string.IsNullOrWhiteSpace(finding.RuleId) && disabledRules.Contains(finding.RuleId)) {
+                    var resolvedRuleId = ResolveCatalogRuleId(catalog, toolRuleIndex, finding.RuleId, finding.Tool);
+                    var primaryRuleId = string.IsNullOrWhiteSpace(resolvedRuleId) ? finding.RuleId : resolvedRuleId;
+                    var secondaryRuleId = string.IsNullOrWhiteSpace(resolvedRuleId) ||
+                                          string.Equals(resolvedRuleId, finding.RuleId, StringComparison.OrdinalIgnoreCase)
+                        ? null
+                        : finding.RuleId;
+                    if (!string.IsNullOrWhiteSpace(primaryRuleId) && disabledRules.Contains(primaryRuleId)) {
+                        continue;
+                    }
+                    if (!string.IsNullOrWhiteSpace(secondaryRuleId) && disabledRules.Contains(secondaryRuleId)) {
                         continue;
                     }
                     if (changed.Count > 0 && !changed.Contains(normalizedPath)) {
                         continue;
                     }
                     var normalizedSeverity = AnalysisSeverity.Normalize(finding.Severity);
-                    if (!string.IsNullOrWhiteSpace(finding.RuleId) &&
-                        severityOverrides.TryGetValue(finding.RuleId, out var overrideSeverity) &&
+                    if (!string.IsNullOrWhiteSpace(primaryRuleId) &&
+                        severityOverrides.TryGetValue(primaryRuleId, out var overrideSeverity) &&
                         !string.IsNullOrWhiteSpace(overrideSeverity)) {
                         normalizedSeverity = AnalysisSeverity.Normalize(overrideSeverity);
+                    } else if (!string.IsNullOrWhiteSpace(secondaryRuleId) &&
+                               severityOverrides.TryGetValue(secondaryRuleId, out var secondaryOverride) &&
+                               !string.IsNullOrWhiteSpace(secondaryOverride)) {
+                        normalizedSeverity = AnalysisSeverity.Normalize(secondaryOverride);
                     }
                     if (AnalysisSeverity.Rank(normalizedSeverity) < minRank) {
                         continue;
                     }
                     var normalizedFinding = finding with {
                         Path = normalizedPath,
-                        Severity = normalizedSeverity
+                        Severity = normalizedSeverity,
+                        RuleId = primaryRuleId
                     };
                     var key = BuildFindingKey(normalizedFinding);
                     if (seen.Add(key)) {
@@ -301,6 +317,55 @@ internal static class AnalysisFindingsLoader {
             trimmed = trimmed.Substring(2);
         }
         return trimmed;
+    }
+
+    private static AnalysisCatalog? TryLoadCatalog(string workspace) {
+        try {
+            return AnalysisCatalogLoader.LoadFromWorkspace(workspace);
+        } catch {
+            return null;
+        }
+    }
+
+    private static Dictionary<string, List<AnalysisRule>> BuildToolRuleIndex(AnalysisCatalog? catalog) {
+        var index = new Dictionary<string, List<AnalysisRule>>(StringComparer.OrdinalIgnoreCase);
+        if (catalog is null) {
+            return index;
+        }
+        foreach (var rule in catalog.Rules.Values) {
+            if (string.IsNullOrWhiteSpace(rule.ToolRuleId)) {
+                continue;
+            }
+            if (!index.TryGetValue(rule.ToolRuleId, out var list)) {
+                list = new List<AnalysisRule>();
+                index[rule.ToolRuleId] = list;
+            }
+            list.Add(rule);
+        }
+        return index;
+    }
+
+    private static string? ResolveCatalogRuleId(AnalysisCatalog? catalog,
+        IReadOnlyDictionary<string, List<AnalysisRule>> toolRuleIndex,
+        string? ruleId,
+        string? tool) {
+        if (catalog is null || string.IsNullOrWhiteSpace(ruleId)) {
+            return ruleId;
+        }
+        if (catalog.TryGetRule(ruleId, out var direct)) {
+            return direct.Id;
+        }
+        if (!toolRuleIndex.TryGetValue(ruleId, out var candidates) || candidates.Count == 0) {
+            return ruleId;
+        }
+        if (!string.IsNullOrWhiteSpace(tool)) {
+            var match = candidates.FirstOrDefault(rule =>
+                string.Equals(rule.Tool, tool, StringComparison.OrdinalIgnoreCase));
+            if (match is not null) {
+                return match.Id;
+            }
+        }
+        return candidates.Count == 1 ? candidates[0].Id : ruleId;
     }
 
     private static string BuildFindingKey(AnalysisFinding finding) {

@@ -120,8 +120,10 @@ public static class AnalysisConfigReader {
         }
         var normalized = value.Trim().ToLowerInvariant();
         return normalized switch {
-            "top" or "header" or "above" => "top",
-            "bottom" or "footer" or "below" => "bottom",
+            "top" or "header" => "top",
+            "bottom" or "footer" => "bottom",
+            "above" => "above",
+            "below" => "below",
             _ => fallback
         };
     }
