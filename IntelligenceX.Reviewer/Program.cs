@@ -1531,7 +1531,15 @@ public static class ReviewerApp {
         if (string.IsNullOrWhiteSpace(remaining)) {
             return null;
         }
-        var label = FormatWindowLabel(window) ?? fallbackLabel;
+        var label = FormatWindowLabel(window);
+        if (string.IsNullOrWhiteSpace(label)) {
+            label = fallbackLabel;
+        } else if (fallbackLabel.StartsWith("code review", StringComparison.OrdinalIgnoreCase)) {
+            var secondary = fallbackLabel.IndexOf("(secondary)", StringComparison.OrdinalIgnoreCase) >= 0
+                ? " (secondary)"
+                : string.Empty;
+            label = $"code review {label}{secondary}";
+        }
         return $"{label}: {remaining}% remaining";
     }
 

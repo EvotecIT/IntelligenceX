@@ -166,6 +166,7 @@ internal static class Program {
         failed += Run("Context deny timeout", TestContextDenyTimeout);
         failed += Run("Review summary parser", TestReviewSummaryParser);
         failed += Run("Review usage summary line", TestReviewUsageSummaryLine);
+        failed += Run("Review usage summary disambiguates code review weekly", TestReviewUsageSummaryDisambiguatesCodeReviewWeekly);
 #endif
 
         Console.WriteLine(failed == 0 ? "All tests passed." : $"{failed} test(s) failed.");
@@ -2389,6 +2390,24 @@ internal static class Program {
         AssertContainsText(line, "Usage:", "usage summary prefix");
         AssertContainsText(line, "5h limit", "usage window label");
         AssertEqual(false, line.IndexOf("\n", StringComparison.Ordinal) >= 0, "usage summary is single line");
+    }
+
+    private static void TestReviewUsageSummaryDisambiguatesCodeReviewWeekly() {
+        const string json = "{"
+            + "\"plan_type\":\"pro\","
+            + "\"rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
+            + "\"primary_window\":{\"used_percent\":20.0,\"limit_window_seconds\":18000,\"reset_after_seconds\":120},"
+            + "\"secondary_window\":{\"used_percent\":61.0,\"limit_window_seconds\":604800,\"reset_after_seconds\":120}},"
+            + "\"code_review_rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
+            + "\"primary_window\":{\"used_percent\":26.0,\"limit_window_seconds\":604800,\"reset_after_seconds\":120}},"
+            + "\"credits\":{\"has_credits\":true,\"unlimited\":false,\"balance\":4.52}"
+            + "}";
+        var obj = JsonLite.Parse(json).AsObject();
+        AssertNotNull(obj, "usage summary disambiguation json");
+        var snapshot = ChatGptUsageSnapshot.FromJson(obj!);
+        var line = CallFormatUsageSummary(snapshot);
+        AssertContainsText(line, "weekly limit: 39% remaining | code review weekly limit: 74% remaining", "weekly labels disambiguated");
+        AssertEqual(-1, line.IndexOf("| weekly limit: 74% remaining", StringComparison.Ordinal), "plain duplicate weekly label removed");
     }
 #endif
 
