@@ -318,11 +318,6 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
             return await ProcessResponseAsync(response, turnId, model, state, inputItems, trackMessages, cancellationToken)
                 .ConfigureAwait(false);
         } catch (InvalidOperationException ex) when (IsModelNotSupportedForChatGpt(ex)) {
-            var fallback = PickChatGptFallbackModel(model);
-            if (string.IsNullOrWhiteSpace(fallback)) {
-                throw;
-            }
-            state.Touch(fallback!);
             var requestMessages = trackMessages
                 ? new List<JsonObject>(state.Messages.Count + inputItems.Count)
                 : new List<JsonObject>(inputItems.Count);
@@ -330,11 +325,21 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
                 requestMessages.AddRange(state.Messages);
             }
             requestMessages.AddRange(inputItems);
-            var retryBody = BuildRequestBody(fallback!, requestMessages, state.SessionId, options);
-            var retry = await SendAsync(retryBody, accessToken, accountId, state.SessionId, cancellationToken)
-                .ConfigureAwait(false);
-            return await ProcessResponseAsync(retry, turnId, fallback!, state, inputItems, trackMessages, cancellationToken)
-                .ConfigureAwait(false);
+
+            foreach (var fallback in GetChatGptFallbackModels(model)) {
+                state.Touch(fallback);
+                var retryBody = BuildRequestBody(fallback, requestMessages, state.SessionId, options);
+                var retry = await SendAsync(retryBody, accessToken, accountId, state.SessionId, cancellationToken)
+                    .ConfigureAwait(false);
+                try {
+                    return await ProcessResponseAsync(retry, turnId, fallback, state, inputItems, trackMessages, cancellationToken)
+                        .ConfigureAwait(false);
+                } catch (InvalidOperationException retryEx) when (IsModelNotSupportedForChatGpt(retryEx)) {
+                    continue;
+                }
+            }
+
+            throw;
         }
     }
 
@@ -557,14 +562,13 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
                message.IndexOf("chatgpt account", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
-    private static string? PickChatGptFallbackModel(string currentModel) {
+    private static IEnumerable<string> GetChatGptFallbackModels(string currentModel) {
         var candidates = new[] { "gpt-5.3-codex", "gpt-5.3", "gpt-5.2-codex", "gpt-5.2", "gpt-5.1-codex", "gpt-5.1" };
         foreach (var candidate in candidates) {
             if (!string.Equals(candidate, currentModel, StringComparison.OrdinalIgnoreCase)) {
-                return candidate;
+                yield return candidate;
             }
         }
-        return null;
     }
 
     private static List<JsonObject> BuildOutputsFromDelta(string text) {
