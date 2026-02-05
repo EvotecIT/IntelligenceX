@@ -9,6 +9,7 @@
       "additionalProperties": true,
       "properties": {
         "provider": { "type": "string", "enum": ["openai", "copilot", "codex"] },
+        "providerFallback": { "type": "string", "enum": ["openai", "copilot", "codex"] },
         "codeHost": { "type": "string", "enum": ["github", "azure", "azuredevops", "azure-devops", "ado"] },
         "profile": { "type": "string" },
         "intent": { "type": "string", "enum": ["security", "performance", "perf", "maintainability"] },
@@ -78,6 +79,10 @@
         "retryJitterMinMs": { "type": "integer", "minimum": 0 },
         "retryJitterMaxMs": { "type": "integer", "minimum": 0 },
         "retryExtraResponseEnded": { "type": "boolean" },
+        "providerHealthChecks": { "type": "boolean" },
+        "providerHealthCheckTimeoutSeconds": { "type": "integer", "minimum": 1 },
+        "providerCircuitBreakerFailures": { "type": "integer", "minimum": 0 },
+        "providerCircuitBreakerOpenSeconds": { "type": "integer", "minimum": 1 },
         "diagnostics": { "type": "boolean" },
         "preflight": { "type": "boolean" },
         "preflightTimeoutSeconds": { "type": "integer", "minimum": 1 },
@@ -111,6 +116,30 @@
         "azureBaseUrl": { "type": "string" },
         "azureTokenEnv": { "type": "string" },
         "azureAuthScheme": { "type": "string", "enum": ["basic", "pat", "bearer"] }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "configMode": { "type": "string", "enum": ["respect", "overlay", "replace"] },
+        "packs": { "type": "array", "items": { "type": "string" } },
+        "disabledRules": { "type": "array", "items": { "type": "string" } },
+        "severityOverrides": { "type": "object", "additionalProperties": { "type": "string" } },
+        "results": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "inputs": { "type": "array", "items": { "type": "string" } },
+            "minSeverity": { "type": "string" },
+            "maxInline": { "type": "integer", "minimum": 0 },
+            "summary": { "type": "boolean" },
+            "summaryMaxItems": { "type": "integer", "minimum": 0 },
+            "summaryPlacement": { "type": "string", "enum": ["top", "bottom", "header", "footer", "above", "below"] },
+            "showPolicy": { "type": "boolean" }
+          }
+        }
       }
     },
     "cleanup": {

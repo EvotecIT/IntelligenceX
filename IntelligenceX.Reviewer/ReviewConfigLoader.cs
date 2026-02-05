@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using IntelligenceX.Analysis;
 using IntelligenceX.Copilot;
 using IntelligenceX.Json;
 
@@ -21,7 +22,6 @@ internal static class ReviewConfigLoader {
         }
 
         var reviewObj = root.GetObject("review") ?? root;
-
         var profile = reviewObj.GetString("profile");
         if (!string.IsNullOrWhiteSpace(profile)) {
             ReviewProfiles.Apply(profile!, settings);
@@ -36,11 +36,11 @@ internal static class ReviewConfigLoader {
 
         var provider = reviewObj.GetString("provider");
         if (!string.IsNullOrWhiteSpace(provider)) {
-            settings.Provider = provider.Trim().ToLowerInvariant() switch {
-                "copilot" => ReviewProvider.Copilot,
-                "openai" or "codex" => ReviewProvider.OpenAI,
-                _ => settings.Provider
-            };
+            settings.Provider = ReviewProviderContracts.ParseProviderOrDefault(provider, settings.Provider);
+        }
+        var providerFallback = reviewObj.GetString("providerFallback");
+        if (ReviewProviderContracts.TryParseProviderAlias(providerFallback, out var parsedFallback)) {
+            settings.ProviderFallback = parsedFallback;
         }
 
         var codeHost = reviewObj.GetString("codeHost");
@@ -68,6 +68,7 @@ internal static class ReviewConfigLoader {
         ApplyCopilot(root, settings);
         ApplyAzureDevOps(reviewObj, settings);
         ApplyCleanup(root, settings);
+        AnalysisConfigReader.Apply(root, reviewObj, settings.Analysis);
     }
 
     internal static string? ResolveConfigPath() {
@@ -172,6 +173,12 @@ internal static class ReviewConfigLoader {
         settings.RetryBackoffMultiplier = ReadDouble(obj, "retryBackoffMultiplier", settings.RetryBackoffMultiplier);
         settings.RetryJitterMinMs = ReadNonNegativeInt(obj, "retryJitterMinMs", settings.RetryJitterMinMs);
         settings.RetryJitterMaxMs = ReadNonNegativeInt(obj, "retryJitterMaxMs", settings.RetryJitterMaxMs);
+        settings.ProviderHealthCheckTimeoutSeconds = Math.Max(1,
+            ReadInt(obj, "providerHealthCheckTimeoutSeconds", settings.ProviderHealthCheckTimeoutSeconds));
+        settings.ProviderCircuitBreakerFailures = Math.Max(0,
+            ReadInt(obj, "providerCircuitBreakerFailures", settings.ProviderCircuitBreakerFailures));
+        settings.ProviderCircuitBreakerOpenSeconds = Math.Max(1,
+            ReadInt(obj, "providerCircuitBreakerOpenSeconds", settings.ProviderCircuitBreakerOpenSeconds));
         settings.PreflightTimeoutSeconds = ReadInt(obj, "preflightTimeoutSeconds", settings.PreflightTimeoutSeconds);
         settings.ReviewUsageSummaryCacheMinutes = Math.Max(0,
             ReadInt(obj, "reviewUsageSummaryCacheMinutes", settings.ReviewUsageSummaryCacheMinutes));
@@ -196,6 +203,7 @@ internal static class ReviewConfigLoader {
         settings.Diagnostics = ReadBool(obj, "diagnostics", settings.Diagnostics);
         settings.Preflight = ReadBool(obj, "preflight", settings.Preflight);
         settings.RetryExtraOnResponseEnded = ReadBool(obj, "retryExtraResponseEnded", settings.RetryExtraOnResponseEnded);
+        settings.ProviderHealthChecks = ReadBool(obj, "providerHealthChecks", settings.ProviderHealthChecks);
         settings.FailOpen = ReadBool(obj, "failOpen", settings.FailOpen);
         settings.FailOpenTransientOnly = ReadBool(obj, "failOpenTransientOnly", settings.FailOpenTransientOnly);
         settings.ReviewUsageSummary = ReadBool(obj, "reviewUsageSummary", settings.ReviewUsageSummary);
@@ -378,6 +386,7 @@ internal static class ReviewConfigLoader {
         settings.Cleanup.Template = cleanup.GetString("template") ?? settings.Cleanup.Template;
         settings.Cleanup.TemplatePath = cleanup.GetString("templatePath") ?? settings.Cleanup.TemplatePath;
     }
+
 
     private static CopilotTransportKind ParseCopilotTransport(string value, CopilotTransportKind fallback) {
         if (string.IsNullOrWhiteSpace(value)) {

@@ -140,6 +140,11 @@ public static class ReviewerApp {
                     return 1;
                 }
             }
+            var providerContract = ReviewProviderContracts.Get(settings.Provider);
+            if (settings.Diagnostics && settings.RetryCount > providerContract.MaxRecommendedRetryCount) {
+                Console.Error.WriteLine(
+                    $"Retry count ({settings.RetryCount}) exceeds recommended limit ({providerContract.MaxRecommendedRetryCount}) for {providerContract.DisplayName}.");
+            }
             if (settings.CodeHost == ReviewCodeHost.AzureDevOps) {
                 if (!await ValidateAuthAsync(settings).ConfigureAwait(false)) {
                     return 1;
@@ -335,6 +340,11 @@ public static class ReviewerApp {
 
             var reviewBody = await runner.RunAsync(prompt, onPartial, TimeSpan.FromSeconds(settings.ProgressUpdateSeconds),
                 cancellationToken).ConfigureAwait(false);
+            var effectiveProvider = runner.EffectiveProvider;
+            if (runner.FallbackActivated && settings.Diagnostics) {
+                Console.Error.WriteLine(
+                    $"Provider fallback activated: {settings.Provider.ToString().ToLowerInvariant()} -> {effectiveProvider.ToString().ToLowerInvariant()}.");
+            }
 
             var reviewFailed = ReviewDiagnostics.IsFailureBody(reviewBody);
             var inlineAllowed = inlineSupported && !reviewFailed && allowWrites;
@@ -345,6 +355,38 @@ public static class ReviewerApp {
                 inlineComments = inlineResult.Comments as InlineReviewComment[] ?? inlineResult.Comments.ToArray();
                 if (inlineResult.HadInlineSection && !string.IsNullOrWhiteSpace(inlineResult.Body)) {
                     summaryBody = inlineResult.Body;
+                }
+            }
+
+            var analysisSettings = settings.Analysis;
+            var analysisResults = analysisSettings?.Results;
+            if (analysisSettings?.Enabled == true && analysisResults is not null) {
+                try {
+                    var analysisFindings = AnalysisFindingsLoader.Load(settings, reviewFiles);
+                    var analysisBlocks = new List<string>();
+                    var analysisPolicy = AnalysisPolicyBuilder.BuildPolicy(settings);
+                    if (!string.IsNullOrWhiteSpace(analysisPolicy)) {
+                        analysisBlocks.Add(analysisPolicy);
+                    }
+                    var analysisSummary = AnalysisSummaryBuilder.BuildSummary(analysisFindings, analysisResults);
+                    if (!string.IsNullOrWhiteSpace(analysisSummary)) {
+                        analysisBlocks.Add(analysisSummary);
+                    }
+                    if (analysisBlocks.Count > 0) {
+                        var analysisBlock = string.Join("\n\n", analysisBlocks);
+                        summaryBody = ApplyEmbedPlacement(summaryBody, analysisBlock, analysisResults.SummaryPlacement);
+                    }
+                    if (inlineAllowed && analysisFindings.Count > 0) {
+                        var analysisInline = AnalysisSummaryBuilder.BuildInlineComments(analysisFindings, analysisResults);
+                        if (analysisInline.Count > 0) {
+                            var merged = new List<InlineReviewComment>(inlineComments.Length + analysisInline.Count);
+                            merged.AddRange(inlineComments);
+                            merged.AddRange(analysisInline);
+                            inlineComments = merged.ToArray();
+                        }
+                    }
+                } catch {
+                    Console.WriteLine("Static analysis load failed; skipping analysis findings.");
                 }
             }
 
@@ -379,7 +421,7 @@ public static class ReviewerApp {
             if (allowWrites && settings.ReviewThreadsAutoResolveSummaryAlways && string.IsNullOrWhiteSpace(autoResolveSummary)) {
                 autoResolveSummary = triageResult.FallbackSummary;
             }
-            var usageLine = await TryBuildUsageLineAsync(settings).ConfigureAwait(false);
+            var usageLine = await TryBuildUsageLineAsync(settings, effectiveProvider).ConfigureAwait(false);
             var findingsBlock = settings.StructuredFindings ? ReviewFindingsBuilder.Build(inlineComments) : string.Empty;
             var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported, inlineSuppressed,
                 autoResolveSummary, budgetNote, usageLine, findingsBlock);
@@ -551,6 +593,7 @@ public static class ReviewerApp {
 
     private sealed class RunOptions {
         public string? Provider { get; set; }
+        public string? ProviderFallback { get; set; }
         public string? CodeHost { get; set; }
         public string? AzureOrg { get; set; }
         public string? AzureProject { get; set; }
@@ -587,6 +630,8 @@ public static class ReviewerApp {
     private static readonly RunOptionSpec[] RunOptionSpecs = {
         new RunOptionSpec("--provider", "<openai|codex|copilot|azure>", "AI provider or Azure DevOps code host (aliases: azuredevops, azure-devops, ado)", true,
             (options, value) => options.Provider = value),
+        new RunOptionSpec("--provider-fallback", "<openai|codex|copilot>", "Optional fallback AI provider when the primary provider fails", true,
+            (options, value) => options.ProviderFallback = value),
         new RunOptionSpec("--code-host", "<github|azure>", "Override code host (azure/azuredevops supported)", true,
             (options, value) => options.CodeHost = value),
         new RunOptionSpec("--azure-org", "<org>", "Azure DevOps organization", true,
@@ -628,6 +673,10 @@ public static class ReviewerApp {
         if (!string.IsNullOrWhiteSpace(options.Provider) && !IsValidProvider(options.Provider)) {
             options.Errors.Add($"Unsupported provider '{options.Provider}'. Use openai, codex, copilot, or azure/azuredevops.");
         }
+        if (!string.IsNullOrWhiteSpace(options.ProviderFallback) && !IsValidAiProvider(options.ProviderFallback)) {
+            options.Errors.Add(
+                $"Unsupported provider fallback '{options.ProviderFallback}'. Use openai, codex, or copilot.");
+        }
         if (!string.IsNullOrWhiteSpace(options.CodeHost) && !IsValidCodeHost(options.CodeHost)) {
             options.Errors.Add($"Unsupported code host '{options.CodeHost}'. Use github or azure/azuredevops.");
         }
@@ -649,10 +698,12 @@ public static class ReviewerApp {
     }
 
     private static bool IsValidProvider(string provider) {
-        return provider.Equals("openai", StringComparison.OrdinalIgnoreCase) ||
-               provider.Equals("codex", StringComparison.OrdinalIgnoreCase) ||
-               provider.Equals("copilot", StringComparison.OrdinalIgnoreCase) ||
+        return IsValidAiProvider(provider) ||
                IsAzureProvider(provider);
+    }
+
+    private static bool IsValidAiProvider(string provider) {
+        return ReviewProviderContracts.TryParseProviderAlias(provider, out _);
     }
 
     private static bool IsAzureProvider(string provider) {
@@ -677,6 +728,10 @@ public static class ReviewerApp {
                     codeHost = "azure";
                 }
             }
+        }
+        var providerFallback = options.ProviderFallback?.Trim();
+        if (!string.IsNullOrWhiteSpace(providerFallback)) {
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_FALLBACK", providerFallback);
         }
         if (!string.IsNullOrWhiteSpace(codeHost)) {
             Environment.SetEnvironmentVariable("REVIEW_CODE_HOST", codeHost);
@@ -717,7 +772,8 @@ public static class ReviewerApp {
     }
 
     private static async Task<bool> ValidateAuthAsync(ReviewSettings settings) {
-        if (settings.Provider == ReviewProvider.Copilot) {
+        var provider = ReviewProviderContracts.Get(settings.Provider);
+        if (!provider.RequiresOpenAiAuthStore) {
             return true;
         }
 
@@ -1380,11 +1436,12 @@ public static class ReviewerApp {
         return new ThreadTriageResult(summary, triageBody, fallbackSummary);
     }
 
-    private static async Task<string> TryBuildUsageLineAsync(ReviewSettings settings) {
+    private static async Task<string> TryBuildUsageLineAsync(ReviewSettings settings, ReviewProvider providerKind) {
         if (!settings.ReviewUsageSummary) {
             return string.Empty;
         }
-        if (settings.Provider != ReviewProvider.OpenAI) {
+        var provider = ReviewProviderContracts.Get(providerKind);
+        if (!provider.SupportsUsageApi) {
             return string.Empty;
         }
 

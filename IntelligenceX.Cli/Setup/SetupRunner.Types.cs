@@ -28,7 +28,7 @@ internal static partial class SetupRunner {
         public string? ActionsRef { get; set; } = "master";
         public string? RunsOn { get; set; } = "[\"self-hosted\",\"ubuntu\"]";
         public string? Provider { get; set; } = "openai";
-        public string? OpenAIModel { get; set; } = "gpt-5.2-codex";
+        public string? OpenAIModel { get; set; } = "gpt-5.3-codex";
         public string? OpenAITransport { get; set; } = "native";
         public string? ReviewerSource { get; set; } = "release";
         public string? ReviewerReleaseRepo { get; set; } = "EvotecIT/github-actions";
@@ -325,7 +325,7 @@ internal static partial class SetupRunner {
         public string? ReviewerReleaseAsset { get; set; }
         public string? ReviewerReleaseUrl { get; set; }
         public string Provider { get; set; } = "openai";
-        public string Model { get; set; } = "gpt-5.2-codex";
+        public string Model { get; set; } = "gpt-5.3-codex";
         public string OpenAITransport { get; set; } = "native";
         public bool IncludeIssueComments { get; set; } = true;
         public bool IncludeReviewComments { get; set; } = true;
@@ -354,7 +354,7 @@ internal static partial class SetupRunner {
                 ReviewerReleaseAsset = options.ReviewerReleaseAsset,
                 ReviewerReleaseUrl = options.ReviewerReleaseUrl,
                 Provider = options.Provider ?? "openai",
-                Model = options.OpenAIModel ?? "gpt-5.2-codex",
+                Model = options.OpenAIModel ?? "gpt-5.3-codex",
                 OpenAITransport = options.OpenAITransport ?? "native",
                 IncludeIssueComments = options.IncludeIssueComments,
                 IncludeReviewComments = options.IncludeReviewComments,
@@ -378,7 +378,7 @@ internal static partial class SetupRunner {
     private sealed class ConfigSettings {
         public string Provider { get; set; } = "openai";
         public string OpenAITransport { get; set; } = "native";
-        public string OpenAIModel { get; set; } = "gpt-5.2-codex";
+        public string OpenAIModel { get; set; } = "gpt-5.3-codex";
         public string Profile { get; set; } = "balanced";
         public string Mode { get; set; } = "hybrid";
         public string CommentMode { get; set; } = "sticky";
@@ -394,7 +394,7 @@ internal static partial class SetupRunner {
             return new ConfigSettings {
                 Provider = options.Provider ?? "openai",
                 OpenAITransport = options.OpenAITransport ?? "native",
-                OpenAIModel = options.OpenAIModel ?? "gpt-5.2-codex",
+                OpenAIModel = options.OpenAIModel ?? "gpt-5.3-codex",
                 Profile = options.ReviewProfile ?? "balanced",
                 Mode = options.ReviewMode ?? "hybrid",
                 CommentMode = options.ReviewCommentMode ?? "sticky",

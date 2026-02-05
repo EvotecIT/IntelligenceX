@@ -17,6 +17,7 @@ intelligencex reviewer run --provider azure --azure-org my-org --azure-project m
 ## Reviewer run options
 
 - `--provider <openai|codex|copilot|azure>`
+- `--provider-fallback <openai|codex|copilot>`
 - `--code-host <github|azure>`
 - `--azure-org <org>`
 - `--azure-project <project>`

@@ -1,0 +1,12 @@
+{
+  "id": "CA2000",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2000",
+  "title": "Dispose objects before losing scope",
+  "description": "Ensures IDisposable instances are disposed to avoid resource leaks.",
+  "category": "Reliability",
+  "defaultSeverity": "warning",
+  "tags": ["resource-management", "memory"],
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2000"
+}

@@ -1,0 +1,9 @@
+{
+  "id": "csharp-default",
+  "label": "C# Default",
+  "description": "Core reliability and style rules for C#.",
+  "rules": ["CA2000", "CA1062", "SA1600"],
+  "severityOverrides": {
+    "CA1062": "error"
+  }
+}

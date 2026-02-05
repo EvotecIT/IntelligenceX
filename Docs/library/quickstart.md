@@ -29,7 +29,7 @@ var login = await client.StartChatGptLoginAsync();
 Console.WriteLine(login.AuthUrl);
 await client.WaitForLoginCompletionAsync(login.LoginId);
 
-var thread = await client.StartThreadAsync("gpt-5.2-codex");
+var thread = await client.StartThreadAsync("gpt-5.3-codex");
 await client.StartTurnAsync(thread.Id, "Hello from IntelligenceX");
 ```
 

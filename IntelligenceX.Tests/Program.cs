@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 #if !NET472
+using IntelligenceX.Analysis;
 using IntelligenceX.Cli;
 using IntelligenceX.Cli.Release;
 using IntelligenceX.Cli.Setup.Host;
@@ -93,6 +94,8 @@ internal static class Program {
         failed += Run("Preflight non-2xx", TestPreflightNonSuccessStatus);
         failed += Run("Review config validator allows additional", TestReviewConfigValidatorAllowsAdditionalProperties);
         failed += Run("Review config validator invalid enum", TestReviewConfigValidatorInvalidEnum);
+        failed += Run("Analysis severity critical", TestAnalysisSeverityCritical);
+        failed += Run("Analysis config export tool ids", TestAnalysisConfigExportToolIds);
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);
         failed += Run("Trim patch tail hunk", TestTrimPatchKeepsTailHunk);
@@ -101,6 +104,19 @@ internal static class Program {
         failed += Run("Trim patch keeps last hunk", TestTrimPatchKeepsLastHunk);
         failed += Run("Review intent applies focus", TestReviewIntentAppliesFocus);
         failed += Run("Review intent respects focus", TestReviewIntentRespectsFocus);
+        failed += Run("Review provider alias parsing", TestReviewProviderAliasParsing);
+        failed += Run("Review provider contract capabilities", TestReviewProviderContractCapabilities);
+        failed += Run("Review provider config alias", TestReviewProviderConfigAlias);
+        failed += Run("Review provider fallback env", TestReviewProviderFallbackEnv);
+        failed += Run("Review provider fallback config", TestReviewProviderFallbackConfig);
+        failed += Run("Review provider fallback plan", TestReviewProviderFallbackPlan);
+        failed += Run("Review provider health env", TestReviewProviderHealthEnv);
+        failed += Run("Review provider health config", TestReviewProviderHealthConfig);
+        failed += Run("Review provider circuit breaker", TestReviewProviderCircuitBreaker);
+        failed += Run("Review intent applies defaults", TestReviewIntentAppliesDefaults);
+        failed += Run("Review intent respects settings", TestReviewIntentRespectsSettings);
+        failed += Run("Review intent perf alias", TestReviewIntentPerfAlias);
+        failed += Run("Review intent null settings", TestReviewIntentNullSettings);
         failed += Run("Triage-only loads threads", TestTriageOnlyLoadsThreads);
         failed += Run("Review code host env", TestReviewCodeHostEnv);
         failed += Run("GitHub context cache", TestGitHubContextCache);
@@ -258,7 +274,7 @@ internal static class Program {
         var registry = new ToolRegistry();
         registry.Register(new StubTool("echo"));
         var input = ChatInput.FromText("Run tools");
-        var options = new ChatOptions { Model = "gpt-5.2-codex" };
+        var options = new ChatOptions { Model = "gpt-5.3-codex" };
 
         AssertThrows<InvalidOperationException>(() =>
                 ToolRunner.RunAsync(client, input, options, registry,
@@ -271,7 +287,7 @@ internal static class Program {
         using var client = CreateToolRunnerClient(BuildToolCallTurn(("call_2", "missing_tool")));
         var registry = new ToolRegistry();
         var input = ChatInput.FromText("Run tools");
-        var options = new ChatOptions { Model = "gpt-5.2-codex" };
+        var options = new ChatOptions { Model = "gpt-5.3-codex" };
 
         AssertThrows<InvalidOperationException>(() =>
                 ToolRunner.RunAsync(client, input, options, registry,
@@ -291,7 +307,7 @@ internal static class Program {
         registry.Register(new GateTool("tool_b", startGate, releaseGate, () => Interlocked.Increment(ref started), 2));
 
         var input = ChatInput.FromText("Run tools");
-        var options = new ChatOptions { Model = "gpt-5.2-codex", ParallelToolCalls = true };
+        var options = new ChatOptions { Model = "gpt-5.3-codex", ParallelToolCalls = true };
 
         var runnerTask = ToolRunner.RunAsync(client, input, options, registry,
             new ToolRunnerOptions { MaxRounds = 1, ParallelToolCalls = true });
@@ -1005,6 +1021,60 @@ internal static class Program {
         AssertEqual(true, result!.Errors.Count > 0, "invalid enum should error");
     }
 
+    private static void TestAnalysisSeverityCritical() {
+        AssertEqual("error", AnalysisSeverity.Normalize("critical"), "severity critical normalize");
+        AssertEqual(3, AnalysisSeverity.Rank("critical"), "severity critical rank");
+        AssertEqual("warning", AnalysisSeverity.Normalize("medium"), "severity medium normalize");
+    }
+
+    private static void TestAnalysisConfigExportToolIds() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var rules = new Dictionary<string, AnalysisRule>(StringComparer.OrdinalIgnoreCase) {
+                ["IX001"] = new AnalysisRule(
+                    "IX001", "csharp", "roslyn", "CA2000", "Dispose objects", "Ensure Dispose is called",
+                    "Reliability", "warning", Array.Empty<string>(), null, null),
+                ["IX002"] = new AnalysisRule(
+                    "IX002", "cs", "roslyn", "CA1062", "Validate arguments", "Validate argument null checks",
+                    "Reliability", "warning", Array.Empty<string>(), null, null),
+                ["PS001"] = new AnalysisRule(
+                    "PS001", "powershell", "psscriptanalyzer", "PSAvoidUsingWriteHost",
+                    "Avoid Write-Host", "Use Write-Output instead", "BestPractices", "warning",
+                    Array.Empty<string>(), null, null),
+                ["PS002"] = new AnalysisRule(
+                    "PS002", "ps", "psscriptanalyzer", "PSUseSupportsShouldProcess",
+                    "Use SupportsShouldProcess", "Add SupportsShouldProcess when needed", "BestPractices", "warning",
+                    Array.Empty<string>(), null, null)
+            };
+            var packs = new Dictionary<string, AnalysisPack>(StringComparer.OrdinalIgnoreCase) {
+                ["pack"] = new AnalysisPack(
+                    "pack", "Pack", "Test pack", new[] { "IX001", "IX002", "PS001", "PS002" },
+                    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), null)
+            };
+            var catalog = new AnalysisCatalog(rules, packs);
+            var settings = new AnalysisSettings { Packs = new[] { "pack" } };
+
+            AnalysisConfigExporter.Export(settings, catalog, temp);
+
+            var editorConfig = File.ReadAllText(Path.Combine(temp, ".editorconfig"));
+            AssertEqual(true, editorConfig.Contains("dotnet_diagnostic.CA2000.severity", StringComparison.Ordinal),
+                "editorconfig CA2000");
+            AssertEqual(true, editorConfig.Contains("dotnet_diagnostic.CA1062.severity", StringComparison.Ordinal),
+                "editorconfig CA1062");
+
+            var psConfig = File.ReadAllText(Path.Combine(temp, "PSScriptAnalyzerSettings.psd1"));
+            AssertEqual(true, psConfig.Contains("PSAvoidUsingWriteHost", StringComparison.Ordinal),
+                "psconfig PSAvoidUsingWriteHost");
+            AssertEqual(true, psConfig.Contains("PSUseSupportsShouldProcess", StringComparison.Ordinal),
+                "psconfig PSUseSupportsShouldProcess");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestStructuredFindingsBlock() {
         var comments = new List<InlineReviewComment> {
             new("src/app.cs", 42, "Null check is missing."),
@@ -1180,6 +1250,212 @@ internal static class Program {
         var settings = new ReviewSettings { Focus = new[] { "custom" } };
         ReviewIntents.Apply("performance", settings);
         AssertSequenceEqual(new[] { "custom" }, settings.Focus, "intent preserves focus");
+    }
+
+    private static void TestReviewProviderAliasParsing() {
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("openai", out var openai), "provider openai alias");
+        AssertEqual(ReviewProvider.OpenAI, openai, "provider openai value");
+
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("OpenAI", out var openaiMixedCase), "provider openai mixed case alias");
+        AssertEqual(ReviewProvider.OpenAI, openaiMixedCase, "provider openai mixed case value");
+
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("codex", out var codex), "provider codex alias");
+        AssertEqual(ReviewProvider.OpenAI, codex, "provider codex value");
+
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("CODEX", out var codexUpper), "provider codex uppercase alias");
+        AssertEqual(ReviewProvider.OpenAI, codexUpper, "provider codex uppercase value");
+
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("copilot", out var copilot), "provider copilot alias");
+        AssertEqual(ReviewProvider.Copilot, copilot, "provider copilot value");
+
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("Copilot", out var copilotMixedCase), "provider copilot mixed case alias");
+        AssertEqual(ReviewProvider.Copilot, copilotMixedCase, "provider copilot mixed case value");
+
+        AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias(null, out _), "provider null alias unsupported");
+        AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias("", out _), "provider empty alias unsupported");
+        AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias("   ", out _), "provider whitespace alias unsupported");
+        AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias("azure", out _), "provider azure alias unsupported");
+    }
+
+    private static void TestReviewProviderContractCapabilities() {
+        var openai = ReviewProviderContracts.Get(ReviewProvider.OpenAI);
+        AssertEqual(true, openai.SupportsUsageApi, "openai usage api");
+        AssertEqual(true, openai.SupportsReasoningControls, "openai reasoning");
+        AssertEqual(true, openai.RequiresOpenAiAuthStore, "openai auth");
+        AssertEqual(true, openai.SupportsStreaming, "openai streaming");
+        AssertEqual(true, openai.MaxRecommendedRetryCount > 0, "openai retry limit");
+
+        var copilot = ReviewProviderContracts.Get(ReviewProvider.Copilot);
+        AssertEqual(false, copilot.SupportsUsageApi, "copilot usage api");
+        AssertEqual(false, copilot.SupportsReasoningControls, "copilot reasoning");
+        AssertEqual(false, copilot.RequiresOpenAiAuthStore, "copilot auth");
+        AssertEqual(true, copilot.SupportsStreaming, "copilot streaming");
+        AssertEqual(true, copilot.MaxRecommendedRetryCount > 0, "copilot retry limit");
+
+        AssertThrows<NotSupportedException>(() => ReviewProviderContracts.Get((ReviewProvider)999), "unknown provider contract");
+    }
+
+    private static void TestReviewProviderConfigAlias() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path, "{ \"review\": { \"provider\": \"codex\" } }");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings();
+            ReviewConfigLoader.Apply(settings);
+            AssertEqual(ReviewProvider.OpenAI, settings.Provider, "provider codex config");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
+    private static void TestReviewProviderFallbackEnv() {
+        var previousProvider = Environment.GetEnvironmentVariable("REVIEW_PROVIDER");
+        var previousFallback = Environment.GetEnvironmentVariable("REVIEW_PROVIDER_FALLBACK");
+        try {
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER", "openai");
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_FALLBACK", "copilot");
+            var settings = ReviewSettings.FromEnvironment();
+            AssertEqual(ReviewProvider.OpenAI, settings.Provider, "provider fallback env primary");
+            AssertEqual(ReviewProvider.Copilot, settings.ProviderFallback, "provider fallback env value");
+
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_FALLBACK", "azure");
+            settings = ReviewSettings.FromEnvironment();
+            AssertEqual(null, settings.ProviderFallback, "provider fallback env invalid");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER", previousProvider);
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_FALLBACK", previousFallback);
+        }
+    }
+
+    private static void TestReviewProviderFallbackConfig() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path, "{ \"review\": { \"provider\": \"openai\", \"providerFallback\": \"copilot\" } }");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings();
+            ReviewConfigLoader.Apply(settings);
+            AssertEqual(ReviewProvider.OpenAI, settings.Provider, "provider fallback config primary");
+            AssertEqual(ReviewProvider.Copilot, settings.ProviderFallback, "provider fallback config value");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
+    private static void TestReviewProviderFallbackPlan() {
+        AssertEqual(null, ReviewRunner.ResolveFallbackProvider(ReviewProvider.OpenAI, null), "provider fallback none");
+        AssertEqual(null, ReviewRunner.ResolveFallbackProvider(ReviewProvider.OpenAI, ReviewProvider.OpenAI), "provider fallback same");
+        AssertEqual(ReviewProvider.Copilot, ReviewRunner.ResolveFallbackProvider(ReviewProvider.OpenAI, ReviewProvider.Copilot),
+            "provider fallback selected");
+        AssertEqual(false, ReviewRunner.ShouldFallbackOnResult("Regular review content"), "provider fallback regular output");
+        AssertEqual(true, ReviewRunner.ShouldFallbackOnResult($"x {ReviewDiagnostics.FailureMarker} y"), "provider fallback failure marker");
+    }
+
+    private static void TestReviewIntentAppliesDefaults() {
+        var settings = new ReviewSettings();
+        ReviewIntents.Apply("security", settings);
+        AssertEqual("strict", settings.Strictness, "intent strictness");
+        AssertContainsText(settings.Notes ?? string.Empty, "auth", "intent notes");
+    }
+
+    private static void TestReviewIntentRespectsSettings() {
+        var settings = new ReviewSettings {
+            Strictness = "custom",
+            Notes = "custom notes"
+        };
+        ReviewIntents.Apply("maintainability", settings);
+        AssertEqual("custom", settings.Strictness, "intent strictness preserved");
+        AssertEqual("custom notes", settings.Notes, "intent notes preserved");
+    }
+
+    private static void TestReviewProviderHealthEnv() {
+        var previousHealthChecks = Environment.GetEnvironmentVariable("REVIEW_PROVIDER_HEALTH_CHECKS");
+        var previousHealthTimeout = Environment.GetEnvironmentVariable("REVIEW_PROVIDER_HEALTH_CHECK_TIMEOUT_SECONDS");
+        var previousBreakerFailures = Environment.GetEnvironmentVariable("REVIEW_PROVIDER_CIRCUIT_BREAKER_FAILURES");
+        var previousBreakerOpen = Environment.GetEnvironmentVariable("REVIEW_PROVIDER_CIRCUIT_BREAKER_OPEN_SECONDS");
+        try {
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_HEALTH_CHECKS", "false");
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_HEALTH_CHECK_TIMEOUT_SECONDS", "7");
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_CIRCUIT_BREAKER_FAILURES", "5");
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_CIRCUIT_BREAKER_OPEN_SECONDS", "90");
+            var settings = ReviewSettings.FromEnvironment();
+            AssertEqual(false, settings.ProviderHealthChecks, "provider health checks env");
+            AssertEqual(7, settings.ProviderHealthCheckTimeoutSeconds, "provider health timeout env");
+            AssertEqual(5, settings.ProviderCircuitBreakerFailures, "provider breaker failures env");
+            AssertEqual(90, settings.ProviderCircuitBreakerOpenSeconds, "provider breaker open env");
+
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_CIRCUIT_BREAKER_FAILURES", "-1");
+            settings = ReviewSettings.FromEnvironment();
+            AssertEqual(3, settings.ProviderCircuitBreakerFailures, "provider breaker failures env invalid");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_HEALTH_CHECKS", previousHealthChecks);
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_HEALTH_CHECK_TIMEOUT_SECONDS", previousHealthTimeout);
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_CIRCUIT_BREAKER_FAILURES", previousBreakerFailures);
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_CIRCUIT_BREAKER_OPEN_SECONDS", previousBreakerOpen);
+        }
+    }
+
+    private static void TestReviewProviderHealthConfig() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path,
+                "{ \"review\": { \"providerHealthChecks\": false, \"providerHealthCheckTimeoutSeconds\": 9, " +
+                "\"providerCircuitBreakerFailures\": 4, \"providerCircuitBreakerOpenSeconds\": 75 } }");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings();
+            ReviewConfigLoader.Apply(settings);
+            AssertEqual(false, settings.ProviderHealthChecks, "provider health checks config");
+            AssertEqual(9, settings.ProviderHealthCheckTimeoutSeconds, "provider health timeout config");
+            AssertEqual(4, settings.ProviderCircuitBreakerFailures, "provider breaker failures config");
+            AssertEqual(75, settings.ProviderCircuitBreakerOpenSeconds, "provider breaker open config");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
+    private static void TestReviewProviderCircuitBreaker() {
+        ReviewProviderCircuitBreaker.Reset();
+        var provider = ReviewProvider.OpenAI;
+        var now = DateTimeOffset.UtcNow;
+
+        AssertEqual(false, ReviewProviderCircuitBreaker.IsOpen(provider, now, out _), "provider breaker initially closed");
+
+        ReviewProviderCircuitBreaker.RecordFailure(provider, 2, TimeSpan.FromSeconds(30), now);
+        AssertEqual(false, ReviewProviderCircuitBreaker.IsOpen(provider, now, out _), "provider breaker first failure");
+
+        ReviewProviderCircuitBreaker.RecordFailure(provider, 2, TimeSpan.FromSeconds(30), now);
+        AssertEqual(true, ReviewProviderCircuitBreaker.IsOpen(provider, now, out var remaining), "provider breaker opens");
+        AssertEqual(true, remaining.TotalSeconds > 0, "provider breaker remaining");
+
+        AssertEqual(false, ReviewProviderCircuitBreaker.IsOpen(provider, now.AddSeconds(31), out _), "provider breaker closes");
+
+        ReviewProviderCircuitBreaker.RecordFailure(provider, 1, TimeSpan.FromSeconds(30), now);
+        AssertEqual(true, ReviewProviderCircuitBreaker.IsOpen(provider, now, out _), "provider breaker immediate open");
+        ReviewProviderCircuitBreaker.RecordSuccess(provider);
+        AssertEqual(false, ReviewProviderCircuitBreaker.IsOpen(provider, now, out _), "provider breaker reset by success");
+        ReviewProviderCircuitBreaker.Reset();
+    }
+
+    private static void TestReviewIntentPerfAlias() {
+        var settings = new ReviewSettings();
+        ReviewIntents.Apply("perf", settings);
+        AssertEqual("balanced", settings.Strictness, "perf alias strictness");
+        AssertContainsText(settings.Notes ?? string.Empty, "allocations", "perf alias notes");
+    }
+
+    private static void TestReviewIntentNullSettings() {
+        AssertThrows<ArgumentNullException>(() => ReviewIntents.Apply("security", null!), "intent null settings");
     }
 
     private static void TestReviewCodeHostEnv() {
@@ -2125,7 +2401,7 @@ internal static class Program {
         if (ctor is null) {
             throw new InvalidOperationException("IntelligenceXClient constructor not found.");
         }
-        return (IntelligenceXClient)ctor.Invoke(new object?[] { transport, "gpt-5.2-codex", null, null, null });
+        return (IntelligenceXClient)ctor.Invoke(new object?[] { transport, "gpt-5.3-codex", null, null, null });
     }
 
     private static TurnInfo BuildToolCallTurn(params (string CallId, string ToolName)[] calls) {

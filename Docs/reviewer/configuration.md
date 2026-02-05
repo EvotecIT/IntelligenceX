@@ -14,7 +14,7 @@ Unknown properties emit warnings; invalid types or enum values fail the run.
 {
   "review": {
     "provider": "openai",
-    "model": "gpt-5.2-codex",
+    "model": "gpt-5.3-codex",
     "mode": "inline",
     "length": "long",
     "outputStyle": "claude",
@@ -57,6 +57,34 @@ Unknown properties emit warnings; invalid types or enum values fail the run.
 ```
 
 Note: set `maxFiles` to `0` to disable file count limits; the reviewer will still trim individual patches using `maxPatchChars`.
+
+## Provider fallback example
+
+Use `providerFallback` to opt into a secondary provider when the primary provider fails.
+
+```json
+{
+  "review": {
+    "provider": "openai",
+    "providerFallback": "copilot"
+  }
+}
+```
+
+## Provider health checks + circuit breaker
+
+Use this to preflight providers before request execution and temporarily open a breaker after repeated failures.
+
+```json
+{
+  "review": {
+    "providerHealthChecks": true,
+    "providerHealthCheckTimeoutSeconds": 10,
+    "providerCircuitBreakerFailures": 3,
+    "providerCircuitBreakerOpenSeconds": 120
+  }
+}
+```
 
 ## Auto-resolve + triage example
 
@@ -174,6 +202,31 @@ Use this to skip the main review and only assess existing review threads.
 {
   "review": {
     "structuredFindings": true
+  }
+}
+```
+
+## Static analysis (preview)
+
+Enable analysis summaries and inline findings sourced from SARIF or IntelligenceX findings JSON.
+
+```json
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["csharp-default", "powershell-default"],
+    "configMode": "respect",
+    "disabledRules": ["CA2000"],
+    "severityOverrides": { "CA1062": "error" },
+    "results": {
+      "inputs": ["artifacts/**/*.sarif", "artifacts/intelligencex.findings.json"],
+      "minSeverity": "warning",
+      "maxInline": 20,
+      "summary": true,
+      "summaryMaxItems": 10,
+      "summaryPlacement": "bottom",
+      "showPolicy": true
+    }
   }
 }
 ```
@@ -309,12 +362,13 @@ Use `directHeaders` to attach custom headers required by your gateway.
 Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source control.
 
 ## Common knobs
-- `provider`: `openai` or `copilot`
+- `provider`: `openai`, `codex` (alias for OpenAI), or `copilot`
+- `providerFallback`: optional fallback provider (`openai`, `codex`, or `copilot`)
 - `model`: model name for the selected provider
 - `reasoningEffort`: `minimal|low|medium|high|xhigh` (when set to low/medium/high, the header shows a reasoning level label)
 - `mode`: `inline`, `summary`, or `hybrid`
 - `length`: `short|medium|long`
-- `intent`: `security|performance|perf|maintainability` (sets focus areas if none provided)
+- `intent`: `security|performance|perf|maintainability` (sets focus areas and default strictness/notes when not set)
 - `codeHost`: `github` or `azure`
 - `reviewDiffRange`: `current`, `pr-base`, or `first-review`
 - `outputStyle`: rendering style preset
@@ -325,6 +379,10 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `retryCount`: total attempts for provider requests
 - `retryBackoffMultiplier`: exponential backoff multiplier (default 2.0)
 - `retryJitterMinMs`/`retryJitterMaxMs`: retry jitter bounds
+- `providerHealthChecks`: run provider health checks before calls (default true)
+- `providerHealthCheckTimeoutSeconds`: timeout for provider health checks
+- `providerCircuitBreakerFailures`: consecutive failures before opening provider circuit (set `0` to disable)
+- `providerCircuitBreakerOpenSeconds`: how long the provider circuit remains open
 - `failOpen`: emit a failure summary instead of failing the workflow
 - `failOpenTransientOnly`: when true, fail-open only on transient errors
 - `summaryStability`: reuse the previous summary (same commit) as prompt context to avoid noisy rewrites

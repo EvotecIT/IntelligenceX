@@ -36,7 +36,7 @@ Related docs:
 
 **Default Mode + Model Policy**
 - Default review mode: `hybrid` (summary + inline when supported; falls back to summary-only).
-- Default provider/model: OpenAI with `gpt-5.2-codex` unless configured otherwise; Copilot is opt-in.
+- Default provider/model: OpenAI with `gpt-5.3-codex` unless configured otherwise; Copilot is opt-in.
 - Safe defaults: skip drafts; skip workflow changes unless allowed; no secrets/writes on untrusted PRs; fail-open only for transient errors; budget summary enabled; auto-resolve limited to bot threads with evidence; secrets audit on.
 
 ## Reusable workflow (quick start)
@@ -75,7 +75,7 @@ The reusable workflow maps `with:` inputs to environment variables the reviewer 
   "review": {
     "provider": "openai",
     "openaiTransport": "native",
-    "model": "gpt-5.2-codex",
+    "model": "gpt-5.3-codex",
     "mode": "inline",
     "length": "long",
     "reviewUsageSummary": true

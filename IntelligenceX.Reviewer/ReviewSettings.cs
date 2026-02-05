@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using IntelligenceX.Analysis;
 using IntelligenceX.Copilot;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Chat;
@@ -70,6 +71,7 @@ internal sealed class ReviewSettings {
 
     public string Mode { get; set; } = "hybrid";
     public ReviewProvider Provider { get; set; } = ReviewProvider.OpenAI;
+    public ReviewProvider? ProviderFallback { get; set; }
     public ReviewCodeHost CodeHost { get; set; } = ReviewCodeHost.GitHub;
     public string? Profile { get; set; }
     /// <summary>
@@ -83,7 +85,7 @@ internal sealed class ReviewSettings {
     public IReadOnlyList<string> Focus { get; set; } = Array.Empty<string>();
     public string? Persona { get; set; }
     public string? Notes { get; set; }
-    public string Model { get; set; } = "gpt-5.2-codex";
+    public string Model { get; set; } = "gpt-5.3-codex";
     public ReasoningEffort? ReasoningEffort { get; set; }
     public ReasoningSummary? ReasoningSummary { get; set; }
     public bool ReviewUsageSummary { get; set; }
@@ -98,6 +100,10 @@ internal sealed class ReviewSettings {
     public int RetryJitterMinMs { get; set; } = 200;
     public int RetryJitterMaxMs { get; set; } = 800;
     public bool RetryExtraOnResponseEnded { get; set; } = true;
+    public bool ProviderHealthChecks { get; set; } = true;
+    public int ProviderHealthCheckTimeoutSeconds { get; set; } = 10;
+    public int ProviderCircuitBreakerFailures { get; set; } = 3;
+    public int ProviderCircuitBreakerOpenSeconds { get; set; } = 120;
     public bool FailOpen { get; set; } = true;
     /// <summary>
     /// When true, fail-open is limited to transient errors only.
@@ -242,6 +248,7 @@ internal sealed class ReviewSettings {
     public bool IncludeRelatedPrs { get; set; }
     public string? RelatedPrsQuery { get; set; }
     public int MaxRelatedPrs { get; set; } = 5;
+    public AnalysisSettings Analysis { get; } = new AnalysisSettings();
 
     public string? CodexPath { get; set; }
     public string? CodexArgs { get; set; }
@@ -336,6 +343,10 @@ internal sealed class ReviewSettings {
         var provider = GetInput("provider", "REVIEW_PROVIDER");
         if (!string.IsNullOrWhiteSpace(provider)) {
             settings.Provider = ParseProvider(provider);
+        }
+        var providerFallback = GetInput("provider_fallback", "REVIEW_PROVIDER_FALLBACK");
+        if (!string.IsNullOrWhiteSpace(providerFallback)) {
+            settings.ProviderFallback = ParseProviderNullable(providerFallback);
         }
 
         var mode = GetInput("mode", "REVIEW_MODE");
@@ -597,6 +608,28 @@ internal sealed class ReviewSettings {
         var retryExtraResponseEnded = GetInput("retry_extra_response_ended", "REVIEW_RETRY_EXTRA_RESPONSE_ENDED");
         if (!string.IsNullOrWhiteSpace(retryExtraResponseEnded)) {
             settings.RetryExtraOnResponseEnded = ParseBoolean(retryExtraResponseEnded, settings.RetryExtraOnResponseEnded);
+        }
+        var providerHealthChecks = GetInput("provider_health_checks", "REVIEW_PROVIDER_HEALTH_CHECKS");
+        if (!string.IsNullOrWhiteSpace(providerHealthChecks)) {
+            settings.ProviderHealthChecks = ParseBoolean(providerHealthChecks, settings.ProviderHealthChecks);
+        }
+        var providerHealthCheckTimeoutSeconds = GetInput("provider_health_check_timeout_seconds",
+            "REVIEW_PROVIDER_HEALTH_CHECK_TIMEOUT_SECONDS");
+        if (!string.IsNullOrWhiteSpace(providerHealthCheckTimeoutSeconds)) {
+            settings.ProviderHealthCheckTimeoutSeconds =
+                ParsePositiveInt(providerHealthCheckTimeoutSeconds, settings.ProviderHealthCheckTimeoutSeconds);
+        }
+        var providerCircuitBreakerFailures = GetInput("provider_circuit_breaker_failures",
+            "REVIEW_PROVIDER_CIRCUIT_BREAKER_FAILURES");
+        if (!string.IsNullOrWhiteSpace(providerCircuitBreakerFailures)) {
+            settings.ProviderCircuitBreakerFailures =
+                ParseNonNegativeInt(providerCircuitBreakerFailures, settings.ProviderCircuitBreakerFailures);
+        }
+        var providerCircuitBreakerOpenSeconds = GetInput("provider_circuit_breaker_open_seconds",
+            "REVIEW_PROVIDER_CIRCUIT_BREAKER_OPEN_SECONDS");
+        if (!string.IsNullOrWhiteSpace(providerCircuitBreakerOpenSeconds)) {
+            settings.ProviderCircuitBreakerOpenSeconds =
+                ParsePositiveInt(providerCircuitBreakerOpenSeconds, settings.ProviderCircuitBreakerOpenSeconds);
         }
         var failOpen = GetInput("fail_open", "REVIEW_FAIL_OPEN");
         if (!string.IsNullOrWhiteSpace(failOpen)) {
@@ -949,12 +982,13 @@ internal sealed class ReviewSettings {
     }
 
     private static ReviewProvider ParseProvider(string value) {
-        var normalized = value.Trim().ToLowerInvariant();
-        return normalized switch {
-            "copilot" => ReviewProvider.Copilot,
-            "openai" or "codex" => ReviewProvider.OpenAI,
-            _ => ReviewProvider.OpenAI
-        };
+        return ReviewProviderContracts.ParseProviderOrDefault(value, ReviewProvider.OpenAI);
+    }
+
+    private static ReviewProvider? ParseProviderNullable(string value) {
+        return ReviewProviderContracts.TryParseProviderAlias(value, out var provider)
+            ? provider
+            : null;
     }
 
     private static ReviewCodeHost ParseCodeHost(string value) {

@@ -22,7 +22,7 @@ registry.Register(new WslStatusTool());
 
 var input = ChatInput.FromText("Is WSL running? Summarize the distribution status.");
 var chatOptions = new ChatOptions {
-    Model = "gpt-5.2-codex",
+    Model = "gpt-5.3-codex",
     ParallelToolCalls = true
 };
 
@@ -51,7 +51,7 @@ registry.Register(new WslStatusTool());
 
 var input = ChatInput.FromText("Check WSL status.");
 var options = new ChatOptions {
-    Model = "gpt-5.2-codex",
+    Model = "gpt-5.3-codex",
     Tools = registry.GetDefinitions(),
     ToolChoice = ToolChoice.Auto
 };

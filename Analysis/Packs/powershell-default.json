@@ -1,0 +1,6 @@
+{
+  "id": "powershell-default",
+  "label": "PowerShell Default",
+  "description": "Core best-practice rules for PowerShell scripts.",
+  "rules": ["PSAvoidUsingWriteHost"]
+}
