@@ -1918,10 +1918,11 @@ public static class ReviewerApp {
             await github.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
             return (true, null);
         } catch (Exception ex) {
-            if (IsIntegrationForbidden(ex)) {
+            var isForbidden = IsIntegrationForbidden(ex);
+            if (isForbidden) {
                 LogIntegrationForbiddenHint();
             }
-            if (fallbackGithub is not null && IsIntegrationForbidden(ex)) {
+            if (fallbackGithub is not null && isForbidden) {
                 try {
                     await fallbackGithub.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
                     return (true, null);
@@ -1951,8 +1952,8 @@ public static class ReviewerApp {
         Console.Error.WriteLine("- Re-authorize or reinstall the GitHub App after permission changes.");
         Console.Error.WriteLine("- Confirm the app installation includes this repository.");
         Console.Error.WriteLine("- Ensure the app has Pull requests: Read & write (and Issues: write if needed).");
-        Console.Error.WriteLine("- Verify INTELLIGENCEX_GITHUB_APP_ID/KEY point to the intended app.");
-        Console.Error.WriteLine("- To bypass the app token, remove INTELLIGENCEX_GITHUB_APP_ID/KEY to use GITHUB_TOKEN.");
+        Console.Error.WriteLine("- Verify INTELLIGENCEX_GITHUB_APP_ID/INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY point to the intended app.");
+        Console.Error.WriteLine("- To bypass the app token, remove INTELLIGENCEX_GITHUB_APP_ID/INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY to use GITHUB_TOKEN.");
     }
 
     private static bool ThreadHasOnlyBotComments(PullRequestReviewThread thread, ReviewSettings settings) {
