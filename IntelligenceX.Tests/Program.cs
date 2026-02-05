@@ -85,6 +85,7 @@ internal static class Program {
         failed += Run("Review retry extra attempt", TestReviewRetryExtraAttempt);
         failed += Run("Review failure marker", TestReviewFailureMarker);
         failed += Run("Review failure body redacts errors", TestReviewFailureBodyRedactsErrors);
+        failed += Run("Failure summary comment update", TestFailureSummaryCommentUpdate);
         failed += Run("Review fail-open only transient", TestReviewFailOpenTransientOnly);
         failed += Run("Review fail-open decision", TestReviewFailOpenDecision);
         failed += Run("Preflight timeout", TestPreflightTimeout);
@@ -889,6 +890,37 @@ internal static class Program {
         if (body.Contains("Sensitive info", StringComparison.OrdinalIgnoreCase)) {
             throw new InvalidOperationException("Expected failure body to omit raw exception details.");
         }
+    }
+
+    private static void TestFailureSummaryCommentUpdate() {
+        var commentId = 42L;
+        string? body = null;
+        var hits = 0;
+        using var server = new LocalHttpServer(request => {
+            if (!string.Equals(request.Method, "PATCH", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            if (!string.Equals(request.Path, $"/repos/owner/repo/issues/comments/{commentId}", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            hits++;
+            body = request.Body;
+            return new HttpResponse("{\"id\":42,\"body\":\"ok\"}");
+        });
+
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", "Body", false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAI,
+            OpenAITransport = OpenAITransportKind.Native
+        };
+
+        var updated = IntelligenceX.Reviewer.ReviewerApp.TryUpdateFailureSummaryAsync("token", server.BaseUri.ToString().TrimEnd('/'),
+                context, settings, commentId, new InvalidOperationException("boom"), false)
+            .GetAwaiter().GetResult();
+        AssertEqual(true, updated, "failure summary update");
+        AssertEqual(1, hits, "failure summary update hits");
+        AssertContainsText(body ?? string.Empty, ReviewDiagnostics.FailureMarker, "failure summary marker");
     }
 
     private static void TestReviewFailOpenTransientOnly() {

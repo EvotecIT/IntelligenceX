@@ -356,21 +356,14 @@ public static class ReviewerApp {
                 commentId.HasValue &&
                 allowWrites &&
                 context is not null &&
-                settings is not null &&
-                !string.IsNullOrWhiteSpace(githubToken)) {
+                settings is not null) {
                 try {
-                    var failureBody = ReviewDiagnostics.BuildFailureBody(ex, settings, null, null);
-                    var inlineSuppressed = inlineSupported;
-                    var commentBody = ReviewFormatter.BuildComment(context, failureBody, settings, inlineSupported,
-                        inlineSuppressed, string.Empty, string.Empty, string.Empty, string.Empty);
-                    if (string.IsNullOrWhiteSpace(githubToken)) {
-                        return 1;
-                    }
-                    using var failureClient = new GitHubClient(githubToken, maxConcurrency: settings.GitHubMaxConcurrency);
-                    await failureClient.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, commentBody,
-                            CancellationToken.None)
+                    var updated = await TryUpdateFailureSummaryAsync(githubToken, null, context, settings, commentId.Value, ex,
+                            inlineSupported)
                         .ConfigureAwait(false);
-                    Console.WriteLine("Updated review comment with failure summary.");
+                    if (updated) {
+                        Console.WriteLine("Updated review comment with failure summary.");
+                    }
                 } catch (Exception updateEx) {
                     Console.Error.WriteLine($"Failed to update review comment after error: {updateEx.Message}");
                 }
@@ -381,6 +374,22 @@ public static class ReviewerApp {
             secretsAudit?.Dispose();
             Console.CancelKeyPress -= cancelHandler;
         }
+    }
+
+    internal static async Task<bool> TryUpdateFailureSummaryAsync(string? githubToken, string? apiBaseUrl,
+        PullRequestContext context, ReviewSettings settings, long commentId, Exception ex, bool inlineSupported) {
+        if (string.IsNullOrWhiteSpace(githubToken)) {
+            return false;
+        }
+        var failureBody = ReviewDiagnostics.BuildFailureBody(ex, settings, null, null);
+        var inlineSuppressed = inlineSupported;
+        var commentBody = ReviewFormatter.BuildComment(context, failureBody, settings, inlineSupported, inlineSuppressed,
+            string.Empty, string.Empty, string.Empty, string.Empty);
+        using var failureClient = new GitHubClient(githubToken, apiBaseUrl, settings.GitHubMaxConcurrency);
+        await failureClient.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId, commentBody,
+                CancellationToken.None)
+            .ConfigureAwait(false);
+        return true;
     }
 
     private static async Task<bool> TryWriteAuthFromEnvAsync() {
