@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace IntelligenceX.Reviewer;
 
@@ -37,7 +36,7 @@ internal static class ReviewProviderContracts {
         ReviewProvider.OpenAI,
         "openai",
         "OpenAI",
-        new[] { "openai", "codex" },
+        new[] { "codex" },
         new[] { "appserver", "native" },
         supportsUsageApi: true,
         supportsReasoningControls: true,
@@ -66,11 +65,13 @@ internal static class ReviewProviderContracts {
     private static readonly IReadOnlyDictionary<string, ReviewProvider> ByAlias = BuildAliasMap();
 
     public static ReviewProviderContract Get(ReviewProvider provider) {
-        return ByProvider.TryGetValue(provider, out var contract) ? contract : OpenAi;
+        return ByProvider.TryGetValue(provider, out var contract)
+            ? contract
+            : throw new NotSupportedException($"Unsupported review provider '{provider}'.");
     }
 
     public static bool TryParseProviderAlias(string? value, out ReviewProvider provider) {
-        provider = ReviewProvider.OpenAI;
+        provider = default;
         if (string.IsNullOrWhiteSpace(value)) {
             return false;
         }
@@ -84,9 +85,11 @@ internal static class ReviewProviderContracts {
     private static IReadOnlyDictionary<string, ReviewProvider> BuildAliasMap() {
         var map = new Dictionary<string, ReviewProvider>(StringComparer.OrdinalIgnoreCase);
         foreach (var contract in ByProvider.Values) {
-            map[contract.Id] = contract.Provider;
-            foreach (var alias in contract.Aliases.Where(alias => !string.IsNullOrWhiteSpace(alias))) {
-                map[alias] = contract.Provider;
+            map.TryAdd(contract.Id, contract.Provider);
+            foreach (var alias in contract.Aliases) {
+                if (!string.IsNullOrWhiteSpace(alias)) {
+                    map.TryAdd(alias, contract.Provider);
+                }
             }
         }
         return map;

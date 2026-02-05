@@ -50,9 +50,11 @@ internal sealed class ReviewRunner {
     public async Task<string> RunAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
         CancellationToken cancellationToken) {
         var provider = ReviewProviderContracts.Get(_settings.Provider);
-        return provider.Provider == ReviewProvider.Copilot
-            ? await RunCopilotAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false)
-            : await RunOpenAiWithRetryAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false);
+        return provider.Provider switch {
+            ReviewProvider.Copilot => await RunCopilotAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false),
+            ReviewProvider.OpenAI => await RunOpenAiWithRetryAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false),
+            _ => throw new NotSupportedException($"Unsupported review provider '{provider.Provider}'.")
+        };
     }
 
     private async Task<string> RunOpenAiWithRetryAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,

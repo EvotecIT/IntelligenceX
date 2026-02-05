@@ -1189,12 +1189,24 @@ internal static class Program {
         AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("openai", out var openai), "provider openai alias");
         AssertEqual(ReviewProvider.OpenAI, openai, "provider openai value");
 
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("OpenAI", out var openaiMixedCase), "provider openai mixed case alias");
+        AssertEqual(ReviewProvider.OpenAI, openaiMixedCase, "provider openai mixed case value");
+
         AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("codex", out var codex), "provider codex alias");
         AssertEqual(ReviewProvider.OpenAI, codex, "provider codex value");
+
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("CODEX", out var codexUpper), "provider codex uppercase alias");
+        AssertEqual(ReviewProvider.OpenAI, codexUpper, "provider codex uppercase value");
 
         AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("copilot", out var copilot), "provider copilot alias");
         AssertEqual(ReviewProvider.Copilot, copilot, "provider copilot value");
 
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("Copilot", out var copilotMixedCase), "provider copilot mixed case alias");
+        AssertEqual(ReviewProvider.Copilot, copilotMixedCase, "provider copilot mixed case value");
+
+        AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias(null, out _), "provider null alias unsupported");
+        AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias("", out _), "provider empty alias unsupported");
+        AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias("   ", out _), "provider whitespace alias unsupported");
         AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias("azure", out _), "provider azure alias unsupported");
     }
 
@@ -1212,6 +1224,8 @@ internal static class Program {
         AssertEqual(false, copilot.RequiresOpenAiAuthStore, "copilot auth");
         AssertEqual(true, copilot.SupportsStreaming, "copilot streaming");
         AssertEqual(true, copilot.MaxRecommendedRetryCount > 0, "copilot retry limit");
+
+        AssertThrows<NotSupportedException>(() => ReviewProviderContracts.Get((ReviewProvider)999), "unknown provider contract");
     }
 
     private static void TestReviewProviderConfigAlias() {
