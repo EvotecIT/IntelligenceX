@@ -1487,22 +1487,26 @@ public static class ReviewerApp {
     private static string FormatUsageSummary(ChatGptUsageSnapshot snapshot) {
         var lines = new List<string>();
 
-        var primary = FormatRateLimitLine(snapshot.RateLimit?.PrimaryWindow, "rate limit");
+        var primary = FormatRateLimitLine(snapshot.RateLimit?.PrimaryWindow, "rate limit",
+            UsageLimitContext.General, isSecondaryWindow: false);
         if (!string.IsNullOrWhiteSpace(primary)) {
             lines.Add(primary);
         }
 
-        var secondary = FormatRateLimitLine(snapshot.RateLimit?.SecondaryWindow, "rate limit (secondary)");
+        var secondary = FormatRateLimitLine(snapshot.RateLimit?.SecondaryWindow, "rate limit (secondary)",
+            UsageLimitContext.General, isSecondaryWindow: true);
         if (!string.IsNullOrWhiteSpace(secondary)) {
             lines.Add(secondary);
         }
 
-        var codePrimary = FormatRateLimitLine(snapshot.CodeReviewRateLimit?.PrimaryWindow, "code review limit");
+        var codePrimary = FormatRateLimitLine(snapshot.CodeReviewRateLimit?.PrimaryWindow, "code review limit",
+            UsageLimitContext.CodeReview, isSecondaryWindow: false);
         if (!string.IsNullOrWhiteSpace(codePrimary)) {
             lines.Add(codePrimary);
         }
 
-        var codeSecondary = FormatRateLimitLine(snapshot.CodeReviewRateLimit?.SecondaryWindow, "code review limit (secondary)");
+        var codeSecondary = FormatRateLimitLine(snapshot.CodeReviewRateLimit?.SecondaryWindow, "code review limit (secondary)",
+            UsageLimitContext.CodeReview, isSecondaryWindow: true);
         if (!string.IsNullOrWhiteSpace(codeSecondary)) {
             lines.Add(codeSecondary);
         }
@@ -1523,7 +1527,13 @@ public static class ReviewerApp {
         return "Usage: " + string.Join(" | ", lines);
     }
 
-    private static string? FormatRateLimitLine(ChatGptRateLimitWindow? window, string fallbackLabel) {
+    private enum UsageLimitContext {
+        General,
+        CodeReview
+    }
+
+    private static string? FormatRateLimitLine(ChatGptRateLimitWindow? window, string fallbackLabel,
+        UsageLimitContext context, bool isSecondaryWindow) {
         if (window is null) {
             return null;
         }
@@ -1531,14 +1541,12 @@ public static class ReviewerApp {
         if (string.IsNullOrWhiteSpace(remaining)) {
             return null;
         }
-        var label = FormatWindowLabel(window);
-        if (string.IsNullOrWhiteSpace(label)) {
-            label = fallbackLabel;
-        } else if (fallbackLabel.StartsWith("code review", StringComparison.OrdinalIgnoreCase)) {
-            var secondary = fallbackLabel.IndexOf("(secondary)", StringComparison.OrdinalIgnoreCase) >= 0
-                ? " (secondary)"
-                : string.Empty;
-            label = $"code review {label}{secondary}";
+        var windowLabel = FormatWindowLabel(window);
+        var label = fallbackLabel;
+        if (!string.IsNullOrWhiteSpace(windowLabel)) {
+            label = context == UsageLimitContext.CodeReview
+                ? $"code review {windowLabel}{(isSecondaryWindow ? " (secondary)" : string.Empty)}"
+                : windowLabel;
         }
         return $"{label}: {remaining}% remaining";
     }
