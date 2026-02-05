@@ -35,7 +35,7 @@
     {
       "task": "apidocs",
       "id": "build-apidocs",
-      "dependsOn": "build-library",
+      "dependsOn": ["build-library", "build-site"],
       "xml": "../IntelligenceX/bin/Release/net8.0/IntelligenceX.xml",
       "assembly": "../IntelligenceX/bin/Release/net8.0/IntelligenceX.dll",
       "out": "./_site/api",
