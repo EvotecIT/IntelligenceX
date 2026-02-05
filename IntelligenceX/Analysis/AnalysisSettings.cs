@@ -97,7 +97,7 @@ public sealed class AnalysisSettings {
         if (string.IsNullOrWhiteSpace(value)) {
             return fallback;
         }
-        return value.Trim().ToLowerInvariant() switch {
+        return value!.Trim().ToLowerInvariant() switch {
             "overlay" => AnalysisConfigMode.Overlay,
             "replace" => AnalysisConfigMode.Replace,
             _ => AnalysisConfigMode.Respect

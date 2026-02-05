@@ -74,7 +74,7 @@ public static class AnalysisConfigReader {
         if (string.IsNullOrWhiteSpace(value)) {
             return fallback;
         }
-        var normalized = value.Trim().ToLowerInvariant();
+        var normalized = value!.Trim().ToLowerInvariant();
         return normalized switch {
             "top" or "header" => "top",
             "bottom" or "footer" => "bottom",

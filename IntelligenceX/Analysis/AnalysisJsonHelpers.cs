@@ -21,7 +21,12 @@ internal static class AnalysisJsonHelpers {
         }
         var textValue = value?.AsString();
         if (!string.IsNullOrWhiteSpace(textValue)) {
-            return textValue.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var parts = textValue.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+            var list = parts
+                .Select(part => part.Trim())
+                .Where(part => part.Length > 0)
+                .ToList();
+            return list.Count == 0 ? null : list;
         }
         return null;
     }
