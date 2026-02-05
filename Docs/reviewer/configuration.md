@@ -14,7 +14,7 @@ Unknown properties emit warnings; invalid types or enum values fail the run.
 {
   "review": {
     "provider": "openai",
-    "model": "gpt-5.2-codex",
+    "model": "gpt-5.3-codex",
     "mode": "inline",
     "length": "long",
     "outputStyle": "claude",

@@ -21,7 +21,7 @@ internal sealed class ExampleFluentChat : IExample {
         Console.WriteLine($"Open this URL: {login.Login.AuthUrl}");
         await login.WaitAsync().ConfigureAwait(false);
 
-        var thread = await session.StartThreadAsync("gpt-5.1-codex").ConfigureAwait(false);
+        var thread = await session.StartThreadAsync("gpt-5.3-codex").ConfigureAwait(false);
         await thread.SendAsync("Hello from fluent API!").ConfigureAwait(false);
     }
 }

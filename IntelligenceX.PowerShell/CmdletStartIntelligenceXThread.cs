@@ -13,15 +13,15 @@ namespace IntelligenceX.PowerShell;
 /// settings like sandbox and approval policy.</para>
 /// <example>
 ///  <para>Start a thread with the default model</para>
-///  <code>Start-IntelligenceXThread -Model "gpt-5.2-codex"</code>
+///  <code>Start-IntelligenceXThread -Model "gpt-5.3-codex"</code>
 /// </example>
 /// <example>
 ///  <para>Start a thread scoped to a repo and sandboxed</para>
-///  <code>Start-IntelligenceXThread -Model "gpt-5.2-codex" -CurrentDirectory "C:\repo" -Sandbox "workspace"</code>
+///  <code>Start-IntelligenceXThread -Model "gpt-5.3-codex" -CurrentDirectory "C:\repo" -Sandbox "workspace"</code>
 /// </example>
 /// <example>
 ///  <para>Start a thread with an approval policy</para>
-///  <code>Start-IntelligenceXThread -Model "gpt-5.2-codex" -ApprovalPolicy "auto"</code>
+///  <code>Start-IntelligenceXThread -Model "gpt-5.3-codex" -ApprovalPolicy "auto"</code>
 /// </example>
 /// </summary>
 [Cmdlet(VerbsLifecycle.Start, "IntelligenceXThread")]
@@ -34,7 +34,7 @@ public sealed class CmdletStartIntelligenceXThread : IntelligenceXCmdlet {
     public IntelligenceXClient? Client { get; set; }
 
     /// <summary>
-    /// <para type="description">Model identifier to use (for example gpt-5.2-codex).</para>
+    /// <para type="description">Model identifier to use (for example gpt-5.3-codex).</para>
     /// </summary>
     [Parameter(Mandatory = true)]
     public string Model { get; set; } = string.Empty;

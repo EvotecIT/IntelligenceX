@@ -9,7 +9,7 @@ Initialize-IntelligenceX -Client $client -Name "IntelligenceX" -Title "PowerShel
 $login = Start-IntelligenceXChatGptLogin -Client $client
 Write-Host $login.AuthUrl
 Wait-IntelligenceXLogin -Client $client -LoginId $login.LoginId
-$thread = Start-IntelligenceXThread -Client $client -Model "gpt-5.2-codex"
+$thread = Start-IntelligenceXThread -Client $client -Model "gpt-5.3-codex"
 $turn = Send-IntelligenceXMessage -Client $client -ThreadId $thread.Id -Text "Hello from PowerShell"
 $turn | Get-IntelligenceXTurnOutput
 Disconnect-IntelligenceX -Client $client

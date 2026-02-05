@@ -274,7 +274,7 @@ internal static class Program {
         var registry = new ToolRegistry();
         registry.Register(new StubTool("echo"));
         var input = ChatInput.FromText("Run tools");
-        var options = new ChatOptions { Model = "gpt-5.2-codex" };
+        var options = new ChatOptions { Model = "gpt-5.3-codex" };
 
         AssertThrows<InvalidOperationException>(() =>
                 ToolRunner.RunAsync(client, input, options, registry,
@@ -287,7 +287,7 @@ internal static class Program {
         using var client = CreateToolRunnerClient(BuildToolCallTurn(("call_2", "missing_tool")));
         var registry = new ToolRegistry();
         var input = ChatInput.FromText("Run tools");
-        var options = new ChatOptions { Model = "gpt-5.2-codex" };
+        var options = new ChatOptions { Model = "gpt-5.3-codex" };
 
         AssertThrows<InvalidOperationException>(() =>
                 ToolRunner.RunAsync(client, input, options, registry,
@@ -307,7 +307,7 @@ internal static class Program {
         registry.Register(new GateTool("tool_b", startGate, releaseGate, () => Interlocked.Increment(ref started), 2));
 
         var input = ChatInput.FromText("Run tools");
-        var options = new ChatOptions { Model = "gpt-5.2-codex", ParallelToolCalls = true };
+        var options = new ChatOptions { Model = "gpt-5.3-codex", ParallelToolCalls = true };
 
         var runnerTask = ToolRunner.RunAsync(client, input, options, registry,
             new ToolRunnerOptions { MaxRounds = 1, ParallelToolCalls = true });
@@ -2401,7 +2401,7 @@ internal static class Program {
         if (ctor is null) {
             throw new InvalidOperationException("IntelligenceXClient constructor not found.");
         }
-        return (IntelligenceXClient)ctor.Invoke(new object?[] { transport, "gpt-5.2-codex", null, null, null });
+        return (IntelligenceXClient)ctor.Invoke(new object?[] { transport, "gpt-5.3-codex", null, null, null });
     }
 
     private static TurnInfo BuildToolCallTurn(params (string CallId, string ToolName)[] calls) {
