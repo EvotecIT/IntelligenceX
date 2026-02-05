@@ -29,15 +29,46 @@ public sealed class IntelligenceXConfig {
     /// <param name="baseDirectory">Optional base directory for resolving the default config path.</param>
     /// <returns><c>true</c> when the configuration was loaded; otherwise <c>false</c>.</returns>
     public static bool TryLoad(out IntelligenceXConfig config, string? path = null, string? baseDirectory = null) {
+        return TryLoadInternal(out config, path, baseDirectory, out _);
+    }
+
+    /// <summary>
+    /// Loads configuration or throws if it cannot be found or parsed.
+    /// </summary>
+    /// <param name="path">Optional explicit config path.</param>
+    /// <param name="baseDirectory">Optional base directory for resolving the default config path.</param>
+    /// <returns>The loaded configuration.</returns>
+    /// <exception cref="FileNotFoundException">Thrown when the configuration file cannot be found.</exception>
+    /// <exception cref="InvalidDataException">Thrown when the configuration file contains invalid JSON.</exception>
+    public static IntelligenceXConfig Load(string? path = null, string? baseDirectory = null) {
+        if (!TryLoadInternal(out var config, path, baseDirectory, out var failure)) {
+            if (failure == LoadFailure.InvalidJson) {
+                throw new InvalidDataException("IntelligenceX config contains invalid JSON.");
+            }
+            throw new FileNotFoundException("IntelligenceX config not found.");
+        }
+        return config;
+    }
+
+    private enum LoadFailure {
+        None,
+        NotFound,
+        InvalidJson
+    }
+
+    private static bool TryLoadInternal(out IntelligenceXConfig config, string? path, string? baseDirectory, out LoadFailure failure) {
         config = new IntelligenceXConfig();
+        failure = LoadFailure.None;
         var resolved = ResolvePath(path, baseDirectory);
         if (resolved is null || !File.Exists(resolved)) {
+            failure = LoadFailure.NotFound;
             return false;
         }
 
         var json = File.ReadAllText(resolved);
         var root = JsonLite.Parse(json).AsObject();
         if (root is null) {
+            failure = LoadFailure.InvalidJson;
             return false;
         }
 
@@ -52,20 +83,6 @@ public sealed class IntelligenceXConfig {
         }
 
         return true;
-    }
-
-    /// <summary>
-    /// Loads configuration or throws if it cannot be found or parsed.
-    /// </summary>
-    /// <param name="path">Optional explicit config path.</param>
-    /// <param name="baseDirectory">Optional base directory for resolving the default config path.</param>
-    /// <returns>The loaded configuration.</returns>
-    /// <exception cref="FileNotFoundException">Thrown when the configuration file cannot be found or parsed.</exception>
-    public static IntelligenceXConfig Load(string? path = null, string? baseDirectory = null) {
-        if (!TryLoad(out var config, path, baseDirectory)) {
-            throw new FileNotFoundException("IntelligenceX config not found.");
-        }
-        return config;
     }
 
     private static string? ResolvePath(string? path, string? baseDirectory) {

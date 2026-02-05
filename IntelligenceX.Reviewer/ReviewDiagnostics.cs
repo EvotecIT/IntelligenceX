@@ -189,7 +189,6 @@ internal static class ReviewDiagnostics {
     public static string BuildFailureBody(Exception ex, ReviewSettings settings, ReviewDiagnosticsSnapshot? snapshot,
         ReviewRetryState? retryState) {
         var classification = Classify(ex);
-        var summary = settings.Diagnostics ? FormatExceptionSummary(ex, true) : string.Empty;
         var sb = new StringBuilder();
         sb.AppendLine(FailureMarker);
         sb.AppendLine("WARNING: Review failed to complete due to a provider request error.");
@@ -201,8 +200,8 @@ internal static class ReviewDiagnostics {
         if (retryState is not null && retryState.LastAttempt > 0) {
             sb.AppendLine($"- Retry: {retryState.LastAttempt}/{retryState.MaxAttempts}");
         }
-        if (settings.Diagnostics && !string.IsNullOrWhiteSpace(summary)) {
-            sb.AppendLine($"- Error: {summary}");
+        if (settings.Diagnostics) {
+            sb.AppendLine("- Error details were written to the workflow logs.");
         }
         if (settings.Diagnostics && snapshot is not null && !string.IsNullOrWhiteSpace(snapshot.LastRpcMethod)) {
             var lastRpc = snapshot.LastRpcMethod;

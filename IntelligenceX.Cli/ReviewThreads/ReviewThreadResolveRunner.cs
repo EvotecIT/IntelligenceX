@@ -32,7 +32,7 @@ internal static class ReviewThreadResolveRunner {
 
         var token = ResolveGitHubToken(options.Token);
         if (string.IsNullOrWhiteSpace(token)) {
-            Console.Error.WriteLine("Missing GitHub token. Use --token or set INTELLIGENCEX_GITHUB_TOKEN/GITHUB_TOKEN/GH_TOKEN.");
+            Console.Error.WriteLine("Missing GitHub token. Use --github-token (or --token) or set INTELLIGENCEX_GITHUB_TOKEN/GITHUB_TOKEN/GH_TOKEN.");
             return 1;
         }
 
@@ -313,7 +313,8 @@ internal static class ReviewThreadResolveRunner {
         Console.WriteLine("Options:");
         Console.WriteLine("  --repo <owner/name>      Target repo (defaults to GITHUB_REPOSITORY)");
         Console.WriteLine("  --pr <number>            Pull request number");
-        Console.WriteLine("  --token <token>          GitHub token (or set INTELLIGENCEX_GITHUB_TOKEN/GITHUB_TOKEN)");
+        Console.WriteLine("  --github-token <token>   GitHub token (or set INTELLIGENCEX_GITHUB_TOKEN/GITHUB_TOKEN)");
+        Console.WriteLine("  --token <token>          Alias for --github-token");
         Console.WriteLine("  --bot <login>            Bot login to match (repeatable or comma-separated)");
         Console.WriteLine("  --include-human          Allow resolving threads with non-bot comments");
         Console.WriteLine("  --include-current        Resolve non-outdated threads too");
