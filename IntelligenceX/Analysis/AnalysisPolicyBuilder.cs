@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace IntelligenceX.Analysis;
 
@@ -20,7 +21,11 @@ public static class AnalysisPolicyBuilder {
 
         var warnings = new List<string>();
         var selected = new Dictionary<string, AnalysisPolicyRule>(StringComparer.OrdinalIgnoreCase);
-        var disabled = new HashSet<string>(settings.DisabledRules ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+        var disabled = new HashSet<string>(
+            (settings.DisabledRules ?? Array.Empty<string>())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim()),
+            StringComparer.OrdinalIgnoreCase);
 
         foreach (var packId in settings.Packs ?? Array.Empty<string>()) {
             if (!catalog.TryGetPack(packId, out var pack)) {

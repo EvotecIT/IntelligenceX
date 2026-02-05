@@ -148,10 +148,16 @@ internal static class AnalyzeRunCommand {
 
         var buildArgs = new[] {
             "build",
-            "-nologo",
-            $"/p:ErrorLog={sarifPath}"
+            "-nologo"
         };
-        var result = await RunProcessAsync(options.DotnetCommand, buildArgs, workspace).ConfigureAwait(false);
+        var args = new List<string>(buildArgs);
+        if (!string.IsNullOrWhiteSpace(options.DotnetFramework)) {
+            args.Add("--framework");
+            args.Add(options.DotnetFramework);
+        }
+        args.Add($"/p:ErrorLog={sarifPath}");
+
+        var result = await RunProcessAsync(options.DotnetCommand, args, workspace).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(result.StdOut)) {
             Console.WriteLine(result.StdOut.Trim());
         }
@@ -371,6 +377,11 @@ internal static class AnalyzeRunCommand {
                 options.DotnetCommand = args[++i];
                 continue;
             }
+            if ((arg.Equals("--framework", StringComparison.OrdinalIgnoreCase) ||
+                 arg.Equals("--dotnet-framework", StringComparison.OrdinalIgnoreCase)) && i + 1 < args.Length) {
+                options.DotnetFramework = args[++i];
+                continue;
+            }
             if (arg.Equals("--pwsh-command", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length) {
                 options.PowerShellCommand = args[++i];
                 continue;
@@ -387,7 +398,7 @@ internal static class AnalyzeRunCommand {
 
     public static void PrintHelp() {
         Console.WriteLine("  intelligencex analyze run [--config <path>] [--workspace <path>] [--out <dir>]");
-        Console.WriteLine("                         [--dotnet-command <path>] [--pwsh-command <path>] [--strict]");
+        Console.WriteLine("                         [--dotnet-command <path>] [--framework <tfm>] [--pwsh-command <path>] [--strict]");
     }
 
     private static string BuildPowerShellRunnerScript() {
@@ -451,6 +462,7 @@ Write-Output ('PSScriptAnalyzer findings: ' + $items.Count)";
         public string? Workspace { get; set; }
         public string OutputDirectory { get; set; } = DefaultOutputDirectory;
         public string DotnetCommand { get; set; } = "dotnet";
+        public string? DotnetFramework { get; set; }
         public string PowerShellCommand { get; set; } = "pwsh";
         public bool Strict { get; set; }
     }

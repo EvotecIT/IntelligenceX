@@ -61,7 +61,8 @@ public sealed class AnalysisPolicy {
             return Array.Empty<AnalysisPolicyRule>();
         }
         return Rules.Values
-            .Where(value => set.Contains(value.Rule.Language.Trim()))
+            .Where(value => !string.IsNullOrWhiteSpace(value.Rule.Language) &&
+                            set.Contains(value.Rule.Language.Trim()))
             .ToList();
     }
 }

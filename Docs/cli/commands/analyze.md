@@ -20,6 +20,7 @@ Optional flags:
 - `--workspace <path>`: repository root for catalog/config discovery.
 - `--out <dir>`: output directory for SARIF/findings JSON (default: `artifacts`).
 - `--dotnet-command <path>`: override `dotnet` executable path.
+- `--framework <tfm>`: restrict C# analysis build to a target framework (for example `net8.0`).
 - `--pwsh-command <path>`: override `pwsh` executable path.
 - `--strict`: return non-zero exit code if any analyzer runner fails.
 
