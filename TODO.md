@@ -208,7 +208,7 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Strengthen tests with negative assertions preventing ambiguous legacy labels from reappearing. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#issuecomment-3856748283
 - [x] Add explicit usage-summary part-count assertions for duplicate-weekly scenarios. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#issuecomment-3856748283
 - [x] Keep secondary suffix ownership in one formatter layer to avoid future double-suffix regressions. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#discussion_r2771555112
-- [x] Extract usage summary delimiter/prefix constants and reuse in tests. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#issuecomment-3856748283
+- [x] Standardize usage summary delimiter/prefix handling while avoiding new public API coupling between reviewer and tests. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#discussion_r2771568731
 </details>
 <details>
 <summary>PR #85 Static analysis catalog + CLI export</summary>

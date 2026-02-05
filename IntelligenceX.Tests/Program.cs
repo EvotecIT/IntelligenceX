@@ -2577,8 +2577,8 @@ internal static class Program {
         if (string.IsNullOrWhiteSpace(line)) {
             return result;
         }
-        var prefix = GetUsageSummaryPrefix();
-        var separator = GetUsageSummarySeparator();
+        const string prefix = "Usage: ";
+        const string separator = " | ";
         var body = line.StartsWith(prefix, StringComparison.Ordinal)
             ? line.Substring(prefix.Length)
             : line;
@@ -2589,22 +2589,6 @@ internal static class Program {
             }
         }
         return result;
-    }
-
-    private static string GetUsageSummaryPrefix() {
-#if INTELLIGENCEX_REVIEWER
-        return ReviewerApp.UsageSummaryPrefix;
-#else
-        return "Usage: ";
-#endif
-    }
-
-    private static string GetUsageSummarySeparator() {
-#if INTELLIGENCEX_REVIEWER
-        return ReviewerApp.UsageSummarySeparator;
-#else
-        return " | ";
-#endif
     }
 
     private static bool ContainsUsageSummaryPart(IReadOnlyList<string> parts, string expected) {

@@ -44,4 +44,9 @@ jobs:
 - Auto-resolve/triage behavior for bot threads
 - Usage summary line (optional)
 
+## Usage and Credits Line
+
+Enable `reviewUsageSummary` to append limits/credits (ChatGPT native only).  
+When a code-review rate-limit window is present, its label is explicitly prefixed with `code review` (for example, `code review weekly limit`) so it is distinct from general limits.
+
 See [Configuration](/docs/reviewer/configuration/) for all options.

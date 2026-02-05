@@ -19,8 +19,8 @@ namespace IntelligenceX.Reviewer;
 /// </summary>
 public static class ReviewerApp {
     private const string ThreadReplyMarker = "<!-- intelligencex:thread-reply -->";
-    public const string UsageSummaryPrefix = "Usage: ";
-    public const string UsageSummarySeparator = " | ";
+    private const string UsageSummaryPrefix = "Usage: ";
+    private const string UsageSummarySeparator = " | ";
     private static int _integrationForbiddenHintLogged;
     private static readonly HashSet<string> BinaryExtensions = new(StringComparer.OrdinalIgnoreCase) {
         ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".ico", ".webp",
