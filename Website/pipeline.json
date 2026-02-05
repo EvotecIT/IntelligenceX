@@ -6,22 +6,36 @@
   "steps": [
     {
       "task": "dotnet-build",
+      "id": "build-library",
       "project": "../IntelligenceX/IntelligenceX.csproj",
       "configuration": "Release",
       "framework": "net8.0"
     },
     {
       "task": "build",
+      "id": "build-site",
+      "dependsOn": "build-library",
       "config": "./site.json",
       "out": "./_site",
       "clean": true
     },
     {
+      "task": "markdown-fix",
+      "id": "markdown-fix-docs",
+      "dependsOn": "build-site",
+      "root": "./content/docs",
+      "apply": false
+    },
+    {
       "task": "verify",
+      "id": "verify-site",
+      "dependsOn": "build-site",
       "config": "./site.json"
     },
     {
       "task": "apidocs",
+      "id": "build-apidocs",
+      "dependsOn": "build-library",
       "xml": "../IntelligenceX/bin/Release/net8.0/IntelligenceX.xml",
       "assembly": "../IntelligenceX/bin/Release/net8.0/IntelligenceX.dll",
       "out": "./_site/api",
@@ -36,6 +50,8 @@
     },
     {
       "task": "llms",
+      "id": "build-llms",
+      "dependsOn": "build-apidocs",
       "siteRoot": "./_site",
       "project": "../IntelligenceX/IntelligenceX.csproj",
       "apiIndex": "./_site/api/index.json",
@@ -47,6 +63,8 @@
     },
     {
       "task": "sitemap",
+      "id": "build-sitemap",
+      "dependsOn": "build-llms",
       "siteRoot": "./_site",
       "baseUrl": "https://intelligencex.dev",
       "html": true,
@@ -67,6 +85,8 @@
     },
     {
       "task": "optimize",
+      "id": "optimize-site",
+      "dependsOn": "build-sitemap",
       "siteRoot": "./_site",
       "config": "./site.json",
       "criticalCss": "./themes/intelligencex/critical.css",
@@ -81,6 +101,8 @@
     },
     {
       "task": "audit",
+      "id": "audit-site",
+      "dependsOn": "optimize-site",
       "siteRoot": "./_site",
       "ignoreNav": "sitemap/**",
       "navSelector": "header nav.ix-nav",
