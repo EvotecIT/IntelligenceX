@@ -115,7 +115,7 @@ public static class AnalysisConfigExporter {
                 continue;
             }
             if (!string.IsNullOrWhiteSpace(entry.Value)) {
-                selected[entry.Key] = selection with { Severity = entry.Value };
+                selection.Severity = entry.Value;
             }
         }
 
@@ -183,5 +183,13 @@ public static class AnalysisConfigExporter {
         };
     }
 
-    private sealed record AnalysisRuleSelection(AnalysisRule Rule, string Severity);
+    private sealed class AnalysisRuleSelection {
+        public AnalysisRuleSelection(AnalysisRule rule, string severity) {
+            Rule = rule;
+            Severity = severity;
+        }
+
+        public AnalysisRule Rule { get; }
+        public string Severity { get; set; }
+    }
 }
