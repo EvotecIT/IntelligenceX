@@ -104,6 +104,9 @@ internal static class Program {
         failed += Run("Review provider alias parsing", TestReviewProviderAliasParsing);
         failed += Run("Review provider contract capabilities", TestReviewProviderContractCapabilities);
         failed += Run("Review provider config alias", TestReviewProviderConfigAlias);
+        failed += Run("Review provider fallback env", TestReviewProviderFallbackEnv);
+        failed += Run("Review provider fallback config", TestReviewProviderFallbackConfig);
+        failed += Run("Review provider fallback plan", TestReviewProviderFallbackPlan);
         failed += Run("Triage-only loads threads", TestTriageOnlyLoadsThreads);
         failed += Run("Review code host env", TestReviewCodeHostEnv);
         failed += Run("GitHub context cache", TestGitHubContextCache);
@@ -1243,6 +1246,52 @@ internal static class Program {
                 File.Delete(path);
             }
         }
+    }
+
+    private static void TestReviewProviderFallbackEnv() {
+        var previousProvider = Environment.GetEnvironmentVariable("REVIEW_PROVIDER");
+        var previousFallback = Environment.GetEnvironmentVariable("REVIEW_PROVIDER_FALLBACK");
+        try {
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER", "openai");
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_FALLBACK", "copilot");
+            var settings = ReviewSettings.FromEnvironment();
+            AssertEqual(ReviewProvider.OpenAI, settings.Provider, "provider fallback env primary");
+            AssertEqual(ReviewProvider.Copilot, settings.ProviderFallback, "provider fallback env value");
+
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_FALLBACK", "azure");
+            settings = ReviewSettings.FromEnvironment();
+            AssertEqual(null, settings.ProviderFallback, "provider fallback env invalid");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER", previousProvider);
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_FALLBACK", previousFallback);
+        }
+    }
+
+    private static void TestReviewProviderFallbackConfig() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path, "{ \"review\": { \"provider\": \"openai\", \"providerFallback\": \"copilot\" } }");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings();
+            ReviewConfigLoader.Apply(settings);
+            AssertEqual(ReviewProvider.OpenAI, settings.Provider, "provider fallback config primary");
+            AssertEqual(ReviewProvider.Copilot, settings.ProviderFallback, "provider fallback config value");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
+    private static void TestReviewProviderFallbackPlan() {
+        AssertEqual(null, ReviewRunner.ResolveFallbackProvider(ReviewProvider.OpenAI, null), "provider fallback none");
+        AssertEqual(null, ReviewRunner.ResolveFallbackProvider(ReviewProvider.OpenAI, ReviewProvider.OpenAI), "provider fallback same");
+        AssertEqual(ReviewProvider.Copilot, ReviewRunner.ResolveFallbackProvider(ReviewProvider.OpenAI, ReviewProvider.Copilot),
+            "provider fallback selected");
+        AssertEqual(false, ReviewRunner.ShouldFallbackOnResult("Regular review content"), "provider fallback regular output");
+        AssertEqual(true, ReviewRunner.ShouldFallbackOnResult($"x {ReviewDiagnostics.FailureMarker} y"), "provider fallback failure marker");
     }
 
     private static void TestReviewCodeHostEnv() {

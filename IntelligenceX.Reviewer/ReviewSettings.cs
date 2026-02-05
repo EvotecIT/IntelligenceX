@@ -70,6 +70,7 @@ internal sealed class ReviewSettings {
 
     public string Mode { get; set; } = "hybrid";
     public ReviewProvider Provider { get; set; } = ReviewProvider.OpenAI;
+    public ReviewProvider? ProviderFallback { get; set; }
     public ReviewCodeHost CodeHost { get; set; } = ReviewCodeHost.GitHub;
     public string? Profile { get; set; }
     /// <summary>
@@ -336,6 +337,10 @@ internal sealed class ReviewSettings {
         var provider = GetInput("provider", "REVIEW_PROVIDER");
         if (!string.IsNullOrWhiteSpace(provider)) {
             settings.Provider = ParseProvider(provider);
+        }
+        var providerFallback = GetInput("provider_fallback", "REVIEW_PROVIDER_FALLBACK");
+        if (!string.IsNullOrWhiteSpace(providerFallback)) {
+            settings.ProviderFallback = ParseProviderNullable(providerFallback);
         }
 
         var mode = GetInput("mode", "REVIEW_MODE");
@@ -950,6 +955,12 @@ internal sealed class ReviewSettings {
 
     private static ReviewProvider ParseProvider(string value) {
         return ReviewProviderContracts.ParseProviderOrDefault(value, ReviewProvider.OpenAI);
+    }
+
+    private static ReviewProvider? ParseProviderNullable(string value) {
+        return ReviewProviderContracts.TryParseProviderAlias(value, out var provider)
+            ? provider
+            : null;
     }
 
     private static ReviewCodeHost ParseCodeHost(string value) {
