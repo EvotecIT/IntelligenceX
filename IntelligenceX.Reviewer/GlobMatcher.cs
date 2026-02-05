@@ -7,7 +7,7 @@ internal static class GlobMatcher {
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(2);
 
     public static bool IsMatch(string pattern, string value) {
-        if (string.IsNullOrWhiteSpace(pattern)) {
+        if (string.IsNullOrWhiteSpace(pattern) || value is null) {
             return false;
         }
         var regex = ConvertGlobToRegex(pattern.Trim());

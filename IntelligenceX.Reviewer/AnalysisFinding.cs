@@ -4,7 +4,7 @@ internal sealed record AnalysisFinding(
     string Path,
     int Line,
     string Message,
-    string Severity,
+    string? Severity,
     string? RuleId = null,
     string? Tool = null,
     string? Fingerprint = null

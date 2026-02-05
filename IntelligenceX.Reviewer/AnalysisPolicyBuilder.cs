@@ -14,9 +14,6 @@ internal static class AnalysisPolicyBuilder {
         }
 
         var packs = settings.Analysis.Packs ?? Array.Empty<string>();
-        if (packs.Count == 0) {
-            return string.Empty;
-        }
 
         var workspace = ResolveWorkspaceRoot();
         AnalysisCatalog catalog;
@@ -27,7 +24,9 @@ internal static class AnalysisPolicyBuilder {
         }
         var disabled = new HashSet<string>(settings.Analysis.DisabledRules ?? Array.Empty<string>(),
             StringComparer.OrdinalIgnoreCase);
-        var overrides = settings.Analysis.SeverityOverrides ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var overrides = settings.Analysis.SeverityOverrides is null
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(settings.Analysis.SeverityOverrides, StringComparer.OrdinalIgnoreCase);
 
         var packSummaries = new List<string>();
         var selectedRules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -36,6 +35,9 @@ internal static class AnalysisPolicyBuilder {
             if (catalog.TryGetPack(packId, out var pack)) {
                 packSummaries.Add(string.IsNullOrWhiteSpace(pack.Label) ? pack.Id : pack.Label);
                 foreach (var ruleId in pack.Rules ?? Array.Empty<string>()) {
+                    if (string.IsNullOrWhiteSpace(ruleId)) {
+                        continue;
+                    }
                     selectedRules.Add(ruleId);
                 }
             } else if (!string.IsNullOrWhiteSpace(packId)) {
@@ -48,12 +50,12 @@ internal static class AnalysisPolicyBuilder {
 
         var lines = new List<string> {
             "### Static analysis policy",
-            $"Config mode: {settings.Analysis.ConfigMode.ToString().ToLowerInvariant()}"
+            $"Config mode: {DescribeConfigMode(settings.Analysis.ConfigMode)}"
         };
 
-        if (packSummaries.Count > 0) {
-            lines.Add($"Packs: {string.Join(", ", packSummaries)}");
-        }
+        lines.Add(packSummaries.Count > 0
+            ? $"Packs: {string.Join(", ", packSummaries)}"
+            : "Packs: none");
         if (missingPacks.Count > 0) {
             lines.Add($"Missing packs: {string.Join(", ", missingPacks)}");
         }
@@ -79,6 +81,15 @@ internal static class AnalysisPolicyBuilder {
         }
 
         return string.Join("\n", lines).TrimEnd();
+    }
+
+    private static string DescribeConfigMode(AnalysisConfigMode mode) {
+        return mode switch {
+            AnalysisConfigMode.Respect => "respect",
+            AnalysisConfigMode.Overlay => "overlay",
+            AnalysisConfigMode.Replace => "replace",
+            _ => "unknown"
+        };
     }
 
     private static string ResolveWorkspaceRoot() {

@@ -350,25 +350,32 @@ public static class ReviewerApp {
             var analysisSettings = settings.Analysis;
             var analysisResults = analysisSettings?.Results;
             if (analysisSettings?.Enabled == true && analysisResults is not null) {
-                var analysisFindings = AnalysisFindingsLoader.Load(settings, reviewFiles);
-                var analysisBlocks = new List<string>();
-                var analysisPolicy = AnalysisPolicyBuilder.BuildPolicy(settings);
-                if (!string.IsNullOrWhiteSpace(analysisPolicy)) {
-                    analysisBlocks.Add(analysisPolicy);
-                }
-                var analysisSummary = AnalysisSummaryBuilder.BuildSummary(analysisFindings, analysisResults);
-                if (!string.IsNullOrWhiteSpace(analysisSummary)) {
-                    analysisBlocks.Add(analysisSummary);
-                }
-                if (analysisBlocks.Count > 0) {
-                    var analysisBlock = string.Join("\n\n", analysisBlocks);
-                    summaryBody = ApplyEmbedPlacement(summaryBody, analysisBlock, analysisResults.SummaryPlacement);
-                }
-                if (inlineAllowed && analysisFindings.Count > 0) {
-                    var analysisInline = AnalysisSummaryBuilder.BuildInlineComments(analysisFindings, analysisResults);
-                    if (analysisInline.Count > 0) {
-                        inlineComments = inlineComments.Concat(analysisInline).ToArray();
+                try {
+                    var analysisFindings = AnalysisFindingsLoader.Load(settings, reviewFiles);
+                    var analysisBlocks = new List<string>();
+                    var analysisPolicy = AnalysisPolicyBuilder.BuildPolicy(settings);
+                    if (!string.IsNullOrWhiteSpace(analysisPolicy)) {
+                        analysisBlocks.Add(analysisPolicy);
                     }
+                    var analysisSummary = AnalysisSummaryBuilder.BuildSummary(analysisFindings, analysisResults);
+                    if (!string.IsNullOrWhiteSpace(analysisSummary)) {
+                        analysisBlocks.Add(analysisSummary);
+                    }
+                    if (analysisBlocks.Count > 0) {
+                        var analysisBlock = string.Join("\n\n", analysisBlocks);
+                        summaryBody = ApplyEmbedPlacement(summaryBody, analysisBlock, analysisResults.SummaryPlacement);
+                    }
+                    if (inlineAllowed && analysisFindings.Count > 0) {
+                        var analysisInline = AnalysisSummaryBuilder.BuildInlineComments(analysisFindings, analysisResults);
+                        if (analysisInline.Count > 0) {
+                            var merged = new List<InlineReviewComment>(inlineComments.Length + analysisInline.Count);
+                            merged.AddRange(inlineComments);
+                            merged.AddRange(analysisInline);
+                            inlineComments = merged.ToArray();
+                        }
+                    }
+                } catch {
+                    Console.WriteLine("Static analysis load failed; skipping analysis findings.");
                 }
             }
 
