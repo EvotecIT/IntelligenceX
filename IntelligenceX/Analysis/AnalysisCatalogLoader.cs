@@ -30,7 +30,7 @@ public static class AnalysisCatalogLoader {
         var packs = new Dictionary<string, AnalysisPack>(StringComparer.OrdinalIgnoreCase);
 
         if (Directory.Exists(rulesRoot)) {
-            foreach (var rule in Directory.EnumerateFiles(rulesRoot, "*.json", SearchOption.AllDirectories)
+            foreach (var rule in EnumerateJsonFiles(rulesRoot, SearchOption.AllDirectories)
                          .Select(TryLoadRule)
                          .Where(rule => rule is not null)) {
                 var resolved = rule!;
@@ -41,7 +41,7 @@ public static class AnalysisCatalogLoader {
         }
 
         if (Directory.Exists(packsRoot)) {
-            foreach (var pack in Directory.EnumerateFiles(packsRoot, "*.json", SearchOption.TopDirectoryOnly)
+            foreach (var pack in EnumerateJsonFiles(packsRoot, SearchOption.TopDirectoryOnly)
                          .Select(TryLoadPack)
                          .Where(pack => pack is not null)) {
                 var resolved = pack!;
@@ -113,6 +113,17 @@ public static class AnalysisCatalogLoader {
             return new AnalysisPack(id!, label!, description, rules, overrides, path);
         } catch {
             return null;
+        }
+    }
+
+    private static IEnumerable<string> EnumerateJsonFiles(string root, SearchOption searchOption) {
+        var rootFull = Path.GetFullPath(root);
+        foreach (var file in Directory.EnumerateFiles(root, "*.json", searchOption)) {
+            var full = Path.GetFullPath(file);
+            if (!full.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            yield return full;
         }
     }
 }
