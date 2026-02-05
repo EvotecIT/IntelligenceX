@@ -91,7 +91,8 @@ internal sealed class AzureDevOpsCodeHostReader : IReviewCodeHostReader {
 
     public async Task<PullRequestContext> GetPullRequestAsync(string repositoryOrProject, int pullRequestNumber,
         CancellationToken cancellationToken) {
-        var pr = await _azure.GetPullRequestAsync(_project, pullRequestNumber, cancellationToken).ConfigureAwait(false);
+        var project = string.IsNullOrWhiteSpace(repositoryOrProject) ? _project : repositoryOrProject;
+        var pr = await _azure.GetPullRequestAsync(project, pullRequestNumber, cancellationToken).ConfigureAwait(false);
         var repoFullName = $"{pr.Project}/{pr.RepositoryName}";
         return new PullRequestContext(repoFullName, pr.Project, pr.RepositoryName, pr.PullRequestId, pr.Title, pr.Description, pr.IsDraft,
             pr.SourceCommit, pr.TargetCommit, Array.Empty<string>(), repoFullName, false, null);

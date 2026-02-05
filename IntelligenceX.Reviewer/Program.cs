@@ -2819,13 +2819,6 @@ public static class ReviewerApp {
         return null;
     }
 
-    private static (string owner, string repo) SplitRepo(string fullName) {
-        var parts = fullName.Split('/');
-        if (parts.Length != 2) {
-            throw new InvalidOperationException($"Invalid repo name '{fullName}'.");
-        }
-        return (parts[0], parts[1]);
-    }
 }
 
 internal static class Program {
