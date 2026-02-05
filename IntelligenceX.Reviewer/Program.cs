@@ -1087,14 +1087,23 @@ public static class ReviewerApp {
         }
 
         var byId = new Dictionary<string, ThreadAssessment>(StringComparer.OrdinalIgnoreCase);
+        var missingIdCount = 0;
+        var duplicateIdCount = 0;
         foreach (var assessment in assessments) {
             if (string.IsNullOrWhiteSpace(assessment.Id)) {
+                missingIdCount++;
                 continue;
             }
             if (!byId.TryAdd(assessment.Id, assessment)) {
-                Console.Error.WriteLine($"Duplicate assessment id '{assessment.Id}' encountered; using last occurrence.");
+                duplicateIdCount++;
                 byId[assessment.Id] = assessment;
             }
+        }
+        if (missingIdCount > 0) {
+            Console.Error.WriteLine($"Thread assessment skipped {missingIdCount} item(s) with missing ids.");
+        }
+        if (duplicateIdCount > 0) {
+            Console.Error.WriteLine($"Thread assessment contained {duplicateIdCount} duplicate id(s); using last occurrence.");
         }
         var replyMap = new Dictionary<string, ThreadAssessment>(StringComparer.OrdinalIgnoreCase);
         var patchIndex = BuildInlinePatchIndex(files);
