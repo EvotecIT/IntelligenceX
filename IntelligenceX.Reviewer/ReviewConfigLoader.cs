@@ -182,6 +182,8 @@ internal static class ReviewConfigLoader {
         settings.OverwriteSummaryOnNewCommit = ReadBool(obj, "overwriteSummaryOnNewCommit", settings.OverwriteSummaryOnNewCommit);
         settings.SummaryStability = ReadBool(obj, "summaryStability", settings.SummaryStability);
         settings.SkipDraft = ReadBool(obj, "skipDraft", settings.SkipDraft);
+        settings.SkipBinaryFiles = ReadBool(obj, "skipBinaryFiles", settings.SkipBinaryFiles);
+        settings.SkipGeneratedFiles = ReadBool(obj, "skipGeneratedFiles", settings.SkipGeneratedFiles);
         settings.AllowWorkflowChanges = ReadBool(obj, "allowWorkflowChanges", settings.AllowWorkflowChanges);
         settings.SecretsAudit = ReadBool(obj, "secretsAudit", settings.SecretsAudit);
         settings.RedactPii = ReadBool(obj, "redactPii", settings.RedactPii);

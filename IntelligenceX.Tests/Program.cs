@@ -126,6 +126,9 @@ internal static class Program {
         failed += Run("Filter files include+exclude", TestFilterFilesIncludeExclude);
         failed += Run("Filter files glob patterns", TestFilterFilesGlobPatterns);
         failed += Run("Filter files empty filters", TestFilterFilesEmptyFilters);
+        failed += Run("Filter files skip binary", TestFilterFilesSkipBinary);
+        failed += Run("Filter files skip generated", TestFilterFilesSkipGenerated);
+        failed += Run("Filter files skip before include", TestFilterFilesSkipBeforeInclude);
         failed += Run("Workflow changes detection", TestWorkflowChangesDetection);
         failed += Run("Secrets audit records", TestSecretsAuditRecords);
         failed += Run("Prompt language hints", TestPromptBuilderLanguageHints);
@@ -1808,6 +1811,28 @@ internal static class Program {
         var files = BuildFiles("src/app.cs", "docs/readme.md");
         var filtered = ReviewerApp.FilterFilesByPaths(files, Array.Empty<string>(), Array.Empty<string>());
         AssertSequenceEqual(new[] { "src/app.cs", "docs/readme.md" }, GetFilenames(filtered), "empty filters");
+    }
+
+    private static void TestFilterFilesSkipBinary() {
+        var files = BuildFiles("src/app.cs", "assets/logo.png", "docs/readme.md");
+        var filtered = ReviewerApp.FilterFilesByPaths(files, Array.Empty<string>(), Array.Empty<string>(),
+            skipBinaryFiles: true, skipGeneratedFiles: false);
+        AssertSequenceEqual(new[] { "src/app.cs", "docs/readme.md" }, GetFilenames(filtered), "skip binary");
+    }
+
+    private static void TestFilterFilesSkipGenerated() {
+        var files = BuildFiles("src/app.cs", "src/obj/Debug/net8.0/app.g.cs", "dist/app.min.js",
+            "node_modules/lib/index.js", "src/Generated/Auto.generated.cs");
+        var filtered = ReviewerApp.FilterFilesByPaths(files, Array.Empty<string>(), Array.Empty<string>(),
+            skipBinaryFiles: false, skipGeneratedFiles: true);
+        AssertSequenceEqual(new[] { "src/app.cs" }, GetFilenames(filtered), "skip generated");
+    }
+
+    private static void TestFilterFilesSkipBeforeInclude() {
+        var files = BuildFiles("assets/logo.png", "src/app.cs", "obj/Debug/net8.0/app.g.cs");
+        var filtered = ReviewerApp.FilterFilesByPaths(files, new[] { "**/*.png", "**/*.cs" }, Array.Empty<string>(),
+            skipBinaryFiles: true, skipGeneratedFiles: true);
+        AssertSequenceEqual(new[] { "src/app.cs" }, GetFilenames(filtered), "skip before include");
     }
 
     private static void TestWorkflowChangesDetection() {

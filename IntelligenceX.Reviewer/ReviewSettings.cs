@@ -134,6 +134,16 @@ internal sealed class ReviewSettings {
     /// </summary>
     public IReadOnlyList<string> SkipPaths { get; set; } = Array.Empty<string>();
     /// <summary>
+    /// When true, skip binary assets (images, archives, executables) from the review context.
+    /// Evaluated before <see cref="IncludePaths"/> and <see cref="ExcludePaths"/>.
+    /// </summary>
+    public bool SkipBinaryFiles { get; set; } = true;
+    /// <summary>
+    /// When true, skip generated files (build output and generated sources) from the review context.
+    /// Evaluated before <see cref="IncludePaths"/> and <see cref="ExcludePaths"/>.
+    /// </summary>
+    public bool SkipGeneratedFiles { get; set; } = true;
+    /// <summary>
     /// Glob-style patterns specifying which changed files should be considered for review.
     /// If non-empty, only files matching these patterns are eligible for review.
     /// </summary>
@@ -440,6 +450,16 @@ internal sealed class ReviewSettings {
         var skipPaths = GetInput("skip_paths", "SKIP_PATHS");
         if (!string.IsNullOrWhiteSpace(skipPaths)) {
             settings.SkipPaths = ParseList(skipPaths, settings.SkipPaths);
+        }
+
+        var skipBinaryFiles = GetInput("skip_binary_files", "SKIP_BINARY_FILES");
+        if (!string.IsNullOrWhiteSpace(skipBinaryFiles)) {
+            settings.SkipBinaryFiles = ParseBoolean(skipBinaryFiles, settings.SkipBinaryFiles);
+        }
+
+        var skipGeneratedFiles = GetInput("skip_generated_files", "SKIP_GENERATED_FILES");
+        if (!string.IsNullOrWhiteSpace(skipGeneratedFiles)) {
+            settings.SkipGeneratedFiles = ParseBoolean(skipGeneratedFiles, settings.SkipGeneratedFiles);
         }
 
         var includePaths = GetInput("include_paths", "INCLUDE_PATHS");
