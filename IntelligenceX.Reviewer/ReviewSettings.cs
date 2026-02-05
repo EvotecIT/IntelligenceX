@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using IntelligenceX.Analysis;
 using IntelligenceX.Copilot;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Chat;
@@ -243,6 +244,7 @@ internal sealed class ReviewSettings {
     public bool IncludeRelatedPrs { get; set; }
     public string? RelatedPrsQuery { get; set; }
     public int MaxRelatedPrs { get; set; } = 5;
+    public AnalysisSettings Analysis { get; } = new AnalysisSettings();
 
     public string? CodexPath { get; set; }
     public string? CodexArgs { get; set; }

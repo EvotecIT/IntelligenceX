@@ -1,0 +1,12 @@
+{
+  "id": "PSAvoidUsingWriteHost",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSAvoidUsingWriteHost",
+  "title": "Avoid using Write-Host",
+  "description": "Encourages using Write-Output or Write-Verbose instead of Write-Host for testability and piping.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": ["powershell", "best-practices"],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/avoidusingwritehost"
+}

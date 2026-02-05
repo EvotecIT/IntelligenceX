@@ -1,0 +1,12 @@
+{
+  "id": "CA1062",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1062",
+  "title": "Validate arguments of public methods",
+  "description": "Ensures public method arguments are validated for null before use.",
+  "category": "Reliability",
+  "defaultSeverity": "warning",
+  "tags": ["nullability", "defensive"],
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1062"
+}

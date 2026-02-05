@@ -43,7 +43,8 @@ internal static class ReviewConfigValidator {
         "copilot",
         "cleanup",
         "codex",
-        "appServer"
+        "appServer",
+        "analysis"
     };
 
     /// <summary>
@@ -87,6 +88,7 @@ internal static class ReviewConfigValidator {
         schemaRoot.Properties.TryGetValue("copilot", out var copilotSchema);
         schemaRoot.Properties.TryGetValue("cleanup", out var cleanupSchema);
         schemaRoot.Properties.TryGetValue("codex", out var codexSchema);
+        schemaRoot.Properties.TryGetValue("analysis", out var analysisSchema);
 
         if (rootObj.TryGetValue("review", out var reviewValue) && reviewValue?.AsObject() is not null) {
             if (reviewSchema is not null) {
@@ -116,6 +118,9 @@ internal static class ReviewConfigValidator {
         }
         if (cleanupSchema is not null && rootObj.TryGetValue("cleanup", out var cleanupValue)) {
             ValidateNode(cleanupSchema, cleanupValue, "$.cleanup", errors, warnings);
+        }
+        if (analysisSchema is not null && rootObj.TryGetValue("analysis", out var analysisValue)) {
+            ValidateNode(analysisSchema, analysisValue, "$.analysis", errors, warnings);
         }
         if (codexSchema is not null) {
             if (rootObj.TryGetValue("codex", out var codexValue)) {

@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 #if !NET472
+using IntelligenceX.Analysis;
 using IntelligenceX.Cli;
 using IntelligenceX.Cli.Release;
 using IntelligenceX.Cli.Setup.Host;
@@ -93,6 +94,8 @@ internal static class Program {
         failed += Run("Preflight non-2xx", TestPreflightNonSuccessStatus);
         failed += Run("Review config validator allows additional", TestReviewConfigValidatorAllowsAdditionalProperties);
         failed += Run("Review config validator invalid enum", TestReviewConfigValidatorInvalidEnum);
+        failed += Run("Analysis severity critical", TestAnalysisSeverityCritical);
+        failed += Run("Analysis config export tool ids", TestAnalysisConfigExportToolIds);
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);
         failed += Run("Trim patch tail hunk", TestTrimPatchKeepsTailHunk);
@@ -1009,6 +1012,60 @@ internal static class Program {
         var result = RunConfigValidation("{\"review\":{\"length\":\"SHORT\"}}");
         AssertEqual(true, result is not null, "validator result");
         AssertEqual(true, result!.Errors.Count > 0, "invalid enum should error");
+    }
+
+    private static void TestAnalysisSeverityCritical() {
+        AssertEqual("error", AnalysisSeverity.Normalize("critical"), "severity critical normalize");
+        AssertEqual(3, AnalysisSeverity.Rank("critical"), "severity critical rank");
+        AssertEqual("warning", AnalysisSeverity.Normalize("medium"), "severity medium normalize");
+    }
+
+    private static void TestAnalysisConfigExportToolIds() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var rules = new Dictionary<string, AnalysisRule>(StringComparer.OrdinalIgnoreCase) {
+                ["IX001"] = new AnalysisRule(
+                    "IX001", "csharp", "roslyn", "CA2000", "Dispose objects", "Ensure Dispose is called",
+                    "Reliability", "warning", Array.Empty<string>(), null, null),
+                ["IX002"] = new AnalysisRule(
+                    "IX002", "cs", "roslyn", "CA1062", "Validate arguments", "Validate argument null checks",
+                    "Reliability", "warning", Array.Empty<string>(), null, null),
+                ["PS001"] = new AnalysisRule(
+                    "PS001", "powershell", "psscriptanalyzer", "PSAvoidUsingWriteHost",
+                    "Avoid Write-Host", "Use Write-Output instead", "BestPractices", "warning",
+                    Array.Empty<string>(), null, null),
+                ["PS002"] = new AnalysisRule(
+                    "PS002", "ps", "psscriptanalyzer", "PSUseSupportsShouldProcess",
+                    "Use SupportsShouldProcess", "Add SupportsShouldProcess when needed", "BestPractices", "warning",
+                    Array.Empty<string>(), null, null)
+            };
+            var packs = new Dictionary<string, AnalysisPack>(StringComparer.OrdinalIgnoreCase) {
+                ["pack"] = new AnalysisPack(
+                    "pack", "Pack", "Test pack", new[] { "IX001", "IX002", "PS001", "PS002" },
+                    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), null)
+            };
+            var catalog = new AnalysisCatalog(rules, packs);
+            var settings = new AnalysisSettings { Packs = new[] { "pack" } };
+
+            AnalysisConfigExporter.Export(settings, catalog, temp);
+
+            var editorConfig = File.ReadAllText(Path.Combine(temp, ".editorconfig"));
+            AssertEqual(true, editorConfig.Contains("dotnet_diagnostic.CA2000.severity", StringComparison.Ordinal),
+                "editorconfig CA2000");
+            AssertEqual(true, editorConfig.Contains("dotnet_diagnostic.CA1062.severity", StringComparison.Ordinal),
+                "editorconfig CA1062");
+
+            var psConfig = File.ReadAllText(Path.Combine(temp, "PSScriptAnalyzerSettings.psd1"));
+            AssertEqual(true, psConfig.Contains("PSAvoidUsingWriteHost", StringComparison.Ordinal),
+                "psconfig PSAvoidUsingWriteHost");
+            AssertEqual(true, psConfig.Contains("PSUseSupportsShouldProcess", StringComparison.Ordinal),
+                "psconfig PSUseSupportsShouldProcess");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
     }
 
     private static void TestStructuredFindingsBlock() {
