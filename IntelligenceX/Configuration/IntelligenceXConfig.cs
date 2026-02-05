@@ -69,7 +69,7 @@ public sealed class IntelligenceXConfig {
         JsonValue? rootValue;
         try {
             rootValue = JsonLite.Parse(json);
-        } catch {
+        } catch (FormatException) {
             failure = LoadFailure.InvalidJson;
             return false;
         }

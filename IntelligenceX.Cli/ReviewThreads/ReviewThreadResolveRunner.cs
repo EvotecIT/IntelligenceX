@@ -313,7 +313,7 @@ internal static class ReviewThreadResolveRunner {
         Console.WriteLine("Options:");
         Console.WriteLine("  --repo <owner/name>      Target repo (defaults to GITHUB_REPOSITORY)");
         Console.WriteLine("  --pr <number>            Pull request number");
-        Console.WriteLine("  --github-token <token>   GitHub token (or set INTELLIGENCEX_GITHUB_TOKEN/GITHUB_TOKEN)");
+        Console.WriteLine("  --github-token <token>   GitHub token (or set INTELLIGENCEX_GITHUB_TOKEN/GITHUB_TOKEN/GH_TOKEN)");
         Console.WriteLine("  --token <token>          Alias for --github-token");
         Console.WriteLine("  --bot <login>            Bot login to match (repeatable or comma-separated)");
         Console.WriteLine("  --include-human          Allow resolving threads with non-bot comments");
