@@ -57,7 +57,7 @@ Status: In progress
 - [x] Add provider health checks and circuit breaker.
 
 ### Phase 5.5 — Code host support (Azure DevOps Services)
-- [ ] Define code-host interface (PR metadata, files, diff, comments, threads).
+- [x] Define code-host interface (PR metadata, files, diff, comments, threads).
 - [x] Add ADO auth options (PAT, System.AccessToken) + env var mapping.
 - [x] Phase 1: summary-only PR comments (no inline) using ADO REST APIs (PR-level changes endpoint for full file list).
 - [x] Document Azure auth scheme heuristic + override guidance.

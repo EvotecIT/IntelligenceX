@@ -175,6 +175,7 @@ public static class ReviewerApp {
             }
 
             using var github = new GitHubClient(token, maxConcurrency: settings.GitHubMaxConcurrency);
+            IReviewCodeHostReader codeHostReader = new GitHubCodeHostReader(github);
             using var fallbackGithub = string.IsNullOrWhiteSpace(fallbackToken)
                 ? null
                 : new GitHubClient(fallbackToken, maxConcurrency: settings.GitHubMaxConcurrency);
@@ -196,8 +197,7 @@ public static class ReviewerApp {
                     Console.Error.WriteLine("Missing pull_request data. Provide inputs: repo and pr_number.");
                     return 1;
                 }
-                var (owner, repo) = SplitRepo(repoName!);
-                context = await github.GetPullRequestAsync(owner, repo, prNumber.Value, cancellationToken)
+                context = await codeHostReader.GetPullRequestAsync(repoName!, prNumber.Value, cancellationToken)
                     .ConfigureAwait(false);
             }
 
@@ -232,7 +232,7 @@ public static class ReviewerApp {
                 return 0;
             }
 
-            var files = await github.GetPullRequestFilesAsync(context.Owner, context.Repo, context.Number, cancellationToken)
+            var files = await codeHostReader.GetPullRequestFilesAsync(context, cancellationToken)
                 .ConfigureAwait(false);
 
             if (files.Count == 0) {
@@ -255,7 +255,7 @@ public static class ReviewerApp {
             IssueComment? existingSummary = null;
             string? previousSummary = null;
             if (settings.SummaryStability && !string.IsNullOrWhiteSpace(context.HeadSha)) {
-                existingSummary = await FindExistingSummaryAsync(github, context, settings, cancellationToken)
+                existingSummary = await FindExistingSummaryAsync(codeHostReader, context, settings, cancellationToken)
                     .ConfigureAwait(false);
                 if (existingSummary is not null && !IsSummaryOutdated(existingSummary, context.HeadSha)) {
                     previousSummary = ExtractSummaryBody(existingSummary.Body, settings.MaxCommentChars);
@@ -270,7 +270,7 @@ public static class ReviewerApp {
             }
 
             var allFiles = files;
-            var (reviewFiles, diffNote) = await ResolveReviewFilesAsync(github, context, settings, files, cancellationToken)
+            var (reviewFiles, diffNote) = await ResolveReviewFilesAsync(codeHostReader, context, settings, files, cancellationToken)
                 .ConfigureAwait(false);
             reviewFiles = FilterFilesByPaths(reviewFiles, settings.IncludePaths, settings.ExcludePaths,
                 settings.SkipBinaryFiles, settings.SkipGeneratedFiles, settings.GeneratedFileGlobs);
@@ -285,7 +285,8 @@ public static class ReviewerApp {
             progress.Files = ReviewProgressState.Complete;
             progress.StatusLine = "Analyzed changed files.";
 
-            var extras = await BuildExtrasAsync(github, fallbackGithub, context, settings, cancellationToken, settings.TriageOnly)
+            var extras = await BuildExtrasAsync(codeHostReader, github, fallbackGithub, context, settings, cancellationToken,
+                    settings.TriageOnly)
                 .ConfigureAwait(false);
             if (settings.TriageOnly) {
                 if (!allowWrites) {
@@ -293,7 +294,8 @@ public static class ReviewerApp {
                     return 0;
                 }
                 var triageRunner = new ReviewRunner(settings);
-                var (triageOnlyFiles, triageOnlyNote) = await ResolveThreadTriageFilesAsync(github, context, settings, allFiles, cancellationToken)
+                var (triageOnlyFiles, triageOnlyNote) = await ResolveThreadTriageFilesAsync(codeHostReader, context, settings, allFiles,
+                        cancellationToken)
                     .ConfigureAwait(false);
                 var triageOnlyResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, triageRunner, context, triageOnlyFiles,
                         settings, extras, false, triageOnlyNote, cancellationToken, true, false)
@@ -321,7 +323,7 @@ public static class ReviewerApp {
 
             if (allowWrites && settings.ProgressUpdates) {
                 var progressBody = ReviewFormatter.BuildProgressComment(context, settings, progress, null, inlineSupported);
-                commentId = await CreateOrUpdateProgressCommentAsync(github, context, settings, progressBody, cancellationToken)
+                commentId = await CreateOrUpdateProgressCommentAsync(codeHostReader, github, context, settings, progressBody, cancellationToken)
                     .ConfigureAwait(false);
             }
 
@@ -392,20 +394,23 @@ public static class ReviewerApp {
 
             HashSet<string>? inlineKeys = null;
             if (inlineAllowed) {
-                inlineKeys = await PostInlineCommentsAsync(github, context, files, settings, inlineComments, cancellationToken)
+                inlineKeys = await PostInlineCommentsAsync(codeHostReader, github, context, files, settings, inlineComments,
+                        cancellationToken)
                     .ConfigureAwait(false);
                 if (settings.ReviewThreadsAutoResolveMissingInline &&
                     !string.IsNullOrWhiteSpace(context.HeadSha) &&
                     inlineKeys is not null &&
                     inlineKeys.Count > 0) {
-                    await AutoResolveMissingInlineThreadsAsync(github, fallbackGithub, context, inlineKeys, settings, cancellationToken)
+                    await AutoResolveMissingInlineThreadsAsync(codeHostReader, github, fallbackGithub, context, inlineKeys, settings,
+                            cancellationToken)
                         .ConfigureAwait(false);
                 }
             }
 
             var triageResult = ThreadTriageResult.Empty;
             if (allowWrites) {
-                var (triageFiles, triageNote) = await ResolveThreadTriageFilesAsync(github, context, settings, allFiles, cancellationToken)
+                var (triageFiles, triageNote) = await ResolveThreadTriageFilesAsync(codeHostReader, context, settings, allFiles,
+                        cancellationToken)
                     .ConfigureAwait(false);
                 triageResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, runner, context, triageFiles,
                         settings, extras, reviewFailed, triageNote, cancellationToken, false,
@@ -444,7 +449,7 @@ public static class ReviewerApp {
                 var shouldSearch = settings.OverwriteSummary || settings.OverwriteSummaryOnNewCommit;
                 IssueComment? existing = null;
                 if (shouldSearch) {
-                    existing = existingSummary ?? await FindExistingSummaryAsync(github, context, settings, cancellationToken)
+                    existing = existingSummary ?? await FindExistingSummaryAsync(codeHostReader, context, settings, cancellationToken)
                         .ConfigureAwait(false);
                 }
                 var shouldOverwrite = settings.OverwriteSummary ||
@@ -989,25 +994,26 @@ public static class ReviewerApp {
     }
 
     private static async Task<(IReadOnlyList<PullRequestFile> Files, string DiffNote)> ResolveReviewFilesAsync(
-        GitHubClient github, PullRequestContext context, ReviewSettings settings, IReadOnlyList<PullRequestFile> currentFiles,
+        IReviewCodeHostReader codeHostReader, PullRequestContext context, ReviewSettings settings, IReadOnlyList<PullRequestFile> currentFiles,
         CancellationToken cancellationToken) {
         var range = ReviewSettings.NormalizeDiffRange(settings.ReviewDiffRange, "current");
-        return await ResolveDiffRangeFilesAsync(github, context, range, currentFiles, settings, cancellationToken)
+        return await ResolveDiffRangeFilesAsync(codeHostReader, context, range, currentFiles, settings, cancellationToken)
             .ConfigureAwait(false);
     }
 
-    private static async Task<ReviewContextExtras> BuildExtrasAsync(GitHubClient github, GitHubClient? fallbackGithub,
+    private static async Task<ReviewContextExtras> BuildExtrasAsync(IReviewCodeHostReader codeHostReader, GitHubClient github,
+        GitHubClient? fallbackGithub,
         PullRequestContext context, ReviewSettings settings, CancellationToken cancellationToken, bool forceReviewThreads) {
         var extras = new ReviewContextExtras();
         if (settings.IncludeIssueComments) {
-            var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, settings.MaxComments, cancellationToken)
+            var comments = await codeHostReader.ListIssueCommentsAsync(context, settings.MaxComments, cancellationToken)
                 .ConfigureAwait(false);
             extras.IssueCommentsSection = BuildIssueCommentsSection(comments, settings);
         }
         var loadThreads = forceReviewThreads || settings.IncludeReviewThreads || settings.ReviewThreadsAutoResolveAI;
         if (loadThreads) {
-            var threads = await github.ListPullRequestReviewThreadsAsync(context.Owner, context.Repo, context.Number,
-                    settings.ReviewThreadsMax, settings.ReviewThreadsMaxComments, cancellationToken)
+            var threads = await codeHostReader.ListPullRequestReviewThreadsAsync(context, settings.ReviewThreadsMax,
+                    settings.ReviewThreadsMaxComments, cancellationToken)
                 .ConfigureAwait(false);
             extras.ReviewThreads = threads;
             if (settings.ReviewThreadsAutoResolveStale) {
@@ -1018,7 +1024,7 @@ public static class ReviewerApp {
             }
         }
         if (settings.IncludeReviewComments && string.IsNullOrEmpty(extras.ReviewThreadsSection)) {
-            var comments = await github.ListPullRequestReviewCommentsAsync(context.Owner, context.Repo, context.Number, settings.MaxComments, cancellationToken)
+            var comments = await codeHostReader.ListPullRequestReviewCommentsAsync(context, settings.MaxComments, cancellationToken)
                 .ConfigureAwait(false);
             extras.ReviewCommentsSection = BuildReviewCommentsSection(comments, settings);
         }
@@ -1178,8 +1184,9 @@ public static class ReviewerApp {
         }
     }
 
-    private static async Task AutoResolveMissingInlineThreadsAsync(GitHubClient github, GitHubClient? fallbackGithub,
-        PullRequestContext context, HashSet<string>? expectedKeys, ReviewSettings settings, CancellationToken cancellationToken) {
+    private static async Task AutoResolveMissingInlineThreadsAsync(IReviewCodeHostReader codeHostReader, GitHubClient github,
+        GitHubClient? fallbackGithub, PullRequestContext context, HashSet<string>? expectedKeys, ReviewSettings settings,
+        CancellationToken cancellationToken) {
         if (settings.ReviewThreadsAutoResolveMax <= 0) {
             return;
         }
@@ -1187,8 +1194,7 @@ public static class ReviewerApp {
         var keys = expectedKeys ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var maxThreads = Math.Max(settings.ReviewThreadsAutoResolveMax, settings.ReviewThreadsMax);
         var maxComments = Math.Max(1, settings.ReviewThreadsMaxComments);
-        var threads = await github.ListPullRequestReviewThreadsAsync(context.Owner, context.Repo, context.Number,
-                maxThreads, maxComments, cancellationToken)
+        var threads = await codeHostReader.ListPullRequestReviewThreadsAsync(context, maxThreads, maxComments, cancellationToken)
             .ConfigureAwait(false);
 
         var resolved = 0;
@@ -1219,15 +1225,15 @@ public static class ReviewerApp {
     }
 
     private static async Task<(IReadOnlyList<PullRequestFile> Files, string DiffNote)> ResolveThreadTriageFilesAsync(
-        GitHubClient github, PullRequestContext context, ReviewSettings settings, IReadOnlyList<PullRequestFile> currentFiles,
-        CancellationToken cancellationToken) {
+        IReviewCodeHostReader codeHostReader, PullRequestContext context, ReviewSettings settings,
+        IReadOnlyList<PullRequestFile> currentFiles, CancellationToken cancellationToken) {
         var range = ReviewSettings.NormalizeDiffRange(settings.ReviewThreadsAutoResolveDiffRange, "current");
-        return await ResolveDiffRangeFilesAsync(github, context, range, currentFiles, settings, cancellationToken)
+        return await ResolveDiffRangeFilesAsync(codeHostReader, context, range, currentFiles, settings, cancellationToken)
             .ConfigureAwait(false);
     }
 
     private static async Task<(IReadOnlyList<PullRequestFile> Files, string DiffNote)> ResolveDiffRangeFilesAsync(
-        GitHubClient github, PullRequestContext context, string range, IReadOnlyList<PullRequestFile> currentFiles,
+        IReviewCodeHostReader codeHostReader, PullRequestContext context, string range, IReadOnlyList<PullRequestFile> currentFiles,
         ReviewSettings settings, CancellationToken cancellationToken) {
         if (range == "current") {
             return (currentFiles, "current PR files");
@@ -1241,7 +1247,7 @@ public static class ReviewerApp {
                 return (false, Array.Empty<PullRequestFile>(), $"missing {label} commit");
             }
             try {
-                var compareResult = await github.GetCompareFilesAsync(context.Owner, context.Repo, baseSha, context.HeadSha!, cancellationToken)
+                var compareResult = await codeHostReader.GetCompareFilesAsync(context, baseSha, context.HeadSha!, cancellationToken)
                     .ConfigureAwait(false);
                 var compareFiles = compareResult.Files;
                 if (compareFiles.Count == 0) {
@@ -1267,7 +1273,7 @@ public static class ReviewerApp {
                 : (currentFiles, $"current PR files ({result.Note})");
         }
 
-        var firstReviewSha = await FindOldestSummaryCommitAsync(github, context, settings, cancellationToken).ConfigureAwait(false);
+        var firstReviewSha = await FindOldestSummaryCommitAsync(codeHostReader, context, settings, cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(firstReviewSha)) {
             var prBaseResult = await TryCompareAsync(context.BaseSha, "PR base fallback").ConfigureAwait(false);
             if (prBaseResult.Success) {
@@ -1584,10 +1590,10 @@ public static class ReviewerApp {
         return remaining.ToString("0.#", CultureInfo.InvariantCulture);
     }
 
-    private static async Task<string?> FindOldestSummaryCommitAsync(GitHubClient github, PullRequestContext context,
+    private static async Task<string?> FindOldestSummaryCommitAsync(IReviewCodeHostReader codeHostReader, PullRequestContext context,
         ReviewSettings settings, CancellationToken cancellationToken) {
         var limit = Math.Max(0, settings.CommentSearchLimit);
-        var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, limit, cancellationToken)
+        var comments = await codeHostReader.ListIssueCommentsAsync(context, limit, cancellationToken)
             .ConfigureAwait(false);
         string? oldest = null;
         foreach (var comment in comments) {
@@ -2415,9 +2421,9 @@ public static class ReviewerApp {
         return trimmed;
     }
 
-    private static async Task<HashSet<string>?> PostInlineCommentsAsync(GitHubClient github, PullRequestContext context,
-        IReadOnlyList<PullRequestFile> files, ReviewSettings settings, IReadOnlyList<InlineReviewComment> inlineComments,
-        CancellationToken cancellationToken) {
+    private static async Task<HashSet<string>?> PostInlineCommentsAsync(IReviewCodeHostReader codeHostReader, GitHubClient github,
+        PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
+        IReadOnlyList<InlineReviewComment> inlineComments, CancellationToken cancellationToken) {
         var expectedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (inlineComments.Count == 0 || string.IsNullOrWhiteSpace(context.HeadSha)) {
             return expectedKeys;
@@ -2430,7 +2436,7 @@ public static class ReviewerApp {
         }
 
         var limit = Math.Max(0, settings.CommentSearchLimit);
-        var existing = await github.ListPullRequestReviewCommentsAsync(context.Owner, context.Repo, context.Number, limit, cancellationToken)
+        var existing = await codeHostReader.ListPullRequestReviewCommentsAsync(context, limit, cancellationToken)
             .ConfigureAwait(false);
         var existingKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var comment in existing) {
@@ -2705,10 +2711,10 @@ public static class ReviewerApp {
         return $"{NormalizePath(path)}:{line}";
     }
 
-    private static async Task<IssueComment?> FindExistingSummaryAsync(GitHubClient github, PullRequestContext context,
+    private static async Task<IssueComment?> FindExistingSummaryAsync(IReviewCodeHostReader codeHostReader, PullRequestContext context,
         ReviewSettings settings, CancellationToken cancellationToken) {
         var limit = Math.Max(0, settings.CommentSearchLimit);
-        var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, limit, cancellationToken)
+        var comments = await codeHostReader.ListIssueCommentsAsync(context, limit, cancellationToken)
             .ConfigureAwait(false);
         foreach (var comment in comments) {
             if (comment.Body.Contains(ReviewFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase)) {
@@ -2779,11 +2785,11 @@ public static class ReviewerApp {
         return block;
     }
 
-    private static async Task<long?> CreateOrUpdateProgressCommentAsync(GitHubClient github, PullRequestContext context,
-        ReviewSettings settings, string body, CancellationToken cancellationToken) {
+    private static async Task<long?> CreateOrUpdateProgressCommentAsync(IReviewCodeHostReader codeHostReader, GitHubClient github,
+        PullRequestContext context, ReviewSettings settings, string body, CancellationToken cancellationToken) {
         IssueComment? existing = null;
         if (settings.CommentMode == ReviewCommentMode.Sticky) {
-            existing = await FindExistingSummaryAsync(github, context, settings, cancellationToken).ConfigureAwait(false);
+            existing = await FindExistingSummaryAsync(codeHostReader, context, settings, cancellationToken).ConfigureAwait(false);
         }
 
         if (existing is not null) {
