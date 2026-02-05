@@ -1058,8 +1058,7 @@ internal sealed class ReviewSettings {
         }
         if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) &&
             parsed >= 1 &&
-            !double.IsNaN(parsed) &&
-            !double.IsInfinity(parsed)) {
+            NumericGuards.IsFinite(parsed)) {
             return parsed;
         }
         return fallback;

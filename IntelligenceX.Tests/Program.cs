@@ -136,6 +136,7 @@ internal static class Program {
         failed += Run("Review retry backoff multiplier config", TestReviewRetryBackoffMultiplierConfig);
         failed += Run("Review retry backoff multiplier env", TestReviewRetryBackoffMultiplierEnv);
         failed += Run("Prepare files max files zero", TestPrepareFilesMaxFilesZero);
+        failed += Run("Prepare files max files negative", TestPrepareFilesMaxFilesNegative);
         failed += Run("Azure DevOps changes pagination", TestAzureDevOpsChangesPagination);
         failed += Run("Azure DevOps diff note zero iterations", TestAzureDevOpsDiffNoteZeroIterations);
         failed += Run("Azure DevOps error sanitization", TestAzureDevOpsErrorSanitization);
@@ -1897,6 +1898,13 @@ internal static class Program {
         var (limited, budgetNote) = CallPrepareFiles(files, 0, 4000);
         AssertEqual(2, limited.Count, "prepare files max files zero count");
         AssertEqual(string.Empty, budgetNote, "prepare files max files zero note");
+    }
+
+    private static void TestPrepareFilesMaxFilesNegative() {
+        var files = BuildFiles("src/A.cs", "src/B.cs");
+        var (limited, budgetNote) = CallPrepareFiles(files, -1, 4000);
+        AssertEqual(2, limited.Count, "prepare files max files negative count");
+        AssertEqual(string.Empty, budgetNote, "prepare files max files negative note");
     }
 
     private static void TestAzureDevOpsChangesPagination() {
