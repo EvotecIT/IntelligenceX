@@ -19,6 +19,7 @@ namespace IntelligenceX.Reviewer;
 /// </summary>
 public static class ReviewerApp {
     private const string ThreadReplyMarker = "<!-- intelligencex:thread-reply -->";
+    private static int _integrationForbiddenHintLogged;
     private static readonly HashSet<string> BinaryExtensions = new(StringComparer.OrdinalIgnoreCase) {
         ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".ico", ".webp",
         ".mp3", ".wav", ".flac", ".ogg", ".mp4", ".mov", ".mkv", ".avi", ".mpeg", ".mpg", ".webm",
@@ -1917,6 +1918,9 @@ public static class ReviewerApp {
             await github.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
             return (true, null);
         } catch (Exception ex) {
+            if (IsIntegrationForbidden(ex)) {
+                LogIntegrationForbiddenHint();
+            }
             if (fallbackGithub is not null && IsIntegrationForbidden(ex)) {
                 try {
                     await fallbackGithub.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
@@ -1935,6 +1939,20 @@ public static class ReviewerApp {
             return true;
         }
         return ex.InnerException is not null && IsIntegrationForbidden(ex.InnerException);
+    }
+
+    private static void LogIntegrationForbiddenHint() {
+        if (Interlocked.Exchange(ref _integrationForbiddenHintLogged, 1) == 1) {
+            return;
+        }
+        Console.Error.WriteLine("Auto-resolve: GitHub returned \"Resource not accessible by integration\".");
+        Console.Error.WriteLine("This usually means the GitHub App installation token cannot resolve review threads.");
+        Console.Error.WriteLine("Troubleshooting checklist:");
+        Console.Error.WriteLine("- Re-authorize or reinstall the GitHub App after permission changes.");
+        Console.Error.WriteLine("- Confirm the app installation includes this repository.");
+        Console.Error.WriteLine("- Ensure the app has Pull requests: Read & write (and Issues: write if needed).");
+        Console.Error.WriteLine("- Verify INTELLIGENCEX_GITHUB_APP_ID/KEY point to the intended app.");
+        Console.Error.WriteLine("- To bypass the app token, remove INTELLIGENCEX_GITHUB_APP_ID/KEY to use GITHUB_TOKEN.");
     }
 
     private static bool ThreadHasOnlyBotComments(PullRequestReviewThread thread, ReviewSettings settings) {

@@ -363,5 +363,13 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
   it acts as an allowlist for auto-resolve; set an empty list to fall back to generic bot detection.
 - `reviewThreadsAutoResolveDiffRange` supports `current`, `pr-base`, or `first-review`.
 
+## Auto-resolve troubleshooting
+If you see `Resource not accessible by integration` when resolving threads:
+- Re-authorize or reinstall the GitHub App after permission changes.
+- Confirm the app installation includes this repository.
+- Ensure the app has Pull requests: Read & write (and Issues: write if needed).
+- Verify `INTELLIGENCEX_GITHUB_APP_ID`/`INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY` point to the intended app.
+- To bypass the app token, remove the app secrets so `GITHUB_TOKEN` is used instead.
+
 ## Full example
 See `../../Schemas/reviewer.schema.json` for all available options.
