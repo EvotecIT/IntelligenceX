@@ -1091,7 +1091,10 @@ public static class ReviewerApp {
             if (string.IsNullOrWhiteSpace(assessment.Id)) {
                 continue;
             }
-            byId[assessment.Id] = assessment;
+            if (!byId.TryAdd(assessment.Id, assessment)) {
+                Console.Error.WriteLine($"Duplicate assessment id '{assessment.Id}' encountered; using last occurrence.");
+                byId[assessment.Id] = assessment;
+            }
         }
         var replyMap = new Dictionary<string, ThreadAssessment>(StringComparer.OrdinalIgnoreCase);
         var patchIndex = BuildInlinePatchIndex(files);
