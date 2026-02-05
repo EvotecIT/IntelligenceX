@@ -196,3 +196,10 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] PR #65 feat: always summarize thread auto-resolve — checklist items: Make `BuildFallbackTriageSummary` accessible to tests without reflection (e.g., `internal` + `InternalsVisibleTo`) to reduce brittleness.; Add at least one more test case for fallback summary (e.g., kept-only and mixed resolved/kept).. Links: https://github.com/EvotecIT/IntelligenceX/pull/65#issuecomment-3845900159
 - [x] PR #73 fix: harden retry backoff and file limits — checklist items: Deduplicate finite validation between config/env parsing; Add a negative `maxFiles` test to document `<= 0` behavior; Document why non-finite backoff values are rejected; Clarify `maxFiles <= 0` meaning in docs.. Links: https://github.com/EvotecIT/IntelligenceX/pull/73
 - [x] PR #74 Fix reviewer backlog items — checklist items: Consider an integration-style test that validates the failure-summary update path in `Program.RunAsync`.. Links: https://github.com/EvotecIT/IntelligenceX/pull/74
+<details>
+<summary>PR #85 Static analysis catalog + CLI export</summary>
+
+- [x] Update analysis loading to use `reviewFiles` so analysis findings respect filters. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#pullrequestreview-3757563544
+- [x] Add resilience around catalog loading to avoid failing reviews when the catalog is missing or unreadable. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#pullrequestreview-3757563544
+- [x] Expand severity normalization to handle “critical” (and other high-severity values if expected). Links: https://github.com/EvotecIT/IntelligenceX/pull/85#pullrequestreview-3757563544
+</details>
