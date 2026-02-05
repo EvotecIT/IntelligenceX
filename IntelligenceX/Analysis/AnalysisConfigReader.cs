@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using IntelligenceX.Json;
 
 namespace IntelligenceX.Analysis;
@@ -32,7 +33,11 @@ public static class AnalysisConfigReader {
         }
         var overrides = AnalysisJsonHelpers.ReadStringMap(analysis, "severityOverrides");
         if (overrides is not null) {
-            settings.SeverityOverrides = new Dictionary<string, string>(overrides, System.StringComparer.OrdinalIgnoreCase);
+            var normalizedOverrides = new Dictionary<string, string>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in overrides) {
+                normalizedOverrides[entry.Key] = entry.Value;
+            }
+            settings.SeverityOverrides = normalizedOverrides;
         }
 
         var results = analysis.GetObject("results");
