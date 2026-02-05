@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Collections.Generic;
 using IntelligenceX.Configuration;
 using IntelligenceX.Utils;
@@ -93,6 +94,16 @@ public sealed class CopilotClientOptions {
     /// Validates configuration values.
     /// </summary>
     public void Validate() {
+        var cliUrlRaw = CliUrl;
+        if (!string.IsNullOrWhiteSpace(cliUrlRaw)) {
+            var cliUrl = cliUrlRaw!.Trim();
+            if (!int.TryParse(cliUrl, out _) &&
+                !Uri.TryCreate(cliUrl, UriKind.Absolute, out _) &&
+                !Uri.TryCreate("http://" + cliUrl, UriKind.Absolute, out _)) {
+                throw new ArgumentException("CliUrl must be a port, host:port, or absolute URL.", nameof(CliUrl));
+            }
+        }
+
         if (ConnectRetryCount < 0) {
             throw new ArgumentOutOfRangeException(nameof(ConnectRetryCount), "ConnectRetryCount cannot be negative.");
         }
@@ -120,8 +131,18 @@ public sealed class CopilotClientOptions {
         if (RpcRetry.MaxDelay < RpcRetry.InitialDelay) {
             throw new ArgumentException("RpcRetry.MaxDelay cannot be smaller than RpcRetry.InitialDelay.");
         }
-        if (!AutoStart && string.IsNullOrWhiteSpace(CliUrl)) {
+        var usesCliProcess = string.IsNullOrWhiteSpace(CliUrl);
+        if (!AutoStart && usesCliProcess) {
             throw new InvalidOperationException("AutoStart is disabled and no CliUrl was provided.");
+        }
+        if (!InheritEnvironment && usesCliProcess) {
+            var cliPath = CliPath ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(cliPath) ||
+                (!Path.IsPathRooted(cliPath) &&
+                 !cliPath.Contains(Path.DirectorySeparatorChar) &&
+                 !cliPath.Contains(Path.AltDirectorySeparatorChar))) {
+                throw new InvalidOperationException("InheritEnvironment is false; set CliPath to an absolute or relative path (with separators) so PATH lookups are not required.");
+            }
         }
     }
 

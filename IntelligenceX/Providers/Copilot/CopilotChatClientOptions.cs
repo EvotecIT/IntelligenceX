@@ -35,8 +35,8 @@ public sealed class CopilotChatClientOptions {
     /// Validates configuration values.
     /// </summary>
     public void Validate() {
-        if (Timeout < TimeSpan.Zero) {
-            throw new ArgumentOutOfRangeException(nameof(Timeout), "Timeout cannot be negative.");
+        if (Timeout <= TimeSpan.Zero) {
+            throw new ArgumentOutOfRangeException(nameof(Timeout), "Timeout must be greater than zero.");
         }
         if (Transport == CopilotTransportKind.Direct) {
             Direct.Validate();
