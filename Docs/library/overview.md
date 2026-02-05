@@ -21,7 +21,7 @@ var login = await client.StartChatGptLoginAsync();
 Console.WriteLine($"Login URL: {login.AuthUrl}");
 await client.WaitForLoginCompletionAsync(login.LoginId);
 
-var thread = await client.StartThreadAsync("gpt-5.2-codex");
+var thread = await client.StartThreadAsync("gpt-5.3-codex");
 await client.StartTurnAsync(thread.Id, "Hello from IntelligenceX");
 ```
 
@@ -80,7 +80,7 @@ using IntelligenceX.OpenAI.AppServer;
 
 await using var client = await AppServerClient.StartAsync();
 await client.InitializeAsync(new ClientInfo("IntelligenceX", "Demo", "0.1.0"));
-var thread = await client.StartThreadAsync("gpt-5.2-codex");
+var thread = await client.StartThreadAsync("gpt-5.3-codex");
 var sandbox = new SandboxPolicy("workspace", allowNetwork: true, writableRoots: new[] { "C:\\repo" });
 await client.StartTurnAsync(thread.Id, "Run tests", sandboxPolicy: sandbox);
 ```
@@ -105,7 +105,7 @@ using IntelligenceX.Copilot;
 
 var options = new CopilotChatClientOptions {
     Transport = CopilotTransportKind.Cli,
-    DefaultModel = "gpt-5.2-codex"
+    DefaultModel = "gpt-5.3-codex"
 };
 
 await using var chat = await CopilotChatClient.StartAsync(options);
@@ -118,7 +118,7 @@ using IntelligenceX.Copilot;
 
 var options = new CopilotChatClientOptions {
     Transport = CopilotTransportKind.Direct,
-    DefaultModel = "gpt-5.2-codex"
+    DefaultModel = "gpt-5.3-codex"
 };
 options.Direct.Url = "https://example.internal/copilot/chat";
 options.Direct.Token = Environment.GetEnvironmentVariable("COPILOT_DIRECT_TOKEN");
@@ -135,7 +135,7 @@ Add `.intelligencex/config.json` (or set `INTELLIGENCEX_CONFIG_PATH`) to avoid h
 ```json
 {
   "openai": {
-    "defaultModel": "gpt-5.2-codex",
+    "defaultModel": "gpt-5.3-codex",
     "instructions": "You are a helpful assistant.",
     "reasoningEffort": "medium",
     "reasoningSummary": "auto",

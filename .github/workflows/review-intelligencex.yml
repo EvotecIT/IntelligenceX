@@ -31,7 +31,7 @@ jobs:
       repo: ${{ github.event.pull_request.number && github.repository || inputs.repo }}
       pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
       provider: openai
-      model: gpt-5.2-codex
+      model: gpt-5.3-codex
       style: direct
       output_style: claude
       mode: inline

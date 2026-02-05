@@ -25,7 +25,7 @@ internal sealed class ExampleToolRunner : IExample {
 
         var input = ChatInput.FromText("Is WSL running? Summarize the distribution status.");
         var chatOptions = new ChatOptions {
-            Model = "gpt-5.2-codex",
+            Model = "gpt-5.3-codex",
             ParallelToolCalls = true
         };
 

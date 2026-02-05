@@ -95,7 +95,7 @@ public sealed class EasySessionOptions {
     /// <summary>
     /// Default model name.
     /// </summary>
-    public string DefaultModel { get; set; } = "gpt-5.2-codex";
+    public string DefaultModel { get; set; } = "gpt-5.3-codex";
     /// <summary>
     /// Default working directory for file operations.
     /// </summary>

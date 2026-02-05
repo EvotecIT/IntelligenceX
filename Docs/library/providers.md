@@ -26,7 +26,7 @@ using IntelligenceX.OpenAI.AppServer;
 
 await using var client = await AppServerClient.StartAsync();
 await client.InitializeAsync(new ClientInfo("IntelligenceX", "Demo", "1.0"));
-var thread = await client.StartThreadAsync("gpt-5.2-codex");
+var thread = await client.StartThreadAsync("gpt-5.3-codex");
 await client.StartTurnAsync(thread.Id, "Hello from app-server");
 ```
 
@@ -53,7 +53,7 @@ var options = new CopilotDirectOptions {
     Token = Environment.GetEnvironmentVariable("COPILOT_DIRECT_TOKEN")
 };
 using var direct = new CopilotDirectClient(options);
-var response = await direct.ChatAsync("Hello", "gpt-5.2-codex");
+var response = await direct.ChatAsync("Hello", "gpt-5.3-codex");
 Console.WriteLine(response);
 ```
 
@@ -62,7 +62,7 @@ using IntelligenceX.Copilot;
 
 var options = new CopilotChatClientOptions {
     Transport = CopilotTransportKind.Cli,
-    DefaultModel = "gpt-5.2-codex"
+    DefaultModel = "gpt-5.3-codex"
 };
 
 await using var chat = await CopilotChatClient.StartAsync(options);
@@ -75,7 +75,7 @@ using IntelligenceX.Copilot;
 
 var options = new CopilotChatClientOptions {
     Transport = CopilotTransportKind.Direct,
-    DefaultModel = "gpt-5.2-codex"
+    DefaultModel = "gpt-5.3-codex"
 };
 options.Direct.Url = "https://example.internal/copilot/chat";
 options.Direct.Token = Environment.GetEnvironmentVariable("COPILOT_DIRECT_TOKEN");

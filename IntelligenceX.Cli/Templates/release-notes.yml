@@ -82,7 +82,7 @@ jobs:
           INTELLIGENCEX_RELEASE_PR_BODY: ${{ inputs.pr_body }}
           INTELLIGENCEX_RELEASE_PR_LABELS: ${{ inputs.pr_labels }}
           INTELLIGENCEX_RELEASE_REPO_SLUG: ${{ inputs.repo_slug || github.repository }}
-          OPENAI_MODEL: gpt-5.2-codex
+          OPENAI_MODEL: gpt-5.3-codex
           OPENAI_TRANSPORT: native
         shell: bash
         run: |

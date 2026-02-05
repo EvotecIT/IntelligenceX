@@ -558,7 +558,7 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
     }
 
     private static string? PickChatGptFallbackModel(string currentModel) {
-        var candidates = new[] { "gpt-5.2-codex", "gpt-5.2", "gpt-5.1-codex", "gpt-5.1" };
+        var candidates = new[] { "gpt-5.3-codex", "gpt-5.3", "gpt-5.2-codex", "gpt-5.2", "gpt-5.1-codex", "gpt-5.1" };
         foreach (var candidate in candidates) {
             if (!string.Equals(candidate, currentModel, StringComparison.OrdinalIgnoreCase)) {
                 return candidate;
