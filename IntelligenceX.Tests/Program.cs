@@ -2577,9 +2577,10 @@ internal static class Program {
         if (string.IsNullOrWhiteSpace(line)) {
             return result;
         }
-        const string prefix = "Usage: ";
-        var body = line.StartsWith(prefix, StringComparison.Ordinal) ? line.Substring(prefix.Length) : line;
-        foreach (var part in body.Split(new[] { " | " }, StringSplitOptions.RemoveEmptyEntries)) {
+        var body = line.StartsWith(ReviewerApp.UsageSummaryPrefix, StringComparison.Ordinal)
+            ? line.Substring(ReviewerApp.UsageSummaryPrefix.Length)
+            : line;
+        foreach (var part in body.Split(new[] { ReviewerApp.UsageSummarySeparator }, StringSplitOptions.RemoveEmptyEntries)) {
             var trimmed = part.Trim();
             if (!string.IsNullOrWhiteSpace(trimmed)) {
                 result.Add(trimmed);

@@ -19,6 +19,8 @@ namespace IntelligenceX.Reviewer;
 /// </summary>
 public static class ReviewerApp {
     private const string ThreadReplyMarker = "<!-- intelligencex:thread-reply -->";
+    public const string UsageSummaryPrefix = "Usage: ";
+    public const string UsageSummarySeparator = " | ";
     private static int _integrationForbiddenHintLogged;
     private static readonly HashSet<string> BinaryExtensions = new(StringComparer.OrdinalIgnoreCase) {
         ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".ico", ".webp",
@@ -1520,7 +1522,7 @@ public static class ReviewerApp {
         if (lines.Count == 0) {
             return string.Empty;
         }
-        return "Usage: " + string.Join(" | ", lines);
+        return UsageSummaryPrefix + string.Join(UsageSummarySeparator, lines);
     }
 
     private enum UsageLimitLineKind {
@@ -1543,10 +1545,18 @@ public static class ReviewerApp {
         var label = fallbackLabel;
         if (!string.IsNullOrWhiteSpace(windowLabel)) {
             label = IsCodeReviewWindow(lineKind)
-                ? $"code review {windowLabel}{(IsSecondaryWindow(lineKind) ? " (secondary)" : string.Empty)}"
+                ? FormatCodeReviewLabel(windowLabel, IsSecondaryWindow(lineKind))
                 : windowLabel;
         }
         return $"{label}: {remaining}% remaining";
+    }
+
+    private static string FormatCodeReviewLabel(string windowLabel, bool isSecondaryWindow) {
+        var label = windowLabel.Trim();
+        if (isSecondaryWindow && !label.EndsWith(" (secondary)", StringComparison.OrdinalIgnoreCase)) {
+            label += " (secondary)";
+        }
+        return "code review " + label;
     }
 
     private static string GetUsageLimitFallbackLabel(UsageLimitLineKind lineKind) {

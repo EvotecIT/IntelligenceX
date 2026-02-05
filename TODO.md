@@ -207,6 +207,8 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Replace switch default in `GetUsageLimitFallbackLabel` with explicit `ArgumentOutOfRangeException`. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#discussion_r2771495630
 - [x] Strengthen tests with negative assertions preventing ambiguous legacy labels from reappearing. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#issuecomment-3856748283
 - [x] Add explicit usage-summary part-count assertions for duplicate-weekly scenarios. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#issuecomment-3856748283
+- [x] Keep secondary suffix ownership in one formatter layer to avoid future double-suffix regressions. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#discussion_r2771555112
+- [x] Extract usage summary delimiter/prefix constants and reuse in tests. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#issuecomment-3856748283
 </details>
 <details>
 <summary>PR #85 Static analysis catalog + CLI export</summary>
