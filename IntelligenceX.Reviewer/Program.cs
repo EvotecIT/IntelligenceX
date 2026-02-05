@@ -95,7 +95,7 @@ public static class ReviewerApp {
                 Console.Error.WriteLine(error);
             }
             Console.Error.WriteLine("Use --help to see available options.");
-            PrintRunHelp();
+            PrintRunHelp(Console.Error);
             return 1;
         }
         ApplyRunOptions(runOptions);
@@ -700,14 +700,18 @@ public static class ReviewerApp {
     }
 
     private static void PrintRunHelp() {
-        Console.WriteLine("Reviewer run options:");
+        PrintRunHelp(Console.Out);
+    }
+
+    private static void PrintRunHelp(TextWriter writer) {
+        writer.WriteLine("Reviewer run options:");
         var leftWidth = RunOptionSpecs
             .Select(spec => $"{spec.Name} {spec.ValueHint}".Length)
             .DefaultIfEmpty(0)
             .Max();
         foreach (var spec in RunOptionSpecs) {
             var left = $"{spec.Name} {spec.ValueHint}".PadRight(leftWidth);
-            Console.WriteLine($"  {left}  {spec.Description}");
+            writer.WriteLine($"  {left}  {spec.Description}");
         }
     }
 
