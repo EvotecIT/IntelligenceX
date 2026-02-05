@@ -15,7 +15,7 @@ internal sealed class GitHubClient : IDisposable {
     private readonly HttpClient _http;
     private readonly Dictionary<string, PullRequestContext> _pullRequestCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IReadOnlyList<PullRequestFile>> _pullRequestFilesCache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, IReadOnlyList<PullRequestFile>> _compareFilesCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, CompareFilesResult> _compareFilesCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _requestGate;
     private readonly int _maxConcurrency;
 
@@ -113,13 +113,13 @@ internal sealed class GitHubClient : IDisposable {
         return context;
     }
 
-    public async Task<IReadOnlyList<PullRequestFile>> GetCompareFilesAsync(string owner, string repo, string baseSha, string headSha,
+    public async Task<CompareFilesResult> GetCompareFilesAsync(string owner, string repo, string baseSha, string headSha,
         CancellationToken cancellationToken) {
         if (string.IsNullOrWhiteSpace(baseSha) || string.IsNullOrWhiteSpace(headSha)) {
-            return Array.Empty<PullRequestFile>();
+            return new CompareFilesResult(Array.Empty<PullRequestFile>(), false);
         }
         if (string.Equals(baseSha, headSha, StringComparison.OrdinalIgnoreCase)) {
-            return Array.Empty<PullRequestFile>();
+            return new CompareFilesResult(Array.Empty<PullRequestFile>(), false);
         }
         var compareKey = BuildCompareKey(owner, repo, baseSha, headSha);
         if (_compareFilesCache.TryGetValue(compareKey, out var cached)) {
@@ -169,8 +169,9 @@ internal sealed class GitHubClient : IDisposable {
         if (truncated) {
             Console.Error.WriteLine("Compare API results truncated after 2000 files. Consider using pull request files endpoint for full coverage.");
         }
-        _compareFilesCache[compareKey] = files;
-        return files;
+        var result = new CompareFilesResult(files, truncated);
+        _compareFilesCache[compareKey] = result;
+        return result;
     }
 
     public async Task<IReadOnlyList<IssueComment>> ListIssueCommentsAsync(string owner, string repo, int number,
@@ -543,6 +544,19 @@ internal sealed class GitHubClient : IDisposable {
 
     private static string BuildCompareKey(string owner, string repo, string baseSha, string headSha) {
         return $"{owner}/{repo}@{baseSha}..{headSha}";
+    }
+
+    /// <summary>
+    /// Represents compare API results along with truncation metadata.
+    /// </summary>
+    internal readonly struct CompareFilesResult {
+        public CompareFilesResult(IReadOnlyList<PullRequestFile> files, bool isTruncated) {
+            Files = files;
+            IsTruncated = isTruncated;
+        }
+
+        public IReadOnlyList<PullRequestFile> Files { get; }
+        public bool IsTruncated { get; }
     }
 
     private async Task<T> WithGateAsync<T>(Func<Task<T>> action, CancellationToken cancellationToken) {

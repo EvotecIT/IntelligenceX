@@ -433,24 +433,16 @@ internal sealed class ReviewRunner {
                     }
                     return;
                 }
-                if (response.StatusCode == HttpStatusCode.TooManyRequests ||
-                    response.StatusCode == HttpStatusCode.RequestTimeout ||
-                    response.StatusCode == HttpStatusCode.ServiceUnavailable ||
-                    response.StatusCode == HttpStatusCode.BadGateway ||
-                    response.StatusCode == HttpStatusCode.GatewayTimeout ||
-                    response.StatusCode == HttpStatusCode.InternalServerError) {
-                    throw new HttpRequestException($"Connectivity preflight returned HTTP {code} for {uri.Host}.", null, response.StatusCode);
-                }
                 throw new HttpRequestException($"Connectivity preflight returned HTTP {code} for {uri.Host}.", null, response.StatusCode);
             }
         } catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested) {
             throw new TimeoutException($"Connectivity preflight timed out after {timeout.TotalSeconds:0.#}s for {uri.Host}.", ex);
         } catch (HttpRequestException ex) when (ex.InnerException is TaskCanceledException && !cancellationToken.IsCancellationRequested) {
             throw new TimeoutException($"Connectivity preflight timed out after {timeout.TotalSeconds:0.#}s for {uri.Host}.", ex);
-        } catch (HttpRequestException ex) when (ex.InnerException is SocketException) {
+        } catch (HttpRequestException ex) when (!ex.StatusCode.HasValue && ex.InnerException is SocketException) {
             throw new InvalidOperationException(
                 $"Connectivity preflight failed for {uri.Host}. Check DNS resolution, proxy settings, and firewall rules.", ex);
-        } catch (HttpRequestException ex) {
+        } catch (HttpRequestException ex) when (!ex.StatusCode.HasValue) {
             throw new InvalidOperationException(
                 $"Connectivity preflight failed for {uri.Host}. Check TLS/proxy settings and network connectivity.", ex);
         }
