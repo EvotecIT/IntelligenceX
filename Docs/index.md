@@ -11,6 +11,7 @@ Use the docs by area so the library, reviewer, CLI, and PowerShell guidance stay
 - Overview: `reviewer/overview.md`
 - Configuration: `reviewer/configuration.md`
 - Security & trust: `reviewer/security-trust.md`
+- Static analysis (draft): `reviewer/static-analysis.md`
 - Smoke tests: `reviewer/review-smoke.md`
 
 ## CLI tools

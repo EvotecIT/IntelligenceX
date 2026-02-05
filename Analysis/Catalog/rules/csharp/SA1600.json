@@ -1,0 +1,12 @@
+{
+  "id": "SA1600",
+  "language": "csharp",
+  "tool": "StyleCop.Analyzers",
+  "toolRuleId": "SA1600",
+  "title": "Elements should be documented",
+  "description": "Ensures public elements include XML documentation comments.",
+  "category": "Style",
+  "defaultSeverity": "info",
+  "tags": ["documentation"],
+  "docs": "https://github.com/DotNetAnalyzers/StyleCopAnalyzers/blob/master/documentation/SA1600.md"
+}

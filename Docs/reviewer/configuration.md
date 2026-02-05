@@ -178,6 +178,30 @@ Use this to skip the main review and only assess existing review threads.
 }
 ```
 
+## Static analysis (preview)
+
+Enable analysis summaries and inline findings sourced from SARIF or IntelligenceX findings JSON.
+
+```json
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["csharp-default", "powershell-default"],
+    "configMode": "respect",
+    "disabledRules": ["CA2000"],
+    "severityOverrides": { "CA1062": "error" },
+    "results": {
+      "inputs": ["artifacts/**/*.sarif", "artifacts/intelligencex.findings.json"],
+      "minSeverity": "warning",
+      "maxInline": 20,
+      "summary": true,
+      "summaryMaxItems": 10,
+      "summaryPlacement": "bottom"
+    }
+  }
+}
+```
+
 ## Summary stability (avoid noisy reruns)
 
 ```json

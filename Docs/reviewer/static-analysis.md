@@ -1,0 +1,136 @@
+# Static Analysis (Draft)
+
+This document proposes how IntelligenceX can offer default static analysis rules and a first-class onboarding flow while keeping user repositories clean. The design keeps decisions centralized in `.intelligencex/reviewer.json` and avoids committing analyzer config files by default.
+
+## Goals
+- Provide curated rule packs with hundreds of rules enabled out of the box.
+- Keep analysis decisions in one place (`reviewer.json`).
+- Avoid modifying user repos unless explicitly requested.
+- Allow easy opt-in, opt-out, and per-rule toggles with descriptions.
+- Support multiple languages over time (C#, PowerShell, JS/TS, Python).
+
+## User Experience (Onboarding)
+- The wizard offers a single toggle: "Enable static analysis (recommended)."
+- Users select one or more packs (for example `csharp-default`, `powershell-default`).
+- Users can optionally toggle individual rules and change severities.
+- The wizard writes the `analysis` section into `.intelligencex/reviewer.json`.
+
+## Source Of Truth
+All enablement decisions live in `.intelligencex/reviewer.json`. Analyzer tool configs are generated temporarily during analysis runs and deleted afterward. No config files are committed by default.
+
+## Proposed Configuration (reviewer.json)
+```json
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["csharp-default", "powershell-default"],
+    "disabledRules": ["CA2000"],
+    "severityOverrides": { "CA1062": "error" },
+    "configMode": "respect",
+    "results": {
+      "inputs": ["artifacts/**/*.sarif", "artifacts/intelligencex.findings.json"],
+      "minSeverity": "warning",
+      "maxInline": 20,
+      "summary": true
+    }
+  }
+}
+```
+
+## Config Mode (Respect Existing Repo Rules)
+`configMode` defines how the analysis runner interacts with any existing analyzer configs in the repo.
+
+- `respect` (default): If the repo already has analyzer configs, do not override them. Use them as-is and only filter findings based on `reviewer.json`.
+- `overlay`: Merge pack rules on top of existing repo configs during the analysis run. No files are committed.
+- `replace`: Ignore repo configs and use only pack rules during the analysis run. No files are committed.
+
+## Rule Catalog (One File Per Rule)
+Each rule has a metadata file with descriptions and mapping to the underlying analyzer rule ID. This powers the GUI/CLI toggles.
+
+Proposed layout:
+- `Analysis/Catalog/rules/csharp/CA2000.json`
+- `Analysis/Catalog/rules/powershell/PSAvoidUsingWriteHost.json`
+
+Example rule file:
+```json
+{
+  "id": "CA2000",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2000",
+  "title": "Dispose objects before losing scope",
+  "description": "Ensures IDisposable instances are disposed to avoid leaks.",
+  "category": "Reliability",
+  "defaultSeverity": "warning",
+  "tags": ["resource-management", "memory"]
+}
+```
+
+## Rule Packs
+Packs are curated lists of rule IDs plus optional severity overrides.
+
+Proposed layout:
+- `Analysis/Packs/csharp-default.json`
+- `Analysis/Packs/powershell-default.json`
+
+Example pack:
+```json
+{
+  "id": "csharp-default",
+  "label": "C# Default",
+  "rules": ["CA2000", "CA1062", "SA1600"],
+  "severityOverrides": { "CA1062": "error" }
+}
+```
+
+## Temporary Analyzer Config Generation
+During analysis runs, configs are generated to a temporary directory and cleaned up at the end. Examples:
+- C#: `.editorconfig` with `dotnet_diagnostic.<rule>.severity` entries.
+- PowerShell: `PSScriptAnalyzerSettings.psd1` with per-rule severities.
+- JS/TS: `.eslintrc` or flat config with enabled rule IDs.
+- Python: `ruff.toml` or `pyproject.toml` with rule selection.
+
+An optional `intelligencex analyze export-config` command can be added later for teams that want to commit configs for IDE support.
+
+## Workflow Integration (Example)
+Analysis runs before review and publishes findings as artifacts. The reviewer reads those artifacts and merges findings into the summary and optional inline comments.
+
+```yaml
+jobs:
+  analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run analysis packs
+        run: intelligencex analyze --config .intelligencex/reviewer.json --out artifacts/intelligencex.findings.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ix-analysis
+          path: artifacts/**
+
+  review:
+    needs: [analysis]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ix-analysis
+          path: artifacts
+      - name: Run reviewer
+        uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@master
+        with:
+          repo: ${{ github.repository }}
+          pr_number: ${{ github.event.pull_request.number }}
+```
+
+## Reviewer Behavior
+- The reviewer reads `analysis.results.inputs` for JSON or SARIF findings.
+- Findings are merged into the existing summary format and structured findings block.
+- Inline comments follow `maxInline` and severity thresholds.
+
+## Future Extensions
+- Language detection and auto-pack selection.
+- Rule catalogs synced from upstream analyzer metadata.
+- UI for per-rule toggles and severity edits.
+- Per-repo pack overrides without local config files.

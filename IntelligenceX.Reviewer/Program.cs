@@ -347,6 +347,18 @@ public static class ReviewerApp {
                 }
             }
 
+            var analysisFindings = AnalysisFindingsLoader.Load(settings, files);
+            var analysisSummary = AnalysisSummaryBuilder.BuildSummary(analysisFindings, settings.Analysis.Results);
+            if (!string.IsNullOrWhiteSpace(analysisSummary)) {
+                summaryBody = ApplyEmbedPlacement(summaryBody, analysisSummary, settings.Analysis.Results.SummaryPlacement);
+            }
+            if (inlineAllowed && analysisFindings.Count > 0) {
+                var analysisInline = AnalysisSummaryBuilder.BuildInlineComments(analysisFindings, settings.Analysis.Results);
+                if (analysisInline.Count > 0) {
+                    inlineComments = inlineComments.Concat(analysisInline).ToArray();
+                }
+            }
+
             HashSet<string>? inlineKeys = null;
             if (inlineAllowed) {
                 inlineKeys = await PostInlineCommentsAsync(github, context, files, settings, inlineComments, cancellationToken)

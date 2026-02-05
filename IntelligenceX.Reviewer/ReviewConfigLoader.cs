@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using IntelligenceX.Analysis;
 using IntelligenceX.Copilot;
 using IntelligenceX.Json;
 
@@ -68,6 +69,7 @@ internal static class ReviewConfigLoader {
         ApplyCopilot(root, settings);
         ApplyAzureDevOps(reviewObj, settings);
         ApplyCleanup(root, settings);
+        AnalysisConfigReader.Apply(root, reviewObj, settings.Analysis);
     }
 
     internal static string? ResolveConfigPath() {
@@ -378,6 +380,7 @@ internal static class ReviewConfigLoader {
         settings.Cleanup.Template = cleanup.GetString("template") ?? settings.Cleanup.Template;
         settings.Cleanup.TemplatePath = cleanup.GetString("templatePath") ?? settings.Cleanup.TemplatePath;
     }
+
 
     private static CopilotTransportKind ParseCopilotTransport(string value, CopilotTransportKind fallback) {
         if (string.IsNullOrWhiteSpace(value)) {

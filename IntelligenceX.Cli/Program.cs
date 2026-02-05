@@ -22,6 +22,7 @@ internal static class Program {
         }
         return command switch {
             "auth" => await RunAuthAsync(rest).ConfigureAwait(false),
+            "analyze" => await Analysis.AnalyzeRunner.RunAsync(rest).ConfigureAwait(false),
             "reviewer" => await RunReviewerAsync(rest).ConfigureAwait(false),
             "setup" => await RunSetupAsync(rest).ConfigureAwait(false),
             "release" => await RunReleaseAsync(rest).ConfigureAwait(false),
@@ -42,6 +43,7 @@ internal static class Program {
         Console.WriteLine("Usage:");
         Console.WriteLine("  intelligencex auth <command>");
         Console.WriteLine("  intelligencex reviewer run [options]");
+        Console.WriteLine("  intelligencex analyze <command>");
         Console.WriteLine("  intelligencex setup [options]");
         Console.WriteLine("  intelligencex setup wizard [options]");
         Console.WriteLine("  intelligencex setup web [url]");
@@ -52,6 +54,11 @@ internal static class Program {
         Console.WriteLine("  auth login       Start OAuth login flow and store credentials");
         Console.WriteLine("  auth export      Export stored credentials (json or base64)");
         Console.WriteLine("  auth sync-codex  Write tokens to CODEX_HOME/auth.json");
+        Console.WriteLine();
+        Console.WriteLine("Analyze commands:");
+        Console.WriteLine("  analyze export-config   Export analyzer configs from reviewer.json");
+        Console.WriteLine("  analyze list-packs      List available rule packs");
+        Console.WriteLine("  analyze list-rules      List available rules");
         Console.WriteLine();
         Console.WriteLine("Reviewer commands:");
         Console.WriteLine("  reviewer run     Run reviewer using GitHub event payload or inputs");
@@ -684,3 +691,7 @@ internal static class Program {
         }
     }
 }
+<<<<<<< HEAD
+=======
+
+>>>>>>> 05b1980 (feat: add analysis catalog and CLI support)
