@@ -95,6 +95,7 @@ public static class ReviewerApp {
                 Console.Error.WriteLine(error);
             }
             Console.Error.WriteLine("Use --help to see available options.");
+            PrintRunHelp();
             return 1;
         }
         ApplyRunOptions(runOptions);
@@ -566,6 +567,42 @@ public static class ReviewerApp {
             !string.IsNullOrWhiteSpace(AzureTokenEnv);
     }
 
+    private sealed class RunOptionSpec {
+        public RunOptionSpec(string name, string valueHint, string description, bool requiresValue, Action<RunOptions, string?> apply) {
+            Name = name;
+            ValueHint = valueHint;
+            Description = description;
+            RequiresValue = requiresValue;
+            Apply = apply;
+        }
+
+        public string Name { get; }
+        public string ValueHint { get; }
+        public string Description { get; }
+        public bool RequiresValue { get; }
+        public Action<RunOptions, string?> Apply { get; }
+    }
+
+    private static readonly RunOptionSpec[] RunOptionSpecs = {
+        new RunOptionSpec("--provider", "<openai|codex|copilot|azure>", "AI provider or Azure DevOps code host (aliases: azuredevops, azure-devops, ado)", true,
+            (options, value) => options.Provider = value),
+        new RunOptionSpec("--code-host", "<github|azure>", "Override code host (azure/azuredevops supported)", true,
+            (options, value) => options.CodeHost = value),
+        new RunOptionSpec("--azure-org", "<org>", "Azure DevOps organization", true,
+            (options, value) => options.AzureOrg = value),
+        new RunOptionSpec("--azure-project", "<project>", "Azure DevOps project", true,
+            (options, value) => options.AzureProject = value),
+        new RunOptionSpec("--azure-repo", "<repo>", "Azure DevOps repository id or name", true,
+            (options, value) => options.AzureRepo = value),
+        new RunOptionSpec("--azure-base-url", "<url>", "Azure DevOps base URL", true,
+            (options, value) => options.AzureBaseUrl = value),
+        new RunOptionSpec("--azure-token-env", "<env>", "Env var holding Azure DevOps token", true,
+            (options, value) => options.AzureTokenEnv = value)
+    };
+
+    private static readonly IReadOnlyDictionary<string, RunOptionSpec> RunOptionSpecMap =
+        RunOptionSpecs.ToDictionary(spec => spec.Name, StringComparer.Ordinal);
+
     private static RunOptions ParseRunOptions(string[] args) {
         var options = new RunOptions();
         for (var i = 0; i < args.Length; i++) {
@@ -575,28 +612,14 @@ public static class ReviewerApp {
                 case "-h":
                     options.ShowHelp = true;
                     break;
-                case "--provider":
-                    options.Provider = ReadValue(args, ref i, "--provider", options.Errors);
-                    break;
-                case "--code-host":
-                    options.CodeHost = ReadValue(args, ref i, "--code-host", options.Errors);
-                    break;
-                case "--azure-org":
-                    options.AzureOrg = ReadValue(args, ref i, "--azure-org", options.Errors);
-                    break;
-                case "--azure-project":
-                    options.AzureProject = ReadValue(args, ref i, "--azure-project", options.Errors);
-                    break;
-                case "--azure-repo":
-                    options.AzureRepo = ReadValue(args, ref i, "--azure-repo", options.Errors);
-                    break;
-                case "--azure-base-url":
-                    options.AzureBaseUrl = ReadValue(args, ref i, "--azure-base-url", options.Errors);
-                    break;
-                case "--azure-token-env":
-                    options.AzureTokenEnv = ReadValue(args, ref i, "--azure-token-env", options.Errors);
-                    break;
                 default:
+                    if (RunOptionSpecMap.TryGetValue(arg, out var spec)) {
+                        var value = spec.RequiresValue ? ReadValue(args, ref i, spec.Name, options.Errors) : null;
+                        if (value is not null || !spec.RequiresValue) {
+                            spec.Apply(options, value);
+                        }
+                        break;
+                    }
                     options.Errors.Add($"Unknown option: {arg}");
                     break;
             }
@@ -678,13 +701,14 @@ public static class ReviewerApp {
 
     private static void PrintRunHelp() {
         Console.WriteLine("Reviewer run options:");
-        Console.WriteLine("  --provider <openai|codex|copilot|azure>    AI provider or 'azure/azuredevops' for Azure DevOps code host");
-        Console.WriteLine("  --code-host <github|azure>                Override code host (azure/azuredevops supported)");
-        Console.WriteLine("  --azure-org <org>                         Azure DevOps organization");
-        Console.WriteLine("  --azure-project <project>                 Azure DevOps project");
-        Console.WriteLine("  --azure-repo <repo>                       Azure DevOps repository id or name");
-        Console.WriteLine("  --azure-base-url <url>                    Azure DevOps base URL");
-        Console.WriteLine("  --azure-token-env <env>                   Env var holding Azure DevOps token");
+        var leftWidth = RunOptionSpecs
+            .Select(spec => $"{spec.Name} {spec.ValueHint}".Length)
+            .DefaultIfEmpty(0)
+            .Max();
+        foreach (var spec in RunOptionSpecs) {
+            var left = $"{spec.Name} {spec.ValueHint}".PadRight(leftWidth);
+            Console.WriteLine($"  {left}  {spec.Description}");
+        }
     }
 
     private static async Task<bool> ValidateAuthAsync(ReviewSettings settings) {

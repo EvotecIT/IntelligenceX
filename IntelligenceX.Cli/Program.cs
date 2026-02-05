@@ -142,14 +142,7 @@ internal static class Program {
         Console.WriteLine("  intelligencex reviewer resolve-threads [options]");
         Console.WriteLine("  intelligencex reviewer threads resolve [options]");
         Console.WriteLine();
-        Console.WriteLine("Reviewer run options:");
-        Console.WriteLine("  --provider <openai|codex|copilot|azure>");
-        Console.WriteLine("  --code-host <github|azure>");
-        Console.WriteLine("  --azure-org <org>");
-        Console.WriteLine("  --azure-project <project>");
-        Console.WriteLine("  --azure-repo <repo>");
-        Console.WriteLine("  --azure-base-url <url>");
-        Console.WriteLine("  --azure-token-env <env>");
+        Console.WriteLine("Reviewer run options: run `intelligencex reviewer run --help` for the full list.");
     }
 
     private static async Task<int> RunSetupAsync(string[] args) {
