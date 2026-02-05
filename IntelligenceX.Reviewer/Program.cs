@@ -1947,13 +1947,13 @@ public static class ReviewerApp {
             return;
         }
         Console.Error.WriteLine("Auto-resolve: GitHub returned \"Resource not accessible by integration\".");
-        Console.Error.WriteLine("This usually means the GitHub App installation token cannot resolve review threads.");
-        Console.Error.WriteLine("Troubleshooting checklist:");
-        Console.Error.WriteLine("- Re-authorize or reinstall the GitHub App after permission changes.");
-        Console.Error.WriteLine("- Confirm the app installation includes this repository.");
-        Console.Error.WriteLine("- Ensure the app has Pull requests: Read & write (and Issues: write if needed).");
-        Console.Error.WriteLine("- Verify INTELLIGENCEX_GITHUB_APP_ID/INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY point to the intended app.");
-        Console.Error.WriteLine("- To bypass the app token, remove INTELLIGENCEX_GITHUB_APP_ID/INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY to use GITHUB_TOKEN.");
+        Console.Error.WriteLine("Hint: This usually means the GitHub App installation token cannot resolve review threads.");
+        Console.Error.WriteLine("Hint: Re-authorize or reinstall the GitHub App after permission changes.");
+        Console.Error.WriteLine("Hint: Confirm the app installation includes this repository.");
+        Console.Error.WriteLine("Hint: Ensure the app has Pull requests: Read & write (and Issues: write if needed).");
+        Console.Error.WriteLine("Hint: Verify INTELLIGENCEX_GITHUB_APP_ID/INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY point to the intended app.");
+        Console.Error.WriteLine("Hint: To bypass the app token, remove INTELLIGENCEX_GITHUB_APP_ID/INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY to use GITHUB_TOKEN.");
+        Console.Error.WriteLine("Hint: GITHUB_TOKEN is provided automatically in GitHub Actions; outside Actions set a PAT in GITHUB_TOKEN.");
     }
 
     private static bool ThreadHasOnlyBotComments(PullRequestReviewThread thread, ReviewSettings settings) {

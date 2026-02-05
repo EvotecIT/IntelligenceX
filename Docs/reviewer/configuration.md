@@ -370,6 +370,7 @@ If you see `Resource not accessible by integration` when resolving threads:
 - Ensure the app has Pull requests: Read & write (and Issues: write if needed).
 - Verify `INTELLIGENCEX_GITHUB_APP_ID`/`INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY` point to the intended app.
 - To bypass the app token, remove the app secrets so `GITHUB_TOKEN` is used instead.
+- `GITHUB_TOKEN` is available in GitHub Actions; outside Actions you need a PAT and set it as `GITHUB_TOKEN`.
 
 ## Full example
 See `../../Schemas/reviewer.schema.json` for all available options.
