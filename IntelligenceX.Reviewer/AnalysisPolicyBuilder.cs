@@ -35,7 +35,7 @@ internal static class AnalysisPolicyBuilder {
         foreach (var packId in packs) {
             if (catalog.TryGetPack(packId, out var pack)) {
                 packSummaries.Add(string.IsNullOrWhiteSpace(pack.Label) ? pack.Id : pack.Label);
-                foreach (var ruleId in pack.Rules) {
+                foreach (var ruleId in pack.Rules ?? Array.Empty<string>()) {
                     selectedRules.Add(ruleId);
                 }
             } else if (!string.IsNullOrWhiteSpace(packId)) {

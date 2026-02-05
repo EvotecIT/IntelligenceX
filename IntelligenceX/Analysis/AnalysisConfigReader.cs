@@ -32,7 +32,7 @@ public static class AnalysisConfigReader {
         }
         var overrides = AnalysisJsonHelpers.ReadStringMap(analysis, "severityOverrides");
         if (overrides is not null) {
-            settings.SeverityOverrides = overrides;
+            settings.SeverityOverrides = new Dictionary<string, string>(overrides, System.StringComparer.OrdinalIgnoreCase);
         }
 
         var results = analysis.GetObject("results");

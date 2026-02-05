@@ -15,6 +15,8 @@ internal static class GlobMatcher {
             return Regex.IsMatch(value, regex, RegexOptions.IgnoreCase, RegexTimeout);
         } catch (RegexMatchTimeoutException) {
             return false;
+        } catch (ArgumentException) {
+            return false;
         }
     }
 
