@@ -330,6 +330,8 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `summaryStability`: reuse the previous summary (same commit) as prompt context to avoid noisy rewrites
 - `structuredFindings`: emit a structured findings JSON block for automation
 - `skipPaths`: if **all** changed files in a PR match these globs, skip reviewing the entire PR
+- `skipBinaryFiles`: skip binary assets (images, archives, executables) from review context (default true)
+- `skipGeneratedFiles`: skip generated files (build output, generated sources) from review context (default true)
 - `includePaths`: only review files matching these globs
 - `excludePaths`: ignore files matching these globs
 - `allowWorkflowChanges`: allow reviews to run when `.github/workflows/*` changes are present
@@ -350,8 +352,9 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 
 **Path filter order of operations**
 1. `skipPaths` is evaluated first at the PR level. If **every** changed file matches `skipPaths`, the PR is skipped.
-2. If the PR is not skipped, `includePaths` (if set) selects which changed files are eligible for review.
-3. Finally, `excludePaths` (if set) removes any remaining files from review.
+2. If the PR is not skipped, `skipBinaryFiles`/`skipGeneratedFiles` (when enabled) remove binary and generated files from the review list.
+3. `includePaths` (if set) selects which changed files are eligible for review.
+4. Finally, `excludePaths` (if set) removes any remaining files from review.
 
 ## Auto-resolve notes
 - `reviewThreadsAutoResolveBotLogins` defaults to `intelligencex-review` and `copilot-pull-request-reviewer`. When set,
