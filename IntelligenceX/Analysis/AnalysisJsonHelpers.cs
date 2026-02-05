@@ -21,7 +21,7 @@ internal static class AnalysisJsonHelpers {
         }
         var textValue = value?.AsString();
         if (!string.IsNullOrWhiteSpace(textValue)) {
-            var parts = textValue.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+            var parts = textValue!.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
             var list = parts
                 .Select(part => part.Trim())
                 .Where(part => part.Length > 0)
