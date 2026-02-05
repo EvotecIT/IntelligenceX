@@ -21,6 +21,7 @@ public static class ReviewerApp {
     private const string ThreadReplyMarker = "<!-- intelligencex:thread-reply -->";
     private const string UsageSummaryPrefix = "Usage: ";
     private const string UsageSummarySeparator = " | ";
+    private const string SecondaryWindowSuffix = " (secondary)";
     private static int _integrationForbiddenHintLogged;
     private static readonly HashSet<string> BinaryExtensions = new(StringComparer.OrdinalIgnoreCase) {
         ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".ico", ".webp",
@@ -1553,8 +1554,8 @@ public static class ReviewerApp {
 
     private static string FormatCodeReviewLabel(string windowLabel, bool isSecondaryWindow) {
         var label = windowLabel.Trim();
-        if (isSecondaryWindow && !label.EndsWith(" (secondary)", StringComparison.OrdinalIgnoreCase)) {
-            label += " (secondary)";
+        if (isSecondaryWindow && !label.EndsWith(SecondaryWindowSuffix, StringComparison.OrdinalIgnoreCase)) {
+            label += SecondaryWindowSuffix;
         }
         return "code review " + label;
     }
