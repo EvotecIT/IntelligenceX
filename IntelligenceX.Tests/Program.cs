@@ -113,6 +113,8 @@ internal static class Program {
         failed += Run("Review provider health env", TestReviewProviderHealthEnv);
         failed += Run("Review provider health config", TestReviewProviderHealthConfig);
         failed += Run("Review provider circuit breaker", TestReviewProviderCircuitBreaker);
+        failed += Run("Review intent applies defaults", TestReviewIntentAppliesDefaults);
+        failed += Run("Review intent respects settings", TestReviewIntentRespectsSettings);
         failed += Run("Triage-only loads threads", TestTriageOnlyLoadsThreads);
         failed += Run("Review code host env", TestReviewCodeHostEnv);
         failed += Run("GitHub context cache", TestGitHubContextCache);
@@ -1352,6 +1354,22 @@ internal static class Program {
             "provider fallback selected");
         AssertEqual(false, ReviewRunner.ShouldFallbackOnResult("Regular review content"), "provider fallback regular output");
         AssertEqual(true, ReviewRunner.ShouldFallbackOnResult($"x {ReviewDiagnostics.FailureMarker} y"), "provider fallback failure marker");
+
+    private static void TestReviewIntentAppliesDefaults() {
+        var settings = new ReviewSettings();
+        ReviewIntents.Apply("security", settings);
+        AssertEqual("strict", settings.Strictness, "intent strictness");
+        AssertContainsText(settings.Notes ?? string.Empty, "auth", "intent notes");
+    }
+
+    private static void TestReviewIntentRespectsSettings() {
+        var settings = new ReviewSettings {
+            Strictness = "custom",
+            Notes = "custom notes"
+        };
+        ReviewIntents.Apply("maintainability", settings);
+        AssertEqual("custom", settings.Strictness, "intent strictness preserved");
+        AssertEqual("custom notes", settings.Notes, "intent notes preserved");
     }
 
     private static void TestReviewProviderHealthEnv() {

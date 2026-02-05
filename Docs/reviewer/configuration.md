@@ -368,7 +368,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `reasoningEffort`: `minimal|low|medium|high|xhigh` (when set to low/medium/high, the header shows a reasoning level label)
 - `mode`: `inline`, `summary`, or `hybrid`
 - `length`: `short|medium|long`
-- `intent`: `security|performance|perf|maintainability` (sets focus areas if none provided)
+- `intent`: `security|performance|perf|maintainability` (sets focus areas and default strictness/notes when not set)
 - `codeHost`: `github` or `azure`
 - `reviewDiffRange`: `current`, `pr-base`, or `first-review`
 - `outputStyle`: rendering style preset
