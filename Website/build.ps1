@@ -20,7 +20,7 @@
 
 param(
     [switch]$Serve,
-    [int]$Port = 8080,
+    [int]$Port = 8081,
     [switch]$SkipBuildTool,
     [string]$PowerForgeRoot = $env:POWERFORGE_ROOT
 )
