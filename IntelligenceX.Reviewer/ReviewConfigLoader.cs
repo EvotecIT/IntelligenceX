@@ -452,7 +452,11 @@ internal static class ReviewConfigLoader {
     }
 
     private static bool IsFinite(double value) {
+#if NET5_0_OR_GREATER
+        return double.IsFinite(value);
+#else
         return !double.IsNaN(value) && !double.IsInfinity(value);
+#endif
     }
 
     private static bool ReadBool(JsonObject obj, string key, bool fallback) {
