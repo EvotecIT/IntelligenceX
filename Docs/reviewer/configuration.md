@@ -56,6 +56,8 @@ Unknown properties emit warnings; invalid types or enum values fail the run.
 }
 ```
 
+Note: set `maxFiles` to `0` to disable file count limits; the reviewer will still trim individual patches using `maxPatchChars`.
+
 ## Auto-resolve + triage example
 
 ```json
