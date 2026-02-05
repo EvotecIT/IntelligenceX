@@ -51,8 +51,8 @@ Status: In progress
 - [x] Add PR comment summarizing what was auto-resolved.
 
 ### Phase 5 — Provider abstraction
-- [ ] Centralize provider contracts (capabilities, limits, streaming, auth).
-- [ ] Add provider capability flags (usage API, reasoning level, streaming).
+- [x] Centralize provider contracts (capabilities, limits, streaming, auth).
+- [x] Add provider capability flags (usage API, reasoning level, streaming).
 - [ ] Add opt-in provider fallback (e.g., OpenAI → Copilot).
 - [ ] Add provider health checks and circuit breaker.
 
