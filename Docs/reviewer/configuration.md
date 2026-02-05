@@ -362,7 +362,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `reviewThreadsAutoResolveBotLogins` defaults to `intelligencex-review` and `copilot-pull-request-reviewer`. When set,
   it acts as an allowlist for auto-resolve; set an empty list to fall back to generic bot detection.
 - `reviewThreadsAutoResolveDiffRange` supports `current`, `pr-base`, or `first-review`.
-- Thread assessment ids are expected to be unique; missing ids are skipped and duplicate ids keep the last occurrence (with warnings).
+- Thread assessment ids are trimmed, expected to be unique, and keyed case-insensitively; missing ids are skipped and duplicate ids keep the last occurrence (with warnings).
 
 ## Auto-resolve troubleshooting
 If you see `Resource not accessible by integration` when resolving threads:

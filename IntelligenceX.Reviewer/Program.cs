@@ -1089,26 +1089,27 @@ public static class ReviewerApp {
         var byId = new Dictionary<string, ThreadAssessment>(StringComparer.OrdinalIgnoreCase);
         var missingIdCount = 0;
         var duplicateIdCount = 0;
-        var duplicateIds = new List<string>();
+        var duplicateIdExamples = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var assessment in assessments) {
-            if (string.IsNullOrWhiteSpace(assessment.Id)) {
+            var normalizedId = NormalizeThreadAssessmentId(assessment.Id);
+            if (normalizedId.Length == 0) {
                 missingIdCount++;
                 continue;
             }
-            if (!byId.TryAdd(assessment.Id, assessment)) {
+            if (!byId.TryAdd(normalizedId, assessment)) {
                 duplicateIdCount++;
-                if (duplicateIds.Count < 3) {
-                    duplicateIds.Add(assessment.Id);
+                if (duplicateIdExamples.Count < 3) {
+                    duplicateIdExamples.Add(normalizedId);
                 }
                 // Last occurrence wins to keep deterministic behavior without throwing.
-                byId[assessment.Id] = assessment;
+                byId[normalizedId] = assessment;
             }
         }
         if (missingIdCount > 0) {
             Console.Error.WriteLine($"Thread assessment skipped {missingIdCount} item(s) with missing ids.");
         }
         if (duplicateIdCount > 0) {
-            var examples = duplicateIds.Count > 0 ? $" (e.g., {string.Join(", ", duplicateIds)})" : string.Empty;
+            var examples = duplicateIdExamples.Count > 0 ? $" (e.g., {string.Join(", ", duplicateIdExamples)})" : string.Empty;
             Console.Error.WriteLine($"Thread assessment contained {duplicateIdCount} duplicate id(s){examples}; using last occurrence.");
         }
         var replyMap = new Dictionary<string, ThreadAssessment>(StringComparer.OrdinalIgnoreCase);
@@ -1122,7 +1123,10 @@ public static class ReviewerApp {
                 case "comment":
                 case "keep":
                     kept.Add(assessment);
-                    replyMap[assessment.Id] = assessment;
+                    var normalizedReplyId = NormalizeThreadAssessmentId(assessment.Id);
+                    if (normalizedReplyId.Length > 0) {
+                        replyMap[normalizedReplyId] = assessment;
+                    }
                     break;
             }
         }
@@ -1132,7 +1136,8 @@ public static class ReviewerApp {
             if (resolvedCount >= settings.ReviewThreadsAutoResolveMax) {
                 break;
             }
-            if (!byId.TryGetValue(thread.Id, out var assessment) || assessment.Action != "resolve") {
+            var normalizedThreadId = NormalizeThreadAssessmentId(thread.Id);
+            if (!byId.TryGetValue(normalizedThreadId, out var assessment) || assessment.Action != "resolve") {
                 continue;
             }
             if (settings.ReviewThreadsAutoResolveRequireEvidence &&
@@ -1140,7 +1145,7 @@ public static class ReviewerApp {
                 var missingEvidence = new ThreadAssessment(assessment.Id, "keep",
                     $"{assessment.Reason} (missing diff evidence)", assessment.Evidence);
                 kept.Add(missingEvidence);
-                replyMap[assessment.Id] = missingEvidence;
+                replyMap[normalizedThreadId] = missingEvidence;
                 continue;
             }
             var result = await TryResolveThreadAsync(github, fallbackGithub, thread.Id, cancellationToken).ConfigureAwait(false);
@@ -1153,7 +1158,7 @@ public static class ReviewerApp {
             var failedAssessment = new ThreadAssessment(assessment.Id, "keep", $"{assessment.Reason} (resolve failed: {error})",
                 assessment.Evidence);
             failed.Add(failedAssessment);
-            replyMap[assessment.Id] = failedAssessment;
+            replyMap[normalizedThreadId] = failedAssessment;
             Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {error}");
         }
 
@@ -1936,6 +1941,10 @@ public static class ReviewerApp {
         return context.Contains(normalized, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static string NormalizeThreadAssessmentId(string? id) {
+        return id?.Trim() ?? string.Empty;
+    }
+
     private static async Task<(bool Resolved, string? Error)> TryResolveThreadAsync(GitHubClient github,
         GitHubClient? fallbackGithub, string threadId, CancellationToken cancellationToken) {
         try {
@@ -1972,8 +1981,9 @@ public static class ReviewerApp {
         if (Interlocked.Exchange(ref _integrationForbiddenHintLogged, 1) == 1) {
             return;
         }
+        // This hint is emitted only from auto-resolve thread resolution flows.
         var lines = new[] {
-            "Auto-resolve: GitHub returned \"Resource not accessible by integration\".",
+            "Auto-resolve thread resolution: GitHub returned \"Resource not accessible by integration\".",
             "Hint: This usually means the GitHub App installation token cannot resolve review threads.",
             "Hint: Re-authorize or reinstall the GitHub App after permission changes.",
             "Hint: Confirm the app installation includes this repository.",
