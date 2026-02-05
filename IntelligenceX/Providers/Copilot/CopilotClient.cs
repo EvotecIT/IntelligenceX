@@ -359,8 +359,11 @@ public sealed class CopilotClient : IDisposable
             CreateNoWindow = true
         };
 
-        if (options.Environment.Count > 0) {
+        if (!options.InheritEnvironment) {
             startInfo.Environment.Clear();
+        }
+
+        if (options.Environment.Count > 0) {
             foreach (var entry in options.Environment) {
                 startInfo.Environment[entry.Key] = entry.Value;
             }

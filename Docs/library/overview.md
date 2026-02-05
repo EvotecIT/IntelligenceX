@@ -3,7 +3,8 @@
 The core library provides a Codex app-server client, ChatGPT auth helpers, and a lightweight Copilot client.
 
 Quickstart: `./quickstart.md`  
-Providers: `./providers.md`
+Providers: `./providers.md`  
+Tools: `./tools.md`
 
 ## Quick start (app-server)
 
@@ -95,6 +96,36 @@ await using var client = await IntelligenceXClient.ConnectAsync(new Intelligence
 
 using var subscription = client.SubscribeDelta(text => Console.Write(text));
 await client.ChatAsync("Stream a short answer.");
+```
+
+## Copilot chat client
+
+```csharp
+using IntelligenceX.Copilot;
+
+var options = new CopilotChatClientOptions {
+    Transport = CopilotTransportKind.Cli,
+    DefaultModel = "gpt-5.2-codex"
+};
+
+await using var chat = await CopilotChatClient.StartAsync(options);
+var answer = await chat.ChatAsync("Summarize the latest PR");
+Console.WriteLine(answer);
+```
+
+```csharp
+using IntelligenceX.Copilot;
+
+var options = new CopilotChatClientOptions {
+    Transport = CopilotTransportKind.Direct,
+    DefaultModel = "gpt-5.2-codex"
+};
+options.Direct.Url = "https://example.internal/copilot/chat";
+options.Direct.Token = Environment.GetEnvironmentVariable("COPILOT_DIRECT_TOKEN");
+
+await using var chat = await CopilotChatClient.StartAsync(options);
+var answer = await chat.ChatAsync("Summarize the latest PR");
+Console.WriteLine(answer);
 ```
 
 ## Config overrides

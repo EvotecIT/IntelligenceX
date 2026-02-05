@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using IntelligenceX.Copilot;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Chat;
 
@@ -15,6 +16,16 @@ internal enum ReviewLength {
 internal enum ReviewCommentMode {
     Sticky,
     Fresh
+}
+
+internal enum ReviewCodeHost {
+    GitHub,
+    AzureDevOps
+}
+
+internal enum AzureDevOpsAuthScheme {
+    Basic,
+    Bearer
 }
 
 internal enum ReviewProvider {
@@ -46,10 +57,25 @@ internal sealed class ReviewSettings {
         "intelligencex-review",
         "copilot-pull-request-reviewer"
     };
+    private static readonly IReadOnlyList<string> DefaultRedactionPatterns = new[] {
+        "-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]+?-----END [A-Z ]*PRIVATE KEY-----",
+        "\\b(AKIA|ASIA)[0-9A-Z]{16}\\b",
+        "\\bgh[pousr]_[A-Za-z0-9]{36}\\b",
+        "\\bgithub_pat_[A-Za-z0-9_]{20,}\\b",
+        "\\bxox[baprs]-[A-Za-z0-9-]+\\b",
+        "\\beyJ[a-zA-Z0-9_-]{10,}\\.[a-zA-Z0-9_-]{10,}\\.[a-zA-Z0-9_-]{10,}\\b",
+        "(?i)authorization\\s*:\\s*(bearer|basic)\\s+[^\\s]+",
+        "(?i)\\b(api[_-]?key|secret|token|password|passwd|pwd)\\b\\s*[:=]\\s*['\\\"]?[^\\s'\\\"]+"
+    };
 
     public string Mode { get; set; } = "hybrid";
     public ReviewProvider Provider { get; set; } = ReviewProvider.OpenAI;
+    public ReviewCodeHost CodeHost { get; set; } = ReviewCodeHost.GitHub;
     public string? Profile { get; set; }
+    /// <summary>
+    /// Optional high-level review intent preset (e.g., security, performance, maintainability).
+    /// </summary>
+    public string? Intent { get; set; }
     public string? Strictness { get; set; }
     public string? Tone { get; set; }
     public string? Style { get; set; }
@@ -63,6 +89,7 @@ internal sealed class ReviewSettings {
     public bool ReviewUsageSummary { get; set; }
     public int ReviewUsageSummaryCacheMinutes { get; set; } = 10;
     public int ReviewUsageSummaryTimeoutSeconds { get; set; } = 10;
+    public bool StructuredFindings { get; set; }
     public OpenAITransportKind OpenAITransport { get; set; } = OpenAITransportKind.AppServer;
     public int RetryCount { get; set; } = 3;
     public int RetryDelaySeconds { get; set; } = 5;
@@ -72,17 +99,32 @@ internal sealed class ReviewSettings {
     public int RetryJitterMaxMs { get; set; } = 800;
     public bool RetryExtraOnResponseEnded { get; set; } = true;
     public bool FailOpen { get; set; } = true;
+    /// <summary>
+    /// When true, fail-open is limited to transient errors only.
+    /// </summary>
+    public bool FailOpenTransientOnly { get; set; } = true;
     public bool Diagnostics { get; set; }
     public bool Preflight { get; set; }
     public int PreflightTimeoutSeconds { get; set; } = 15;
     public ReviewLength Length { get; set; } = ReviewLength.Long;
     public bool IncludeNextSteps { get; set; } = true;
+    /// <summary>
+    /// Adds a short language-aware hints block to the review prompt.
+    /// </summary>
+    public bool IncludeLanguageHints { get; set; } = true;
+    /// When enabled, include a summary note if review context was truncated by file or patch limits.
+    /// </summary>
+    public bool ReviewBudgetSummary { get; set; } = true;
     public string? PromptTemplate { get; set; }
     public string? PromptTemplatePath { get; set; }
     public string? SummaryTemplate { get; set; }
     public string? SummaryTemplatePath { get; set; }
     public bool OverwriteSummary { get; set; } = true;
     public bool OverwriteSummaryOnNewCommit { get; set; } = true;
+    /// <summary>
+    /// When enabled, include the previous summary (same commit) in the prompt to reduce noisy rewording on reruns.
+    /// </summary>
+    public bool SummaryStability { get; set; } = true;
     public bool SkipDraft { get; set; } = true;
     public IReadOnlyList<string> SkipTitles { get; set; } = new[] { "[WIP]", "[skip-review]" };
     public IReadOnlyList<string> SkipLabels { get; set; } = Array.Empty<string>();
@@ -101,6 +143,14 @@ internal sealed class ReviewSettings {
     /// Matching files are removed from the review list but do not skip the entire PR.
     /// </summary>
     public IReadOnlyList<string> ExcludePaths { get; set; } = Array.Empty<string>();
+    /// <summary>
+    /// When false, pull requests that modify workflow files are skipped to prevent self-modifying workflow runs.
+    /// </summary>
+    public bool AllowWorkflowChanges { get; set; }
+    /// <summary>
+    /// When enabled, emits an audit log describing which secrets sources were accessed.
+    /// </summary>
+    public bool SecretsAudit { get; set; } = true;
     /// Controls which diff range is used to build the review context.
     /// <list type="bullet">
     /// <item><description><c>current</c>: use the current PR files.</description></item>
@@ -114,8 +164,10 @@ internal sealed class ReviewSettings {
     public int MaxInlineComments { get; set; } = 10;
     public string? SeverityThreshold { get; set; }
     public bool RedactPii { get; set; }
-    public IReadOnlyList<string> RedactionPatterns { get; set; } = Array.Empty<string>();
+    public IReadOnlyList<string> RedactionPatterns { get; set; } = DefaultRedactionPatterns;
     public string RedactionReplacement { get; set; } = "[REDACTED]";
+    public bool UntrustedPrAllowSecrets { get; set; }
+    public bool UntrustedPrAllowWrites { get; set; }
     public int WaitSeconds { get; set; } = 60;
     public int IdleSeconds { get; set; } = 5;
     public bool ProgressUpdates { get; set; } = true;
@@ -143,13 +195,34 @@ internal sealed class ReviewSettings {
     public string ReviewThreadsAutoResolveDiffRange { get; set; } = "current";
     public int ReviewThreadsAutoResolveMax { get; set; } = 10;
     public bool ReviewThreadsAutoResolveAI { get; set; } = true;
+    /// <summary>
+    /// Require explicit diff evidence to auto-resolve review threads.
+    /// </summary>
+    public bool ReviewThreadsAutoResolveRequireEvidence { get; set; } = true;
     public bool ReviewThreadsAutoResolveAIPostComment { get; set; }
     public bool ReviewThreadsAutoResolveAIEmbed { get; set; } = true;
+    /// <summary>
+    /// Placement for embedded thread triage blocks in the main review comment.
+    /// </summary>
+    public string ReviewThreadsAutoResolveAIEmbedPlacement { get; set; } = "bottom";
     public bool ReviewThreadsAutoResolveAISummary { get; set; } = true;
     public bool ReviewThreadsAutoResolveAIReply { get; set; }
+    /// <summary>
+    /// When enabled, always append the auto-resolve summary line to the main review comment.
+    /// </summary>
+    public bool ReviewThreadsAutoResolveSummaryAlways { get; set; }
+    /// <summary>
+    /// Post a standalone summary comment listing auto-resolved and kept threads.
+    /// </summary>
+    public bool ReviewThreadsAutoResolveSummaryComment { get; set; }
+    /// <summary>
+    /// When enabled, only run thread triage/auto-resolve without generating a full review comment.
+    /// </summary>
+    public bool TriageOnly { get; set; }
     public int MaxCommentChars { get; set; } = 4000;
     public int MaxComments { get; set; } = 20;
     public int CommentSearchLimit { get; set; } = 500;
+    public int GitHubMaxConcurrency { get; set; } = 4;
     public bool ContextDenyEnabled { get; set; } = true;
     public IReadOnlyList<string> ContextDenyPatterns { get; set; } = DefaultContextDenyPatterns;
     public bool IncludeRelatedPrs { get; set; }
@@ -166,6 +239,54 @@ internal sealed class ReviewSettings {
     public bool CopilotAutoInstall { get; set; }
     public string? CopilotAutoInstallMethod { get; set; }
     public bool CopilotAutoInstallPrerelease { get; set; }
+    /// <summary>
+    /// Environment variables to forward from the host into the Copilot CLI process.
+    /// When <see cref="CopilotInheritEnvironment"/> is false, only these variables are forwarded.
+    /// When true, these variables override any inherited values.
+    /// </summary>
+    public IReadOnlyList<string> CopilotEnvAllowlist { get; set; } = Array.Empty<string>();
+    /// <summary>
+    /// Whether the Copilot CLI process should inherit the current environment.
+    /// </summary>
+    public bool CopilotInheritEnvironment { get; set; } = true;
+    /// <summary>
+    /// Additional environment variables to set for the Copilot CLI process.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> CopilotEnv { get; set; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Copilot transport selection (CLI or direct HTTP).
+    /// </summary>
+    public CopilotTransportKind CopilotTransport { get; set; } = CopilotTransportKind.Cli;
+    /// <summary>
+    /// Copilot direct HTTP endpoint URL (experimental).
+    /// </summary>
+    public string? CopilotDirectUrl { get; set; }
+    /// <summary>
+    /// Copilot direct token value (experimental).
+    /// </summary>
+    public string? CopilotDirectToken { get; set; }
+    /// <summary>
+    /// Environment variable that holds the Copilot direct token (experimental).
+    /// </summary>
+    public string? CopilotDirectTokenEnv { get; set; }
+    /// <summary>
+    /// Additional headers to send with Copilot direct requests (experimental).
+    /// </summary>
+    public IReadOnlyDictionary<string, string> CopilotDirectHeaders { get; set; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Timeout for Copilot direct requests (seconds).
+    /// </summary>
+    public int CopilotDirectTimeoutSeconds { get; set; } = 60;
+
+    public string? AzureOrganization { get; set; }
+    public string? AzureProject { get; set; }
+    public string? AzureRepository { get; set; }
+    public string? AzureBaseUrl { get; set; }
+    public string? AzureTokenEnv { get; set; }
+    public AzureDevOpsAuthScheme AzureAuthScheme { get; set; } = AzureDevOpsAuthScheme.Bearer;
+    public bool AzureAuthSchemeSpecified { get; set; }
 
     public static ReviewSettings Load() {
         var settings = new ReviewSettings();
@@ -185,6 +306,17 @@ internal sealed class ReviewSettings {
         if (!string.IsNullOrWhiteSpace(profile)) {
             ReviewProfiles.Apply(profile!, settings);
             settings.Profile = profile;
+        }
+
+        var codeHost = GetInput("code_host", "REVIEW_CODE_HOST");
+        if (!string.IsNullOrWhiteSpace(codeHost)) {
+            settings.CodeHost = ParseCodeHost(codeHost);
+        }
+
+        var intent = GetInput("intent", "REVIEW_INTENT");
+        if (!string.IsNullOrWhiteSpace(intent)) {
+            ReviewIntents.Apply(intent!, settings);
+            settings.Intent = intent;
         }
 
         var provider = GetInput("provider", "REVIEW_PROVIDER");
@@ -267,6 +399,10 @@ internal sealed class ReviewSettings {
             settings.ReviewUsageSummaryTimeoutSeconds =
                 Math.Max(1, ParseNonNegativeInt(usageTimeoutSeconds, settings.ReviewUsageSummaryTimeoutSeconds));
         }
+        var structuredFindings = GetInput("structured_findings", "REVIEW_STRUCTURED_FINDINGS");
+        if (!string.IsNullOrWhiteSpace(structuredFindings)) {
+            settings.StructuredFindings = ParseBoolean(structuredFindings, settings.StructuredFindings);
+        }
 
         var transport = GetInput("openai_transport", "OPENAI_TRANSPORT");
         if (!string.IsNullOrWhiteSpace(transport)) {
@@ -280,6 +416,10 @@ internal sealed class ReviewSettings {
         var overwriteSummaryOnNewCommit = GetInput("overwrite_summary_on_new_commit", "OVERWRITE_SUMMARY_ON_NEW_COMMIT");
         if (!string.IsNullOrWhiteSpace(overwriteSummaryOnNewCommit)) {
             settings.OverwriteSummaryOnNewCommit = ParseBoolean(overwriteSummaryOnNewCommit, settings.OverwriteSummaryOnNewCommit);
+        }
+        var summaryStability = GetInput("summary_stability", "REVIEW_SUMMARY_STABILITY");
+        if (!string.IsNullOrWhiteSpace(summaryStability)) {
+            settings.SummaryStability = ParseBoolean(summaryStability, settings.SummaryStability);
         }
 
         var skipDraft = GetInput("skip_draft", "SKIP_DRAFT");
@@ -310,6 +450,15 @@ internal sealed class ReviewSettings {
         var excludePaths = GetInput("exclude_paths", "EXCLUDE_PATHS");
         if (!string.IsNullOrWhiteSpace(excludePaths)) {
             settings.ExcludePaths = ParseList(excludePaths, settings.ExcludePaths);
+        }
+
+        var allowWorkflowChanges = GetInput("allow_workflow_changes", "REVIEW_ALLOW_WORKFLOW_CHANGES");
+        if (!string.IsNullOrWhiteSpace(allowWorkflowChanges)) {
+            settings.AllowWorkflowChanges = ParseBoolean(allowWorkflowChanges, settings.AllowWorkflowChanges);
+        }
+        var secretsAudit = GetInput("secrets_audit", "REVIEW_SECRETS_AUDIT");
+        if (!string.IsNullOrWhiteSpace(secretsAudit)) {
+            settings.SecretsAudit = ParseBoolean(secretsAudit, settings.SecretsAudit);
         }
 
         var reviewDiffRange = GetInput("review_diff_range", "REVIEW_DIFF_RANGE");
@@ -350,6 +499,16 @@ internal sealed class ReviewSettings {
         var redactionReplacement = GetInput("redaction_replacement", "REDACTION_REPLACEMENT");
         if (!string.IsNullOrWhiteSpace(redactionReplacement)) {
             settings.RedactionReplacement = redactionReplacement!;
+        }
+
+        var untrustedAllowSecrets = GetInput("untrusted_pr_allow_secrets", "REVIEW_UNTRUSTED_PR_ALLOW_SECRETS");
+        if (!string.IsNullOrWhiteSpace(untrustedAllowSecrets)) {
+            settings.UntrustedPrAllowSecrets = ParseBoolean(untrustedAllowSecrets, settings.UntrustedPrAllowSecrets);
+        }
+
+        var untrustedAllowWrites = GetInput("untrusted_pr_allow_writes", "REVIEW_UNTRUSTED_PR_ALLOW_WRITES");
+        if (!string.IsNullOrWhiteSpace(untrustedAllowWrites)) {
+            settings.UntrustedPrAllowWrites = ParseBoolean(untrustedAllowWrites, settings.UntrustedPrAllowWrites);
         }
 
         var promptTemplate = GetInput("prompt_template", "REVIEW_PROMPT_TEMPLATE");
@@ -413,6 +572,10 @@ internal sealed class ReviewSettings {
         var failOpen = GetInput("fail_open", "REVIEW_FAIL_OPEN");
         if (!string.IsNullOrWhiteSpace(failOpen)) {
             settings.FailOpen = ParseBoolean(failOpen, settings.FailOpen);
+        }
+        var failOpenTransientOnly = GetInput("fail_open_transient_only", "REVIEW_FAIL_OPEN_TRANSIENT_ONLY");
+        if (!string.IsNullOrWhiteSpace(failOpenTransientOnly)) {
+            settings.FailOpenTransientOnly = ParseBoolean(failOpenTransientOnly, settings.FailOpenTransientOnly);
         }
 
         var diagnostics = GetInput("diagnostics", "REVIEW_DIAGNOSTICS");
@@ -493,6 +656,62 @@ internal sealed class ReviewSettings {
         if (!string.IsNullOrWhiteSpace(copilotAutoInstallPrerelease)) {
             settings.CopilotAutoInstallPrerelease = ParseBoolean(copilotAutoInstallPrerelease, settings.CopilotAutoInstallPrerelease);
         }
+        var copilotEnvAllowlist = GetInput("copilot_env_allowlist", "COPILOT_ENV_ALLOWLIST");
+        if (!string.IsNullOrWhiteSpace(copilotEnvAllowlist)) {
+            settings.CopilotEnvAllowlist = ParseList(copilotEnvAllowlist, settings.CopilotEnvAllowlist);
+        }
+        var copilotInheritEnvironment = GetInput("copilot_inherit_environment", "COPILOT_INHERIT_ENVIRONMENT");
+        if (!string.IsNullOrWhiteSpace(copilotInheritEnvironment)) {
+            settings.CopilotInheritEnvironment =
+                ParseBoolean(copilotInheritEnvironment, settings.CopilotInheritEnvironment);
+        }
+        var copilotTransport = GetInput("copilot_transport", "COPILOT_TRANSPORT");
+        if (!string.IsNullOrWhiteSpace(copilotTransport)) {
+            settings.CopilotTransport = ParseCopilotTransport(copilotTransport, settings.CopilotTransport);
+        }
+        var copilotDirectUrl = GetInput("copilot_direct_url", "COPILOT_DIRECT_URL");
+        if (!string.IsNullOrWhiteSpace(copilotDirectUrl)) {
+            settings.CopilotDirectUrl = copilotDirectUrl;
+        }
+        var copilotDirectToken = GetInput("copilot_direct_token", "COPILOT_DIRECT_TOKEN");
+        if (!string.IsNullOrWhiteSpace(copilotDirectToken)) {
+            settings.CopilotDirectToken = copilotDirectToken;
+        }
+        var copilotDirectTokenEnv = GetInput("copilot_direct_token_env", "COPILOT_DIRECT_TOKEN_ENV");
+        if (!string.IsNullOrWhiteSpace(copilotDirectTokenEnv)) {
+            settings.CopilotDirectTokenEnv = copilotDirectTokenEnv;
+        }
+        var copilotDirectTimeout = GetInput("copilot_direct_timeout_seconds", "COPILOT_DIRECT_TIMEOUT_SECONDS");
+        if (!string.IsNullOrWhiteSpace(copilotDirectTimeout)) {
+            settings.CopilotDirectTimeoutSeconds =
+                ParsePositiveInt(copilotDirectTimeout, settings.CopilotDirectTimeoutSeconds);
+        }
+
+        var azureOrg = GetInput("azure_org", "AZURE_DEVOPS_ORG");
+        if (!string.IsNullOrWhiteSpace(azureOrg)) {
+            settings.AzureOrganization = azureOrg;
+        }
+        var azureProject = GetInput("azure_project", "AZURE_DEVOPS_PROJECT");
+        if (!string.IsNullOrWhiteSpace(azureProject)) {
+            settings.AzureProject = azureProject;
+        }
+        var azureRepo = GetInput("azure_repo", "AZURE_DEVOPS_REPO");
+        if (!string.IsNullOrWhiteSpace(azureRepo)) {
+            settings.AzureRepository = azureRepo;
+        }
+        var azureBaseUrl = GetInput("azure_base_url", "AZURE_DEVOPS_BASE_URL");
+        if (!string.IsNullOrWhiteSpace(azureBaseUrl)) {
+            settings.AzureBaseUrl = azureBaseUrl;
+        }
+        var azureTokenEnv = GetInput("azure_token_env", "AZURE_DEVOPS_TOKEN_ENV");
+        if (!string.IsNullOrWhiteSpace(azureTokenEnv)) {
+            settings.AzureTokenEnv = azureTokenEnv;
+        }
+        var azureAuthScheme = GetInput("azure_auth_scheme", "AZURE_DEVOPS_AUTH_SCHEME");
+        if (!string.IsNullOrWhiteSpace(azureAuthScheme)) {
+            settings.AzureAuthScheme = ParseAzureAuthScheme(azureAuthScheme);
+            settings.AzureAuthSchemeSpecified = true;
+        }
 
         var length = GetInput("length", "REVIEW_LENGTH");
         if (!string.IsNullOrWhiteSpace(length)) {
@@ -506,6 +725,14 @@ internal sealed class ReviewSettings {
         var includeNextSteps = GetInput("include_next_steps", "REVIEW_INCLUDE_NEXT_STEPS");
         if (!string.IsNullOrWhiteSpace(includeNextSteps)) {
             settings.IncludeNextSteps = ParseBoolean(includeNextSteps, settings.IncludeNextSteps);
+        }
+        var languageHints = GetInput("language_hints", "REVIEW_LANGUAGE_HINTS");
+        if (!string.IsNullOrWhiteSpace(languageHints)) {
+            settings.IncludeLanguageHints = ParseBoolean(languageHints, settings.IncludeLanguageHints);
+        }
+        var budgetSummary = GetInput("review_budget_summary", "REVIEW_BUDGET_SUMMARY");
+        if (!string.IsNullOrWhiteSpace(budgetSummary)) {
+            settings.ReviewBudgetSummary = ParseBoolean(budgetSummary, settings.ReviewBudgetSummary);
         }
 
         var commentMode = GetInput("comment_mode", "REVIEW_COMMENT_MODE");
@@ -527,6 +754,10 @@ internal sealed class ReviewSettings {
         var includeReviewThreads = GetInput("include_review_threads", "REVIEW_INCLUDE_REVIEW_THREADS");
         if (!string.IsNullOrWhiteSpace(includeReviewThreads)) {
             settings.IncludeReviewThreads = ParseBoolean(includeReviewThreads, settings.IncludeReviewThreads);
+        }
+        var triageOnly = GetInput("triage_only", "REVIEW_TRIAGE_ONLY");
+        if (!string.IsNullOrWhiteSpace(triageOnly)) {
+            settings.TriageOnly = ParseBoolean(triageOnly, settings.TriageOnly);
         }
         var reviewThreadsIncludeBots = GetInput("review_threads_include_bots", "REVIEW_THREADS_INCLUDE_BOTS", "REVIEW_REVIEW_THREADS_INCLUDE_BOTS");
         if (!string.IsNullOrWhiteSpace(reviewThreadsIncludeBots)) {
@@ -576,6 +807,9 @@ internal sealed class ReviewSettings {
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAi)) {
             settings.ReviewThreadsAutoResolveAI = ParseBoolean(reviewThreadsAutoResolveAi, settings.ReviewThreadsAutoResolveAI);
         }
+        var reviewThreadsAutoResolveRequireEvidence = GetInput("review_threads_auto_resolve_require_evidence", "REVIEW_THREADS_AUTO_RESOLVE_REQUIRE_EVIDENCE", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_REQUIRE_EVIDENCE");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveRequireEvidence)) {
+            settings.ReviewThreadsAutoResolveRequireEvidence = ParseBoolean(reviewThreadsAutoResolveRequireEvidence, settings.ReviewThreadsAutoResolveRequireEvidence);        }
         var reviewThreadsAutoResolveAiPost = GetInput("review_threads_auto_resolve_ai_post_comment", "REVIEW_THREADS_AUTO_RESOLVE_AI_POST_COMMENT", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI_POST_COMMENT");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAiPost)) {
             settings.ReviewThreadsAutoResolveAIPostComment = ParseBoolean(reviewThreadsAutoResolveAiPost, settings.ReviewThreadsAutoResolveAIPostComment);
@@ -584,13 +818,31 @@ internal sealed class ReviewSettings {
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAiEmbed)) {
             settings.ReviewThreadsAutoResolveAIEmbed = ParseBoolean(reviewThreadsAutoResolveAiEmbed, settings.ReviewThreadsAutoResolveAIEmbed);
         }
+        var reviewThreadsAutoResolveEmbedPlacement = GetInput("review_threads_auto_resolve_ai_embed_placement",
+            "REVIEW_THREADS_AUTO_RESOLVE_AI_EMBED_PLACEMENT", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI_EMBED_PLACEMENT");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveEmbedPlacement)) {
+            settings.ReviewThreadsAutoResolveAIEmbedPlacement =
+                NormalizeEmbedPlacement(reviewThreadsAutoResolveEmbedPlacement, settings.ReviewThreadsAutoResolveAIEmbedPlacement);
+        }
         var reviewThreadsAutoResolveAiSummary = GetInput("review_threads_auto_resolve_ai_summary", "REVIEW_THREADS_AUTO_RESOLVE_AI_SUMMARY", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI_SUMMARY");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAiSummary)) {
             settings.ReviewThreadsAutoResolveAISummary = ParseBoolean(reviewThreadsAutoResolveAiSummary, settings.ReviewThreadsAutoResolveAISummary);
         }
+        var reviewThreadsAutoResolveSummaryAlways = GetInput("review_threads_auto_resolve_summary_always",
+            "REVIEW_THREADS_AUTO_RESOLVE_SUMMARY_ALWAYS", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_SUMMARY_ALWAYS");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveSummaryAlways)) {
+            settings.ReviewThreadsAutoResolveSummaryAlways =
+                ParseBoolean(reviewThreadsAutoResolveSummaryAlways, settings.ReviewThreadsAutoResolveSummaryAlways);
+        }
         var reviewThreadsAutoResolveAiReply = GetInput("review_threads_auto_resolve_ai_reply", "REVIEW_THREADS_AUTO_RESOLVE_AI_REPLY", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_AI_REPLY");
         if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveAiReply)) {
             settings.ReviewThreadsAutoResolveAIReply = ParseBoolean(reviewThreadsAutoResolveAiReply, settings.ReviewThreadsAutoResolveAIReply);
+        }
+        var reviewThreadsAutoResolveSummaryComment = GetInput("review_threads_auto_resolve_summary_comment",
+            "REVIEW_THREADS_AUTO_RESOLVE_SUMMARY_COMMENT", "REVIEW_REVIEW_THREADS_AUTO_RESOLVE_SUMMARY_COMMENT");
+        if (!string.IsNullOrWhiteSpace(reviewThreadsAutoResolveSummaryComment)) {
+            settings.ReviewThreadsAutoResolveSummaryComment =
+                ParseBoolean(reviewThreadsAutoResolveSummaryComment, settings.ReviewThreadsAutoResolveSummaryComment);
         }
         var contextDenyEnabled = GetInput("context_deny_enabled", "REVIEW_CONTEXT_DENY_ENABLED");
         if (!string.IsNullOrWhiteSpace(contextDenyEnabled)) {
@@ -611,6 +863,10 @@ internal sealed class ReviewSettings {
         var commentSearchLimit = GetInput("comment_search_limit", "REVIEW_COMMENT_SEARCH_LIMIT");
         if (!string.IsNullOrWhiteSpace(commentSearchLimit)) {
             settings.CommentSearchLimit = ParsePositiveInt(commentSearchLimit, settings.CommentSearchLimit);
+        }
+        var githubConcurrency = GetInput("github_max_concurrency", "REVIEW_GITHUB_MAX_CONCURRENCY");
+        if (!string.IsNullOrWhiteSpace(githubConcurrency)) {
+            settings.GitHubMaxConcurrency = ParsePositiveInt(githubConcurrency, settings.GitHubMaxConcurrency);
         }
         var includeRelatedPrs = GetInput("include_related_prs", "REVIEW_INCLUDE_RELATED_PRS");
         if (!string.IsNullOrWhiteSpace(includeRelatedPrs)) {
@@ -672,6 +928,24 @@ internal sealed class ReviewSettings {
         };
     }
 
+    private static ReviewCodeHost ParseCodeHost(string value) {
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "azure" or "azuredevops" or "azure-devops" or "ado" => ReviewCodeHost.AzureDevOps,
+            _ => ReviewCodeHost.GitHub
+        };
+    }
+
+    internal static AzureDevOpsAuthScheme ParseAzureAuthScheme(string value) {
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "basic" or "pat" => AzureDevOpsAuthScheme.Basic,
+            "bearer" => AzureDevOpsAuthScheme.Bearer,
+            _ => throw new InvalidOperationException(
+                $"Invalid azure auth scheme '{value}'. Use 'basic', 'pat', or 'bearer'.")
+        };
+    }
+
     private static OpenAITransportKind ParseTransport(string value) {
         var normalized = value.Trim().ToLowerInvariant();
         return normalized switch {
@@ -722,6 +996,30 @@ internal sealed class ReviewSettings {
         };
     }
 
+    internal static string NormalizeEmbedPlacement(string? value, string fallback) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return fallback;
+        }
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "top" or "header" or "above" => "top",
+            "bottom" or "footer" or "below" => "bottom",
+            _ => fallback
+        };
+    }
+
+    private static CopilotTransportKind ParseCopilotTransport(string? value, CopilotTransportKind fallback) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return fallback;
+        }
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "direct" or "api" or "http" => CopilotTransportKind.Direct,
+            "cli" => CopilotTransportKind.Cli,
+            _ => fallback
+        };
+    }
+
     private static bool ParseBoolean(string? value, bool fallback) {
         if (string.IsNullOrWhiteSpace(value)) {
             return fallback;
@@ -758,7 +1056,10 @@ internal sealed class ReviewSettings {
         if (string.IsNullOrWhiteSpace(value)) {
             return fallback;
         }
-        if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) && parsed >= 1) {
+        if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) &&
+            parsed >= 1 &&
+            !double.IsNaN(parsed) &&
+            !double.IsInfinity(parsed)) {
             return parsed;
         }
         return fallback;

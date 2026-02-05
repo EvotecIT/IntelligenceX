@@ -43,9 +43,9 @@ internal sealed class JsonRpcClient : IDisposable {
             throw new ArgumentException("Method cannot be null or whitespace.", nameof(method));
         }
 
-        CallStarted?.Invoke(this, new RpcCallStartedEventArgs(method, @params));
         var started = DateTime.UtcNow;
         var id = Interlocked.Increment(ref _nextId);
+        CallStarted?.Invoke(this, new RpcCallStartedEventArgs(method, @params, id));
         var tcs = new TaskCompletionSource<JsonValue?>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending.TryAdd(id, new PendingCall(method, tcs));
 
@@ -55,11 +55,11 @@ internal sealed class JsonRpcClient : IDisposable {
         try {
             var result = await tcs.Task.ConfigureAwait(false);
             var duration = DateTime.UtcNow - started;
-            CallCompleted?.Invoke(this, new RpcCallCompletedEventArgs(method, duration, true));
+            CallCompleted?.Invoke(this, new RpcCallCompletedEventArgs(method, duration, true, null, id));
             return result;
         } catch (Exception ex) {
             var duration = DateTime.UtcNow - started;
-            CallCompleted?.Invoke(this, new RpcCallCompletedEventArgs(method, duration, false, ex));
+            CallCompleted?.Invoke(this, new RpcCallCompletedEventArgs(method, duration, false, ex, id));
             throw;
         }
     }

@@ -160,6 +160,10 @@ public sealed class EasySession : IDisposable
             chatOptions.Workspace = options.Workspace;
             chatOptions.AllowNetwork = options.AllowNetwork;
             chatOptions.MaxImageBytes = options.MaxImageBytes;
+            chatOptions.Tools = options.Tools;
+            chatOptions.ToolChoice = options.ToolChoice;
+            chatOptions.ParallelToolCalls = options.ParallelToolCalls;
+            chatOptions.PreviousResponseId = options.PreviousResponseId;
             if (options.RequireWorkspaceForFileAccess.HasValue) {
                 chatOptions.RequireWorkspaceForFileAccess = options.RequireWorkspaceForFileAccess.Value;
             }

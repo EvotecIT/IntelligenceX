@@ -7,7 +7,7 @@ namespace IntelligenceX.Reviewer;
 
 internal static class PromptBuilder {
     public static string Build(PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
-        string? diffNote, ReviewContextExtras? extras = null, bool inlineSupported = false) {
+        string? diffNote, ReviewContextExtras? extras = null, bool inlineSupported = false, string? previousSummary = null) {
         var template = ResolveTemplate(settings);
         var profileBlock = string.IsNullOrWhiteSpace(settings.Profile) ? string.Empty : $"Profile: {settings.Profile}\n";
         var strictnessBlock = string.IsNullOrWhiteSpace(settings.Strictness) ? string.Empty : $"Strictness: {settings.Strictness}\n";
@@ -17,11 +17,15 @@ internal static class PromptBuilder {
         var focusBlock = settings.Focus.Count == 0 ? string.Empty : $"Focus areas: {string.Join(", ", settings.Focus)}\n";
         var personaBlock = string.IsNullOrWhiteSpace(settings.Persona) ? string.Empty : $"Persona: {settings.Persona}\n";
         var notesBlock = string.IsNullOrWhiteSpace(settings.Notes) ? string.Empty : $"Additional guidance: {settings.Notes}\n";
+        var languageHintsBlock = LanguageHints.Build(files, settings.IncludeLanguageHints);
         var severityBlock = string.IsNullOrWhiteSpace(settings.SeverityThreshold)
             ? string.Empty
             : $"Only include issues with severity >= {settings.SeverityThreshold}.\n";
         var nextStepsSection = settings.IncludeNextSteps ? "- Next Steps 🚀\n" : string.Empty;
         var diffRangeBlock = string.IsNullOrWhiteSpace(diffNote) ? string.Empty : $"Diff range: {diffNote}\n";
+        var summaryStabilityBlock = string.IsNullOrWhiteSpace(previousSummary)
+            ? string.Empty
+            : $"Previous review summary (keep wording stable unless new evidence changes the outcome):\n{previousSummary.Trim()}\n\n";
 
         var tokens = new Dictionary<string, string> {
             ["ProfileBlock"] = profileBlock,
@@ -32,12 +36,14 @@ internal static class PromptBuilder {
             ["FocusBlock"] = focusBlock,
             ["PersonaBlock"] = personaBlock,
             ["NotesBlock"] = notesBlock,
+            ["LanguageHintsBlock"] = languageHintsBlock,
             ["SeverityBlock"] = severityBlock,
             ["Length"] = settings.Length.ToString().ToLowerInvariant(),
             ["Mode"] = settings.Mode,
             ["MaxInlineComments"] = settings.MaxInlineComments.ToString(),
             ["InlineSupported"] = inlineSupported ? "true" : "false",
             ["DiffRangeBlock"] = diffRangeBlock,
+            ["SummaryStabilityBlock"] = summaryStabilityBlock,
             ["NextStepsSection"] = nextStepsSection,
             ["Title"] = context.Title ?? string.Empty,
             ["Body"] = string.IsNullOrWhiteSpace(context.Body) ? "<no description>" : context.Body,
@@ -86,4 +92,6 @@ internal static class PromptBuilder {
         }
         return sb.ToString().TrimEnd();
     }
+
+    
 }

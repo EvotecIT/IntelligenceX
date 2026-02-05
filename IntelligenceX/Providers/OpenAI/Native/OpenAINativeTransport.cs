@@ -12,6 +12,7 @@ using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Auth;
 using IntelligenceX.OpenAI.Chat;
+using IntelligenceX.OpenAI.Tools;
 using IntelligenceX.OpenAI.Transport;
 using IntelligenceX.Telemetry;
 using IntelligenceX.Utils;
@@ -161,10 +162,15 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
             throw new InvalidOperationException("Failed to extract account id from access token.");
         }
 
-        var userMessage = await BuildUserMessageAsync(input, cancellationToken).ConfigureAwait(false);
-        var requestMessages = new List<JsonObject>(state.Messages.Count + 1);
-        requestMessages.AddRange(state.Messages);
-        requestMessages.Add(userMessage);
+        var inputItems = await BuildInputItemsAsync(input, cancellationToken).ConfigureAwait(false);
+        var trackMessages = options.PreviousResponseId is null;
+        var requestMessages = trackMessages
+            ? new List<JsonObject>(state.Messages.Count + inputItems.Count)
+            : new List<JsonObject>(inputItems.Count);
+        if (trackMessages) {
+            requestMessages.AddRange(state.Messages);
+        }
+        requestMessages.AddRange(inputItems);
 
         var body = BuildRequestBody(resolvedModel, requestMessages, state.SessionId, options);
         var turnId = Guid.NewGuid().ToString("N");
@@ -173,7 +179,7 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
         RpcCallStarted?.Invoke(this, new RpcCallStartedEventArgs("responses.create", rpcParameters));
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try {
-            var turn = await SendWithModelFallbackAsync(body, bundle.AccessToken, accountId!, state, userMessage,
+            var turn = await SendWithModelFallbackAsync(body, bundle.AccessToken, accountId!, state, inputItems, trackMessages,
                     resolvedModel, turnId, options, cancellationToken)
                 .ConfigureAwait(false);
             RpcCallCompleted?.Invoke(this, new RpcCallCompletedEventArgs("responses.create", sw.Elapsed, true));
@@ -247,7 +253,7 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
     }
 
     private async Task<TurnInfo> ProcessResponseAsync(HttpResponseMessage response, string turnId, string model,
-        NativeThreadState state, JsonObject userMessage, CancellationToken cancellationToken) {
+        NativeThreadState state, IReadOnlyList<JsonObject> inputItems, bool trackMessages, CancellationToken cancellationToken) {
         if (!response.IsSuccessStatusCode) {
             var error = await ParseErrorResponseAsync(response, cancellationToken).ConfigureAwait(false);
             throw new InvalidOperationException(error);
@@ -278,8 +284,12 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
         var assistantText = ExtractAssistantText(outputs);
         var assistantMessage = BuildAssistantMessage(assistantText, state);
 
-        state.Messages.Add(userMessage);
-        state.Messages.Add(assistantMessage);
+        if (trackMessages) {
+            if (inputItems.Count > 0) {
+                state.Messages.AddRange(inputItems);
+            }
+            state.Messages.Add(assistantMessage);
+        }
         state.UpdatePreview(TruncatePreview(assistantText));
 
         var outputArray = new JsonArray();
@@ -287,21 +297,25 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
             outputArray.Add(output);
         }
 
+        var responseId = completedResponse?.GetString("id");
         var rawTurn = new JsonObject()
             .Add("id", turnId)
             .Add("status", status ?? "completed")
             .Add("response", completedResponse ?? new JsonObject().Add("status", status ?? "completed"))
             .Add("output", outputArray);
+        if (!string.IsNullOrWhiteSpace(responseId)) {
+            rawTurn.Add("responseId", responseId);
+        }
         return TurnInfo.FromJson(rawTurn);
     }
 
     private async Task<TurnInfo> SendWithModelFallbackAsync(JsonObject body, string accessToken, string accountId,
-        NativeThreadState state, JsonObject userMessage, string model, string turnId, ChatOptions options,
-        CancellationToken cancellationToken) {
+        NativeThreadState state, IReadOnlyList<JsonObject> inputItems, bool trackMessages, string model, string turnId,
+        ChatOptions options, CancellationToken cancellationToken) {
         var response = await SendAsync(body, accessToken, accountId, state.SessionId, cancellationToken)
             .ConfigureAwait(false);
         try {
-            return await ProcessResponseAsync(response, turnId, model, state, userMessage, cancellationToken)
+            return await ProcessResponseAsync(response, turnId, model, state, inputItems, trackMessages, cancellationToken)
                 .ConfigureAwait(false);
         } catch (InvalidOperationException ex) when (IsModelNotSupportedForChatGpt(ex)) {
             var fallback = PickChatGptFallbackModel(model);
@@ -309,13 +323,17 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
                 throw;
             }
             state.Touch(fallback!);
-            var requestMessages = new List<JsonObject>(state.Messages.Count + 1);
-            requestMessages.AddRange(state.Messages);
-            requestMessages.Add(userMessage);
+            var requestMessages = trackMessages
+                ? new List<JsonObject>(state.Messages.Count + inputItems.Count)
+                : new List<JsonObject>(inputItems.Count);
+            if (trackMessages) {
+                requestMessages.AddRange(state.Messages);
+            }
+            requestMessages.AddRange(inputItems);
             var retryBody = BuildRequestBody(fallback!, requestMessages, state.SessionId, options);
             var retry = await SendAsync(retryBody, accessToken, accountId, state.SessionId, cancellationToken)
                 .ConfigureAwait(false);
-            return await ProcessResponseAsync(retry, turnId, fallback!, state, userMessage, cancellationToken)
+            return await ProcessResponseAsync(retry, turnId, fallback!, state, inputItems, trackMessages, cancellationToken)
                 .ConfigureAwait(false);
         }
     }
@@ -385,9 +403,7 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
             .Add("instructions", instructions)
             .Add("input", input)
             .Add("text", new JsonObject().Add("verbosity", verbosity.ToApiString()))
-            .Add("prompt_cache_key", sessionId)
-            .Add("tool_choice", "auto")
-            .Add("parallel_tool_calls", true);
+            .Add("prompt_cache_key", sessionId);
 
         if (temperature.HasValue) {
             body.Add("temperature", temperature.Value);
@@ -408,6 +424,33 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
             var include = new JsonArray();
             include.Add("reasoning.encrypted_content");
             body.Add("include", include);
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.PreviousResponseId)) {
+            body.Add("previous_response_id", options.PreviousResponseId);
+        }
+
+        if (options.Tools is not null && options.Tools.Count > 0) {
+            var tools = new JsonArray();
+            foreach (var tool in options.Tools) {
+                tools.Add(tool.ToJson());
+            }
+            body.Add("tools", tools);
+
+            var choice = options.ToolChoice ?? ToolChoice.Auto;
+            if (string.Equals(choice.Type, "custom", StringComparison.OrdinalIgnoreCase)) {
+                body.Add("tool_choice", new JsonObject()
+                    .Add("type", "custom")
+                    .Add("name", choice.Name ?? string.Empty));
+            } else {
+                body.Add("tool_choice", choice.Type);
+            }
+
+            if (options.ParallelToolCalls.HasValue) {
+                body.Add("parallel_tool_calls", options.ParallelToolCalls.Value);
+            } else {
+                body.Add("parallel_tool_calls", true);
+            }
         }
 
         return body;
@@ -443,8 +486,9 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
         return slash >= 0 && slash + 1 < value.Length ? value.Substring(slash + 1) : value;
     }
 
-    private async Task<JsonObject> BuildUserMessageAsync(ChatInput input, CancellationToken cancellationToken) {
+    private async Task<IReadOnlyList<JsonObject>> BuildInputItemsAsync(ChatInput input, CancellationToken cancellationToken) {
         var content = new JsonArray();
+        var extras = new List<JsonObject>();
         foreach (var item in input.ToJson()) {
             var obj = item.AsObject();
             if (obj is null) {
@@ -458,30 +502,40 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
                 }
                 continue;
             }
-            if (!string.Equals(type, "image", StringComparison.Ordinal)) {
+            if (string.Equals(type, "image", StringComparison.Ordinal)) {
+                var url = obj.GetString("url");
+                if (!string.IsNullOrWhiteSpace(url)) {
+                    content.Add(new JsonObject().Add("type", "input_image").Add("image_url", url));
+                    continue;
+                }
+                var path = obj.GetString("path");
+                if (!string.IsNullOrWhiteSpace(path)) {
+                    var bytes = await ReadFileBytesAsync(path!, cancellationToken).ConfigureAwait(false);
+                    var base64 = Convert.ToBase64String(bytes);
+                    var mime = GuessMimeType(path!);
+                    var dataUrl = $"data:{mime};base64,{base64}";
+                    content.Add(new JsonObject()
+                        .Add("type", "input_image")
+                        .Add("image_url", dataUrl)
+                        .Add("detail", "auto"));
+                }
                 continue;
             }
-            var url = obj.GetString("url");
-            if (!string.IsNullOrWhiteSpace(url)) {
-                content.Add(new JsonObject().Add("type", "input_image").Add("image_url", url));
-                continue;
-            }
-            var path = obj.GetString("path");
-            if (!string.IsNullOrWhiteSpace(path)) {
-                var bytes = await ReadFileBytesAsync(path!, cancellationToken).ConfigureAwait(false);
-                var base64 = Convert.ToBase64String(bytes);
-                var mime = GuessMimeType(path!);
-                var dataUrl = $"data:{mime};base64,{base64}";
-                content.Add(new JsonObject()
-                    .Add("type", "input_image")
-                    .Add("image_url", dataUrl)
-                    .Add("detail", "auto"));
-            }
+
+            // Non-message items (tool outputs, custom items) are sent as-is.
+            extras.Add(obj);
         }
 
-        return new JsonObject()
-            .Add("role", "user")
-            .Add("content", content);
+        var items = new List<JsonObject>();
+        if (content.Count > 0) {
+            items.Add(new JsonObject()
+                .Add("role", "user")
+                .Add("content", content));
+        }
+        if (extras.Count > 0) {
+            items.AddRange(extras);
+        }
+        return items;
     }
 
     private static JsonObject BuildAssistantMessage(string text, NativeThreadState state) {
@@ -543,6 +597,11 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
             }
             if (string.Equals(type, "output_image", StringComparison.Ordinal)) {
                 AddImageOutput(item, outputs);
+                continue;
+            }
+            if (string.Equals(type, "custom_tool_call", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(type, "tool_call", StringComparison.OrdinalIgnoreCase)) {
+                outputs.Add(item);
                 continue;
             }
             var text = item.GetString("text");

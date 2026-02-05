@@ -12,9 +12,11 @@ public sealed class RpcCallStartedEventArgs : EventArgs {
     /// </summary>
     /// <param name="method">The RPC method name.</param>
     /// <param name="parameters">The RPC parameters.</param>
-    public RpcCallStartedEventArgs(string method, JsonValue? parameters) {
+    /// <param name="requestId">The JSON-RPC request id, if available.</param>
+    public RpcCallStartedEventArgs(string method, JsonValue? parameters, long? requestId = null) {
         Method = method;
         Parameters = parameters;
+        RequestId = requestId;
         Timestamp = DateTimeOffset.UtcNow;
     }
 
@@ -26,6 +28,10 @@ public sealed class RpcCallStartedEventArgs : EventArgs {
     /// Gets the RPC parameters payload.
     /// </summary>
     public JsonValue? Parameters { get; }
+    /// <summary>
+    /// Gets the JSON-RPC request id, when available.
+    /// </summary>
+    public long? RequestId { get; }
     /// <summary>
     /// Gets the UTC timestamp when the call started.
     /// </summary>
@@ -43,11 +49,13 @@ public sealed class RpcCallCompletedEventArgs : EventArgs {
     /// <param name="duration">The call duration.</param>
     /// <param name="success">Whether the call succeeded.</param>
     /// <param name="error">The exception when the call fails.</param>
-    public RpcCallCompletedEventArgs(string method, TimeSpan duration, bool success, Exception? error = null) {
+    /// <param name="requestId">The JSON-RPC request id, if available.</param>
+    public RpcCallCompletedEventArgs(string method, TimeSpan duration, bool success, Exception? error = null, long? requestId = null) {
         Method = method;
         Duration = duration;
         Success = success;
         Error = error;
+        RequestId = requestId;
         Timestamp = DateTimeOffset.UtcNow;
     }
 
@@ -67,6 +75,10 @@ public sealed class RpcCallCompletedEventArgs : EventArgs {
     /// Gets the exception raised on failure, if any.
     /// </summary>
     public Exception? Error { get; }
+    /// <summary>
+    /// Gets the JSON-RPC request id, when available.
+    /// </summary>
+    public long? RequestId { get; }
     /// <summary>
     /// Gets the UTC timestamp when the call completed.
     /// </summary>

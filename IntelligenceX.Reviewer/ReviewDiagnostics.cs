@@ -11,17 +11,19 @@ namespace IntelligenceX.Reviewer;
 
 internal sealed class ReviewDiagnosticsSnapshot {
     public ReviewDiagnosticsSnapshot(IReadOnlyList<string> standardError, Exception? lastRpcError, string? lastRpcMethod,
-        TimeSpan? lastRpcDuration) {
+        TimeSpan? lastRpcDuration, long? lastRpcRequestId) {
         StandardError = standardError;
         LastRpcError = lastRpcError;
         LastRpcMethod = lastRpcMethod;
         LastRpcDuration = lastRpcDuration;
+        LastRpcRequestId = lastRpcRequestId;
     }
 
     public IReadOnlyList<string> StandardError { get; }
     public Exception? LastRpcError { get; }
     public string? LastRpcMethod { get; }
     public TimeSpan? LastRpcDuration { get; }
+    public long? LastRpcRequestId { get; }
 }
 
 internal sealed class ReviewDiagnosticsSession : IDisposable {
@@ -33,6 +35,7 @@ internal sealed class ReviewDiagnosticsSession : IDisposable {
     private Exception? _lastRpcError;
     private string? _lastRpcMethod;
     private TimeSpan? _lastRpcDuration;
+    private long? _lastRpcRequestId;
     private bool _disposed;
 
     private ReviewDiagnosticsSession(ReviewSettings settings, IntelligenceXClient client) {
@@ -58,6 +61,7 @@ internal sealed class ReviewDiagnosticsSession : IDisposable {
             _lastRpcError = args.Error;
             _lastRpcMethod = args.Method;
             _lastRpcDuration = args.Duration;
+            _lastRpcRequestId = args.RequestId;
         }
     }
 
@@ -79,7 +83,7 @@ internal sealed class ReviewDiagnosticsSession : IDisposable {
 
     public ReviewDiagnosticsSnapshot Snapshot() {
         lock (_lock) {
-            return new ReviewDiagnosticsSnapshot(new List<string>(_stderr), _lastRpcError, _lastRpcMethod, _lastRpcDuration);
+            return new ReviewDiagnosticsSnapshot(new List<string>(_stderr), _lastRpcError, _lastRpcMethod, _lastRpcDuration, _lastRpcRequestId);
         }
     }
 
@@ -201,7 +205,11 @@ internal static class ReviewDiagnostics {
             sb.AppendLine($"- Error: {summary}");
         }
         if (settings.Diagnostics && snapshot is not null && !string.IsNullOrWhiteSpace(snapshot.LastRpcMethod)) {
-            sb.AppendLine($"- Last RPC: {snapshot.LastRpcMethod}");
+            var lastRpc = snapshot.LastRpcMethod;
+            if (snapshot.LastRpcRequestId.HasValue) {
+                lastRpc = $"{lastRpc} (id: {snapshot.LastRpcRequestId.Value})";
+            }
+            sb.AppendLine($"- Last RPC: {lastRpc}");
         }
         sb.AppendLine();
         sb.AppendLine("_Re-run the workflow once connectivity is restored. Set `REVIEW_FAIL_OPEN=false` to keep failures blocking._");
@@ -253,6 +261,9 @@ internal static class ReviewDiagnostics {
             var rpcSummary = snapshot.LastRpcDuration.HasValue
                 ? $"{snapshot.LastRpcMethod} ({snapshot.LastRpcDuration.Value.TotalMilliseconds:0} ms)"
                 : snapshot.LastRpcMethod;
+            if (snapshot.LastRpcRequestId.HasValue) {
+                rpcSummary += $" id={snapshot.LastRpcRequestId.Value}";
+            }
             Console.Error.WriteLine($"Last RPC: {rpcSummary}");
         }
         if (snapshot.LastRpcError is not null) {

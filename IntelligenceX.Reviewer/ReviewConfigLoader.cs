@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using IntelligenceX.Copilot;
 using IntelligenceX.Json;
 
 namespace IntelligenceX.Reviewer;
@@ -27,12 +28,26 @@ internal static class ReviewConfigLoader {
             settings.Profile = profile;
         }
 
+        var intent = reviewObj.GetString("intent");
+        if (!string.IsNullOrWhiteSpace(intent)) {
+            ReviewIntents.Apply(intent!, settings);
+            settings.Intent = intent;
+        }
+
         var provider = reviewObj.GetString("provider");
         if (!string.IsNullOrWhiteSpace(provider)) {
             settings.Provider = provider.Trim().ToLowerInvariant() switch {
                 "copilot" => ReviewProvider.Copilot,
                 "openai" or "codex" => ReviewProvider.OpenAI,
                 _ => settings.Provider
+            };
+        }
+
+        var codeHost = reviewObj.GetString("codeHost");
+        if (!string.IsNullOrWhiteSpace(codeHost)) {
+            settings.CodeHost = codeHost.Trim().ToLowerInvariant() switch {
+                "azure" or "azuredevops" or "azure-devops" or "ado" => ReviewCodeHost.AzureDevOps,
+                _ => ReviewCodeHost.GitHub
             };
         }
 
@@ -51,10 +66,11 @@ internal static class ReviewConfigLoader {
         ApplyContext(reviewObj, settings);
         ApplyCodex(root, settings);
         ApplyCopilot(root, settings);
+        ApplyAzureDevOps(reviewObj, settings);
         ApplyCleanup(root, settings);
     }
 
-    private static string? ResolveConfigPath() {
+    internal static string? ResolveConfigPath() {
         var explicitPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
         if (!string.IsNullOrWhiteSpace(explicitPath)) {
             return explicitPath;
@@ -160,16 +176,26 @@ internal static class ReviewConfigLoader {
 
     private static void ApplyBooleans(JsonObject obj, ReviewSettings settings) {
         settings.IncludeNextSteps = ReadBool(obj, "includeNextSteps", settings.IncludeNextSteps);
+        settings.IncludeLanguageHints = ReadBool(obj, "languageHints", settings.IncludeLanguageHints);
+        settings.ReviewBudgetSummary = ReadBool(obj, "reviewBudgetSummary", settings.ReviewBudgetSummary);
         settings.OverwriteSummary = ReadBool(obj, "overwriteSummary", settings.OverwriteSummary);
         settings.OverwriteSummaryOnNewCommit = ReadBool(obj, "overwriteSummaryOnNewCommit", settings.OverwriteSummaryOnNewCommit);
+        settings.SummaryStability = ReadBool(obj, "summaryStability", settings.SummaryStability);
         settings.SkipDraft = ReadBool(obj, "skipDraft", settings.SkipDraft);
+        settings.AllowWorkflowChanges = ReadBool(obj, "allowWorkflowChanges", settings.AllowWorkflowChanges);
+        settings.SecretsAudit = ReadBool(obj, "secretsAudit", settings.SecretsAudit);
         settings.RedactPii = ReadBool(obj, "redactPii", settings.RedactPii);
         settings.ProgressUpdates = ReadBool(obj, "progressUpdates", settings.ProgressUpdates);
         settings.Diagnostics = ReadBool(obj, "diagnostics", settings.Diagnostics);
         settings.Preflight = ReadBool(obj, "preflight", settings.Preflight);
         settings.RetryExtraOnResponseEnded = ReadBool(obj, "retryExtraResponseEnded", settings.RetryExtraOnResponseEnded);
         settings.FailOpen = ReadBool(obj, "failOpen", settings.FailOpen);
+        settings.FailOpenTransientOnly = ReadBool(obj, "failOpenTransientOnly", settings.FailOpenTransientOnly);
         settings.ReviewUsageSummary = ReadBool(obj, "reviewUsageSummary", settings.ReviewUsageSummary);
+        settings.StructuredFindings = ReadBool(obj, "structuredFindings", settings.StructuredFindings);
+        settings.TriageOnly = ReadBool(obj, "triageOnly", settings.TriageOnly);
+        settings.UntrustedPrAllowSecrets = ReadBool(obj, "untrustedPrAllowSecrets", settings.UntrustedPrAllowSecrets);
+        settings.UntrustedPrAllowWrites = ReadBool(obj, "untrustedPrAllowWrites", settings.UntrustedPrAllowWrites);
     }
 
     private static void ApplyCommentMode(JsonObject obj, ReviewSettings settings) {
@@ -217,13 +243,25 @@ internal static class ReviewConfigLoader {
         }
         settings.ReviewThreadsAutoResolveMax = ReadNonNegativeInt(obj, "reviewThreadsAutoResolveMax", settings.ReviewThreadsAutoResolveMax);
         settings.ReviewThreadsAutoResolveAI = ReadBool(obj, "reviewThreadsAutoResolveAI", settings.ReviewThreadsAutoResolveAI);
+        settings.ReviewThreadsAutoResolveRequireEvidence = ReadBool(obj, "reviewThreadsAutoResolveRequireEvidence",
+            settings.ReviewThreadsAutoResolveRequireEvidence);
         settings.ReviewThreadsAutoResolveAIPostComment = ReadBool(obj, "reviewThreadsAutoResolveAIPostComment", settings.ReviewThreadsAutoResolveAIPostComment);
         settings.ReviewThreadsAutoResolveAIEmbed = ReadBool(obj, "reviewThreadsAutoResolveAIEmbed", settings.ReviewThreadsAutoResolveAIEmbed);
+        var embedPlacement = obj.GetString("reviewThreadsAutoResolveAIEmbedPlacement");
+        if (!string.IsNullOrWhiteSpace(embedPlacement)) {
+            settings.ReviewThreadsAutoResolveAIEmbedPlacement =
+                ReviewSettings.NormalizeEmbedPlacement(embedPlacement, settings.ReviewThreadsAutoResolveAIEmbedPlacement);
+        }
         settings.ReviewThreadsAutoResolveAISummary = ReadBool(obj, "reviewThreadsAutoResolveAISummary", settings.ReviewThreadsAutoResolveAISummary);
+        settings.ReviewThreadsAutoResolveSummaryAlways = ReadBool(obj, "reviewThreadsAutoResolveSummaryAlways",
+            settings.ReviewThreadsAutoResolveSummaryAlways);
         settings.ReviewThreadsAutoResolveAIReply = ReadBool(obj, "reviewThreadsAutoResolveAIReply", settings.ReviewThreadsAutoResolveAIReply);
+        settings.ReviewThreadsAutoResolveSummaryComment = ReadBool(obj, "reviewThreadsAutoResolveSummaryComment",
+            settings.ReviewThreadsAutoResolveSummaryComment);
         settings.MaxCommentChars = ReadInt(obj, "maxCommentChars", settings.MaxCommentChars);
         settings.MaxComments = ReadInt(obj, "maxComments", settings.MaxComments);
         settings.CommentSearchLimit = ReadInt(obj, "commentSearchLimit", settings.CommentSearchLimit);
+        settings.GitHubMaxConcurrency = Math.Max(1, ReadInt(obj, "githubMaxConcurrency", settings.GitHubMaxConcurrency));
         settings.ContextDenyEnabled = ReadBool(obj, "contextDenyEnabled", settings.ContextDenyEnabled);
         var contextDenyPatterns = ReadStringList(obj, "contextDenyPatterns");
         if (contextDenyPatterns is not null) {
@@ -255,6 +293,55 @@ internal static class ReviewConfigLoader {
         settings.CopilotAutoInstall = ReadBool(copilot, "autoInstall", settings.CopilotAutoInstall);
         settings.CopilotAutoInstallMethod = copilot.GetString("autoInstallMethod") ?? settings.CopilotAutoInstallMethod;
         settings.CopilotAutoInstallPrerelease = ReadBool(copilot, "autoInstallPrerelease", settings.CopilotAutoInstallPrerelease);
+        var envAllowlist = ReadStringList(copilot, "envAllowlist");
+        if (envAllowlist is not null) {
+            settings.CopilotEnvAllowlist = envAllowlist;
+        }
+        settings.CopilotInheritEnvironment = ReadBool(copilot, "inheritEnvironment", settings.CopilotInheritEnvironment);
+        var env = ReadStringMap(copilot, "env");
+        if (env is not null) {
+            settings.CopilotEnv = env;
+        }
+        var transport = copilot.GetString("transport");
+        if (!string.IsNullOrWhiteSpace(transport)) {
+            settings.CopilotTransport = ParseCopilotTransport(transport, settings.CopilotTransport);
+        }
+        settings.CopilotDirectUrl = copilot.GetString("directUrl") ?? settings.CopilotDirectUrl;
+        settings.CopilotDirectToken = copilot.GetString("directToken") ?? settings.CopilotDirectToken;
+        settings.CopilotDirectTokenEnv = copilot.GetString("directTokenEnv") ?? settings.CopilotDirectTokenEnv;
+        settings.CopilotDirectTimeoutSeconds = ReadInt(copilot, "directTimeoutSeconds", settings.CopilotDirectTimeoutSeconds);
+        var directHeaders = ReadStringMap(copilot, "directHeaders");
+        if (directHeaders is not null) {
+            settings.CopilotDirectHeaders = directHeaders;
+        }
+    }
+
+    private static void ApplyAzureDevOps(JsonObject obj, ReviewSettings settings) {
+        var org = obj.GetString("azureOrg");
+        if (!string.IsNullOrWhiteSpace(org)) {
+            settings.AzureOrganization = org;
+        }
+        var project = obj.GetString("azureProject");
+        if (!string.IsNullOrWhiteSpace(project)) {
+            settings.AzureProject = project;
+        }
+        var repo = obj.GetString("azureRepo");
+        if (!string.IsNullOrWhiteSpace(repo)) {
+            settings.AzureRepository = repo;
+        }
+        var baseUrl = obj.GetString("azureBaseUrl");
+        if (!string.IsNullOrWhiteSpace(baseUrl)) {
+            settings.AzureBaseUrl = baseUrl;
+        }
+        var tokenEnv = obj.GetString("azureTokenEnv");
+        if (!string.IsNullOrWhiteSpace(tokenEnv)) {
+            settings.AzureTokenEnv = tokenEnv;
+        }
+        var authScheme = obj.GetString("azureAuthScheme");
+        if (!string.IsNullOrWhiteSpace(authScheme)) {
+            settings.AzureAuthScheme = ReviewSettings.ParseAzureAuthScheme(authScheme);
+            settings.AzureAuthSchemeSpecified = true;
+        }
     }
 
     private static void ApplyCleanup(JsonObject root, ReviewSettings settings) {
@@ -285,6 +372,18 @@ internal static class ReviewConfigLoader {
         settings.Cleanup.TemplatePath = cleanup.GetString("templatePath") ?? settings.Cleanup.TemplatePath;
     }
 
+    private static CopilotTransportKind ParseCopilotTransport(string value, CopilotTransportKind fallback) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return fallback;
+        }
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "direct" or "api" or "http" => CopilotTransportKind.Direct,
+            "cli" => CopilotTransportKind.Cli,
+            _ => fallback
+        };
+    }
+
     private static IReadOnlyList<string>? ReadStringList(JsonObject obj, string key) {
         if (obj.TryGetValue(key, out var value)) {
             var array = value?.AsArray();
@@ -306,6 +405,28 @@ internal static class ReviewConfigLoader {
         return null;
     }
 
+    private static IReadOnlyDictionary<string, string>? ReadStringMap(JsonObject obj, string key) {
+        if (!obj.TryGetValue(key, out var value)) {
+            return null;
+        }
+        var mapObj = value?.AsObject();
+        if (mapObj is null || mapObj.Count == 0) {
+            return null;
+        }
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in mapObj) {
+            if (string.IsNullOrWhiteSpace(entry.Key)) {
+                continue;
+            }
+            var text = entry.Value?.AsString();
+            if (text is null) {
+                continue;
+            }
+            result[entry.Key] = text;
+        }
+        return result;
+    }
+
     private static int ReadInt(JsonObject obj, string key, int fallback) {
         var value = obj.GetInt64(key);
         if (value.HasValue && value.Value > 0) {
@@ -324,10 +445,18 @@ internal static class ReviewConfigLoader {
 
     private static double ReadDouble(JsonObject obj, string key, double fallback) {
         var value = obj.GetDouble(key);
-        if (value.HasValue && value.Value >= 1) {
+        if (value.HasValue && value.Value >= 1 && IsFinite(value.Value)) {
             return value.Value;
         }
         return fallback;
+    }
+
+    private static bool IsFinite(double value) {
+#if NET5_0_OR_GREATER
+        return double.IsFinite(value);
+#else
+        return !double.IsNaN(value) && !double.IsInfinity(value);
+#endif
     }
 
     private static bool ReadBool(JsonObject obj, string key, bool fallback) {

@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using IntelligenceX.OpenAI.Chat;
+using IntelligenceX.OpenAI.Tools;
 
 namespace IntelligenceX.OpenAI;
 
@@ -34,6 +36,22 @@ public sealed class EasyChatOptions {
     /// Workspace path for tool access.
     /// </summary>
     public string? Workspace { get; set; }
+    /// <summary>
+    /// Tool definitions available to the model.
+    /// </summary>
+    public IReadOnlyList<ToolDefinition>? Tools { get; set; }
+    /// <summary>
+    /// Tool choice override.
+    /// </summary>
+    public ToolChoice? ToolChoice { get; set; }
+    /// <summary>
+    /// Whether tool calls can run in parallel when supported.
+    /// </summary>
+    public bool? ParallelToolCalls { get; set; }
+    /// <summary>
+    /// Previous response id for continuing a response chain.
+    /// </summary>
+    public string? PreviousResponseId { get; set; }
     /// <summary>
     /// Whether network access is allowed.
     /// </summary>

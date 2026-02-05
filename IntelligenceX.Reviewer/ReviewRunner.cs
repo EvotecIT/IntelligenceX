@@ -89,7 +89,7 @@ internal sealed class ReviewRunner {
                 retryState).ConfigureAwait(false);
         } catch (Exception ex) {
             ReviewDiagnostics.LogFailure(ex, _settings, snapshot, retryState);
-            if (_settings.FailOpen && IsTransient(ex)) {
+            if (ShouldFailOpen(_settings, ex)) {
                 return ReviewDiagnostics.BuildFailureBody(ex, _settings, snapshot, retryState);
             }
             throw;
@@ -181,6 +181,16 @@ internal sealed class ReviewRunner {
         return ReviewDiagnostics.Classify(ex).IsTransient;
     }
 
+    internal static bool ShouldFailOpen(ReviewSettings settings, Exception ex) {
+        if (!settings.FailOpen) {
+            return false;
+        }
+        if (IsTransient(ex)) {
+            return true;
+        }
+        return !settings.FailOpenTransientOnly;
+    }
+
     internal static class ReviewRetryPolicy {
         public static Task<string> RunAsync(Func<Task<string>> action, Func<Exception, bool> isTransient,
             int maxAttempts, int retryDelaySeconds, int retryMaxDelaySeconds, CancellationToken cancellationToken,
@@ -256,6 +266,9 @@ internal sealed class ReviewRunner {
 
     private async Task<string> RunCopilotAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
         CancellationToken cancellationToken) {
+        if (_settings.CopilotTransport == CopilotTransportKind.Direct) {
+            return await RunCopilotDirectAsync(prompt, cancellationToken).ConfigureAwait(false);
+        }
         var options = new CopilotClientOptions();
         if (!string.IsNullOrWhiteSpace(_settings.CopilotCliPath)) {
             options.CliPath = _settings.CopilotCliPath;
@@ -274,6 +287,7 @@ internal sealed class ReviewRunner {
             options.AutoInstallMethod = method;
         }
         options.AutoInstallPrerelease = _settings.CopilotAutoInstallPrerelease;
+        ApplyCopilotEnvironment(options);
 
         await using var client = await CopilotClient.StartAsync(options, cancellationToken).ConfigureAwait(false);
         var session = await client.CreateSessionAsync(new CopilotSessionOptions {
@@ -336,6 +350,62 @@ internal sealed class ReviewRunner {
         }
 
         return result ?? string.Empty;
+    }
+
+    private async Task<string> RunCopilotDirectAsync(string prompt, CancellationToken cancellationToken) {
+        if (string.IsNullOrWhiteSpace(_settings.CopilotDirectUrl)) {
+            throw new InvalidOperationException("Copilot direct transport requires copilot.directUrl.");
+        }
+        if (string.IsNullOrWhiteSpace(_settings.Model)) {
+            throw new InvalidOperationException("Copilot direct transport requires review.model to be set.");
+        }
+        var token = ResolveCopilotDirectToken();
+        if (string.IsNullOrWhiteSpace(token) && !HasAuthorizationHeader(_settings.CopilotDirectHeaders)) {
+            throw new InvalidOperationException("Copilot direct transport requires a token or Authorization header.");
+        }
+        if (HasAuthorizationHeader(_settings.CopilotDirectHeaders)) {
+            SecretsAudit.Record("Copilot direct Authorization header from copilot.directHeaders");
+        }
+        var options = new IntelligenceX.Copilot.Direct.CopilotDirectOptions {
+            Url = _settings.CopilotDirectUrl,
+            Token = token,
+            Timeout = TimeSpan.FromSeconds(Math.Max(1, _settings.CopilotDirectTimeoutSeconds))
+        };
+        foreach (var entry in _settings.CopilotDirectHeaders) {
+            if (string.IsNullOrWhiteSpace(entry.Key) || entry.Value is null) {
+                continue;
+            }
+            options.Headers[entry.Key] = entry.Value;
+        }
+        options.Validate();
+
+        using var client = new IntelligenceX.Copilot.Direct.CopilotDirectClient(options);
+        return await client.ChatAsync(prompt, _settings.Model, cancellationToken).ConfigureAwait(false);
+    }
+
+    private string? ResolveCopilotDirectToken() {
+        if (!string.IsNullOrWhiteSpace(_settings.CopilotDirectTokenEnv)) {
+            var value = Environment.GetEnvironmentVariable(_settings.CopilotDirectTokenEnv);
+            if (!string.IsNullOrWhiteSpace(value)) {
+                SecretsAudit.Record($"Copilot direct token from {_settings.CopilotDirectTokenEnv}");
+                return value;
+            }
+        }
+        if (!string.IsNullOrWhiteSpace(_settings.CopilotDirectToken)) {
+            SecretsAudit.Record("Copilot direct token from config (copilot.directToken)");
+            return _settings.CopilotDirectToken;
+        }
+        return null;
+    }
+
+    private static bool HasAuthorizationHeader(IReadOnlyDictionary<string, string> headers) {
+        foreach (var entry in headers) {
+            if (string.Equals(entry.Key, "Authorization", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(entry.Value)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private async Task PreflightNativeConnectivityAsync(OpenAINativeOptions options, TimeSpan timeout, CancellationToken cancellationToken) {
@@ -421,6 +491,33 @@ internal sealed class ReviewRunner {
     private static string GetDeltas(StringBuilder deltas) {
         lock (deltas) {
             return deltas.ToString();
+        }
+    }
+
+    private void ApplyCopilotEnvironment(CopilotClientOptions options) {
+        options.InheritEnvironment = _settings.CopilotInheritEnvironment;
+
+        if (_settings.CopilotEnvAllowlist.Count == 0 && _settings.CopilotEnv.Count == 0) {
+            return;
+        }
+
+        foreach (var name in _settings.CopilotEnvAllowlist) {
+            if (string.IsNullOrWhiteSpace(name)) {
+                continue;
+            }
+            var value = Environment.GetEnvironmentVariable(name);
+            if (!string.IsNullOrWhiteSpace(value)) {
+                options.Environment[name] = value;
+                SecretsAudit.Record($"Copilot CLI env from {name}");
+            }
+        }
+
+        foreach (var entry in _settings.CopilotEnv) {
+            if (string.IsNullOrWhiteSpace(entry.Key) || entry.Value is null) {
+                continue;
+            }
+            options.Environment[entry.Key] = entry.Value;
+            SecretsAudit.Record($"Copilot CLI env set: {entry.Key}");
         }
     }
 }

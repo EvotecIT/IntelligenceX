@@ -19,8 +19,8 @@ internal sealed class DiagnosticsSubscription : IDisposable {
         _client = client;
         _writer = writer;
 
-        _rpcStarted = (_, args) => _writer($"RPC -> {args.Method}");
-        _rpcCompleted = (_, args) => _writer($"RPC <- {args.Method} ({args.Duration.TotalMilliseconds:0} ms)");
+        _rpcStarted = (_, args) => _writer($"RPC -> {args.Method}{FormatRequestId(args.RequestId)}");
+        _rpcCompleted = (_, args) => _writer($"RPC <- {args.Method}{FormatRequestId(args.RequestId)} ({args.Duration.TotalMilliseconds:0} ms)");
         _loginStarted = (_, args) => _writer($"Login started: {args.LoginType}");
         _loginCompleted = (_, args) => _writer($"Login completed: {args.LoginType}");
         _protocol = (_, line) => _writer($"RPC RAW: {line}");
@@ -41,5 +41,9 @@ internal sealed class DiagnosticsSubscription : IDisposable {
         _client.LoginCompleted -= _loginCompleted;
         _client.ProtocolLineReceived -= _protocol;
         _client.StandardErrorReceived -= _stderr;
+    }
+
+    private static string FormatRequestId(long? requestId) {
+        return requestId.HasValue ? $" [id:{requestId.Value}]" : string.Empty;
     }
 }

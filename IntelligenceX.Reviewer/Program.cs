@@ -15,7 +15,7 @@ using IntelligenceX.OpenAI.Usage;
 namespace IntelligenceX.Reviewer;
 
 /// <summary>
-/// Entry point for running the IntelligenceX GitHub review workflow.
+/// Entry point for running the IntelligenceX review workflow.
 /// </summary>
 public static class ReviewerApp {
     private const string ThreadReplyMarker = "<!-- intelligencex:thread-reply -->";
@@ -31,30 +31,64 @@ public static class ReviewerApp {
             cts.Cancel();
         };
         Console.CancelKeyPress += cancelHandler;
+        SecretsAuditSession? secretsAudit = null;
         try {
             var cancellationToken = cts.Token;
             if (!await TryWriteAuthFromEnvAsync().ConfigureAwait(false)) {
                 return 1;
             }
             var settings = ReviewSettings.Load();
-            if (!await ValidateAuthAsync(settings).ConfigureAwait(false)) {
-                return 1;
+            secretsAudit = SecretsAudit.TryStart(settings);
+            var validation = ReviewConfigValidator.ValidateCurrent();
+            if (validation is not null) {
+                if (validation.Warnings.Count > 0) {
+                    Console.Error.WriteLine($"Configuration warnings in {validation.ConfigPath}:");
+                    foreach (var warning in validation.Warnings) {
+                        Console.Error.WriteLine($"- {warning.Path}: {warning.Message}");
+                    }
+                    Console.Error.WriteLine($"Schema: {validation.SchemaHint}");
+                }
+                if (validation.Errors.Count > 0) {
+                    Console.Error.WriteLine($"Configuration errors in {validation.ConfigPath}:");
+                    foreach (var error in validation.Errors) {
+                        Console.Error.WriteLine($"- {error.Path}: {error.Message}");
+                    }
+                    Console.Error.WriteLine($"Schema: {validation.SchemaHint}");
+                    return 1;
+                }
             }
-            var token = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN")
-                ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+            if (settings.CodeHost == ReviewCodeHost.AzureDevOps) {
+                if (!await ValidateAuthAsync(settings).ConfigureAwait(false)) {
+                    return 1;
+                }
+                return await AzureDevOpsReviewRunner.RunAsync(settings, cancellationToken).ConfigureAwait(false);
+            }
+            var primaryToken = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN");
+            var token = !string.IsNullOrWhiteSpace(primaryToken)
+                ? primaryToken
+                : Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+            var tokenSource = !string.IsNullOrWhiteSpace(primaryToken)
+                ? "INTELLIGENCEX_GITHUB_TOKEN"
+                : "GITHUB_TOKEN";
 
             if (string.IsNullOrWhiteSpace(token)) {
                 Console.Error.WriteLine("Missing GitHub token (INTELLIGENCEX_GITHUB_TOKEN or GITHUB_TOKEN).");
                 return 1;
             }
+            SecretsAudit.Record($"GitHub token from {tokenSource}");
 
             var fallbackToken = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
             if (string.Equals(token, fallbackToken, StringComparison.Ordinal)) {
                 fallbackToken = null;
             }
+            if (!string.IsNullOrWhiteSpace(fallbackToken)) {
+                SecretsAudit.Record("GitHub fallback token from GITHUB_TOKEN");
+            }
 
-            using var github = new GitHubClient(token);
-            using var fallbackGithub = string.IsNullOrWhiteSpace(fallbackToken) ? null : new GitHubClient(fallbackToken);
+            using var github = new GitHubClient(token, maxConcurrency: settings.GitHubMaxConcurrency);
+            using var fallbackGithub = string.IsNullOrWhiteSpace(fallbackToken)
+                ? null
+                : new GitHubClient(fallbackToken, maxConcurrency: settings.GitHubMaxConcurrency);
             PullRequestContext? context = null;
             var eventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
             if (!string.IsNullOrWhiteSpace(eventPath) && File.Exists(eventPath)) {
@@ -79,6 +113,24 @@ public static class ReviewerApp {
                     .ConfigureAwait(false);
             }
 
+            var isUntrusted = context.IsFromFork;
+            if (isUntrusted) {
+                Console.WriteLine("Untrusted pull request detected (fork).");
+                if (!settings.UntrustedPrAllowSecrets) {
+                    Console.WriteLine("Skipping review to avoid secret access. Set review.untrustedPrAllowSecrets=true to override.");
+                    return 0;
+                }
+            }
+
+            if (!await ValidateAuthAsync(settings).ConfigureAwait(false)) {
+                return 1;
+            }
+
+            var allowWrites = !isUntrusted || settings.UntrustedPrAllowWrites;
+            if (!allowWrites && isUntrusted) {
+                Console.WriteLine("Write actions disabled for untrusted pull requests.");
+            }
+
             if (settings.SkipDraft && context.Draft) {
                 Console.WriteLine("Skipping draft pull request.");
                 return 0;
@@ -92,12 +144,6 @@ public static class ReviewerApp {
                 return 0;
             }
 
-            context = await CleanupService.RunAsync(github, context, settings, cancellationToken)
-                .ConfigureAwait(false);
-
-            var progress = new ReviewProgress {
-                StatusLine = "Starting review."
-            };
             var files = await github.GetPullRequestFilesAsync(context.Owner, context.Repo, context.Number, cancellationToken)
                 .ConfigureAwait(false);
 
@@ -105,6 +151,32 @@ public static class ReviewerApp {
                 Console.WriteLine("No files to review.");
                 return 0;
             }
+
+            if (!settings.AllowWorkflowChanges && HasWorkflowChanges(files)) {
+                Console.WriteLine("Workflow file changes detected; skipping review. Set allowWorkflowChanges or REVIEW_ALLOW_WORKFLOW_CHANGES=true to override.");
+                return 0;
+            }
+
+            if (allowWrites) {
+                context = await CleanupService.RunAsync(github, context, settings, cancellationToken)
+                    .ConfigureAwait(false);
+            } else {
+                Console.WriteLine("Skipping cleanup for untrusted pull request.");
+            }
+
+            IssueComment? existingSummary = null;
+            string? previousSummary = null;
+            if (settings.SummaryStability && !string.IsNullOrWhiteSpace(context.HeadSha)) {
+                existingSummary = await FindExistingSummaryAsync(github, context, settings, cancellationToken)
+                    .ConfigureAwait(false);
+                if (existingSummary is not null && !IsSummaryOutdated(existingSummary, context.HeadSha)) {
+                    previousSummary = ExtractSummaryBody(existingSummary.Body, settings.MaxCommentChars);
+                }
+            }
+
+            var progress = new ReviewProgress {
+                StatusLine = "Starting review."
+            };
 
             if (ShouldSkipByPaths(files, settings.SkipPaths)) {
                 Console.WriteLine("Skipping pull request due to path filter.");
@@ -126,19 +198,42 @@ public static class ReviewerApp {
             progress.Files = ReviewProgressState.Complete;
             progress.StatusLine = "Analyzed changed files.";
 
-            var extras = await BuildExtrasAsync(github, fallbackGithub, context, settings, cancellationToken)
+            var extras = await BuildExtrasAsync(github, fallbackGithub, context, settings, cancellationToken, settings.TriageOnly)
                 .ConfigureAwait(false);
+            if (settings.TriageOnly) {
+                if (!allowWrites) {
+                    Console.WriteLine("Skipping thread triage for untrusted pull request.");
+                    return 0;
+                }
+                var triageRunner = new ReviewRunner(settings);
+                var (triageOnlyFiles, triageOnlyNote) = await ResolveThreadTriageFilesAsync(github, context, settings, allFiles, cancellationToken)
+                    .ConfigureAwait(false);
+                var triageOnlyResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, triageRunner, context, triageOnlyFiles,
+                        settings, extras, false, triageOnlyNote, cancellationToken, true, false)
+                    .ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(triageOnlyResult.EmbeddedBlock)) {
+                    await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, triageOnlyResult.EmbeddedBlock, cancellationToken)
+                        .ConfigureAwait(false);
+                    Console.WriteLine("Posted thread triage comment.");
+                } else {
+                    Console.WriteLine("No threads eligible for triage.");
+                }
+                return 0;
+            }
             var inlineSupported = !string.Equals(settings.Mode, "summary", StringComparison.OrdinalIgnoreCase) &&
                                   settings.MaxInlineComments > 0 &&
                                   !string.IsNullOrWhiteSpace(context.HeadSha);
-            var limitedFiles = PrepareFiles(files, settings.MaxFiles, settings.MaxPatchChars);
-            var prompt = PromptBuilder.Build(context, limitedFiles, settings, diffNote, extras, inlineSupported);
+            var (limitedFiles, budgetNote) = PrepareFiles(files, settings.MaxFiles, settings.MaxPatchChars);
+            if (!settings.ReviewBudgetSummary) {
+                budgetNote = string.Empty;
+            }
+            var prompt = PromptBuilder.Build(context, limitedFiles, settings, diffNote, extras, inlineSupported, previousSummary);
             if (settings.RedactPii) {
                 prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
             }
 
             long? commentId = null;
-            if (settings.ProgressUpdates) {
+            if (allowWrites && settings.ProgressUpdates) {
                 var progressBody = ReviewFormatter.BuildProgressComment(context, settings, progress, null, inlineSupported);
                 commentId = await CreateOrUpdateProgressCommentAsync(github, context, settings, progressBody, cancellationToken)
                     .ConfigureAwait(false);
@@ -149,7 +244,7 @@ public static class ReviewerApp {
             progress.StatusLine = "Generating review findings.";
 
             Func<string, Task>? onPartial = null;
-            if (settings.ProgressUpdates && commentId.HasValue) {
+            if (allowWrites && settings.ProgressUpdates && commentId.HasValue) {
                 onPartial = async partial => {
                     var body = ReviewFormatter.BuildProgressComment(context, settings, progress, partial, inlineSupported);
                     await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, body, cancellationToken)
@@ -161,7 +256,7 @@ public static class ReviewerApp {
                 cancellationToken).ConfigureAwait(false);
 
             var reviewFailed = ReviewDiagnostics.IsFailureBody(reviewBody);
-            var inlineAllowed = inlineSupported && !reviewFailed;
+            var inlineAllowed = inlineSupported && !reviewFailed && allowWrites;
             var inlineComments = Array.Empty<InlineReviewComment>();
             var summaryBody = reviewBody;
             if (inlineAllowed) {
@@ -185,22 +280,37 @@ public static class ReviewerApp {
                 }
             }
 
-            var (triageFiles, triageNote) = await ResolveThreadTriageFilesAsync(github, context, settings, allFiles, cancellationToken)
-                .ConfigureAwait(false);
-            var triageResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, runner, context, triageFiles,
-                    settings, extras, reviewFailed, triageNote, cancellationToken)
-                .ConfigureAwait(false);
-            if (settings.ReviewThreadsAutoResolveAIEmbed && !string.IsNullOrWhiteSpace(triageResult.EmbeddedBlock)) {
-                summaryBody = summaryBody.TrimEnd() + "\n\n" + triageResult.EmbeddedBlock.Trim();
+            var triageResult = ThreadTriageResult.Empty;
+            if (allowWrites) {
+                var (triageFiles, triageNote) = await ResolveThreadTriageFilesAsync(github, context, settings, allFiles, cancellationToken)
+                    .ConfigureAwait(false);
+                triageResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, runner, context, triageFiles,
+                        settings, extras, reviewFailed, triageNote, cancellationToken, false,
+                        settings.ReviewThreadsAutoResolveAIPostComment)
+                    .ConfigureAwait(false);
+                if (settings.ReviewThreadsAutoResolveAIEmbed && !string.IsNullOrWhiteSpace(triageResult.EmbeddedBlock)) {
+                    summaryBody = ApplyEmbedPlacement(summaryBody, triageResult.EmbeddedBlock,
+                        settings.ReviewThreadsAutoResolveAIEmbedPlacement);
+                }
             }
             var inlineSuppressed = inlineSupported && !inlineAllowed;
-            var autoResolveSummary = settings.ReviewThreadsAutoResolveAISummary ? triageResult.SummaryLine : string.Empty;
+            var autoResolveSummary = allowWrites && settings.ReviewThreadsAutoResolveAISummary ? triageResult.SummaryLine : string.Empty;
+            if (allowWrites && settings.ReviewThreadsAutoResolveSummaryAlways && string.IsNullOrWhiteSpace(autoResolveSummary)) {
+                autoResolveSummary = triageResult.FallbackSummary;
+            }
             var usageLine = await TryBuildUsageLineAsync(settings).ConfigureAwait(false);
+            var findingsBlock = settings.StructuredFindings ? ReviewFindingsBuilder.Build(inlineComments) : string.Empty;
             var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported, inlineSuppressed,
-                autoResolveSummary, usageLine);
+                autoResolveSummary, budgetNote, usageLine, findingsBlock);
             progress.Review = ReviewProgressState.Complete;
             progress.Finalize = ReviewProgressState.InProgress;
             progress.StatusLine = "Finalizing summary.";
+
+            if (!allowWrites) {
+                Console.WriteLine("Skipping GitHub writes for untrusted pull request.");
+                Console.WriteLine(commentBody);
+                return 0;
+            }
 
             if (commentId.HasValue) {
                 await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, commentBody, cancellationToken)
@@ -210,7 +320,8 @@ public static class ReviewerApp {
                 var shouldSearch = settings.OverwriteSummary || settings.OverwriteSummaryOnNewCommit;
                 IssueComment? existing = null;
                 if (shouldSearch) {
-                    existing = await FindExistingSummaryAsync(github, context, settings, cancellationToken).ConfigureAwait(false);
+                    existing = existingSummary ?? await FindExistingSummaryAsync(github, context, settings, cancellationToken)
+                        .ConfigureAwait(false);
                 }
                 var shouldOverwrite = settings.OverwriteSummary ||
                                       (settings.OverwriteSummaryOnNewCommit && IsSummaryOutdated(existing, context.HeadSha));
@@ -234,6 +345,8 @@ public static class ReviewerApp {
             Console.Error.WriteLine(ex.Message);
             return 1;
         } finally {
+            secretsAudit?.WriteSummary();
+            secretsAudit?.Dispose();
             Console.CancelKeyPress -= cancelHandler;
         }
     }
@@ -248,10 +361,12 @@ public static class ReviewerApp {
         string content;
         if (!string.IsNullOrWhiteSpace(authJson)) {
             content = authJson!;
+            SecretsAudit.Record("Auth store loaded from INTELLIGENCEX_AUTH_JSON");
         } else {
             try {
                 var bytes = Convert.FromBase64String(authB64!);
                 content = Encoding.UTF8.GetString(bytes);
+                SecretsAudit.Record("Auth store loaded from INTELLIGENCEX_AUTH_B64");
             } catch {
                 Console.Error.WriteLine("Failed to decode INTELLIGENCEX_AUTH_B64.");
                 return false;
@@ -337,6 +452,7 @@ public static class ReviewerApp {
                 Console.Error.WriteLine("Export a store bundle with `intelligencex auth export --format store-base64`.");
                 return false;
             }
+            SecretsAudit.Record($"OpenAI auth bundle '{bundle.Provider}' from {authPath}");
             return true;
         } catch (Exception ex) {
             Console.Error.WriteLine($"Failed to load auth store: {ex.Message}");
@@ -388,29 +504,80 @@ public static class ReviewerApp {
         return allMatch;
     }
 
-    private static IReadOnlyList<PullRequestFile> PrepareFiles(IReadOnlyList<PullRequestFile> files, int maxFiles, int maxPatchChars) {
+    internal static bool HasWorkflowChanges(IReadOnlyList<PullRequestFile> files) {
+        foreach (var file in files) {
+            if (IsWorkflowPath(file.Filename)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool IsWorkflowPath(string? path) {
+        if (string.IsNullOrWhiteSpace(path)) {
+            return false;
+        }
+        var normalized = path.Replace('\\', '/').TrimStart('/');
+        if (!normalized.StartsWith(".github/workflows/", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+        return normalized.EndsWith(".yml", StringComparison.OrdinalIgnoreCase) ||
+               normalized.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static (IReadOnlyList<PullRequestFile> Files, string BudgetNote) PrepareFiles(IReadOnlyList<PullRequestFile> files,
+        int maxFiles, int maxPatchChars) {
+        if (maxFiles <= 0) {
+            maxFiles = files.Count;
+        }
         var list = new List<PullRequestFile>();
+        var truncatedPatches = 0;
         var count = 0;
         foreach (var file in files) {
             if (count >= maxFiles) {
                 break;
             }
             var patch = file.Patch;
-            if (!string.IsNullOrWhiteSpace(patch) && patch.Length > maxPatchChars) {
-                var headSize = Math.Max(0, maxPatchChars / 2);
-                var tailSize = Math.Max(0, maxPatchChars - headSize);
-                if (headSize + tailSize > patch.Length) {
-                    patch = patch.Substring(0, maxPatchChars) + "\n... (truncated)";
-                } else {
-                    var head = patch.Substring(0, headSize);
-                    var tail = patch.Substring(patch.Length - tailSize);
-                    patch = head + "\n... (truncated) ...\n" + tail;
+            if (!string.IsNullOrWhiteSpace(patch)) {
+                var trimmed = TrimPatch(patch, maxPatchChars);
+                if (!string.Equals(trimmed, patch, StringComparison.Ordinal)) {
+                    truncatedPatches++;
                 }
+                patch = trimmed;
             }
             list.Add(new PullRequestFile(file.Filename, file.Status, patch));
             count++;
         }
-        return list;
+        var budgetNote = BuildBudgetNote(files.Count, list.Count, truncatedPatches, maxPatchChars);
+        return (list, budgetNote);
+    }
+
+    internal static string BuildBudgetNote(int totalFiles, int includedFiles, int truncatedPatches, int maxPatchChars) {
+        var parts = new List<string>();
+        if (totalFiles > includedFiles) {
+            parts.Add($"showing first {includedFiles} of {totalFiles} files");
+        }
+        if (truncatedPatches > 0) {
+            var label = truncatedPatches == 1 ? "patch" : "patches";
+            parts.Add($"{truncatedPatches} {label} trimmed to {maxPatchChars} chars");
+        }
+        if (parts.Count == 0) {
+            return string.Empty;
+        }
+        return $"Review context truncated: {string.Join("; ", parts)}.";
+    }
+
+    private static string ApplyEmbedPlacement(string reviewBody, string embedBlock, string placement) {
+        var embed = embedBlock.Trim();
+        if (embed.Length == 0) {
+            return reviewBody;
+        }
+        var body = string.IsNullOrWhiteSpace(reviewBody) ? string.Empty : reviewBody.Trim();
+        var normalizedPlacement = ReviewSettings.NormalizeEmbedPlacement(placement, "bottom");
+        if (normalizedPlacement == "top") {
+            return string.IsNullOrWhiteSpace(body) ? embed : embed + "\n\n" + body;
+        }
+        return string.IsNullOrWhiteSpace(body) ? embed : body + "\n\n" + embed;
     }
 
     /// <summary>
@@ -452,14 +619,14 @@ public static class ReviewerApp {
     }
 
     private static async Task<ReviewContextExtras> BuildExtrasAsync(GitHubClient github, GitHubClient? fallbackGithub,
-        PullRequestContext context, ReviewSettings settings, CancellationToken cancellationToken) {
+        PullRequestContext context, ReviewSettings settings, CancellationToken cancellationToken, bool forceReviewThreads) {
         var extras = new ReviewContextExtras();
         if (settings.IncludeIssueComments) {
             var comments = await github.ListIssueCommentsAsync(context.Owner, context.Repo, context.Number, settings.MaxComments, cancellationToken)
                 .ConfigureAwait(false);
             extras.IssueCommentsSection = BuildIssueCommentsSection(comments, settings);
         }
-        var loadThreads = settings.IncludeReviewThreads || settings.ReviewThreadsAutoResolveAI;
+        var loadThreads = forceReviewThreads || settings.IncludeReviewThreads || settings.ReviewThreadsAutoResolveAI;
         if (loadThreads) {
             var threads = await github.ListPullRequestReviewThreadsAsync(context.Owner, context.Repo, context.Number,
                     settings.ReviewThreadsMax, settings.ReviewThreadsMaxComments, cancellationToken)
@@ -748,8 +915,9 @@ public static class ReviewerApp {
 
     private static async Task<ThreadTriageResult> MaybeAutoResolveAssessedThreadsAsync(GitHubClient github, GitHubClient? fallbackGithub,
         ReviewRunner runner, PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
-        ReviewContextExtras extras, bool reviewFailed, string? diffNote, CancellationToken cancellationToken) {
-        if (!settings.ReviewThreadsAutoResolveAI || reviewFailed) {
+        ReviewContextExtras extras, bool reviewFailed, string? diffNote, CancellationToken cancellationToken,
+        bool force, bool allowCommentPost) {
+        if ((!settings.ReviewThreadsAutoResolveAI && !force) || reviewFailed) {
             return ThreadTriageResult.Empty;
         }
         if (extras.ReviewThreads.Count == 0) {
@@ -778,6 +946,9 @@ public static class ReviewerApp {
         }
 
         var byId = assessments.ToDictionary(a => a.Id, StringComparer.OrdinalIgnoreCase);
+        var replyMap = new Dictionary<string, ThreadAssessment>(StringComparer.OrdinalIgnoreCase);
+        var patchIndex = BuildInlinePatchIndex(files);
+        var patchLookup = BuildPatchLookup(files, settings.MaxPatchChars);
         var resolved = new List<ThreadAssessment>();
         var kept = new List<ThreadAssessment>();
         var failed = new List<ThreadAssessment>();
@@ -786,6 +957,7 @@ public static class ReviewerApp {
                 case "comment":
                 case "keep":
                     kept.Add(assessment);
+                    replyMap[assessment.Id] = assessment;
                     break;
             }
         }
@@ -798,6 +970,14 @@ public static class ReviewerApp {
             if (!byId.TryGetValue(thread.Id, out var assessment) || assessment.Action != "resolve") {
                 continue;
             }
+            if (settings.ReviewThreadsAutoResolveRequireEvidence &&
+                !HasValidResolveEvidence(assessment.Evidence, thread, patchIndex, patchLookup, settings.MaxPatchChars)) {
+                var missingEvidence = new ThreadAssessment(assessment.Id, "keep",
+                    $"{assessment.Reason} (missing diff evidence)", assessment.Evidence);
+                kept.Add(missingEvidence);
+                replyMap[assessment.Id] = missingEvidence;
+                continue;
+            }
             var result = await TryResolveThreadAsync(github, fallbackGithub, thread.Id, cancellationToken).ConfigureAwait(false);
             if (result.Resolved) {
                 resolvedCount++;
@@ -805,7 +985,10 @@ public static class ReviewerApp {
                 continue;
             }
             var error = result.Error ?? "unknown error";
-            failed.Add(new ThreadAssessment(assessment.Id, "keep", $"{assessment.Reason} (resolve failed: {error})"));
+            var failedAssessment = new ThreadAssessment(assessment.Id, "keep", $"{assessment.Reason} (resolve failed: {error})",
+                assessment.Evidence);
+            failed.Add(failedAssessment);
+            replyMap[assessment.Id] = failedAssessment;
             Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {error}");
         }
 
@@ -815,12 +998,19 @@ public static class ReviewerApp {
 
         var commentPosted = false;
         var triageBody = BuildThreadAssessmentComment(resolved, kept, context.HeadSha, diffNote);
-        if (settings.ReviewThreadsAutoResolveAIReply && kept.Count > 0) {
-            await ReplyToKeptThreadsAsync(github, context, candidates, byId, context.HeadSha, diffNote, settings, cancellationToken)
+        if (settings.ReviewThreadsAutoResolveAIReply && replyMap.Count > 0) {
+            await ReplyToKeptThreadsAsync(github, context, candidates, replyMap, context.HeadSha, diffNote, settings, cancellationToken)
                 .ConfigureAwait(false);
         }
-        if (settings.ReviewThreadsAutoResolveAIPostComment && !settings.ReviewThreadsAutoResolveAIEmbed && kept.Count > 0) {
+        if (allowCommentPost && settings.ReviewThreadsAutoResolveAIPostComment &&
+            !settings.ReviewThreadsAutoResolveAIEmbed && kept.Count > 0) {
             var body = triageBody;
+            await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, cancellationToken)
+                .ConfigureAwait(false);
+            commentPosted = true;
+        }
+        if (settings.ReviewThreadsAutoResolveSummaryComment && !commentPosted && (resolved.Count > 0 || kept.Count > 0)) {
+            var body = BuildThreadAutoResolveSummaryComment(resolved, kept, context.HeadSha, diffNote);
             await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, cancellationToken)
                 .ConfigureAwait(false);
             commentPosted = true;
@@ -833,7 +1023,8 @@ public static class ReviewerApp {
         if (commentPosted) {
             summary += " Triage comment posted.";
         }
-        return new ThreadTriageResult(summary, triageBody);
+        var fallbackSummary = BuildFallbackTriageSummary(resolved, kept);
+        return new ThreadTriageResult(summary, triageBody, fallbackSummary);
     }
 
     private static async Task<string> TryBuildUsageLineAsync(ReviewSettings settings) {
@@ -896,6 +1087,16 @@ public static class ReviewerApp {
             lines.Add(secondary);
         }
 
+        var codePrimary = FormatRateLimitLine(snapshot.CodeReviewRateLimit?.PrimaryWindow, "code review limit");
+        if (!string.IsNullOrWhiteSpace(codePrimary)) {
+            lines.Add(codePrimary);
+        }
+
+        var codeSecondary = FormatRateLimitLine(snapshot.CodeReviewRateLimit?.SecondaryWindow, "code review limit (secondary)");
+        if (!string.IsNullOrWhiteSpace(codeSecondary)) {
+            lines.Add(codeSecondary);
+        }
+
         if (snapshot.Credits is not null) {
             if (snapshot.Credits.Unlimited) {
                 lines.Add("credits: unlimited");
@@ -909,13 +1110,7 @@ public static class ReviewerApp {
         if (lines.Count == 0) {
             return string.Empty;
         }
-
-        var sb = new StringBuilder();
-        sb.AppendLine("Usage:");
-        foreach (var line in lines) {
-            sb.AppendLine($"- {line}");
-        }
-        return sb.ToString().TrimEnd();
+        return "Usage: " + string.Join(" | ", lines);
     }
 
     private static string? FormatRateLimitLine(ChatGptRateLimitWindow? window, string fallbackLabel) {
@@ -1035,7 +1230,8 @@ public static class ReviewerApp {
         sb.AppendLine("If diff context shows `<file patch>`, it is the file-level diff because line-level context was unavailable.");
         sb.AppendLine();
         sb.AppendLine("Return JSON only in this format:");
-        sb.AppendLine("{\"threads\":[{\"id\":\"...\",\"action\":\"resolve|keep|comment\",\"reason\":\"...\"}]}");
+        sb.AppendLine("{\"threads\":[{\"id\":\"...\",\"action\":\"resolve|keep|comment\",\"reason\":\"...\",\"evidence\":\"...\"}]}");
+        sb.AppendLine("When resolving, evidence must quote a line from the diff context (e.g., \"42: fixed null check\").");
         sb.AppendLine();
         sb.AppendLine($"PR: {context.Owner}/{context.Repo} #{context.Number}");
         if (!string.IsNullOrWhiteSpace(context.Title)) {
@@ -1154,14 +1350,210 @@ public static class ReviewerApp {
         if (maxPatchChars <= 0 || patch.Length <= maxPatchChars) {
             return patch;
         }
-        var headSize = Math.Max(0, maxPatchChars / 2);
-        var tailSize = Math.Max(0, maxPatchChars - headSize);
-        if (headSize + tailSize > patch.Length) {
-            return patch.Substring(0, maxPatchChars) + "\n... (truncated)";
+        var newline = patch.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var normalized = patch.Replace("\r\n", "\n");
+        var lines = normalized.Split('\n');
+        var headerLines = new List<string>();
+        var hunks = new List<List<string>>();
+        List<string>? current = null;
+
+        foreach (var line in lines) {
+            if (line.StartsWith("@@", StringComparison.Ordinal)) {
+                if (current is not null) {
+                    hunks.Add(current);
+                }
+                current = new List<string> { line };
+                continue;
+            }
+            if (current is null) {
+                headerLines.Add(line);
+            } else {
+                current.Add(line);
+            }
         }
-        var head = patch.Substring(0, headSize);
-        var tail = patch.Substring(patch.Length - tailSize);
-        return head + "\n... (truncated) ...\n" + tail;
+
+        if (current is not null) {
+            hunks.Add(current);
+        }
+
+        if (hunks.Count == 0) {
+            return TrimHard(normalized, maxPatchChars, newline);
+        }
+
+        var header = string.Join(newline, headerLines);
+        if (header.Length > maxPatchChars) {
+            return TrimHard(header, maxPatchChars, newline);
+        }
+
+        var hunkTexts = hunks.Select(hunk => string.Join(newline, hunk)).ToList();
+        if (hunkTexts.Count <= 1) {
+            return AppendSequential(header, hunkTexts, maxPatchChars, newline);
+        }
+
+        var marker = "... (truncated) ...";
+        var sb = new StringBuilder(maxPatchChars + 32);
+        if (!string.IsNullOrEmpty(header)) {
+            sb.Append(header);
+        }
+
+        if (!TryAppendSegment(sb, hunkTexts[0], maxPatchChars, newline)) {
+            return TrimHard(header, maxPatchChars, newline);
+        }
+
+        if (hunkTexts.Count == 2) {
+            if (TryAppendSegment(sb, hunkTexts[1], maxPatchChars, newline)) {
+                return sb.ToString();
+            }
+
+            var fallback = new StringBuilder(maxPatchChars + 32);
+            if (!string.IsNullOrEmpty(header)) {
+                fallback.Append(header);
+            }
+            if (CanAppendTail(fallback, maxPatchChars, newline.Length, marker, hunkTexts[1], includeMarker: true)) {
+                TryAppendSegment(fallback, marker, maxPatchChars, newline);
+                TryAppendSegment(fallback, hunkTexts[1], maxPatchChars, newline);
+                return fallback.ToString();
+            }
+            if (CanAppendTail(fallback, maxPatchChars, newline.Length, marker, hunkTexts[1], includeMarker: false)) {
+                TryAppendSegment(fallback, hunkTexts[1], maxPatchChars, newline);
+                return fallback.ToString();
+            }
+
+            TryAppendSegment(sb, marker, maxPatchChars, newline);
+            return sb.ToString();
+        }
+
+        var lastHunk = hunkTexts[^1];
+        var includedMiddle = 0;
+        for (var i = 1; i < hunkTexts.Count - 1; i++) {
+            var hunkText = hunkTexts[i];
+            if (!CanAppendWithReserve(sb, hunkText, maxPatchChars, newline, marker, lastHunk)) {
+                break;
+            }
+            if (!TryAppendSegment(sb, hunkText, maxPatchChars, newline)) {
+                break;
+            }
+            includedMiddle++;
+        }
+
+        var needsTruncation = includedMiddle < hunkTexts.Count - 2;
+        if (needsTruncation) {
+            if (CanAppendTail(sb, maxPatchChars, newline.Length, marker, lastHunk, includeMarker: true)) {
+                TryAppendSegment(sb, marker, maxPatchChars, newline);
+                TryAppendSegment(sb, lastHunk, maxPatchChars, newline);
+            } else if (CanAppendTail(sb, maxPatchChars, newline.Length, marker, lastHunk, includeMarker: false)) {
+                TryAppendSegment(sb, lastHunk, maxPatchChars, newline);
+            } else {
+                TryAppendSegment(sb, marker, maxPatchChars, newline);
+            }
+        } else {
+            TryAppendSegment(sb, lastHunk, maxPatchChars, newline);
+        }
+
+        return sb.ToString();
+    }
+
+    private static string AppendSequential(string header, IReadOnlyList<string> hunks, int maxPatchChars, string newline) {
+        var sb = new StringBuilder(maxPatchChars + 32);
+        if (!string.IsNullOrEmpty(header)) {
+            sb.Append(header);
+        }
+
+        foreach (var hunk in hunks) {
+            if (!TryAppendSegment(sb, hunk, maxPatchChars, newline)) {
+                TryAppendSegment(sb, "... (truncated) ...", maxPatchChars, newline);
+                break;
+            }
+        }
+        return sb.ToString();
+    }
+
+    private static bool CanAppendWithReserve(StringBuilder sb, string segment, int maxChars, string newline,
+        string lastText, string marker, bool includeMarker) {
+        if (string.IsNullOrEmpty(segment)) {
+            return true;
+        }
+        var extra = segment.Length + (sb.Length > 0 ? newline.Length : 0);
+        var reserve = 0;
+        if (includeMarker) {
+            reserve += marker.Length + newline.Length;
+        }
+        if (!string.IsNullOrEmpty(lastText)) {
+            reserve += lastText.Length + newline.Length;
+        }
+        return sb.Length + extra + reserve <= maxChars;
+    }
+
+    private static bool CanAppendTail(StringBuilder sb, int maxChars, string newline,
+        string lastText, string marker, bool includeMarker) {
+        var currentLength = sb.Length;
+        if (includeMarker) {
+            var markerExtra = marker.Length + (currentLength > 0 ? newline.Length : 0);
+            if (currentLength + markerExtra > maxChars) {
+                return false;
+            }
+            currentLength += markerExtra;
+        }
+        if (string.IsNullOrEmpty(lastText)) {
+            return true;
+        }
+        var lastExtra = lastText.Length + (currentLength > 0 ? newline.Length : 0);
+        return currentLength + lastExtra <= maxChars;
+    }
+
+    private static bool TryAppendSegment(StringBuilder sb, string segment, int maxChars, string newline) {
+        if (string.IsNullOrEmpty(segment)) {
+            return true;
+        }
+        var extra = segment.Length + (sb.Length > 0 ? newline.Length : 0);
+        if (sb.Length + extra > maxChars) {
+            return false;
+        }
+        if (sb.Length > 0) {
+            sb.Append(newline);
+        }
+        sb.Append(segment);
+        return true;
+    }
+
+    private static bool CanAppendWithReserve(StringBuilder sb, string segment, int maxChars, string newline,
+        string marker, string lastSegment) {
+        var length = AppendLength(sb.Length, segment.Length, newline.Length);
+        if (!string.IsNullOrEmpty(marker)) {
+            length = AppendLength(length, marker.Length, newline.Length);
+        }
+        if (!string.IsNullOrEmpty(lastSegment)) {
+            length = AppendLength(length, lastSegment.Length, newline.Length);
+        }
+        return length <= maxChars;
+    }
+
+    private static bool CanAppendTail(StringBuilder sb, int maxChars, int newlineLength, string marker,
+        string lastSegment, bool includeMarker) {
+        var length = sb.Length;
+        if (includeMarker && !string.IsNullOrEmpty(marker)) {
+            length = AppendLength(length, marker.Length, newlineLength);
+        }
+        if (!string.IsNullOrEmpty(lastSegment)) {
+            length = AppendLength(length, lastSegment.Length, newlineLength);
+        }
+        return length <= maxChars;
+    }
+
+    private static int AppendLength(int currentLength, int segmentLength, int newlineLength) {
+        return currentLength + segmentLength + (currentLength > 0 ? newlineLength : 0);
+    }
+
+    private static string TrimHard(string text, int maxChars, string newline) {
+        if (text.Length <= maxChars) {
+            return text;
+        }
+        var suffix = $"{newline}... (truncated)";
+        if (suffix.Length >= maxChars) {
+            return text.Substring(0, maxChars);
+        }
+        var take = Math.Max(0, maxChars - suffix.Length);
+        return text.Substring(0, take) + suffix;
     }
 
     private static string BuildThreadAssessmentComment(IReadOnlyList<ThreadAssessment> resolved,
@@ -1191,6 +1583,51 @@ public static class ReviewerApp {
             foreach (var item in kept) {
                 sb.AppendLine($"- {item.Id}: {item.Reason}");
             }
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    internal static string BuildFallbackTriageSummary(IReadOnlyList<ThreadAssessment> resolved,
+        IReadOnlyList<ThreadAssessment> kept) {
+        if (resolved.Count == 0 && kept.Count == 0) {
+            return string.Empty;
+        }
+        if (resolved.Count > 0 && kept.Count == 0) {
+            return $"Auto-resolve: resolved {resolved.Count} thread(s).";
+        }
+        if (resolved.Count == 0 && kept.Count > 0) {
+            return $"Auto-resolve: kept {kept.Count} thread(s).";
+        }
+        return $"Auto-resolve: resolved {resolved.Count}, kept {kept.Count} thread(s).";
+    }
+
+    private static string BuildThreadAutoResolveSummaryComment(IReadOnlyList<ThreadAssessment> resolved,
+        IReadOnlyList<ThreadAssessment> kept, string? headSha, string? diffNote) {
+        var sb = new StringBuilder();
+        sb.AppendLine("<!-- intelligencex:thread-autoresolve-summary -->");
+        sb.AppendLine("### IntelligenceX auto-resolve summary");
+        if (!string.IsNullOrWhiteSpace(headSha)) {
+            var trimmed = headSha.Length > 7 ? headSha.Substring(0, 7) : headSha;
+            sb.AppendLine($"_Assessed commit: `{trimmed}`_");
+            sb.AppendLine();
+        }
+        if (!string.IsNullOrWhiteSpace(diffNote)) {
+            sb.AppendLine($"_Diff range: {diffNote}_");
+            sb.AppendLine();
+        }
+        if (resolved.Count > 0) {
+            sb.AppendLine("Resolved:");
+            foreach (var item in resolved) {
+                sb.AppendLine($"- {item.Id}: {item.Reason}");
+            }
+            sb.AppendLine();
+        }
+        if (kept.Count > 0) {
+            sb.AppendLine("Kept:");
+            foreach (var item in kept) {
+                sb.AppendLine($"- {item.Id}: {item.Reason}");
+            }
+            sb.AppendLine();
         }
         return sb.ToString().TrimEnd();
     }
@@ -1265,8 +1702,8 @@ public static class ReviewerApp {
         return sb.ToString().TrimEnd();
     }
 
-    private readonly record struct ThreadTriageResult(string SummaryLine, string EmbeddedBlock) {
-        public static ThreadTriageResult Empty => new(string.Empty, string.Empty);
+    private readonly record struct ThreadTriageResult(string SummaryLine, string EmbeddedBlock, string FallbackSummary) {
+        public static ThreadTriageResult Empty => new(string.Empty, string.Empty, string.Empty);
     }
 
     private static List<ThreadAssessment> ParseThreadAssessments(string output) {
@@ -1291,7 +1728,8 @@ public static class ReviewerApp {
                 action = "keep";
             }
             var reason = thread.GetString("reason") ?? string.Empty;
-            result.Add(new ThreadAssessment(id.Trim(), action, reason.Trim()));
+            var evidence = thread.GetString("evidence") ?? string.Empty;
+            result.Add(new ThreadAssessment(id.Trim(), action, reason.Trim(), evidence.Trim()));
         }
         return result;
     }
@@ -1311,7 +1749,27 @@ public static class ReviewerApp {
         return value?.AsObject();
     }
 
-    private sealed record ThreadAssessment(string Id, string Action, string Reason);
+    internal sealed record ThreadAssessment(string Id, string Action, string Reason, string Evidence);
+
+    private static bool HasValidResolveEvidence(string? evidence, PullRequestReviewThread thread,
+        Dictionary<string, List<PatchLine>> patchIndex, IReadOnlyDictionary<string, string> patchLookup,
+        int maxPatchChars) {
+        if (string.IsNullOrWhiteSpace(evidence)) {
+            return false;
+        }
+        if (!TryGetThreadLocation(thread, out var path, out var line)) {
+            return false;
+        }
+        var context = BuildThreadDiffContext(patchIndex, patchLookup, path, line, maxPatchChars);
+        if (string.IsNullOrWhiteSpace(context) || context == "<unavailable>") {
+            return false;
+        }
+        var normalized = evidence.Trim().Trim('"');
+        if (normalized.Length == 0) {
+            return false;
+        }
+        return context.Contains(normalized, StringComparison.OrdinalIgnoreCase);
+    }
 
     private static async Task<(bool Resolved, string? Error)> TryResolveThreadAsync(GitHubClient github,
         GitHubClient? fallbackGithub, string threadId, CancellationToken cancellationToken) {
@@ -1347,7 +1805,7 @@ public static class ReviewerApp {
             if (string.IsNullOrWhiteSpace(comment.Author)) {
                 return false;
             }
-            if (!IsBotAuthor(comment.Author, settings)) {
+            if (!IsAutoResolveBot(comment.Author, settings)) {
                 return false;
             }
         }
@@ -1486,6 +1944,29 @@ public static class ReviewerApp {
         }
         return trimmedAuthor.Equals("github-actions", StringComparison.OrdinalIgnoreCase) ||
             trimmedAuthor.Equals("intelligencex-review", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsAutoResolveBot(string author, ReviewSettings settings) {
+        if (string.IsNullOrWhiteSpace(author)) {
+            return false;
+        }
+        var normalizedAuthor = NormalizeBotLogin(author.Trim());
+        if (settings.ReviewThreadsAutoResolveBotLogins.Count > 0) {
+            foreach (var login in settings.ReviewThreadsAutoResolveBotLogins) {
+                if (string.IsNullOrWhiteSpace(login)) {
+                    continue;
+                }
+                var normalizedLogin = NormalizeBotLogin(login);
+                if (string.IsNullOrWhiteSpace(normalizedLogin)) {
+                    continue;
+                }
+                if (string.Equals(normalizedAuthor, normalizedLogin, StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return IsBotAuthor(author, settings);
     }
 
     private static string NormalizeBotLogin(string login) {
@@ -1814,6 +2295,52 @@ public static class ReviewerApp {
         return ReviewSummaryParser.TryGetReviewedCommit(body, out var commit) ? commit : null;
     }
 
+    private static string? ExtractSummaryBody(string? body, int maxChars) {
+        if (string.IsNullOrWhiteSpace(body)) {
+            return null;
+        }
+
+        var lines = body.Replace("\r", "").Split('\n');
+        var endIndex = lines.Length;
+        for (var i = 0; i < lines.Length; i++) {
+            if (lines[i].IndexOf("_Model:", StringComparison.OrdinalIgnoreCase) >= 0) {
+                endIndex = i;
+                break;
+            }
+        }
+
+        var startIndex = 0;
+        for (var i = 0; i < endIndex; i++) {
+            var trimmed = lines[i].Trim();
+            if (trimmed.Length == 0) {
+                startIndex = i + 1;
+                continue;
+            }
+            if (trimmed.Contains(ReviewFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("## IntelligenceX Review", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("Reviewing PR #", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith(ReviewFormatter.ReviewedCommitMarker, StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith(">")) {
+                startIndex = i + 1;
+                continue;
+            }
+            break;
+        }
+
+        if (startIndex >= endIndex) {
+            return null;
+        }
+
+        var block = string.Join("\n", lines, startIndex, endIndex - startIndex).Trim();
+        if (string.IsNullOrWhiteSpace(block)) {
+            return null;
+        }
+        if (maxChars > 0 && block.Length > maxChars) {
+            return block.Substring(0, maxChars) + "...";
+        }
+        return block;
+    }
+
     private static async Task<long?> CreateOrUpdateProgressCommentAsync(GitHubClient github, PullRequestContext context,
         ReviewSettings settings, string body, CancellationToken cancellationToken) {
         IssueComment? existing = null;
@@ -1860,4 +2387,5 @@ public static class ReviewerApp {
 internal static class Program {
     private static Task<int> Main(string[] args) => ReviewerApp.RunAsync(args);
 }
+
 
