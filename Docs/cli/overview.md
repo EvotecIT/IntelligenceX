@@ -13,6 +13,7 @@ intelligencex setup wizard
 intelligencex setup web
 intelligencex reviewer run
 intelligencex reviewer resolve-threads
+intelligencex analyze run --config .intelligencex/reviewer.json --out artifacts
 intelligencex analyze export-config --out artifacts/analysis-config
 intelligencex usage
 ```

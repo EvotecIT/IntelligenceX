@@ -96,6 +96,9 @@ internal static class Program {
         failed += Run("Review config validator invalid enum", TestReviewConfigValidatorInvalidEnum);
         failed += Run("Analysis severity critical", TestAnalysisSeverityCritical);
         failed += Run("Analysis config export tool ids", TestAnalysisConfigExportToolIds);
+        failed += Run("Analysis policy resolves overrides", TestAnalysisPolicyResolvesOverrides);
+        failed += Run("Analysis policy disable tool rule id", TestAnalysisPolicyDisableToolRuleId);
+        failed += Run("Analyze run disabled writes empty findings", TestAnalyzeRunDisabledWritesEmptyFindings);
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);
         failed += Run("Trim patch tail hunk", TestTrimPatchKeepsTailHunk);
@@ -1068,6 +1071,86 @@ internal static class Program {
                 "psconfig PSAvoidUsingWriteHost");
             AssertEqual(true, psConfig.Contains("PSUseSupportsShouldProcess", StringComparison.Ordinal),
                 "psconfig PSUseSupportsShouldProcess");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalysisPolicyResolvesOverrides() {
+        var rules = new Dictionary<string, AnalysisRule>(StringComparer.OrdinalIgnoreCase) {
+            ["IX001"] = new AnalysisRule(
+                "IX001", "csharp", "roslyn", "CA2000", "Dispose objects", "Ensure Dispose is called",
+                "Reliability", "warning", Array.Empty<string>(), null, null),
+            ["IX002"] = new AnalysisRule(
+                "IX002", "powershell", "psscriptanalyzer", "PSAvoidUsingWriteHost", "Avoid Write-Host",
+                "Use Write-Output", "BestPractices", "warning", Array.Empty<string>(), null, null)
+        };
+        var packs = new Dictionary<string, AnalysisPack>(StringComparer.OrdinalIgnoreCase) {
+            ["default"] = new AnalysisPack(
+                "default", "Default", "Test pack", new[] { "IX001", "IX002" },
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                    ["IX001"] = "error"
+                }, null)
+        };
+        var catalog = new AnalysisCatalog(rules, packs);
+        var settings = new AnalysisSettings {
+            Packs = new[] { "default" },
+            SeverityOverrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                ["CA2000"] = "warning",
+                ["IX002"] = "error"
+            }
+        };
+
+        var policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(settings, catalog);
+        AssertEqual(0, policy.Warnings.Count, "policy warnings");
+        AssertEqual(2, policy.Rules.Count, "policy selected count");
+        AssertEqual("warning", policy.Rules["IX001"].Severity, "policy override tool rule id");
+        AssertEqual("error", policy.Rules["IX002"].Severity, "policy override catalog id");
+    }
+
+    private static void TestAnalysisPolicyDisableToolRuleId() {
+        var rules = new Dictionary<string, AnalysisRule>(StringComparer.OrdinalIgnoreCase) {
+            ["IX001"] = new AnalysisRule(
+                "IX001", "csharp", "roslyn", "CA2000", "Dispose objects", "Ensure Dispose is called",
+                "Reliability", "warning", Array.Empty<string>(), null, null)
+        };
+        var packs = new Dictionary<string, AnalysisPack>(StringComparer.OrdinalIgnoreCase) {
+            ["default"] = new AnalysisPack(
+                "default", "Default", "Test pack", new[] { "IX001" },
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), null)
+        };
+        var catalog = new AnalysisCatalog(rules, packs);
+        var settings = new AnalysisSettings {
+            Packs = new[] { "default" },
+            DisabledRules = new[] { "CA2000" }
+        };
+
+        var policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(settings, catalog);
+        AssertEqual(0, policy.Warnings.Count, "policy warnings");
+        AssertEqual(0, policy.Rules.Count, "policy disabled by tool rule id");
+    }
+
+    private static void TestAnalyzeRunDisabledWritesEmptyFindings() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-run-" + Guid.NewGuid().ToString("N"));
+        var output = Path.Combine(temp, "artifacts");
+        var config = Path.Combine(temp, "reviewer.json");
+        Directory.CreateDirectory(temp);
+        try {
+            File.WriteAllText(config, "{ \"analysis\": { \"enabled\": false } }");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", config,
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run disabled exit");
+            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
+            AssertEqual(true, File.Exists(findingsPath), "analyze run findings exists");
+            var content = File.ReadAllText(findingsPath);
+            AssertEqual(true, content.Contains("intelligencex.findings.v1", StringComparison.Ordinal),
+                "analyze run schema");
         } finally {
             if (Directory.Exists(temp)) {
                 Directory.Delete(temp, true);

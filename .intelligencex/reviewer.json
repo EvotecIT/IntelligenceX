@@ -1,4 +1,24 @@
 {
+  "analysis": {
+    "enabled": true,
+    "packs": [
+      "csharp-default",
+      "powershell-default"
+    ],
+    "configMode": "respect",
+    "results": {
+      "inputs": [
+        "artifacts/**/*.sarif",
+        "artifacts/intelligencex.findings.json"
+      ],
+      "minSeverity": "warning",
+      "maxInline": 20,
+      "summary": true,
+      "summaryMaxItems": 10,
+      "summaryPlacement": "bottom",
+      "showPolicy": true
+    }
+  },
   "review": {
     "reviewThreadsAutoResolveAIReply": true,
     "reviewUsageSummary": true,
