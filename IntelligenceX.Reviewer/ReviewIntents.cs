@@ -29,6 +29,8 @@ internal static class ReviewIntents {
         "Prioritize readability, API clarity, testability, and reducing complexity or duplication.";
 
     public static void Apply(string intent, ReviewSettings settings) {
+        ArgumentNullException.ThrowIfNull(settings);
+
         if (string.IsNullOrWhiteSpace(intent)) {
             return;
         }

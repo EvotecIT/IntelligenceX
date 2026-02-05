@@ -116,6 +116,7 @@ internal static class Program {
         failed += Run("Review intent applies defaults", TestReviewIntentAppliesDefaults);
         failed += Run("Review intent respects settings", TestReviewIntentRespectsSettings);
         failed += Run("Review intent perf alias", TestReviewIntentPerfAlias);
+        failed += Run("Review intent null settings", TestReviewIntentNullSettings);
         failed += Run("Triage-only loads threads", TestTriageOnlyLoadsThreads);
         failed += Run("Review code host env", TestReviewCodeHostEnv);
         failed += Run("GitHub context cache", TestGitHubContextCache);
@@ -1451,6 +1452,10 @@ internal static class Program {
         ReviewIntents.Apply("perf", settings);
         AssertEqual("balanced", settings.Strictness, "perf alias strictness");
         AssertContainsText(settings.Notes ?? string.Empty, "allocations", "perf alias notes");
+    }
+
+    private static void TestReviewIntentNullSettings() {
+        AssertThrows<ArgumentNullException>(() => ReviewIntents.Apply("security", null!), "intent null settings");
     }
 
     private static void TestReviewCodeHostEnv() {
