@@ -196,7 +196,8 @@ Enable analysis summaries and inline findings sourced from SARIF or Intelligence
       "maxInline": 20,
       "summary": true,
       "summaryMaxItems": 10,
-      "summaryPlacement": "bottom"
+      "summaryPlacement": "bottom",
+      "showPolicy": true
     }
   }
 }

@@ -53,6 +53,7 @@ public static class AnalysisConfigReader {
         if (!string.IsNullOrWhiteSpace(placement)) {
             settings.Results.SummaryPlacement = NormalizePlacement(placement, settings.Results.SummaryPlacement);
         }
+        settings.Results.ShowPolicy = ReadBool(results, "showPolicy", settings.Results.ShowPolicy);
     }
 
     private static IReadOnlyList<string>? ReadStringList(JsonObject obj, string key) {

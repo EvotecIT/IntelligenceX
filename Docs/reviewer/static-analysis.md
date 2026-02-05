@@ -31,7 +31,8 @@ All enablement decisions live in `.intelligencex/reviewer.json`. Analyzer tool c
       "inputs": ["artifacts/**/*.sarif", "artifacts/intelligencex.findings.json"],
       "minSeverity": "warning",
       "maxInline": 20,
-      "summary": true
+      "summary": true,
+      "showPolicy": true
     }
   }
 }
@@ -128,6 +129,7 @@ jobs:
 - The reviewer reads `analysis.results.inputs` for JSON or SARIF findings.
 - Findings are merged into the existing summary format and structured findings block.
 - Inline comments follow `maxInline` and severity thresholds.
+ - When `showPolicy` is enabled, a policy block lists packs, counts, and overrides.
 
 ## Future Extensions
 - Language detection and auto-pack selection.

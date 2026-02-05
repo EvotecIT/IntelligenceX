@@ -131,7 +131,8 @@
             "maxInline": { "type": "integer", "minimum": 0 },
             "summary": { "type": "boolean" },
             "summaryMaxItems": { "type": "integer", "minimum": 0 },
-            "summaryPlacement": { "type": "string", "enum": ["top", "bottom", "header", "footer", "above", "below"] }
+            "summaryPlacement": { "type": "string", "enum": ["top", "bottom", "header", "footer", "above", "below"] },
+            "showPolicy": { "type": "boolean" }
           }
         }
       }

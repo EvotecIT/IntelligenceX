@@ -54,6 +54,10 @@ public sealed class AnalysisResultsSettings {
     /// Placement for the summary block.
     /// </summary>
     public string SummaryPlacement { get; set; } = "bottom";
+    /// <summary>
+    /// Whether to include a policy overview in the PR summary.
+    /// </summary>
+    public bool ShowPolicy { get; set; } = true;
 }
 
 /// <summary>
