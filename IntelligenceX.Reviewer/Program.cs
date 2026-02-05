@@ -85,6 +85,20 @@ public static class ReviewerApp {
     /// <returns>Process exit code (0 for success).</returns>
     public static async Task<int> RunAsync(string[] args) {
         using var cts = new CancellationTokenSource();
+        var runOptions = ParseRunOptions(args);
+        if (runOptions.ShowHelp) {
+            PrintRunHelp();
+            return 0;
+        }
+        if (runOptions.Errors.Count > 0) {
+            foreach (var error in runOptions.Errors) {
+                Console.Error.WriteLine(error);
+            }
+            Console.Error.WriteLine("Use --help to see available options.");
+            PrintRunHelp();
+            return 1;
+        }
+        ApplyRunOptions(runOptions);
         ConsoleCancelEventHandler? cancelHandler = (_, evt) => {
             evt.Cancel = true;
             cts.Cancel();
@@ -433,7 +447,9 @@ public static class ReviewerApp {
         } finally {
             secretsAudit?.WriteSummary();
             secretsAudit?.Dispose();
-            Console.CancelKeyPress -= cancelHandler;
+            if (cancelHandler is not null) {
+                Console.CancelKeyPress -= cancelHandler;
+            }
         }
     }
 
@@ -530,6 +546,169 @@ public static class ReviewerApp {
             }
         }
         return false;
+    }
+
+    private sealed class RunOptions {
+        public string? Provider { get; set; }
+        public string? CodeHost { get; set; }
+        public string? AzureOrg { get; set; }
+        public string? AzureProject { get; set; }
+        public string? AzureRepo { get; set; }
+        public string? AzureBaseUrl { get; set; }
+        public string? AzureTokenEnv { get; set; }
+        public bool ShowHelp { get; set; }
+        public List<string> Errors { get; } = new();
+
+        public bool HasAzureOverrides =>
+            !string.IsNullOrWhiteSpace(AzureOrg) ||
+            !string.IsNullOrWhiteSpace(AzureProject) ||
+            !string.IsNullOrWhiteSpace(AzureRepo) ||
+            !string.IsNullOrWhiteSpace(AzureBaseUrl) ||
+            !string.IsNullOrWhiteSpace(AzureTokenEnv);
+    }
+
+    private sealed class RunOptionSpec {
+        public RunOptionSpec(string name, string valueHint, string description, bool requiresValue, Action<RunOptions, string?> apply) {
+            Name = name;
+            ValueHint = valueHint;
+            Description = description;
+            RequiresValue = requiresValue;
+            Apply = apply;
+        }
+
+        public string Name { get; }
+        public string ValueHint { get; }
+        public string Description { get; }
+        public bool RequiresValue { get; }
+        public Action<RunOptions, string?> Apply { get; }
+    }
+
+    private static readonly RunOptionSpec[] RunOptionSpecs = {
+        new RunOptionSpec("--provider", "<openai|codex|copilot|azure>", "AI provider or Azure DevOps code host (aliases: azuredevops, azure-devops, ado)", true,
+            (options, value) => options.Provider = value),
+        new RunOptionSpec("--code-host", "<github|azure>", "Override code host (azure/azuredevops supported)", true,
+            (options, value) => options.CodeHost = value),
+        new RunOptionSpec("--azure-org", "<org>", "Azure DevOps organization", true,
+            (options, value) => options.AzureOrg = value),
+        new RunOptionSpec("--azure-project", "<project>", "Azure DevOps project", true,
+            (options, value) => options.AzureProject = value),
+        new RunOptionSpec("--azure-repo", "<repo>", "Azure DevOps repository id or name", true,
+            (options, value) => options.AzureRepo = value),
+        new RunOptionSpec("--azure-base-url", "<url>", "Azure DevOps base URL", true,
+            (options, value) => options.AzureBaseUrl = value),
+        new RunOptionSpec("--azure-token-env", "<env>", "Env var holding Azure DevOps token", true,
+            (options, value) => options.AzureTokenEnv = value)
+    };
+
+    private static readonly IReadOnlyDictionary<string, RunOptionSpec> RunOptionSpecMap =
+        RunOptionSpecs.ToDictionary(spec => spec.Name, StringComparer.Ordinal);
+
+    private static RunOptions ParseRunOptions(string[] args) {
+        var options = new RunOptions();
+        for (var i = 0; i < args.Length; i++) {
+            var arg = args[i];
+            switch (arg) {
+                case "--help":
+                case "-h":
+                    options.ShowHelp = true;
+                    break;
+                default:
+                    if (RunOptionSpecMap.TryGetValue(arg, out var spec)) {
+                        var value = spec.RequiresValue ? ReadValue(args, ref i, spec.Name, options.Errors) : null;
+                        if (value is not null || !spec.RequiresValue) {
+                            spec.Apply(options, value);
+                        }
+                        break;
+                    }
+                    options.Errors.Add($"Unknown option: {arg}");
+                    break;
+            }
+        }
+        if (!string.IsNullOrWhiteSpace(options.Provider) && !IsValidProvider(options.Provider)) {
+            options.Errors.Add($"Unsupported provider '{options.Provider}'. Use openai, codex, copilot, or azure/azuredevops.");
+        }
+        if (!string.IsNullOrWhiteSpace(options.CodeHost) && !IsValidCodeHost(options.CodeHost)) {
+            options.Errors.Add($"Unsupported code host '{options.CodeHost}'. Use github or azure/azuredevops.");
+        }
+        return options;
+    }
+
+    private static string? ReadValue(string[] args, ref int index, string name, List<string> errors) {
+        if (index + 1 >= args.Length) {
+            errors.Add($"Missing value for {name}.");
+            return null;
+        }
+        index++;
+        var value = args[index];
+        if (string.IsNullOrWhiteSpace(value)) {
+            errors.Add($"Empty value for {name}.");
+            return null;
+        }
+        return value;
+    }
+
+    private static bool IsValidProvider(string provider) {
+        return provider.Equals("openai", StringComparison.OrdinalIgnoreCase) ||
+               provider.Equals("codex", StringComparison.OrdinalIgnoreCase) ||
+               provider.Equals("copilot", StringComparison.OrdinalIgnoreCase) ||
+               IsAzureProvider(provider);
+    }
+
+    private static bool IsAzureProvider(string provider) {
+        return provider.Equals("azure", StringComparison.OrdinalIgnoreCase) ||
+               provider.Equals("azuredevops", StringComparison.OrdinalIgnoreCase) ||
+               provider.Equals("azure-devops", StringComparison.OrdinalIgnoreCase) ||
+               provider.Equals("ado", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsValidCodeHost(string codeHost) {
+        return codeHost.Equals("github", StringComparison.OrdinalIgnoreCase) ||
+               IsAzureProvider(codeHost);
+    }
+
+    private static void ApplyRunOptions(RunOptions options) {
+        var provider = options.Provider?.Trim();
+        var codeHost = options.CodeHost?.Trim();
+        if (!string.IsNullOrWhiteSpace(provider)) {
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER", provider);
+            if (IsAzureProvider(provider)) {
+                if (string.IsNullOrWhiteSpace(codeHost)) {
+                    codeHost = "azure";
+                }
+            }
+        }
+        if (!string.IsNullOrWhiteSpace(codeHost)) {
+            Environment.SetEnvironmentVariable("REVIEW_CODE_HOST", codeHost);
+        } else if (options.HasAzureOverrides) {
+            Environment.SetEnvironmentVariable("REVIEW_CODE_HOST", "azure");
+        }
+        if (!string.IsNullOrWhiteSpace(options.AzureOrg)) {
+            Environment.SetEnvironmentVariable("AZURE_DEVOPS_ORG", options.AzureOrg);
+        }
+        if (!string.IsNullOrWhiteSpace(options.AzureProject)) {
+            Environment.SetEnvironmentVariable("AZURE_DEVOPS_PROJECT", options.AzureProject);
+        }
+        if (!string.IsNullOrWhiteSpace(options.AzureRepo)) {
+            Environment.SetEnvironmentVariable("AZURE_DEVOPS_REPO", options.AzureRepo);
+        }
+        if (!string.IsNullOrWhiteSpace(options.AzureBaseUrl)) {
+            Environment.SetEnvironmentVariable("AZURE_DEVOPS_BASE_URL", options.AzureBaseUrl);
+        }
+        if (!string.IsNullOrWhiteSpace(options.AzureTokenEnv)) {
+            Environment.SetEnvironmentVariable("AZURE_DEVOPS_TOKEN_ENV", options.AzureTokenEnv);
+        }
+    }
+
+    private static void PrintRunHelp() {
+        Console.WriteLine("Reviewer run options:");
+        var leftWidth = RunOptionSpecs
+            .Select(spec => $"{spec.Name} {spec.ValueHint}".Length)
+            .DefaultIfEmpty(0)
+            .Max();
+        foreach (var spec in RunOptionSpecs) {
+            var left = $"{spec.Name} {spec.ValueHint}".PadRight(leftWidth);
+            Console.WriteLine($"  {left}  {spec.Description}");
+        }
     }
 
     private static async Task<bool> ValidateAuthAsync(ReviewSettings settings) {

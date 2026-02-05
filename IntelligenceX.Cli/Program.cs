@@ -41,7 +41,7 @@ internal static class Program {
         Console.WriteLine();
         Console.WriteLine("Usage:");
         Console.WriteLine("  intelligencex auth <command>");
-        Console.WriteLine("  intelligencex reviewer run");
+        Console.WriteLine("  intelligencex reviewer run [options]");
         Console.WriteLine("  intelligencex setup [options]");
         Console.WriteLine("  intelligencex setup wizard [options]");
         Console.WriteLine("  intelligencex setup web [url]");
@@ -138,9 +138,11 @@ internal static class Program {
 
     private static void PrintReviewerHelp() {
         Console.WriteLine("Reviewer commands:");
-        Console.WriteLine("  intelligencex reviewer run");
+        Console.WriteLine("  intelligencex reviewer run [options]");
         Console.WriteLine("  intelligencex reviewer resolve-threads [options]");
         Console.WriteLine("  intelligencex reviewer threads resolve [options]");
+        Console.WriteLine();
+        Console.WriteLine("Reviewer run options: run `intelligencex reviewer run --help` for the full list.");
     }
 
     private static async Task<int> RunSetupAsync(string[] args) {
@@ -682,5 +684,3 @@ internal static class Program {
         }
     }
 }
-
-
