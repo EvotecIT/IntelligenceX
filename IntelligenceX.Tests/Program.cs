@@ -2577,16 +2577,34 @@ internal static class Program {
         if (string.IsNullOrWhiteSpace(line)) {
             return result;
         }
-        var body = line.StartsWith(ReviewerApp.UsageSummaryPrefix, StringComparison.Ordinal)
-            ? line.Substring(ReviewerApp.UsageSummaryPrefix.Length)
+        var prefix = GetUsageSummaryPrefix();
+        var separator = GetUsageSummarySeparator();
+        var body = line.StartsWith(prefix, StringComparison.Ordinal)
+            ? line.Substring(prefix.Length)
             : line;
-        foreach (var part in body.Split(new[] { ReviewerApp.UsageSummarySeparator }, StringSplitOptions.RemoveEmptyEntries)) {
+        foreach (var part in body.Split(new[] { separator }, StringSplitOptions.RemoveEmptyEntries)) {
             var trimmed = part.Trim();
             if (!string.IsNullOrWhiteSpace(trimmed)) {
                 result.Add(trimmed);
             }
         }
         return result;
+    }
+
+    private static string GetUsageSummaryPrefix() {
+#if INTELLIGENCEX_REVIEWER
+        return ReviewerApp.UsageSummaryPrefix;
+#else
+        return "Usage: ";
+#endif
+    }
+
+    private static string GetUsageSummarySeparator() {
+#if INTELLIGENCEX_REVIEWER
+        return ReviewerApp.UsageSummarySeparator;
+#else
+        return " | ";
+#endif
     }
 
     private static bool ContainsUsageSummaryPart(IReadOnlyList<string> parts, string expected) {
