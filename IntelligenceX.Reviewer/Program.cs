@@ -347,24 +347,26 @@ public static class ReviewerApp {
                 }
             }
 
-            var analysisFindings = AnalysisFindingsLoader.Load(settings, files);
-            var analysisBlocks = new List<string>();
-            var analysisPolicy = AnalysisPolicyBuilder.BuildPolicy(settings);
-            if (!string.IsNullOrWhiteSpace(analysisPolicy)) {
-                analysisBlocks.Add(analysisPolicy);
-            }
-            var analysisSummary = AnalysisSummaryBuilder.BuildSummary(analysisFindings, settings.Analysis.Results);
-            if (!string.IsNullOrWhiteSpace(analysisSummary)) {
-                analysisBlocks.Add(analysisSummary);
-            }
-            if (analysisBlocks.Count > 0) {
-                var analysisBlock = string.Join("\n\n", analysisBlocks);
-                summaryBody = ApplyEmbedPlacement(summaryBody, analysisBlock, settings.Analysis.Results.SummaryPlacement);
-            }
-            if (inlineAllowed && analysisFindings.Count > 0) {
-                var analysisInline = AnalysisSummaryBuilder.BuildInlineComments(analysisFindings, settings.Analysis.Results);
-                if (analysisInline.Count > 0) {
-                    inlineComments = inlineComments.Concat(analysisInline).ToArray();
+            if (settings.Analysis.Enabled) {
+                var analysisFindings = AnalysisFindingsLoader.Load(settings, files);
+                var analysisBlocks = new List<string>();
+                var analysisPolicy = AnalysisPolicyBuilder.BuildPolicy(settings);
+                if (!string.IsNullOrWhiteSpace(analysisPolicy)) {
+                    analysisBlocks.Add(analysisPolicy);
+                }
+                var analysisSummary = AnalysisSummaryBuilder.BuildSummary(analysisFindings, settings.Analysis.Results);
+                if (!string.IsNullOrWhiteSpace(analysisSummary)) {
+                    analysisBlocks.Add(analysisSummary);
+                }
+                if (analysisBlocks.Count > 0) {
+                    var analysisBlock = string.Join("\n\n", analysisBlocks);
+                    summaryBody = ApplyEmbedPlacement(summaryBody, analysisBlock, settings.Analysis.Results.SummaryPlacement);
+                }
+                if (inlineAllowed && analysisFindings.Count > 0) {
+                    var analysisInline = AnalysisSummaryBuilder.BuildInlineComments(analysisFindings, settings.Analysis.Results);
+                    if (analysisInline.Count > 0) {
+                        inlineComments = inlineComments.Concat(analysisInline).ToArray();
+                    }
                 }
             }
 
