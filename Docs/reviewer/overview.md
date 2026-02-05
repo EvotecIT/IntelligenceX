@@ -21,6 +21,24 @@ Related docs:
 - Secrets are stored in GitHub Actions (you control access).
 - Web UI binds to localhost only; tokens never leave your machine.
 
+**Engine Scope**
+- Review pipeline: resolve inputs, build context, assemble prompt, call provider, parse inline comments, post summary/inline output.
+- Providers and transports: OpenAI (native/appserver) and Copilot (CLI/direct).
+- Context builder: diff-range selection, file filtering, chunking, redaction, language hints, related PRs.
+- Formatter/output: summary templates, inline comment formatting, structured findings block.
+- Thread triage/auto-resolve: load threads, require evidence, summarize/append optional replies.
+
+**Success Metrics**
+- Review latency (p50/p95) from job start to posted comment.
+- Failure rate for review runs (auth, preflight, provider errors).
+- Reviewer usefulness score (maintainer feedback or “kept” findings rate).
+- Inline quality (false-positive rate based on fixes/confirmations).
+
+**Default Mode + Model Policy**
+- Default review mode: `hybrid` (summary + inline when supported; falls back to summary-only).
+- Default provider/model: OpenAI with `gpt-5.2-codex` unless configured otherwise; Copilot is opt-in.
+- Safe defaults: skip drafts; skip workflow changes unless allowed; no secrets/writes on untrusted PRs; fail-open only for transient errors; budget summary enabled; auto-resolve limited to bot threads with evidence; secrets audit on.
+
 ## Reusable workflow (quick start)
 
 ```yaml
