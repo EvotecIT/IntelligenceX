@@ -116,6 +116,30 @@ internal sealed class ReviewRunner {
 
     private async Task<string> RunWithProviderAsync(ReviewProvider provider, string prompt, Func<string, Task>? onPartial,
         TimeSpan? updateInterval, CancellationToken cancellationToken) {
+        var now = DateTimeOffset.UtcNow;
+        if (ReviewProviderCircuitBreaker.IsOpen(provider, now, out var remaining)) {
+            throw new InvalidOperationException(
+                $"Provider circuit breaker is open for '{provider.ToString().ToLowerInvariant()}'. Retry in {Math.Ceiling(Math.Max(1, remaining.TotalSeconds)):0}s.");
+        }
+
+        var openDuration = TimeSpan.FromSeconds(Math.Max(1, _settings.ProviderCircuitBreakerOpenSeconds));
+        var failureThreshold = Math.Max(0, _settings.ProviderCircuitBreakerFailures);
+        try {
+            if (_settings.ProviderHealthChecks) {
+                await RunProviderHealthCheckAsync(provider, cancellationToken).ConfigureAwait(false);
+            }
+            var output = await RunWithSelectedProviderAsync(provider, prompt, onPartial, updateInterval, cancellationToken)
+                .ConfigureAwait(false);
+            ReviewProviderCircuitBreaker.RecordSuccess(provider);
+            return output;
+        } catch (Exception) when (!cancellationToken.IsCancellationRequested) {
+            ReviewProviderCircuitBreaker.RecordFailure(provider, failureThreshold, openDuration, DateTimeOffset.UtcNow);
+            throw;
+        }
+    }
+
+    private async Task<string> RunWithSelectedProviderAsync(ReviewProvider provider, string prompt, Func<string, Task>? onPartial,
+        TimeSpan? updateInterval, CancellationToken cancellationToken) {
         var previousProvider = _settings.Provider;
         _settings.Provider = provider;
         try {
@@ -129,13 +153,27 @@ internal sealed class ReviewRunner {
         }
     }
 
+    private async Task RunProviderHealthCheckAsync(ReviewProvider provider, CancellationToken cancellationToken) {
+        var timeout = TimeSpan.FromSeconds(Math.Max(1, _settings.ProviderHealthCheckTimeoutSeconds));
+        switch (provider) {
+            case ReviewProvider.OpenAI:
+                await RunOpenAiPreflightAsync(BuildClientOptions(), timeout, cancellationToken).ConfigureAwait(false);
+                return;
+            case ReviewProvider.Copilot:
+                await RunCopilotHealthCheckAsync(timeout, cancellationToken).ConfigureAwait(false);
+                return;
+            default:
+                throw new NotSupportedException($"Unsupported review provider '{provider}'.");
+        }
+    }
+
     private async Task<string> RunOpenAiWithRetryAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
         CancellationToken cancellationToken) {
         ReviewDiagnosticsSnapshot? snapshot = null;
         var retryState = new ReviewRetryState();
         var options = BuildClientOptions();
         try {
-            if (_settings.Preflight) {
+            if (_settings.Preflight && !_settings.ProviderHealthChecks) {
                 var timeout = _settings.PreflightTimeoutSeconds > 0
                     ? TimeSpan.FromSeconds(_settings.PreflightTimeoutSeconds)
                     : TimeSpan.FromSeconds(15);
@@ -338,12 +376,36 @@ internal sealed class ReviewRunner {
         }
     }
 
-
-    private async Task<string> RunCopilotAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
-        CancellationToken cancellationToken) {
+    private async Task RunCopilotHealthCheckAsync(TimeSpan timeout, CancellationToken cancellationToken) {
         if (_settings.CopilotTransport == CopilotTransportKind.Direct) {
-            return await RunCopilotDirectAsync(prompt, cancellationToken).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(_settings.CopilotDirectUrl)) {
+                throw new InvalidOperationException("Copilot direct transport requires copilot.directUrl.");
+            }
+            if (!Uri.TryCreate(_settings.CopilotDirectUrl, UriKind.Absolute, out var uri)) {
+                throw new InvalidOperationException($"Copilot directUrl is invalid: '{_settings.CopilotDirectUrl}'.");
+            }
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(timeout);
+            using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+            try {
+                using var _ = await PreflightHttp.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token)
+                    .ConfigureAwait(false);
+                return;
+            } catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested) {
+                throw new TimeoutException(
+                    $"Copilot health check timed out after {timeout.TotalSeconds:0.#}s for {uri.Host}.", ex);
+            } catch (HttpRequestException ex) when (!ex.StatusCode.HasValue) {
+                throw new InvalidOperationException(
+                    $"Copilot health check failed for {uri.Host}. Check URL, DNS, proxy, and network settings.", ex);
+            }
         }
+
+        var options = BuildCopilotClientOptions();
+        options.Validate();
+    }
+
+    private CopilotClientOptions BuildCopilotClientOptions() {
         var options = new CopilotClientOptions();
         if (!string.IsNullOrWhiteSpace(_settings.CopilotCliPath)) {
             options.CliPath = _settings.CopilotCliPath;
@@ -363,6 +425,16 @@ internal sealed class ReviewRunner {
         }
         options.AutoInstallPrerelease = _settings.CopilotAutoInstallPrerelease;
         ApplyCopilotEnvironment(options);
+        return options;
+    }
+
+
+    private async Task<string> RunCopilotAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
+        CancellationToken cancellationToken) {
+        if (_settings.CopilotTransport == CopilotTransportKind.Direct) {
+            return await RunCopilotDirectAsync(prompt, cancellationToken).ConfigureAwait(false);
+        }
+        var options = BuildCopilotClientOptions();
 
         await using var client = await CopilotClient.StartAsync(options, cancellationToken).ConfigureAwait(false);
         var session = await client.CreateSessionAsync(new CopilotSessionOptions {

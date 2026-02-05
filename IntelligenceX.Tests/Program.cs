@@ -110,6 +110,9 @@ internal static class Program {
         failed += Run("Review provider fallback env", TestReviewProviderFallbackEnv);
         failed += Run("Review provider fallback config", TestReviewProviderFallbackConfig);
         failed += Run("Review provider fallback plan", TestReviewProviderFallbackPlan);
+        failed += Run("Review provider health env", TestReviewProviderHealthEnv);
+        failed += Run("Review provider health config", TestReviewProviderHealthConfig);
+        failed += Run("Review provider circuit breaker", TestReviewProviderCircuitBreaker);
         failed += Run("Triage-only loads threads", TestTriageOnlyLoadsThreads);
         failed += Run("Review code host env", TestReviewCodeHostEnv);
         failed += Run("GitHub context cache", TestGitHubContextCache);
@@ -1349,6 +1352,78 @@ internal static class Program {
             "provider fallback selected");
         AssertEqual(false, ReviewRunner.ShouldFallbackOnResult("Regular review content"), "provider fallback regular output");
         AssertEqual(true, ReviewRunner.ShouldFallbackOnResult($"x {ReviewDiagnostics.FailureMarker} y"), "provider fallback failure marker");
+    }
+
+    private static void TestReviewProviderHealthEnv() {
+        var previousHealthChecks = Environment.GetEnvironmentVariable("REVIEW_PROVIDER_HEALTH_CHECKS");
+        var previousHealthTimeout = Environment.GetEnvironmentVariable("REVIEW_PROVIDER_HEALTH_CHECK_TIMEOUT_SECONDS");
+        var previousBreakerFailures = Environment.GetEnvironmentVariable("REVIEW_PROVIDER_CIRCUIT_BREAKER_FAILURES");
+        var previousBreakerOpen = Environment.GetEnvironmentVariable("REVIEW_PROVIDER_CIRCUIT_BREAKER_OPEN_SECONDS");
+        try {
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_HEALTH_CHECKS", "false");
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_HEALTH_CHECK_TIMEOUT_SECONDS", "7");
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_CIRCUIT_BREAKER_FAILURES", "5");
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_CIRCUIT_BREAKER_OPEN_SECONDS", "90");
+            var settings = ReviewSettings.FromEnvironment();
+            AssertEqual(false, settings.ProviderHealthChecks, "provider health checks env");
+            AssertEqual(7, settings.ProviderHealthCheckTimeoutSeconds, "provider health timeout env");
+            AssertEqual(5, settings.ProviderCircuitBreakerFailures, "provider breaker failures env");
+            AssertEqual(90, settings.ProviderCircuitBreakerOpenSeconds, "provider breaker open env");
+
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_CIRCUIT_BREAKER_FAILURES", "-1");
+            settings = ReviewSettings.FromEnvironment();
+            AssertEqual(3, settings.ProviderCircuitBreakerFailures, "provider breaker failures env invalid");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_HEALTH_CHECKS", previousHealthChecks);
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_HEALTH_CHECK_TIMEOUT_SECONDS", previousHealthTimeout);
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_CIRCUIT_BREAKER_FAILURES", previousBreakerFailures);
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_CIRCUIT_BREAKER_OPEN_SECONDS", previousBreakerOpen);
+        }
+    }
+
+    private static void TestReviewProviderHealthConfig() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path,
+                "{ \"review\": { \"providerHealthChecks\": false, \"providerHealthCheckTimeoutSeconds\": 9, " +
+                "\"providerCircuitBreakerFailures\": 4, \"providerCircuitBreakerOpenSeconds\": 75 } }");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings();
+            ReviewConfigLoader.Apply(settings);
+            AssertEqual(false, settings.ProviderHealthChecks, "provider health checks config");
+            AssertEqual(9, settings.ProviderHealthCheckTimeoutSeconds, "provider health timeout config");
+            AssertEqual(4, settings.ProviderCircuitBreakerFailures, "provider breaker failures config");
+            AssertEqual(75, settings.ProviderCircuitBreakerOpenSeconds, "provider breaker open config");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
+    private static void TestReviewProviderCircuitBreaker() {
+        ReviewProviderCircuitBreaker.Reset();
+        var provider = ReviewProvider.OpenAI;
+        var now = DateTimeOffset.UtcNow;
+
+        AssertEqual(false, ReviewProviderCircuitBreaker.IsOpen(provider, now, out _), "provider breaker initially closed");
+
+        ReviewProviderCircuitBreaker.RecordFailure(provider, 2, TimeSpan.FromSeconds(30), now);
+        AssertEqual(false, ReviewProviderCircuitBreaker.IsOpen(provider, now, out _), "provider breaker first failure");
+
+        ReviewProviderCircuitBreaker.RecordFailure(provider, 2, TimeSpan.FromSeconds(30), now);
+        AssertEqual(true, ReviewProviderCircuitBreaker.IsOpen(provider, now, out var remaining), "provider breaker opens");
+        AssertEqual(true, remaining.TotalSeconds > 0, "provider breaker remaining");
+
+        AssertEqual(false, ReviewProviderCircuitBreaker.IsOpen(provider, now.AddSeconds(31), out _), "provider breaker closes");
+
+        ReviewProviderCircuitBreaker.RecordFailure(provider, 1, TimeSpan.FromSeconds(30), now);
+        AssertEqual(true, ReviewProviderCircuitBreaker.IsOpen(provider, now, out _), "provider breaker immediate open");
+        ReviewProviderCircuitBreaker.RecordSuccess(provider);
+        AssertEqual(false, ReviewProviderCircuitBreaker.IsOpen(provider, now, out _), "provider breaker reset by success");
+        ReviewProviderCircuitBreaker.Reset();
     }
 
     private static void TestReviewCodeHostEnv() {
