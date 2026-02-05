@@ -943,8 +943,9 @@ public static class ReviewerApp {
                 return (false, Array.Empty<PullRequestFile>(), $"missing {label} commit");
             }
             try {
-                var compareFiles = await github.GetCompareFilesAsync(context.Owner, context.Repo, baseSha, context.HeadSha!, cancellationToken)
+                var compareResult = await github.GetCompareFilesAsync(context.Owner, context.Repo, baseSha, context.HeadSha!, cancellationToken)
                     .ConfigureAwait(false);
+                var compareFiles = compareResult.Files;
                 if (compareFiles.Count == 0) {
                     return (false, Array.Empty<PullRequestFile>(), $"{label} diff empty");
                 }
