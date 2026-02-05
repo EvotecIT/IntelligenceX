@@ -559,6 +559,9 @@ public static class ReviewerApp {
 
     private static (IReadOnlyList<PullRequestFile> Files, string BudgetNote) PrepareFiles(IReadOnlyList<PullRequestFile> files,
         int maxFiles, int maxPatchChars) {
+        if (maxFiles <= 0) {
+            maxFiles = files.Count;
+        }
         var list = new List<PullRequestFile>();
         var truncatedPatches = 0;
         var count = 0;

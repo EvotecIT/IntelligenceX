@@ -1056,7 +1056,10 @@ internal sealed class ReviewSettings {
         if (string.IsNullOrWhiteSpace(value)) {
             return fallback;
         }
-        if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) && parsed >= 1) {
+        if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) &&
+            parsed >= 1 &&
+            !double.IsNaN(parsed) &&
+            !double.IsInfinity(parsed)) {
             return parsed;
         }
         return fallback;
