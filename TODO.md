@@ -64,7 +64,7 @@ Status: In progress
 - [x] Document PR-level changes behavior (uses pull request changes endpoint).
 - [ ] Phase 2: inline comments with iteration + line mapping support.
 - [ ] Phase 3: thread triage + auto-resolve via thread status updates.
-- [ ] Add CLI flags/config: `provider=azure`, `azureOrg`, `azureProject`, `azureRepo`, `azureBaseUrl`, `azureTokenEnv`.
+- [x] Add CLI flags/config: `provider=azure`, `azureOrg`, `azureProject`, `azureRepo`, `azureBaseUrl`, `azureTokenEnv`.
 - [ ] Add ADO pipeline templates (onboarding, permissions, secrets).
 
 ### Phase 6 — Performance + cost

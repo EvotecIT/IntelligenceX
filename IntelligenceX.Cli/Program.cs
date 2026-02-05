@@ -41,7 +41,7 @@ internal static class Program {
         Console.WriteLine();
         Console.WriteLine("Usage:");
         Console.WriteLine("  intelligencex auth <command>");
-        Console.WriteLine("  intelligencex reviewer run");
+        Console.WriteLine("  intelligencex reviewer run [options]");
         Console.WriteLine("  intelligencex setup [options]");
         Console.WriteLine("  intelligencex setup wizard [options]");
         Console.WriteLine("  intelligencex setup web [url]");
@@ -138,9 +138,18 @@ internal static class Program {
 
     private static void PrintReviewerHelp() {
         Console.WriteLine("Reviewer commands:");
-        Console.WriteLine("  intelligencex reviewer run");
+        Console.WriteLine("  intelligencex reviewer run [options]");
         Console.WriteLine("  intelligencex reviewer resolve-threads [options]");
         Console.WriteLine("  intelligencex reviewer threads resolve [options]");
+        Console.WriteLine();
+        Console.WriteLine("Reviewer run options:");
+        Console.WriteLine("  --provider <openai|codex|copilot|azure>");
+        Console.WriteLine("  --code-host <github|azure>");
+        Console.WriteLine("  --azure-org <org>");
+        Console.WriteLine("  --azure-project <project>");
+        Console.WriteLine("  --azure-repo <repo>");
+        Console.WriteLine("  --azure-base-url <url>");
+        Console.WriteLine("  --azure-token-env <env>");
     }
 
     private static async Task<int> RunSetupAsync(string[] args) {
@@ -682,5 +691,3 @@ internal static class Program {
         }
     }
 }
-
-

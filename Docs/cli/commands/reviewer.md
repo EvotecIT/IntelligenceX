@@ -8,6 +8,22 @@ $env:INPUT_PR_NUMBER = "123"
 intelligencex reviewer run
 ```
 
+## Run reviewer (Azure DevOps)
+
+```powershell
+intelligencex reviewer run --provider azure --azure-org my-org --azure-project my-project --azure-repo my-repo --azure-token-env SYSTEM_ACCESSTOKEN
+```
+
+## Reviewer run options
+
+- `--provider <openai|codex|copilot|azure>`
+- `--code-host <github|azure>`
+- `--azure-org <org>`
+- `--azure-project <project>`
+- `--azure-repo <repo>`
+- `--azure-base-url <url>`
+- `--azure-token-env <env>`
+
 ## Resolve bot threads
 
 ```powershell
