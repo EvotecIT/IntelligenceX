@@ -19,6 +19,7 @@ using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Chat;
+using IntelligenceX.OpenAI.Native;
 using IntelligenceX.OpenAI.Transport;
 using IntelligenceX.OpenAI.Tools;
 using IntelligenceX.OpenAI.Usage;
@@ -43,6 +44,7 @@ internal static class Program {
         failed += Run("RPC error hints", TestRpcErrorHints);
         failed += Run("Header transport message", TestHeaderTransportMessage);
         failed += Run("Header transport truncated", TestHeaderTransportTruncated);
+        failed += Run("Config load invalid JSON", TestConfigLoadInvalidJsonThrows);
         failed += Run("Copilot idle event", TestCopilotIdleEvent);
         failed += Run("ChatGPT usage parse", TestChatGptUsageParse);
         failed += Run("ChatGPT usage cache invalid JSON", TestChatGptUsageCacheInvalidJson);
@@ -75,13 +77,19 @@ internal static class Program {
         failed += Run("Thread triage fallback summary", TestThreadTriageFallbackSummary);
         failed += Run("Review thread inline key allowlist", TestReviewThreadInlineKeyAllowlist);
         failed += Run("Thread auto-resolve summary comment", TestThreadAutoResolveSummaryComment);
-        failed += Run("Thread triage embed placement", TestThreadTriageEmbedPlacement);        failed += Run("Review retry transient", TestReviewRetryTransient);
+        failed += Run("Thread triage embed placement", TestThreadTriageEmbedPlacement);
+        failed += Run("Auto-resolve missing inline empty keys", TestAutoResolveMissingInlineEmptyKeys);
+        failed += Run("Review retry transient", TestReviewRetryTransient);
         failed += Run("Review retry non-transient", TestReviewRetryNonTransient);
         failed += Run("Review retry rethrows", TestReviewRetryRethrows);
         failed += Run("Review retry extra attempt", TestReviewRetryExtraAttempt);
         failed += Run("Review failure marker", TestReviewFailureMarker);
+        failed += Run("Review failure body redacts errors", TestReviewFailureBodyRedactsErrors);
         failed += Run("Review fail-open only transient", TestReviewFailOpenTransientOnly);
         failed += Run("Review fail-open decision", TestReviewFailOpenDecision);
+        failed += Run("Preflight timeout", TestPreflightTimeout);
+        failed += Run("Preflight socket failure", TestPreflightSocketFailure);
+        failed += Run("Preflight non-2xx", TestPreflightNonSuccessStatus);
         failed += Run("Review config validator allows additional", TestReviewConfigValidatorAllowsAdditionalProperties);
         failed += Run("Review config validator invalid enum", TestReviewConfigValidatorInvalidEnum);
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
@@ -97,6 +105,8 @@ internal static class Program {
         failed += Run("GitHub context cache", TestGitHubContextCache);
         failed += Run("GitHub concurrency env", TestGitHubConcurrencyEnv);
         failed += Run("GitHub client concurrency", TestGitHubClientConcurrency);
+        failed += Run("GitHub compare truncation", TestGitHubCompareTruncation);
+        failed += Run("Diff range compare truncation", TestDiffRangeCompareTruncation);
         failed += Run("Azure auth scheme env", TestAzureAuthSchemeEnv);
         failed += Run("Azure auth scheme invalid env", TestAzureAuthSchemeInvalidEnv);
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
@@ -447,6 +457,19 @@ internal static class Program {
         AssertEqual(true, thrown, "truncated message");
     }
 
+    private static void TestConfigLoadInvalidJsonThrows() {
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-config-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path, "{invalid");
+            AssertThrows<InvalidDataException>(() =>
+                IntelligenceX.Configuration.IntelligenceXConfig.Load(path), "config invalid json");
+        } finally {
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
     private static void TestCopilotIdleEvent() {
         var json = new JsonObject()
             .Add("type", "session.idle")
@@ -718,6 +741,33 @@ internal static class Program {
         AssertEqual("Body\n\nTriage", fallback ?? string.Empty, "embed fallback");
     }
 
+    private static void TestAutoResolveMissingInlineEmptyKeys() {
+        var resolved = 0;
+        var inlineBody = $"{ReviewFormatter.InlineMarker}\nFix it.";
+        using var server = new LocalHttpServer(request => {
+            if (!request.Path.Equals("/graphql", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            if (request.Body.Contains("resolveReviewThread", StringComparison.Ordinal)) {
+                resolved++;
+                return new HttpResponse("{\"data\":{\"resolveReviewThread\":{\"thread\":{\"id\":\"thread1\",\"isResolved\":true}}}}");
+            }
+            return new HttpResponse(BuildGraphQlThreadsResponse(inlineBody));
+        });
+
+        using var github = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            ReviewThreadsAutoResolveMax = 1,
+            ReviewThreadsMax = 1,
+            ReviewThreadsMaxComments = 1
+        };
+
+        CallAutoResolveMissingInlineThreads(github, context, new HashSet<string>(StringComparer.OrdinalIgnoreCase), settings);
+        AssertEqual(1, resolved, "auto resolve missing inline empty keys");
+    }
+
     private static void TestReviewRetryTransient() {
         var attempts = 0;
         var result = ReviewRunner.ReviewRetryPolicy.RunAsync(() => {
@@ -832,6 +882,14 @@ internal static class Program {
         AssertEqual(true, ReviewDiagnostics.IsFailureBody(body), "failure marker");
     }
 
+    private static void TestReviewFailureBodyRedactsErrors() {
+        var settings = new ReviewSettings { Diagnostics = true };
+        var body = ReviewDiagnostics.BuildFailureBody(new InvalidOperationException("Sensitive info"), settings, null, null);
+        if (body.Contains("Sensitive info", StringComparison.OrdinalIgnoreCase)) {
+            throw new InvalidOperationException("Expected failure body to omit raw exception details.");
+        }
+    }
+
     private static void TestReviewFailOpenTransientOnly() {
         var transient = new HttpRequestException("network");
         var responseEnded = new IOException("ResponseEnded");
@@ -853,6 +911,47 @@ internal static class Program {
 
         settings.FailOpenTransientOnly = false;
         AssertEqual(true, ReviewRunner.ShouldFailOpen(settings, nonTransient), "fail-open non-transient allowed");
+    }
+
+    private static void TestPreflightTimeout() {
+        using var server = new LocalHttpServer(_ => {
+            Thread.Sleep(200);
+            return new HttpResponse("{}");
+        });
+        var options = new OpenAINativeOptions {
+            ChatGptApiBaseUrl = server.BaseUri.ToString().TrimEnd('/')
+        };
+        try {
+            CallPreflightNativeConnectivity(options, TimeSpan.FromMilliseconds(50));
+            throw new InvalidOperationException("Expected timeout.");
+        } catch (TimeoutException) {
+            // expected
+        }
+    }
+
+    private static void TestPreflightSocketFailure() {
+        var options = new OpenAINativeOptions {
+            ChatGptApiBaseUrl = "http://127.0.0.1:1"
+        };
+        try {
+            CallPreflightNativeConnectivity(options, TimeSpan.FromSeconds(1));
+            throw new InvalidOperationException("Expected socket failure.");
+        } catch (InvalidOperationException ex) {
+            AssertContainsText(ex.Message, "Connectivity preflight failed", "preflight socket failure");
+        }
+    }
+
+    private static void TestPreflightNonSuccessStatus() {
+        using var server = new LocalHttpServer(_ => new HttpResponse("{}", null, 500, "Server Error"));
+        var options = new OpenAINativeOptions {
+            ChatGptApiBaseUrl = server.BaseUri.ToString().TrimEnd('/')
+        };
+        try {
+            CallPreflightNativeConnectivity(options, TimeSpan.FromSeconds(1));
+            throw new InvalidOperationException("Expected non-success status.");
+        } catch (HttpRequestException ex) {
+            AssertContainsText(ex.Message, "HTTP 500", "preflight non-2xx");
+        }
     }
 
     private static void TestReviewConfigValidatorAllowsAdditionalProperties() {
@@ -1101,7 +1200,7 @@ internal static class Program {
 
         AssertEqual(pr1.Title, pr2.Title, "pr cache data");
         AssertEqual(files1.Count, files2.Count, "files cache data");
-        AssertEqual(compare1.Count, compare2.Count, "compare cache data");
+        AssertEqual(compare1.Files.Count, compare2.Files.Count, "compare cache data");
     }
 
     private static void TestGitHubConcurrencyEnv() {
@@ -1118,6 +1217,49 @@ internal static class Program {
     private static void TestGitHubClientConcurrency() {
         using var client = new GitHubClient("token", "https://api.github.com", 2);
         AssertEqual(2, client.MaxConcurrency, "github client concurrency");
+    }
+
+    private static void TestGitHubCompareTruncation() {
+        using var server = new LocalHttpServer(request => {
+            if (!request.Path.Contains("/repos/owner/repo/compare/", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            var page = GetQueryInt(request.Path, "page", 1);
+            if (page > 20) {
+                return new HttpResponse("{\"files\":[]}");
+            }
+            var startIndex = (page - 1) * 100;
+            return new HttpResponse(BuildCompareFilesPage(startIndex, 100));
+        });
+
+        using var client = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+        var result = client.GetCompareFilesAsync("owner", "repo", "base", "head", CancellationToken.None).GetAwaiter().GetResult();
+        AssertEqual(true, result.IsTruncated, "compare truncated flag");
+        AssertEqual(2000, result.Files.Count, "compare truncated count");
+    }
+
+    private static void TestDiffRangeCompareTruncation() {
+        using var server = new LocalHttpServer(request => {
+            if (!request.Path.Contains("/repos/owner/repo/compare/", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            var page = GetQueryInt(request.Path, "page", 1);
+            if (page > 20) {
+                return new HttpResponse("{\"files\":[]}");
+            }
+            var startIndex = (page - 1) * 100;
+            return new HttpResponse(BuildCompareFilesPage(startIndex, 100));
+        });
+
+        using var github = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+        var currentFiles = BuildFiles("src/A.cs");
+        var settings = new ReviewSettings();
+        var (files, note) = CallResolveDiffRangeFiles(github, context, "pr-base", currentFiles, settings);
+        AssertEqual(currentFiles.Length, files.Count, "diff range compare truncated files");
+        AssertContainsText(note, "current PR files", "diff range compare truncated note");
+        AssertContainsText(note, "truncated", "diff range compare truncated marker");
     }
 
     private static void TestAzureAuthSchemeEnv() {
@@ -1302,6 +1444,20 @@ internal static class Program {
         return result ?? string.Empty;
     }
 
+    private static void CallPreflightNativeConnectivity(OpenAINativeOptions options, TimeSpan timeout) {
+        var runner = new ReviewRunner(new ReviewSettings());
+        var method = typeof(ReviewRunner).GetMethod("PreflightNativeConnectivityAsync",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        if (method is null) {
+            throw new InvalidOperationException("PreflightNativeConnectivityAsync method not found.");
+        }
+        var task = method.Invoke(runner, new object?[] { options, timeout, CancellationToken.None }) as Task;
+        if (task is null) {
+            throw new InvalidOperationException("PreflightNativeConnectivityAsync did not return a task.");
+        }
+        task.GetAwaiter().GetResult();
+    }
+
     private static ReviewContextExtras CallBuildExtrasAsync(GitHubClient github, PullRequestContext context,
         ReviewSettings settings, bool forceReviewThreads) {
         var method = typeof(ReviewerApp).GetMethod("BuildExtrasAsync", BindingFlags.NonPublic | BindingFlags.Static);
@@ -1322,12 +1478,109 @@ internal static class Program {
         return task.GetAwaiter().GetResult();
     }
 
+    private static void CallAutoResolveMissingInlineThreads(GitHubClient github, PullRequestContext context,
+        HashSet<string>? expectedKeys, ReviewSettings settings) {
+        var method = typeof(ReviewerApp).GetMethod("AutoResolveMissingInlineThreadsAsync",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("AutoResolveMissingInlineThreadsAsync method not found.");
+        }
+        var task = method.Invoke(null, new object?[] {
+            github,
+            null,
+            context,
+            expectedKeys,
+            settings,
+            CancellationToken.None
+        }) as Task;
+        if (task is null) {
+            throw new InvalidOperationException("AutoResolveMissingInlineThreadsAsync did not return a task.");
+        }
+        task.GetAwaiter().GetResult();
+    }
+
+    private static (IReadOnlyList<PullRequestFile> Files, string Note) CallResolveDiffRangeFiles(GitHubClient github,
+        PullRequestContext context, string range, IReadOnlyList<PullRequestFile> currentFiles, ReviewSettings settings) {
+        var method = typeof(ReviewerApp).GetMethod("ResolveDiffRangeFilesAsync",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("ResolveDiffRangeFilesAsync method not found.");
+        }
+        var task = method.Invoke(null, new object?[] {
+            github,
+            context,
+            range,
+            currentFiles,
+            settings,
+            CancellationToken.None
+        }) as Task;
+        if (task is null) {
+            throw new InvalidOperationException("ResolveDiffRangeFilesAsync did not return a task.");
+        }
+        task.GetAwaiter().GetResult();
+        var resultProperty = task.GetType().GetProperty("Result");
+        if (resultProperty is null) {
+            throw new InvalidOperationException("ResolveDiffRangeFilesAsync Result not found.");
+        }
+        var result = resultProperty.GetValue(task);
+        if (result is ValueTuple<IReadOnlyList<PullRequestFile>, string> tuple) {
+            return tuple;
+        }
+        throw new InvalidOperationException("ResolveDiffRangeFilesAsync returned unexpected result.");
+    }
+
     private static string BuildGraphQlThreadsResponse() {
-        return "{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{\"nodes\":[{\"id\":\"thread1\",\"isResolved\":false,\"isOutdated\":false,\"comments\":{\"totalCount\":1,\"nodes\":[{\"databaseId\":1,\"createdAt\":\"2024-01-01T00:00:00Z\",\"body\":\"test\",\"path\":\"file.txt\",\"line\":10,\"author\":{\"login\":\"bot\"}}]}}],\"pageInfo\":{\"hasNextPage\":false,\"endCursor\":null}}}}}}";
+        return BuildGraphQlThreadsResponse("test");
+    }
+
+    private static string BuildGraphQlThreadsResponse(string body) {
+        return "{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{\"nodes\":[{\"id\":\"thread1\",\"isResolved\":false,\"isOutdated\":false,\"comments\":{\"totalCount\":1,\"nodes\":[{\"databaseId\":1,\"createdAt\":\"2024-01-01T00:00:00Z\",\"body\":\""
+            + EscapeJson(body)
+            + "\",\"path\":\"file.txt\",\"line\":10,\"author\":{\"login\":\"bot\"}}]}}],\"pageInfo\":{\"hasNextPage\":false,\"endCursor\":null}}}}}}";
+    }
+
+    private static string EscapeJson(string value) {
+        return value.Replace("\\", "\\\\")
+            .Replace("\"", "\\\"")
+            .Replace("\r", "")
+            .Replace("\n", "\\n");
+    }
+
+    private static int GetQueryInt(string path, string key, int fallback) {
+        var queryStart = path.IndexOf('?', StringComparison.Ordinal);
+        if (queryStart < 0 || queryStart == path.Length - 1) {
+            return fallback;
+        }
+        var query = path.Substring(queryStart + 1);
+        var parts = query.Split('&', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var part in parts) {
+            var kvp = part.Split('=', 2);
+            if (kvp.Length == 2 && string.Equals(kvp[0], key, StringComparison.OrdinalIgnoreCase)) {
+                if (int.TryParse(kvp[1], out var value)) {
+                    return value;
+                }
+            }
+        }
+        return fallback;
+    }
+
+    private static string BuildCompareFilesPage(int startIndex, int count) {
+        var sb = new StringBuilder();
+        sb.Append("{\"files\":[");
+        for (var i = 0; i < count; i++) {
+            if (i > 0) {
+                sb.Append(",");
+            }
+            var name = $"file{startIndex + i}.txt";
+            sb.Append("{\"filename\":\"").Append(name).Append("\",\"status\":\"modified\",\"patch\":\"@@\"}");
+        }
+        sb.Append("]}");
+        return sb.ToString();
     }
 
     private sealed record HttpRequest(string Method, string Path, string Body);
-    private sealed record HttpResponse(string Body, IReadOnlyDictionary<string, string>? Headers = null);
+    private sealed record HttpResponse(string Body, IReadOnlyDictionary<string, string>? Headers = null,
+        int StatusCode = 200, string StatusText = "OK");
 
     private sealed class LocalHttpServer : IDisposable {
         private readonly TcpListener _listener;
@@ -1412,7 +1665,8 @@ internal static class Program {
                 return;
             }
 
-            await WriteResponseAsync(stream, 200, "OK", response.Body, response.Headers).ConfigureAwait(false);
+            await WriteResponseAsync(stream, response.StatusCode, response.StatusText, response.Body, response.Headers)
+                .ConfigureAwait(false);
         }
 
         private static async Task WriteResponseAsync(NetworkStream stream, int statusCode, string statusText, string body,

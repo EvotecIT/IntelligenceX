@@ -12,7 +12,7 @@ intelligencex reviewer run
 
 ```powershell
 intelligencex reviewer resolve-threads --repo owner/name --pr 123 --dry-run
-intelligencex reviewer resolve-threads --repo owner/name --pr 123 --token $TOKEN
+intelligencex reviewer resolve-threads --repo owner/name --pr 123 --github-token $TOKEN
 ```
 
 ## Notes

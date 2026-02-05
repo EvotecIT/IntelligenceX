@@ -31,13 +31,22 @@ public static class ReviewerApp {
             cts.Cancel();
         };
         Console.CancelKeyPress += cancelHandler;
+        // Hoist state so the exception handler can update the progress comment on failure.
         SecretsAuditSession? secretsAudit = null;
+        ReviewSettings? settings = null;
+        PullRequestContext? context = null;
+        string? githubToken = null;
+        bool allowWrites = false;
+        bool inlineSupported = false;
+        bool summaryPosted = false;
+        long? commentId = null;
+        var progress = new ReviewProgress { StatusLine = "Starting review." };
         try {
             var cancellationToken = cts.Token;
             if (!await TryWriteAuthFromEnvAsync().ConfigureAwait(false)) {
                 return 1;
             }
-            var settings = ReviewSettings.Load();
+            settings = ReviewSettings.Load();
             secretsAudit = SecretsAudit.TryStart(settings);
             var validation = ReviewConfigValidator.ValidateCurrent();
             if (validation is not null) {
@@ -75,6 +84,7 @@ public static class ReviewerApp {
                 Console.Error.WriteLine("Missing GitHub token (INTELLIGENCEX_GITHUB_TOKEN or GITHUB_TOKEN).");
                 return 1;
             }
+            githubToken = token;
             SecretsAudit.Record($"GitHub token from {tokenSource}");
 
             var fallbackToken = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
@@ -89,7 +99,6 @@ public static class ReviewerApp {
             using var fallbackGithub = string.IsNullOrWhiteSpace(fallbackToken)
                 ? null
                 : new GitHubClient(fallbackToken, maxConcurrency: settings.GitHubMaxConcurrency);
-            PullRequestContext? context = null;
             var eventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
             if (!string.IsNullOrWhiteSpace(eventPath) && File.Exists(eventPath)) {
                 var json = await File.ReadAllTextAsync(eventPath).ConfigureAwait(false);
@@ -126,7 +135,7 @@ public static class ReviewerApp {
                 return 1;
             }
 
-            var allowWrites = !isUntrusted || settings.UntrustedPrAllowWrites;
+            allowWrites = !isUntrusted || settings.UntrustedPrAllowWrites;
             if (!allowWrites && isUntrusted) {
                 Console.WriteLine("Write actions disabled for untrusted pull requests.");
             }
@@ -174,9 +183,7 @@ public static class ReviewerApp {
                 }
             }
 
-            var progress = new ReviewProgress {
-                StatusLine = "Starting review."
-            };
+            progress.StatusLine = "Starting review.";
 
             if (ShouldSkipByPaths(files, settings.SkipPaths)) {
                 Console.WriteLine("Skipping pull request due to path filter.");
@@ -220,7 +227,7 @@ public static class ReviewerApp {
                 }
                 return 0;
             }
-            var inlineSupported = !string.Equals(settings.Mode, "summary", StringComparison.OrdinalIgnoreCase) &&
+            inlineSupported = !string.Equals(settings.Mode, "summary", StringComparison.OrdinalIgnoreCase) &&
                                   settings.MaxInlineComments > 0 &&
                                   !string.IsNullOrWhiteSpace(context.HeadSha);
             var (limitedFiles, budgetNote) = PrepareFiles(files, settings.MaxFiles, settings.MaxPatchChars);
@@ -232,7 +239,6 @@ public static class ReviewerApp {
                 prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
             }
 
-            long? commentId = null;
             if (allowWrites && settings.ProgressUpdates) {
                 var progressBody = ReviewFormatter.BuildProgressComment(context, settings, progress, null, inlineSupported);
                 commentId = await CreateOrUpdateProgressCommentAsync(github, context, settings, progressBody, cancellationToken)
@@ -273,8 +279,7 @@ public static class ReviewerApp {
                     .ConfigureAwait(false);
                 if (settings.ReviewThreadsAutoResolveMissingInline &&
                     !string.IsNullOrWhiteSpace(context.HeadSha) &&
-                    inlineKeys is not null &&
-                    inlineKeys.Count > 0) {
+                    inlineKeys is not null) {
                     await AutoResolveMissingInlineThreadsAsync(github, fallbackGithub, context, inlineKeys, settings, cancellationToken)
                         .ConfigureAwait(false);
                 }
@@ -315,6 +320,7 @@ public static class ReviewerApp {
             if (commentId.HasValue) {
                 await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, commentBody, cancellationToken)
                     .ConfigureAwait(false);
+                summaryPosted = true;
                 Console.WriteLine("Updated review comment.");
             } else if (settings.CommentMode == ReviewCommentMode.Sticky) {
                 var shouldSearch = settings.OverwriteSummary || settings.OverwriteSummaryOnNewCommit;
@@ -328,21 +334,47 @@ public static class ReviewerApp {
                 if (existing is not null && shouldOverwrite) {
                     await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, commentBody, cancellationToken)
                         .ConfigureAwait(false);
+                    summaryPosted = true;
                     Console.WriteLine("Updated existing review comment.");
                     return 0;
                 }
                 await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, cancellationToken)
                     .ConfigureAwait(false);
+                summaryPosted = true;
                 Console.WriteLine("Posted review comment.");
             } else {
                 await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, cancellationToken)
                     .ConfigureAwait(false);
+                summaryPosted = true;
                 Console.WriteLine("Posted review comment.");
             }
 
             return 0;
         } catch (Exception ex) {
             Console.Error.WriteLine(ex.Message);
+            if (!summaryPosted &&
+                commentId.HasValue &&
+                allowWrites &&
+                context is not null &&
+                settings is not null &&
+                !string.IsNullOrWhiteSpace(githubToken)) {
+                try {
+                    var failureBody = ReviewDiagnostics.BuildFailureBody(ex, settings, null, null);
+                    var inlineSuppressed = inlineSupported;
+                    var commentBody = ReviewFormatter.BuildComment(context, failureBody, settings, inlineSupported,
+                        inlineSuppressed, string.Empty, string.Empty, string.Empty, string.Empty);
+                    if (string.IsNullOrWhiteSpace(githubToken)) {
+                        return 1;
+                    }
+                    using var failureClient = new GitHubClient(githubToken, maxConcurrency: settings.GitHubMaxConcurrency);
+                    await failureClient.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, commentBody,
+                            CancellationToken.None)
+                        .ConfigureAwait(false);
+                    Console.WriteLine("Updated review comment with failure summary.");
+                } catch (Exception updateEx) {
+                    Console.Error.WriteLine($"Failed to update review comment after error: {updateEx.Message}");
+                }
+            }
             return 1;
         } finally {
             secretsAudit?.WriteSummary();
@@ -863,12 +895,16 @@ public static class ReviewerApp {
                 return (false, Array.Empty<PullRequestFile>(), $"missing {label} commit");
             }
             try {
-                var compareFiles = await github.GetCompareFilesAsync(context.Owner, context.Repo, baseSha, context.HeadSha!, cancellationToken)
+                var compareResult = await github.GetCompareFilesAsync(context.Owner, context.Repo, baseSha, context.HeadSha!, cancellationToken)
                     .ConfigureAwait(false);
-                if (compareFiles.Count == 0) {
+                if (compareResult.IsTruncated) {
+                    Console.Error.WriteLine($"Compare API diff for {label} is truncated. Falling back to current PR files.");
+                    return (false, Array.Empty<PullRequestFile>(), $"{label} diff truncated");
+                }
+                if (compareResult.Files.Count == 0) {
                     return (false, Array.Empty<PullRequestFile>(), $"{label} diff empty");
                 }
-                var filtered = FilterFilesByPaths(compareFiles, settings.IncludePaths, settings.ExcludePaths);
+                var filtered = FilterFilesByPaths(compareResult.Files, settings.IncludePaths, settings.ExcludePaths);
                 var note = $"{label} → head ({ShortSha(baseSha)}..{ShortSha(context.HeadSha)})";
                 if (filtered.Count == 0) {
                     note += " (filtered empty)";
