@@ -19,6 +19,7 @@ namespace IntelligenceX.Reviewer;
 /// </summary>
 public static class ReviewerApp {
     private const string ThreadReplyMarker = "<!-- intelligencex:thread-reply -->";
+    private static int _integrationForbiddenHintLogged;
     private static readonly HashSet<string> BinaryExtensions = new(StringComparer.OrdinalIgnoreCase) {
         ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".ico", ".webp",
         ".mp3", ".wav", ".flac", ".ogg", ".mp4", ".mov", ".mkv", ".avi", ".mpeg", ".mpg", ".webm",
@@ -1268,7 +1269,32 @@ public static class ReviewerApp {
             return ThreadTriageResult.Empty;
         }
 
-        var byId = assessments.ToDictionary(a => a.Id, StringComparer.OrdinalIgnoreCase);
+        var byId = new Dictionary<string, ThreadAssessment>(StringComparer.OrdinalIgnoreCase);
+        var missingIdCount = 0;
+        var duplicateIdCount = 0;
+        var duplicateIdExamples = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var assessment in assessments) {
+            var normalizedId = NormalizeThreadAssessmentId(assessment.Id);
+            if (normalizedId.Length == 0) {
+                missingIdCount++;
+                continue;
+            }
+            if (!byId.TryAdd(normalizedId, assessment)) {
+                duplicateIdCount++;
+                if (duplicateIdExamples.Count < 3) {
+                    duplicateIdExamples.Add(normalizedId);
+                }
+                // Last occurrence wins to keep deterministic behavior without throwing.
+                byId[normalizedId] = assessment;
+            }
+        }
+        if (missingIdCount > 0) {
+            Console.Error.WriteLine($"Thread assessment skipped {missingIdCount} item(s) with missing ids.");
+        }
+        if (duplicateIdCount > 0) {
+            var examples = duplicateIdExamples.Count > 0 ? $" (e.g., {string.Join(", ", duplicateIdExamples)})" : string.Empty;
+            Console.Error.WriteLine($"Thread assessment contained {duplicateIdCount} duplicate id(s){examples}; using last occurrence.");
+        }
         var replyMap = new Dictionary<string, ThreadAssessment>(StringComparer.OrdinalIgnoreCase);
         var patchIndex = BuildInlinePatchIndex(files);
         var patchLookup = BuildPatchLookup(files, settings.MaxPatchChars);
@@ -1280,7 +1306,10 @@ public static class ReviewerApp {
                 case "comment":
                 case "keep":
                     kept.Add(assessment);
-                    replyMap[assessment.Id] = assessment;
+                    var normalizedReplyId = NormalizeThreadAssessmentId(assessment.Id);
+                    if (normalizedReplyId.Length > 0) {
+                        replyMap[normalizedReplyId] = assessment;
+                    }
                     break;
             }
         }
@@ -1290,7 +1319,8 @@ public static class ReviewerApp {
             if (resolvedCount >= settings.ReviewThreadsAutoResolveMax) {
                 break;
             }
-            if (!byId.TryGetValue(thread.Id, out var assessment) || assessment.Action != "resolve") {
+            var normalizedThreadId = NormalizeThreadAssessmentId(thread.Id);
+            if (!byId.TryGetValue(normalizedThreadId, out var assessment) || assessment.Action != "resolve") {
                 continue;
             }
             if (settings.ReviewThreadsAutoResolveRequireEvidence &&
@@ -1298,7 +1328,7 @@ public static class ReviewerApp {
                 var missingEvidence = new ThreadAssessment(assessment.Id, "keep",
                     $"{assessment.Reason} (missing diff evidence)", assessment.Evidence);
                 kept.Add(missingEvidence);
-                replyMap[assessment.Id] = missingEvidence;
+                replyMap[normalizedThreadId] = missingEvidence;
                 continue;
             }
             var result = await TryResolveThreadAsync(github, fallbackGithub, thread.Id, cancellationToken).ConfigureAwait(false);
@@ -1311,7 +1341,7 @@ public static class ReviewerApp {
             var failedAssessment = new ThreadAssessment(assessment.Id, "keep", $"{assessment.Reason} (resolve failed: {error})",
                 assessment.Evidence);
             failed.Add(failedAssessment);
-            replyMap[assessment.Id] = failedAssessment;
+            replyMap[normalizedThreadId] = failedAssessment;
             Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {error}");
         }
 
@@ -2094,19 +2124,29 @@ public static class ReviewerApp {
         return context.Contains(normalized, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static string NormalizeThreadAssessmentId(string? id) {
+        return id?.Trim() ?? string.Empty;
+    }
+
     private static async Task<(bool Resolved, string? Error)> TryResolveThreadAsync(GitHubClient github,
         GitHubClient? fallbackGithub, string threadId, CancellationToken cancellationToken) {
         try {
             await github.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
             return (true, null);
         } catch (Exception ex) {
-            if (fallbackGithub is not null && IsIntegrationForbidden(ex)) {
+            var isForbidden = IsIntegrationForbidden(ex);
+            if (fallbackGithub is not null && isForbidden) {
                 try {
                     await fallbackGithub.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
                     return (true, null);
                 } catch (Exception fallbackEx) {
+                    // Only log after the integration-forbidden path actually fails (avoid false alarms).
+                    LogIntegrationForbiddenHint();
                     return (false, fallbackEx.Message);
                 }
+            }
+            if (isForbidden) {
+                LogIntegrationForbiddenHint();
             }
             return (false, ex.Message);
         }
@@ -2118,6 +2158,24 @@ public static class ReviewerApp {
             return true;
         }
         return ex.InnerException is not null && IsIntegrationForbidden(ex.InnerException);
+    }
+
+    private static void LogIntegrationForbiddenHint() {
+        if (Interlocked.Exchange(ref _integrationForbiddenHintLogged, 1) == 1) {
+            return;
+        }
+        // This hint is emitted only from auto-resolve thread resolution flows.
+        var lines = new[] {
+            "Auto-resolve thread resolution: GitHub returned \"Resource not accessible by integration\".",
+            "Hint: This usually means the GitHub App installation token cannot resolve review threads.",
+            "Hint: Re-authorize or reinstall the GitHub App after permission changes.",
+            "Hint: Confirm the app installation includes this repository.",
+            "Hint: Ensure the app has Pull requests: Read & write (and Issues: write if needed).",
+            "Hint: Verify INTELLIGENCEX_GITHUB_APP_ID/INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY point to the intended app.",
+            "Hint: To bypass the app token, remove INTELLIGENCEX_GITHUB_APP_ID/INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY to use GITHUB_TOKEN.",
+            "Hint: GITHUB_TOKEN is provided automatically in GitHub Actions; outside Actions set a PAT in GITHUB_TOKEN."
+        };
+        Console.Error.WriteLine(string.Join(Environment.NewLine, lines));
     }
 
     private static bool ThreadHasOnlyBotComments(PullRequestReviewThread thread, ReviewSettings settings) {
