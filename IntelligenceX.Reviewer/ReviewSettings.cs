@@ -949,12 +949,7 @@ internal sealed class ReviewSettings {
     }
 
     private static ReviewProvider ParseProvider(string value) {
-        var normalized = value.Trim().ToLowerInvariant();
-        return normalized switch {
-            "copilot" => ReviewProvider.Copilot,
-            "openai" or "codex" => ReviewProvider.OpenAI,
-            _ => ReviewProvider.OpenAI
-        };
+        return ReviewProviderContracts.ParseProviderOrDefault(value, ReviewProvider.OpenAI);
     }
 
     private static ReviewCodeHost ParseCodeHost(string value) {

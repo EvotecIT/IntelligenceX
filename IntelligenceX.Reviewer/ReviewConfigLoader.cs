@@ -36,11 +36,7 @@ internal static class ReviewConfigLoader {
 
         var provider = reviewObj.GetString("provider");
         if (!string.IsNullOrWhiteSpace(provider)) {
-            settings.Provider = provider.Trim().ToLowerInvariant() switch {
-                "copilot" => ReviewProvider.Copilot,
-                "openai" or "codex" => ReviewProvider.OpenAI,
-                _ => settings.Provider
-            };
+            settings.Provider = ReviewProviderContracts.ParseProviderOrDefault(provider, settings.Provider);
         }
 
         var codeHost = reviewObj.GetString("codeHost");

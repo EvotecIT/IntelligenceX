@@ -139,6 +139,11 @@ public static class ReviewerApp {
                     return 1;
                 }
             }
+            var providerContract = ReviewProviderContracts.Get(settings.Provider);
+            if (settings.Diagnostics && settings.RetryCount > providerContract.MaxRecommendedRetryCount) {
+                Console.Error.WriteLine(
+                    $"Retry count ({settings.RetryCount}) exceeds recommended limit ({providerContract.MaxRecommendedRetryCount}) for {providerContract.DisplayName}.");
+            }
             if (settings.CodeHost == ReviewCodeHost.AzureDevOps) {
                 if (!await ValidateAuthAsync(settings).ConfigureAwait(false)) {
                     return 1;
@@ -648,9 +653,7 @@ public static class ReviewerApp {
     }
 
     private static bool IsValidProvider(string provider) {
-        return provider.Equals("openai", StringComparison.OrdinalIgnoreCase) ||
-               provider.Equals("codex", StringComparison.OrdinalIgnoreCase) ||
-               provider.Equals("copilot", StringComparison.OrdinalIgnoreCase) ||
+        return ReviewProviderContracts.TryParseProviderAlias(provider, out _) ||
                IsAzureProvider(provider);
     }
 
@@ -716,7 +719,8 @@ public static class ReviewerApp {
     }
 
     private static async Task<bool> ValidateAuthAsync(ReviewSettings settings) {
-        if (settings.Provider == ReviewProvider.Copilot) {
+        var provider = ReviewProviderContracts.Get(settings.Provider);
+        if (!provider.RequiresOpenAiAuthStore) {
             return true;
         }
 
@@ -1354,7 +1358,8 @@ public static class ReviewerApp {
         if (!settings.ReviewUsageSummary) {
             return string.Empty;
         }
-        if (settings.Provider != ReviewProvider.OpenAI) {
+        var provider = ReviewProviderContracts.Get(settings.Provider);
+        if (!provider.SupportsUsageApi) {
             return string.Empty;
         }
 

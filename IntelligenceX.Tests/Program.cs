@@ -101,6 +101,9 @@ internal static class Program {
         failed += Run("Trim patch keeps last hunk", TestTrimPatchKeepsLastHunk);
         failed += Run("Review intent applies focus", TestReviewIntentAppliesFocus);
         failed += Run("Review intent respects focus", TestReviewIntentRespectsFocus);
+        failed += Run("Review provider alias parsing", TestReviewProviderAliasParsing);
+        failed += Run("Review provider contract capabilities", TestReviewProviderContractCapabilities);
+        failed += Run("Review provider config alias", TestReviewProviderConfigAlias);
         failed += Run("Triage-only loads threads", TestTriageOnlyLoadsThreads);
         failed += Run("Review code host env", TestReviewCodeHostEnv);
         failed += Run("GitHub context cache", TestGitHubContextCache);
@@ -1180,6 +1183,52 @@ internal static class Program {
         var settings = new ReviewSettings { Focus = new[] { "custom" } };
         ReviewIntents.Apply("performance", settings);
         AssertSequenceEqual(new[] { "custom" }, settings.Focus, "intent preserves focus");
+    }
+
+    private static void TestReviewProviderAliasParsing() {
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("openai", out var openai), "provider openai alias");
+        AssertEqual(ReviewProvider.OpenAI, openai, "provider openai value");
+
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("codex", out var codex), "provider codex alias");
+        AssertEqual(ReviewProvider.OpenAI, codex, "provider codex value");
+
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("copilot", out var copilot), "provider copilot alias");
+        AssertEqual(ReviewProvider.Copilot, copilot, "provider copilot value");
+
+        AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias("azure", out _), "provider azure alias unsupported");
+    }
+
+    private static void TestReviewProviderContractCapabilities() {
+        var openai = ReviewProviderContracts.Get(ReviewProvider.OpenAI);
+        AssertEqual(true, openai.SupportsUsageApi, "openai usage api");
+        AssertEqual(true, openai.SupportsReasoningControls, "openai reasoning");
+        AssertEqual(true, openai.RequiresOpenAiAuthStore, "openai auth");
+        AssertEqual(true, openai.SupportsStreaming, "openai streaming");
+        AssertEqual(true, openai.MaxRecommendedRetryCount > 0, "openai retry limit");
+
+        var copilot = ReviewProviderContracts.Get(ReviewProvider.Copilot);
+        AssertEqual(false, copilot.SupportsUsageApi, "copilot usage api");
+        AssertEqual(false, copilot.SupportsReasoningControls, "copilot reasoning");
+        AssertEqual(false, copilot.RequiresOpenAiAuthStore, "copilot auth");
+        AssertEqual(true, copilot.SupportsStreaming, "copilot streaming");
+        AssertEqual(true, copilot.MaxRecommendedRetryCount > 0, "copilot retry limit");
+    }
+
+    private static void TestReviewProviderConfigAlias() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path, "{ \"review\": { \"provider\": \"codex\" } }");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings();
+            ReviewConfigLoader.Apply(settings);
+            AssertEqual(ReviewProvider.OpenAI, settings.Provider, "provider codex config");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
     }
 
     private static void TestReviewCodeHostEnv() {
