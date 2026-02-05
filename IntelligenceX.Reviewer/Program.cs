@@ -21,6 +21,7 @@ public static class ReviewerApp {
     private const string ThreadReplyMarker = "<!-- intelligencex:thread-reply -->";
     private const string UsageSummaryPrefix = "Usage: ";
     private const string UsageSummarySeparator = " | ";
+    private const string CodeReviewPrefix = "code review ";
     private const string SecondaryWindowSuffix = " (secondary)";
     private static int _integrationForbiddenHintLogged;
     private static readonly HashSet<string> BinaryExtensions = new(StringComparer.OrdinalIgnoreCase) {
@@ -1554,18 +1555,20 @@ public static class ReviewerApp {
 
     private static string FormatCodeReviewLabel(string windowLabel, bool isSecondaryWindow) {
         var label = windowLabel.Trim();
+        // Secondary suffix ownership lives here for code-review labels.
+        // If upstream window labels ever include a secondary suffix, this guard avoids double-appending.
         if (isSecondaryWindow && !label.EndsWith(SecondaryWindowSuffix, StringComparison.OrdinalIgnoreCase)) {
             label += SecondaryWindowSuffix;
         }
-        return "code review " + label;
+        return CodeReviewPrefix + label;
     }
 
     private static string GetUsageLimitFallbackLabel(UsageLimitLineKind lineKind) {
         return lineKind switch {
             UsageLimitLineKind.GeneralPrimary => "rate limit",
             UsageLimitLineKind.GeneralSecondary => "rate limit (secondary)",
-            UsageLimitLineKind.CodeReviewPrimary => "code review limit",
-            UsageLimitLineKind.CodeReviewSecondary => "code review limit (secondary)",
+            UsageLimitLineKind.CodeReviewPrimary => CodeReviewPrefix + "limit",
+            UsageLimitLineKind.CodeReviewSecondary => CodeReviewPrefix + "limit (secondary)",
             _ => throw new ArgumentOutOfRangeException(nameof(lineKind), lineKind, "Unsupported usage limit line kind")
         };
     }
