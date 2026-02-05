@@ -73,8 +73,10 @@ public static class ReviewerApp {
         "*.bundle.js",
         "**/*.bundle.css",
         "*.bundle.css",
-        "**/*.map",
-        "*.map"
+        "**/*.js.map",
+        "*.js.map",
+        "**/*.css.map",
+        "*.css.map"
     };
     /// <summary>
     /// Executes the reviewer workflow with the provided arguments.
