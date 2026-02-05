@@ -88,13 +88,22 @@ public static class ReviewerApp {
             cts.Cancel();
         };
         Console.CancelKeyPress += cancelHandler;
+        // Hoist state so the exception handler can update the progress comment on failure.
         SecretsAuditSession? secretsAudit = null;
+        ReviewSettings? settings = null;
+        PullRequestContext? context = null;
+        string? githubToken = null;
+        bool allowWrites = false;
+        bool inlineSupported = false;
+        bool summaryPosted = false;
+        long? commentId = null;
+        var progress = new ReviewProgress { StatusLine = "Starting review." };
         try {
             var cancellationToken = cts.Token;
             if (!await TryWriteAuthFromEnvAsync().ConfigureAwait(false)) {
                 return 1;
             }
-            var settings = ReviewSettings.Load();
+            settings = ReviewSettings.Load();
             secretsAudit = SecretsAudit.TryStart(settings);
             var validation = ReviewConfigValidator.ValidateCurrent();
             if (validation is not null) {
@@ -132,6 +141,7 @@ public static class ReviewerApp {
                 Console.Error.WriteLine("Missing GitHub token (INTELLIGENCEX_GITHUB_TOKEN or GITHUB_TOKEN).");
                 return 1;
             }
+            githubToken = token;
             SecretsAudit.Record($"GitHub token from {tokenSource}");
 
             var fallbackToken = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
@@ -146,7 +156,6 @@ public static class ReviewerApp {
             using var fallbackGithub = string.IsNullOrWhiteSpace(fallbackToken)
                 ? null
                 : new GitHubClient(fallbackToken, maxConcurrency: settings.GitHubMaxConcurrency);
-            PullRequestContext? context = null;
             var eventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
             if (!string.IsNullOrWhiteSpace(eventPath) && File.Exists(eventPath)) {
                 var json = await File.ReadAllTextAsync(eventPath).ConfigureAwait(false);
@@ -183,7 +192,7 @@ public static class ReviewerApp {
                 return 1;
             }
 
-            var allowWrites = !isUntrusted || settings.UntrustedPrAllowWrites;
+            allowWrites = !isUntrusted || settings.UntrustedPrAllowWrites;
             if (!allowWrites && isUntrusted) {
                 Console.WriteLine("Write actions disabled for untrusted pull requests.");
             }
@@ -231,9 +240,7 @@ public static class ReviewerApp {
                 }
             }
 
-            var progress = new ReviewProgress {
-                StatusLine = "Starting review."
-            };
+            progress = new ReviewProgress { StatusLine = "Starting review." };
 
             if (ShouldSkipByPaths(files, settings.SkipPaths)) {
                 Console.WriteLine("Skipping pull request due to path filter.");
@@ -278,7 +285,7 @@ public static class ReviewerApp {
                 }
                 return 0;
             }
-            var inlineSupported = !string.Equals(settings.Mode, "summary", StringComparison.OrdinalIgnoreCase) &&
+            inlineSupported = !string.Equals(settings.Mode, "summary", StringComparison.OrdinalIgnoreCase) &&
                                   settings.MaxInlineComments > 0 &&
                                   !string.IsNullOrWhiteSpace(context.HeadSha);
             var (limitedFiles, budgetNote) = PrepareFiles(files, settings.MaxFiles, settings.MaxPatchChars);
@@ -290,7 +297,6 @@ public static class ReviewerApp {
                 prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
             }
 
-            long? commentId = null;
             if (allowWrites && settings.ProgressUpdates) {
                 var progressBody = ReviewFormatter.BuildProgressComment(context, settings, progress, null, inlineSupported);
                 commentId = await CreateOrUpdateProgressCommentAsync(github, context, settings, progressBody, cancellationToken)
@@ -373,6 +379,7 @@ public static class ReviewerApp {
             if (commentId.HasValue) {
                 await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, commentBody, cancellationToken)
                     .ConfigureAwait(false);
+                summaryPosted = true;
                 Console.WriteLine("Updated review comment.");
             } else if (settings.CommentMode == ReviewCommentMode.Sticky) {
                 var shouldSearch = settings.OverwriteSummary || settings.OverwriteSummaryOnNewCommit;
@@ -386,27 +393,62 @@ public static class ReviewerApp {
                 if (existing is not null && shouldOverwrite) {
                     await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, commentBody, cancellationToken)
                         .ConfigureAwait(false);
+                    summaryPosted = true;
                     Console.WriteLine("Updated existing review comment.");
                     return 0;
                 }
                 await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, cancellationToken)
                     .ConfigureAwait(false);
+                summaryPosted = true;
                 Console.WriteLine("Posted review comment.");
             } else {
                 await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, cancellationToken)
                     .ConfigureAwait(false);
+                summaryPosted = true;
                 Console.WriteLine("Posted review comment.");
             }
 
             return 0;
         } catch (Exception ex) {
             Console.Error.WriteLine(ex.Message);
+            if (!summaryPosted &&
+                commentId.HasValue &&
+                allowWrites &&
+                context is not null &&
+                settings is not null) {
+                try {
+                    var updated = await TryUpdateFailureSummaryAsync(githubToken, null, context, settings, commentId.Value, ex,
+                            inlineSupported)
+                        .ConfigureAwait(false);
+                    if (updated) {
+                        Console.WriteLine("Updated review comment with failure summary.");
+                    }
+                } catch (Exception updateEx) {
+                    Console.Error.WriteLine($"Failed to update review comment after error: {updateEx.Message}");
+                }
+            }
             return 1;
         } finally {
             secretsAudit?.WriteSummary();
             secretsAudit?.Dispose();
             Console.CancelKeyPress -= cancelHandler;
         }
+    }
+
+    internal static async Task<bool> TryUpdateFailureSummaryAsync(string? githubToken, string? apiBaseUrl,
+        PullRequestContext context, ReviewSettings settings, long commentId, Exception ex, bool inlineSupported) {
+        if (string.IsNullOrWhiteSpace(githubToken)) {
+            return false;
+        }
+        var failureBody = ReviewDiagnostics.BuildFailureBody(ex, settings, null, null);
+        var inlineSuppressed = inlineSupported;
+        var commentBody = ReviewFormatter.BuildComment(context, failureBody, settings, inlineSupported, inlineSuppressed,
+            string.Empty, string.Empty, string.Empty, string.Empty);
+        using var failureClient = new GitHubClient(githubToken, apiBaseUrl, settings.GitHubMaxConcurrency);
+        await failureClient.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId, commentBody,
+                CancellationToken.None)
+            .ConfigureAwait(false);
+        return true;
     }
 
     private static async Task<bool> TryWriteAuthFromEnvAsync() {
