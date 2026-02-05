@@ -54,7 +54,7 @@ Status: In progress
 - [x] Centralize provider contracts (capabilities, limits, streaming, auth).
 - [x] Add provider capability flags (usage API, reasoning level, streaming).
 - [x] Add opt-in provider fallback (e.g., OpenAI → Copilot).
-- [ ] Add provider health checks and circuit breaker.
+- [x] Add provider health checks and circuit breaker.
 
 ### Phase 5.5 — Code host support (Azure DevOps Services)
 - [ ] Define code-host interface (PR metadata, files, diff, comments, threads).

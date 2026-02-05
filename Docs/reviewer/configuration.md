@@ -71,6 +71,21 @@ Use `providerFallback` to opt into a secondary provider when the primary provide
 }
 ```
 
+## Provider health checks + circuit breaker
+
+Use this to preflight providers before request execution and temporarily open a breaker after repeated failures.
+
+```json
+{
+  "review": {
+    "providerHealthChecks": true,
+    "providerHealthCheckTimeoutSeconds": 10,
+    "providerCircuitBreakerFailures": 3,
+    "providerCircuitBreakerOpenSeconds": 120
+  }
+}
+```
+
 ## Auto-resolve + triage example
 
 ```json
@@ -364,6 +379,10 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `retryCount`: total attempts for provider requests
 - `retryBackoffMultiplier`: exponential backoff multiplier (default 2.0)
 - `retryJitterMinMs`/`retryJitterMaxMs`: retry jitter bounds
+- `providerHealthChecks`: run provider health checks before calls (default true)
+- `providerHealthCheckTimeoutSeconds`: timeout for provider health checks
+- `providerCircuitBreakerFailures`: consecutive failures before opening provider circuit (set `0` to disable)
+- `providerCircuitBreakerOpenSeconds`: how long the provider circuit remains open
 - `failOpen`: emit a failure summary instead of failing the workflow
 - `failOpenTransientOnly`: when true, fail-open only on transient errors
 - `summaryStability`: reuse the previous summary (same commit) as prompt context to avoid noisy rewrites
