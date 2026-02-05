@@ -253,7 +253,7 @@ public static class ReviewerApp {
             var (reviewFiles, diffNote) = await ResolveReviewFilesAsync(github, context, settings, files, cancellationToken)
                 .ConfigureAwait(false);
             reviewFiles = FilterFilesByPaths(reviewFiles, settings.IncludePaths, settings.ExcludePaths,
-                settings.SkipBinaryFiles, settings.SkipGeneratedFiles);
+                settings.SkipBinaryFiles, settings.SkipGeneratedFiles, settings.GeneratedFileGlobs);
             if (reviewFiles.Count == 0) {
                 progress.Context = ReviewProgressState.Complete;
                 Console.WriteLine("No files matched include/exclude filters.");
@@ -685,7 +685,8 @@ public static class ReviewerApp {
     /// </summary>
     internal static IReadOnlyList<PullRequestFile> FilterFilesByPaths(IReadOnlyList<PullRequestFile> files,
         IReadOnlyList<string> includePaths, IReadOnlyList<string> excludePaths,
-        bool skipBinaryFiles = false, bool skipGeneratedFiles = false) {
+        bool skipBinaryFiles = false, bool skipGeneratedFiles = false,
+        IReadOnlyList<string>? generatedFileGlobs = null) {
         if (files.Count == 0) {
             return files;
         }
@@ -696,13 +697,16 @@ public static class ReviewerApp {
         if (!hasInclude && !hasExclude && !skipBinaryFiles && !skipGeneratedFiles) {
             return files;
         }
+        var effectiveGeneratedGlobs = skipGeneratedFiles
+            ? ResolveGeneratedGlobs(generatedFileGlobs)
+            : Array.Empty<string>();
         var filtered = new List<PullRequestFile>();
         foreach (var file in files) {
             var filename = file.Filename.Replace('\\', '/');
             if (skipBinaryFiles && IsBinaryFile(filename)) {
                 continue;
             }
-            if (skipGeneratedFiles && IsGeneratedFile(filename)) {
+            if (skipGeneratedFiles && IsGeneratedFile(filename, effectiveGeneratedGlobs)) {
                 continue;
             }
             if (hasInclude && !includePaths.Any(pattern => GlobMatcher.IsMatch(pattern, filename))) {
@@ -727,11 +731,21 @@ public static class ReviewerApp {
         return BinaryExtensions.Contains(extension);
     }
 
-    private static bool IsGeneratedFile(string path) {
+    private static IReadOnlyList<string> ResolveGeneratedGlobs(IReadOnlyList<string>? generatedFileGlobs) {
+        if (generatedFileGlobs is null || generatedFileGlobs.Count == 0) {
+            return GeneratedGlobs;
+        }
+        var combined = new List<string>(GeneratedGlobs.Count + generatedFileGlobs.Count);
+        combined.AddRange(GeneratedGlobs);
+        combined.AddRange(generatedFileGlobs);
+        return combined;
+    }
+
+    private static bool IsGeneratedFile(string path, IReadOnlyList<string> generatedGlobs) {
         if (string.IsNullOrWhiteSpace(path)) {
             return false;
         }
-        return GeneratedGlobs.Any(pattern => GlobMatcher.IsMatch(pattern, path));
+        return generatedGlobs.Any(pattern => GlobMatcher.IsMatch(pattern, path));
     }
 
     private static async Task<(IReadOnlyList<PullRequestFile> Files, string DiffNote)> ResolveReviewFilesAsync(
@@ -994,7 +1008,7 @@ public static class ReviewerApp {
                     return (false, Array.Empty<PullRequestFile>(), $"{label} diff empty");
                 }
                 var filtered = FilterFilesByPaths(compareFiles, settings.IncludePaths, settings.ExcludePaths,
-                    settings.SkipBinaryFiles, settings.SkipGeneratedFiles);
+                    settings.SkipBinaryFiles, settings.SkipGeneratedFiles, settings.GeneratedFileGlobs);
                 var note = $"{label} → head ({ShortSha(baseSha)}..{ShortSha(context.HeadSha)})";
                 if (filtered.Count == 0) {
                     note += " (filtered empty)";

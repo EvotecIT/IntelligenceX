@@ -57,7 +57,7 @@ internal static class AzureDevOpsReviewRunner {
         }
 
         var filtered = ReviewerApp.FilterFilesByPaths(files, settings.IncludePaths, settings.ExcludePaths,
-            settings.SkipBinaryFiles, settings.SkipGeneratedFiles);
+            settings.SkipBinaryFiles, settings.SkipGeneratedFiles, settings.GeneratedFileGlobs);
         if (filtered.Count == 0) {
             Console.WriteLine("No files matched include/exclude filters.");
             return 0;
