@@ -37,6 +37,8 @@ You can configure the reviewer with environment variables **or** a repo-local fi
 | `reviewUsageSummary` | `true`/`false` | Append usage line to footer |
 | `includeReviewThreads` | `true`/`false` | Include existing threads in context |
 
+When code-review rate-limit windows are present, their labels are prefixed with `code review` in the usage line so they remain distinct from general limits.
+
 ## Auto-Resolve
 
 The reviewer can automatically resolve stale bot threads:

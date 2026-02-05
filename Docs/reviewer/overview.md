@@ -103,3 +103,4 @@ intelligencex setup wizard
 ## Usage and credits line
 
 Enable `reviewUsageSummary` to append limits/credits (ChatGPT native only). See `./configuration.md`.
+When a code-review rate-limit window is present, its label is explicitly prefixed with `code review` (for example, `code review weekly limit`) so it is distinct from general limits.

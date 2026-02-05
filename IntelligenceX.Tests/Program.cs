@@ -168,6 +168,9 @@ internal static class Program {
         failed += Run("Context deny timeout", TestContextDenyTimeout);
         failed += Run("Review summary parser", TestReviewSummaryParser);
         failed += Run("Review usage summary line", TestReviewUsageSummaryLine);
+        failed += Run("Review usage summary disambiguates code review weekly", TestReviewUsageSummaryDisambiguatesCodeReviewWeekly);
+        failed += Run("Review usage summary disambiguates code review weekly secondary", TestReviewUsageSummaryDisambiguatesCodeReviewWeeklySecondary);
+        failed += Run("Review usage summary prefixes non-weekly code review", TestReviewUsageSummaryPrefixesNonWeeklyCodeReview);
 #endif
 
         Console.WriteLine(failed == 0 ? "All tests passed." : $"{failed} test(s) failed.");
@@ -2498,6 +2501,68 @@ internal static class Program {
         AssertContainsText(line, "5h limit", "usage window label");
         AssertEqual(false, line.IndexOf("\n", StringComparison.Ordinal) >= 0, "usage summary is single line");
     }
+
+    private static void TestReviewUsageSummaryDisambiguatesCodeReviewWeekly() {
+        const string json = "{"
+            + "\"plan_type\":\"pro\","
+            + "\"rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
+            + "\"primary_window\":{\"used_percent\":20.0,\"limit_window_seconds\":18000,\"reset_after_seconds\":120},"
+            + "\"secondary_window\":{\"used_percent\":61.0,\"limit_window_seconds\":604800,\"reset_after_seconds\":120}},"
+            + "\"code_review_rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
+            + "\"primary_window\":{\"used_percent\":26.0,\"limit_window_seconds\":604800,\"reset_after_seconds\":120}},"
+            + "\"credits\":{\"has_credits\":true,\"unlimited\":false,\"balance\":4.52}"
+            + "}";
+        var obj = JsonLite.Parse(json).AsObject();
+        AssertNotNull(obj, "usage summary disambiguation json");
+        var snapshot = ChatGptUsageSnapshot.FromJson(obj!);
+        var line = CallFormatUsageSummary(snapshot);
+        var parts = ParseUsageSummaryParts(line);
+        AssertEqual(4, parts.Count, "usage part count weekly");
+        AssertContains(parts, "weekly limit: 39% remaining", "weekly label");
+        AssertContains(parts, "code review weekly limit: 74% remaining", "code review weekly label");
+        AssertEqual(false, ContainsUsageSummaryPart(parts, "weekly limit: 74% remaining"), "plain duplicate weekly label removed");
+        AssertEqual(false, ContainsUsageSummaryPart(parts, "weekly limit (secondary): 74% remaining"), "plain secondary weekly label removed");
+    }
+
+    private static void TestReviewUsageSummaryDisambiguatesCodeReviewWeeklySecondary() {
+        const string json = "{"
+            + "\"plan_type\":\"pro\","
+            + "\"rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
+            + "\"secondary_window\":{\"used_percent\":61.0,\"limit_window_seconds\":604800,\"reset_after_seconds\":120}},"
+            + "\"code_review_rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
+            + "\"secondary_window\":{\"used_percent\":26.0,\"limit_window_seconds\":604800,\"reset_after_seconds\":120}},"
+            + "\"credits\":{\"has_credits\":true,\"unlimited\":false,\"balance\":4.52}"
+            + "}";
+        var obj = JsonLite.Parse(json).AsObject();
+        AssertNotNull(obj, "usage summary secondary disambiguation json");
+        var snapshot = ChatGptUsageSnapshot.FromJson(obj!);
+        var line = CallFormatUsageSummary(snapshot);
+        var parts = ParseUsageSummaryParts(line);
+        AssertEqual(3, parts.Count, "usage part count weekly secondary");
+        AssertContains(parts, "weekly limit: 39% remaining", "weekly label secondary");
+        AssertContains(parts, "code review weekly limit (secondary): 74% remaining", "code review weekly secondary label");
+        AssertEqual(false, ContainsUsageSummaryPart(parts, "weekly limit (secondary): 74% remaining"), "plain weekly secondary label removed");
+        AssertEqual(false, ContainsUsageSummaryPart(parts, "weekly limit: 74% remaining"), "plain weekly label removed secondary");
+    }
+
+    private static void TestReviewUsageSummaryPrefixesNonWeeklyCodeReview() {
+        const string json = "{"
+            + "\"plan_type\":\"pro\","
+            + "\"rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
+            + "\"primary_window\":{\"used_percent\":10.0,\"limit_window_seconds\":18000,\"reset_after_seconds\":120}},"
+            + "\"code_review_rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
+            + "\"primary_window\":{\"used_percent\":25.0,\"limit_window_seconds\":18000,\"reset_after_seconds\":120}}"
+            + "}";
+        var obj = JsonLite.Parse(json).AsObject();
+        AssertNotNull(obj, "usage summary non-weekly disambiguation json");
+        var snapshot = ChatGptUsageSnapshot.FromJson(obj!);
+        var line = CallFormatUsageSummary(snapshot);
+        var parts = ParseUsageSummaryParts(line);
+        AssertEqual(2, parts.Count, "usage part count non-weekly");
+        AssertContains(parts, "5h limit: 90% remaining", "general non-weekly label");
+        AssertContains(parts, "code review 5h limit: 75% remaining", "code review non-weekly label");
+        AssertEqual(false, ContainsUsageSummaryPart(parts, "5h limit: 75% remaining"), "plain non-weekly code review label removed");
+    }
 #endif
 
     private static IntelligenceXClient CreateToolRunnerClient(TurnInfo turn) {
@@ -2613,6 +2678,34 @@ internal static class Program {
             => Task.FromResult(_turn);
 
         public void Dispose() { }
+    }
+
+    private static List<string> ParseUsageSummaryParts(string line) {
+        var result = new List<string>();
+        if (string.IsNullOrWhiteSpace(line)) {
+            return result;
+        }
+        const string prefix = "Usage: ";
+        const string separator = " | ";
+        var body = line.StartsWith(prefix, StringComparison.Ordinal)
+            ? line.Substring(prefix.Length)
+            : line;
+        foreach (var part in body.Split(new[] { separator }, StringSplitOptions.RemoveEmptyEntries)) {
+            var trimmed = part.Trim();
+            if (!string.IsNullOrWhiteSpace(trimmed)) {
+                result.Add(trimmed);
+            }
+        }
+        return result;
+    }
+
+    private static bool ContainsUsageSummaryPart(IReadOnlyList<string> parts, string expected) {
+        foreach (var part in parts) {
+            if (string.Equals(part, expected, StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void AssertEqual<T>(T expected, T? actual, string name) {

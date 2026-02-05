@@ -197,6 +197,20 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] PR #73 fix: harden retry backoff and file limits — checklist items: Deduplicate finite validation between config/env parsing; Add a negative `maxFiles` test to document `<= 0` behavior; Document why non-finite backoff values are rejected; Clarify `maxFiles <= 0` meaning in docs.. Links: https://github.com/EvotecIT/IntelligenceX/pull/73
 - [x] PR #74 Fix reviewer backlog items — checklist items: Consider an integration-style test that validates the failure-summary update path in `Program.RunAsync`.. Links: https://github.com/EvotecIT/IntelligenceX/pull/74
 <details>
+<summary>PR #95 Fix duplicate weekly labels in usage summary</summary>
+
+- [x] Replace string-based type detection (`StartsWith("code review")`) with semantic context input. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#discussion_r2771453274
+- [x] Tighten secondary suffix detection (`EndsWith("(secondary)")`) to avoid accidental matches. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#discussion_r2771453336
+- [x] Make test assertions less formatting-coupled while still validating disambiguation behavior. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#issuecomment-3856748283
+- [x] Add at least one additional regression case for `(secondary)` code-review weekly labels. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#issuecomment-3856748283
+- [x] Decide whether `code review` prefix applies broadly to code-review duration labels and align tests with that intent. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#discussion_r2771495599
+- [x] Replace switch default in `GetUsageLimitFallbackLabel` with explicit `ArgumentOutOfRangeException`. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#discussion_r2771495630
+- [x] Strengthen tests with negative assertions preventing ambiguous legacy labels from reappearing. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#issuecomment-3856748283
+- [x] Add explicit usage-summary part-count assertions for duplicate-weekly scenarios. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#issuecomment-3856748283
+- [x] Keep secondary suffix ownership in one formatter layer to avoid future double-suffix regressions. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#discussion_r2771555112
+- [x] Standardize usage summary delimiter/prefix handling while avoiding new public API coupling between reviewer and tests. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#discussion_r2771568731
+</details>
+<details>
 <summary>PR #85 Static analysis catalog + CLI export</summary>
 
 - [x] Update analysis loading to use `reviewFiles` so analysis findings respect filters. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#pullrequestreview-3757563544

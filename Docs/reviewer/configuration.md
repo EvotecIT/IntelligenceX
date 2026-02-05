@@ -186,6 +186,8 @@ Use this to skip the main review and only assess existing review threads.
 }
 ```
 
+When code-review rate-limit windows are present, their labels are prefixed with `code review` in the usage line so they remain distinct from general limits.
+
 ## Budget summary note
 
 ```json
