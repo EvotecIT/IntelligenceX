@@ -85,11 +85,6 @@ public static class ReviewerApp {
     /// <returns>Process exit code (0 for success).</returns>
     public static async Task<int> RunAsync(string[] args) {
         using var cts = new CancellationTokenSource();
-        ConsoleCancelEventHandler? cancelHandler = (_, evt) => {
-            evt.Cancel = true;
-            cts.Cancel();
-        };
-        Console.CancelKeyPress += cancelHandler;
         var runOptions = ParseRunOptions(args);
         if (runOptions.ShowHelp) {
             PrintRunHelp();
@@ -103,6 +98,11 @@ public static class ReviewerApp {
             return 1;
         }
         ApplyRunOptions(runOptions);
+        ConsoleCancelEventHandler? cancelHandler = (_, evt) => {
+            evt.Cancel = true;
+            cts.Cancel();
+        };
+        Console.CancelKeyPress += cancelHandler;
         // Hoist state so the exception handler can update the progress comment on failure.
         SecretsAuditSession? secretsAudit = null;
         ReviewSettings? settings = null;
@@ -446,7 +446,9 @@ public static class ReviewerApp {
         } finally {
             secretsAudit?.WriteSummary();
             secretsAudit?.Dispose();
-            Console.CancelKeyPress -= cancelHandler;
+            if (cancelHandler is not null) {
+                Console.CancelKeyPress -= cancelHandler;
+            }
         }
     }
 
@@ -600,10 +602,10 @@ public static class ReviewerApp {
             }
         }
         if (!string.IsNullOrWhiteSpace(options.Provider) && !IsValidProvider(options.Provider)) {
-            options.Errors.Add($"Unsupported provider '{options.Provider}'. Use openai, codex, copilot, or azure.");
+            options.Errors.Add($"Unsupported provider '{options.Provider}'. Use openai, codex, copilot, or azure/azuredevops.");
         }
         if (!string.IsNullOrWhiteSpace(options.CodeHost) && !IsValidCodeHost(options.CodeHost)) {
-            options.Errors.Add($"Unsupported code host '{options.CodeHost}'. Use github or azure.");
+            options.Errors.Add($"Unsupported code host '{options.CodeHost}'. Use github or azure/azuredevops.");
         }
         return options;
     }
@@ -676,8 +678,8 @@ public static class ReviewerApp {
 
     private static void PrintRunHelp() {
         Console.WriteLine("Reviewer run options:");
-        Console.WriteLine("  --provider <openai|codex|copilot|azure>    AI provider or 'azure' for Azure DevOps code host");
-        Console.WriteLine("  --code-host <github|azure>                Override code host");
+        Console.WriteLine("  --provider <openai|codex|copilot|azure>    AI provider or 'azure/azuredevops' for Azure DevOps code host");
+        Console.WriteLine("  --code-host <github|azure>                Override code host (azure/azuredevops supported)");
         Console.WriteLine("  --azure-org <org>                         Azure DevOps organization");
         Console.WriteLine("  --azure-project <project>                 Azure DevOps project");
         Console.WriteLine("  --azure-repo <repo>                       Azure DevOps repository id or name");

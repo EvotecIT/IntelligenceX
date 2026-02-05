@@ -24,6 +24,10 @@ intelligencex reviewer run --provider azure --azure-org my-org --azure-project m
 - `--azure-base-url <url>`
 - `--azure-token-env <env>`
 
+Notes:
+- `--provider azure` (or any `--azure-*` flag) implies `--code-host azure` unless you override it explicitly.
+- CLI flags override environment variables and `.intelligencex/reviewer.json`.
+
 ## Resolve bot threads
 
 ```powershell
