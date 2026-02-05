@@ -800,6 +800,115 @@ blockquote {
 .ix-footer-bottom a { color: var(--pf-muted); text-decoration: none; }
 .ix-footer-bottom a:hover { color: var(--pf-accent); }
 
+/* ===== Member Actions ===== */
+.member-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.member-actions button {
+    background: var(--pf-bg-alt);
+    border: 1px solid var(--pf-border);
+    color: var(--pf-muted);
+    border-radius: 999px;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.7rem;
+    font-family: var(--pf-font-body);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.member-actions button:hover {
+    color: var(--pf-ink);
+    border-color: var(--pf-accent);
+}
+
+.sidebar-tools {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    padding: 0 1rem 0.75rem;
+}
+
+.sidebar-tools button {
+    background: var(--pf-bg-alt);
+    border: 1px solid var(--pf-border);
+    color: var(--pf-muted);
+    border-radius: 999px;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.7rem;
+    font-family: var(--pf-font-body);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.sidebar-tools button:hover {
+    color: var(--pf-ink);
+    border-color: var(--pf-accent);
+}
+
+.sidebar-count {
+    font-size: 0.75rem;
+    color: var(--pf-muted);
+    padding: 0 1rem 0.5rem;
+}
+
+.sidebar-reset {
+    background: var(--pf-bg-alt);
+    border: 1px solid var(--pf-border);
+    color: var(--pf-muted);
+    border-radius: var(--pf-radius-sm);
+    padding: 0.35rem 0.6rem;
+    font-size: 0.7rem;
+    font-family: var(--pf-font-body);
+    cursor: pointer;
+    width: 100%;
+    text-align: center;
+    transition: all 0.15s;
+    margin: 0 1rem;
+    width: calc(100% - 2rem);
+}
+
+.sidebar-reset:hover {
+    color: var(--pf-ink);
+    border-color: var(--pf-accent);
+}
+
+.sidebar-empty {
+    padding: 0.75rem 1rem;
+    font-size: 0.8rem;
+    color: var(--pf-muted);
+}
+
+/* ===== Scrollbar Styling ===== */
+.api-sidebar::-webkit-scrollbar,
+.sidebar-nav::-webkit-scrollbar {
+    width: 6px;
+}
+
+.api-sidebar::-webkit-scrollbar-track,
+.sidebar-nav::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.api-sidebar::-webkit-scrollbar-thumb,
+.sidebar-nav::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.2);
+    border-radius: 3px;
+}
+
+.api-sidebar::-webkit-scrollbar-thumb:hover,
+.sidebar-nav::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.35);
+}
+
+.api-sidebar,
+.sidebar-nav {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.2) transparent;
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 768px) {
   .api-layout { grid-template-columns: 1fr; }
