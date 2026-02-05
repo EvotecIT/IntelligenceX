@@ -614,7 +614,12 @@ public static class ReviewerApp {
             return null;
         }
         index++;
-        return args[index];
+        var value = args[index];
+        if (string.IsNullOrWhiteSpace(value)) {
+            errors.Add($"Empty value for {name}.");
+            return null;
+        }
+        return value;
     }
 
     private static bool IsValidProvider(string provider) {
@@ -640,12 +645,11 @@ public static class ReviewerApp {
         var provider = options.Provider?.Trim();
         var codeHost = options.CodeHost?.Trim();
         if (!string.IsNullOrWhiteSpace(provider)) {
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER", provider);
             if (IsAzureProvider(provider)) {
                 if (string.IsNullOrWhiteSpace(codeHost)) {
                     codeHost = "azure";
                 }
-            } else {
-                Environment.SetEnvironmentVariable("REVIEW_PROVIDER", provider);
             }
         }
         if (!string.IsNullOrWhiteSpace(codeHost)) {
