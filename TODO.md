@@ -14,7 +14,7 @@ Status: In progress
 - [x] Add diff-range selection + default (current/pr-base/first-review) (M)
 - [x] Add include/exclude glob filters for files (S)
 - [x] Add smart chunking (group related hunks) (M)
-- [ ] Add review intent presets (security/perf/maintainability) (S)
+- [x] Add review intent presets (security/perf/maintainability) (S)
 
 ### Phase 0 — Scope + success criteria
 - [x] Define "engine" scope (review pipeline, providers, context builder, formatter, thread triage).
@@ -34,7 +34,7 @@ Status: In progress
 - [ ] Add binary/generated file skipping.
 - [x] Add smart chunking (keep related hunks together; avoid orphaned changes).
 - [x] Add language-aware hints (prompt includes detected languages).
-- [ ] Add "review intent" presets (security/perf/maintainability).
+- [x] Add "review intent" presets (security/perf/maintainability).
 
 ### Phase 3 — Review output + UX
 - [x] Add optional "reasoning level" label in header (low/medium/high) when provider supports it.
