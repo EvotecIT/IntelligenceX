@@ -107,6 +107,7 @@
       {
         "Name": "main",
         "Items": [
+          { "Title": "Home", "Url": "/" },
           { "Title": "Docs", "Url": "/docs/" },
           { "Title": "API Reference", "Url": "/api/" }
         ]

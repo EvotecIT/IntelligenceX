@@ -74,6 +74,19 @@
       "hashExclude": ["**/assets/prism/components/**"],
       "cacheHeaders": true,
       "cacheHeadersOut": "_headers"
+    },
+    {
+      "task": "audit",
+      "siteRoot": "./_site",
+      "ignoreNav": "sitemap/**",
+      "navSelector": "header nav.ix-nav",
+      "navRequiredLinks": "/",
+      "rendered": true,
+      "renderedEnsureInstalled": false,
+      "renderedMaxPages": 8,
+      "renderedInclude": "index.html,docs/**,faq/**,changelog/**",
+      "renderedExclude": "api/**,docs/api/**,api-docs/**",
+      "summary": true
     }
   ]
 }
