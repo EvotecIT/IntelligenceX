@@ -17,9 +17,9 @@ Status: In progress
 - [ ] Add review intent presets (security/perf/maintainability) (S)
 
 ### Phase 0 — Scope + success criteria
-- [ ] Define "engine" scope (review pipeline, providers, context builder, formatter, thread triage).
-- [ ] Capture success metrics (review latency, failure rate, reviewer usefulness score).
-- [ ] Decide default review mode + model policy (safe defaults).
+- [x] Define "engine" scope (review pipeline, providers, context builder, formatter, thread triage).
+- [x] Capture success metrics (review latency, failure rate, reviewer usefulness score).
+- [x] Decide default review mode + model policy (safe defaults).
 
 ### Phase 1 — Reliability + diagnostics
 - [x] Classify error types (transient vs auth vs config vs provider) with explicit codes.
