@@ -202,4 +202,7 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Update analysis loading to use `reviewFiles` so analysis findings respect filters. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#pullrequestreview-3757563544
 - [x] Add resilience around catalog loading to avoid failing reviews when the catalog is missing or unreadable. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#pullrequestreview-3757563544
 - [x] Expand severity normalization to handle “critical” (and other high-severity values if expected). Links: https://github.com/EvotecIT/IntelligenceX/pull/85#pullrequestreview-3757563544
+- [x] Null-guard pack rules before adding to policy output. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#discussion_r2770314429
+- [x] Normalize `SeverityOverrides` into a case-insensitive dictionary. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#discussion_r2769812614
+- [x] Catch malformed glob patterns to avoid `ArgumentException`. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#discussion_r2770238132
 </details>
