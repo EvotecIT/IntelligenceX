@@ -2411,6 +2411,7 @@ internal static class Program {
         AssertContains(parts, "weekly limit: 39% remaining", "weekly label");
         AssertContains(parts, "code review weekly limit: 74% remaining", "code review weekly label");
         AssertEqual(false, ContainsUsageSummaryPart(parts, "weekly limit: 74% remaining"), "plain duplicate weekly label removed");
+        AssertEqual(false, ContainsUsageSummaryPart(parts, "weekly limit (secondary): 74% remaining"), "plain secondary weekly label removed");
     }
 
     private static void TestReviewUsageSummaryDisambiguatesCodeReviewWeeklySecondary() {
@@ -2430,6 +2431,7 @@ internal static class Program {
         AssertContains(parts, "weekly limit: 39% remaining", "weekly label secondary");
         AssertContains(parts, "code review weekly limit (secondary): 74% remaining", "code review weekly secondary label");
         AssertEqual(false, ContainsUsageSummaryPart(parts, "weekly limit (secondary): 74% remaining"), "plain weekly secondary label removed");
+        AssertEqual(false, ContainsUsageSummaryPart(parts, "weekly limit: 74% remaining"), "plain weekly label removed secondary");
     }
 #endif
 

@@ -1487,26 +1487,22 @@ public static class ReviewerApp {
     private static string FormatUsageSummary(ChatGptUsageSnapshot snapshot) {
         var lines = new List<string>();
 
-        var primary = FormatRateLimitLine(snapshot.RateLimit?.PrimaryWindow, "rate limit",
-            UsageLimitContext.General, isSecondaryWindow: false);
+        var primary = FormatRateLimitLine(snapshot.RateLimit?.PrimaryWindow, UsageLimitLineKind.GeneralPrimary);
         if (!string.IsNullOrWhiteSpace(primary)) {
             lines.Add(primary);
         }
 
-        var secondary = FormatRateLimitLine(snapshot.RateLimit?.SecondaryWindow, "rate limit (secondary)",
-            UsageLimitContext.General, isSecondaryWindow: true);
+        var secondary = FormatRateLimitLine(snapshot.RateLimit?.SecondaryWindow, UsageLimitLineKind.GeneralSecondary);
         if (!string.IsNullOrWhiteSpace(secondary)) {
             lines.Add(secondary);
         }
 
-        var codePrimary = FormatRateLimitLine(snapshot.CodeReviewRateLimit?.PrimaryWindow, "code review limit",
-            UsageLimitContext.CodeReview, isSecondaryWindow: false);
+        var codePrimary = FormatRateLimitLine(snapshot.CodeReviewRateLimit?.PrimaryWindow, UsageLimitLineKind.CodeReviewPrimary);
         if (!string.IsNullOrWhiteSpace(codePrimary)) {
             lines.Add(codePrimary);
         }
 
-        var codeSecondary = FormatRateLimitLine(snapshot.CodeReviewRateLimit?.SecondaryWindow, "code review limit (secondary)",
-            UsageLimitContext.CodeReview, isSecondaryWindow: true);
+        var codeSecondary = FormatRateLimitLine(snapshot.CodeReviewRateLimit?.SecondaryWindow, UsageLimitLineKind.CodeReviewSecondary);
         if (!string.IsNullOrWhiteSpace(codeSecondary)) {
             lines.Add(codeSecondary);
         }
@@ -1527,13 +1523,14 @@ public static class ReviewerApp {
         return "Usage: " + string.Join(" | ", lines);
     }
 
-    private enum UsageLimitContext {
-        General,
-        CodeReview
+    private enum UsageLimitLineKind {
+        GeneralPrimary,
+        GeneralSecondary,
+        CodeReviewPrimary,
+        CodeReviewSecondary
     }
 
-    private static string? FormatRateLimitLine(ChatGptRateLimitWindow? window, string fallbackLabel,
-        UsageLimitContext context, bool isSecondaryWindow) {
+    private static string? FormatRateLimitLine(ChatGptRateLimitWindow? window, UsageLimitLineKind lineKind) {
         if (window is null) {
             return null;
         }
@@ -1541,14 +1538,35 @@ public static class ReviewerApp {
         if (string.IsNullOrWhiteSpace(remaining)) {
             return null;
         }
+        var fallbackLabel = GetUsageLimitFallbackLabel(lineKind);
         var windowLabel = FormatWindowLabel(window);
         var label = fallbackLabel;
         if (!string.IsNullOrWhiteSpace(windowLabel)) {
-            label = context == UsageLimitContext.CodeReview
-                ? $"code review {windowLabel}{(isSecondaryWindow ? " (secondary)" : string.Empty)}"
+            label = IsCodeReviewWindow(lineKind)
+                ? $"code review {windowLabel}{(IsSecondaryWindow(lineKind) ? " (secondary)" : string.Empty)}"
                 : windowLabel;
         }
         return $"{label}: {remaining}% remaining";
+    }
+
+    private static string GetUsageLimitFallbackLabel(UsageLimitLineKind lineKind) {
+        return lineKind switch {
+            UsageLimitLineKind.GeneralPrimary => "rate limit",
+            UsageLimitLineKind.GeneralSecondary => "rate limit (secondary)",
+            UsageLimitLineKind.CodeReviewPrimary => "code review limit",
+            UsageLimitLineKind.CodeReviewSecondary => "code review limit (secondary)",
+            _ => "rate limit"
+        };
+    }
+
+    private static bool IsCodeReviewWindow(UsageLimitLineKind lineKind) {
+        return lineKind == UsageLimitLineKind.CodeReviewPrimary
+            || lineKind == UsageLimitLineKind.CodeReviewSecondary;
+    }
+
+    private static bool IsSecondaryWindow(UsageLimitLineKind lineKind) {
+        return lineKind == UsageLimitLineKind.GeneralSecondary
+            || lineKind == UsageLimitLineKind.CodeReviewSecondary;
     }
 
     private static string? FormatWindowLabel(ChatGptRateLimitWindow window) {
