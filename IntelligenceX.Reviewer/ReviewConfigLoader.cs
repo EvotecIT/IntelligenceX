@@ -445,10 +445,18 @@ internal static class ReviewConfigLoader {
 
     private static double ReadDouble(JsonObject obj, string key, double fallback) {
         var value = obj.GetDouble(key);
-        if (value.HasValue && value.Value >= 1) {
+        if (value.HasValue && value.Value >= 1 && IsFinite(value.Value)) {
             return value.Value;
         }
         return fallback;
+    }
+
+    private static bool IsFinite(double value) {
+#if NET5_0_OR_GREATER
+        return double.IsFinite(value);
+#else
+        return !double.IsNaN(value) && !double.IsInfinity(value);
+#endif
     }
 
     private static bool ReadBool(JsonObject obj, string key, bool fallback) {
