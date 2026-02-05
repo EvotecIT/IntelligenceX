@@ -1086,7 +1086,13 @@ public static class ReviewerApp {
             return ThreadTriageResult.Empty;
         }
 
-        var byId = assessments.ToDictionary(a => a.Id, StringComparer.OrdinalIgnoreCase);
+        var byId = new Dictionary<string, ThreadAssessment>(StringComparer.OrdinalIgnoreCase);
+        foreach (var assessment in assessments) {
+            if (string.IsNullOrWhiteSpace(assessment.Id)) {
+                continue;
+            }
+            byId[assessment.Id] = assessment;
+        }
         var replyMap = new Dictionary<string, ThreadAssessment>(StringComparer.OrdinalIgnoreCase);
         var patchIndex = BuildInlinePatchIndex(files);
         var patchLookup = BuildPatchLookup(files, settings.MaxPatchChars);
