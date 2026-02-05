@@ -1,197 +1,22 @@
-<!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<!doctype html>
+<html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>404 - Page Not Found | IntelligenceX</title>
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-    <style>
-        :root {
-            --pf-bg: #0A0E1A;
-            --pf-bg-alt: #111827;
-            --pf-ink: #F1F5F9;
-            --pf-muted: #94A3B8;
-            --pf-accent: #00D9FF;
-            --pf-accent2: #8B5CF6;
-            --pf-border: rgba(51, 65, 85, 0.6);
-            --pf-card-bg: rgba(30, 41, 59, 0.6);
-            --pf-header-bg: rgba(10, 14, 26, 0.8);
-            --pf-radius-sm: 8px;
-        }
-        [data-theme="light"] {
-            --pf-bg: #F8FAFC;
-            --pf-bg-alt: #F1F5F9;
-            --pf-ink: #1E293B;
-            --pf-muted: #64748B;
-            --pf-accent: #0891B2;
-            --pf-accent2: #7C3AED;
-            --pf-border: rgba(148, 163, 184, 0.4);
-            --pf-card-bg: #FFFFFF;
-            --pf-header-bg: rgba(248, 250, 252, 0.9);
-        }
-        *, *::before, *::after { box-sizing: border-box; }
-        html, body { margin: 0; padding: 0; min-height: 100vh; }
-        body {
-            font-family: Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;
-            background: var(--pf-bg);
-            color: var(--pf-ink);
-            line-height: 1.6;
-            -webkit-font-smoothing: antialiased;
-            display: flex;
-            flex-direction: column;
-        }
-        .header {
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            background: var(--pf-header-bg);
-            backdrop-filter: blur(16px) saturate(180%);
-            -webkit-backdrop-filter: blur(16px) saturate(180%);
-            border-bottom: 1px solid var(--pf-border);
-        }
-        .header-inner {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 1.5rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            height: 64px;
-            gap: 1.5rem;
-        }
-        .brand {
-            display: flex;
-            align-items: center;
-            gap: 0.625rem;
-            font-weight: 600;
-            font-size: 1.125rem;
-            color: var(--pf-ink);
-            text-decoration: none;
-        }
-        .brand:hover { color: var(--pf-accent); }
-        .brand svg { flex-shrink: 0; }
-        .nav-links { display: flex; gap: 1.75rem; }
-        .nav-link {
-            font-size: 0.9rem;
-            font-weight: 500;
-            color: var(--pf-muted);
-            text-decoration: none;
-            transition: color 0.2s;
-        }
-        .nav-link:hover { color: var(--pf-accent); }
-        .error-container {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            padding: 4rem 2rem;
-            min-height: calc(100vh - 64px);
-        }
-        .error-code {
-            font-size: clamp(6rem, 15vw, 12rem);
-            font-weight: 900;
-            background: linear-gradient(135deg, var(--pf-accent), var(--pf-accent2));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            line-height: 1;
-            margin: 0 0 1rem;
-            letter-spacing: -0.04em;
-        }
-        .error-title {
-            font-size: 1.5rem;
-            font-weight: 700;
-            margin: 0 0 0.75rem;
-            color: var(--pf-ink);
-        }
-        .error-message {
-            font-size: 1.05rem;
-            color: var(--pf-muted);
-            max-width: 480px;
-            margin: 0 0 2rem;
-        }
-        .error-actions { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.625rem 1.25rem;
-            border-radius: var(--pf-radius-sm);
-            font-size: 0.875rem;
-            font-weight: 600;
-            text-decoration: none;
-            transition: all 0.2s;
-        }
-        .btn:hover { transform: translateY(-1px); }
-        .btn-primary {
-            background: var(--pf-accent);
-            color: var(--pf-bg);
-            box-shadow: 0 8px 24px rgba(0, 217, 255, 0.15);
-        }
-        .btn-primary:hover { box-shadow: 0 12px 32px rgba(0, 217, 255, 0.25); }
-        .btn-secondary {
-            background: var(--pf-card-bg);
-            color: var(--pf-ink);
-            border: 1px solid var(--pf-border);
-        }
-        .btn-secondary:hover { border-color: var(--pf-accent); color: var(--pf-accent); }
-        .error-graphic {
-            margin-top: 3rem;
-            opacity: 0.06;
-        }
-    </style>
-    <script>
-        (function() {
-            var saved = localStorage.getItem('theme');
-            if (saved === 'light') {
-                document.documentElement.dataset.theme = 'light';
-            } else if (saved === 'dark') {
-                document.documentElement.dataset.theme = 'dark';
-            } else {
-                var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-                document.documentElement.dataset.theme = prefersDark ? 'dark' : 'light';
-            }
-        })();
-    </script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>404 - Page Not Found</title>
+  <meta http-equiv="refresh" content="0; url=/404/" />
+  <link rel="canonical" href="/404/" />
 </head>
 <body>
-    <header class="header">
-        <div class="header-inner">
-            <a href="/" class="brand">
-                <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
-                    <rect width="32" height="32" rx="6" fill="currentColor" opacity="0.15"/>
-                    <text x="5" y="23" font-family="monospace" font-size="18" font-weight="700" fill="currentColor">IX</text>
-                </svg>
-                <span>IntelligenceX</span>
-            </a>
-            <nav class="nav-links">
-                <a href="/docs/" class="nav-link">Docs</a>
-                <a href="/api/" class="nav-link">API Reference</a>
-            </nav>
-        </div>
-    </header>
-    <main class="error-container">
-        <div class="error-code">404</div>
-        <h1 class="error-title">Page not found</h1>
-        <p class="error-message">The page you're looking for doesn't exist or has been moved. Check the URL or navigate back to safety.</p>
-        <div class="error-actions">
-            <a href="/" class="btn btn-primary">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                Back to Home
-            </a>
-            <a href="/docs/" class="btn btn-secondary">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
-                Browse Docs
-            </a>
-        </div>
-        <svg class="error-graphic" width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-            <circle cx="12" cy="12" r="10"/>
-            <path d="M16 16s-1.5-2-4-2-4 2-4 2"/>
-            <line x1="9" y1="9" x2="9.01" y2="9"/>
-            <line x1="15" y1="9" x2="15.01" y2="9"/>
-        </svg>
-    </main>
+  <header>
+    <nav class="ix-nav" aria-label="Primary">
+      <a href="/">Home</a>
+      <a href="/docs/">Docs</a>
+    </nav>
+  </header>
+  <p>Page not found. Redirecting to <a href="/404/">/404/</a>...</p>
+  <script>
+    window.location.replace('/404/');
+  </script>
 </body>
 </html>
