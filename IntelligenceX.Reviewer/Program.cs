@@ -1089,6 +1089,7 @@ public static class ReviewerApp {
         var byId = new Dictionary<string, ThreadAssessment>(StringComparer.OrdinalIgnoreCase);
         var missingIdCount = 0;
         var duplicateIdCount = 0;
+        var duplicateIds = new List<string>();
         foreach (var assessment in assessments) {
             if (string.IsNullOrWhiteSpace(assessment.Id)) {
                 missingIdCount++;
@@ -1096,6 +1097,10 @@ public static class ReviewerApp {
             }
             if (!byId.TryAdd(assessment.Id, assessment)) {
                 duplicateIdCount++;
+                if (duplicateIds.Count < 3) {
+                    duplicateIds.Add(assessment.Id);
+                }
+                // Last occurrence wins to keep deterministic behavior without throwing.
                 byId[assessment.Id] = assessment;
             }
         }
@@ -1103,7 +1108,8 @@ public static class ReviewerApp {
             Console.Error.WriteLine($"Thread assessment skipped {missingIdCount} item(s) with missing ids.");
         }
         if (duplicateIdCount > 0) {
-            Console.Error.WriteLine($"Thread assessment contained {duplicateIdCount} duplicate id(s); using last occurrence.");
+            var examples = duplicateIds.Count > 0 ? $" (e.g., {string.Join(", ", duplicateIds)})" : string.Empty;
+            Console.Error.WriteLine($"Thread assessment contained {duplicateIdCount} duplicate id(s){examples}; using last occurrence.");
         }
         var replyMap = new Dictionary<string, ThreadAssessment>(StringComparer.OrdinalIgnoreCase);
         var patchIndex = BuildInlinePatchIndex(files);
@@ -1942,6 +1948,7 @@ public static class ReviewerApp {
                     await fallbackGithub.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
                     return (true, null);
                 } catch (Exception fallbackEx) {
+                    // Only log after the integration-forbidden path actually fails (avoid false alarms).
                     LogIntegrationForbiddenHint();
                     return (false, fallbackEx.Message);
                 }
