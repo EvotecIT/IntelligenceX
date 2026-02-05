@@ -1919,16 +1919,17 @@ public static class ReviewerApp {
             return (true, null);
         } catch (Exception ex) {
             var isForbidden = IsIntegrationForbidden(ex);
-            if (isForbidden) {
-                LogIntegrationForbiddenHint();
-            }
             if (fallbackGithub is not null && isForbidden) {
                 try {
                     await fallbackGithub.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
                     return (true, null);
                 } catch (Exception fallbackEx) {
+                    LogIntegrationForbiddenHint();
                     return (false, fallbackEx.Message);
                 }
+            }
+            if (isForbidden) {
+                LogIntegrationForbiddenHint();
             }
             return (false, ex.Message);
         }
