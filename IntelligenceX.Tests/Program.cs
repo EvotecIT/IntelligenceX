@@ -123,6 +123,9 @@ internal static class Program {
         failed += Run("Review budget note", TestReviewBudgetNote);
         failed += Run("Review budget note empty", TestReviewBudgetNoteEmpty);
         failed += Run("Review budget note comment", TestReviewBudgetNoteComment);
+        failed += Run("Review retry backoff multiplier config", TestReviewRetryBackoffMultiplierConfig);
+        failed += Run("Review retry backoff multiplier env", TestReviewRetryBackoffMultiplierEnv);
+        failed += Run("Prepare files max files zero", TestPrepareFilesMaxFilesZero);
         failed += Run("Azure DevOps changes pagination", TestAzureDevOpsChangesPagination);
         failed += Run("Azure DevOps diff note zero iterations", TestAzureDevOpsDiffNoteZeroIterations);
         failed += Run("Azure DevOps error sanitization", TestAzureDevOpsErrorSanitization);
@@ -1277,6 +1280,19 @@ internal static class Program {
         return result ?? string.Empty;
     }
 
+    private static (IReadOnlyList<PullRequestFile> Files, string BudgetNote) CallPrepareFiles(IReadOnlyList<PullRequestFile> files,
+        int maxFiles, int maxPatchChars) {
+        var method = typeof(ReviewerApp).GetMethod("PrepareFiles", BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("PrepareFiles method not found.");
+        }
+        var result = method.Invoke(null, new object?[] { files, maxFiles, maxPatchChars });
+        if (result is ValueTuple<IReadOnlyList<PullRequestFile>, string> tuple) {
+            return tuple;
+        }
+        throw new InvalidOperationException("PrepareFiles method returned unexpected result.");
+    }
+
     private static string CallFormatUsageSummary(ChatGptUsageSnapshot snapshot) {
         var method = typeof(ReviewerApp).GetMethod("FormatUsageSummary", BindingFlags.NonPublic | BindingFlags.Static);
         if (method is null) {
@@ -1592,6 +1608,41 @@ internal static class Program {
             autoResolveNote: string.Empty, budgetNote: "Review context truncated: showing first 1 of 2 files.",
             usageLine: string.Empty, findingsBlock: string.Empty);
         AssertContainsText(comment, "Review context truncated", "budget note comment");
+    }
+
+    private static void TestReviewRetryBackoffMultiplierConfig() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path, "{ \"review\": { \"retryBackoffMultiplier\": 1e309 } }");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings();
+            ReviewConfigLoader.Apply(settings);
+            AssertEqual(2.0, settings.RetryBackoffMultiplier, "retry backoff multiplier config");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
+    private static void TestReviewRetryBackoffMultiplierEnv() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_RETRY_BACKOFF_MULTIPLIER");
+        try {
+            Environment.SetEnvironmentVariable("REVIEW_RETRY_BACKOFF_MULTIPLIER", "NaN");
+            var settings = ReviewSettings.FromEnvironment();
+            AssertEqual(2.0, settings.RetryBackoffMultiplier, "retry backoff multiplier env");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_RETRY_BACKOFF_MULTIPLIER", previous);
+        }
+    }
+
+    private static void TestPrepareFilesMaxFilesZero() {
+        var files = BuildFiles("src/A.cs", "src/B.cs");
+        var (limited, budgetNote) = CallPrepareFiles(files, 0, 4000);
+        AssertEqual(2, limited.Count, "prepare files max files zero count");
+        AssertEqual(string.Empty, budgetNote, "prepare files max files zero note");
     }
 
     private static void TestAzureDevOpsChangesPagination() {
