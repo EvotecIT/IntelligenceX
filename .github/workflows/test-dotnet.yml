@@ -99,7 +99,6 @@ jobs:
                   verbose: true
 
     test-macos:
-        if: ${{ vars.INTELLIGENCEX_ENABLE_MACOS == 'true' }}
         name: 'macOS'
         runs-on: [self-hosted, macos]
         timeout-minutes: 20
