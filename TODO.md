@@ -31,7 +31,7 @@ Status: In progress
 ### Phase 2 — Context quality
 - [x] Add diff-range strategy options (current/pr-base/first-review) with default.
 - [x] Add file filters (include/exclude globs).
-- [ ] Add binary/generated file skipping.
+- [x] Add binary/generated file skipping.
 - [x] Add smart chunking (keep related hunks together; avoid orphaned changes).
 - [x] Add language-aware hints (prompt includes detected languages).
 - [x] Add "review intent" presets (security/perf/maintainability).
