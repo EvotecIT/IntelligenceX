@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using IntelligenceX.Json;
 
 namespace IntelligenceX.Analysis;
@@ -29,25 +30,23 @@ public static class AnalysisCatalogLoader {
         var packs = new Dictionary<string, AnalysisPack>(StringComparer.OrdinalIgnoreCase);
 
         if (Directory.Exists(rulesRoot)) {
-            foreach (var file in Directory.EnumerateFiles(rulesRoot, "*.json", SearchOption.AllDirectories)) {
-                var rule = TryLoadRule(file);
-                if (rule is null) {
-                    continue;
-                }
-                if (!rules.ContainsKey(rule.Id)) {
-                    rules[rule.Id] = rule;
+            foreach (var rule in Directory.EnumerateFiles(rulesRoot, "*.json", SearchOption.AllDirectories)
+                         .Select(TryLoadRule)
+                         .Where(rule => rule is not null)) {
+                var resolved = rule!;
+                if (!rules.ContainsKey(resolved.Id)) {
+                    rules[resolved.Id] = resolved;
                 }
             }
         }
 
         if (Directory.Exists(packsRoot)) {
-            foreach (var file in Directory.EnumerateFiles(packsRoot, "*.json", SearchOption.TopDirectoryOnly)) {
-                var pack = TryLoadPack(file);
-                if (pack is null) {
-                    continue;
-                }
-                if (!packs.ContainsKey(pack.Id)) {
-                    packs[pack.Id] = pack;
+            foreach (var pack in Directory.EnumerateFiles(packsRoot, "*.json", SearchOption.TopDirectoryOnly)
+                         .Select(TryLoadPack)
+                         .Where(pack => pack is not null)) {
+                var resolved = pack!;
+                if (!packs.ContainsKey(resolved.Id)) {
+                    packs[resolved.Id] = resolved;
                 }
             }
         }
@@ -69,7 +68,7 @@ public static class AnalysisCatalogLoader {
             var id = obj.GetString("id");
             var language = obj.GetString("language");
             var tool = obj.GetString("tool");
-            var toolRuleId = obj.GetString("toolRuleId") ?? id;
+            var toolRuleId = obj.GetString("toolRuleId");
             var title = obj.GetString("title");
             var description = obj.GetString("description");
             var category = obj.GetString("category") ?? "General";
@@ -81,9 +80,10 @@ public static class AnalysisCatalogLoader {
                 string.IsNullOrWhiteSpace(description)) {
                 return null;
             }
-            var tags = ReadStringList(obj, "tags") ?? Array.Empty<string>();
+            var resolvedToolRuleId = string.IsNullOrWhiteSpace(toolRuleId) ? id! : toolRuleId!;
+            var tags = AnalysisJsonHelpers.ReadStringList(obj, "tags") ?? Array.Empty<string>();
             var docs = obj.GetString("docs");
-            return new AnalysisRule(id!, language!, tool!, toolRuleId ?? id!, title!, description!, category,
+            return new AnalysisRule(id!, language!, tool!, resolvedToolRuleId, title!, description!, category,
                 defaultSeverity, tags, docs, path);
         } catch {
             return null;
@@ -107,55 +107,12 @@ public static class AnalysisCatalogLoader {
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(label)) {
                 return null;
             }
-            var rules = ReadStringList(obj, "rules") ?? Array.Empty<string>();
-            var overrides = ReadStringMap(obj, "severityOverrides") ??
+            var rules = AnalysisJsonHelpers.ReadStringList(obj, "rules") ?? Array.Empty<string>();
+            var overrides = AnalysisJsonHelpers.ReadStringMap(obj, "severityOverrides") ??
                 new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             return new AnalysisPack(id!, label!, description, rules, overrides, path);
         } catch {
             return null;
         }
-    }
-
-    private static IReadOnlyList<string>? ReadStringList(JsonObject obj, string key) {
-        if (obj.TryGetValue(key, out var value)) {
-            var array = value?.AsArray();
-            if (array is not null) {
-                var list = new List<string>();
-                foreach (var item in array) {
-                    var text = item.AsString();
-                    if (!string.IsNullOrWhiteSpace(text)) {
-                        list.Add(text);
-                    }
-                }
-                return list;
-            }
-            var textValue = value?.AsString();
-            if (!string.IsNullOrWhiteSpace(textValue)) {
-                return textValue.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            }
-        }
-        return null;
-    }
-
-    private static IReadOnlyDictionary<string, string>? ReadStringMap(JsonObject obj, string key) {
-        if (!obj.TryGetValue(key, out var value)) {
-            return null;
-        }
-        var mapObj = value?.AsObject();
-        if (mapObj is null || mapObj.Count == 0) {
-            return null;
-        }
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var entry in mapObj) {
-            if (string.IsNullOrWhiteSpace(entry.Key)) {
-                continue;
-            }
-            var text = entry.Value?.AsString();
-            if (text is null) {
-                continue;
-            }
-            result[entry.Key] = text;
-        }
-        return result;
     }
 }

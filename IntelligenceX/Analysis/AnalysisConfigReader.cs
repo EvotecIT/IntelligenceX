@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using IntelligenceX.Json;
 
 namespace IntelligenceX.Analysis;
@@ -23,15 +22,15 @@ public static class AnalysisConfigReader {
         if (!string.IsNullOrWhiteSpace(configMode)) {
             settings.ConfigMode = AnalysisSettings.ParseConfigMode(configMode, settings.ConfigMode);
         }
-        var packs = ReadStringList(analysis, "packs");
+        var packs = AnalysisJsonHelpers.ReadStringList(analysis, "packs");
         if (packs is not null) {
             settings.Packs = packs;
         }
-        var disabledRules = ReadStringList(analysis, "disabledRules");
+        var disabledRules = AnalysisJsonHelpers.ReadStringList(analysis, "disabledRules");
         if (disabledRules is not null) {
             settings.DisabledRules = disabledRules;
         }
-        var overrides = ReadStringMap(analysis, "severityOverrides");
+        var overrides = AnalysisJsonHelpers.ReadStringMap(analysis, "severityOverrides");
         if (overrides is not null) {
             settings.SeverityOverrides = overrides;
         }
@@ -40,7 +39,7 @@ public static class AnalysisConfigReader {
         if (results is null) {
             return;
         }
-        var inputs = ReadStringList(results, "inputs");
+        var inputs = AnalysisJsonHelpers.ReadStringList(results, "inputs");
         if (inputs is not null) {
             settings.Results.Inputs = inputs;
         }
@@ -54,49 +53,6 @@ public static class AnalysisConfigReader {
             settings.Results.SummaryPlacement = NormalizePlacement(placement, settings.Results.SummaryPlacement);
         }
         settings.Results.ShowPolicy = ReadBool(results, "showPolicy", settings.Results.ShowPolicy);
-    }
-
-    private static IReadOnlyList<string>? ReadStringList(JsonObject obj, string key) {
-        if (obj.TryGetValue(key, out var value)) {
-            var array = value?.AsArray();
-            if (array is not null) {
-                var list = new List<string>();
-                foreach (var item in array) {
-                    var text = item.AsString();
-                    if (!string.IsNullOrWhiteSpace(text)) {
-                        list.Add(text);
-                    }
-                }
-                return list;
-            }
-            var textValue = value?.AsString();
-            if (!string.IsNullOrWhiteSpace(textValue)) {
-                return textValue.Split(',', System.StringSplitOptions.RemoveEmptyEntries | System.StringSplitOptions.TrimEntries);
-            }
-        }
-        return null;
-    }
-
-    private static IReadOnlyDictionary<string, string>? ReadStringMap(JsonObject obj, string key) {
-        if (!obj.TryGetValue(key, out var value)) {
-            return null;
-        }
-        var mapObj = value?.AsObject();
-        if (mapObj is null || mapObj.Count == 0) {
-            return null;
-        }
-        var result = new Dictionary<string, string>(System.StringComparer.OrdinalIgnoreCase);
-        foreach (var entry in mapObj) {
-            if (string.IsNullOrWhiteSpace(entry.Key)) {
-                continue;
-            }
-            var text = entry.Value?.AsString();
-            if (text is null) {
-                continue;
-            }
-            result[entry.Key] = text;
-        }
-        return result;
     }
 
     private static int ReadNonNegativeInt(JsonObject obj, string key, int fallback) {

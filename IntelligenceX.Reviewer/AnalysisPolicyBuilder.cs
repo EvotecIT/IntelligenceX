@@ -9,7 +9,7 @@ internal static class AnalysisPolicyBuilder {
     private const int MaxListItems = 10;
 
     public static string BuildPolicy(ReviewSettings settings) {
-        if (settings is null || !settings.Analysis.Enabled || !settings.Analysis.Results.ShowPolicy) {
+        if (settings?.Analysis?.Enabled != true || settings.Analysis?.Results?.ShowPolicy != true) {
             return string.Empty;
         }
 

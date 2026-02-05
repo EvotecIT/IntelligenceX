@@ -11,10 +11,11 @@ internal static class AnalysisFindingsLoader {
     private static readonly char[] GlobChars = { '*', '?', '[', ']' };
 
     public static IReadOnlyList<AnalysisFinding> Load(ReviewSettings settings, IReadOnlyList<PullRequestFile> files) {
-        if (settings is null || !settings.Analysis.Enabled) {
+        if (settings?.Analysis?.Enabled != true) {
             return Array.Empty<AnalysisFinding>();
         }
-        var inputs = settings.Analysis.Results.Inputs;
+        var results = settings.Analysis.Results;
+        var inputs = results?.Inputs;
         if (inputs is null || inputs.Count == 0) {
             return Array.Empty<AnalysisFinding>();
         }
@@ -22,7 +23,7 @@ internal static class AnalysisFindingsLoader {
         var workspace = ResolveWorkspaceRoot();
         var catalog = TryLoadCatalog(workspace);
         var toolRuleIndex = BuildToolRuleIndex(catalog);
-        var minRank = AnalysisSeverity.Rank(settings.Analysis.Results.MinSeverity);
+        var minRank = AnalysisSeverity.Rank(results?.MinSeverity);
         var changed = BuildChangedPathSet(files, workspace);
         var disabledRules = new HashSet<string>(settings.Analysis.DisabledRules ?? Array.Empty<string>(),
             StringComparer.OrdinalIgnoreCase);
@@ -114,11 +115,7 @@ internal static class AnalysisFindingsLoader {
             return Array.Empty<AnalysisFinding>();
         }
         var findings = new List<AnalysisFinding>();
-        foreach (var item in items) {
-            var obj = item.AsObject();
-            if (obj is null) {
-                continue;
-            }
+        foreach (var obj in EnumerateObjects(items)) {
             var path = obj.GetString("path") ?? string.Empty;
             var line = (int)(obj.GetInt64("line") ?? 0);
             var severity = obj.GetString("severity") ?? "unknown";
@@ -140,21 +137,13 @@ internal static class AnalysisFindingsLoader {
             return Array.Empty<AnalysisFinding>();
         }
         var findings = new List<AnalysisFinding>();
-        foreach (var runValue in runs) {
-            var run = runValue.AsObject();
-            if (run is null) {
-                continue;
-            }
+        foreach (var run in EnumerateObjects(runs)) {
             var toolName = run.GetObject("tool")?.GetObject("driver")?.GetString("name");
             var results = run.GetArray("results");
             if (results is null || results.Count == 0) {
                 continue;
             }
-            foreach (var resultValue in results) {
-                var result = resultValue.AsObject();
-                if (result is null) {
-                    continue;
-                }
+            foreach (var result in EnumerateObjects(results)) {
                 var message = ReadSarifMessage(result);
                 if (string.IsNullOrWhiteSpace(message)) {
                     continue;
@@ -165,7 +154,7 @@ internal static class AnalysisFindingsLoader {
                 if (locations is null || locations.Count == 0) {
                     continue;
                 }
-                var location = locations[0].AsObject();
+                var location = EnumerateObjects(locations).FirstOrDefault();
                 if (location is null) {
                     continue;
                 }
@@ -204,10 +193,8 @@ internal static class AnalysisFindingsLoader {
         if (fragmentIndex >= 0) {
             trimmed = trimmed.Substring(0, fragmentIndex);
         }
-        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var parsed) && parsed.IsAbsoluteUri) {
-            if (parsed.IsFile) {
-                return NormalizePath(parsed.LocalPath, workspace);
-            }
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var parsed) && parsed.IsAbsoluteUri && parsed.IsFile) {
+            return NormalizePath(parsed.LocalPath, workspace);
         }
         return NormalizePath(trimmed, workspace);
     }
@@ -295,20 +282,18 @@ internal static class AnalysisFindingsLoader {
             return string.Empty;
         }
         var trimmed = path.Trim().Replace('\\', '/');
-        if (trimmed.StartsWith("file://", StringComparison.OrdinalIgnoreCase)) {
-            if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) && uri.IsFile) {
-                trimmed = uri.LocalPath.Replace('\\', '/');
-            }
+        if (trimmed.StartsWith("file://", StringComparison.OrdinalIgnoreCase) &&
+            Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) &&
+            uri.IsFile) {
+            trimmed = uri.LocalPath.Replace('\\', '/');
         }
         if (Path.IsPathRooted(trimmed)) {
             try {
                 var full = Path.GetFullPath(trimmed);
                 var baseFull = Path.GetFullPath(workspace);
-                if (full.StartsWith(baseFull, StringComparison.OrdinalIgnoreCase)) {
-                    trimmed = Path.GetRelativePath(baseFull, full).Replace('\\', '/');
-                } else {
-                    trimmed = full.Replace('\\', '/');
-                }
+                trimmed = full.StartsWith(baseFull, StringComparison.OrdinalIgnoreCase)
+                    ? Path.GetRelativePath(baseFull, full).Replace('\\', '/')
+                    : full.Replace('\\', '/');
             } catch {
                 trimmed = trimmed.Replace('\\', '/');
             }
@@ -380,5 +365,17 @@ internal static class AnalysisFindingsLoader {
             return workspace;
         }
         return Environment.CurrentDirectory;
+    }
+
+    private static IEnumerable<JsonObject> EnumerateObjects(JsonArray? array) {
+        if (array is null) {
+            yield break;
+        }
+        foreach (var item in array) {
+            var obj = item.AsObject();
+            if (obj is not null) {
+                yield return obj;
+            }
+        }
     }
 }

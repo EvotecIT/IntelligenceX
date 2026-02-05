@@ -347,10 +347,11 @@ public static class ReviewerApp {
                 }
             }
 
-            if (settings.Analysis?.Enabled == true) {
+            var analysisSettings = settings.Analysis;
+            var analysisResults = analysisSettings?.Results;
+            if (analysisSettings?.Enabled == true && analysisResults is not null) {
                 var analysisFindings = AnalysisFindingsLoader.Load(settings, reviewFiles);
                 var analysisBlocks = new List<string>();
-                var analysisResults = settings.Analysis.Results;
                 var analysisPolicy = AnalysisPolicyBuilder.BuildPolicy(settings);
                 if (!string.IsNullOrWhiteSpace(analysisPolicy)) {
                     analysisBlocks.Add(analysisPolicy);
