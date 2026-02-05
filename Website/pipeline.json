@@ -1,4 +1,8 @@
 {
+  "cache": true,
+  "cachePath": "./_temp/pipeline-cache.json",
+  "profile": true,
+  "profilePath": "./_temp/pipeline-profile.json",
   "steps": [
     {
       "task": "dotnet-build",
@@ -80,13 +84,22 @@
       "siteRoot": "./_site",
       "ignoreNav": "sitemap/**",
       "navSelector": "header nav.ix-nav",
+      "navCanonicalPath": "index.html",
+      "navCanonicalSelector": "header nav.ix-nav",
+      "navCanonicalRequired": true,
       "navRequiredLinks": "/",
+      "failOnCategories": "nav,link,asset,rendered-console-error,rendered-request-failure",
       "rendered": true,
       "renderedEnsureInstalled": false,
       "renderedMaxPages": 8,
       "renderedInclude": "index.html,docs/**,faq/**,changelog/**",
       "renderedExclude": "api/**,docs/api/**,api-docs/**",
-      "summary": true
+      "summary": true,
+      "summaryPath": "./_reports/audit-summary.json",
+      "summaryMaxIssues": 50,
+      "checkUtf8": true,
+      "checkMetaCharset": true,
+      "checkUnicodeReplacementChars": true
     }
   ]
 }
