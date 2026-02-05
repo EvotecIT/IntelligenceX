@@ -205,4 +205,6 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Null-guard pack rules before adding to policy output. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#discussion_r2770314429
 - [x] Normalize `SeverityOverrides` into a case-insensitive dictionary. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#discussion_r2769812614
 - [x] Catch malformed glob patterns to avoid `ArgumentException`. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#discussion_r2770238132
+- [x] Treat unknown severities distinctly from `none` to avoid silent suppression. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#discussion_r2770655013
+- [x] Log malformed glob patterns so config errors are visible. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#discussion_r2770655055
 </details>

@@ -1,10 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
 namespace IntelligenceX.Reviewer;
 
 internal static class GlobMatcher {
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(2);
+    private static readonly object InvalidPatternLock = new();
+    private static readonly HashSet<string> InvalidPatternWarnings = new(StringComparer.Ordinal);
 
     public static bool IsMatch(string pattern, string value) {
         if (string.IsNullOrWhiteSpace(pattern) || value is null) {
@@ -16,6 +19,7 @@ internal static class GlobMatcher {
         } catch (RegexMatchTimeoutException) {
             return false;
         } catch (ArgumentException) {
+            WarnInvalidPattern(pattern);
             return false;
         }
     }
@@ -31,5 +35,14 @@ internal static class GlobMatcher {
         escaped = escaped.Replace("___WILDCARD_ONE___", ".");
 
         return "^" + escaped + "$";
+    }
+
+    private static void WarnInvalidPattern(string pattern) {
+        lock (InvalidPatternLock) {
+            if (!InvalidPatternWarnings.Add(pattern)) {
+                return;
+            }
+        }
+        Console.Error.WriteLine($"Invalid glob pattern ignored: {pattern}");
     }
 }

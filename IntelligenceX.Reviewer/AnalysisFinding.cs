@@ -39,8 +39,9 @@ internal static class AnalysisSeverity {
             "error" => 3,
             "warning" => 2,
             "info" => 1,
+            "unknown" => 1,
             "none" => 0,
-            _ => 0
+            _ => 1
         };
     }
 }
