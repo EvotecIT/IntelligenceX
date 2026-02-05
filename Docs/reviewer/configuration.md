@@ -58,6 +58,19 @@ Unknown properties emit warnings; invalid types or enum values fail the run.
 
 Note: set `maxFiles` to `0` to disable file count limits; the reviewer will still trim individual patches using `maxPatchChars`.
 
+## Provider fallback example
+
+Use `providerFallback` to opt into a secondary provider when the primary provider fails.
+
+```json
+{
+  "review": {
+    "provider": "openai",
+    "providerFallback": "copilot"
+  }
+}
+```
+
 ## Auto-resolve + triage example
 
 ```json
@@ -309,7 +322,8 @@ Use `directHeaders` to attach custom headers required by your gateway.
 Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source control.
 
 ## Common knobs
-- `provider`: `openai` or `copilot`
+- `provider`: `openai`, `codex` (alias for OpenAI), or `copilot`
+- `providerFallback`: optional fallback provider (`openai`, `codex`, or `copilot`)
 - `model`: model name for the selected provider
 - `reasoningEffort`: `minimal|low|medium|high|xhigh` (when set to low/medium/high, the header shows a reasoning level label)
 - `mode`: `inline`, `summary`, or `hybrid`

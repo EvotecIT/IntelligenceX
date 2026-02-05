@@ -9,6 +9,7 @@
       "additionalProperties": true,
       "properties": {
         "provider": { "type": "string", "enum": ["openai", "copilot", "codex"] },
+        "providerFallback": { "type": "string", "enum": ["openai", "copilot", "codex"] },
         "codeHost": { "type": "string", "enum": ["github", "azure", "azuredevops", "azure-devops", "ado"] },
         "profile": { "type": "string" },
         "intent": { "type": "string", "enum": ["security", "performance", "perf", "maintainability"] },

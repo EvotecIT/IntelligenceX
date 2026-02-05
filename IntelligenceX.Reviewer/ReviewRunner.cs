@@ -23,9 +23,12 @@ internal sealed class ReviewRunner {
         Timeout = Timeout.InfiniteTimeSpan
     };
     private readonly ReviewSettings _settings;
+    public ReviewProvider EffectiveProvider { get; private set; }
+    public bool FallbackActivated { get; private set; }
 
     public ReviewRunner(ReviewSettings settings) {
         _settings = settings;
+        EffectiveProvider = settings.Provider;
     }
 
     private IntelligenceXClientOptions BuildClientOptions() {
@@ -49,12 +52,81 @@ internal sealed class ReviewRunner {
 
     public async Task<string> RunAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
         CancellationToken cancellationToken) {
-        var provider = ReviewProviderContracts.Get(_settings.Provider);
-        return provider.Provider switch {
-            ReviewProvider.Copilot => await RunCopilotAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false),
-            ReviewProvider.OpenAI => await RunOpenAiWithRetryAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false),
-            _ => throw new NotSupportedException($"Unsupported review provider '{provider.Provider}'.")
-        };
+        var primaryProvider = ReviewProviderContracts.Get(_settings.Provider).Provider;
+        var fallbackProvider = ResolveFallbackProvider(primaryProvider, _settings.ProviderFallback);
+        EffectiveProvider = primaryProvider;
+        FallbackActivated = false;
+
+        Exception? primaryException = null;
+        string? primaryFailureBody = null;
+        try {
+            var primaryResult = await RunWithProviderAsync(primaryProvider, prompt, onPartial, updateInterval, cancellationToken)
+                .ConfigureAwait(false);
+            if (!fallbackProvider.HasValue || !ShouldFallbackOnResult(primaryResult)) {
+                return primaryResult;
+            }
+            primaryFailureBody = primaryResult;
+            if (_settings.Diagnostics) {
+                Console.Error.WriteLine(
+                    $"Primary provider '{primaryProvider.ToString().ToLowerInvariant()}' returned a fail-open body; attempting fallback provider '{fallbackProvider.Value.ToString().ToLowerInvariant()}'.");
+            }
+        } catch (Exception ex) when (!cancellationToken.IsCancellationRequested && fallbackProvider.HasValue) {
+            primaryException = ex;
+            if (_settings.Diagnostics) {
+                Console.Error.WriteLine(
+                    $"Primary provider '{primaryProvider.ToString().ToLowerInvariant()}' failed ({ex.GetType().Name}); attempting fallback provider '{fallbackProvider.Value.ToString().ToLowerInvariant()}'.");
+            }
+        }
+
+        if (!fallbackProvider.HasValue) {
+            if (primaryException is not null) {
+                ExceptionDispatchInfo.Capture(primaryException).Throw();
+            }
+            return primaryFailureBody ?? string.Empty;
+        }
+
+        try {
+            var fallbackResult = await RunWithProviderAsync(fallbackProvider.Value, prompt, onPartial, updateInterval, cancellationToken)
+                .ConfigureAwait(false);
+            EffectiveProvider = fallbackProvider.Value;
+            FallbackActivated = true;
+            return fallbackResult;
+        } catch {
+            if (primaryException is not null) {
+                ExceptionDispatchInfo.Capture(primaryException).Throw();
+            }
+            if (primaryFailureBody is not null) {
+                EffectiveProvider = primaryProvider;
+                return primaryFailureBody;
+            }
+            throw;
+        }
+    }
+
+    internal static ReviewProvider? ResolveFallbackProvider(ReviewProvider primaryProvider, ReviewProvider? configuredFallback) {
+        if (!configuredFallback.HasValue || configuredFallback.Value == primaryProvider) {
+            return null;
+        }
+        return configuredFallback.Value;
+    }
+
+    internal static bool ShouldFallbackOnResult(string? result) {
+        return !string.IsNullOrWhiteSpace(result) && ReviewDiagnostics.IsFailureBody(result);
+    }
+
+    private async Task<string> RunWithProviderAsync(ReviewProvider provider, string prompt, Func<string, Task>? onPartial,
+        TimeSpan? updateInterval, CancellationToken cancellationToken) {
+        var previousProvider = _settings.Provider;
+        _settings.Provider = provider;
+        try {
+            return provider switch {
+                ReviewProvider.Copilot => await RunCopilotAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false),
+                ReviewProvider.OpenAI => await RunOpenAiWithRetryAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false),
+                _ => throw new NotSupportedException($"Unsupported review provider '{provider}'.")
+            };
+        } finally {
+            _settings.Provider = previousProvider;
+        }
     }
 
     private async Task<string> RunOpenAiWithRetryAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,

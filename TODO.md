@@ -53,7 +53,7 @@ Status: In progress
 ### Phase 5 — Provider abstraction
 - [x] Centralize provider contracts (capabilities, limits, streaming, auth).
 - [x] Add provider capability flags (usage API, reasoning level, streaming).
-- [ ] Add opt-in provider fallback (e.g., OpenAI → Copilot).
+- [x] Add opt-in provider fallback (e.g., OpenAI → Copilot).
 - [ ] Add provider health checks and circuit breaker.
 
 ### Phase 5.5 — Code host support (Azure DevOps Services)
