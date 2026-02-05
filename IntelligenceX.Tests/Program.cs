@@ -115,6 +115,7 @@ internal static class Program {
         failed += Run("Review provider circuit breaker", TestReviewProviderCircuitBreaker);
         failed += Run("Review intent applies defaults", TestReviewIntentAppliesDefaults);
         failed += Run("Review intent respects settings", TestReviewIntentRespectsSettings);
+        failed += Run("Review intent perf alias", TestReviewIntentPerfAlias);
         failed += Run("Triage-only loads threads", TestTriageOnlyLoadsThreads);
         failed += Run("Review code host env", TestReviewCodeHostEnv);
         failed += Run("GitHub context cache", TestGitHubContextCache);
@@ -1354,6 +1355,7 @@ internal static class Program {
             "provider fallback selected");
         AssertEqual(false, ReviewRunner.ShouldFallbackOnResult("Regular review content"), "provider fallback regular output");
         AssertEqual(true, ReviewRunner.ShouldFallbackOnResult($"x {ReviewDiagnostics.FailureMarker} y"), "provider fallback failure marker");
+    }
 
     private static void TestReviewIntentAppliesDefaults() {
         var settings = new ReviewSettings();
@@ -1442,6 +1444,13 @@ internal static class Program {
         ReviewProviderCircuitBreaker.RecordSuccess(provider);
         AssertEqual(false, ReviewProviderCircuitBreaker.IsOpen(provider, now, out _), "provider breaker reset by success");
         ReviewProviderCircuitBreaker.Reset();
+    }
+
+    private static void TestReviewIntentPerfAlias() {
+        var settings = new ReviewSettings();
+        ReviewIntents.Apply("perf", settings);
+        AssertEqual("balanced", settings.Strictness, "perf alias strictness");
+        AssertContainsText(settings.Notes ?? string.Empty, "allocations", "perf alias notes");
     }
 
     private static void TestReviewCodeHostEnv() {
