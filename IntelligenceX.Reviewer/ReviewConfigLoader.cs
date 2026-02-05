@@ -137,6 +137,11 @@ internal static class ReviewConfigLoader {
             settings.SkipPaths = skipPaths;
         }
 
+        var generatedFileGlobs = ReadStringList(obj, "generatedFileGlobs");
+        if (generatedFileGlobs is not null) {
+            settings.GeneratedFileGlobs = generatedFileGlobs;
+        }
+
         var includePaths = ReadStringList(obj, "includePaths");
         if (includePaths is not null) {
             settings.IncludePaths = includePaths;

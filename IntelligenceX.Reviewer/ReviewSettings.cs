@@ -144,6 +144,10 @@ internal sealed class ReviewSettings {
     /// </summary>
     public bool SkipGeneratedFiles { get; set; } = true;
     /// <summary>
+    /// Additional glob patterns to treat as generated files. These are appended to the built-in defaults.
+    /// </summary>
+    public IReadOnlyList<string> GeneratedFileGlobs { get; set; } = Array.Empty<string>();
+    /// <summary>
     /// Glob-style patterns specifying which changed files should be considered for review.
     /// If non-empty, only files matching these patterns are eligible for review.
     /// </summary>
@@ -460,6 +464,11 @@ internal sealed class ReviewSettings {
         var skipGeneratedFiles = GetInput("skip_generated_files", "SKIP_GENERATED_FILES");
         if (!string.IsNullOrWhiteSpace(skipGeneratedFiles)) {
             settings.SkipGeneratedFiles = ParseBoolean(skipGeneratedFiles, settings.SkipGeneratedFiles);
+        }
+
+        var generatedFileGlobs = GetInput("generated_file_globs", "GENERATED_FILE_GLOBS");
+        if (!string.IsNullOrWhiteSpace(generatedFileGlobs)) {
+            settings.GeneratedFileGlobs = ParseList(generatedFileGlobs, settings.GeneratedFileGlobs);
         }
 
         var includePaths = GetInput("include_paths", "INCLUDE_PATHS");

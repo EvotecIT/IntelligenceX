@@ -91,6 +91,7 @@
         "skipPaths": { "type": "array", "items": { "type": "string" } },
         "skipBinaryFiles": { "type": "boolean" },
         "skipGeneratedFiles": { "type": "boolean" },
+        "generatedFileGlobs": { "type": "array", "items": { "type": "string" } },
         "includePaths": { "type": "array", "items": { "type": "string" } },
         "excludePaths": { "type": "array", "items": { "type": "string" } },
         "redactPii": { "type": "boolean" },
