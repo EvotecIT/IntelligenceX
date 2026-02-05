@@ -122,10 +122,12 @@ internal static class Program {
         failed += Run("GitHub context cache", TestGitHubContextCache);
         failed += Run("GitHub concurrency env", TestGitHubConcurrencyEnv);
         failed += Run("GitHub client concurrency", TestGitHubClientConcurrency);
+        failed += Run("GitHub code host reader smoke", TestGitHubCodeHostReaderSmoke);
         failed += Run("GitHub compare truncation", TestGitHubCompareTruncation);
         failed += Run("Diff range compare truncation", TestDiffRangeCompareTruncation);
         failed += Run("Azure auth scheme env", TestAzureAuthSchemeEnv);
         failed += Run("Azure auth scheme invalid env", TestAzureAuthSchemeInvalidEnv);
+        failed += Run("Azure code host reader smoke", TestAzureDevOpsCodeHostReaderSmoke);
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
         failed += Run("Copilot env allowlist config", TestCopilotEnvAllowlistConfig);
         failed += Run("Copilot inherit env default", TestCopilotInheritEnvironmentDefault);
@@ -1533,6 +1535,61 @@ internal static class Program {
         AssertEqual(2, client.MaxConcurrency, "github client concurrency");
     }
 
+    private static void TestGitHubCodeHostReaderSmoke() {
+        const string prJson = "{"
+            + "\"title\":\"Reader test\",\"body\":\"Body\",\"draft\":false,\"number\":1,"
+            + "\"head\":{\"sha\":\"headsha\",\"repo\":{\"full_name\":\"owner/repo\",\"fork\":false}},"
+            + "\"base\":{\"sha\":\"basesha\",\"repo\":{\"full_name\":\"owner/repo\"}},"
+            + "\"labels\":[{\"name\":\"bug\"}]"
+            + "}";
+        const string filesJson = "[{\"filename\":\"src/A.cs\",\"status\":\"modified\",\"patch\":\"@@ -1 +1 @@\\n-a\\n+b\"}]";
+        const string compareJson = "{\"files\":[{\"filename\":\"src/A.cs\",\"status\":\"modified\",\"patch\":\"@@\"}]}";
+        const string issueCommentsJson = "[{\"id\":1,\"body\":\"Issue comment\",\"user\":{\"login\":\"author\"}}]";
+        const string reviewCommentsJson = "[{\"body\":\"Review comment\",\"path\":\"src/A.cs\",\"line\":1,\"user\":{\"login\":\"reviewer\"}}]";
+
+        using var server = new LocalHttpServer(request => {
+            if (request.Path == "/repos/owner/repo/pulls/1/files?per_page=100&page=1") {
+                return new HttpResponse(filesJson);
+            }
+            if (request.Path == "/repos/owner/repo/pulls/1/files?per_page=100&page=2") {
+                return new HttpResponse("[]");
+            }
+            if (request.Path == "/repos/owner/repo/pulls/1") {
+                return new HttpResponse(prJson);
+            }
+            if (request.Path.StartsWith("/repos/owner/repo/compare/", StringComparison.OrdinalIgnoreCase)) {
+                return new HttpResponse(compareJson);
+            }
+            if (request.Path == "/repos/owner/repo/issues/1/comments?per_page=100&page=1&sort=created&direction=desc") {
+                return new HttpResponse(issueCommentsJson);
+            }
+            if (request.Path == "/repos/owner/repo/pulls/1/comments?per_page=100&page=1&sort=created&direction=desc") {
+                return new HttpResponse(reviewCommentsJson);
+            }
+            if (request.Path == "/graphql") {
+                return new HttpResponse(BuildGraphQlThreadsResponse("reader"));
+            }
+            return null;
+        });
+
+        using var github = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+        IReviewCodeHostReader reader = new GitHubCodeHostReader(github);
+        var context = reader.GetPullRequestAsync("owner/repo", 1, CancellationToken.None).GetAwaiter().GetResult();
+        var files = reader.GetPullRequestFilesAsync(context, CancellationToken.None).GetAwaiter().GetResult();
+        var compare = reader.GetCompareFilesAsync(context, "base", "head", CancellationToken.None).GetAwaiter().GetResult();
+        var issueComments = reader.ListIssueCommentsAsync(context, 10, CancellationToken.None).GetAwaiter().GetResult();
+        var reviewComments = reader.ListPullRequestReviewCommentsAsync(context, 10, CancellationToken.None).GetAwaiter().GetResult();
+        var threads = reader.ListPullRequestReviewThreadsAsync(context, 10, 10, CancellationToken.None).GetAwaiter().GetResult();
+
+        AssertEqual("owner", context.Owner, "reader context owner");
+        AssertEqual(1, files.Count, "reader files count");
+        AssertEqual(1, compare.Files.Count, "reader compare files count");
+        AssertEqual(false, compare.IsTruncated, "reader compare truncated");
+        AssertEqual(1, issueComments.Count, "reader issue comments");
+        AssertEqual(1, reviewComments.Count, "reader review comments");
+        AssertEqual(1, threads.Count, "reader review threads");
+    }
+
     private static void TestGitHubCompareTruncation() {
         using var server = new LocalHttpServer(request => {
             if (!request.Path.Contains("/repos/owner/repo/compare/", StringComparison.OrdinalIgnoreCase)) {
@@ -1596,6 +1653,52 @@ internal static class Program {
         } finally {
             Environment.SetEnvironmentVariable("AZURE_DEVOPS_AUTH_SCHEME", previous);
         }
+    }
+
+    private static void TestAzureDevOpsCodeHostReaderSmoke() {
+        const string pullRequestJson = "{"
+            + "\"pullRequestId\":7,"
+            + "\"title\":\"ADO Reader\","
+            + "\"description\":\"Body\","
+            + "\"isDraft\":false,"
+            + "\"repository\":{"
+            + "\"id\":\"repo-id\","
+            + "\"name\":\"repo-name\","
+            + "\"project\":{\"name\":\"project-name\"}"
+            + "},"
+            + "\"lastMergeSourceCommit\":{\"commitId\":\"source-sha\"},"
+            + "\"lastMergeTargetCommit\":{\"commitId\":\"target-sha\"}"
+            + "}";
+        const string changesJson = "{\"changes\":[{\"item\":{\"path\":\"/src/A.cs\"},\"changeType\":\"edit\"}]}";
+
+        using var server = new LocalHttpServer(request => {
+            if (request.Path == "/project-name/_apis/git/pullrequests/7?api-version=7.1") {
+                return new HttpResponse(pullRequestJson);
+            }
+            if (request.Path == "/project-name/_apis/git/repositories/repo-id/pullRequests/7/changes?api-version=7.1") {
+                return new HttpResponse(changesJson);
+            }
+            return null;
+        });
+
+        using var client = new AzureDevOpsClient(server.BaseUri, "token", AzureDevOpsAuthScheme.Bearer);
+        IReviewCodeHostReader reader = new AzureDevOpsCodeHostReader(client, "project-name", "repo-id");
+        var context = reader.GetPullRequestAsync("project-name", 7, CancellationToken.None).GetAwaiter().GetResult();
+        var files = reader.GetPullRequestFilesAsync(context, CancellationToken.None).GetAwaiter().GetResult();
+        var compare = reader.GetCompareFilesAsync(context, "a", "b", CancellationToken.None).GetAwaiter().GetResult();
+        var issueComments = reader.ListIssueCommentsAsync(context, 10, CancellationToken.None).GetAwaiter().GetResult();
+        var reviewComments = reader.ListPullRequestReviewCommentsAsync(context, 10, CancellationToken.None).GetAwaiter().GetResult();
+        var threads = reader.ListPullRequestReviewThreadsAsync(context, 10, 10, CancellationToken.None).GetAwaiter().GetResult();
+
+        AssertEqual("project-name", context.Owner, "ado reader owner");
+        AssertEqual("repo-name", context.Repo, "ado reader repo");
+        AssertEqual(1, files.Count, "ado reader files");
+        AssertEqual("src/A.cs", files[0].Filename, "ado reader filename");
+        AssertEqual(0, compare.Files.Count, "ado reader compare");
+        AssertEqual(false, compare.IsTruncated, "ado reader compare truncated");
+        AssertEqual(0, issueComments.Count, "ado reader issue comments");
+        AssertEqual(0, reviewComments.Count, "ado reader review comments");
+        AssertEqual(0, threads.Count, "ado reader review threads");
     }
 
     private static void TestTriageOnlyLoadsThreads() {
@@ -1778,7 +1881,9 @@ internal static class Program {
         if (method is null) {
             throw new InvalidOperationException("BuildExtrasAsync method not found.");
         }
+        var codeHostReader = new GitHubCodeHostReader(github);
         var task = method.Invoke(null, new object?[] {
+            codeHostReader,
             github,
             null,
             context,
@@ -1799,7 +1904,9 @@ internal static class Program {
         if (method is null) {
             throw new InvalidOperationException("AutoResolveMissingInlineThreadsAsync method not found.");
         }
+        var codeHostReader = new GitHubCodeHostReader(github);
         var task = method.Invoke(null, new object?[] {
+            codeHostReader,
             github,
             null,
             context,
@@ -1820,8 +1927,9 @@ internal static class Program {
         if (method is null) {
             throw new InvalidOperationException("ResolveDiffRangeFilesAsync method not found.");
         }
+        var codeHostReader = new GitHubCodeHostReader(github);
         var task = method.Invoke(null, new object?[] {
-            github,
+            codeHostReader,
             context,
             range,
             currentFiles,
