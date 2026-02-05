@@ -175,6 +175,7 @@ public static class ReviewerApp {
             }
 
             using var github = new GitHubClient(token, maxConcurrency: settings.GitHubMaxConcurrency);
+            // Lightweight adapter over github; it does not own additional resources.
             IReviewCodeHostReader codeHostReader = new GitHubCodeHostReader(github);
             using var fallbackGithub = string.IsNullOrWhiteSpace(fallbackToken)
                 ? null
@@ -195,6 +196,11 @@ public static class ReviewerApp {
                 var prNumber = GetInputInt("pr_number") ?? GetInputInt("pull_request") ?? GetInputInt("number");
                 if (string.IsNullOrWhiteSpace(repoName) || !prNumber.HasValue) {
                     Console.Error.WriteLine("Missing pull_request data. Provide inputs: repo and pr_number.");
+                    return 1;
+                }
+                var repoParts = repoName.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (repoParts.Length != 2) {
+                    Console.Error.WriteLine($"Invalid repo name '{repoName}'. Expected owner/repo.");
                     return 1;
                 }
                 context = await codeHostReader.GetPullRequestAsync(repoName!, prNumber.Value, cancellationToken)
