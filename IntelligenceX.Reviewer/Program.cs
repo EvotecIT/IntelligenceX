@@ -31,6 +31,7 @@ public static class ReviewerApp {
             cts.Cancel();
         };
         Console.CancelKeyPress += cancelHandler;
+        // Hoist state so the exception handler can update the progress comment on failure.
         SecretsAuditSession? secretsAudit = null;
         ReviewSettings? settings = null;
         PullRequestContext? context = null;
@@ -362,7 +363,10 @@ public static class ReviewerApp {
                     var inlineSuppressed = inlineSupported;
                     var commentBody = ReviewFormatter.BuildComment(context, failureBody, settings, inlineSupported,
                         inlineSuppressed, string.Empty, string.Empty, string.Empty, string.Empty);
-                    using var failureClient = new GitHubClient(githubToken!, maxConcurrency: settings.GitHubMaxConcurrency);
+                    if (string.IsNullOrWhiteSpace(githubToken)) {
+                        return 1;
+                    }
+                    using var failureClient = new GitHubClient(githubToken, maxConcurrency: settings.GitHubMaxConcurrency);
                     await failureClient.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, commentBody,
                             CancellationToken.None)
                         .ConfigureAwait(false);

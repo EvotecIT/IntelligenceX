@@ -546,6 +546,9 @@ internal sealed class GitHubClient : IDisposable {
         return $"{owner}/{repo}@{baseSha}..{headSha}";
     }
 
+    /// <summary>
+    /// Represents compare API results along with truncation metadata.
+    /// </summary>
     internal readonly struct CompareFilesResult {
         public CompareFilesResult(IReadOnlyList<PullRequestFile> files, bool isTruncated) {
             Files = files;

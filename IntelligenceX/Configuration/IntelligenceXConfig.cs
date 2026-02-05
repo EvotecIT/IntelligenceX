@@ -66,7 +66,14 @@ public sealed class IntelligenceXConfig {
         }
 
         var json = File.ReadAllText(resolved);
-        var root = JsonLite.Parse(json).AsObject();
+        JsonValue? rootValue;
+        try {
+            rootValue = JsonLite.Parse(json);
+        } catch {
+            failure = LoadFailure.InvalidJson;
+            return false;
+        }
+        var root = rootValue.AsObject();
         if (root is null) {
             failure = LoadFailure.InvalidJson;
             return false;
