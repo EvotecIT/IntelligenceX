@@ -56,6 +56,7 @@ internal static class Program {
         Console.WriteLine("  auth sync-codex  Write tokens to CODEX_HOME/auth.json");
         Console.WriteLine();
         Console.WriteLine("Analyze commands:");
+        Console.WriteLine("  analyze run             Execute configured analysis packs and emit findings");
         Console.WriteLine("  analyze export-config   Export analyzer configs from reviewer.json");
         Console.WriteLine("  analyze list-packs      List available rule packs");
         Console.WriteLine("  analyze list-rules      List available rules");

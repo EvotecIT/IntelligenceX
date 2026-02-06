@@ -17,6 +17,7 @@ internal static class AnalyzeRunner {
         var command = args[0].ToLowerInvariant();
         var rest = args.Skip(1).ToArray();
         return command switch {
+            "run" => AnalyzeRunCommand.RunAsync(rest),
             "export-config" => ExportConfigAsync(rest),
             "list-packs" => ListPacksAsync(rest),
             "list-rules" => ListRulesAsync(rest),
@@ -131,7 +132,7 @@ internal static class AnalyzeRunner {
         return null;
     }
 
-    private static string ResolveWorkspace(string? workspace) {
+    internal static string ResolveWorkspace(string? workspace) {
         if (!string.IsNullOrWhiteSpace(workspace)) {
             return Path.GetFullPath(workspace);
         }
@@ -142,7 +143,7 @@ internal static class AnalyzeRunner {
         return Environment.CurrentDirectory;
     }
 
-    private static string? ResolveConfigPath(string? explicitPath, string workspace) {
+    internal static string? ResolveConfigPath(string? explicitPath, string workspace) {
         if (!string.IsNullOrWhiteSpace(explicitPath)) {
             return Path.IsPathRooted(explicitPath)
                 ? explicitPath
@@ -157,6 +158,7 @@ internal static class AnalyzeRunner {
 
     private static void PrintHelp() {
         Console.WriteLine("Analyze commands:");
+        AnalyzeRunCommand.PrintHelp();
         Console.WriteLine("  intelligencex analyze export-config --out <dir> [--config <path>] [--workspace <path>]");
         Console.WriteLine("  intelligencex analyze list-packs [--workspace <path>]");
         Console.WriteLine("  intelligencex analyze list-rules [--workspace <path>]");

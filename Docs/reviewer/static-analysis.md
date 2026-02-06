@@ -91,38 +91,42 @@ During analysis runs, configs are generated to a temporary directory and cleaned
 - JS/TS: `.eslintrc` or flat config with enabled rule IDs.
 - Python: `ruff.toml` or `pyproject.toml` with rule selection.
 
-An optional `intelligencex analyze export-config` command can be added later for teams that want to commit configs for IDE support.
+`intelligencex analyze run` executes analysis for configured packs and emits findings artifacts for the reviewer.
+`intelligencex analyze export-config` remains available for teams that explicitly want committed analyzer configs for IDE support.
+
+Current built-in runners in `analyze run`:
+- C#: Roslyn via `dotnet build` (SARIF output).
+- PowerShell: PSScriptAnalyzer via `pwsh` (IntelligenceX findings JSON output).
+
+For JS/TS and Python today, teams can still produce SARIF with their preferred tools and include those files in
+`analysis.results.inputs`.
 
 ## Workflow Integration (Example)
 Analysis runs before review and publishes findings as artifacts. The reviewer reads those artifacts and merges findings into the summary and optional inline comments.
 
 ```yaml
 jobs:
-  analysis:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run analysis packs
-        run: intelligencex analyze --config .intelligencex/reviewer.json --out artifacts/intelligencex.findings.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ix-analysis
-          path: artifacts/**
-
   review:
-    needs: [analysis]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/setup-dotnet@v4
         with:
-          name: ix-analysis
-          path: artifacts
+          dotnet-version: 8.0.x
+      - name: Run analysis
+        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze run --config .intelligencex/reviewer.json --out artifacts --framework net8.0
       - name: Run reviewer
-        uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@master
-        with:
-          repo: ${{ github.repository }}
-          pr_number: ${{ github.event.pull_request.number }}
+        run: dotnet run --project IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
+          INPUT_REPO: ${{ github.repository }}
+          INPUT_PR_NUMBER: ${{ github.event.pull_request.number }}
 ```
 
 ## Reviewer Behavior
