@@ -103,6 +103,7 @@ Current built-in runners in `analyze run`:
   - `IXLOC001` reads `max-lines:<n>` rule tags (default `700`) and supports configurable generated suffix tags (`generated-suffix:<value>`), generated header marker tags (`generated-marker:<value>`), optional generated header scan depth tags (`generated-header-lines:<n>`, `0` disables header scanning), and additional excluded directory segments (`exclude-dir:<segment>`).
   - Generated marker/suffix defaults are defined in the rule catalog tags (`Analysis/Catalog/rules/internal/IXLOC001.json`).
   - Unknown or malformed maintainability tags are ignored with explicit warnings in `analyze run` output.
+  - Tag warnings are aggregated per prefix/type to avoid log spam on large tag sets.
   - Generated suffix and marker tags are additive; defaults remain enabled unless you disable the rule.
 
 For JS/TS and Python today, teams can still produce SARIF with their preferred tools and include those files in

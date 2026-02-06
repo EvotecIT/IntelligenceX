@@ -326,7 +326,8 @@ internal static partial class Program {
                 "analyze run malformed tags max-lines warning");
             AssertEqual(true, result.Output.Contains("malformed tag 'generated-header-lines:-5'", StringComparison.OrdinalIgnoreCase),
                 "analyze run malformed tags header-lines warning");
-            AssertEqual(true, result.Output.Contains("malformed tag 'generated-suffix:'", StringComparison.OrdinalIgnoreCase),
+            AssertEqual(true, result.Output.Contains("has malformed tags", StringComparison.OrdinalIgnoreCase) &&
+                result.Output.Contains("'generated-suffix:'", StringComparison.OrdinalIgnoreCase),
                 "analyze run malformed tags suffix warning");
 
             var findingsPath = Path.Combine(output, "intelligencex.findings.json");
@@ -387,9 +388,10 @@ internal static partial class Program {
             var result = RunAnalyzeWithConsoleOutput(temp, Path.Combine(temp, ".intelligencex", "reviewer.json"), output);
 
             AssertEqual(0, result.ExitCode, "analyze run unknown tags exit");
-            AssertEqual(true, result.Output.Contains("unknown tag 'max-linez:650'", StringComparison.OrdinalIgnoreCase),
+            AssertEqual(true, result.Output.Contains("unknown maintainability tags", StringComparison.OrdinalIgnoreCase) &&
+                result.Output.Contains("'max-linez:650'", StringComparison.OrdinalIgnoreCase),
                 "analyze run unknown tags max-lines typo warning");
-            AssertEqual(true, result.Output.Contains("unknown tag 'generated-sufix:.generated.cs'", StringComparison.OrdinalIgnoreCase),
+            AssertEqual(true, result.Output.Contains("'generated-sufix:.generated.cs'", StringComparison.OrdinalIgnoreCase),
                 "analyze run unknown tags generated suffix typo warning");
 
             var findingsPath = Path.Combine(output, "intelligencex.findings.json");

@@ -7,6 +7,8 @@ using IntelligenceX.Analysis;
 namespace IntelligenceX.Cli.Analysis;
 
 internal static partial class AnalyzeRunCommand {
+    private const int MaxTagWarningDetails = 5;
+
     private static IReadOnlyList<AnalysisFindingItem> RunInternalMaintainabilityChecks(string workspace,
         string outputDirectory,
         IReadOnlyList<AnalysisPolicyRule> rules, List<string> warnings) {
@@ -115,6 +117,7 @@ internal static partial class AnalyzeRunCommand {
 
     private static IReadOnlyCollection<string> ResolveGeneratedSuffixes(AnalysisRule rule, List<string> warnings) {
         var suffixes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var malformedTags = new List<string>();
         if (rule?.Tags is not null && rule.Tags.Count > 0) {
             foreach (var tag in rule.Tags) {
                 if (string.IsNullOrWhiteSpace(tag) || !tag.StartsWith(GeneratedSuffixTagPrefix, StringComparison.OrdinalIgnoreCase)) {
@@ -124,11 +127,11 @@ internal static partial class AnalyzeRunCommand {
                 if (!string.IsNullOrWhiteSpace(value)) {
                     suffixes.Add(value);
                 } else {
-                    warnings.Add(
-                        $"Rule {rule.Id} has malformed tag '{tag}'. Expected '{GeneratedSuffixTagPrefix}<suffix>'.");
+                    malformedTags.Add(tag);
                 }
             }
         }
+        AddMalformedTagWarning(rule?.Id, malformedTags, GeneratedSuffixTagPrefix, warnings);
 
         return suffixes;
     }
@@ -155,6 +158,7 @@ internal static partial class AnalyzeRunCommand {
 
     private static IReadOnlyCollection<string> ResolveGeneratedHeaderMarkers(AnalysisRule rule, List<string> warnings) {
         var markers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var malformedTags = new List<string>();
         if (rule?.Tags is not null && rule.Tags.Count > 0) {
             foreach (var tag in rule.Tags) {
                 if (string.IsNullOrWhiteSpace(tag) || !tag.StartsWith(GeneratedMarkerTagPrefix, StringComparison.OrdinalIgnoreCase)) {
@@ -164,11 +168,11 @@ internal static partial class AnalyzeRunCommand {
                 if (!string.IsNullOrWhiteSpace(marker)) {
                     markers.Add(marker);
                 } else {
-                    warnings.Add(
-                        $"Rule {rule.Id} has malformed tag '{tag}'. Expected '{GeneratedMarkerTagPrefix}<text>'.");
+                    malformedTags.Add(tag);
                 }
             }
         }
+        AddMalformedTagWarning(rule?.Id, malformedTags, GeneratedMarkerTagPrefix, warnings);
         return markers;
     }
 
@@ -214,15 +218,35 @@ internal static partial class AnalyzeRunCommand {
             }
             unknownTags.Add(tag);
         }
-
-        foreach (var tag in unknownTags) {
-            warnings.Add(
-                $"Rule {rule.Id} has unknown tag '{tag}'. Supported prefixes: {MaxLinesTagPrefix}, {GeneratedSuffixTagPrefix}, {GeneratedMarkerTagPrefix}, {GeneratedHeaderLinesTagPrefix}, {ExcludedDirectoryTagPrefix}.");
+        if (unknownTags.Count == 0) {
+            return;
         }
+
+        var sample = string.Join(", ", unknownTags.Take(MaxTagWarningDetails).Select(tag => $"'{tag}'"));
+        var suffix = unknownTags.Count > MaxTagWarningDetails
+            ? $" (+{unknownTags.Count - MaxTagWarningDetails} more)"
+            : string.Empty;
+        warnings.Add(
+            $"Rule {rule.Id} has unknown maintainability tags: {sample}{suffix}. Supported prefixes: {MaxLinesTagPrefix}, {GeneratedSuffixTagPrefix}, {GeneratedMarkerTagPrefix}, {GeneratedHeaderLinesTagPrefix}, {ExcludedDirectoryTagPrefix}.");
+    }
+
+    private static void AddMalformedTagWarning(string? ruleId, IReadOnlyList<string> malformedTags, string expectedPrefix,
+        List<string> warnings) {
+        if (malformedTags is null || malformedTags.Count == 0) {
+            return;
+        }
+
+        var sample = string.Join(", ", malformedTags.Take(MaxTagWarningDetails).Select(tag => $"'{tag}'"));
+        var suffix = malformedTags.Count > MaxTagWarningDetails
+            ? $" (+{malformedTags.Count - MaxTagWarningDetails} more)"
+            : string.Empty;
+        warnings.Add(
+            $"Rule {ruleId ?? "<unknown>"} has malformed tags: {sample}{suffix}. Expected '{expectedPrefix}<value>'.");
     }
 
     private static IReadOnlySet<string> ResolveExcludedDirectorySegments(AnalysisRule rule, List<string> warnings) {
         var segments = new HashSet<string>(DefaultExcludedDirectorySegments, StringComparer.OrdinalIgnoreCase);
+        var malformedTags = new List<string>();
         if (rule?.Tags is null || rule.Tags.Count == 0) {
             return segments;
         }
@@ -236,10 +260,10 @@ internal static partial class AnalyzeRunCommand {
             if (!string.IsNullOrWhiteSpace(segment)) {
                 segments.Add(segment);
             } else {
-                warnings.Add(
-                    $"Rule {rule.Id} has malformed tag '{tag}'. Expected '{ExcludedDirectoryTagPrefix}<segment>'.");
+                malformedTags.Add(tag);
             }
         }
+        AddMalformedTagWarning(rule.Id, malformedTags, ExcludedDirectoryTagPrefix, warnings);
 
         return segments;
     }
