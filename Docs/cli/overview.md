@@ -2,7 +2,7 @@
 
 The CLI (`intelligencex`) handles auth, onboarding, reviewer runs, and utilities like usage/credits.
 
-Quickstart: `./quickstart.md`
+Quickstart: [CLI Quickstart](/docs/cli/quickstart/)
 
 ## Common commands
 

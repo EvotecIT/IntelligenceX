@@ -2,9 +2,9 @@
 
 The core library provides a Codex app-server client, ChatGPT auth helpers, and a lightweight Copilot client.
 
-Quickstart: `./quickstart.md`  
-Providers: `./providers.md`  
-Tools: `./tools.md`
+Quickstart: [Library Quickstart](/docs/library/quickstart/)  
+Providers: [Provider Setup](/docs/library/providers/)  
+Tools: [Tool Calling](/docs/library/tools/)
 
 ## Quick start (app-server)
 

@@ -15,7 +15,7 @@ intelligencex setup wizard
 intelligencex setup web
 ```
 
-See `./setup-web.md` for limitations and security notes.
+See [Web Setup UI](/docs/reviewer/setup-web/) for limitations and security notes.
 
 ## What the wizard does
 

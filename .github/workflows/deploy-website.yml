@@ -5,6 +5,7 @@ on:
     branches: [master]
     paths:
       - 'Website/**'
+      - 'Docs/**'
       - '.github/workflows/deploy-website.yml'
   workflow_dispatch:
 
@@ -33,7 +34,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: EvotecIT/PSPublishModule
-          ref: 3113a997da2cc01b20461e27f48c106f75b9e1a9
+          ref: v2-speedgonzales
           path: PSPublishModule
 
       - name: Build PowerForge.Web.Cli
@@ -42,6 +43,14 @@ jobs:
       - name: Build website
         working-directory: Website
         run: dotnet ../PSPublishModule/PowerForge.Web.Cli/bin/Release/net10.0/PowerForge.Web.Cli.dll pipeline --config pipeline.json
+
+      - name: Verify website output
+        run: |
+          test -f Website/_site/.nojekyll
+          test -f Website/_site/index.html
+          test -f Website/_site/docs/index.html
+          test -f Website/_site/404.html
+          grep -Eqi "<link[^>]+rel=[^>]*stylesheet" Website/_site/404.html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

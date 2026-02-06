@@ -11,10 +11,10 @@ It can use:
 - Local web UI (preview): `intelligencex setup web`
 
 Related docs:
-- `./onboarding-wizard.md`
-- `./setup-web.md`
-- `./configuration.md`
-- `./security-trust.md`
+- [Onboarding Wizard](/docs/reviewer/onboarding-wizard/)
+- [Web Setup UI](/docs/reviewer/setup-web/)
+- [Configuration](/docs/reviewer/configuration/)
+- [Security and Trust](/docs/reviewer/security-trust/)
 
 ## Trust model (short version)
 - BYO GitHub App is supported for branded bot identity.
@@ -102,5 +102,5 @@ intelligencex setup wizard
 
 ## Usage and credits line
 
-Enable `reviewUsageSummary` to append limits/credits (ChatGPT native only). See `./configuration.md`.
+Enable `reviewUsageSummary` to append limits/credits (ChatGPT native only). See [Configuration](/docs/reviewer/configuration/).
 When a code-review rate-limit window is present, its label is explicitly prefixed with `code review` (for example, `code review weekly limit`) so it is distinct from general limits.
