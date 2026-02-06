@@ -235,4 +235,9 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Normalize and de-duplicate generated suffix handling before matching. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2772931230
 - [x] Make generated-header markers stricter/configurable to reduce false positives. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2772931318
 - [x] Keep partial-class shared state minimal/immutable during setup-runner split. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2772931392
+- [x] Keep internal findings `tool` value aligned with rule metadata (`IntelligenceX.Maintainability`). Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2772961232
+- [x] Extend internal scan directory exclusions to cover `.vs` and `node_modules`. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2772961320
+- [x] Make generated-header marker checks case-insensitive on trimmed comment lines. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2772961368
+- [x] Increase generated-header scan window and keep early stop at first code token. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2773050456
+- [x] Match generated suffixes against filename (not full path) with normalized suffix handling. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2773050517
 </details>
