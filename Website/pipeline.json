@@ -89,6 +89,7 @@
       "hashAssets": true,
       "hashExtensions": [".css", ".js"],
       "hashExclude": ["**/assets/prism/components/**"],
+      "reportPath": "./_reports/optimize-report.json",
       "cacheHeaders": true,
       "cacheHeadersOut": "_headers"
     },
@@ -104,6 +105,8 @@
       "navCanonicalSelector": "header nav.ix-nav",
       "navCanonicalRequired": true,
       "navRequiredLinks": "/,/docs/,/api/",
+      "minNavCoveragePercent": 99,
+      "requiredRoutes": "/,/404.html,/api/",
       "failOnCategories": "nav,link,asset,rendered-console-error,rendered-request-failure",
       "rendered": true,
       "renderedEnsureInstalled": false,
