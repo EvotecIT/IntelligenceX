@@ -15,8 +15,8 @@ internal static class AnalysisPolicyBuilder {
         CatalogUnavailable
     }
 
-    private static readonly StringComparer CaseInsensitiveComparer = StringComparer.OrdinalIgnoreCase;
-    private static readonly StringComparer CaseSensitiveComparer = StringComparer.Ordinal;
+    private static readonly StringComparer OrdinalIgnoreCaseComparer = StringComparer.OrdinalIgnoreCase;
+    private static readonly StringComparer OrdinalComparer = StringComparer.Ordinal;
 
     private sealed record PolicyContext(
         IReadOnlyList<string> BaseLines,
@@ -73,7 +73,7 @@ internal static class AnalysisPolicyBuilder {
             Array.Empty<string>(),
             null,
             Array.Empty<string>(),
-            new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(CaseInsensitiveComparer)));
+            new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(OrdinalIgnoreCaseComparer)));
         unavailableReason = "analysis catalog unavailable";
         if (settings?.Analysis?.Enabled != true || settings.Analysis?.Results?.ShowPolicy != true) {
             return PolicyContextBuildResult.Disabled;
@@ -87,13 +87,13 @@ internal static class AnalysisPolicyBuilder {
         }
 
         var disabledSet = new HashSet<string>(settings.Analysis.DisabledRules ?? Array.Empty<string>(),
-            CaseInsensitiveComparer);
+            OrdinalIgnoreCaseComparer);
         var overrideMap = settings.Analysis.SeverityOverrides is null
-            ? new Dictionary<string, string>(CaseInsensitiveComparer)
-            : new Dictionary<string, string>(settings.Analysis.SeverityOverrides, CaseInsensitiveComparer);
+            ? new Dictionary<string, string>(OrdinalIgnoreCaseComparer)
+            : new Dictionary<string, string>(settings.Analysis.SeverityOverrides, OrdinalIgnoreCaseComparer);
 
         var packSummaries = new List<string>();
-        var selectedRuleIds = new HashSet<string>(CaseInsensitiveComparer);
+        var selectedRuleIds = new HashSet<string>(OrdinalIgnoreCaseComparer);
         var selectedRules = new List<string>();
         var missingPacks = new List<string>();
         foreach (var packId in packs) {
@@ -204,21 +204,21 @@ internal static class AnalysisPolicyBuilder {
     private static void AddRuleConfigurationLines(ICollection<string> lines, IReadOnlyCollection<string> disabled,
         IReadOnlyDictionary<string, string> overrides) {
         if (disabled.Count > 0) {
-            var disabledList = disabled.OrderBy(item => item, CaseSensitiveComparer)
-                .Take(AnalysisPolicyFormatting.MaxPreviewItems)
+            var disabledList = disabled.OrderBy(item => item, OrdinalComparer)
+                .Take(AnalysisPolicyFormatting.MaxRulePreviewItems)
                 .ToList();
-            var suffix = disabled.Count > disabledList.Count ? AnalysisPolicyFormatting.TruncatedSuffix : string.Empty;
+            var suffix = disabled.Count > disabledList.Count ? AnalysisPolicyFormatting.TruncatedPreviewSuffix : string.Empty;
             lines.Add($"- Disabled: {string.Join(", ", disabledList)}{suffix}");
         }
 
         if (overrides.Count > 0) {
             var overrideList = overrides
-                .OrderBy(item => item.Key, CaseSensitiveComparer)
-                .Take(AnalysisPolicyFormatting.MaxPreviewItems)
+                .OrderBy(item => item.Key, OrdinalComparer)
+                .Take(AnalysisPolicyFormatting.MaxRulePreviewItems)
                 .Select(item => $"{item.Key}={item.Value}")
                 .ToList();
             var suffix = overrides.Count > overrideList.Count
-                ? AnalysisPolicyFormatting.TruncatedSuffix
+                ? AnalysisPolicyFormatting.TruncatedPreviewSuffix
                 : string.Empty;
             lines.Add($"- Overrides: {string.Join(", ", overrideList)}{suffix}");
         }
@@ -255,10 +255,10 @@ internal static class AnalysisPolicyBuilder {
         }
 
         var preview = enabledRules
-            .Take(AnalysisPolicyFormatting.MaxPreviewItems)
+            .Take(AnalysisPolicyFormatting.MaxRulePreviewItems)
             .Select(ruleId => DescribeRuleForPreview(ruleId, catalog))
             .ToList();
-        var suffix = enabledRules.Count > preview.Count ? AnalysisPolicyFormatting.TruncatedSuffix : string.Empty;
+        var suffix = enabledRules.Count > preview.Count ? AnalysisPolicyFormatting.TruncatedPreviewSuffix : string.Empty;
         lines.Add($"- Enabled rules preview: {string.Join(", ", preview)}{suffix}");
     }
 
@@ -283,18 +283,18 @@ internal static class AnalysisPolicyBuilder {
         var normalizedEnabledRules = enabledRules
             .Select(NormalizeRuleId)
             .OfType<string>()
-            .Distinct(CaseInsensitiveComparer)
+            .Distinct(OrdinalIgnoreCaseComparer)
             .ToList();
         var enabledSet = new HashSet<string>(
             normalizedEnabledRules,
-            CaseInsensitiveComparer);
+            OrdinalIgnoreCaseComparer);
 
         var resolvedFindings = findings ?? Array.Empty<AnalysisFinding>();
         var findingRuleCounts = resolvedFindings
             .Select(finding => NormalizeRuleId(finding.RuleId))
             .OfType<string>()
-            .GroupBy(normalizedRuleId => normalizedRuleId, CaseInsensitiveComparer)
-            .ToDictionary(group => group.Key, group => group.Count(), CaseInsensitiveComparer);
+            .GroupBy(normalizedRuleId => normalizedRuleId, OrdinalIgnoreCaseComparer)
+            .ToDictionary(group => group.Key, group => group.Count(), OrdinalIgnoreCaseComparer);
 
         if (enabledSet.Count == 0 && findingRuleCounts.Count == 0) {
             lines.Add("- Status: unavailable ℹ️");
@@ -318,13 +318,13 @@ internal static class AnalysisPolicyBuilder {
         AddRuleCountPreviewLine(lines, "Failing rules", impactedEnabledRules
             .Select(ruleId => new KeyValuePair<string, int>(ruleId, findingRuleCounts[ruleId]))
             .OrderByDescending(item => item.Value)
-            .ThenBy(item => item.Key, CaseSensitiveComparer)
+            .ThenBy(item => item.Key, OrdinalComparer)
             .ToList(), catalog);
         AddRulePreviewLine(lines, "Clean rules", cleanEnabledRules, catalog);
         AddRuleCountPreviewLine(lines, "Outside-pack rules", findingRuleCounts
             .Where(item => !enabledSet.Contains(item.Key))
             .OrderByDescending(item => item.Value)
-            .ThenBy(item => item.Key, CaseSensitiveComparer)
+            .ThenBy(item => item.Key, OrdinalComparer)
             .ToList(), catalog);
     }
 
@@ -336,10 +336,10 @@ internal static class AnalysisPolicyBuilder {
         }
 
         var preview = ruleIds
-            .Take(AnalysisPolicyFormatting.MaxPreviewItems)
+            .Take(AnalysisPolicyFormatting.MaxRulePreviewItems)
             .Select(ruleId => DescribeRuleForPreview(ruleId, catalog))
             .ToList();
-        var suffix = ruleIds.Count > preview.Count ? AnalysisPolicyFormatting.TruncatedSuffix : string.Empty;
+        var suffix = ruleIds.Count > preview.Count ? AnalysisPolicyFormatting.TruncatedPreviewSuffix : string.Empty;
         lines.Add($"- {label}: {string.Join(", ", preview)}{suffix}");
     }
 
@@ -351,10 +351,10 @@ internal static class AnalysisPolicyBuilder {
         }
 
         var preview = ruleCounts
-            .Take(AnalysisPolicyFormatting.MaxPreviewItems)
+            .Take(AnalysisPolicyFormatting.MaxRulePreviewItems)
             .Select(item => $"{DescribeRuleForPreview(item.Key, catalog)}={item.Value}")
             .ToList();
-        var suffix = ruleCounts.Count > preview.Count ? AnalysisPolicyFormatting.TruncatedSuffix : string.Empty;
+        var suffix = ruleCounts.Count > preview.Count ? AnalysisPolicyFormatting.TruncatedPreviewSuffix : string.Empty;
         lines.Add($"- {label}: {string.Join(", ", preview)}{suffix}");
     }
 
@@ -380,7 +380,8 @@ internal static class AnalysisPolicyBuilder {
         if (info.LengthInTextElements <= AnalysisPolicyFormatting.MaxUnavailableReasonTextElements) {
             return resolved;
         }
-        return info.SubstringByTextElements(0, AnalysisPolicyFormatting.MaxUnavailableReasonTextElements) + "...";
+        return info.SubstringByTextElements(0, AnalysisPolicyFormatting.MaxUnavailableReasonTextElements) +
+               AnalysisPolicyFormatting.TruncationEllipsis;
     }
 
     private static string? NormalizeRuleId(string? ruleId) {
@@ -396,6 +397,7 @@ internal static class AnalysisPolicyBuilder {
         if (info.LengthInTextElements <= AnalysisPolicyFormatting.MaxRulePreviewTitleTextElements) {
             return resolved;
         }
-        return info.SubstringByTextElements(0, AnalysisPolicyFormatting.MaxRulePreviewTitleTextElements) + "...";
+        return info.SubstringByTextElements(0, AnalysisPolicyFormatting.MaxRulePreviewTitleTextElements) +
+               AnalysisPolicyFormatting.TruncationEllipsis;
     }
 }

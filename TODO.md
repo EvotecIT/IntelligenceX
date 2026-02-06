@@ -319,6 +319,10 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Add regression coverage for non-BMP Unicode preview title truncation behavior. Links: user request in Codex thread (2026-02-06), https://github.com/EvotecIT/IntelligenceX/pull/115
 - [x] Centralize preview formatting constants for policy/test alignment. Links: user request in Codex thread (2026-02-06), https://github.com/EvotecIT/IntelligenceX/pull/115
 - [x] Normalize unavailable-policy pack display to skip blank pack IDs and preserve trimmed values. Links: https://github.com/EvotecIT/IntelligenceX/pull/115#discussion_r2775613244
+- [x] Keep one lightweight `AssertContainsText` header assertion alongside strict line assertions for policy output stability. Links: https://github.com/EvotecIT/IntelligenceX/pull/115#discussion_r2775620847
+- [x] Group analysis-policy test registration into a dedicated helper (`RunAnalysisPolicyReportingTests`) to reduce main-runner churn. Links: https://github.com/EvotecIT/IntelligenceX/pull/115#discussion_r2775620879
+- [x] Complete constant migration and behavior-oriented naming (`MaxRulePreviewItems`, `TruncatedPreviewSuffix`, `TruncationEllipsis`) in policy builder and tests. Links: https://github.com/EvotecIT/IntelligenceX/pull/115#discussion_r2775620920, https://github.com/EvotecIT/IntelligenceX/pull/115#discussion_r2775625708
+- [x] Split oversized analysis reporting tests into topic files to satisfy internal LOC maintainability rule (`IXLOC001`). Links: https://github.com/EvotecIT/IntelligenceX/pull/115
 </details>
 <details>
 <summary>PR #85 Static analysis catalog + CLI export</summary>
