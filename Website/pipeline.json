@@ -125,7 +125,7 @@
       "renderedInclude": "index.html,docs/**,faq/**,changelog/**,api/index.html",
       "renderedExclude": "docs/api/**,api-docs/**",
       "summary": true,
-      "summaryPath": "./_reports/audit-summary.json",
+      "summaryPath": "./_reports/doctor-summary.json",
       "summaryMaxIssues": 50,
       "checkUtf8": true,
       "checkMetaCharset": true,
