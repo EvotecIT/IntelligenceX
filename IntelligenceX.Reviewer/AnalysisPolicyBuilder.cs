@@ -8,7 +8,8 @@ namespace IntelligenceX.Reviewer;
 internal static class AnalysisPolicyBuilder {
     private const int MaxListItems = 10;
 
-    public static string BuildPolicy(ReviewSettings settings) {
+    public static string BuildPolicy(ReviewSettings settings, AnalysisLoadReport? loadReport = null,
+        IReadOnlyList<AnalysisFinding>? findings = null) {
         if (settings?.Analysis?.Enabled != true || settings.Analysis?.Results?.ShowPolicy != true) {
             return string.Empty;
         }
@@ -63,6 +64,11 @@ internal static class AnalysisPolicyBuilder {
         lines.Add($"Rules: {enabledRules.Count} enabled" +
                   (disabled.Count > 0 ? $", {disabled.Count} disabled" : string.Empty) +
                   (overridesCount > 0 ? $", {overridesCount} overrides" : string.Empty));
+        if (loadReport is not null) {
+            lines.Add(
+                $"Result files: {loadReport.ConfiguredInputs} input patterns, {loadReport.ResolvedInputFiles} matched, {loadReport.ParsedInputFiles} parsed, {loadReport.FailedInputFiles} failed");
+            AddOutcomeLines(lines, enabledRules, findings ?? Array.Empty<AnalysisFinding>(), loadReport);
+        }
 
         if (disabled.Count > 0) {
             var disabledList = disabled.OrderBy(item => item, StringComparer.OrdinalIgnoreCase).Take(MaxListItems).ToList();
@@ -98,5 +104,55 @@ internal static class AnalysisPolicyBuilder {
             return workspace;
         }
         return Environment.CurrentDirectory;
+    }
+
+    private static void AddOutcomeLines(ICollection<string> lines, IReadOnlyList<string> enabledRules,
+        IReadOnlyList<AnalysisFinding> findings, AnalysisLoadReport loadReport) {
+        if (lines is null) {
+            return;
+        }
+
+        if (loadReport.ResolvedInputFiles == 0) {
+            lines.Add("Status: unavailable");
+            lines.Add("Rule outcomes: unavailable (no analysis result files matched configured inputs)");
+            return;
+        }
+
+        var enabledSet = new HashSet<string>(enabledRules ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+        var findingRuleCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var finding in findings ?? Array.Empty<AnalysisFinding>()) {
+            if (string.IsNullOrWhiteSpace(finding.RuleId)) {
+                continue;
+            }
+            if (findingRuleCounts.TryGetValue(finding.RuleId!, out var count)) {
+                findingRuleCounts[finding.RuleId!] = count + 1;
+            } else {
+                findingRuleCounts[finding.RuleId!] = 1;
+            }
+        }
+
+        var impactedEnabledRules = findingRuleCounts.Keys.Where(rule => enabledSet.Contains(rule)).ToList();
+        var cleanEnabledRules = Math.Max(0, enabledSet.Count - impactedEnabledRules.Count);
+        var status = impactedEnabledRules.Count > 0 ? "fail" : (loadReport.FailedInputFiles > 0 ? "partial" : "pass");
+        lines.Add($"Status: {status}");
+        lines.Add($"Rule outcomes: {impactedEnabledRules.Count} with findings, {cleanEnabledRules} clean");
+
+        if (findingRuleCounts.Count == 0) {
+            return;
+        }
+
+        var unknownRuleCount = findingRuleCounts.Keys.Count(rule => !enabledSet.Contains(rule));
+        if (unknownRuleCount > 0) {
+            lines.Add($"Findings outside enabled packs: {unknownRuleCount} rule(s)");
+        }
+
+        var topRules = findingRuleCounts
+            .OrderByDescending(item => item.Value)
+            .ThenBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+            .Take(MaxListItems)
+            .Select(item => $"{item.Key}={item.Value}")
+            .ToList();
+        var suffix = findingRuleCounts.Count > topRules.Count ? " (truncated)" : string.Empty;
+        lines.Add($"Rules with findings: {string.Join(", ", topRules)}{suffix}");
     }
 }

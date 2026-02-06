@@ -87,6 +87,12 @@ internal static partial class Program {
             TestAnalyzeRunInternalFileSizeRuleWarnsOnUnknownTagPrefixes);
         failed += Run("Analyze run internal generated header scan can be disabled",
             TestAnalyzeRunInternalFileSizeRuleGeneratedHeaderScanCanBeDisabled);
+        failed += Run("Analysis policy reports rule outcomes", TestAnalysisPolicyReportsRuleOutcomes);
+        failed += Run("Analysis policy shows unavailable when no result files",
+            TestAnalysisPolicyShowsUnavailableWhenNoResultFiles);
+        failed += Run("Analysis summary shows zero findings", TestAnalysisSummaryShowsZeroFindings);
+        failed += Run("Analysis summary shows unavailable when no input files",
+            TestAnalysisSummaryShowsUnavailableWhenNoInputFiles);
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);
         failed += Run("Trim patch tail hunk", TestTrimPatchKeepsTailHunk);

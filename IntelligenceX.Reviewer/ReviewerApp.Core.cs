@@ -360,13 +360,14 @@ public static partial class ReviewerApp {
             var analysisResults = analysisSettings?.Results;
             if (analysisSettings?.Enabled == true && analysisResults is not null) {
                 try {
-                    var analysisFindings = AnalysisFindingsLoader.Load(settings, reviewFiles);
+                    var analysisLoad = AnalysisFindingsLoader.LoadWithReport(settings, reviewFiles);
+                    var analysisFindings = analysisLoad.Findings;
                     var analysisBlocks = new List<string>();
-                    var analysisPolicy = AnalysisPolicyBuilder.BuildPolicy(settings);
+                    var analysisPolicy = AnalysisPolicyBuilder.BuildPolicy(settings, analysisLoad.Report, analysisFindings);
                     if (!string.IsNullOrWhiteSpace(analysisPolicy)) {
                         analysisBlocks.Add(analysisPolicy);
                     }
-                    var analysisSummary = AnalysisSummaryBuilder.BuildSummary(analysisFindings, analysisResults);
+                    var analysisSummary = AnalysisSummaryBuilder.BuildSummary(analysisFindings, analysisResults, analysisLoad.Report);
                     if (!string.IsNullOrWhiteSpace(analysisSummary)) {
                         analysisBlocks.Add(analysisSummary);
                     }

@@ -8,9 +8,20 @@ namespace IntelligenceX.Reviewer;
 internal static class AnalysisSummaryBuilder {
     private const int MaxMessageChars = 200;
 
-    public static string BuildSummary(IReadOnlyList<AnalysisFinding> findings, AnalysisResultsSettings results) {
-        if (findings is null || findings.Count == 0 || results is null || !results.Summary) {
+    public static string BuildSummary(IReadOnlyList<AnalysisFinding> findings, AnalysisResultsSettings results,
+        AnalysisLoadReport? loadReport = null) {
+        if (results is null || !results.Summary) {
             return string.Empty;
+        }
+        findings ??= Array.Empty<AnalysisFinding>();
+        if (findings.Count == 0) {
+            var emptyLines = new List<string> {
+                "### Static analysis",
+                loadReport is not null && loadReport.ResolvedInputFiles == 0
+                    ? "Findings: unavailable (no analysis result files matched configured inputs)"
+                    : "Findings: 0 (no issues at or above configured severity)"
+            };
+            return string.Join("\n", emptyLines).TrimEnd();
         }
 
         var errorCount = 0;
