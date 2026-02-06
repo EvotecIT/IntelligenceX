@@ -99,6 +99,7 @@ internal static class Program {
         failed += Run("Analysis policy resolves overrides", TestAnalysisPolicyResolvesOverrides);
         failed += Run("Analysis policy disable tool rule id", TestAnalysisPolicyDisableToolRuleId);
         failed += Run("Analyze run disabled writes empty findings", TestAnalyzeRunDisabledWritesEmptyFindings);
+        failed += Run("Analyze run internal file size rule", TestAnalyzeRunInternalFileSizeRule);
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);
         failed += Run("Trim patch tail hunk", TestTrimPatchKeepsTailHunk);
@@ -1156,6 +1157,68 @@ internal static class Program {
             var content = File.ReadAllText(findingsPath);
             AssertEqual(true, content.Contains("intelligencex.findings.v1", StringComparison.Ordinal),
                 "analyze run schema");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalyzeRunInternalFileSizeRule() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-size-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["intelligencex-maintainability-default"]
+  }
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXLOC001.json"), """
+{
+  "id": "IXLOC001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXLOC001",
+  "title": "Source files should stay below 700 lines",
+  "description": "Flags oversized source files.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning"
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "rules": ["IXLOC001"]
+}
+""");
+
+            var largeFile = Path.Combine(temp, "LargeFile.cs");
+            var lines = Enumerable.Repeat("public class X { }", 705);
+            File.WriteAllText(largeFile, string.Join('\n', lines) + "\n");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run internal rule exit");
+            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
+            AssertEqual(true, File.Exists(findingsPath), "analyze run internal findings exists");
+            var content = File.ReadAllText(findingsPath);
+            AssertEqual(true, content.Contains("IXLOC001", StringComparison.Ordinal), "analyze run internal rule id");
+            AssertEqual(true, content.Contains("LargeFile.cs", StringComparison.Ordinal), "analyze run internal file path");
         } finally {
             if (Directory.Exists(temp)) {
                 Directory.Delete(temp, true);

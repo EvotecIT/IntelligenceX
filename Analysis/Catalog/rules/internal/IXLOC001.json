@@ -1,0 +1,12 @@
+{
+  "id": "IXLOC001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXLOC001",
+  "title": "Source files should stay below 700 lines",
+  "description": "Flags oversized source files to keep modules maintainable and easier to review.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["maintainability", "size", "structure"],
+  "docs": "Docs/reviewer/static-analysis.md"
+}

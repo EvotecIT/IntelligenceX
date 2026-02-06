@@ -13,6 +13,22 @@ namespace IntelligenceX.Cli.Analysis;
 
 internal static class AnalyzeRunCommand {
     private const string DefaultOutputDirectory = "artifacts";
+    private const string MaxFileLinesRuleId = "IXLOC001";
+    private const int MaxFileLinesLimit = 700;
+    private const string InternalToolName = "IntelligenceX.Maintainability";
+    private static readonly string[] GeneratedSuffixes = {
+        ".designer.cs",
+        ".generated.cs",
+        ".g.cs",
+        ".g.i.cs"
+    };
+    private static readonly string[] ExcludedDirectoryMarkers = {
+        "/.git/",
+        "/.worktrees/",
+        "/bin/",
+        "/obj/",
+        "/artifacts/"
+    };
     private static readonly JsonSerializerOptions FindingsJsonOptions = new() {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -74,6 +90,7 @@ internal static class AnalyzeRunCommand {
 
         var csharpRules = policy.SelectByLanguage("csharp", "cs");
         var powershellRules = policy.SelectByLanguage("powershell", "ps");
+        var internalRules = policy.SelectByLanguage("internal");
         var runWarnings = new List<string>();
         var runFailures = new List<string>();
         var findings = new List<AnalysisFindingItem>();
@@ -107,6 +124,9 @@ internal static class AnalyzeRunCommand {
                 } else {
                     findings.AddRange(psResult.Findings);
                 }
+            }
+            if (internalRules.Count > 0) {
+                findings.AddRange(RunInternalMaintainabilityChecks(workspace, internalRules, runWarnings));
             }
 
             if (csharpRules.Count == 0) {
@@ -218,6 +238,103 @@ internal static class AnalyzeRunCommand {
         } finally {
             TryDeleteFile(tempScript);
         }
+    }
+
+    private static IReadOnlyList<AnalysisFindingItem> RunInternalMaintainabilityChecks(string workspace,
+        IReadOnlyList<AnalysisPolicyRule> rules, List<string> warnings) {
+        var findings = new List<AnalysisFindingItem>();
+        var maxLinesRule = rules.FirstOrDefault(rule => IsRuleMatch(rule.Rule, MaxFileLinesRuleId));
+        if (maxLinesRule is null) {
+            return findings;
+        }
+
+        var severity = NormalizeSeverity(maxLinesRule.Severity);
+        foreach (var file in Directory.EnumerateFiles(workspace, "*.cs", SearchOption.AllDirectories)) {
+            var fullPath = Path.GetFullPath(file);
+            var relativePath = Path.GetRelativePath(workspace, fullPath).Replace('\\', '/');
+            if (IsExcludedSourceFile(relativePath)) {
+                continue;
+            }
+
+            int lineCount;
+            try {
+                lineCount = CountFileLines(fullPath);
+            } catch (Exception ex) {
+                warnings.Add($"Failed to read file for line-count check ({relativePath}): {ex.Message}");
+                continue;
+            }
+            if (lineCount <= MaxFileLinesLimit) {
+                continue;
+            }
+
+            findings.Add(new AnalysisFindingItem {
+                Path = relativePath,
+                Line = 1,
+                Severity = severity,
+                Message = $"File has {lineCount} lines (limit {MaxFileLinesLimit}). Split into smaller units.",
+                RuleId = maxLinesRule.Rule.Id,
+                Tool = InternalToolName,
+                Fingerprint = $"{maxLinesRule.Rule.Id}:{relativePath}:{lineCount}"
+            });
+        }
+
+        Console.WriteLine($"Internal maintainability findings: {findings.Count} item(s).");
+        return findings;
+    }
+
+    private static bool IsRuleMatch(AnalysisRule rule, string expectedRuleId) {
+        if (rule is null || string.IsNullOrWhiteSpace(expectedRuleId)) {
+            return false;
+        }
+        if (string.Equals(rule.Id, expectedRuleId, StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+        return string.Equals(rule.ToolRuleId, expectedRuleId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsExcludedSourceFile(string relativePath) {
+        if (string.IsNullOrWhiteSpace(relativePath)) {
+            return true;
+        }
+        var normalized = "/" + relativePath.Replace('\\', '/').TrimStart('/');
+        foreach (var marker in ExcludedDirectoryMarkers) {
+            if (normalized.Contains(marker, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+        foreach (var suffix in GeneratedSuffixes) {
+            if (normalized.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int CountFileLines(string path) {
+        var count = 0;
+        using var reader = new StreamReader(path);
+        while (reader.ReadLine() is not null) {
+            count++;
+        }
+        return count;
+    }
+
+    private static string NormalizeSeverity(string? severity) {
+        if (string.IsNullOrWhiteSpace(severity)) {
+            return "warning";
+        }
+        return severity.Trim().ToLowerInvariant() switch {
+            "critical" => "error",
+            "high" => "error",
+            "error" => "error",
+            "warning" => "warning",
+            "warn" => "warning",
+            "medium" => "warning",
+            "info" => "info",
+            "information" => "info",
+            "low" => "info",
+            _ => "warning"
+        };
     }
 
     private static TemporaryFileScope? PrepareEditorConfigOverride(AnalysisSettings settings, string workspace,

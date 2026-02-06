@@ -13,6 +13,8 @@ This command:
 - Runs C# analysis through `dotnet build` and emits SARIF (`artifacts/intelligencex.roslyn.sarif`).
 - Runs PowerShell analysis through PSScriptAnalyzer (if available) and emits IntelligenceX findings JSON
   (`artifacts/intelligencex.findings.json`).
+- Runs built-in IntelligenceX maintainability checks for selected internal rules (for example `IXLOC001`
+  for max file length).
 - Applies `configMode` during the run without committing analyzer config files.
 
 Optional flags:

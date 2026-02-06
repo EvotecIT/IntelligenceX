@@ -11,7 +11,7 @@ This document proposes how IntelligenceX can offer default static analysis rules
 
 ## User Experience (Onboarding)
 - The wizard offers a single toggle: "Enable static analysis (recommended)."
-- Users select one or more packs (for example `csharp-default`, `powershell-default`).
+- Users select one or more packs (for example `csharp-default`, `powershell-default`, `intelligencex-maintainability-default`).
 - Users can optionally toggle individual rules and change severities.
 - The wizard writes the `analysis` section into `.intelligencex/reviewer.json`.
 
@@ -23,7 +23,7 @@ All enablement decisions live in `.intelligencex/reviewer.json`. Analyzer tool c
 {
   "analysis": {
     "enabled": true,
-    "packs": ["csharp-default", "powershell-default"],
+    "packs": ["csharp-default", "powershell-default", "intelligencex-maintainability-default"],
     "disabledRules": ["CA2000"],
     "severityOverrides": { "CA1062": "error" },
     "configMode": "respect",
@@ -51,6 +51,7 @@ Each rule has a metadata file with descriptions and mapping to the underlying an
 Proposed layout:
 - `Analysis/Catalog/rules/csharp/CA2000.json`
 - `Analysis/Catalog/rules/powershell/PSAvoidUsingWriteHost.json`
+- `Analysis/Catalog/rules/internal/IXLOC001.json`
 
 Example rule file:
 ```json
@@ -73,6 +74,7 @@ Packs are curated lists of rule IDs plus optional severity overrides.
 Proposed layout:
 - `Analysis/Packs/csharp-default.json`
 - `Analysis/Packs/powershell-default.json`
+- `Analysis/Packs/intelligencex-maintainability-default.json`
 
 Example pack:
 ```json
@@ -97,6 +99,7 @@ During analysis runs, configs are generated to a temporary directory and cleaned
 Current built-in runners in `analyze run`:
 - C#: Roslyn via `dotnet build` (SARIF output).
 - PowerShell: PSScriptAnalyzer via `pwsh` (IntelligenceX findings JSON output).
+- Internal: IntelligenceX maintainability checks (for example `IXLOC001` max 700 lines per `.cs` file).
 
 For JS/TS and Python today, teams can still produce SARIF with their preferred tools and include those files in
 `analysis.results.inputs`.
