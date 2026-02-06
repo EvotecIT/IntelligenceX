@@ -103,10 +103,12 @@
       "cacheHeadersOut": "_headers"
     },
     {
-      "task": "audit",
-      "id": "audit-site",
+      "task": "doctor",
+      "id": "doctor-site",
       "dependsOn": "optimize-site",
       "siteRoot": "./_site",
+      "noBuild": true,
+      "noVerify": true,
       "ignoreNav": "sitemap/**",
       "noDefaultIgnoreNav": true,
       "navSelector": "header nav.ix-nav",
