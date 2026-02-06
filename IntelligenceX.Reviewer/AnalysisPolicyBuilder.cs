@@ -8,6 +8,7 @@ namespace IntelligenceX.Reviewer;
 internal static class AnalysisPolicyBuilder {
     private const int MaxListItems = 10;
     private const int MaxUnavailableReasonTextElements = 120;
+    private const int MaxRulePreviewTitleTextElements = 80;
 
     public static string BuildPolicy(ReviewSettings settings, AnalysisLoadResult? loadResult = null) {
         if (!TryBuildBasePolicy(settings, out var lines, out var enabledRules, out var disabled, out var overrides,
@@ -88,6 +89,7 @@ internal static class AnalysisPolicyBuilder {
             }
         }
 
+        // Effective enabled order follows pack rule order after disabled-rule filtering.
         enabledRules = selectedRules.Where(rule => !disabledSet.Contains(rule)).ToList();
 
         lines = new List<string> {
@@ -176,7 +178,7 @@ internal static class AnalysisPolicyBuilder {
         if (string.IsNullOrWhiteSpace(rule.Title)) {
             return rule.Id;
         }
-        return $"{rule.Id} ({rule.Title})";
+        return $"{rule.Id} ({TruncatePreviewTitle(rule.Title)})";
     }
 
     private static void AddOutcomeLines(ICollection<string> lines, IReadOnlyList<string> enabledRules,
@@ -260,5 +262,14 @@ internal static class AnalysisPolicyBuilder {
 
     private static string? NormalizeRuleId(string? ruleId) {
         return string.IsNullOrWhiteSpace(ruleId) ? null : ruleId.Trim();
+    }
+
+    private static string TruncatePreviewTitle(string title) {
+        var resolved = title.Trim();
+        var info = new global::System.Globalization.StringInfo(resolved);
+        if (info.LengthInTextElements <= MaxRulePreviewTitleTextElements) {
+            return resolved;
+        }
+        return info.SubstringByTextElements(0, MaxRulePreviewTitleTextElements) + "...";
     }
 }

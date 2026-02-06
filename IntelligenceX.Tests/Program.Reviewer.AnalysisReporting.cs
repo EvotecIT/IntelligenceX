@@ -224,6 +224,8 @@ internal static partial class Program {
             AssertContainsText(policy, "Rule outcomes: unavailable (no enabled rules configured)",
                 "analysis policy no-enabled-rules outcomes");
             AssertContainsText(policy, "Enabled rules preview: none", "analysis policy no-enabled-rules preview");
+            AssertEqual(false, policy.Contains("(truncated)", StringComparison.Ordinal),
+                "analysis policy no-enabled-rules truncation absence");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             if (Directory.Exists(temp)) {
@@ -242,10 +244,12 @@ internal static partial class Program {
             Directory.CreateDirectory(rulesDir);
             Directory.CreateDirectory(packsDir);
 
+            var longTitle = "Rule 3 " + new string('X', 120);
+            var expectedLongTitle = "Rule 3 " + new string('X', 73) + "...";
             var ruleIds = new List<string>();
             for (var i = 1; i <= 11; i++) {
                 var id = $"IXPREV{i:000}";
-                var title = i == 2 ? string.Empty : $"Rule {i}";
+                var title = i == 2 ? string.Empty : (i == 3 ? longTitle : $"Rule {i}");
                 ruleIds.Add(id);
                 File.WriteAllText(Path.Combine(rulesDir, $"{id}.json"), $$"""
 {
@@ -280,9 +284,10 @@ internal static partial class Program {
             var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
                 new AnalysisLoadResult(Array.Empty<AnalysisFinding>(), new AnalysisLoadReport(1, 1, 1, 0)));
 
-            AssertContainsText(policy, "Enabled rules preview: IXPREV001 (Rule 1), IXPREV002, IXPREV003 (Rule 3)",
+            AssertContainsText(policy, $"Enabled rules preview: IXPREV001 (Rule 1), IXPREV002, IXPREV003 ({expectedLongTitle})",
                 "analysis policy preview leading entries");
             AssertContainsText(policy, "(truncated)", "analysis policy preview truncation suffix");
+            AssertContainsText(policy, "IXPREV010 (Rule 10)", "analysis policy preview includes boundary rule");
             AssertEqual(false, policy.Contains("IXPREV011", StringComparison.Ordinal),
                 "analysis policy preview excludes overflow rules");
         } finally {
