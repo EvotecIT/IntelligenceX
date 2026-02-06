@@ -249,16 +249,21 @@ internal static class AnalyzeRunCommand {
         }
 
         var severity = NormalizeSeverity(maxLinesRule.Severity);
-        foreach (var file in Directory.EnumerateFiles(workspace, "*.cs", SearchOption.AllDirectories)) {
-            var fullPath = Path.GetFullPath(file);
-            var relativePath = Path.GetRelativePath(workspace, fullPath).Replace('\\', '/');
-            if (IsExcludedSourceFile(relativePath)) {
-                continue;
-            }
+        var sourceFiles = Directory
+            .EnumerateFiles(workspace, "*.cs", SearchOption.AllDirectories)
+            .Select(path => Path.GetFullPath(path))
+            .Select(fullPath => new {
+                FullPath = fullPath,
+                RelativePath = Path.GetRelativePath(workspace, fullPath).Replace('\\', '/')
+            })
+            .Where(file => !IsExcludedSourceFile(file.RelativePath));
+
+        foreach (var sourceFile in sourceFiles) {
+            var relativePath = sourceFile.RelativePath;
 
             int lineCount;
             try {
-                lineCount = CountFileLines(fullPath);
+                lineCount = CountFileLines(sourceFile.FullPath);
             } catch (Exception ex) {
                 warnings.Add($"Failed to read file for line-count check ({relativePath}): {ex.Message}");
                 continue;
@@ -297,17 +302,10 @@ internal static class AnalyzeRunCommand {
             return true;
         }
         var normalized = "/" + relativePath.Replace('\\', '/').TrimStart('/');
-        foreach (var marker in ExcludedDirectoryMarkers) {
-            if (normalized.Contains(marker, StringComparison.OrdinalIgnoreCase)) {
-                return true;
-            }
+        if (ExcludedDirectoryMarkers.Any(marker => normalized.Contains(marker, StringComparison.OrdinalIgnoreCase))) {
+            return true;
         }
-        foreach (var suffix in GeneratedSuffixes) {
-            if (normalized.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) {
-                return true;
-            }
-        }
-        return false;
+        return GeneratedSuffixes.Any(suffix => normalized.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
     }
 
     private static int CountFileLines(string path) {

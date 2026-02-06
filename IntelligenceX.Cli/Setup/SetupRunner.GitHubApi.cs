@@ -14,7 +14,7 @@ internal static partial class SetupRunner {
         public static async Task<string?> LoginAsync(string clientId, string authBaseUrl, string scopes) {
             using var http = new HttpClient();
             var deviceUri = new Uri(new Uri(authBaseUrl), "/login/device/code");
-            var request = new HttpRequestMessage(HttpMethod.Post, deviceUri) {
+            using var request = new HttpRequestMessage(HttpMethod.Post, deviceUri) {
                 Content = new FormUrlEncodedContent(new Dictionary<string, string> {
                     ["client_id"] = clientId,
                     ["scope"] = scopes
@@ -22,7 +22,7 @@ internal static partial class SetupRunner {
             };
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-            var response = await http.SendAsync(request).ConfigureAwait(false);
+            using var response = await http.SendAsync(request).ConfigureAwait(false);
             var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             using var doc = JsonDocument.Parse(json);
@@ -44,7 +44,7 @@ internal static partial class SetupRunner {
             var deadline = DateTimeOffset.UtcNow.AddSeconds(expiresIn);
             while (DateTimeOffset.UtcNow < deadline) {
                 await Task.Delay(TimeSpan.FromSeconds(interval)).ConfigureAwait(false);
-                var pollRequest = new HttpRequestMessage(HttpMethod.Post, tokenUri) {
+                using var pollRequest = new HttpRequestMessage(HttpMethod.Post, tokenUri) {
                     Content = new FormUrlEncodedContent(new Dictionary<string, string> {
                         ["client_id"] = clientId,
                         ["device_code"] = deviceCode!,
@@ -53,7 +53,7 @@ internal static partial class SetupRunner {
                 };
                 pollRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-                var pollResponse = await http.SendAsync(pollRequest).ConfigureAwait(false);
+                using var pollResponse = await http.SendAsync(pollRequest).ConfigureAwait(false);
                 var pollJson = await pollResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
                 pollResponse.EnsureSuccessStatusCode();
                 using var pollDoc = JsonDocument.Parse(pollJson);
@@ -106,10 +106,10 @@ internal static partial class SetupRunner {
                     var fullName = item.GetProperty("full_name").GetString() ?? string.Empty;
                     var isPrivate = item.GetProperty("private").GetBoolean();
                     DateTimeOffset? updatedAt = null;
-                    if (item.TryGetProperty("updated_at", out var updatedProperty) && updatedProperty.ValueKind == JsonValueKind.String) {
-                        if (DateTimeOffset.TryParse(updatedProperty.GetString(), out var parsed)) {
-                            updatedAt = parsed;
-                        }
+                    if (item.TryGetProperty("updated_at", out var updatedProperty)
+                        && updatedProperty.ValueKind == JsonValueKind.String
+                        && DateTimeOffset.TryParse(updatedProperty.GetString(), out var parsed)) {
+                        updatedAt = parsed;
                     }
                     if (!string.IsNullOrWhiteSpace(fullName)) {
                         repos.Add(new RepositoryInfo(fullName, isPrivate, updatedAt));
