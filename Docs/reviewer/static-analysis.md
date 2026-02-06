@@ -100,7 +100,7 @@ Current built-in runners in `analyze run`:
 - C#: Roslyn via `dotnet build` (SARIF output).
 - PowerShell: PSScriptAnalyzer via `pwsh` (IntelligenceX findings JSON output).
 - Internal: IntelligenceX maintainability checks (for example `IXLOC001`).
-  - `IXLOC001` reads `max-lines:<n>` rule tags (default `700`) and supports configurable generated suffix tags (`generated-suffix:<value>`), generated header marker tags (`generated-marker:<value>`), and optional generated header scan depth tags (`generated-header-lines:<n>`).
+  - `IXLOC001` reads `max-lines:<n>` rule tags (default `700`) and supports configurable generated suffix tags (`generated-suffix:<value>`), generated header marker tags (`generated-marker:<value>`), optional generated header scan depth tags (`generated-header-lines:<n>`), and additional excluded directory segments (`exclude-dir:<segment>`).
   - Generated suffix and marker tags are additive; defaults remain enabled unless you disable the rule.
 
 For JS/TS and Python today, teams can still produce SARIF with their preferred tools and include those files in

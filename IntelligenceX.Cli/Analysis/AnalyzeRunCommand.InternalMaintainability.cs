@@ -25,6 +25,7 @@ internal static partial class AnalyzeRunCommand {
         var generatedSuffixes = ResolveGeneratedSuffixes(maxLinesRule.Rule, warnings);
         var generatedHeaderMarkers = ResolveGeneratedHeaderMarkers(maxLinesRule.Rule, warnings);
         var generatedHeaderLinesToInspect = ResolveGeneratedHeaderLinesToInspect(maxLinesRule.Rule, warnings);
+        var excludedDirectorySegments = ResolveExcludedDirectorySegments(maxLinesRule.Rule, warnings);
         var excludedOutputPath = TryGetRelativePathWithinWorkspace(workspace, outputDirectory);
         var emittedRuleId = string.IsNullOrWhiteSpace(maxLinesRule.Rule.ToolRuleId)
             ? maxLinesRule.Rule.Id
@@ -33,13 +34,14 @@ internal static partial class AnalyzeRunCommand {
             ? InternalToolName
             : maxLinesRule.Rule.Tool;
 
-        var sourceFiles = EnumerateCSharpFiles(workspace, excludedOutputPath, warnings)
+        var sourceFiles = EnumerateCSharpFiles(workspace, excludedDirectorySegments, excludedOutputPath, warnings)
             .Select(path => Path.GetFullPath(path))
             .Select(fullPath => new {
                 FullPath = fullPath,
                 RelativePath = Path.GetRelativePath(workspace, fullPath).Replace('\\', '/')
             })
             .Where(file => !IsExcludedSourceFile(file.FullPath, file.RelativePath, generatedSuffixes, generatedHeaderMarkers,
+                excludedDirectorySegments,
                 generatedHeaderLinesToInspect, excludedOutputPath));
 
         foreach (var sourceFile in sourceFiles) {
@@ -195,6 +197,43 @@ internal static partial class AnalyzeRunCommand {
         return GeneratedHeaderLinesToInspect;
     }
 
+    private static IReadOnlySet<string> ResolveExcludedDirectorySegments(AnalysisRule rule, List<string> warnings) {
+        var segments = new HashSet<string>(DefaultExcludedDirectorySegments, StringComparer.OrdinalIgnoreCase);
+        if (rule?.Tags is null || rule.Tags.Count == 0) {
+            return segments;
+        }
+
+        foreach (var tag in rule.Tags) {
+            if (string.IsNullOrWhiteSpace(tag) ||
+                !tag.StartsWith(ExcludedDirectoryTagPrefix, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            var segment = NormalizeExcludedDirectoryTagValue(tag.Substring(ExcludedDirectoryTagPrefix.Length));
+            if (!string.IsNullOrWhiteSpace(segment)) {
+                segments.Add(segment);
+            } else {
+                warnings.Add(
+                    $"Rule {rule.Id} has malformed tag '{tag}'. Expected '{ExcludedDirectoryTagPrefix}<segment>'.");
+            }
+        }
+
+        return segments;
+    }
+
+    private static string? NormalizeExcludedDirectoryTagValue(string rawValue) {
+        if (string.IsNullOrWhiteSpace(rawValue)) {
+            return null;
+        }
+        var value = rawValue.Trim().Replace('\\', '/').Trim('/');
+        if (value.Length == 0) {
+            return null;
+        }
+        if (value.Contains('/', StringComparison.Ordinal)) {
+            return null;
+        }
+        return value;
+    }
+
     private static string? NormalizeGeneratedHeaderMarkerTagValue(string rawValue) {
         if (string.IsNullOrWhiteSpace(rawValue)) {
             return null;
@@ -203,7 +242,8 @@ internal static partial class AnalyzeRunCommand {
         return value.Length == 0 ? null : value;
     }
 
-    private static IEnumerable<string> EnumerateCSharpFiles(string workspace, string? excludedOutputPath, List<string> warnings) {
+    private static IEnumerable<string> EnumerateCSharpFiles(string workspace, IReadOnlySet<string> excludedDirectorySegments,
+        string? excludedOutputPath, List<string> warnings) {
         var pending = new Stack<string>();
         pending.Push(workspace);
 
@@ -220,7 +260,7 @@ internal static partial class AnalyzeRunCommand {
             }
 
             foreach (var subdirectory in subdirectories) {
-                if (!IsExcludedDirectory(workspace, subdirectory, excludedOutputPath)) {
+                if (!IsExcludedDirectory(workspace, subdirectory, excludedDirectorySegments, excludedOutputPath)) {
                     pending.Push(subdirectory);
                 }
             }
@@ -240,18 +280,20 @@ internal static partial class AnalyzeRunCommand {
         }
     }
 
-    private static bool IsExcludedDirectory(string workspace, string fullPath, string? excludedOutputPath) {
+    private static bool IsExcludedDirectory(string workspace, string fullPath, IReadOnlySet<string> excludedDirectorySegments,
+        string? excludedOutputPath) {
         var relativePath = Path.GetRelativePath(workspace, fullPath).Replace('\\', '/');
-        return ContainsExcludedDirectorySegment(relativePath) ||
+        return ContainsExcludedDirectorySegment(relativePath, excludedDirectorySegments) ||
             IsPathUnderRelativeRoot(relativePath, excludedOutputPath);
     }
 
     private static bool IsExcludedSourceFile(string fullPath, string relativePath, IReadOnlyCollection<string> generatedSuffixes,
-        IReadOnlyCollection<string> generatedHeaderMarkers, int generatedHeaderLinesToInspect, string? excludedOutputPath) {
+        IReadOnlyCollection<string> generatedHeaderMarkers, IReadOnlySet<string> excludedDirectorySegments,
+        int generatedHeaderLinesToInspect, string? excludedOutputPath) {
         if (string.IsNullOrWhiteSpace(relativePath)) {
             return true;
         }
-        if (ContainsExcludedDirectorySegment(relativePath)) {
+        if (ContainsExcludedDirectorySegment(relativePath, excludedDirectorySegments)) {
             return true;
         }
         if (IsPathUnderRelativeRoot(relativePath, excludedOutputPath)) {
@@ -267,11 +309,11 @@ internal static partial class AnalyzeRunCommand {
         return HasGeneratedFileHeader(fullPath, generatedHeaderMarkers, generatedHeaderLinesToInspect);
     }
 
-    private static bool ContainsExcludedDirectorySegment(string relativePath) {
+    private static bool ContainsExcludedDirectorySegment(string relativePath, IReadOnlySet<string> excludedDirectorySegments) {
         var segments = relativePath
             .Replace('\\', '/')
             .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-        return segments.Any(segment => ExcludedDirectorySegments.Contains(segment));
+        return segments.Any(segment => excludedDirectorySegments.Contains(segment));
     }
 
     private static string? TryGetRelativePathWithinWorkspace(string workspace, string path) {

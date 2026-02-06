@@ -20,13 +20,14 @@ internal static partial class AnalyzeRunCommand {
     private const string InternalToolName = "IntelligenceX.Maintainability";
     private const string GeneratedSuffixTagPrefix = "generated-suffix:";
     private const string GeneratedMarkerTagPrefix = "generated-marker:";
+    private const string ExcludedDirectoryTagPrefix = "exclude-dir:";
     private static readonly string[] DefaultGeneratedSuffixes = {
         ".designer.cs",
         ".generated.cs",
         ".g.cs",
         ".g.i.cs"
     };
-    private static readonly HashSet<string> ExcludedDirectorySegments = new(StringComparer.OrdinalIgnoreCase) {
+    private static readonly string[] DefaultExcludedDirectorySegments = {
         ".git",
         ".worktrees",
         ".vs",

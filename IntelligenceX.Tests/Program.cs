@@ -77,6 +77,8 @@ internal static partial class Program {
             TestAnalyzeRunInternalFileSizeRuleCustomGeneratedSuffixCaseInsensitive);
         failed += Run("Analyze run internal generated header scan override",
             TestAnalyzeRunInternalFileSizeRuleGeneratedHeaderLineOverride);
+        failed += Run("Analyze run internal custom excluded directory",
+            TestAnalyzeRunInternalFileSizeRuleCustomExcludedDirectory);
         failed += Run("Analyze run internal file size newline variants",
             TestAnalyzeRunInternalFileSizeRuleHandlesLineEndings);
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
