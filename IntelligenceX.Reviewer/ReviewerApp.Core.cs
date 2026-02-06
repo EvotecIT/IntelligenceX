@@ -523,19 +523,50 @@ public static partial class ReviewerApp {
             return ex.GetType().Name;
         }
 
-        var workspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
-        if (!string.IsNullOrWhiteSpace(workspace)) {
-            message = message.Replace(workspace, "<workspace>", StringComparison.OrdinalIgnoreCase);
-        }
-        var current = Environment.CurrentDirectory;
-        if (!string.IsNullOrWhiteSpace(current)) {
-            message = message.Replace(current, "<workspace>", StringComparison.OrdinalIgnoreCase);
-        }
-        if (message.Length > 200) {
-            message = message.Substring(0, 200) + "...";
-        }
+        message = RedactPathRoot(message, Environment.GetEnvironmentVariable("GITHUB_WORKSPACE"));
+        message = RedactPathRoot(message, Environment.CurrentDirectory);
+        message = RedactPathRoot(message, Path.GetTempPath());
+        message = RedactPathRoot(message, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        message = TruncateByTextElements(message, 200);
 
         return $"{ex.GetType().Name}: {message}";
+    }
+
+    private static string RedactPathRoot(string message, string? root) {
+        if (string.IsNullOrWhiteSpace(message) || string.IsNullOrWhiteSpace(root)) {
+            return message;
+        }
+
+        var normalized = root.Trim();
+        if (normalized.Length == 0) {
+            return message;
+        }
+
+        var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+            normalized
+        };
+        var trimmed = normalized.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (trimmed.Length > 0) {
+            candidates.Add(trimmed);
+            candidates.Add(trimmed + Path.DirectorySeparatorChar);
+            candidates.Add(trimmed + Path.AltDirectorySeparatorChar);
+        }
+
+        foreach (var candidate in candidates.OrderByDescending(item => item.Length)) {
+            message = message.Replace(candidate, "<workspace>", StringComparison.OrdinalIgnoreCase);
+        }
+        return message;
+    }
+
+    private static string TruncateByTextElements(string value, int maxTextElements) {
+        if (string.IsNullOrWhiteSpace(value) || maxTextElements <= 0) {
+            return string.Empty;
+        }
+        var info = new global::System.Globalization.StringInfo(value);
+        if (info.LengthInTextElements <= maxTextElements) {
+            return value;
+        }
+        return info.SubstringByTextElements(0, maxTextElements) + "...";
     }
 
     internal static async Task<bool> TryUpdateFailureSummaryAsync(string? githubToken, string? apiBaseUrl,

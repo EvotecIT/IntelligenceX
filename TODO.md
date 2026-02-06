@@ -257,6 +257,10 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Add ordering-insensitive dedupe regression coverage for resolved analysis inputs. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774571405
 - [x] Add explicit coverage that duplicate bad input matches increment `FailedInputFiles` once per unique file. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774571492
 - [x] Keep unavailable reason exposure bounded (type + sanitized/truncated message) for user-facing review blocks. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774571048
+- [x] Expand path-root redaction coverage for unavailable reason formatting (workspace/current/temp/profile variants). Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774639419
+- [x] Use text-element-safe truncation for unavailable reason rendering to avoid splitting grapheme clusters. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774639474
+- [x] Add defensive sanitize/trim path in `BuildUnavailablePolicy` for future raw-reason callers. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774639591
+- [x] Keep recoverable parser exception rationale explicit and verify single-failure counting via tests. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774639515
 
 </details>
 <details>

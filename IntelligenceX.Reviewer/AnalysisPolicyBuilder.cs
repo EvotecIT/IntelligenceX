@@ -30,9 +30,7 @@ internal static class AnalysisPolicyBuilder {
             return string.Empty;
         }
 
-        var resolvedReason = string.IsNullOrWhiteSpace(reason)
-            ? "internal error while loading analysis results"
-            : reason.Trim();
+        var resolvedReason = SanitizeUnavailableReason(reason);
         lines.Add("- Status: unavailable ℹ️");
         lines.Add($"- Rule outcomes: unavailable ({resolvedReason})");
         AddRuleConfigurationLines(lines, disabled, overrides, overridesCount);
@@ -210,6 +208,21 @@ internal static class AnalysisPolicyBuilder {
             "unavailable" => "unavailable ℹ️",
             _ => status
         };
+    }
+
+    private static string SanitizeUnavailableReason(string? reason) {
+        var resolved = string.IsNullOrWhiteSpace(reason)
+            ? "internal error while loading analysis results"
+            : reason.Replace("\r", " ").Replace("\n", " ").Trim();
+        if (string.IsNullOrWhiteSpace(resolved)) {
+            return "internal error while loading analysis results";
+        }
+
+        var info = new global::System.Globalization.StringInfo(resolved);
+        if (info.LengthInTextElements <= 200) {
+            return resolved;
+        }
+        return info.SubstringByTextElements(0, 200) + "...";
     }
 
     private static string? NormalizeRuleId(string? ruleId) {

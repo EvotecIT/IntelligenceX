@@ -368,6 +368,8 @@ internal static class AnalysisFindingsLoader {
     }
 
     private static bool IsRecoverableLoadException(Exception ex) {
+        // Each file chooses one parse path (SARIF vs findings JSON), so recoverable failures
+        // should increment counters once per unique file and never cascade across parser attempts.
         return ex is IOException or UnauthorizedAccessException or FormatException or JsonException;
     }
 
