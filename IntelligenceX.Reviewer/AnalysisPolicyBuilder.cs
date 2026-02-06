@@ -8,6 +8,7 @@ namespace IntelligenceX.Reviewer;
 internal static class AnalysisPolicyBuilder {
     private const int MaxListItems = 10;
     private const int MaxUnavailableReasonTextElements = 120;
+    private const int MaxRulePreviewTitleTextElements = 80;
 
     public static string BuildPolicy(ReviewSettings settings, AnalysisLoadResult? loadResult = null) {
         if (!TryBuildBasePolicy(settings, out var lines, out var enabledRules, out var disabled, out var overrides,
@@ -69,7 +70,8 @@ internal static class AnalysisPolicyBuilder {
         var overrideCount = overrideMap.Count;
 
         var packSummaries = new List<string>();
-        var selectedRules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var selectedRuleIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var selectedRules = new List<string>();
         var missingPacks = new List<string>();
         foreach (var packId in packs) {
             if (catalog.TryGetPack(packId, out var pack)) {
@@ -78,13 +80,16 @@ internal static class AnalysisPolicyBuilder {
                     if (string.IsNullOrWhiteSpace(ruleId)) {
                         continue;
                     }
-                    selectedRules.Add(ruleId);
+                    if (selectedRuleIds.Add(ruleId)) {
+                        selectedRules.Add(ruleId);
+                    }
                 }
             } else if (!string.IsNullOrWhiteSpace(packId)) {
                 missingPacks.Add(packId);
             }
         }
 
+        // Effective enabled order follows pack rule order after disabled-rule filtering.
         enabledRules = selectedRules.Where(rule => !disabledSet.Contains(rule)).ToList();
 
         lines = new List<string> {
@@ -102,6 +107,7 @@ internal static class AnalysisPolicyBuilder {
         lines.Add($"- Rules: {enabledRules.Count} enabled" +
                   (disabledSet.Count > 0 ? $", {disabledSet.Count} disabled" : string.Empty) +
                   (overrideCount > 0 ? $", {overrideCount} overrides" : string.Empty));
+        AddEnabledRulePreviewLine(lines, enabledRules, catalog);
         disabled = disabledSet;
         overrides = overrideMap;
         overridesCount = overrideCount;
@@ -148,6 +154,31 @@ internal static class AnalysisPolicyBuilder {
             return workspace;
         }
         return Environment.CurrentDirectory;
+    }
+
+    private static void AddEnabledRulePreviewLine(IList<string> lines, IReadOnlyList<string> enabledRules,
+        AnalysisCatalog catalog) {
+        if (enabledRules.Count == 0) {
+            lines.Add("- Enabled rules preview: none");
+            return;
+        }
+
+        var preview = enabledRules
+            .Take(MaxListItems)
+            .Select(ruleId => DescribeRuleForPreview(ruleId, catalog))
+            .ToList();
+        var suffix = enabledRules.Count > preview.Count ? " (truncated)" : string.Empty;
+        lines.Add($"- Enabled rules preview: {string.Join(", ", preview)}{suffix}");
+    }
+
+    private static string DescribeRuleForPreview(string ruleId, AnalysisCatalog? catalog) {
+        if (catalog is null || !catalog.TryGetRule(ruleId, out var rule)) {
+            return ruleId;
+        }
+        if (string.IsNullOrWhiteSpace(rule.Title)) {
+            return rule.Id;
+        }
+        return $"{rule.Id} ({TruncatePreviewTitle(rule.Title)})";
     }
 
     private static void AddOutcomeLines(ICollection<string> lines, IReadOnlyList<string> enabledRules,
@@ -231,5 +262,14 @@ internal static class AnalysisPolicyBuilder {
 
     private static string? NormalizeRuleId(string? ruleId) {
         return string.IsNullOrWhiteSpace(ruleId) ? null : ruleId.Trim();
+    }
+
+    private static string TruncatePreviewTitle(string title) {
+        var resolved = title.Trim();
+        var info = new global::System.Globalization.StringInfo(resolved);
+        if (info.LengthInTextElements <= MaxRulePreviewTitleTextElements) {
+            return resolved;
+        }
+        return info.SubstringByTextElements(0, MaxRulePreviewTitleTextElements) + "...";
     }
 }
