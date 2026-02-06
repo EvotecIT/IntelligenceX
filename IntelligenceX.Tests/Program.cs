@@ -101,6 +101,8 @@ internal static class Program {
         failed += Run("Analyze run disabled writes empty findings", TestAnalyzeRunDisabledWritesEmptyFindings);
         failed += Run("Analyze run internal file size rule", TestAnalyzeRunInternalFileSizeRule);
         failed += Run("Analyze run internal file size severity none", TestAnalyzeRunInternalFileSizeRuleDisabledBySeverity);
+        failed += Run("Analyze run internal file size skips generated and excluded paths",
+            TestAnalyzeRunInternalFileSizeRuleSkipsGeneratedAndExcluded);
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);
         failed += Run("Trim patch tail hunk", TestTrimPatchKeepsTailHunk);
@@ -1284,6 +1286,73 @@ internal static class Program {
             AssertEqual(true, File.Exists(findingsPath), "analyze run internal severity none findings exists");
             var content = File.ReadAllText(findingsPath);
             AssertEqual(false, content.Contains("IXLOC001", StringComparison.Ordinal), "analyze run internal severity none suppresses rule");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalyzeRunInternalFileSizeRuleSkipsGeneratedAndExcluded() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-size-skip-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+            Directory.CreateDirectory(Path.Combine(temp, "obj"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["intelligencex-maintainability-default"]
+  }
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXLOC001.json"), """
+{
+  "id": "IXLOC001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXLOC001",
+  "title": "Source files should stay below 700 lines",
+  "description": "Flags oversized source files.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning"
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "rules": ["IXLOC001"]
+}
+""");
+
+            var lines = Enumerable.Repeat("public class X { }", 705);
+            File.WriteAllText(Path.Combine(temp, "Regular.cs"), string.Join('\n', lines) + "\n");
+            File.WriteAllText(Path.Combine(temp, "Generated.generated.cs"), string.Join('\n', lines) + "\n");
+            File.WriteAllText(Path.Combine(temp, "obj", "Ignored.cs"), string.Join('\n', lines) + "\n");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run internal skip exit");
+            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
+            AssertEqual(true, File.Exists(findingsPath), "analyze run internal skip findings exists");
+            var content = File.ReadAllText(findingsPath);
+            AssertEqual(true, content.Contains("Regular.cs", StringComparison.Ordinal), "analyze run internal skip regular file");
+            AssertEqual(false, content.Contains("Generated.generated.cs", StringComparison.Ordinal),
+                "analyze run internal skip generated suffix");
+            AssertEqual(false, content.Contains("obj/Ignored.cs", StringComparison.OrdinalIgnoreCase),
+                "analyze run internal skip excluded directory");
         } finally {
             if (Directory.Exists(temp)) {
                 Directory.Delete(temp, true);
