@@ -231,4 +231,8 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Add tests for CRLF/LF and trailing newline/no-trailing-newline LOC counting. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#issuecomment-3858550015
 - [x] Add test for case-insensitive path exclusions on Windows. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#issuecomment-3858550015
 - [x] Validate docs path resolution strategy for rule metadata. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#issuecomment-3858550015
+- [x] Prefer metadata-driven internal LOC rule selection/limits over hardcoded rule IDs. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2772931157
+- [x] Normalize and de-duplicate generated suffix handling before matching. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2772931230
+- [x] Make generated-header markers stricter/configurable to reduce false positives. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2772931318
+- [x] Keep partial-class shared state minimal/immutable during setup-runner split. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2772931392
 </details>
