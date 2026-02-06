@@ -339,6 +339,76 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalysisPolicyHandlesNullFindingsWhenReportExists() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-policy-null-findings-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            WriteAnalysisCatalogFixture(temp);
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Packs = new[] { "ix-test-pack" };
+            settings.Analysis.Results.ShowPolicy = true;
+
+            var report = new AnalysisLoadReport(1, 1, 1, 0);
+            var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
+                new AnalysisLoadResult(null!, report));
+
+            AssertContainsText(policy, "Status: pass", "analysis policy null-findings status");
+            AssertContainsText(policy, "Failing rules: none", "analysis policy null-findings failing rules");
+            AssertContainsText(policy, "Clean rules: IXTEST001 (Rule one), IXTEST002 (Rule two)",
+                "analysis policy null-findings clean rules");
+            AssertContainsText(policy, "Outside-pack rules: none", "analysis policy null-findings outside rules");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalysisPolicyRuleOutcomePreviewsUseDeterministicOrdering() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-policy-ordering-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            WriteAnalysisCatalogFixture(temp);
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Packs = new[] { "ix-test-pack" };
+            settings.Analysis.Results.ShowPolicy = true;
+
+            var report = new AnalysisLoadReport(2, 2, 2, 0);
+            var findings = new[] {
+                new AnalysisFinding("src/A.cs", 10, "rule one", "warning", "IXTEST001", "Roslyn"),
+                new AnalysisFinding("src/B.cs", 11, "rule two first", "warning", "IXTEST002", "Roslyn"),
+                new AnalysisFinding("src/C.cs", 12, "rule two second", "warning", "IXTEST002", "Roslyn"),
+                new AnalysisFinding("src/D.cs", 13, "outside z", "warning", "PSZ", "PSScriptAnalyzer"),
+                new AnalysisFinding("src/E.cs", 14, "outside a", "warning", "PSA", "PSScriptAnalyzer"),
+                new AnalysisFinding("src/F.cs", 15, "outside a again", "warning", "PSA", "PSScriptAnalyzer"),
+                new AnalysisFinding("src/G.cs", 16, "outside z again", "warning", "PSZ", "PSScriptAnalyzer")
+            };
+
+            var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
+                new AnalysisLoadResult(findings, report));
+
+            AssertContainsText(policy, "Failing rules: IXTEST002 (Rule two)=2, IXTEST001 (Rule one)=1",
+                "analysis policy deterministic failing order");
+            AssertContainsText(policy, "Outside-pack rules: PSA=2, PSZ=2",
+                "analysis policy deterministic outside order");
+            AssertContainsText(policy, "Clean rules: none", "analysis policy deterministic clean rules");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalysisSummaryShowsZeroFindings() {
         var results = new AnalysisResultsSettings {
             Summary = true,

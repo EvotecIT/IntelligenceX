@@ -103,6 +103,10 @@ internal static partial class Program {
             TestAnalysisPolicyEnabledRulePreviewTruncatesAndFallsBackToId);
         failed += Run("Analysis policy marks partial when only outside findings and enabled rules exist",
             TestAnalysisPolicyMarksPartialWhenOnlyOutsideFindingsAndEnabledRulesExist);
+        failed += Run("Analysis policy handles null findings when report exists",
+            TestAnalysisPolicyHandlesNullFindingsWhenReportExists);
+        failed += Run("Analysis policy rule outcome previews use deterministic ordering",
+            TestAnalysisPolicyRuleOutcomePreviewsUseDeterministicOrdering);
         failed += Run("Analysis summary shows zero findings", TestAnalysisSummaryShowsZeroFindings);
         failed += Run("Analysis summary shows zero findings without load report",
             TestAnalysisSummaryShowsZeroFindingsWithoutLoadReport);
