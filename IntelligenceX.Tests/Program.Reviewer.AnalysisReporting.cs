@@ -23,18 +23,16 @@ internal static partial class Program {
 
             var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
                 new AnalysisLoadResult(findings, report));
-            AssertContainsText(policy, "Status: fail", "analysis policy status");
-            AssertContainsText(policy, "Rule outcomes: 1 with findings, 1 clean, 1 outside enabled packs",
+            AssertPolicyLineEquals(policy, "Status", "fail ❌", "analysis policy status");
+            AssertPolicyLineEquals(policy, "Rule outcomes", "1 with findings, 1 clean, 1 outside enabled packs",
                 "analysis policy outcomes");
-            AssertContainsText(policy, "1 outside enabled packs",
-                "analysis policy aggregate outside-pack count");
-            AssertContainsText(policy, "Failing rules: IXTEST001 (Rule one)=1",
+            AssertPolicyLineEquals(policy, "Failing rules", "IXTEST001 (Rule one)=1",
                 "analysis policy failing rules");
-            AssertContainsText(policy, "Clean rules: IXTEST002 (Rule two)", "analysis policy clean rules");
-            AssertContainsText(policy, "Outside-pack rules: PS9999=1", "analysis policy outside-pack rules");
-            AssertContainsText(policy, "Result files: 2 input patterns, 2 matched, 2 parsed, 0 failed",
+            AssertPolicyLineEquals(policy, "Clean rules", "IXTEST002 (Rule two)", "analysis policy clean rules");
+            AssertPolicyLineEquals(policy, "Outside-pack rules", "PS9999=1", "analysis policy outside-pack rules");
+            AssertPolicyLineEquals(policy, "Result files", "2 input patterns, 2 matched, 2 parsed, 0 failed",
                 "analysis policy file stats");
-            AssertContainsText(policy, "Enabled rules preview: IXTEST001 (Rule one), IXTEST002 (Rule two)",
+            AssertPolicyLineEquals(policy, "Enabled rules preview", "IXTEST001 (Rule one), IXTEST002 (Rule two)",
                 "analysis policy enabled rule preview");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
@@ -69,6 +67,56 @@ internal static partial class Program {
                 Directory.Delete(temp, true);
             }
         }
+    }
+
+    private static void TestAnalysisPolicyBuildsUnavailableWhenCatalogLoadFails() {
+        var settings = new ReviewSettings();
+        settings.Analysis.Enabled = true;
+        settings.Analysis.Packs = new[] { "ix-test-pack" };
+        settings.Analysis.Results.ShowPolicy = true;
+
+        var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(
+            settings,
+            new AnalysisLoadResult(Array.Empty<AnalysisFinding>(), new AnalysisLoadReport(1, 1, 1, 0)),
+            _ => throw new IOException("disk I/O"));
+
+        AssertPolicyLineEquals(policy, "Status", "unavailable ℹ️", "analysis policy catalog-failure status");
+        AssertPolicyLineEquals(policy, "Rule outcomes", "unavailable (I/O error while loading analysis catalog)",
+            "analysis policy catalog-failure reason");
+        AssertPolicyLineEquals(policy, "Rules", "unavailable (analysis catalog could not be loaded)",
+            "analysis policy catalog-failure rules");
+    }
+
+    private static void TestAnalysisPolicyUnavailableUsesCatalogFallbackWhenCatalogLoadFails() {
+        var settings = new ReviewSettings();
+        settings.Analysis.Enabled = true;
+        settings.Analysis.Packs = new[] { "ix-test-pack" };
+        settings.Analysis.Results.ShowPolicy = true;
+
+        var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildUnavailablePolicy(
+            settings,
+            "analysis payload malformed",
+            _ => throw new UnauthorizedAccessException("denied"));
+
+        AssertPolicyLineEquals(policy, "Status", "unavailable ℹ️",
+            "analysis unavailable policy catalog-failure status");
+        AssertPolicyLineEquals(policy, "Rule outcomes",
+            "unavailable (insufficient permissions while loading analysis catalog)",
+            "analysis unavailable policy catalog-failure reason");
+    }
+
+    private static void TestAnalysisPolicyDoesNotSwallowUnexpectedCatalogLoadExceptions() {
+        var settings = new ReviewSettings();
+        settings.Analysis.Enabled = true;
+        settings.Analysis.Packs = new[] { "ix-test-pack" };
+        settings.Analysis.Results.ShowPolicy = true;
+
+        AssertThrows<InvalidOperationException>(() =>
+            IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(
+                settings,
+                new AnalysisLoadResult(Array.Empty<AnalysisFinding>(), new AnalysisLoadReport(1, 1, 1, 0)),
+                _ => throw new InvalidOperationException("boom")),
+            "analysis policy unexpected catalog exception");
     }
 
     private static void TestAnalysisLoadFailureEmbedsPolicyWhenSummaryDisabled() {
@@ -196,12 +244,12 @@ internal static partial class Program {
 
             var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
                 new AnalysisLoadResult(findings, report));
-            AssertContainsText(policy, "Status: partial", "analysis policy outside-only status");
-            AssertContainsText(policy, "Rule outcomes: 0 with findings, 0 clean, 1 outside enabled packs",
+            AssertPolicyLineEquals(policy, "Status", "partial ⚠️", "analysis policy outside-only status");
+            AssertPolicyLineEquals(policy, "Rule outcomes", "0 with findings, 0 clean, 1 outside enabled packs",
                 "analysis policy outside-only outcomes");
-            AssertContainsText(policy, "Failing rules: none", "analysis policy outside-only failing rules");
-            AssertContainsText(policy, "Clean rules: none", "analysis policy outside-only clean rules");
-            AssertContainsText(policy, "Outside-pack rules: PS9999=1", "analysis policy outside-only outside rules");
+            AssertPolicyLineEquals(policy, "Failing rules", "none", "analysis policy outside-only failing rules");
+            AssertPolicyLineEquals(policy, "Clean rules", "none", "analysis policy outside-only clean rules");
+            AssertPolicyLineEquals(policy, "Outside-pack rules", "PS9999=1", "analysis policy outside-only outside rules");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             if (Directory.Exists(temp)) {
@@ -252,9 +300,8 @@ internal static partial class Program {
             Directory.CreateDirectory(packsDir);
 
             var longTitle = "Rule 3 " + new string('X', 120);
-            var expectedLongTitle = "Rule 3 " + new string('X', 73) + "...";
             var ruleIds = new List<string>();
-            for (var i = 1; i <= 11; i++) {
+            for (var i = 1; i <= AnalysisPolicyFormatting.MaxPreviewItems + 1; i++) {
                 var id = $"IXPREV{i:000}";
                 var title = i == 2 ? string.Empty : (i == 3 ? longTitle : $"Rule {i}");
                 ruleIds.Add(id);
@@ -291,12 +338,70 @@ internal static partial class Program {
             var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
                 new AnalysisLoadResult(Array.Empty<AnalysisFinding>(), new AnalysisLoadReport(1, 1, 1, 0)));
 
-            AssertContainsText(policy, $"Enabled rules preview: IXPREV001 (Rule 1), IXPREV002, IXPREV003 ({expectedLongTitle})",
-                "analysis policy preview leading entries");
-            AssertContainsText(policy, "(truncated)", "analysis policy preview truncation suffix");
-            AssertContainsText(policy, "IXPREV010 (Rule 10)", "analysis policy preview includes boundary rule");
-            AssertEqual(false, policy.Contains("IXPREV011", StringComparison.Ordinal),
+            var preview = GetPolicyLineValue(policy, "Enabled rules preview", "analysis policy preview line");
+            var expectedTruncatedTitle = BuildExpectedTruncatedTitle(longTitle);
+            AssertContainsText(preview, $"IXPREV003 ({expectedTruncatedTitle})",
+                "analysis policy preview truncated title");
+            AssertContainsText(preview, "IXPREV010 (Rule 10)", "analysis policy preview includes boundary rule");
+            AssertEqual(false, preview.Contains("IXPREV011", StringComparison.Ordinal),
                 "analysis policy preview excludes overflow rules");
+            AssertEqual(1, CountOccurrences(preview, AnalysisPolicyFormatting.TruncatedSuffix),
+                "analysis policy preview single truncation marker");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalysisPolicyEnabledRulePreviewSupportsNonBmpUnicodeTitles() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-policy-preview-unicode-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+
+            var longUnicodeTitle = string.Concat(Enumerable.Repeat("👩‍💻", AnalysisPolicyFormatting.MaxRulePreviewTitleTextElements + 5));
+            var expectedTruncatedTitle = BuildExpectedTruncatedTitle(longUnicodeTitle);
+            File.WriteAllText(Path.Combine(rulesDir, "IXUNI001.json"), $$"""
+{
+  "id": "IXUNI001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXUNI001",
+  "title": "{{longUnicodeTitle}}",
+  "description": "unicode",
+  "category": "Maintainability",
+  "defaultSeverity": "warning"
+}
+""");
+            File.WriteAllText(Path.Combine(packsDir, "ix-unicode-pack.json"), """
+{
+  "id": "ix-unicode-pack",
+  "label": "IX Unicode Pack",
+  "rules": ["IXUNI001"]
+}
+""");
+
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Packs = new[] { "ix-unicode-pack" };
+            settings.Analysis.Results.ShowPolicy = true;
+
+            var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
+                new AnalysisLoadResult(Array.Empty<AnalysisFinding>(), new AnalysisLoadReport(1, 1, 1, 0)));
+            var preview = GetPolicyLineValue(policy, "Enabled rules preview", "analysis policy unicode preview line");
+
+            AssertContainsText(preview, $"IXUNI001 ({expectedTruncatedTitle})",
+                "analysis policy unicode truncated preview");
+            AssertEqual(false, preview.Contains('\uFFFD'),
+                "analysis policy unicode replacement-char absence");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             if (Directory.Exists(temp)) {
@@ -326,13 +431,14 @@ internal static partial class Program {
             var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
                 new AnalysisLoadResult(findings, report));
 
-            AssertContainsText(policy, "Status: partial", "analysis policy enabled-outside-only status");
-            AssertContainsText(policy, "Rule outcomes: 0 with findings, 2 clean, 1 outside enabled packs",
+            AssertPolicyLineEquals(policy, "Status", "partial ⚠️", "analysis policy enabled-outside-only status");
+            AssertPolicyLineEquals(policy, "Rule outcomes", "0 with findings, 2 clean, 1 outside enabled packs",
                 "analysis policy enabled-outside-only outcomes");
-            AssertContainsText(policy, "Failing rules: none", "analysis policy enabled-outside-only failing rules");
-            AssertContainsText(policy, "Clean rules: IXTEST001 (Rule one), IXTEST002 (Rule two)",
+            AssertPolicyLineEquals(policy, "Failing rules", "none", "analysis policy enabled-outside-only failing rules");
+            AssertPolicyLineEquals(policy, "Clean rules", "IXTEST001 (Rule one), IXTEST002 (Rule two)",
                 "analysis policy enabled-outside-only clean rules");
-            AssertContainsText(policy, "Outside-pack rules: PS9999=1", "analysis policy enabled-outside-only outside rules");
+            AssertPolicyLineEquals(policy, "Outside-pack rules", "PS9999=1",
+                "analysis policy enabled-outside-only outside rules");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             if (Directory.Exists(temp)) {
@@ -358,11 +464,11 @@ internal static partial class Program {
             var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
                 new AnalysisLoadResult(null!, report));
 
-            AssertContainsText(policy, "Status: pass", "analysis policy null-findings status");
-            AssertContainsText(policy, "Failing rules: none", "analysis policy null-findings failing rules");
-            AssertContainsText(policy, "Clean rules: IXTEST001 (Rule one), IXTEST002 (Rule two)",
+            AssertPolicyLineEquals(policy, "Status", "pass ✅", "analysis policy null-findings status");
+            AssertPolicyLineEquals(policy, "Failing rules", "none", "analysis policy null-findings failing rules");
+            AssertPolicyLineEquals(policy, "Clean rules", "IXTEST001 (Rule one), IXTEST002 (Rule two)",
                 "analysis policy null-findings clean rules");
-            AssertContainsText(policy, "Outside-pack rules: none", "analysis policy null-findings outside rules");
+            AssertPolicyLineEquals(policy, "Outside-pack rules", "none", "analysis policy null-findings outside rules");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             if (Directory.Exists(temp)) {
@@ -398,11 +504,11 @@ internal static partial class Program {
             var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
                 new AnalysisLoadResult(findings, report));
 
-            AssertContainsText(policy, "Failing rules: IXTEST002 (Rule two)=2, IXTEST001 (Rule one)=1",
+            AssertPolicyLineEquals(policy, "Failing rules", "IXTEST002 (Rule two)=2, IXTEST001 (Rule one)=1",
                 "analysis policy deterministic failing order");
-            AssertContainsText(policy, "Outside-pack rules: PSA=2, PSZ=2",
+            AssertPolicyLineEquals(policy, "Outside-pack rules", "PSA=2, PSZ=2",
                 "analysis policy deterministic outside order");
-            AssertContainsText(policy, "Clean rules: none", "analysis policy deterministic clean rules");
+            AssertPolicyLineEquals(policy, "Clean rules", "none", "analysis policy deterministic clean rules");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             if (Directory.Exists(temp)) {
@@ -617,6 +723,45 @@ internal static partial class Program {
                 Directory.Delete(temp, true);
             }
         }
+    }
+
+    private static void AssertPolicyLineEquals(string policy, string label, string expectedValue, string name) {
+        var actualValue = GetPolicyLineValue(policy, label, name);
+        AssertEqual(expectedValue, actualValue, name);
+    }
+
+    private static string GetPolicyLineValue(string policy, string label, string name) {
+        var prefix = $"- {label}: ";
+        foreach (var rawLine in policy.Split('\n')) {
+            var line = rawLine.TrimEnd();
+            if (line.StartsWith(prefix, StringComparison.Ordinal)) {
+                return line.Substring(prefix.Length);
+            }
+        }
+        throw new InvalidOperationException($"Expected {name} line '{prefix}' to exist.");
+    }
+
+    private static int CountOccurrences(string value, string marker) {
+        if (string.IsNullOrEmpty(value) || string.IsNullOrEmpty(marker)) {
+            return 0;
+        }
+
+        var count = 0;
+        var index = 0;
+        while ((index = value.IndexOf(marker, index, StringComparison.Ordinal)) >= 0) {
+            count++;
+            index += marker.Length;
+        }
+        return count;
+    }
+
+    private static string BuildExpectedTruncatedTitle(string title) {
+        var resolved = title.Trim();
+        var info = new global::System.Globalization.StringInfo(resolved);
+        if (info.LengthInTextElements <= AnalysisPolicyFormatting.MaxRulePreviewTitleTextElements) {
+            return resolved;
+        }
+        return info.SubstringByTextElements(0, AnalysisPolicyFormatting.MaxRulePreviewTitleTextElements) + "...";
     }
 
     private static void WriteAnalysisCatalogFixture(string root) {

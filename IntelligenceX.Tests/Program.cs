@@ -89,6 +89,12 @@ internal static partial class Program {
             TestAnalyzeRunInternalFileSizeRuleGeneratedHeaderScanCanBeDisabled);
         failed += Run("Analysis policy reports rule outcomes", TestAnalysisPolicyReportsRuleOutcomes);
         failed += Run("Analysis policy builds unavailable status", TestAnalysisPolicyBuildUnavailablePolicy);
+        failed += Run("Analysis policy builds unavailable when catalog load fails",
+            TestAnalysisPolicyBuildsUnavailableWhenCatalogLoadFails);
+        failed += Run("Analysis policy unavailable uses catalog fallback when catalog load fails",
+            TestAnalysisPolicyUnavailableUsesCatalogFallbackWhenCatalogLoadFails);
+        failed += Run("Analysis policy does not swallow unexpected catalog load exceptions",
+            TestAnalysisPolicyDoesNotSwallowUnexpectedCatalogLoadExceptions);
         failed += Run("Analysis load failure embeds policy when summary disabled",
             TestAnalysisLoadFailureEmbedsPolicyWhenSummaryDisabled);
         failed += Run("Analysis load failure skips output when policy and summary disabled",
@@ -101,6 +107,8 @@ internal static partial class Program {
             TestAnalysisPolicyShowsUnavailableWhenNoEnabledRulesAndNoFindings);
         failed += Run("Analysis policy enabled preview truncates and falls back to id",
             TestAnalysisPolicyEnabledRulePreviewTruncatesAndFallsBackToId);
+        failed += Run("Analysis policy enabled preview supports non-BMP unicode titles",
+            TestAnalysisPolicyEnabledRulePreviewSupportsNonBmpUnicodeTitles);
         failed += Run("Analysis policy marks partial when only outside findings and enabled rules exist",
             TestAnalysisPolicyMarksPartialWhenOnlyOutsideFindingsAndEnabledRulesExist);
         failed += Run("Analysis policy handles null findings when report exists",
