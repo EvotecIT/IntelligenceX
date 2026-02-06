@@ -261,6 +261,10 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Use text-element-safe truncation for unavailable reason rendering to avoid splitting grapheme clusters. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774639474
 - [x] Add defensive sanitize/trim path in `BuildUnavailablePolicy` for future raw-reason callers. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774639591
 - [x] Keep recoverable parser exception rationale explicit and verify single-failure counting via tests. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774639515
+- [x] Simplify user-facing failure reason to exception-type allowlist + generic fallback for unexpected internals. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774691270
+- [x] Keep unavailable-policy sanitization defensive for future callers while reducing sensitive detail exposure in reasons. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774691136, https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774691199
+- [x] Clarify parser-phase recoverable exception intent for `FormatException`/`JsonException` and keep non-parse exceptions escalated. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774691424
+- [x] Align `AnalysisLoadReport` XML wording with reviewer docs (“valid payloads that produce zero findings”). Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774691520
 
 </details>
 <details>

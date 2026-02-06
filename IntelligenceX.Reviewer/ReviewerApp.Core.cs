@@ -518,55 +518,14 @@ public static partial class ReviewerApp {
             return defaultReason;
         }
 
-        var message = (ex.Message ?? string.Empty).Replace("\r", " ").Replace("\n", " ").Trim();
-        if (string.IsNullOrWhiteSpace(message)) {
+        if (IsUserFacingAnalysisFailure(ex)) {
             return ex.GetType().Name;
         }
-
-        message = RedactPathRoot(message, Environment.GetEnvironmentVariable("GITHUB_WORKSPACE"));
-        message = RedactPathRoot(message, Environment.CurrentDirectory);
-        message = RedactPathRoot(message, Path.GetTempPath());
-        message = RedactPathRoot(message, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-        message = TruncateByTextElements(message, 200);
-
-        return $"{ex.GetType().Name}: {message}";
+        return defaultReason;
     }
 
-    private static string RedactPathRoot(string message, string? root) {
-        if (string.IsNullOrWhiteSpace(message) || string.IsNullOrWhiteSpace(root)) {
-            return message;
-        }
-
-        var normalized = root.Trim();
-        if (normalized.Length == 0) {
-            return message;
-        }
-
-        var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-            normalized
-        };
-        var trimmed = normalized.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        if (trimmed.Length > 0) {
-            candidates.Add(trimmed);
-            candidates.Add(trimmed + Path.DirectorySeparatorChar);
-            candidates.Add(trimmed + Path.AltDirectorySeparatorChar);
-        }
-
-        foreach (var candidate in candidates.OrderByDescending(item => item.Length)) {
-            message = message.Replace(candidate, "<workspace>", StringComparison.OrdinalIgnoreCase);
-        }
-        return message;
-    }
-
-    private static string TruncateByTextElements(string value, int maxTextElements) {
-        if (string.IsNullOrWhiteSpace(value) || maxTextElements <= 0) {
-            return string.Empty;
-        }
-        var info = new global::System.Globalization.StringInfo(value);
-        if (info.LengthInTextElements <= maxTextElements) {
-            return value;
-        }
-        return info.SubstringByTextElements(0, maxTextElements) + "...";
+    private static bool IsUserFacingAnalysisFailure(Exception ex) {
+        return ex is IOException or UnauthorizedAccessException or FormatException or global::System.Text.Json.JsonException;
     }
 
     internal static async Task<bool> TryUpdateFailureSummaryAsync(string? githubToken, string? apiBaseUrl,
