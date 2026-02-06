@@ -241,6 +241,41 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Align `BuildUnavailableSummary` formatting with other builders by trimming trailing newline output. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774320883
 - [x] Keep `AddOutcomeLines` nullability contract consistent (non-null inputs, no redundant null-coalescing). Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774320982
 - [x] Mark policy as partial when findings exist outside enabled packs to keep risk visible in status. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774321084
+- [x] Add `JsonException` to recoverable analysis-load exceptions for JSON parser compatibility. Links: user request in Codex thread (2026-02-06)
+- [x] Clarify and document `parsed` counter semantics for analysis result files. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774385771
+- [x] Add regression coverage for mixed rule outcomes (enabled findings + outside-pack findings). Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774385859
+- [x] Verify and lock behavior that zero-findings summaries still render content (no empty-string contract). Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774385922
+- [x] Render unavailable policy status when analysis load fails and summary output is disabled. Links: user request in Codex thread (2026-02-06)
+- [x] Add test for deduplicated resolved inputs with one parse success and one parse failure counter path. Links: user request in Codex thread (2026-02-06)
+</details>
+<details>
+<summary>PR #112 Address remaining static-analysis follow-up TODOs</summary>
+
+- [x] Use one computed sanitized analysis-load failure reason and pass it consistently to unavailable policy and summary builders. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774571048, https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774571128
+- [x] Decouple unavailable policy rendering from `BuildPolicy(settings)` output shape via dedicated base-policy preparation path. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774571204
+- [x] Move parsed/failed counter semantics into `AnalysisLoadReport` XML docs to reduce drift. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774571298
+- [x] Add ordering-insensitive dedupe regression coverage for resolved analysis inputs. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774571405
+- [x] Add explicit coverage that duplicate bad input matches increment `FailedInputFiles` once per unique file. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774571492
+- [x] Keep unavailable reason exposure bounded (type + sanitized/truncated message) for user-facing review blocks. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774571048
+- [x] Expand path-root redaction coverage for unavailable reason formatting (workspace/current/temp/profile variants). Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774639419
+- [x] Use text-element-safe truncation for unavailable reason rendering to avoid splitting grapheme clusters. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774639474
+- [x] Add defensive sanitize/trim path in `BuildUnavailablePolicy` for future raw-reason callers. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774639591
+- [x] Keep recoverable parser exception rationale explicit and verify single-failure counting via tests. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774639515
+- [x] Simplify user-facing failure reason to exception-type allowlist + generic fallback for unexpected internals. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774691270
+- [x] Keep unavailable-policy sanitization defensive for future callers while reducing sensitive detail exposure in reasons. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774691136, https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774691199
+- [x] Clarify parser-phase recoverable exception intent for `FormatException`/`JsonException` and keep non-parse exceptions escalated. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774691424
+- [x] Align `AnalysisLoadReport` XML wording with reviewer docs (“valid payloads that produce zero findings”). Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774691520
+- [x] Re-throw `OperationCanceledException` in analysis-load handling to preserve cancellation semantics. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774728195
+- [x] Remove dead null-check branch from `BuildAnalysisLoadFailureReason(Exception)` to keep nullability contract strict. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774728266
+- [x] Map analysis-load unavailable reasons to stable user-facing categories (permission/read/format/internal). Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774728330
+- [x] Add regression test for top-level analysis failure path when `ShowPolicy=true` and `Summary=false` (policy embeds, summary omitted). Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774728395
+- [x] Keep `BuildUnavailablePolicy` reason sanitization length-bounded to prevent oversized unavailable blocks. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774748896
+- [x] Add explicit zero-findings parsed-counter coverage for both findings JSON and SARIF payload paths (including empty runs/results). Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774748951, https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774749013
+- [x] Preserve cancellation semantics through top-level reviewer error handling without posting failure-summary updates on cancellation. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774771818
+- [x] Keep analysis-load failure embedding no-op when both `showPolicy=false` and `summary=false`. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774771896
+- [x] Reduce IO-specific wording in user-facing unavailable reasons to stable generic category text. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774771941
+- [x] Align `failed` counter docs with implementation for unreadable/inaccessible matched files. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774772025
+
 </details>
 <details>
 <summary>PR #85 Static analysis catalog + CLI export</summary>

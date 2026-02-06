@@ -384,13 +384,11 @@ public static partial class ReviewerApp {
                             inlineComments = merged.ToArray();
                         }
                     }
+                } catch (OperationCanceledException) {
+                    throw;
                 } catch (Exception ex) {
                     Console.WriteLine($"Static analysis load failed; rendering unavailable summary. ({ex.GetType().Name})");
-                    if (analysisResults.Summary) {
-                        var unavailableSummary = AnalysisSummaryBuilder.BuildUnavailableSummary(
-                            "internal error while loading analysis results");
-                        summaryBody = ApplyEmbedPlacement(summaryBody, unavailableSummary, analysisResults.SummaryPlacement);
-                    }
+                    summaryBody = ApplyAnalysisLoadFailure(summaryBody, settings, ex);
                 }
             }
 
@@ -475,6 +473,9 @@ public static partial class ReviewerApp {
             }
 
             return 0;
+        } catch (OperationCanceledException) {
+            Console.Error.WriteLine("Operation canceled.");
+            return 130;
         } catch (Exception ex) {
             Console.Error.WriteLine(ex.Message);
             if (!summaryPosted &&
@@ -501,6 +502,40 @@ public static partial class ReviewerApp {
                 Console.CancelKeyPress -= cancelHandler;
             }
         }
+    }
+
+    private static string ApplyAnalysisLoadFailure(string summaryBody, ReviewSettings settings, Exception ex) {
+        var analysisResults = settings.Analysis?.Results;
+        if (analysisResults is null) {
+            return summaryBody;
+        }
+        var reason = BuildAnalysisLoadFailureReason(ex);
+        var unavailablePolicy = AnalysisPolicyBuilder.BuildUnavailablePolicy(settings, reason);
+        var analysisBlocks = new List<string>();
+        if (!string.IsNullOrWhiteSpace(unavailablePolicy)) {
+            analysisBlocks.Add(unavailablePolicy);
+        }
+        if (analysisResults.Summary) {
+            var unavailableSummary = AnalysisSummaryBuilder.BuildUnavailableSummary(reason);
+            if (!string.IsNullOrWhiteSpace(unavailableSummary)) {
+                analysisBlocks.Add(unavailableSummary);
+            }
+        }
+        if (analysisBlocks.Count == 0) {
+            return summaryBody;
+        }
+        return ApplyEmbedPlacement(summaryBody, string.Join("\n\n", analysisBlocks), analysisResults.SummaryPlacement);
+    }
+
+    private static string BuildAnalysisLoadFailureReason(Exception ex) {
+        const string defaultReason = "internal error while loading analysis results";
+        return ex switch {
+            UnauthorizedAccessException => "permission denied while loading analysis results",
+            IOException => "analysis result input unavailable",
+            FormatException => "invalid analysis result format",
+            global::System.Text.Json.JsonException => "invalid analysis result format",
+            _ => defaultReason
+        };
     }
 
     internal static async Task<bool> TryUpdateFailureSummaryAsync(string? githubToken, string? apiBaseUrl,

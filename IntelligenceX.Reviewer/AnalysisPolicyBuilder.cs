@@ -7,10 +7,48 @@ namespace IntelligenceX.Reviewer;
 
 internal static class AnalysisPolicyBuilder {
     private const int MaxListItems = 10;
+    private const int MaxUnavailableReasonTextElements = 120;
 
     public static string BuildPolicy(ReviewSettings settings, AnalysisLoadResult? loadResult = null) {
-        if (settings?.Analysis?.Enabled != true || settings.Analysis?.Results?.ShowPolicy != true) {
+        if (!TryBuildBasePolicy(settings, out var lines, out var enabledRules, out var disabled, out var overrides,
+                out var overridesCount)) {
             return string.Empty;
+        }
+        if (loadResult?.Report is not null) {
+            var loadReport = loadResult.Report;
+            lines.Add(
+                $"- Result files: {loadReport.ConfiguredInputs} input patterns, {loadReport.ResolvedInputFiles} matched, {loadReport.ParsedInputFiles} parsed, {loadReport.FailedInputFiles} failed");
+            AddOutcomeLines(lines, enabledRules, loadResult.Findings, loadReport);
+        }
+
+        return RenderPolicy(lines, disabled, overrides, overridesCount);
+    }
+
+    public static string BuildUnavailablePolicy(ReviewSettings settings, string reason) {
+        if (!TryBuildBasePolicy(settings, out var lines, out _, out var disabled, out var overrides, out var overridesCount)) {
+            return string.Empty;
+        }
+
+        var resolvedReason = SanitizeUnavailableReason(reason);
+        lines.Add("- Status: unavailable ℹ️");
+        lines.Add($"- Rule outcomes: unavailable ({resolvedReason})");
+        return RenderPolicy(lines, disabled, overrides, overridesCount);
+    }
+
+    private static bool TryBuildBasePolicy(ReviewSettings settings,
+        out List<string> lines,
+        out IReadOnlyList<string> enabledRules,
+        out HashSet<string> disabled,
+        out Dictionary<string, string> overrides,
+        out int overridesCount) {
+        lines = new List<string>();
+        enabledRules = Array.Empty<string>();
+        disabled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        overrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        overridesCount = 0;
+
+        if (settings?.Analysis?.Enabled != true || settings.Analysis?.Results?.ShowPolicy != true) {
+            return false;
         }
 
         var packs = settings.Analysis.Packs ?? Array.Empty<string>();
@@ -20,13 +58,15 @@ internal static class AnalysisPolicyBuilder {
         try {
             catalog = AnalysisCatalogLoader.LoadFromWorkspace(workspace);
         } catch {
-            return string.Empty;
+            return false;
         }
-        var disabled = new HashSet<string>(settings.Analysis.DisabledRules ?? Array.Empty<string>(),
+
+        var disabledSet = new HashSet<string>(settings.Analysis.DisabledRules ?? Array.Empty<string>(),
             StringComparer.OrdinalIgnoreCase);
-        var overrides = settings.Analysis.SeverityOverrides is null
+        var overrideMap = settings.Analysis.SeverityOverrides is null
             ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, string>(settings.Analysis.SeverityOverrides, StringComparer.OrdinalIgnoreCase);
+        var overrideCount = overrideMap.Count;
 
         var packSummaries = new List<string>();
         var selectedRules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -45,10 +85,9 @@ internal static class AnalysisPolicyBuilder {
             }
         }
 
-        var enabledRules = selectedRules.Where(rule => !disabled.Contains(rule)).ToList();
-        var overridesCount = overrides.Count;
+        enabledRules = selectedRules.Where(rule => !disabledSet.Contains(rule)).ToList();
 
-        var lines = new List<string> {
+        lines = new List<string> {
             "### Static Analysis Policy 🧭",
             $"- Config mode: {DescribeConfigMode(settings.Analysis.ConfigMode)}"
         };
@@ -61,15 +100,16 @@ internal static class AnalysisPolicyBuilder {
         }
 
         lines.Add($"- Rules: {enabledRules.Count} enabled" +
-                  (disabled.Count > 0 ? $", {disabled.Count} disabled" : string.Empty) +
-                  (overridesCount > 0 ? $", {overridesCount} overrides" : string.Empty));
-        if (loadResult?.Report is not null) {
-            var loadReport = loadResult.Report;
-            lines.Add(
-                $"- Result files: {loadReport.ConfiguredInputs} input patterns, {loadReport.ResolvedInputFiles} matched, {loadReport.ParsedInputFiles} parsed, {loadReport.FailedInputFiles} failed");
-            AddOutcomeLines(lines, enabledRules, loadResult.Findings ?? Array.Empty<AnalysisFinding>(), loadReport);
-        }
+                  (disabledSet.Count > 0 ? $", {disabledSet.Count} disabled" : string.Empty) +
+                  (overrideCount > 0 ? $", {overrideCount} overrides" : string.Empty));
+        disabled = disabledSet;
+        overrides = overrideMap;
+        overridesCount = overrideCount;
+        return true;
+    }
 
+    private static void AddRuleConfigurationLines(ICollection<string> lines, HashSet<string> disabled,
+        IReadOnlyDictionary<string, string> overrides, int overridesCount) {
         if (disabled.Count > 0) {
             var disabledList = disabled.OrderBy(item => item, StringComparer.OrdinalIgnoreCase).Take(MaxListItems).ToList();
             var suffix = disabled.Count > disabledList.Count ? " (truncated)" : string.Empty;
@@ -85,7 +125,11 @@ internal static class AnalysisPolicyBuilder {
             var suffix = overridesCount > overrideList.Count ? " (truncated)" : string.Empty;
             lines.Add($"- Overrides: {string.Join(", ", overrideList)}{suffix}");
         }
+    }
 
+    private static string RenderPolicy(ICollection<string> lines, HashSet<string> disabled,
+        IReadOnlyDictionary<string, string> overrides, int overridesCount) {
+        AddRuleConfigurationLines(lines, disabled, overrides, overridesCount);
         return string.Join("\n", lines).TrimEnd();
     }
 
@@ -168,6 +212,21 @@ internal static class AnalysisPolicyBuilder {
             "unavailable" => "unavailable ℹ️",
             _ => status
         };
+    }
+
+    private static string SanitizeUnavailableReason(string? reason) {
+        var resolved = string.IsNullOrWhiteSpace(reason)
+            ? "internal error while loading analysis results"
+            : reason.Replace("\r", " ").Replace("\n", " ").Trim();
+        if (string.IsNullOrWhiteSpace(resolved)) {
+            return "internal error while loading analysis results";
+        }
+
+        var info = new global::System.Globalization.StringInfo(resolved);
+        if (info.LengthInTextElements <= MaxUnavailableReasonTextElements) {
+            return resolved;
+        }
+        return info.SubstringByTextElements(0, MaxUnavailableReasonTextElements) + "...";
     }
 
     private static string? NormalizeRuleId(string? ruleId) {
