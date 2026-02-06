@@ -26,7 +26,7 @@
       "UseToc": true,
       "TocFile": "../Docs/toc.json",
       "Include": ["*.md", "**/*.md"],
-      "Exclude": ["cli/commands/**", "screenshots/**", "reviewer/review-smoke.md", "reviewer/web-onboarding.md"]
+      "Exclude": ["cli/commands/**", "screenshots/**", "reviewer/review-smoke.md"]
     }
   ],
   "Head": {

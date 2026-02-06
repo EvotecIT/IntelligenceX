@@ -9,6 +9,7 @@
       { "title": "Overview", "href": "/docs/reviewer/overview/" },
       { "title": "Onboarding Wizard", "href": "/docs/reviewer/onboarding-wizard/" },
       { "title": "Web Setup UI", "href": "/docs/reviewer/setup-web/" },
+      { "title": "Web Onboarding Flow", "href": "/docs/reviewer/web-onboarding/" },
       { "title": "Configuration", "href": "/docs/reviewer/configuration/" },
       { "title": "Security & Trust", "href": "/docs/reviewer/security-trust/" },
       { "title": "Static Analysis", "href": "/docs/reviewer/static-analysis/" }
@@ -43,7 +44,8 @@
     "title": "Guides",
     "items": [
       { "title": "Examples", "href": "/docs/examples/" },
-      { "title": "Troubleshooting", "href": "/docs/troubleshooting/" }
+      { "title": "Troubleshooting", "href": "/docs/troubleshooting/" },
+      { "title": "Screenshots (Planned)", "href": "/docs/screenshots/" }
     ]
   }
 ]
