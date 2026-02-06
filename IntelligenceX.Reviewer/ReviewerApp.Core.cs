@@ -385,7 +385,7 @@ public static partial class ReviewerApp {
                         }
                     }
                 } catch (Exception ex) {
-                    Console.WriteLine($"Static analysis load failed; rendering unavailable summary. {ex}");
+                    Console.WriteLine($"Static analysis load failed; rendering unavailable summary. ({ex.GetType().Name})");
                     if (analysisResults.Summary) {
                         var unavailableSummary = AnalysisSummaryBuilder.BuildUnavailableSummary(
                             "internal error while loading analysis results");

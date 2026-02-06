@@ -124,7 +124,7 @@ internal static partial class Program {
         }
     }
 
-    private static void TestAnalysisPolicyKeepsPassWhenOnlyOutsideFindingsAndEnabledRulesExist() {
+    private static void TestAnalysisPolicyMarksPartialWhenOnlyOutsideFindingsAndEnabledRulesExist() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-policy-enabled-outside-only-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
@@ -145,7 +145,7 @@ internal static partial class Program {
             var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
                 new AnalysisLoadResult(findings, report));
 
-            AssertContainsText(policy, "Status: pass", "analysis policy enabled-outside-only status");
+            AssertContainsText(policy, "Status: partial", "analysis policy enabled-outside-only status");
             AssertContainsText(policy, "Rule outcomes: 0 with findings, 2 clean, 1 outside enabled packs",
                 "analysis policy enabled-outside-only outcomes");
         } finally {

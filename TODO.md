@@ -236,6 +236,11 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Refine status semantics so “outside enabled packs” does not always imply execution degradation when enabled rules are clean. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774291073
 - [x] Confirm heading-casing output shift is covered by tests/docs to protect downstream parser expectations. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774291169
 - [x] Keep `parsedInputFiles` aligned with successful parse semantics by excluding empty-file no-op inputs. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774291277
+- [x] Remove `InvalidOperationException` from recoverable analysis-load exceptions to avoid masking logic bugs. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774320699
+- [x] Keep analysis-load error logging concise and avoid dumping full exception details in CI logs. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774320762
+- [x] Align `BuildUnavailableSummary` formatting with other builders by trimming trailing newline output. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774320883
+- [x] Keep `AddOutcomeLines` nullability contract consistent (non-null inputs, no redundant null-coalescing). Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774320982
+- [x] Mark policy as partial when findings exist outside enabled packs to keep risk visible in status. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774321084
 </details>
 <details>
 <summary>PR #85 Static analysis catalog + CLI export</summary>

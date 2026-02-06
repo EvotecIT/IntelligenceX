@@ -94,8 +94,8 @@ internal static partial class Program {
             TestAnalysisPolicyMarksPartialWhenOnlyOutsidePackFindingsExist);
         failed += Run("Analysis policy shows unavailable when no enabled rules and no findings",
             TestAnalysisPolicyShowsUnavailableWhenNoEnabledRulesAndNoFindings);
-        failed += Run("Analysis policy keeps pass when only outside findings and enabled rules exist",
-            TestAnalysisPolicyKeepsPassWhenOnlyOutsideFindingsAndEnabledRulesExist);
+        failed += Run("Analysis policy marks partial when only outside findings and enabled rules exist",
+            TestAnalysisPolicyMarksPartialWhenOnlyOutsideFindingsAndEnabledRulesExist);
         failed += Run("Analysis summary shows zero findings", TestAnalysisSummaryShowsZeroFindings);
         failed += Run("Analysis summary shows unavailable when no input files",
             TestAnalysisSummaryShowsUnavailableWhenNoInputFiles);

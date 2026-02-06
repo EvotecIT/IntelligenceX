@@ -367,7 +367,7 @@ internal static class AnalysisFindingsLoader {
     }
 
     private static bool IsRecoverableLoadException(Exception ex) {
-        return ex is IOException or UnauthorizedAccessException or InvalidOperationException or FormatException;
+        return ex is IOException or UnauthorizedAccessException or FormatException;
     }
 
     private static string BuildFindingKey(AnalysisFinding finding) {

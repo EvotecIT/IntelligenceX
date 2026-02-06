@@ -84,7 +84,7 @@ internal static class AnalysisSummaryBuilder {
         return string.Join("\n", new[] {
             SummaryHeader,
             $"- Findings: unavailable ({resolvedReason})"
-        });
+        }).TrimEnd();
     }
 
     public static IReadOnlyList<InlineReviewComment> BuildInlineComments(IReadOnlyList<AnalysisFinding> findings,

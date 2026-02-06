@@ -115,12 +115,12 @@ internal static class AnalysisPolicyBuilder {
         }
 
         var enabledSet = new HashSet<string>(
-            (enabledRules ?? Array.Empty<string>())
+            enabledRules
             .Select(NormalizeRuleId)
             .OfType<string>(),
             StringComparer.OrdinalIgnoreCase);
 
-        var findingRuleCounts = (findings ?? Array.Empty<AnalysisFinding>())
+        var findingRuleCounts = findings
             .Select(finding => NormalizeRuleId(finding.RuleId))
             .OfType<string>()
             .GroupBy(normalizedRuleId => normalizedRuleId, StringComparer.OrdinalIgnoreCase)
@@ -137,8 +137,7 @@ internal static class AnalysisPolicyBuilder {
         var cleanEnabledRules = Math.Max(0, enabledSet.Count - impactedEnabledRules.Count);
         var status = impactedEnabledRules.Count > 0
             ? "fail"
-            : (loadReport.FailedInputFiles > 0 ? "partial" :
-                (enabledSet.Count == 0 && outsideEnabledRules > 0 ? "partial" : "pass"));
+            : (loadReport.FailedInputFiles > 0 || outsideEnabledRules > 0 ? "partial" : "pass");
         lines.Add($"- Status: {FormatStatus(status)}");
         lines.Add($"- Rule outcomes: {impactedEnabledRules.Count} with findings, {cleanEnabledRules} clean" +
                   (outsideEnabledRules > 0 ? $", {outsideEnabledRules} outside enabled packs" : string.Empty));
