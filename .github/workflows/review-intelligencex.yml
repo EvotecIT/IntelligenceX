@@ -17,38 +17,73 @@ on:
 jobs:
   # INTELLIGENCEX:BEGIN
   review:
+    runs-on: [self-hosted, ubuntu]
     permissions:
       contents: read
       pull-requests: write
       issues: write
       id-token: write
-    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@master
-    with:
-      runs_on: '["self-hosted","ubuntu"]'
-      reviewer_source: source
-      reviewer_release_repo: EvotecIT/github-actions
-      reviewer_release_tag: latest
-      repo: ${{ github.event.pull_request.number && github.repository || inputs.repo }}
-      pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
-      provider: openai
-      model: gpt-5.3-codex
-      style: direct
-      output_style: claude
-      mode: inline
-      openai_transport: native
-      include_issue_comments: true
-      include_review_comments: true
-      include_related_prs: true
-      progress_updates: true
-      diagnostics: true
-      preflight: true
-      preflight_timeout_seconds: 15
-      cleanup_enabled: false
-      cleanup_mode: comment
-      cleanup_scope: pr
-      cleanup_require_label: ''
-      cleanup_min_confidence: 0.85
-      cleanup_allowed_edits: 'formatting,grammar,title,sections'
-      cleanup_post_edit_comment: true
-    secrets: inherit
+    env:
+      INTELLIGENCEX_APP_ID: ${{ secrets.INTELLIGENCEX_GITHUB_APP_ID }}
+      INTELLIGENCEX_APP_KEY: ${{ secrets.INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Create GitHub App token
+        id: app_token
+        if: ${{ env.INTELLIGENCEX_APP_ID != '' && env.INTELLIGENCEX_APP_KEY != '' }}
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ env.INTELLIGENCEX_APP_ID }}
+          private-key: ${{ env.INTELLIGENCEX_APP_KEY }}
+
+      - name: Run static analysis
+        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze run --config .intelligencex/reviewer.json --out artifacts --framework net8.0
+
+      - name: Upload analysis artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: ix-analysis
+          path: artifacts/**
+
+      - name: Run reviewer
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token }}
+          INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
+          INTELLIGENCEX_AUTH_KEY: ${{ secrets.INTELLIGENCEX_AUTH_KEY }}
+
+          INPUT_REPO: ${{ github.event.pull_request.number && github.repository || inputs.repo }}
+          INPUT_PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+
+          INPUT_PROVIDER: openai
+          INPUT_MODEL: gpt-5.3-codex
+          INPUT_OPENAI_TRANSPORT: native
+          INPUT_STYLE: direct
+          INPUT_OUTPUT_STYLE: claude
+          INPUT_MODE: inline
+          INPUT_INCLUDE_ISSUE_COMMENTS: true
+          INPUT_INCLUDE_REVIEW_COMMENTS: true
+          INPUT_INCLUDE_RELATED_PRS: true
+          INPUT_PROGRESS_UPDATES: true
+          INPUT_DIAGNOSTICS: true
+          INPUT_PREFLIGHT: true
+          INPUT_PREFLIGHT_TIMEOUT_SECONDS: 15
+          INPUT_CLEANUP_ENABLED: false
+          INPUT_CLEANUP_MODE: comment
+          INPUT_CLEANUP_SCOPE: pr
+          INPUT_CLEANUP_REQUIRE_LABEL: ''
+          INPUT_CLEANUP_MIN_CONFIDENCE: 0.85
+          INPUT_CLEANUP_ALLOWED_EDITS: 'formatting,grammar,title,sections'
+          INPUT_CLEANUP_POST_EDIT_COMMENT: true
+        run: dotnet run --project IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0
   # INTELLIGENCEX:END

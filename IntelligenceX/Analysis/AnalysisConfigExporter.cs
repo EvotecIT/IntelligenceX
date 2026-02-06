@@ -58,8 +58,9 @@ public static class AnalysisConfigExporter {
 
         Directory.CreateDirectory(outputDirectory);
 
-        var warnings = new List<string>();
-        var selected = BuildRuleSelection(settings, catalog, warnings);
+        var policy = AnalysisPolicyBuilder.Build(settings, catalog);
+        var warnings = new List<string>(policy.Warnings);
+        var selected = policy.Rules;
         var files = new List<string>();
 
         var byLanguage = selected.Values
@@ -81,45 +82,6 @@ public static class AnalysisConfigExporter {
         }
 
         return new AnalysisConfigExportResult(outputDirectory, files, selected.Count, warnings);
-    }
-
-    private static Dictionary<string, AnalysisRuleSelection> BuildRuleSelection(AnalysisSettings settings,
-        AnalysisCatalog catalog, List<string> warnings) {
-        var selected = new Dictionary<string, AnalysisRuleSelection>(StringComparer.OrdinalIgnoreCase);
-        var disabled = new HashSet<string>(settings.DisabledRules ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
-
-        foreach (var packId in settings.Packs ?? Array.Empty<string>()) {
-            if (!catalog.TryGetPack(packId, out var pack)) {
-                warnings.Add($"Pack not found: {packId}");
-                continue;
-            }
-            foreach (var ruleId in pack.Rules) {
-                if (disabled.Contains(ruleId)) {
-                    continue;
-                }
-                if (!catalog.TryGetRule(ruleId, out var rule)) {
-                    warnings.Add($"Rule not found: {ruleId}");
-                    continue;
-                }
-                var severity = rule.DefaultSeverity;
-                if (pack.SeverityOverrides.TryGetValue(ruleId, out var packSeverity) &&
-                    !string.IsNullOrWhiteSpace(packSeverity)) {
-                    severity = packSeverity;
-                }
-                selected[rule.Id] = new AnalysisRuleSelection(rule, severity);
-            }
-        }
-
-        foreach (var entry in settings.SeverityOverrides ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)) {
-            if (!selected.TryGetValue(entry.Key, out var selection)) {
-                continue;
-            }
-            if (!string.IsNullOrWhiteSpace(entry.Value)) {
-                selection.Severity = entry.Value;
-            }
-        }
-
-        return selected;
     }
 
     private static void WriteEditorConfig(string path, IReadOnlyList<AnalysisRuleSelection> rules) {
@@ -200,7 +162,7 @@ public static class AnalysisConfigExporter {
     }
 
     private static List<AnalysisRuleSelection> CollectRules(
-        IReadOnlyDictionary<string, List<AnalysisRuleSelection>> byLanguage,
+        IReadOnlyDictionary<string, List<AnalysisPolicyRule>> byLanguage,
         params string[] keys) {
         var combined = new Dictionary<string, AnalysisRuleSelection>(StringComparer.OrdinalIgnoreCase);
         foreach (var key in keys) {
@@ -211,7 +173,7 @@ public static class AnalysisConfigExporter {
                 if (rule?.Rule is null) {
                     continue;
                 }
-                combined[rule.Rule.Id] = rule;
+                combined[rule.Rule.Id] = new AnalysisRuleSelection(rule.Rule, rule.Severity);
             }
         }
         return combined.Values.ToList();
@@ -231,6 +193,6 @@ public static class AnalysisConfigExporter {
         }
 
         public AnalysisRule Rule { get; }
-        public string Severity { get; set; }
+        public string Severity { get; }
     }
 }
