@@ -20,9 +20,7 @@ internal static class AnalysisPolicyBuilder {
             AddOutcomeLines(lines, enabledRules, loadResult.Findings, loadReport);
         }
 
-        AddRuleConfigurationLines(lines, disabled, overrides, overridesCount);
-
-        return string.Join("\n", lines).TrimEnd();
+        return RenderPolicy(lines, disabled, overrides, overridesCount);
     }
 
     public static string BuildUnavailablePolicy(ReviewSettings settings, string reason) {
@@ -33,8 +31,7 @@ internal static class AnalysisPolicyBuilder {
         var resolvedReason = SanitizeUnavailableReason(reason);
         lines.Add("- Status: unavailable ℹ️");
         lines.Add($"- Rule outcomes: unavailable ({resolvedReason})");
-        AddRuleConfigurationLines(lines, disabled, overrides, overridesCount);
-        return string.Join("\n", lines).TrimEnd();
+        return RenderPolicy(lines, disabled, overrides, overridesCount);
     }
 
     private static bool TryBuildBasePolicy(ReviewSettings settings,
@@ -127,6 +124,12 @@ internal static class AnalysisPolicyBuilder {
             var suffix = overridesCount > overrideList.Count ? " (truncated)" : string.Empty;
             lines.Add($"- Overrides: {string.Join(", ", overrideList)}{suffix}");
         }
+    }
+
+    private static string RenderPolicy(ICollection<string> lines, HashSet<string> disabled,
+        IReadOnlyDictionary<string, string> overrides, int overridesCount) {
+        AddRuleConfigurationLines(lines, disabled, overrides, overridesCount);
+        return string.Join("\n", lines).TrimEnd();
     }
 
     private static string DescribeConfigMode(AnalysisConfigMode mode) {
