@@ -117,6 +117,9 @@ Review comments now include analysis execution context and outcomes even when no
 - Result files: 2 input patterns, 2 matched, 2 parsed, 0 failed
 - Status: pass ✅
 - Rule outcomes: 0 with findings, 5 clean
+- Failing rules: none
+- Clean rules: CA2000 (Dispose objects before losing scope), CA1822 (Mark members as static), PSAvoidUsingWriteHost (Avoid using Write-Host) (truncated)
+- Outside-pack rules: none
 
 ### Static Analysis 🔎
 - Findings: 0 (no issues at or above configured severity)

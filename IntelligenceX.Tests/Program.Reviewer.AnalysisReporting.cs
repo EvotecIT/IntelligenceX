@@ -26,8 +26,10 @@ internal static partial class Program {
             AssertContainsText(policy, "Status: fail", "analysis policy status");
             AssertContainsText(policy, "Rule outcomes: 1 with findings, 1 clean, 1 outside enabled packs",
                 "analysis policy outcomes");
-            AssertContainsText(policy, "Findings outside enabled packs: 1 rule(s)", "analysis policy external findings");
-            AssertContainsText(policy, "Rules with findings: IXTEST001=1, PS9999=1", "analysis policy rules with findings");
+            AssertContainsText(policy, "Failing rules: IXTEST001 (Rule one)=1",
+                "analysis policy failing rules");
+            AssertContainsText(policy, "Clean rules: IXTEST002 (Rule two)", "analysis policy clean rules");
+            AssertContainsText(policy, "Outside-pack rules: PS9999=1", "analysis policy outside-pack rules");
             AssertContainsText(policy, "Result files: 2 input patterns, 2 matched, 2 parsed, 0 failed",
                 "analysis policy file stats");
             AssertContainsText(policy, "Enabled rules preview: IXTEST001 (Rule one), IXTEST002 (Rule two)",
@@ -195,6 +197,9 @@ internal static partial class Program {
             AssertContainsText(policy, "Status: partial", "analysis policy outside-only status");
             AssertContainsText(policy, "Rule outcomes: 0 with findings, 0 clean, 1 outside enabled packs",
                 "analysis policy outside-only outcomes");
+            AssertContainsText(policy, "Failing rules: none", "analysis policy outside-only failing rules");
+            AssertContainsText(policy, "Clean rules: none", "analysis policy outside-only clean rules");
+            AssertContainsText(policy, "Outside-pack rules: PS9999=1", "analysis policy outside-only outside rules");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             if (Directory.Exists(temp)) {
@@ -322,6 +327,10 @@ internal static partial class Program {
             AssertContainsText(policy, "Status: partial", "analysis policy enabled-outside-only status");
             AssertContainsText(policy, "Rule outcomes: 0 with findings, 2 clean, 1 outside enabled packs",
                 "analysis policy enabled-outside-only outcomes");
+            AssertContainsText(policy, "Failing rules: none", "analysis policy enabled-outside-only failing rules");
+            AssertContainsText(policy, "Clean rules: IXTEST001 (Rule one), IXTEST002 (Rule two)",
+                "analysis policy enabled-outside-only clean rules");
+            AssertContainsText(policy, "Outside-pack rules: PS9999=1", "analysis policy enabled-outside-only outside rules");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             if (Directory.Exists(temp)) {
