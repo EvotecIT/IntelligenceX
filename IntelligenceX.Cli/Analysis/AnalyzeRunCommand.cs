@@ -249,8 +249,12 @@ internal static class AnalyzeRunCommand {
         }
 
         var severity = NormalizeSeverity(maxLinesRule.Severity);
-        var sourceFiles = Directory
-            .EnumerateFiles(workspace, "*.cs", SearchOption.AllDirectories)
+        if (string.IsNullOrWhiteSpace(severity)) {
+            Console.WriteLine($"Internal maintainability rule {MaxFileLinesRuleId} is disabled by policy severity.");
+            return findings;
+        }
+
+        var sourceFiles = EnumerateCSharpFiles(workspace, warnings)
             .Select(path => Path.GetFullPath(path))
             .Select(fullPath => new {
                 FullPath = fullPath,
@@ -287,6 +291,49 @@ internal static class AnalyzeRunCommand {
         return findings;
     }
 
+    private static IEnumerable<string> EnumerateCSharpFiles(string workspace, List<string> warnings) {
+        var pending = new Stack<string>();
+        pending.Push(workspace);
+
+        while (pending.Count > 0) {
+            var currentDirectory = pending.Pop();
+
+            IEnumerable<string> subdirectories;
+            try {
+                subdirectories = Directory.EnumerateDirectories(currentDirectory);
+            } catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or DirectoryNotFoundException) {
+                var relativePath = Path.GetRelativePath(workspace, currentDirectory).Replace('\\', '/');
+                warnings.Add($"Skipped inaccessible directory during line-count scan ({relativePath}): {ex.Message}");
+                continue;
+            }
+
+            foreach (var subdirectory in subdirectories) {
+                if (!IsExcludedDirectory(workspace, subdirectory)) {
+                    pending.Push(subdirectory);
+                }
+            }
+
+            IEnumerable<string> files;
+            try {
+                files = Directory.EnumerateFiles(currentDirectory, "*.cs", SearchOption.TopDirectoryOnly);
+            } catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or DirectoryNotFoundException) {
+                var relativePath = Path.GetRelativePath(workspace, currentDirectory).Replace('\\', '/');
+                warnings.Add($"Skipped inaccessible directory during line-count scan ({relativePath}): {ex.Message}");
+                continue;
+            }
+
+            foreach (var file in files) {
+                yield return file;
+            }
+        }
+    }
+
+    private static bool IsExcludedDirectory(string workspace, string fullPath) {
+        var relativePath = Path.GetRelativePath(workspace, fullPath).Replace('\\', '/');
+        var normalized = "/" + relativePath.TrimStart('/').TrimEnd('/') + "/";
+        return ExcludedDirectoryMarkers.Any(marker => normalized.Contains(marker, StringComparison.OrdinalIgnoreCase));
+    }
+
     private static bool IsRuleMatch(AnalysisRule rule, string expectedRuleId) {
         if (rule is null || string.IsNullOrWhiteSpace(expectedRuleId)) {
             return false;
@@ -317,11 +364,16 @@ internal static class AnalyzeRunCommand {
         return count;
     }
 
-    private static string NormalizeSeverity(string? severity) {
+    private static string? NormalizeSeverity(string? severity) {
         if (string.IsNullOrWhiteSpace(severity)) {
             return "warning";
         }
         return severity.Trim().ToLowerInvariant() switch {
+            "none" => null,
+            "off" => null,
+            "disable" => null,
+            "disabled" => null,
+            "suppress" => null,
             "critical" => "error",
             "high" => "error",
             "error" => "error",
