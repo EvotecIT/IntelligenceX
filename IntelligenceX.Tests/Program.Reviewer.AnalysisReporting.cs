@@ -65,6 +65,47 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalysisLoadFailureEmbedsPolicyWhenSummaryDisabled() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-failure-embed-policy-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            WriteAnalysisCatalogFixture(temp);
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Packs = new[] { "ix-test-pack" };
+            settings.Analysis.Results.ShowPolicy = true;
+            settings.Analysis.Results.Summary = false;
+            settings.Analysis.Results.SummaryPlacement = "bottom";
+
+            var method = typeof(ReviewerApp).GetMethod("ApplyAnalysisLoadFailure",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            if (method is null) {
+                throw new InvalidOperationException("ApplyAnalysisLoadFailure not found.");
+            }
+
+            var summary = "### Review Summary\n- baseline";
+            var updated = method.Invoke(null, new object[] {
+                summary,
+                settings,
+                new FormatException("malformed payload")
+            }) as string ?? string.Empty;
+
+            AssertContainsText(updated, "### Static Analysis Policy 🧭", "analysis failure embeds policy");
+            AssertContainsText(updated, "Rule outcomes: unavailable (invalid analysis result format)",
+                "analysis failure category reason");
+            AssertEqual(false, updated.Contains("### Static Analysis 🔎", StringComparison.Ordinal),
+                "analysis failure skips summary when disabled");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalysisPolicyShowsUnavailableWhenNoResultFiles() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-policy-no-inputs-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

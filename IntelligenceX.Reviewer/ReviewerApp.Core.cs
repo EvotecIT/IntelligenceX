@@ -384,22 +384,11 @@ public static partial class ReviewerApp {
                             inlineComments = merged.ToArray();
                         }
                     }
+                } catch (OperationCanceledException) {
+                    throw;
                 } catch (Exception ex) {
                     Console.WriteLine($"Static analysis load failed; rendering unavailable summary. ({ex.GetType().Name})");
-                    var reason = BuildAnalysisLoadFailureReason(ex);
-                    var unavailablePolicy = AnalysisPolicyBuilder.BuildUnavailablePolicy(settings, reason);
-                    var analysisBlocks = new List<string>();
-                    if (!string.IsNullOrWhiteSpace(unavailablePolicy)) {
-                        analysisBlocks.Add(unavailablePolicy);
-                    }
-                    if (analysisResults.Summary) {
-                        var unavailableSummary = AnalysisSummaryBuilder.BuildUnavailableSummary(reason);
-                        analysisBlocks.Add(unavailableSummary);
-                    }
-                    if (analysisBlocks.Count > 0) {
-                        summaryBody = ApplyEmbedPlacement(summaryBody, string.Join("\n\n", analysisBlocks),
-                            analysisResults.SummaryPlacement);
-                    }
+                    summaryBody = ApplyAnalysisLoadFailure(summaryBody, settings, ex);
                 }
             }
 
@@ -512,20 +501,38 @@ public static partial class ReviewerApp {
         }
     }
 
-    private static string BuildAnalysisLoadFailureReason(Exception ex) {
-        const string defaultReason = "internal error while loading analysis results";
-        if (ex is null) {
-            return defaultReason;
+    private static string ApplyAnalysisLoadFailure(string summaryBody, ReviewSettings settings, Exception ex) {
+        var analysisResults = settings.Analysis?.Results;
+        if (analysisResults is null) {
+            return summaryBody;
         }
-
-        if (IsUserFacingAnalysisFailure(ex)) {
-            return ex.GetType().Name;
+        var reason = BuildAnalysisLoadFailureReason(ex);
+        var unavailablePolicy = AnalysisPolicyBuilder.BuildUnavailablePolicy(settings, reason);
+        var analysisBlocks = new List<string>();
+        if (!string.IsNullOrWhiteSpace(unavailablePolicy)) {
+            analysisBlocks.Add(unavailablePolicy);
         }
-        return defaultReason;
+        if (analysisResults.Summary) {
+            var unavailableSummary = AnalysisSummaryBuilder.BuildUnavailableSummary(reason);
+            if (!string.IsNullOrWhiteSpace(unavailableSummary)) {
+                analysisBlocks.Add(unavailableSummary);
+            }
+        }
+        if (analysisBlocks.Count == 0) {
+            return summaryBody;
+        }
+        return ApplyEmbedPlacement(summaryBody, string.Join("\n\n", analysisBlocks), analysisResults.SummaryPlacement);
     }
 
-    private static bool IsUserFacingAnalysisFailure(Exception ex) {
-        return ex is IOException or UnauthorizedAccessException or FormatException or global::System.Text.Json.JsonException;
+    private static string BuildAnalysisLoadFailureReason(Exception ex) {
+        const string defaultReason = "internal error while loading analysis results";
+        return ex switch {
+            UnauthorizedAccessException => "permission denied while loading analysis results",
+            IOException => "failed to read analysis result file",
+            FormatException => "invalid analysis result format",
+            global::System.Text.Json.JsonException => "invalid analysis result format",
+            _ => defaultReason
+        };
     }
 
     internal static async Task<bool> TryUpdateFailureSummaryAsync(string? githubToken, string? apiBaseUrl,

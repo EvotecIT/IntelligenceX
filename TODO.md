@@ -265,6 +265,10 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Keep unavailable-policy sanitization defensive for future callers while reducing sensitive detail exposure in reasons. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774691136, https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774691199
 - [x] Clarify parser-phase recoverable exception intent for `FormatException`/`JsonException` and keep non-parse exceptions escalated. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774691424
 - [x] Align `AnalysisLoadReport` XML wording with reviewer docs (“valid payloads that produce zero findings”). Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774691520
+- [x] Re-throw `OperationCanceledException` in analysis-load handling to preserve cancellation semantics. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774728195
+- [x] Remove dead null-check branch from `BuildAnalysisLoadFailureReason(Exception)` to keep nullability contract strict. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774728266
+- [x] Map analysis-load unavailable reasons to stable user-facing categories (permission/read/format/internal). Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774728330
+- [x] Add regression test for top-level analysis failure path when `ShowPolicy=true` and `Summary=false` (policy embeds, summary omitted). Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774728395
 
 </details>
 <details>

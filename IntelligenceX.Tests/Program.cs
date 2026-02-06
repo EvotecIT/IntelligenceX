@@ -89,6 +89,8 @@ internal static partial class Program {
             TestAnalyzeRunInternalFileSizeRuleGeneratedHeaderScanCanBeDisabled);
         failed += Run("Analysis policy reports rule outcomes", TestAnalysisPolicyReportsRuleOutcomes);
         failed += Run("Analysis policy builds unavailable status", TestAnalysisPolicyBuildUnavailablePolicy);
+        failed += Run("Analysis load failure embeds policy when summary disabled",
+            TestAnalysisLoadFailureEmbedsPolicyWhenSummaryDisabled);
         failed += Run("Analysis policy shows unavailable when no result files",
             TestAnalysisPolicyShowsUnavailableWhenNoResultFiles);
         failed += Run("Analysis policy marks partial when only outside-pack findings exist",
