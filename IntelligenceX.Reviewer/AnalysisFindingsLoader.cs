@@ -47,63 +47,73 @@ internal static class AnalysisFindingsLoader {
             if (!uniqueResolvedFiles.Add(file)) {
                 continue;
             }
+            string text;
             try {
-                var text = File.ReadAllText(file);
-                if (string.IsNullOrWhiteSpace(text)) {
+                text = File.ReadAllText(file);
+            } catch (Exception ex) when (IsRecoverableFileReadException(ex)) {
+                failedInputFiles++;
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(text)) {
+                continue;
+            }
+
+            IReadOnlyList<AnalysisFinding> parsed;
+            try {
+                parsed = ParseFindings(text, workspace);
+            } catch (Exception ex) when (IsRecoverableParseException(ex)) {
+                failedInputFiles++;
+                continue;
+            }
+
+            foreach (var finding in parsed) {
+                if (string.IsNullOrWhiteSpace(finding.Path)) {
                     continue;
                 }
-                var parsed = ParseFindings(text, workspace);
-                foreach (var finding in parsed) {
-                    if (string.IsNullOrWhiteSpace(finding.Path)) {
-                        continue;
-                    }
-                    var normalizedPath = NormalizePath(finding.Path, workspace);
-                    if (string.IsNullOrWhiteSpace(normalizedPath)) {
-                        continue;
-                    }
-                    var resolvedRuleId = ResolveCatalogRuleId(catalog, toolRuleIndex, finding.RuleId, finding.Tool);
-                    var primaryRuleId = string.IsNullOrWhiteSpace(resolvedRuleId) ? finding.RuleId : resolvedRuleId;
-                    var secondaryRuleId = string.IsNullOrWhiteSpace(resolvedRuleId) ||
-                                          string.Equals(resolvedRuleId, finding.RuleId, StringComparison.OrdinalIgnoreCase)
-                        ? null
-                        : finding.RuleId;
-                    if (!string.IsNullOrWhiteSpace(primaryRuleId) && disabledRules.Contains(primaryRuleId)) {
-                        continue;
-                    }
-                    if (!string.IsNullOrWhiteSpace(secondaryRuleId) && disabledRules.Contains(secondaryRuleId)) {
-                        continue;
-                    }
-                    if (changed.Count > 0 && !changed.Contains(normalizedPath)) {
-                        continue;
-                    }
-                    var normalizedSeverity = AnalysisSeverity.Normalize(finding.Severity);
-                    if (!string.IsNullOrWhiteSpace(primaryRuleId) &&
-                        severityOverrides.TryGetValue(primaryRuleId, out var overrideSeverity) &&
-                        !string.IsNullOrWhiteSpace(overrideSeverity)) {
-                        normalizedSeverity = AnalysisSeverity.Normalize(overrideSeverity);
-                    } else if (!string.IsNullOrWhiteSpace(secondaryRuleId) &&
-                               severityOverrides.TryGetValue(secondaryRuleId, out var secondaryOverride) &&
-                               !string.IsNullOrWhiteSpace(secondaryOverride)) {
-                        normalizedSeverity = AnalysisSeverity.Normalize(secondaryOverride);
-                    }
-                    if (AnalysisSeverity.Rank(normalizedSeverity) < minRank) {
-                        continue;
-                    }
-                    var normalizedFinding = finding with {
-                        Path = normalizedPath,
-                        Severity = normalizedSeverity,
-                        RuleId = primaryRuleId
-                    };
-                    var key = BuildFindingKey(normalizedFinding);
-                    if (seen.Add(key)) {
-                        findings.Add(normalizedFinding);
-                    }
+                var normalizedPath = NormalizePath(finding.Path, workspace);
+                if (string.IsNullOrWhiteSpace(normalizedPath)) {
+                    continue;
                 }
-                parsedInputFiles++;
-            } catch (Exception ex) when (IsRecoverableLoadException(ex)) {
-                failedInputFiles++;
-                // Ignore malformed analysis files to keep the review resilient.
+                var resolvedRuleId = ResolveCatalogRuleId(catalog, toolRuleIndex, finding.RuleId, finding.Tool);
+                var primaryRuleId = string.IsNullOrWhiteSpace(resolvedRuleId) ? finding.RuleId : resolvedRuleId;
+                var secondaryRuleId = string.IsNullOrWhiteSpace(resolvedRuleId) ||
+                                      string.Equals(resolvedRuleId, finding.RuleId, StringComparison.OrdinalIgnoreCase)
+                    ? null
+                    : finding.RuleId;
+                if (!string.IsNullOrWhiteSpace(primaryRuleId) && disabledRules.Contains(primaryRuleId)) {
+                    continue;
+                }
+                if (!string.IsNullOrWhiteSpace(secondaryRuleId) && disabledRules.Contains(secondaryRuleId)) {
+                    continue;
+                }
+                if (changed.Count > 0 && !changed.Contains(normalizedPath)) {
+                    continue;
+                }
+                var normalizedSeverity = AnalysisSeverity.Normalize(finding.Severity);
+                if (!string.IsNullOrWhiteSpace(primaryRuleId) &&
+                    severityOverrides.TryGetValue(primaryRuleId, out var overrideSeverity) &&
+                    !string.IsNullOrWhiteSpace(overrideSeverity)) {
+                    normalizedSeverity = AnalysisSeverity.Normalize(overrideSeverity);
+                } else if (!string.IsNullOrWhiteSpace(secondaryRuleId) &&
+                           severityOverrides.TryGetValue(secondaryRuleId, out var secondaryOverride) &&
+                           !string.IsNullOrWhiteSpace(secondaryOverride)) {
+                    normalizedSeverity = AnalysisSeverity.Normalize(secondaryOverride);
+                }
+                if (AnalysisSeverity.Rank(normalizedSeverity) < minRank) {
+                    continue;
+                }
+                var normalizedFinding = finding with {
+                    Path = normalizedPath,
+                    Severity = normalizedSeverity,
+                    RuleId = primaryRuleId
+                };
+                var key = BuildFindingKey(normalizedFinding);
+                if (seen.Add(key)) {
+                    findings.Add(normalizedFinding);
+                }
             }
+            parsedInputFiles++;
         }
 
         return new AnalysisLoadResult(findings,
@@ -367,10 +377,14 @@ internal static class AnalysisFindingsLoader {
         return candidates.Count == 1 ? candidates[0].Id : ruleId;
     }
 
-    private static bool IsRecoverableLoadException(Exception ex) {
-        // Each file chooses one parse path (SARIF vs findings JSON), so recoverable failures
+    private static bool IsRecoverableFileReadException(Exception ex) {
+        return ex is IOException or UnauthorizedAccessException;
+    }
+
+    private static bool IsRecoverableParseException(Exception ex) {
+        // Each file chooses one parse path (SARIF vs findings JSON), so parse failures
         // should increment counters once per unique file and never cascade across parser attempts.
-        return ex is IOException or UnauthorizedAccessException or FormatException or JsonException;
+        return ex is FormatException or JsonException;
     }
 
     private static string BuildFindingKey(AnalysisFinding finding) {
