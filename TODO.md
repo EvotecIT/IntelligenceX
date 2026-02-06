@@ -211,6 +211,38 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Standardize usage summary delimiter/prefix handling while avoiding new public API coupling between reviewer and tests. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#discussion_r2771568731
 </details>
 <details>
+<summary>PR #109 Improve static-analysis visibility in review comments</summary>
+
+- [x] Count parsed analysis files only after successful parse/processing to avoid double-counting with failed files. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774051038, https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774053381, https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774053613
+- [x] Replace broad `catch {}` in analysis loading with scoped recoverable exception handling. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774053428
+- [x] Remove dead null-check on `lines` in `AddOutcomeLines`. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774053471
+- [x] Refactor per-rule count increment to single-assignment/ternary form. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774044094, https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774053648
+- [x] Normalize rule IDs before outcome matching to reduce undercount risk from formatting/casing variations. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774053525
+- [x] Pass a single `AnalysisLoadResult` through policy rendering to reduce future drift between report and findings. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774053656
+- [x] Add explicit tests for zero-findings and unavailable-input summary behavior. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774053589
+- [x] Prefer LINQ projection/grouping (`Select`/`GroupBy`) for rule normalization/count aggregation paths in policy outcomes. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774097816, https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774097825
+- [x] De-duplicate resolved analysis inputs before loading to avoid double counting and duplicate reads. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774098086
+- [x] Narrow recoverable exception filter and avoid treating broad `ArgumentException` as recoverable parse noise. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774098158
+- [x] Mark policy status as partial when findings are outside enabled packs, even when enabled-rule findings are zero. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774098208
+- [x] Make `Rule outcomes` wording explicit for findings outside enabled packs. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774098250
+- [x] De-duplicate resolved files without a second materialization pass to keep memory bounded on large glob expansions. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774210599
+- [x] Treat no-enabled-rules + no-findings policy state as unavailable/not-applicable (with explicit message). Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774210666
+- [x] Align `AnalysisSummaryBuilder.BuildSummary` nullable signature with defensive null handling. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774210712
+- [x] Emit unavailable analysis summary on internal load failures instead of silently dropping the analysis block. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774210754
+- [x] Make summary-body parser stop at a more resilient model section prefix (`### Model`) to reduce template-string fragility. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774210790
+- [x] Avoid empty placeholder line in model/usage bullets by always rendering a reasoning bullet. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774210837
+- [x] Remove redundant `File.Exists` pre-check in analysis loading loop and rely on existing IO-exception path around direct reads. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774290821
+- [x] Improve analysis-load failure logging to include full exception context for diagnostics. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774290928
+- [x] Refine status semantics so “outside enabled packs” does not always imply execution degradation when enabled rules are clean. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774291073
+- [x] Confirm heading-casing output shift is covered by tests/docs to protect downstream parser expectations. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774291169
+- [x] Keep `parsedInputFiles` aligned with successful parse semantics by excluding empty-file no-op inputs. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774291277
+- [x] Remove `InvalidOperationException` from recoverable analysis-load exceptions to avoid masking logic bugs. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774320699
+- [x] Keep analysis-load error logging concise and avoid dumping full exception details in CI logs. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774320762
+- [x] Align `BuildUnavailableSummary` formatting with other builders by trimming trailing newline output. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774320883
+- [x] Keep `AddOutcomeLines` nullability contract consistent (non-null inputs, no redundant null-coalescing). Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774320982
+- [x] Mark policy as partial when findings exist outside enabled packs to keep risk visible in status. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774321084
+</details>
+<details>
 <summary>PR #85 Static analysis catalog + CLI export</summary>
 
 - [x] Update analysis loading to use `reviewFiles` so analysis findings respect filters. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#pullrequestreview-3757563544

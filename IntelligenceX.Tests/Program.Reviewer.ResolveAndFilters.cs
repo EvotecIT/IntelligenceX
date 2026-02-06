@@ -358,6 +358,35 @@ internal static partial class Program {
         AssertEqual("deadbeef", commit, "malformed then valid commit");
     }
 
+    private static void TestReviewFormatterModelUsageSection() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Test title", "Test body", false, "head",
+            "base", Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            Model = "gpt-5-test",
+            Length = ReviewLength.Long,
+            Mode = "inline"
+        };
+
+        var comment = ReviewFormatter.BuildComment(context, "Body", settings, inlineSupported: true, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: string.Empty,
+            usageLine: "Usage: 5h limit: 90% remaining | credits: 4.52", findingsBlock: string.Empty);
+
+        AssertContainsText(comment, "### Model & Usage 🤖", "model usage section header");
+        AssertContainsText(comment, "- Model: `gpt-5-test`", "model usage model");
+        AssertContainsText(comment, "- Usage: 5h limit: 90% remaining | credits: 4.52", "model usage line");
+    }
+
+    private static void TestReviewFormatterModelUsageUnavailable() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Test title", "Test body", false, "head",
+            "base", Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings();
+
+        var comment = ReviewFormatter.BuildComment(context, "Body", settings, inlineSupported: true, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+
+        AssertContainsText(comment, "- Usage: unavailable", "model usage unavailable line");
+    }
+
     private static void TestReviewUsageSummaryLine() {
         const string json = "{"
             + "\"plan_type\":\"pro\","

@@ -360,13 +360,14 @@ public static partial class ReviewerApp {
             var analysisResults = analysisSettings?.Results;
             if (analysisSettings?.Enabled == true && analysisResults is not null) {
                 try {
-                    var analysisFindings = AnalysisFindingsLoader.Load(settings, reviewFiles);
+                    var analysisLoad = AnalysisFindingsLoader.LoadWithReport(settings, reviewFiles);
+                    var analysisFindings = analysisLoad.Findings;
                     var analysisBlocks = new List<string>();
-                    var analysisPolicy = AnalysisPolicyBuilder.BuildPolicy(settings);
+                    var analysisPolicy = AnalysisPolicyBuilder.BuildPolicy(settings, analysisLoad);
                     if (!string.IsNullOrWhiteSpace(analysisPolicy)) {
                         analysisBlocks.Add(analysisPolicy);
                     }
-                    var analysisSummary = AnalysisSummaryBuilder.BuildSummary(analysisFindings, analysisResults);
+                    var analysisSummary = AnalysisSummaryBuilder.BuildSummary(analysisFindings, analysisResults, analysisLoad.Report);
                     if (!string.IsNullOrWhiteSpace(analysisSummary)) {
                         analysisBlocks.Add(analysisSummary);
                     }
@@ -383,8 +384,13 @@ public static partial class ReviewerApp {
                             inlineComments = merged.ToArray();
                         }
                     }
-                } catch {
-                    Console.WriteLine("Static analysis load failed; skipping analysis findings.");
+                } catch (Exception ex) {
+                    Console.WriteLine($"Static analysis load failed; rendering unavailable summary. ({ex.GetType().Name})");
+                    if (analysisResults.Summary) {
+                        var unavailableSummary = AnalysisSummaryBuilder.BuildUnavailableSummary(
+                            "internal error while loading analysis results");
+                        summaryBody = ApplyEmbedPlacement(summaryBody, unavailableSummary, analysisResults.SummaryPlacement);
+                    }
                 }
             }
 

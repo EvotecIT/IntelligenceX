@@ -87,6 +87,22 @@ internal static partial class Program {
             TestAnalyzeRunInternalFileSizeRuleWarnsOnUnknownTagPrefixes);
         failed += Run("Analyze run internal generated header scan can be disabled",
             TestAnalyzeRunInternalFileSizeRuleGeneratedHeaderScanCanBeDisabled);
+        failed += Run("Analysis policy reports rule outcomes", TestAnalysisPolicyReportsRuleOutcomes);
+        failed += Run("Analysis policy shows unavailable when no result files",
+            TestAnalysisPolicyShowsUnavailableWhenNoResultFiles);
+        failed += Run("Analysis policy marks partial when only outside-pack findings exist",
+            TestAnalysisPolicyMarksPartialWhenOnlyOutsidePackFindingsExist);
+        failed += Run("Analysis policy shows unavailable when no enabled rules and no findings",
+            TestAnalysisPolicyShowsUnavailableWhenNoEnabledRulesAndNoFindings);
+        failed += Run("Analysis policy marks partial when only outside findings and enabled rules exist",
+            TestAnalysisPolicyMarksPartialWhenOnlyOutsideFindingsAndEnabledRulesExist);
+        failed += Run("Analysis summary shows zero findings", TestAnalysisSummaryShowsZeroFindings);
+        failed += Run("Analysis summary shows unavailable when no input files",
+            TestAnalysisSummaryShowsUnavailableWhenNoInputFiles);
+        failed += Run("Analysis load report does not double count failed files",
+            TestAnalysisLoadReportDoesNotDoubleCountFailedFiles);
+        failed += Run("Analysis load report does not count empty files as parsed",
+            TestAnalysisLoadReportDoesNotCountEmptyFilesAsParsed);
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);
         failed += Run("Trim patch tail hunk", TestTrimPatchKeepsTailHunk);
@@ -160,6 +176,8 @@ internal static partial class Program {
         failed += Run("Context deny invalid regex", TestContextDenyInvalidRegex);
         failed += Run("Context deny timeout", TestContextDenyTimeout);
         failed += Run("Review summary parser", TestReviewSummaryParser);
+        failed += Run("Review formatter model usage section", TestReviewFormatterModelUsageSection);
+        failed += Run("Review formatter model usage unavailable", TestReviewFormatterModelUsageUnavailable);
         failed += Run("Review usage summary line", TestReviewUsageSummaryLine);
         failed += Run("Review usage summary disambiguates code review weekly", TestReviewUsageSummaryDisambiguatesCodeReviewWeekly);
         failed += Run("Review usage summary disambiguates code review weekly secondary", TestReviewUsageSummaryDisambiguatesCodeReviewWeeklySecondary);

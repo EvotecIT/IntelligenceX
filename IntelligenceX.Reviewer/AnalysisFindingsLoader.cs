@@ -11,13 +11,19 @@ internal static class AnalysisFindingsLoader {
     private static readonly char[] GlobChars = { '*', '?', '[', ']' };
 
     public static IReadOnlyList<AnalysisFinding> Load(ReviewSettings settings, IReadOnlyList<PullRequestFile> files) {
+        return LoadWithReport(settings, files).Findings;
+    }
+
+    public static AnalysisLoadResult LoadWithReport(ReviewSettings settings, IReadOnlyList<PullRequestFile> files) {
         if (settings?.Analysis?.Enabled != true) {
-            return Array.Empty<AnalysisFinding>();
+            return new AnalysisLoadResult(Array.Empty<AnalysisFinding>(), new AnalysisLoadReport(0, 0, 0, 0));
         }
         var results = settings.Analysis.Results;
         var inputs = results?.Inputs;
+        var configuredInputs = inputs?.Count ?? 0;
         if (inputs is null || inputs.Count == 0) {
-            return Array.Empty<AnalysisFinding>();
+            return new AnalysisLoadResult(Array.Empty<AnalysisFinding>(),
+                new AnalysisLoadReport(configuredInputs, 0, 0, 0));
         }
 
         var workspace = ResolveWorkspaceRoot();
@@ -31,9 +37,13 @@ internal static class AnalysisFindingsLoader {
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var findings = new List<AnalysisFinding>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var resolvedFiles = ResolveInputFiles(workspace, inputs);
+        var uniqueResolvedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var parsedInputFiles = 0;
+        var failedInputFiles = 0;
 
-        foreach (var file in ResolveInputFiles(workspace, inputs)) {
-            if (!File.Exists(file)) {
+        foreach (var file in resolvedFiles) {
+            if (!uniqueResolvedFiles.Add(file)) {
                 continue;
             }
             try {
@@ -88,12 +98,15 @@ internal static class AnalysisFindingsLoader {
                         findings.Add(normalizedFinding);
                     }
                 }
-            } catch {
+                parsedInputFiles++;
+            } catch (Exception ex) when (IsRecoverableLoadException(ex)) {
+                failedInputFiles++;
                 // Ignore malformed analysis files to keep the review resilient.
             }
         }
 
-        return findings;
+        return new AnalysisLoadResult(findings,
+            new AnalysisLoadReport(configuredInputs, uniqueResolvedFiles.Count, parsedInputFiles, failedInputFiles));
     }
 
     private static IReadOnlyList<AnalysisFinding> ParseFindings(string text, string workspace) {
@@ -351,6 +364,10 @@ internal static class AnalysisFindingsLoader {
             }
         }
         return candidates.Count == 1 ? candidates[0].Id : ruleId;
+    }
+
+    private static bool IsRecoverableLoadException(Exception ex) {
+        return ex is IOException or UnauthorizedAccessException or FormatException;
     }
 
     private static string BuildFindingKey(AnalysisFinding finding) {

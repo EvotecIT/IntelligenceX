@@ -7,10 +7,22 @@ namespace IntelligenceX.Reviewer;
 
 internal static class AnalysisSummaryBuilder {
     private const int MaxMessageChars = 200;
+    private const string SummaryHeader = "### Static Analysis 🔎";
 
-    public static string BuildSummary(IReadOnlyList<AnalysisFinding> findings, AnalysisResultsSettings results) {
-        if (findings is null || findings.Count == 0 || results is null || !results.Summary) {
+    public static string BuildSummary(IReadOnlyList<AnalysisFinding>? findings, AnalysisResultsSettings results,
+        AnalysisLoadReport? loadReport = null) {
+        if (results is null || !results.Summary) {
             return string.Empty;
+        }
+        findings ??= Array.Empty<AnalysisFinding>();
+        if (findings.Count == 0) {
+            var emptyLines = new List<string> {
+                SummaryHeader,
+                loadReport is not null && loadReport.ResolvedInputFiles == 0
+                    ? "- Findings: unavailable (no analysis result files matched configured inputs)"
+                    : "- Findings: 0 (no issues at or above configured severity)"
+            };
+            return string.Join("\n", emptyLines).TrimEnd();
         }
 
         var errorCount = 0;
@@ -30,7 +42,7 @@ internal static class AnalysisSummaryBuilder {
             }
         }
 
-        var header = "### Static analysis";
+        var header = SummaryHeader;
         var totals = new List<string>();
         if (errorCount > 0) {
             totals.Add($"error: {errorCount}");
@@ -42,8 +54,8 @@ internal static class AnalysisSummaryBuilder {
             totals.Add($"info: {infoCount}");
         }
         var totalLine = totals.Count == 0
-            ? $"Findings: {findings.Count}"
-            : $"Findings: {findings.Count} ({string.Join(", ", totals)})";
+            ? $"- Findings: {findings.Count}"
+            : $"- Findings: {findings.Count} ({string.Join(", ", totals)})";
 
         var maxItems = results.SummaryMaxItems <= 0 ? findings.Count : results.SummaryMaxItems;
         var ordered = OrderFindings(findings).Take(maxItems).ToList();
@@ -63,6 +75,16 @@ internal static class AnalysisSummaryBuilder {
         }
 
         return string.Join("\n", lines).TrimEnd();
+    }
+
+    public static string BuildUnavailableSummary(string reason) {
+        var resolvedReason = string.IsNullOrWhiteSpace(reason)
+            ? "internal error while loading analysis results"
+            : reason.Trim();
+        return string.Join("\n", new[] {
+            SummaryHeader,
+            $"- Findings: unavailable ({resolvedReason})"
+        }).TrimEnd();
     }
 
     public static IReadOnlyList<InlineReviewComment> BuildInlineComments(IReadOnlyList<AnalysisFinding> findings,
