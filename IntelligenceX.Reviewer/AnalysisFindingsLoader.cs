@@ -46,13 +46,9 @@ internal static class AnalysisFindingsLoader {
             if (!uniqueResolvedFiles.Add(file)) {
                 continue;
             }
-            if (!File.Exists(file)) {
-                continue;
-            }
             try {
                 var text = File.ReadAllText(file);
                 if (string.IsNullOrWhiteSpace(text)) {
-                    parsedInputFiles++;
                     continue;
                 }
                 var parsed = ParseFindings(text, workspace);

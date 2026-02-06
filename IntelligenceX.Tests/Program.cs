@@ -94,11 +94,15 @@ internal static partial class Program {
             TestAnalysisPolicyMarksPartialWhenOnlyOutsidePackFindingsExist);
         failed += Run("Analysis policy shows unavailable when no enabled rules and no findings",
             TestAnalysisPolicyShowsUnavailableWhenNoEnabledRulesAndNoFindings);
+        failed += Run("Analysis policy keeps pass when only outside findings and enabled rules exist",
+            TestAnalysisPolicyKeepsPassWhenOnlyOutsideFindingsAndEnabledRulesExist);
         failed += Run("Analysis summary shows zero findings", TestAnalysisSummaryShowsZeroFindings);
         failed += Run("Analysis summary shows unavailable when no input files",
             TestAnalysisSummaryShowsUnavailableWhenNoInputFiles);
         failed += Run("Analysis load report does not double count failed files",
             TestAnalysisLoadReportDoesNotDoubleCountFailedFiles);
+        failed += Run("Analysis load report does not count empty files as parsed",
+            TestAnalysisLoadReportDoesNotCountEmptyFilesAsParsed);
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);
         failed += Run("Trim patch tail hunk", TestTrimPatchKeepsTailHunk);

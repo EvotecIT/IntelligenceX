@@ -137,7 +137,8 @@ internal static class AnalysisPolicyBuilder {
         var cleanEnabledRules = Math.Max(0, enabledSet.Count - impactedEnabledRules.Count);
         var status = impactedEnabledRules.Count > 0
             ? "fail"
-            : (loadReport.FailedInputFiles > 0 || outsideEnabledRules > 0 ? "partial" : "pass");
+            : (loadReport.FailedInputFiles > 0 ? "partial" :
+                (enabledSet.Count == 0 && outsideEnabledRules > 0 ? "partial" : "pass"));
         lines.Add($"- Status: {FormatStatus(status)}");
         lines.Add($"- Rule outcomes: {impactedEnabledRules.Count} with findings, {cleanEnabledRules} clean" +
                   (outsideEnabledRules > 0 ? $", {outsideEnabledRules} outside enabled packs" : string.Empty));

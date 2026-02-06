@@ -124,6 +124,38 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalysisPolicyKeepsPassWhenOnlyOutsideFindingsAndEnabledRulesExist() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-policy-enabled-outside-only-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            WriteAnalysisCatalogFixture(temp);
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Packs = new[] { "ix-test-pack" };
+            settings.Analysis.Results.ShowPolicy = true;
+
+            var report = new AnalysisLoadReport(1, 1, 1, 0);
+            var findings = new[] {
+                new AnalysisFinding("scripts/test.ps1", 3, "Unknown rule payload", "warning", "PS9999", "PSScriptAnalyzer")
+            };
+
+            var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
+                new AnalysisLoadResult(findings, report));
+
+            AssertContainsText(policy, "Status: pass", "analysis policy enabled-outside-only status");
+            AssertContainsText(policy, "Rule outcomes: 0 with findings, 2 clean, 1 outside enabled packs",
+                "analysis policy enabled-outside-only outcomes");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalysisSummaryShowsZeroFindings() {
         var results = new AnalysisResultsSettings {
             Summary = true,
@@ -169,6 +201,34 @@ internal static partial class Program {
             AssertEqual(1, result.Report.ResolvedInputFiles, "analysis load resolved files");
             AssertEqual(0, result.Report.ParsedInputFiles, "analysis load parsed files");
             AssertEqual(1, result.Report.FailedInputFiles, "analysis load failed files");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalysisLoadReportDoesNotCountEmptyFilesAsParsed() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-loader-empty-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            var artifactsDir = Path.Combine(temp, "artifacts");
+            Directory.CreateDirectory(artifactsDir);
+            var emptyFile = Path.Combine(artifactsDir, "empty.findings.json");
+            File.WriteAllText(emptyFile, string.Empty);
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Results.Inputs = new[] { "artifacts/empty.findings.json" };
+
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+
+            var result = IntelligenceX.Reviewer.AnalysisFindingsLoader.LoadWithReport(settings, Array.Empty<PullRequestFile>());
+            AssertEqual(1, result.Report.ResolvedInputFiles, "analysis load empty file resolved");
+            AssertEqual(0, result.Report.ParsedInputFiles, "analysis load empty file parsed");
+            AssertEqual(0, result.Report.FailedInputFiles, "analysis load empty file failed");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             if (Directory.Exists(temp)) {

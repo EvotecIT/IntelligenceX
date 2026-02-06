@@ -231,6 +231,11 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Emit unavailable analysis summary on internal load failures instead of silently dropping the analysis block. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774210754
 - [x] Make summary-body parser stop at a more resilient model section prefix (`### Model`) to reduce template-string fragility. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774210790
 - [x] Avoid empty placeholder line in model/usage bullets by always rendering a reasoning bullet. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774210837
+- [x] Remove redundant `File.Exists` pre-check in analysis loading loop and rely on existing IO-exception path around direct reads. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774290821
+- [x] Improve analysis-load failure logging to include full exception context for diagnostics. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774290928
+- [x] Refine status semantics so “outside enabled packs” does not always imply execution degradation when enabled rules are clean. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774291073
+- [x] Confirm heading-casing output shift is covered by tests/docs to protect downstream parser expectations. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774291169
+- [x] Keep `parsedInputFiles` aligned with successful parse semantics by excluding empty-file no-op inputs. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774291277
 </details>
 <details>
 <summary>PR #85 Static analysis catalog + CLI export</summary>
