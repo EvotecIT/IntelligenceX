@@ -104,6 +104,7 @@ internal static partial class Program {
         failed += Run("Diff range compare truncation", TestDiffRangeCompareTruncation);
         failed += Run("Azure auth scheme env", TestAzureAuthSchemeEnv);
         failed += Run("Azure auth scheme invalid env", TestAzureAuthSchemeInvalidEnv);
+        failed += Run("Review settings defaults and env merge", TestReviewSettingsDefaultsAndEnvMerge);
         failed += Run("Azure code host reader smoke", TestAzureDevOpsCodeHostReaderSmoke);
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
         failed += Run("Copilot env allowlist config", TestCopilotEnvAllowlistConfig);

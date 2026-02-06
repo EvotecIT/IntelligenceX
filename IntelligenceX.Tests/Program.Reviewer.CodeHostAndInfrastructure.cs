@@ -197,6 +197,33 @@ internal static partial class Program {
         }
     }
 
+    private static void TestReviewSettingsDefaultsAndEnvMerge() {
+        var previousProvider = Environment.GetEnvironmentVariable("REVIEW_PROVIDER");
+        var previousCodeHost = Environment.GetEnvironmentVariable("REVIEW_CODE_HOST");
+        var previousMaxFiles = Environment.GetEnvironmentVariable("OPENAI_MAX_FILES");
+        var previousSkipGenerated = Environment.GetEnvironmentVariable("SKIP_GENERATED_FILES");
+        try {
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER", "copilot");
+            Environment.SetEnvironmentVariable("REVIEW_CODE_HOST", "azure");
+            Environment.SetEnvironmentVariable("OPENAI_MAX_FILES", "42");
+            Environment.SetEnvironmentVariable("SKIP_GENERATED_FILES", "false");
+
+            var settings = ReviewSettings.FromEnvironment();
+            AssertEqual(ReviewProvider.Copilot, settings.Provider, "review settings env provider");
+            AssertEqual(ReviewCodeHost.AzureDevOps, settings.CodeHost, "review settings env code host");
+            AssertEqual(42, settings.MaxFiles, "review settings env max files");
+            AssertEqual(false, settings.SkipGeneratedFiles, "review settings env skip generated");
+            AssertEqual("current", settings.ReviewDiffRange, "review settings default diff range");
+            AssertEqual(AnalysisConfigMode.Respect, settings.Analysis.ConfigMode,
+                "review settings analysis default config mode");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER", previousProvider);
+            Environment.SetEnvironmentVariable("REVIEW_CODE_HOST", previousCodeHost);
+            Environment.SetEnvironmentVariable("OPENAI_MAX_FILES", previousMaxFiles);
+            Environment.SetEnvironmentVariable("SKIP_GENERATED_FILES", previousSkipGenerated);
+        }
+    }
+
     private static void TestAzureDevOpsCodeHostReaderSmoke() {
         const string pullRequestJson = "{"
             + "\"pullRequestId\":7,"
