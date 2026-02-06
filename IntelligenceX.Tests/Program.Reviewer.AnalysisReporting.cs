@@ -21,7 +21,8 @@ internal static partial class Program {
                 new AnalysisFinding("scripts/test.ps1", 3, "Unknown rule payload", "warning", "PS9999", "PSScriptAnalyzer")
             };
 
-            var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings, report, findings);
+            var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
+                new AnalysisLoadResult(findings, report));
             AssertContainsText(policy, "Status: fail", "analysis policy status");
             AssertContainsText(policy, "Rule outcomes: 1 with findings, 1 clean", "analysis policy outcomes");
             AssertContainsText(policy, "Findings outside enabled packs: 1 rule(s)", "analysis policy external findings");
@@ -50,7 +51,8 @@ internal static partial class Program {
             settings.Analysis.Results.ShowPolicy = true;
 
             var report = new AnalysisLoadReport(2, 0, 0, 0);
-            var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings, report, Array.Empty<AnalysisFinding>());
+            var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
+                new AnalysisLoadResult(Array.Empty<AnalysisFinding>(), report));
 
             AssertContainsText(policy, "Status: unavailable", "analysis policy no files status");
             AssertContainsText(policy, "Rule outcomes: unavailable (no analysis result files matched configured inputs)",
@@ -84,6 +86,36 @@ internal static partial class Program {
 
         var summary = IntelligenceX.Reviewer.AnalysisSummaryBuilder.BuildSummary(Array.Empty<AnalysisFinding>(), results, report);
         AssertContainsText(summary, "Findings: unavailable", "analysis summary unavailable");
+    }
+
+    private static void TestAnalysisLoadReportDoesNotDoubleCountFailedFiles() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-loader-report-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            var artifactsDir = Path.Combine(temp, "artifacts");
+            Directory.CreateDirectory(artifactsDir);
+            var lockedFile = Path.Combine(artifactsDir, "locked.findings.json");
+            File.WriteAllText(lockedFile, "{ \"schema\": \"intelligencex.findings.v1\", \"items\": [] }");
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Results.Inputs = new[] { "artifacts/locked.findings.json" };
+
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+
+            using var stream = new FileStream(lockedFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            var result = IntelligenceX.Reviewer.AnalysisFindingsLoader.LoadWithReport(settings, Array.Empty<PullRequestFile>());
+
+            AssertEqual(1, result.Report.ResolvedInputFiles, "analysis load resolved files");
+            AssertEqual(0, result.Report.ParsedInputFiles, "analysis load parsed files");
+            AssertEqual(1, result.Report.FailedInputFiles, "analysis load failed files");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
     }
 
     private static void WriteAnalysisCatalogFixture(string root) {

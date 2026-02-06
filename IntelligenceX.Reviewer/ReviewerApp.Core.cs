@@ -363,7 +363,7 @@ public static partial class ReviewerApp {
                     var analysisLoad = AnalysisFindingsLoader.LoadWithReport(settings, reviewFiles);
                     var analysisFindings = analysisLoad.Findings;
                     var analysisBlocks = new List<string>();
-                    var analysisPolicy = AnalysisPolicyBuilder.BuildPolicy(settings, analysisLoad.Report, analysisFindings);
+                    var analysisPolicy = AnalysisPolicyBuilder.BuildPolicy(settings, analysisLoad);
                     if (!string.IsNullOrWhiteSpace(analysisPolicy)) {
                         analysisBlocks.Add(analysisPolicy);
                     }

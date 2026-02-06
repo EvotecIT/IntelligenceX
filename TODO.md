@@ -211,6 +211,17 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Standardize usage summary delimiter/prefix handling while avoiding new public API coupling between reviewer and tests. Links: https://github.com/EvotecIT/IntelligenceX/pull/95#discussion_r2771568731
 </details>
 <details>
+<summary>PR #109 Improve static-analysis visibility in review comments</summary>
+
+- [x] Count parsed analysis files only after successful parse/processing to avoid double-counting with failed files. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774051038, https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774053381, https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774053613
+- [x] Replace broad `catch {}` in analysis loading with scoped recoverable exception handling. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774053428
+- [x] Remove dead null-check on `lines` in `AddOutcomeLines`. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774053471
+- [x] Refactor per-rule count increment to single-assignment/ternary form. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774044094, https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774053648
+- [x] Normalize rule IDs before outcome matching to reduce undercount risk from formatting/casing variations. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774053525
+- [x] Pass a single `AnalysisLoadResult` through policy rendering to reduce future drift between report and findings. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774053656
+- [x] Add explicit tests for zero-findings and unavailable-input summary behavior. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774053589
+</details>
+<details>
 <summary>PR #85 Static analysis catalog + CLI export</summary>
 
 - [x] Update analysis loading to use `reviewFiles` so analysis findings respect filters. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#pullrequestreview-3757563544

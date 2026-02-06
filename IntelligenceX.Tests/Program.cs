@@ -93,6 +93,8 @@ internal static partial class Program {
         failed += Run("Analysis summary shows zero findings", TestAnalysisSummaryShowsZeroFindings);
         failed += Run("Analysis summary shows unavailable when no input files",
             TestAnalysisSummaryShowsUnavailableWhenNoInputFiles);
+        failed += Run("Analysis load report does not double count failed files",
+            TestAnalysisLoadReportDoesNotDoubleCountFailedFiles);
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);
         failed += Run("Trim patch tail hunk", TestTrimPatchKeepsTailHunk);

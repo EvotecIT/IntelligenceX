@@ -8,8 +8,7 @@ namespace IntelligenceX.Reviewer;
 internal static class AnalysisPolicyBuilder {
     private const int MaxListItems = 10;
 
-    public static string BuildPolicy(ReviewSettings settings, AnalysisLoadReport? loadReport = null,
-        IReadOnlyList<AnalysisFinding>? findings = null) {
+    public static string BuildPolicy(ReviewSettings settings, AnalysisLoadResult? loadResult = null) {
         if (settings?.Analysis?.Enabled != true || settings.Analysis?.Results?.ShowPolicy != true) {
             return string.Empty;
         }
@@ -64,10 +63,11 @@ internal static class AnalysisPolicyBuilder {
         lines.Add($"Rules: {enabledRules.Count} enabled" +
                   (disabled.Count > 0 ? $", {disabled.Count} disabled" : string.Empty) +
                   (overridesCount > 0 ? $", {overridesCount} overrides" : string.Empty));
-        if (loadReport is not null) {
+        if (loadResult?.Report is not null) {
+            var loadReport = loadResult.Report;
             lines.Add(
                 $"Result files: {loadReport.ConfiguredInputs} input patterns, {loadReport.ResolvedInputFiles} matched, {loadReport.ParsedInputFiles} parsed, {loadReport.FailedInputFiles} failed");
-            AddOutcomeLines(lines, enabledRules, findings ?? Array.Empty<AnalysisFinding>(), loadReport);
+            AddOutcomeLines(lines, enabledRules, loadResult.Findings ?? Array.Empty<AnalysisFinding>(), loadReport);
         }
 
         if (disabled.Count > 0) {
@@ -108,27 +108,27 @@ internal static class AnalysisPolicyBuilder {
 
     private static void AddOutcomeLines(ICollection<string> lines, IReadOnlyList<string> enabledRules,
         IReadOnlyList<AnalysisFinding> findings, AnalysisLoadReport loadReport) {
-        if (lines is null) {
-            return;
-        }
-
         if (loadReport.ResolvedInputFiles == 0) {
             lines.Add("Status: unavailable");
             lines.Add("Rule outcomes: unavailable (no analysis result files matched configured inputs)");
             return;
         }
 
-        var enabledSet = new HashSet<string>(enabledRules ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+        var enabledSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var rule in enabledRules ?? Array.Empty<string>()) {
+            var normalizedRuleId = NormalizeRuleId(rule);
+            if (!string.IsNullOrWhiteSpace(normalizedRuleId)) {
+                enabledSet.Add(normalizedRuleId);
+            }
+        }
         var findingRuleCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var finding in findings ?? Array.Empty<AnalysisFinding>()) {
-            if (string.IsNullOrWhiteSpace(finding.RuleId)) {
+            var normalizedRuleId = NormalizeRuleId(finding.RuleId);
+            if (string.IsNullOrWhiteSpace(normalizedRuleId)) {
                 continue;
             }
-            if (findingRuleCounts.TryGetValue(finding.RuleId!, out var count)) {
-                findingRuleCounts[finding.RuleId!] = count + 1;
-            } else {
-                findingRuleCounts[finding.RuleId!] = 1;
-            }
+            findingRuleCounts[normalizedRuleId] =
+                (findingRuleCounts.TryGetValue(normalizedRuleId, out var count) ? count : 0) + 1;
         }
 
         var impactedEnabledRules = findingRuleCounts.Keys.Where(rule => enabledSet.Contains(rule)).ToList();
@@ -154,5 +154,9 @@ internal static class AnalysisPolicyBuilder {
             .ToList();
         var suffix = findingRuleCounts.Count > topRules.Count ? " (truncated)" : string.Empty;
         lines.Add($"Rules with findings: {string.Join(", ", topRules)}{suffix}");
+    }
+
+    private static string? NormalizeRuleId(string? ruleId) {
+        return string.IsNullOrWhiteSpace(ruleId) ? null : ruleId.Trim();
     }
 }

@@ -47,8 +47,8 @@ internal static class AnalysisFindingsLoader {
             }
             try {
                 var text = File.ReadAllText(file);
-                parsedInputFiles++;
                 if (string.IsNullOrWhiteSpace(text)) {
+                    parsedInputFiles++;
                     continue;
                 }
                 var parsed = ParseFindings(text, workspace);
@@ -98,7 +98,8 @@ internal static class AnalysisFindingsLoader {
                         findings.Add(normalizedFinding);
                     }
                 }
-            } catch {
+                parsedInputFiles++;
+            } catch (Exception ex) when (IsRecoverableLoadException(ex)) {
                 failedInputFiles++;
                 // Ignore malformed analysis files to keep the review resilient.
             }
@@ -363,6 +364,10 @@ internal static class AnalysisFindingsLoader {
             }
         }
         return candidates.Count == 1 ? candidates[0].Id : ruleId;
+    }
+
+    private static bool IsRecoverableLoadException(Exception ex) {
+        return ex is IOException or UnauthorizedAccessException or InvalidOperationException or FormatException or ArgumentException;
     }
 
     private static string BuildFindingKey(AnalysisFinding finding) {
