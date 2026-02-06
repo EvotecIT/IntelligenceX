@@ -103,7 +103,7 @@
       "navCanonicalPath": "index.html",
       "navCanonicalSelector": "header nav.ix-nav",
       "navCanonicalRequired": true,
-      "navRequiredLinks": "/",
+      "navRequiredLinks": "/,/docs/,/api/",
       "failOnCategories": "nav,link,asset,rendered-console-error,rendered-request-failure",
       "rendered": true,
       "renderedEnsureInstalled": false,
