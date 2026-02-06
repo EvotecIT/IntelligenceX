@@ -259,6 +259,47 @@ internal static partial class Program {
         AssertContainsText(summary, "Findings: unavailable", "analysis summary unavailable");
     }
 
+    private static void TestAnalysisLoadReportCountsParsedForZeroFindingsAcrossFormats() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-loader-zero-findings-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            var artifactsDir = Path.Combine(temp, "artifacts");
+            Directory.CreateDirectory(artifactsDir);
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+
+            void AssertCase(string fileName, string content, string label) {
+                var filePath = Path.Combine(artifactsDir, fileName);
+                File.WriteAllText(filePath, content);
+
+                var settings = new ReviewSettings();
+                settings.Analysis.Enabled = true;
+                settings.Analysis.Results.Inputs = new[] { $"artifacts/{fileName}" };
+
+                var result = IntelligenceX.Reviewer.AnalysisFindingsLoader.LoadWithReport(settings, Array.Empty<PullRequestFile>());
+                AssertEqual(1, result.Report.ResolvedInputFiles, $"analysis load zero-findings resolved {label}");
+                AssertEqual(1, result.Report.ParsedInputFiles, $"analysis load zero-findings parsed {label}");
+                AssertEqual(0, result.Report.FailedInputFiles, $"analysis load zero-findings failed {label}");
+                AssertEqual(0, result.Findings.Count, $"analysis load zero-findings findings {label}");
+            }
+
+            AssertCase("zero.findings.json",
+                "{ \"schema\": \"intelligencex.findings.v1\", \"items\": [] }",
+                "findings-json-empty-items");
+            AssertCase("zero-empty-runs.sarif",
+                "{ \"version\": \"2.1.0\", \"runs\": [] }",
+                "sarif-empty-runs");
+            AssertCase("zero-empty-results.sarif",
+                "{ \"version\": \"2.1.0\", \"runs\": [ { \"tool\": { \"driver\": { \"name\": \"demo\" } }, \"results\": [] } ] }",
+                "sarif-empty-results");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalysisLoadReportDoesNotDoubleCountFailedFiles() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-loader-report-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

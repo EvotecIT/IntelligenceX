@@ -269,6 +269,8 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Remove dead null-check branch from `BuildAnalysisLoadFailureReason(Exception)` to keep nullability contract strict. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774728266
 - [x] Map analysis-load unavailable reasons to stable user-facing categories (permission/read/format/internal). Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774728330
 - [x] Add regression test for top-level analysis failure path when `ShowPolicy=true` and `Summary=false` (policy embeds, summary omitted). Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774728395
+- [x] Keep `BuildUnavailablePolicy` reason sanitization length-bounded to prevent oversized unavailable blocks. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774748896
+- [x] Add explicit zero-findings parsed-counter coverage for both findings JSON and SARIF payload paths (including empty runs/results). Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774748951, https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774749013
 
 </details>
 <details>

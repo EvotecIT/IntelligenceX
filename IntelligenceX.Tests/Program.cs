@@ -104,6 +104,8 @@ internal static partial class Program {
             TestAnalysisSummaryShowsZeroFindingsWithoutLoadReport);
         failed += Run("Analysis summary shows unavailable when no input files",
             TestAnalysisSummaryShowsUnavailableWhenNoInputFiles);
+        failed += Run("Analysis load report counts parsed for zero findings across formats",
+            TestAnalysisLoadReportCountsParsedForZeroFindingsAcrossFormats);
         failed += Run("Analysis load report does not double count failed files",
             TestAnalysisLoadReportDoesNotDoubleCountFailedFiles);
         failed += Run("Analysis load report does not count empty files as parsed",

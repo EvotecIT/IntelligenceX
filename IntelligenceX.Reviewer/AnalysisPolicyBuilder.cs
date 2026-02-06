@@ -7,6 +7,7 @@ namespace IntelligenceX.Reviewer;
 
 internal static class AnalysisPolicyBuilder {
     private const int MaxListItems = 10;
+    private const int MaxUnavailableReasonTextElements = 120;
 
     public static string BuildPolicy(ReviewSettings settings, AnalysisLoadResult? loadResult = null) {
         if (!TryBuildBasePolicy(settings, out var lines, out var enabledRules, out var disabled, out var overrides,
@@ -222,10 +223,10 @@ internal static class AnalysisPolicyBuilder {
         }
 
         var info = new global::System.Globalization.StringInfo(resolved);
-        if (info.LengthInTextElements <= 200) {
+        if (info.LengthInTextElements <= MaxUnavailableReasonTextElements) {
             return resolved;
         }
-        return info.SubstringByTextElements(0, 200) + "...";
+        return info.SubstringByTextElements(0, MaxUnavailableReasonTextElements) + "...";
     }
 
     private static string? NormalizeRuleId(string? ruleId) {
