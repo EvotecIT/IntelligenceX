@@ -106,6 +106,42 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalysisLoadFailureSkipsOutputWhenPolicyAndSummaryDisabled() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-failure-no-output-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            WriteAnalysisCatalogFixture(temp);
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Packs = new[] { "ix-test-pack" };
+            settings.Analysis.Results.ShowPolicy = false;
+            settings.Analysis.Results.Summary = false;
+
+            var method = typeof(ReviewerApp).GetMethod("ApplyAnalysisLoadFailure",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            if (method is null) {
+                throw new InvalidOperationException("ApplyAnalysisLoadFailure not found.");
+            }
+
+            var summary = "### Review Summary\n- baseline";
+            var updated = method.Invoke(null, new object[] {
+                summary,
+                settings,
+                new FormatException("malformed payload")
+            }) as string ?? string.Empty;
+
+            AssertEqual(summary, updated, "analysis failure no-output unchanged summary");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalysisPolicyShowsUnavailableWhenNoResultFiles() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-policy-no-inputs-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

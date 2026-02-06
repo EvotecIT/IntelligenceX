@@ -91,6 +91,8 @@ internal static partial class Program {
         failed += Run("Analysis policy builds unavailable status", TestAnalysisPolicyBuildUnavailablePolicy);
         failed += Run("Analysis load failure embeds policy when summary disabled",
             TestAnalysisLoadFailureEmbedsPolicyWhenSummaryDisabled);
+        failed += Run("Analysis load failure skips output when policy and summary disabled",
+            TestAnalysisLoadFailureSkipsOutputWhenPolicyAndSummaryDisabled);
         failed += Run("Analysis policy shows unavailable when no result files",
             TestAnalysisPolicyShowsUnavailableWhenNoResultFiles);
         failed += Run("Analysis policy marks partial when only outside-pack findings exist",

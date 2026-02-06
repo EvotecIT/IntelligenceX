@@ -271,6 +271,10 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Add regression test for top-level analysis failure path when `ShowPolicy=true` and `Summary=false` (policy embeds, summary omitted). Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774728395
 - [x] Keep `BuildUnavailablePolicy` reason sanitization length-bounded to prevent oversized unavailable blocks. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774748896
 - [x] Add explicit zero-findings parsed-counter coverage for both findings JSON and SARIF payload paths (including empty runs/results). Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774748951, https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774749013
+- [x] Preserve cancellation semantics through top-level reviewer error handling without posting failure-summary updates on cancellation. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774771818
+- [x] Keep analysis-load failure embedding no-op when both `showPolicy=false` and `summary=false`. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774771896
+- [x] Reduce IO-specific wording in user-facing unavailable reasons to stable generic category text. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774771941
+- [x] Align `failed` counter docs with implementation for unreadable/inaccessible matched files. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774772025
 
 </details>
 <details>

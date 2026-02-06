@@ -124,7 +124,7 @@ Review comments now include analysis execution context and outcomes even when no
 `Result files` counters are defined as:
 - `matched`: unique files resolved from `analysis.results.inputs`.
 - `parsed`: non-empty matched files that were successfully parsed as findings/SARIF payloads (including valid payloads that produce zero findings).
-- `failed`: matched files that were readable targets but failed during load/parse.
+- `failed`: matched files that failed during read/load/parse (including access-denied and malformed payload cases).
 
 If static-analysis load fails at review time, the reviewer renders an unavailable block instead of silently omitting analysis output.
 - If `analysis.results.showPolicy` is enabled, policy includes `Status: unavailable`.

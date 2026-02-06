@@ -473,6 +473,9 @@ public static partial class ReviewerApp {
             }
 
             return 0;
+        } catch (OperationCanceledException) {
+            Console.Error.WriteLine("Operation canceled.");
+            return 130;
         } catch (Exception ex) {
             Console.Error.WriteLine(ex.Message);
             if (!summaryPosted &&
@@ -528,7 +531,7 @@ public static partial class ReviewerApp {
         const string defaultReason = "internal error while loading analysis results";
         return ex switch {
             UnauthorizedAccessException => "permission denied while loading analysis results",
-            IOException => "failed to read analysis result file",
+            IOException => "analysis result input unavailable",
             FormatException => "invalid analysis result format",
             global::System.Text.Json.JsonException => "invalid analysis result format",
             _ => defaultReason
