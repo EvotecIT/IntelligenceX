@@ -57,6 +57,12 @@
   -webkit-backdrop-filter: blur(10px);
 }
 .docs-article-header { margin-bottom: 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--pf-border); }
+.docs-article-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
 [data-theme="light"] .docs-article {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(241, 245, 249, 0.8));
 }
@@ -66,6 +72,8 @@
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  margin: 0;
+  flex: 1;
 }
 .docs-article-desc { font-size: 1.05rem; color: var(--pf-muted); margin: 0; }
 .docs-article-body h2 { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--pf-border); }
@@ -81,6 +89,18 @@
 .docs-edit-link { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--pf-muted); }
 .docs-edit-link:hover { color: var(--pf-accent); }
 .docs-edit-link svg { flex-shrink: 0; }
+.docs-edit-link-top {
+  white-space: nowrap;
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid var(--pf-border);
+  background: var(--pf-card-bg);
+  text-decoration: none;
+}
+.docs-edit-link-top:hover {
+  border-color: var(--pf-accent);
+  background: var(--pf-glow-primary);
+}
 
 /* ===== Docs Markdown Body (engine wrapper) ===== */
 .docs-main .markdown-body table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: 0.9rem; }
@@ -106,4 +126,5 @@
   .docs-sidebar { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--pf-border); padding: 1rem; border-radius: var(--pf-radius); }
   .docs-main { padding: 1rem; }
   .docs-article { padding: 1.5rem; border-radius: var(--pf-radius); }
+  .docs-article-header-top { flex-direction: column; align-items: flex-start; }
 }
