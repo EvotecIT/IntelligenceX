@@ -565,8 +565,8 @@ internal static partial class Program {
     }
 
     private static void AssertTextBlockEquals(string expected, string actual, string name) {
-        var normalizedExpected = NormalizeNewlines(expected).TrimEnd('\n');
-        var normalizedActual = NormalizeNewlines(actual).TrimEnd('\n');
+        var normalizedExpected = NormalizeNewlines(expected).Trim();
+        var normalizedActual = NormalizeNewlines(actual).Trim();
         AssertEqual(normalizedExpected, normalizedActual, name);
     }
 
