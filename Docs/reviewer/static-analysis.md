@@ -121,6 +121,15 @@ Review comments now include analysis execution context and outcomes even when no
 - Findings: 0 (no issues at or above configured severity)
 ```
 
+`Result files` counters are defined as:
+- `matched`: unique files resolved from `analysis.results.inputs`.
+- `parsed`: non-empty matched files that were successfully parsed as findings/SARIF payloads (including valid payloads that produce zero findings).
+- `failed`: matched files that were readable targets but failed during load/parse.
+
+If static-analysis load fails at review time, the reviewer renders an unavailable block instead of silently omitting analysis output.
+- If `analysis.results.showPolicy` is enabled, policy includes `Status: unavailable`.
+- If `analysis.results.summary` is enabled, summary includes `Findings: unavailable`.
+
 For JS/TS and Python today, teams can still produce SARIF with their preferred tools and include those files in
 `analysis.results.inputs`.
 

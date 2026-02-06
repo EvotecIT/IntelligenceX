@@ -386,10 +386,20 @@ public static partial class ReviewerApp {
                     }
                 } catch (Exception ex) {
                     Console.WriteLine($"Static analysis load failed; rendering unavailable summary. ({ex.GetType().Name})");
+                    var unavailablePolicy = AnalysisPolicyBuilder.BuildUnavailablePolicy(settings,
+                        "internal error while loading analysis results");
+                    var analysisBlocks = new List<string>();
+                    if (!string.IsNullOrWhiteSpace(unavailablePolicy)) {
+                        analysisBlocks.Add(unavailablePolicy);
+                    }
                     if (analysisResults.Summary) {
                         var unavailableSummary = AnalysisSummaryBuilder.BuildUnavailableSummary(
                             "internal error while loading analysis results");
-                        summaryBody = ApplyEmbedPlacement(summaryBody, unavailableSummary, analysisResults.SummaryPlacement);
+                        analysisBlocks.Add(unavailableSummary);
+                    }
+                    if (analysisBlocks.Count > 0) {
+                        summaryBody = ApplyEmbedPlacement(summaryBody, string.Join("\n\n", analysisBlocks),
+                            analysisResults.SummaryPlacement);
                     }
                 }
             }

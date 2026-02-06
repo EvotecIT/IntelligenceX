@@ -24,11 +24,39 @@ internal static partial class Program {
             var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
                 new AnalysisLoadResult(findings, report));
             AssertContainsText(policy, "Status: fail", "analysis policy status");
-            AssertContainsText(policy, "Rule outcomes: 1 with findings, 1 clean", "analysis policy outcomes");
+            AssertContainsText(policy, "Rule outcomes: 1 with findings, 1 clean, 1 outside enabled packs",
+                "analysis policy outcomes");
             AssertContainsText(policy, "Findings outside enabled packs: 1 rule(s)", "analysis policy external findings");
             AssertContainsText(policy, "Rules with findings: IXTEST001=1, PS9999=1", "analysis policy rules with findings");
             AssertContainsText(policy, "Result files: 2 input patterns, 2 matched, 2 parsed, 0 failed",
                 "analysis policy file stats");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalysisPolicyBuildUnavailablePolicy() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-policy-unavailable-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            WriteAnalysisCatalogFixture(temp);
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Packs = new[] { "ix-test-pack" };
+            settings.Analysis.Results.ShowPolicy = true;
+
+            var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildUnavailablePolicy(settings,
+                "internal error while loading analysis results");
+
+            AssertContainsText(policy, "Status: unavailable", "analysis unavailable policy status");
+            AssertContainsText(policy, "Rule outcomes: unavailable (internal error while loading analysis results)",
+                "analysis unavailable policy outcomes");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             if (Directory.Exists(temp)) {
@@ -168,6 +196,17 @@ internal static partial class Program {
         AssertContainsText(summary, "Findings: 0", "analysis summary no findings");
     }
 
+    private static void TestAnalysisSummaryShowsZeroFindingsWithoutLoadReport() {
+        var results = new AnalysisResultsSettings {
+            Summary = true,
+            MinSeverity = "warning"
+        };
+
+        var summary = IntelligenceX.Reviewer.AnalysisSummaryBuilder.BuildSummary(Array.Empty<AnalysisFinding>(), results, null);
+        AssertContainsText(summary, "### Static Analysis 🔎", "analysis summary no report header");
+        AssertContainsText(summary, "Findings: 0", "analysis summary no report findings");
+    }
+
     private static void TestAnalysisSummaryShowsUnavailableWhenNoInputFiles() {
         var results = new AnalysisResultsSettings {
             Summary = true,
@@ -229,6 +268,41 @@ internal static partial class Program {
             AssertEqual(1, result.Report.ResolvedInputFiles, "analysis load empty file resolved");
             AssertEqual(0, result.Report.ParsedInputFiles, "analysis load empty file parsed");
             AssertEqual(0, result.Report.FailedInputFiles, "analysis load empty file failed");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalysisLoadReportDeduplicatesResolvedFilesAcrossInputs() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-loader-dedupe-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            var artifactsDir = Path.Combine(temp, "artifacts");
+            Directory.CreateDirectory(artifactsDir);
+            var successFile = Path.Combine(artifactsDir, "success.findings.json");
+            var badFile = Path.Combine(artifactsDir, "bad.findings.json");
+            File.WriteAllText(successFile, "{ \"schema\": \"intelligencex.findings.v1\", \"items\": [ { \"path\": \"src/FileA.cs\", \"line\": 5, \"severity\": \"warning\", \"message\": \"ok\", \"ruleId\": \"IXTEST001\", \"tool\": \"Roslyn\" } ] }");
+            File.WriteAllText(badFile, "{");
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Results.Inputs = new[] {
+                "artifacts/*.findings.json",
+                "artifacts/success.findings.json",
+                "artifacts/bad.findings.json"
+            };
+
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+
+            var result = IntelligenceX.Reviewer.AnalysisFindingsLoader.LoadWithReport(settings, Array.Empty<PullRequestFile>());
+            AssertEqual(2, result.Report.ResolvedInputFiles, "analysis load dedupe resolved files");
+            AssertEqual(1, result.Report.ParsedInputFiles, "analysis load dedupe parsed files");
+            AssertEqual(1, result.Report.FailedInputFiles, "analysis load dedupe failed files");
+            AssertEqual(1, result.Findings.Count, "analysis load dedupe findings count");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             if (Directory.Exists(temp)) {

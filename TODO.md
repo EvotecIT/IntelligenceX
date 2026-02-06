@@ -241,6 +241,12 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Align `BuildUnavailableSummary` formatting with other builders by trimming trailing newline output. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774320883
 - [x] Keep `AddOutcomeLines` nullability contract consistent (non-null inputs, no redundant null-coalescing). Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774320982
 - [x] Mark policy as partial when findings exist outside enabled packs to keep risk visible in status. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774321084
+- [x] Add `JsonException` to recoverable analysis-load exceptions for JSON parser compatibility. Links: user request in Codex thread (2026-02-06)
+- [x] Clarify and document `parsed` counter semantics for analysis result files. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774385771
+- [x] Add regression coverage for mixed rule outcomes (enabled findings + outside-pack findings). Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774385859
+- [x] Verify and lock behavior that zero-findings summaries still render content (no empty-string contract). Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774385922
+- [x] Render unavailable policy status when analysis load fails and summary output is disabled. Links: user request in Codex thread (2026-02-06)
+- [x] Add test for deduplicated resolved inputs with one parse success and one parse failure counter path. Links: user request in Codex thread (2026-02-06)
 </details>
 <details>
 <summary>PR #85 Static analysis catalog + CLI export</summary>

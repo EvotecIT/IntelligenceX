@@ -67,7 +67,7 @@ internal static class AnalysisPolicyBuilder {
             var loadReport = loadResult.Report;
             lines.Add(
                 $"- Result files: {loadReport.ConfiguredInputs} input patterns, {loadReport.ResolvedInputFiles} matched, {loadReport.ParsedInputFiles} parsed, {loadReport.FailedInputFiles} failed");
-            AddOutcomeLines(lines, enabledRules, loadResult.Findings ?? Array.Empty<AnalysisFinding>(), loadReport);
+            AddOutcomeLines(lines, enabledRules, loadResult.Findings, loadReport);
         }
 
         if (disabled.Count > 0) {
@@ -87,6 +87,27 @@ internal static class AnalysisPolicyBuilder {
         }
 
         return string.Join("\n", lines).TrimEnd();
+    }
+
+    public static string BuildUnavailablePolicy(ReviewSettings settings, string reason) {
+        if (settings?.Analysis?.Enabled != true || settings.Analysis?.Results?.ShowPolicy != true) {
+            return string.Empty;
+        }
+
+        var basePolicy = BuildPolicy(settings);
+        if (string.IsNullOrWhiteSpace(basePolicy)) {
+            return string.Empty;
+        }
+
+        var resolvedReason = string.IsNullOrWhiteSpace(reason)
+            ? "internal error while loading analysis results"
+            : reason.Trim();
+
+        return string.Join("\n", new[] {
+            basePolicy.TrimEnd(),
+            "- Status: unavailable ℹ️",
+            $"- Rule outcomes: unavailable ({resolvedReason})"
+        }).TrimEnd();
     }
 
     private static string DescribeConfigMode(AnalysisConfigMode mode) {

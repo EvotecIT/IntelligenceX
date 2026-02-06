@@ -88,6 +88,7 @@ internal static partial class Program {
         failed += Run("Analyze run internal generated header scan can be disabled",
             TestAnalyzeRunInternalFileSizeRuleGeneratedHeaderScanCanBeDisabled);
         failed += Run("Analysis policy reports rule outcomes", TestAnalysisPolicyReportsRuleOutcomes);
+        failed += Run("Analysis policy builds unavailable status", TestAnalysisPolicyBuildUnavailablePolicy);
         failed += Run("Analysis policy shows unavailable when no result files",
             TestAnalysisPolicyShowsUnavailableWhenNoResultFiles);
         failed += Run("Analysis policy marks partial when only outside-pack findings exist",
@@ -97,12 +98,16 @@ internal static partial class Program {
         failed += Run("Analysis policy marks partial when only outside findings and enabled rules exist",
             TestAnalysisPolicyMarksPartialWhenOnlyOutsideFindingsAndEnabledRulesExist);
         failed += Run("Analysis summary shows zero findings", TestAnalysisSummaryShowsZeroFindings);
+        failed += Run("Analysis summary shows zero findings without load report",
+            TestAnalysisSummaryShowsZeroFindingsWithoutLoadReport);
         failed += Run("Analysis summary shows unavailable when no input files",
             TestAnalysisSummaryShowsUnavailableWhenNoInputFiles);
         failed += Run("Analysis load report does not double count failed files",
             TestAnalysisLoadReportDoesNotDoubleCountFailedFiles);
         failed += Run("Analysis load report does not count empty files as parsed",
             TestAnalysisLoadReportDoesNotCountEmptyFilesAsParsed);
+        failed += Run("Analysis load report deduplicates resolved files across inputs",
+            TestAnalysisLoadReportDeduplicatesResolvedFilesAcrossInputs);
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);
         failed += Run("Trim patch tail hunk", TestTrimPatchKeepsTailHunk);

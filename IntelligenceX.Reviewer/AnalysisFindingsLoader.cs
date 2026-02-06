@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using IntelligenceX.Analysis;
 using IntelligenceX.Json;
 
@@ -39,6 +40,7 @@ internal static class AnalysisFindingsLoader {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var resolvedFiles = ResolveInputFiles(workspace, inputs);
         var uniqueResolvedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Parsed means non-empty result files successfully deserialized as SARIF/findings payloads.
         var parsedInputFiles = 0;
         var failedInputFiles = 0;
 
@@ -367,7 +369,7 @@ internal static class AnalysisFindingsLoader {
     }
 
     private static bool IsRecoverableLoadException(Exception ex) {
-        return ex is IOException or UnauthorizedAccessException or FormatException;
+        return ex is IOException or UnauthorizedAccessException or FormatException or JsonException;
     }
 
     private static string BuildFindingKey(AnalysisFinding finding) {
