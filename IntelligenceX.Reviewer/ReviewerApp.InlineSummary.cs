@@ -493,7 +493,7 @@ public static partial class ReviewerApp {
         var endIndex = lines.Length;
         for (var i = 0; i < lines.Length; i++) {
             if (lines[i].IndexOf("_Model:", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                lines[i].TrimStart().StartsWith("### Model & Usage", StringComparison.OrdinalIgnoreCase)) {
+                lines[i].TrimStart().StartsWith("### Model", StringComparison.OrdinalIgnoreCase)) {
                 endIndex = i;
                 break;
             }

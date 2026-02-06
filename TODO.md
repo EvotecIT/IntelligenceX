@@ -225,6 +225,12 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Narrow recoverable exception filter and avoid treating broad `ArgumentException` as recoverable parse noise. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774098158
 - [x] Mark policy status as partial when findings are outside enabled packs, even when enabled-rule findings are zero. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774098208
 - [x] Make `Rule outcomes` wording explicit for findings outside enabled packs. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774098250
+- [x] De-duplicate resolved files without a second materialization pass to keep memory bounded on large glob expansions. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774210599
+- [x] Treat no-enabled-rules + no-findings policy state as unavailable/not-applicable (with explicit message). Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774210666
+- [x] Align `AnalysisSummaryBuilder.BuildSummary` nullable signature with defensive null handling. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774210712
+- [x] Emit unavailable analysis summary on internal load failures instead of silently dropping the analysis block. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774210754
+- [x] Make summary-body parser stop at a more resilient model section prefix (`### Model`) to reduce template-string fragility. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774210790
+- [x] Avoid empty placeholder line in model/usage bullets by always rendering a reasoning bullet. Links: https://github.com/EvotecIT/IntelligenceX/pull/109#discussion_r2774210837
 </details>
 <details>
 <summary>PR #85 Static analysis catalog + CLI export</summary>

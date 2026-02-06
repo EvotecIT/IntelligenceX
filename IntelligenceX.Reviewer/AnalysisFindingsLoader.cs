@@ -37,13 +37,15 @@ internal static class AnalysisFindingsLoader {
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var findings = new List<AnalysisFinding>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var resolvedFiles = ResolveInputFiles(workspace, inputs)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var resolvedFiles = ResolveInputFiles(workspace, inputs);
+        var uniqueResolvedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var parsedInputFiles = 0;
         var failedInputFiles = 0;
 
         foreach (var file in resolvedFiles) {
+            if (!uniqueResolvedFiles.Add(file)) {
+                continue;
+            }
             if (!File.Exists(file)) {
                 continue;
             }
@@ -108,7 +110,7 @@ internal static class AnalysisFindingsLoader {
         }
 
         return new AnalysisLoadResult(findings,
-            new AnalysisLoadReport(configuredInputs, resolvedFiles.Count, parsedInputFiles, failedInputFiles));
+            new AnalysisLoadReport(configuredInputs, uniqueResolvedFiles.Count, parsedInputFiles, failedInputFiles));
     }
 
     private static IReadOnlyList<AnalysisFinding> ParseFindings(string text, string workspace) {

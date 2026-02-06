@@ -384,8 +384,13 @@ public static partial class ReviewerApp {
                             inlineComments = merged.ToArray();
                         }
                     }
-                } catch {
-                    Console.WriteLine("Static analysis load failed; skipping analysis findings.");
+                } catch (Exception ex) {
+                    Console.WriteLine($"Static analysis load failed; rendering unavailable summary. {ex.Message}");
+                    if (analysisResults.Summary) {
+                        var unavailableSummary = AnalysisSummaryBuilder.BuildUnavailableSummary(
+                            "internal error while loading analysis results");
+                        summaryBody = ApplyEmbedPlacement(summaryBody, unavailableSummary, analysisResults.SummaryPlacement);
+                    }
                 }
             }
 

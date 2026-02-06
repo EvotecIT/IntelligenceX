@@ -126,6 +126,12 @@ internal static class AnalysisPolicyBuilder {
             .GroupBy(normalizedRuleId => normalizedRuleId, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
 
+        if (enabledSet.Count == 0 && findingRuleCounts.Count == 0) {
+            lines.Add("- Status: unavailable ℹ️");
+            lines.Add("- Rule outcomes: unavailable (no enabled rules configured)");
+            return;
+        }
+
         var impactedEnabledRules = findingRuleCounts.Keys.Where(rule => enabledSet.Contains(rule)).ToList();
         var outsideEnabledRules = findingRuleCounts.Keys.Count(rule => !enabledSet.Contains(rule));
         var cleanEnabledRules = Math.Max(0, enabledSet.Count - impactedEnabledRules.Count);

@@ -7,8 +7,9 @@ namespace IntelligenceX.Reviewer;
 
 internal static class AnalysisSummaryBuilder {
     private const int MaxMessageChars = 200;
+    private const string SummaryHeader = "### Static Analysis 🔎";
 
-    public static string BuildSummary(IReadOnlyList<AnalysisFinding> findings, AnalysisResultsSettings results,
+    public static string BuildSummary(IReadOnlyList<AnalysisFinding>? findings, AnalysisResultsSettings results,
         AnalysisLoadReport? loadReport = null) {
         if (results is null || !results.Summary) {
             return string.Empty;
@@ -16,7 +17,7 @@ internal static class AnalysisSummaryBuilder {
         findings ??= Array.Empty<AnalysisFinding>();
         if (findings.Count == 0) {
             var emptyLines = new List<string> {
-                "### Static Analysis 🔎",
+                SummaryHeader,
                 loadReport is not null && loadReport.ResolvedInputFiles == 0
                     ? "- Findings: unavailable (no analysis result files matched configured inputs)"
                     : "- Findings: 0 (no issues at or above configured severity)"
@@ -41,7 +42,7 @@ internal static class AnalysisSummaryBuilder {
             }
         }
 
-        var header = "### Static Analysis 🔎";
+        var header = SummaryHeader;
         var totals = new List<string>();
         if (errorCount > 0) {
             totals.Add($"error: {errorCount}");
@@ -74,6 +75,16 @@ internal static class AnalysisSummaryBuilder {
         }
 
         return string.Join("\n", lines).TrimEnd();
+    }
+
+    public static string BuildUnavailableSummary(string reason) {
+        var resolvedReason = string.IsNullOrWhiteSpace(reason)
+            ? "internal error while loading analysis results"
+            : reason.Trim();
+        return string.Join("\n", new[] {
+            SummaryHeader,
+            $"- Findings: unavailable ({resolvedReason})"
+        });
     }
 
     public static IReadOnlyList<InlineReviewComment> BuildInlineComments(IReadOnlyList<AnalysisFinding> findings,

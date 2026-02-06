@@ -42,7 +42,7 @@ internal static class ReviewFormatter {
             ? string.Empty
             : $" | Reasoning: {string.Join(", ", reasoningParts)}";
         var reasoningMeta = reasoningParts.Count == 0
-            ? string.Empty
+            ? "- Reasoning: not configured"
             : $"- Reasoning: {string.Join(", ", reasoningParts)}";
         var reasoningLabel = BuildReasoningLabel(settings.ReasoningEffort);
         var usageMeta = BuildUsageMetaLine(usageLine);
