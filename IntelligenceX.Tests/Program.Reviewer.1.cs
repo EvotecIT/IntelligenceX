@@ -1,0 +1,649 @@
+namespace IntelligenceX.Tests;
+
+#if INTELLIGENCEX_REVIEWER
+internal static partial class Program {
+    private static void TestCleanupNormalizeAllowedEdits() {
+        var normalized = CleanupSettings.NormalizeAllowedEdits(new[] { "Grammar", "unknown", "TITLE", " " });
+        AssertSequenceEqual(new[] { "grammar", "title" }, normalized, "normalized");
+
+        var defaults = CleanupSettings.NormalizeAllowedEdits(Array.Empty<string>());
+        AssertContains(defaults, "formatting", "defaults formatting");
+        AssertContains(defaults, "grammar", "defaults grammar");
+        AssertContains(defaults, "title", "defaults title");
+        AssertContains(defaults, "sections", "defaults sections");
+    }
+
+    private static void TestCleanupClampConfidence() {
+        AssertEqual(0d, CleanupSettings.ClampConfidence(-1), "clamp below");
+        AssertEqual(1d, CleanupSettings.ClampConfidence(2), "clamp above");
+        AssertEqual(0.42d, CleanupSettings.ClampConfidence(0.42d), "clamp mid");
+    }
+
+    private static void TestCleanupResultParseFenced() {
+        var input = "```json\n{ \"needs_cleanup\": true, \"confidence\": 0.9, \"title\": \"Fix\", \"body\": \"Body\" }\n```";
+        var result = CleanupResult.TryParse(input);
+        AssertNotNull(result, "result");
+        AssertEqual(true, result!.NeedsCleanup, "needs cleanup");
+        AssertEqual(0.9d, result.Confidence, "confidence");
+        AssertEqual("Fix", result.Title, "title");
+        AssertEqual("Body", result.Body, "body");
+    }
+
+    private static void TestCleanupResultParseEmbedded() {
+        var input = "note {\"needsCleanup\":true,\"confidence\":2} trailing";
+        var result = CleanupResult.TryParse(input);
+        AssertNotNull(result, "result");
+        AssertEqual(true, result!.NeedsCleanup, "needs cleanup");
+        AssertEqual(1d, result.Confidence, "confidence");
+    }
+
+    private static void TestCleanupTemplatePathGuard() {
+        var previous = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        var root = Path.Combine(Path.GetTempPath(), "ix-tests-" + Guid.NewGuid().ToString("N"));
+        var outsideRoot = Path.Combine(Path.GetTempPath(), "ix-tests-outside-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(outsideRoot);
+
+        var insidePath = Path.Combine(root, "template.md");
+        var outsidePath = Path.Combine(outsideRoot, "template.md");
+        File.WriteAllText(insidePath, "inside");
+        File.WriteAllText(outsidePath, "outside");
+
+        try {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", root);
+            var settings = new CleanupSettings { TemplatePath = "template.md" };
+            AssertEqual("inside", settings.ResolveTemplate(), "inside template");
+
+            settings.TemplatePath = outsidePath;
+            AssertEqual<string?>(null, settings.ResolveTemplate(), "outside template");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previous);
+            if (Directory.Exists(root)) {
+                Directory.Delete(root, true);
+            }
+            if (Directory.Exists(outsideRoot)) {
+                Directory.Delete(outsideRoot, true);
+            }
+        }
+    }
+
+    private static void TestInlineCommentsExtract() {
+        var text = string.Join("\n", new[] {
+            "Summary",
+            "- ok",
+            "",
+            "Inline Comments (max 2)",
+            "1) src/Foo.cs:42",
+            "Use null-guard here.",
+            "",
+            "2) `src/Bar.cs:10`",
+            "Nit: spacing.",
+            "",
+            "Tests / Coverage",
+            "N/A"
+        });
+
+        var result = ReviewInlineParser.Extract(text, 5);
+        AssertEqual(2, result.Comments.Count, "inline count");
+        AssertEqual("src/Foo.cs", result.Comments[0].Path, "inline path 1");
+        AssertEqual(42, result.Comments[0].Line, "inline line 1");
+        AssertContains(result.Body.Split('\n'), "Summary", "inline strip summary");
+        if (result.Body.Contains("Inline Comments", StringComparison.OrdinalIgnoreCase)) {
+            throw new InvalidOperationException("Inline section was not stripped.");
+        }
+    }
+
+    private static void TestInlineCommentsBackticks() {
+        var text = string.Join("\n", new[] {
+            "Inline Comments (max 2)",
+            "1) src/Foo.cs:42",
+            "Use `ConfigureAwait(false)` to avoid context capture.",
+            "",
+            "Tests / Coverage",
+            "N/A"
+        });
+
+        var result = ReviewInlineParser.Extract(text, 5);
+        AssertEqual(1, result.Comments.Count, "inline count backticks");
+        AssertContains(result.Comments[0].Body.Split('\n'), "Use `ConfigureAwait(false)` to avoid context capture.", "inline body backticks");
+    }
+
+    private static void TestInlineCommentsSnippetHeader() {
+        var text = string.Join("\n", new[] {
+            "Inline Comments (max 1)",
+            "1) `public string Slugify(string input)`",
+            "Add a null guard to avoid exceptions.",
+            "",
+            "Tests / Coverage",
+            "N/A"
+        });
+
+        var result = ReviewInlineParser.Extract(text, 5);
+        AssertEqual(1, result.Comments.Count, "inline count snippet");
+        AssertEqual(string.Empty, result.Comments[0].Path, "inline snippet path");
+        AssertEqual(0, result.Comments[0].Line, "inline snippet line");
+        AssertEqual("public string Slugify(string input)", result.Comments[0].Snippet, "inline snippet");
+        AssertContains(result.Comments[0].Body.Split('\n'), "Add a null guard to avoid exceptions.", "inline snippet body");
+    }
+
+    private static void TestReviewThreadInlineKey() {
+        var settings = new ReviewSettings { ReviewThreadsAutoResolveBotsOnly = true };
+        var comment = new PullRequestReviewThreadComment(null, null, $"{ReviewFormatter.InlineMarker}\nFix it.", "intelligencex-review", "src/Foo.cs", 10);
+        var thread = new PullRequestReviewThread("id", false, false, 1, new[] { comment });
+        var ok = ReviewerApp.TryGetInlineThreadKey(thread, settings, out var key);
+        AssertEqual(true, ok, "inline key ok");
+        AssertEqual("src/Foo.cs:10", key, "inline key value");
+    }
+
+    private static void TestReviewThreadInlineKeyBotsOnly() {
+        var settings = new ReviewSettings { ReviewThreadsAutoResolveBotsOnly = true };
+        var comment = new PullRequestReviewThreadComment(null, null, $"{ReviewFormatter.InlineMarker}\nFix it.", "alice", "src/Foo.cs", 10);
+        var thread = new PullRequestReviewThread("id", false, false, 1, new[] { comment });
+        var ok = ReviewerApp.TryGetInlineThreadKey(thread, settings, out _);
+        AssertEqual(false, ok, "inline key bots only");
+    }
+
+    private static void TestGitHubEventForkParsing() {
+        var root = new JsonObject()
+            .Add("repository", new JsonObject().Add("full_name", "base/repo"))
+            .Add("pull_request", new JsonObject()
+                .Add("title", "Test")
+                .Add("number", 1)
+                .Add("draft", false)
+                .Add("author_association", "CONTRIBUTOR")
+                .Add("head", new JsonObject()
+                    .Add("sha", "head")
+                    .Add("repo", new JsonObject()
+                        .Add("full_name", "fork/repo")
+                        .Add("fork", true)))
+                .Add("base", new JsonObject()
+                    .Add("sha", "base")));
+
+        var context = GitHubEventParser.ParsePullRequest(root);
+        AssertEqual(true, context.IsFork, "fork flag");
+        AssertEqual(true, context.IsFromFork, "fork detection");
+        AssertEqual("fork/repo", context.HeadRepoFullName, "head repo");
+        AssertEqual("CONTRIBUTOR", context.AuthorAssociation, "author association");
+    }
+
+    private static void TestThreadAssessmentEvidenceParse() {
+        const string json = "{\"threads\":[{\"id\":\"t1\",\"action\":\"resolve\",\"reason\":\"fixed\",\"evidence\":\"42: added guard\"}]}";
+        var method = typeof(ReviewerApp).GetMethod("ParseThreadAssessments", BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("ParseThreadAssessments not found.");
+        }
+        var result = method.Invoke(null, new object?[] { json }) as System.Collections.IEnumerable;
+        if (result is null) {
+            throw new InvalidOperationException("ParseThreadAssessments result invalid.");
+        }
+        object? first = null;
+        foreach (var item in result) {
+            first = item;
+            break;
+        }
+        if (first is null) {
+            throw new InvalidOperationException("No assessment parsed.");
+        }
+        var evidenceProp = first.GetType().GetProperty("Evidence");
+        if (evidenceProp is null) {
+            throw new InvalidOperationException("Evidence property not found.");
+        }
+        var evidence = evidenceProp.GetValue(first) as string;
+        AssertEqual("42: added guard", evidence ?? string.Empty, "evidence");
+    }
+
+    private static void TestThreadTriageFallbackSummary() {
+        var assessment = CreateThreadAssessment("1");
+        var resolved = CreateThreadAssessmentArray(assessment, 1);
+        var kept = CreateThreadAssessmentArray(null, 0);
+        var summary = ReviewerApp.BuildFallbackTriageSummary(resolved, kept);
+        AssertEqual("Auto-resolve: resolved 1 thread(s).", summary ?? string.Empty, "summary resolved");
+
+        var keptOnly = CreateThreadAssessmentArray(CreateThreadAssessment("2"), 1);
+        summary = ReviewerApp.BuildFallbackTriageSummary(CreateThreadAssessmentArray(null, 0), keptOnly);
+        AssertEqual("Auto-resolve: kept 1 thread(s).", summary ?? string.Empty, "summary kept");
+
+        summary = ReviewerApp.BuildFallbackTriageSummary(resolved, keptOnly);
+        AssertEqual("Auto-resolve: resolved 1, kept 1 thread(s).", summary ?? string.Empty, "summary mixed");
+
+        summary = ReviewerApp.BuildFallbackTriageSummary(CreateThreadAssessmentArray(null, 0),
+            CreateThreadAssessmentArray(null, 0));
+        AssertEqual(string.Empty, summary ?? string.Empty, "summary empty");
+    }
+
+    private static void TestThreadAutoResolveSummaryComment() {
+        var method = typeof(ReviewerApp).GetMethod("BuildThreadAutoResolveSummaryComment",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("BuildThreadAutoResolveSummaryComment not found.");
+        }
+        var resolved = CreateThreadAssessmentArray(CreateThreadAssessment("1"), 1);
+        var kept = CreateThreadAssessmentArray(null, 0);
+        var summary = method.Invoke(null, new object?[] { resolved, kept, "abcdef1234567890", "current PR files" }) as string;
+        AssertContainsText(summary ?? string.Empty, "auto-resolve summary", "summary header");
+        AssertContainsText(summary ?? string.Empty, "Resolved:", "summary resolved label");
+    }
+
+    private static ReviewerApp.ThreadAssessment CreateThreadAssessment(string id) {
+        return new ReviewerApp.ThreadAssessment(id, "resolve", "ok", string.Empty);
+    }
+
+    private static ReviewerApp.ThreadAssessment[] CreateThreadAssessmentArray(ReviewerApp.ThreadAssessment? item,
+        int length) {
+        var array = new ReviewerApp.ThreadAssessment[length];
+        if (item is not null && length > 0) {
+            array[0] = item;
+        }
+        return array;
+    }
+
+    private static void TestReviewThreadInlineKeyAllowlist() {
+        var settings = new ReviewSettings {
+            ReviewThreadsAutoResolveBotsOnly = true,
+            ReviewThreadsAutoResolveBotLogins = new[] { "intelligencex-review" }
+        };
+        var comment = new PullRequestReviewThreadComment(null, null, $"{ReviewFormatter.InlineMarker}\nFix it.",
+            "dependabot[bot]", "src/Foo.cs", 10);
+        var thread = new PullRequestReviewThread("id", false, false, 1, new[] { comment });
+        var ok = ReviewerApp.TryGetInlineThreadKey(thread, settings, out _);
+        AssertEqual(false, ok, "inline key allowlist");
+    }
+
+    private static void TestThreadTriageEmbedPlacement() {
+        var method = typeof(ReviewerApp).GetMethod("ApplyEmbedPlacement", BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("ApplyEmbedPlacement not found.");
+        }
+        var top = method.Invoke(null, new object?[] { "Body", "Triage", "top" }) as string;
+        AssertEqual("Triage\n\nBody", top ?? string.Empty, "embed top");
+
+        var bottom = method.Invoke(null, new object?[] { "Body", "Triage", "bottom" }) as string;
+        AssertEqual("Body\n\nTriage", bottom ?? string.Empty, "embed bottom");
+
+        var fallback = method.Invoke(null, new object?[] { "Body", "Triage", "unknown" }) as string;
+        AssertEqual("Body\n\nTriage", fallback ?? string.Empty, "embed fallback");
+    }
+
+    private static void TestAutoResolveMissingInlineEmptyKeys() {
+        var resolved = 0;
+        var inlineBody = $"{ReviewFormatter.InlineMarker}\nFix it.";
+        using var server = new LocalHttpServer(request => {
+            if (!request.Path.Equals("/graphql", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            if (request.Body.Contains("resolveReviewThread", StringComparison.Ordinal)) {
+                resolved++;
+                return new HttpResponse("{\"data\":{\"resolveReviewThread\":{\"thread\":{\"id\":\"thread1\",\"isResolved\":true}}}}");
+            }
+            return new HttpResponse(BuildGraphQlThreadsResponse(inlineBody));
+        });
+
+        using var github = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            ReviewThreadsAutoResolveMax = 1,
+            ReviewThreadsMax = 1,
+            ReviewThreadsMaxComments = 1
+        };
+
+        CallAutoResolveMissingInlineThreads(github, context, new HashSet<string>(StringComparer.OrdinalIgnoreCase), settings);
+        AssertEqual(1, resolved, "auto resolve missing inline empty keys");
+    }
+
+    private static void TestReviewRetryTransient() {
+        var attempts = 0;
+        var result = ReviewRunner.ReviewRetryPolicy.RunAsync(() => {
+                attempts++;
+                if (attempts < 3) {
+                    throw new IOException("transient");
+                }
+                return Task.FromResult("ok");
+            },
+            ex => ex is IOException,
+            maxAttempts: 3,
+            retryDelaySeconds: 1,
+            retryMaxDelaySeconds: 1,
+            backoffMultiplier: 2,
+            retryJitterMinMs: 0,
+            retryJitterMaxMs: 0,
+            CancellationToken.None,
+            describeError: null,
+            extraAttempts: 0,
+            extraRetryPredicate: null,
+            retryState: null).GetAwaiter().GetResult();
+
+        AssertEqual("ok", result, "retry result");
+        AssertEqual(3, attempts, "retry attempts");
+    }
+
+    private static void TestReviewRetryNonTransient() {
+        var attempts = 0;
+        var thrown = false;
+        try {
+            ReviewRunner.ReviewRetryPolicy.RunAsync(() => {
+                    attempts++;
+                    throw new InvalidOperationException("nope");
+                },
+                ex => ex is IOException,
+                maxAttempts: 3,
+                retryDelaySeconds: 1,
+                retryMaxDelaySeconds: 1,
+                backoffMultiplier: 2,
+                retryJitterMinMs: 0,
+                retryJitterMaxMs: 0,
+                CancellationToken.None,
+                describeError: null,
+                extraAttempts: 0,
+                extraRetryPredicate: null,
+                retryState: null).GetAwaiter().GetResult();
+        } catch (InvalidOperationException) {
+            thrown = true;
+        }
+
+        AssertEqual(true, thrown, "non-transient thrown");
+        AssertEqual(1, attempts, "non-transient attempts");
+    }
+
+    private static void TestReviewRetryRethrows() {
+        var attempts = 0;
+        var ex = new IOException("boom");
+        try {
+            ReviewRunner.ReviewRetryPolicy.RunAsync(() => {
+                    attempts++;
+                    throw ex;
+                },
+                _ => true,
+                maxAttempts: 2,
+                retryDelaySeconds: 1,
+                retryMaxDelaySeconds: 1,
+                backoffMultiplier: 2,
+                retryJitterMinMs: 0,
+                retryJitterMaxMs: 0,
+                CancellationToken.None,
+                describeError: null,
+                extraAttempts: 0,
+                extraRetryPredicate: null,
+                retryState: null).GetAwaiter().GetResult();
+            throw new InvalidOperationException("Expected exception.");
+        } catch (IOException caught) {
+            AssertEqual(true, ReferenceEquals(ex, caught), "retry exception instance");
+        }
+
+        AssertEqual(2, attempts, "retry attempts rethrow");
+    }
+
+    private static void TestReviewRetryExtraAttempt() {
+        var attempts = 0;
+        var result = ReviewRunner.ReviewRetryPolicy.RunAsync(() => {
+                attempts++;
+                if (attempts == 1) {
+                    throw new IOException("ResponseEnded");
+                }
+                return Task.FromResult("ok");
+            },
+            ex => ex is IOException,
+            maxAttempts: 1,
+            retryDelaySeconds: 1,
+            retryMaxDelaySeconds: 1,
+            backoffMultiplier: 2,
+            retryJitterMinMs: 0,
+            retryJitterMaxMs: 0,
+            CancellationToken.None,
+            describeError: null,
+            extraAttempts: 1,
+            extraRetryPredicate: ReviewDiagnostics.IsResponseEnded,
+            retryState: null).GetAwaiter().GetResult();
+
+        AssertEqual("ok", result, "retry extra result");
+        AssertEqual(2, attempts, "retry extra attempts");
+    }
+
+    private static void TestReviewFailureMarker() {
+        var settings = new ReviewSettings { Diagnostics = true };
+        var body = ReviewDiagnostics.BuildFailureBody(new IOException("ResponseEnded"), settings, null, null);
+        AssertEqual(true, ReviewDiagnostics.IsFailureBody(body), "failure marker");
+    }
+
+    private static void TestReviewFailureBodyRedactsErrors() {
+        var settings = new ReviewSettings { Diagnostics = true };
+        var body = ReviewDiagnostics.BuildFailureBody(new InvalidOperationException("Sensitive info"), settings, null, null);
+        if (body.Contains("Sensitive info", StringComparison.OrdinalIgnoreCase)) {
+            throw new InvalidOperationException("Expected failure body to omit raw exception details.");
+        }
+    }
+
+    private static void TestFailureSummaryCommentUpdate() {
+        var commentId = 42L;
+        string? body = null;
+        var hits = 0;
+        using var server = new LocalHttpServer(request => {
+            if (!string.Equals(request.Method, "PATCH", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            if (!string.Equals(request.Path, $"/repos/owner/repo/issues/comments/{commentId}", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            hits++;
+            body = request.Body;
+            return new HttpResponse("{\"id\":42,\"body\":\"ok\"}");
+        });
+
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", "Body", false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAI,
+            OpenAITransport = OpenAITransportKind.Native
+        };
+
+        var updated = IntelligenceX.Reviewer.ReviewerApp.TryUpdateFailureSummaryAsync("token", server.BaseUri.ToString().TrimEnd('/'),
+                context, settings, commentId, new InvalidOperationException("boom"), false)
+            .GetAwaiter().GetResult();
+        AssertEqual(true, updated, "failure summary update");
+        AssertEqual(1, hits, "failure summary update hits");
+        AssertContainsText(body ?? string.Empty, ReviewDiagnostics.FailureMarker, "failure summary marker");
+    }
+
+    private static void TestReviewFailOpenTransientOnly() {
+        var transient = new HttpRequestException("network");
+        var responseEnded = new IOException("ResponseEnded");
+        var nonTransient = new InvalidOperationException("logic");
+        AssertEqual(true, ReviewRunner.IsTransient(transient), "transient true");
+        AssertEqual(true, ReviewRunner.IsTransient(responseEnded), "response ended transient");
+        AssertEqual(false, ReviewRunner.IsTransient(nonTransient), "non-transient false");
+    }
+
+    private static void TestReviewFailOpenDecision() {
+        var transient = new HttpRequestException("network");
+        var nonTransient = new InvalidOperationException("logic");
+        var settings = new ReviewSettings {
+            FailOpen = true,
+            FailOpenTransientOnly = true
+        };
+        AssertEqual(true, ReviewRunner.ShouldFailOpen(settings, transient), "fail-open transient");
+        AssertEqual(false, ReviewRunner.ShouldFailOpen(settings, nonTransient), "fail-open non-transient gated");
+
+        settings.FailOpenTransientOnly = false;
+        AssertEqual(true, ReviewRunner.ShouldFailOpen(settings, nonTransient), "fail-open non-transient allowed");
+    }
+
+    private static void TestPreflightTimeout() {
+        using var server = new LocalHttpServer(_ => {
+            Thread.Sleep(200);
+            return new HttpResponse("{}");
+        });
+        var options = new OpenAINativeOptions {
+            ChatGptApiBaseUrl = server.BaseUri.ToString().TrimEnd('/')
+        };
+        try {
+            CallPreflightNativeConnectivity(options, TimeSpan.FromMilliseconds(50));
+            throw new InvalidOperationException("Expected timeout.");
+        } catch (TimeoutException) {
+            // expected
+        }
+    }
+
+    private static void TestPreflightSocketFailure() {
+        var options = new OpenAINativeOptions {
+            ChatGptApiBaseUrl = "http://127.0.0.1:1"
+        };
+        try {
+            CallPreflightNativeConnectivity(options, TimeSpan.FromSeconds(1));
+            throw new InvalidOperationException("Expected socket failure.");
+        } catch (InvalidOperationException ex) {
+            AssertContainsText(ex.Message, "Connectivity preflight failed", "preflight socket failure");
+        }
+    }
+
+    private static void TestPreflightNonSuccessStatus() {
+        using var server = new LocalHttpServer(_ => new HttpResponse("{}", null, 500, "Server Error"));
+        var options = new OpenAINativeOptions {
+            ChatGptApiBaseUrl = server.BaseUri.ToString().TrimEnd('/')
+        };
+        try {
+            CallPreflightNativeConnectivity(options, TimeSpan.FromSeconds(1));
+            throw new InvalidOperationException("Expected non-success status.");
+        } catch (HttpRequestException ex) {
+            AssertContainsText(ex.Message, "HTTP 500", "preflight non-2xx");
+        }
+    }
+
+    private static void TestReviewConfigValidatorAllowsAdditionalProperties() {
+        var result = RunConfigValidation("{\"review\":{\"extraSetting\":true}}");
+        AssertEqual(true, result is not null, "validator result");
+        AssertEqual(0, result!.Warnings.Count, "additional properties should not warn");
+        AssertEqual(0, result.Errors.Count, "additional properties should not error");
+    }
+
+    private static void TestReviewConfigValidatorInvalidEnum() {
+        var result = RunConfigValidation("{\"review\":{\"length\":\"SHORT\"}}");
+        AssertEqual(true, result is not null, "validator result");
+        AssertEqual(true, result!.Errors.Count > 0, "invalid enum should error");
+    }
+
+    private static void TestAnalysisSeverityCritical() {
+        AssertEqual("error", AnalysisSeverity.Normalize("critical"), "severity critical normalize");
+        AssertEqual(3, AnalysisSeverity.Rank("critical"), "severity critical rank");
+        AssertEqual("warning", AnalysisSeverity.Normalize("medium"), "severity medium normalize");
+    }
+
+    private static void TestAnalysisConfigExportToolIds() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var rules = new Dictionary<string, AnalysisRule>(StringComparer.OrdinalIgnoreCase) {
+                ["IX001"] = new AnalysisRule(
+                    "IX001", "csharp", "roslyn", "CA2000", "Dispose objects", "Ensure Dispose is called",
+                    "Reliability", "warning", Array.Empty<string>(), null, null),
+                ["IX002"] = new AnalysisRule(
+                    "IX002", "cs", "roslyn", "CA1062", "Validate arguments", "Validate argument null checks",
+                    "Reliability", "warning", Array.Empty<string>(), null, null),
+                ["PS001"] = new AnalysisRule(
+                    "PS001", "powershell", "psscriptanalyzer", "PSAvoidUsingWriteHost",
+                    "Avoid Write-Host", "Use Write-Output instead", "BestPractices", "warning",
+                    Array.Empty<string>(), null, null),
+                ["PS002"] = new AnalysisRule(
+                    "PS002", "ps", "psscriptanalyzer", "PSUseSupportsShouldProcess",
+                    "Use SupportsShouldProcess", "Add SupportsShouldProcess when needed", "BestPractices", "warning",
+                    Array.Empty<string>(), null, null)
+            };
+            var packs = new Dictionary<string, AnalysisPack>(StringComparer.OrdinalIgnoreCase) {
+                ["pack"] = new AnalysisPack(
+                    "pack", "Pack", "Test pack", new[] { "IX001", "IX002", "PS001", "PS002" },
+                    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), null)
+            };
+            var catalog = new AnalysisCatalog(rules, packs);
+            var settings = new AnalysisSettings { Packs = new[] { "pack" } };
+
+            AnalysisConfigExporter.Export(settings, catalog, temp);
+
+            var editorConfig = File.ReadAllText(Path.Combine(temp, ".editorconfig"));
+            AssertEqual(true, editorConfig.Contains("dotnet_diagnostic.CA2000.severity", StringComparison.Ordinal),
+                "editorconfig CA2000");
+            AssertEqual(true, editorConfig.Contains("dotnet_diagnostic.CA1062.severity", StringComparison.Ordinal),
+                "editorconfig CA1062");
+
+            var psConfig = File.ReadAllText(Path.Combine(temp, "PSScriptAnalyzerSettings.psd1"));
+            AssertEqual(true, psConfig.Contains("PSAvoidUsingWriteHost", StringComparison.Ordinal),
+                "psconfig PSAvoidUsingWriteHost");
+            AssertEqual(true, psConfig.Contains("PSUseSupportsShouldProcess", StringComparison.Ordinal),
+                "psconfig PSUseSupportsShouldProcess");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalysisPolicyResolvesOverrides() {
+        var rules = new Dictionary<string, AnalysisRule>(StringComparer.OrdinalIgnoreCase) {
+            ["IX001"] = new AnalysisRule(
+                "IX001", "csharp", "roslyn", "CA2000", "Dispose objects", "Ensure Dispose is called",
+                "Reliability", "warning", Array.Empty<string>(), null, null),
+            ["IX002"] = new AnalysisRule(
+                "IX002", "powershell", "psscriptanalyzer", "PSAvoidUsingWriteHost", "Avoid Write-Host",
+                "Use Write-Output", "BestPractices", "warning", Array.Empty<string>(), null, null)
+        };
+        var packs = new Dictionary<string, AnalysisPack>(StringComparer.OrdinalIgnoreCase) {
+            ["default"] = new AnalysisPack(
+                "default", "Default", "Test pack", new[] { "IX001", "IX002" },
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                    ["IX001"] = "error"
+                }, null)
+        };
+        var catalog = new AnalysisCatalog(rules, packs);
+        var settings = new AnalysisSettings {
+            Packs = new[] { "default" },
+            SeverityOverrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                ["CA2000"] = "warning",
+                ["IX002"] = "error"
+            }
+        };
+
+        var policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(settings, catalog);
+        AssertEqual(0, policy.Warnings.Count, "policy warnings");
+        AssertEqual(2, policy.Rules.Count, "policy selected count");
+        AssertEqual("warning", policy.Rules["IX001"].Severity, "policy override tool rule id");
+        AssertEqual("error", policy.Rules["IX002"].Severity, "policy override catalog id");
+    }
+
+    private static void TestAnalysisCatalogRuleDocsPath() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-docs-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+            Directory.CreateDirectory(Path.Combine(temp, "Docs", "reviewer"));
+
+            var docsPath = "Docs/reviewer/static-analysis.md";
+            File.WriteAllText(Path.Combine(temp, docsPath), "# docs");
+            File.WriteAllText(Path.Combine(rulesDir, "IXLOC001.json"), """
+{
+  "id": "IXLOC001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXLOC001",
+  "title": "Source files should stay below 700 lines",
+  "description": "Flags oversized source files.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "docs": "Docs/reviewer/static-analysis.md"
+}
+""");
+
+            var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(temp);
+            AssertEqual(true, catalog.Rules.TryGetValue("IXLOC001", out var rule), "analysis docs rule exists");
+            AssertEqual(docsPath, rule!.Docs, "analysis docs path stored");
+            var resolvedDocsPath = Path.Combine(temp, rule.Docs!.Replace('/', Path.DirectorySeparatorChar));
+            AssertEqual(true, File.Exists(resolvedDocsPath), "analysis docs path resolves from workspace");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+}
+#endif

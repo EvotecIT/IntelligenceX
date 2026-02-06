@@ -1,0 +1,383 @@
+namespace IntelligenceX.Reviewer;
+
+public static partial class ReviewerApp {
+    private static async Task<bool> TryWriteAuthFromEnvAsync() {
+        var authJson = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_JSON");
+        var authB64 = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_B64");
+        if (string.IsNullOrWhiteSpace(authJson) && string.IsNullOrWhiteSpace(authB64)) {
+            return true;
+        }
+
+        string content;
+        if (!string.IsNullOrWhiteSpace(authJson)) {
+            content = authJson!;
+            SecretsAudit.Record("Auth store loaded from INTELLIGENCEX_AUTH_JSON");
+        } else {
+            try {
+                var bytes = Convert.FromBase64String(authB64!);
+                content = Encoding.UTF8.GetString(bytes);
+                SecretsAudit.Record("Auth store loaded from INTELLIGENCEX_AUTH_B64");
+            } catch {
+                Console.Error.WriteLine("Failed to decode INTELLIGENCEX_AUTH_B64.");
+                return false;
+            }
+        }
+
+        if (IsEncryptedStore(content) && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_KEY"))) {
+            Console.Error.WriteLine("Auth store is encrypted but INTELLIGENCEX_AUTH_KEY is not set.");
+            return false;
+        }
+
+        if (HasAuthStoreBundles(content)) {
+            WriteAuthStoreContent(content);
+            return true;
+        }
+
+        var bundle = AuthBundleSerializer.Deserialize(content);
+        if (bundle is not null) {
+            try {
+                var store = new FileAuthBundleStore();
+                await store.SaveAsync(bundle).ConfigureAwait(false);
+                return true;
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Failed to write auth bundle: {ex.Message}");
+                return false;
+            }
+        }
+
+        Console.Error.WriteLine("Auth bundle content is invalid.");
+        return false;
+    }
+
+    private static void WriteAuthStoreContent(string content) {
+        var path = AuthPaths.ResolveAuthPath();
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(dir)) {
+            Directory.CreateDirectory(dir);
+        }
+        File.WriteAllText(path, content);
+    }
+
+    private static bool IsEncryptedStore(string content) {
+        return content.TrimStart().StartsWith("{\"encrypted\":", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasAuthStoreBundles(string content) {
+        var value = JsonLite.Parse(content);
+        var obj = value?.AsObject();
+        if (obj is null) {
+            return false;
+        }
+        var bundles = obj.GetObject("bundles");
+        if (bundles is null) {
+            return false;
+        }
+        foreach (var entry in bundles) {
+            if (entry.Value?.AsObject() is not null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private sealed class RunOptions {
+        public string? Provider { get; set; }
+        public string? ProviderFallback { get; set; }
+        public string? CodeHost { get; set; }
+        public string? AzureOrg { get; set; }
+        public string? AzureProject { get; set; }
+        public string? AzureRepo { get; set; }
+        public string? AzureBaseUrl { get; set; }
+        public string? AzureTokenEnv { get; set; }
+        public bool ShowHelp { get; set; }
+        public List<string> Errors { get; } = new();
+
+        public bool HasAzureOverrides =>
+            !string.IsNullOrWhiteSpace(AzureOrg) ||
+            !string.IsNullOrWhiteSpace(AzureProject) ||
+            !string.IsNullOrWhiteSpace(AzureRepo) ||
+            !string.IsNullOrWhiteSpace(AzureBaseUrl) ||
+            !string.IsNullOrWhiteSpace(AzureTokenEnv);
+    }
+
+    private sealed class RunOptionSpec {
+        public RunOptionSpec(string name, string valueHint, string description, bool requiresValue, Action<RunOptions, string?> apply) {
+            Name = name;
+            ValueHint = valueHint;
+            Description = description;
+            RequiresValue = requiresValue;
+            Apply = apply;
+        }
+
+        public string Name { get; }
+        public string ValueHint { get; }
+        public string Description { get; }
+        public bool RequiresValue { get; }
+        public Action<RunOptions, string?> Apply { get; }
+    }
+
+    private static readonly RunOptionSpec[] RunOptionSpecs = {
+        new RunOptionSpec("--provider", "<openai|codex|copilot|azure>", "AI provider or Azure DevOps code host (aliases: azuredevops, azure-devops, ado)", true,
+            (options, value) => options.Provider = value),
+        new RunOptionSpec("--provider-fallback", "<openai|codex|copilot>", "Optional fallback AI provider when the primary provider fails", true,
+            (options, value) => options.ProviderFallback = value),
+        new RunOptionSpec("--code-host", "<github|azure>", "Override code host (azure/azuredevops supported)", true,
+            (options, value) => options.CodeHost = value),
+        new RunOptionSpec("--azure-org", "<org>", "Azure DevOps organization", true,
+            (options, value) => options.AzureOrg = value),
+        new RunOptionSpec("--azure-project", "<project>", "Azure DevOps project", true,
+            (options, value) => options.AzureProject = value),
+        new RunOptionSpec("--azure-repo", "<repo>", "Azure DevOps repository id or name", true,
+            (options, value) => options.AzureRepo = value),
+        new RunOptionSpec("--azure-base-url", "<url>", "Azure DevOps base URL", true,
+            (options, value) => options.AzureBaseUrl = value),
+        new RunOptionSpec("--azure-token-env", "<env>", "Env var holding Azure DevOps token", true,
+            (options, value) => options.AzureTokenEnv = value)
+    };
+
+    private static readonly IReadOnlyDictionary<string, RunOptionSpec> RunOptionSpecMap =
+        RunOptionSpecs.ToDictionary(spec => spec.Name, StringComparer.Ordinal);
+
+    private static RunOptions ParseRunOptions(string[] args) {
+        var options = new RunOptions();
+        for (var i = 0; i < args.Length; i++) {
+            var arg = args[i];
+            switch (arg) {
+                case "--help":
+                case "-h":
+                    options.ShowHelp = true;
+                    break;
+                default:
+                    if (RunOptionSpecMap.TryGetValue(arg, out var spec)) {
+                        var value = spec.RequiresValue ? ReadValue(args, ref i, spec.Name, options.Errors) : null;
+                        if (value is not null || !spec.RequiresValue) {
+                            spec.Apply(options, value);
+                        }
+                        break;
+                    }
+                    options.Errors.Add($"Unknown option: {arg}");
+                    break;
+            }
+        }
+        if (!string.IsNullOrWhiteSpace(options.Provider) && !IsValidProvider(options.Provider)) {
+            options.Errors.Add($"Unsupported provider '{options.Provider}'. Use openai, codex, copilot, or azure/azuredevops.");
+        }
+        if (!string.IsNullOrWhiteSpace(options.ProviderFallback) && !IsValidAiProvider(options.ProviderFallback)) {
+            options.Errors.Add(
+                $"Unsupported provider fallback '{options.ProviderFallback}'. Use openai, codex, or copilot.");
+        }
+        if (!string.IsNullOrWhiteSpace(options.CodeHost) && !IsValidCodeHost(options.CodeHost)) {
+            options.Errors.Add($"Unsupported code host '{options.CodeHost}'. Use github or azure/azuredevops.");
+        }
+        return options;
+    }
+
+    private static string? ReadValue(string[] args, ref int index, string name, List<string> errors) {
+        if (index + 1 >= args.Length) {
+            errors.Add($"Missing value for {name}.");
+            return null;
+        }
+        index++;
+        var value = args[index];
+        if (string.IsNullOrWhiteSpace(value)) {
+            errors.Add($"Empty value for {name}.");
+            return null;
+        }
+        return value;
+    }
+
+    private static bool IsValidProvider(string provider) {
+        return IsValidAiProvider(provider) ||
+               IsAzureProvider(provider);
+    }
+
+    private static bool IsValidAiProvider(string provider) {
+        return ReviewProviderContracts.TryParseProviderAlias(provider, out _);
+    }
+
+    private static bool IsAzureProvider(string provider) {
+        return provider.Equals("azure", StringComparison.OrdinalIgnoreCase) ||
+               provider.Equals("azuredevops", StringComparison.OrdinalIgnoreCase) ||
+               provider.Equals("azure-devops", StringComparison.OrdinalIgnoreCase) ||
+               provider.Equals("ado", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsValidCodeHost(string codeHost) {
+        return codeHost.Equals("github", StringComparison.OrdinalIgnoreCase) ||
+               IsAzureProvider(codeHost);
+    }
+
+    private static void ApplyRunOptions(RunOptions options) {
+        var provider = options.Provider?.Trim();
+        var codeHost = options.CodeHost?.Trim();
+        if (!string.IsNullOrWhiteSpace(provider)) {
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER", provider);
+            if (IsAzureProvider(provider)) {
+                if (string.IsNullOrWhiteSpace(codeHost)) {
+                    codeHost = "azure";
+                }
+            }
+        }
+        var providerFallback = options.ProviderFallback?.Trim();
+        if (!string.IsNullOrWhiteSpace(providerFallback)) {
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER_FALLBACK", providerFallback);
+        }
+        if (!string.IsNullOrWhiteSpace(codeHost)) {
+            Environment.SetEnvironmentVariable("REVIEW_CODE_HOST", codeHost);
+        } else if (options.HasAzureOverrides) {
+            Environment.SetEnvironmentVariable("REVIEW_CODE_HOST", "azure");
+        }
+        if (!string.IsNullOrWhiteSpace(options.AzureOrg)) {
+            Environment.SetEnvironmentVariable("AZURE_DEVOPS_ORG", options.AzureOrg);
+        }
+        if (!string.IsNullOrWhiteSpace(options.AzureProject)) {
+            Environment.SetEnvironmentVariable("AZURE_DEVOPS_PROJECT", options.AzureProject);
+        }
+        if (!string.IsNullOrWhiteSpace(options.AzureRepo)) {
+            Environment.SetEnvironmentVariable("AZURE_DEVOPS_REPO", options.AzureRepo);
+        }
+        if (!string.IsNullOrWhiteSpace(options.AzureBaseUrl)) {
+            Environment.SetEnvironmentVariable("AZURE_DEVOPS_BASE_URL", options.AzureBaseUrl);
+        }
+        if (!string.IsNullOrWhiteSpace(options.AzureTokenEnv)) {
+            Environment.SetEnvironmentVariable("AZURE_DEVOPS_TOKEN_ENV", options.AzureTokenEnv);
+        }
+    }
+
+    private static void PrintRunHelp() {
+        PrintRunHelp(Console.Out);
+    }
+
+    private static void PrintRunHelp(TextWriter writer) {
+        writer.WriteLine("Reviewer run options:");
+        var leftWidth = RunOptionSpecs
+            .Select(spec => $"{spec.Name} {spec.ValueHint}".Length)
+            .DefaultIfEmpty(0)
+            .Max();
+        foreach (var spec in RunOptionSpecs) {
+            var left = $"{spec.Name} {spec.ValueHint}".PadRight(leftWidth);
+            writer.WriteLine($"  {left}  {spec.Description}");
+        }
+    }
+
+    private static async Task<bool> ValidateAuthAsync(ReviewSettings settings) {
+        var provider = ReviewProviderContracts.Get(settings.Provider);
+        if (!provider.RequiresOpenAiAuthStore) {
+            return true;
+        }
+
+        var authPath = AuthPaths.ResolveAuthPath();
+        if (!File.Exists(authPath)) {
+            Console.Error.WriteLine("Missing OpenAI auth store.");
+            Console.Error.WriteLine("Set INTELLIGENCEX_AUTH_B64 (store export) or run `intelligencex auth login`.");
+            return false;
+        }
+
+        try {
+            var store = new FileAuthBundleStore();
+            var bundle = await store.GetAsync("openai-codex").ConfigureAwait(false)
+                         ?? await store.GetAsync("openai").ConfigureAwait(false)
+                         ?? await store.GetAsync("chatgpt").ConfigureAwait(false);
+            if (bundle is null) {
+                Console.Error.WriteLine($"No OpenAI auth bundle found in {authPath}.");
+                Console.Error.WriteLine("Export a store bundle with `intelligencex auth export --format store-base64`.");
+                return false;
+            }
+            SecretsAudit.Record($"OpenAI auth bundle '{bundle.Provider}' from {authPath}");
+            return true;
+        } catch (Exception ex) {
+            Console.Error.WriteLine($"Failed to load auth store: {ex.Message}");
+            if (ex.Message.Contains("INTELLIGENCEX_AUTH_KEY", StringComparison.OrdinalIgnoreCase)) {
+                Console.Error.WriteLine("Set INTELLIGENCEX_AUTH_KEY to decrypt the auth store.");
+            }
+            return false;
+        }
+    }
+
+    private static bool ShouldSkipByTitle(string title, IReadOnlyList<string> skipTitles) {
+        if (skipTitles.Count == 0) {
+            return false;
+        }
+        foreach (var skip in skipTitles) {
+            if (!string.IsNullOrWhiteSpace(skip) && title.Contains(skip, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool ShouldSkipByLabels(IReadOnlyList<string> labels, IReadOnlyList<string> skipLabels) {
+        if (labels.Count == 0 || skipLabels.Count == 0) {
+            return false;
+        }
+        foreach (var label in labels) {
+            foreach (var skip in skipLabels) {
+                if (!string.IsNullOrWhiteSpace(skip) && label.Equals(skip, StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static bool ShouldSkipByPaths(IReadOnlyList<PullRequestFile> files, IReadOnlyList<string> skipPaths) {
+        if (files.Count == 0 || skipPaths.Count == 0) {
+            return false;
+        }
+        var allMatch = true;
+        foreach (var file in files) {
+            var matches = skipPaths.Any(pattern => GlobMatcher.IsMatch(pattern, file.Filename));
+            if (!matches) {
+                allMatch = false;
+                break;
+            }
+        }
+        return allMatch;
+    }
+
+    internal static bool HasWorkflowChanges(IReadOnlyList<PullRequestFile> files) {
+        foreach (var file in files) {
+            if (IsWorkflowPath(file.Filename)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool IsWorkflowPath(string? path) {
+        if (string.IsNullOrWhiteSpace(path)) {
+            return false;
+        }
+        var normalized = path.Replace('\\', '/').TrimStart('/');
+        if (!normalized.StartsWith(".github/workflows/", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+        return normalized.EndsWith(".yml", StringComparison.OrdinalIgnoreCase) ||
+               normalized.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static (IReadOnlyList<PullRequestFile> Files, string BudgetNote) PrepareFiles(IReadOnlyList<PullRequestFile> files,
+        int maxFiles, int maxPatchChars) {
+        var list = new List<PullRequestFile>();
+        var truncatedPatches = 0;
+        var count = 0;
+        foreach (var file in files) {
+            if (count >= maxFiles) {
+                break;
+            }
+            var patch = file.Patch;
+            if (!string.IsNullOrWhiteSpace(patch)) {
+                var trimmed = TrimPatch(patch, maxPatchChars);
+                if (!string.Equals(trimmed, patch, StringComparison.Ordinal)) {
+                    truncatedPatches++;
+                }
+                patch = trimmed;
+            }
+            list.Add(new PullRequestFile(file.Filename, file.Status, patch));
+            count++;
+        }
+        var budgetNote = BuildBudgetNote(files.Count, list.Count, truncatedPatches, maxPatchChars);
+        return (list, budgetNote);
+    }
+
+}

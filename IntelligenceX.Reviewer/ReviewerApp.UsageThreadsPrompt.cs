@@ -1,0 +1,357 @@
+namespace IntelligenceX.Reviewer;
+
+public static partial class ReviewerApp {
+    private static async Task<ThreadTriageResult> MaybeAutoResolveAssessedThreadsAsync(GitHubClient github, GitHubClient? fallbackGithub,
+        ReviewRunner runner, PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
+        ReviewContextExtras extras, bool reviewFailed, string? diffNote, CancellationToken cancellationToken,
+        bool force, bool allowCommentPost) {
+        if ((!settings.ReviewThreadsAutoResolveAI && !force) || reviewFailed) {
+            return ThreadTriageResult.Empty;
+        }
+        if (extras.ReviewThreads.Count == 0) {
+            return ThreadTriageResult.Empty;
+        }
+
+        var candidates = SelectAssessmentCandidates(extras.ReviewThreads, settings);
+        if (candidates.Count == 0) {
+            return ThreadTriageResult.Empty;
+        }
+
+        var prompt = BuildThreadAssessmentPrompt(context, candidates, files, settings, diffNote);
+        if (settings.RedactPii) {
+            prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
+        }
+
+        var output = await runner.RunAsync(prompt, null, null, cancellationToken).ConfigureAwait(false);
+        if (ReviewDiagnostics.IsFailureBody(output)) {
+            return ThreadTriageResult.Empty;
+        }
+
+        var assessments = ParseThreadAssessments(output);
+        if (assessments.Count == 0) {
+            Console.Error.WriteLine("Thread assessment returned no usable results.");
+            return ThreadTriageResult.Empty;
+        }
+
+        var byId = new Dictionary<string, ThreadAssessment>(StringComparer.OrdinalIgnoreCase);
+        var missingIdCount = 0;
+        var duplicateIdCount = 0;
+        var duplicateIdExamples = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var assessment in assessments) {
+            var normalizedId = NormalizeThreadAssessmentId(assessment.Id);
+            if (normalizedId.Length == 0) {
+                missingIdCount++;
+                continue;
+            }
+            if (!byId.TryAdd(normalizedId, assessment)) {
+                duplicateIdCount++;
+                if (duplicateIdExamples.Count < 3) {
+                    duplicateIdExamples.Add(normalizedId);
+                }
+                // Last occurrence wins to keep deterministic behavior without throwing.
+                byId[normalizedId] = assessment;
+            }
+        }
+        if (missingIdCount > 0) {
+            Console.Error.WriteLine($"Thread assessment skipped {missingIdCount} item(s) with missing ids.");
+        }
+        if (duplicateIdCount > 0) {
+            var examples = duplicateIdExamples.Count > 0 ? $" (e.g., {string.Join(", ", duplicateIdExamples)})" : string.Empty;
+            Console.Error.WriteLine($"Thread assessment contained {duplicateIdCount} duplicate id(s){examples}; using last occurrence.");
+        }
+        var replyMap = new Dictionary<string, ThreadAssessment>(StringComparer.OrdinalIgnoreCase);
+        var patchIndex = BuildInlinePatchIndex(files);
+        var patchLookup = BuildPatchLookup(files, settings.MaxPatchChars);
+        var resolved = new List<ThreadAssessment>();
+        var kept = new List<ThreadAssessment>();
+        var failed = new List<ThreadAssessment>();
+        foreach (var assessment in assessments) {
+            switch (assessment.Action) {
+                case "comment":
+                case "keep":
+                    kept.Add(assessment);
+                    var normalizedReplyId = NormalizeThreadAssessmentId(assessment.Id);
+                    if (normalizedReplyId.Length > 0) {
+                        replyMap[normalizedReplyId] = assessment;
+                    }
+                    break;
+            }
+        }
+
+        var resolvedCount = 0;
+        foreach (var thread in candidates) {
+            if (resolvedCount >= settings.ReviewThreadsAutoResolveMax) {
+                break;
+            }
+            var normalizedThreadId = NormalizeThreadAssessmentId(thread.Id);
+            if (!byId.TryGetValue(normalizedThreadId, out var assessment) || assessment.Action != "resolve") {
+                continue;
+            }
+            if (settings.ReviewThreadsAutoResolveRequireEvidence &&
+                !HasValidResolveEvidence(assessment.Evidence, thread, patchIndex, patchLookup, settings.MaxPatchChars)) {
+                var missingEvidence = new ThreadAssessment(assessment.Id, "keep",
+                    $"{assessment.Reason} (missing diff evidence)", assessment.Evidence);
+                kept.Add(missingEvidence);
+                replyMap[normalizedThreadId] = missingEvidence;
+                continue;
+            }
+            var result = await TryResolveThreadAsync(github, fallbackGithub, thread.Id, cancellationToken).ConfigureAwait(false);
+            if (result.Resolved) {
+                resolvedCount++;
+                resolved.Add(assessment);
+                continue;
+            }
+            var error = result.Error ?? "unknown error";
+            var failedAssessment = new ThreadAssessment(assessment.Id, "keep", $"{assessment.Reason} (resolve failed: {error})",
+                assessment.Evidence);
+            failed.Add(failedAssessment);
+            replyMap[normalizedThreadId] = failedAssessment;
+            Console.Error.WriteLine($"Failed to resolve review thread {thread.Id}: {error}");
+        }
+
+        if (failed.Count > 0) {
+            kept.AddRange(failed);
+        }
+
+        var commentPosted = false;
+        var triageBody = BuildThreadAssessmentComment(resolved, kept, context.HeadSha, diffNote);
+        if (settings.ReviewThreadsAutoResolveAIReply && replyMap.Count > 0) {
+            await ReplyToKeptThreadsAsync(github, context, candidates, replyMap, context.HeadSha, diffNote, settings, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        if (allowCommentPost && settings.ReviewThreadsAutoResolveAIPostComment &&
+            !settings.ReviewThreadsAutoResolveAIEmbed && kept.Count > 0) {
+            var body = triageBody;
+            await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, cancellationToken)
+                .ConfigureAwait(false);
+            commentPosted = true;
+        }
+        if (settings.ReviewThreadsAutoResolveSummaryComment && !commentPosted && (resolved.Count > 0 || kept.Count > 0)) {
+            var body = BuildThreadAutoResolveSummaryComment(resolved, kept, context.HeadSha, diffNote);
+            await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, cancellationToken)
+                .ConfigureAwait(false);
+            commentPosted = true;
+        }
+
+        if (resolvedCount == 0 && kept.Count == 0) {
+            return ThreadTriageResult.Empty;
+        }
+        var summary = $"Auto-resolve (AI): {resolvedCount} resolved, {kept.Count} kept.";
+        if (commentPosted) {
+            summary += " Triage comment posted.";
+        }
+        var fallbackSummary = BuildFallbackTriageSummary(resolved, kept);
+        return new ThreadTriageResult(summary, triageBody, fallbackSummary);
+    }
+
+    private static async Task<string> TryBuildUsageLineAsync(ReviewSettings settings, ReviewProvider providerKind) {
+        if (!settings.ReviewUsageSummary) {
+            return string.Empty;
+        }
+        var provider = ReviewProviderContracts.Get(providerKind);
+        if (!provider.SupportsUsageApi) {
+            return string.Empty;
+        }
+
+        try {
+            var snapshot = await TryGetUsageSnapshotAsync(settings).ConfigureAwait(false);
+            if (snapshot is null) {
+                return string.Empty;
+            }
+            var summary = FormatUsageSummary(snapshot);
+            return string.IsNullOrWhiteSpace(summary) ? string.Empty : summary;
+        } catch (Exception ex) {
+            if (settings.Diagnostics) {
+                Console.Error.WriteLine($"Usage summary failed: {ex.Message}");
+            }
+            return string.Empty;
+        }
+    }
+
+    private static async Task<ChatGptUsageSnapshot?> TryGetUsageSnapshotAsync(ReviewSettings settings) {
+        var cacheMinutes = Math.Max(0, settings.ReviewUsageSummaryCacheMinutes);
+        if (cacheMinutes > 0 && ChatGptUsageCache.TryLoad(out var entry) && entry is not null) {
+            var age = DateTimeOffset.UtcNow - entry.UpdatedAt;
+            if (age <= TimeSpan.FromMinutes(cacheMinutes)) {
+                return entry.Snapshot;
+            }
+        }
+
+        using var cts = new CancellationTokenSource(
+            TimeSpan.FromSeconds(Math.Max(1, settings.ReviewUsageSummaryTimeoutSeconds)));
+        var options = new OpenAINativeOptions {
+            AuthStore = new FileAuthBundleStore()
+        };
+        using var service = new ChatGptUsageService(options);
+        var snapshot = await service.GetUsageSnapshotAsync(cts.Token).ConfigureAwait(false);
+        try {
+            ChatGptUsageCache.Save(snapshot);
+        } catch {
+            // Best-effort cache.
+        }
+        return snapshot;
+    }
+
+    private static string FormatUsageSummary(ChatGptUsageSnapshot snapshot) {
+        var lines = new List<string>();
+
+        var primary = FormatRateLimitLine(snapshot.RateLimit?.PrimaryWindow, UsageLimitLineKind.GeneralPrimary);
+        if (!string.IsNullOrWhiteSpace(primary)) {
+            lines.Add(primary);
+        }
+
+        var secondary = FormatRateLimitLine(snapshot.RateLimit?.SecondaryWindow, UsageLimitLineKind.GeneralSecondary);
+        if (!string.IsNullOrWhiteSpace(secondary)) {
+            lines.Add(secondary);
+        }
+
+        var codePrimary = FormatRateLimitLine(snapshot.CodeReviewRateLimit?.PrimaryWindow, UsageLimitLineKind.CodeReviewPrimary);
+        if (!string.IsNullOrWhiteSpace(codePrimary)) {
+            lines.Add(codePrimary);
+        }
+
+        var codeSecondary = FormatRateLimitLine(snapshot.CodeReviewRateLimit?.SecondaryWindow, UsageLimitLineKind.CodeReviewSecondary);
+        if (!string.IsNullOrWhiteSpace(codeSecondary)) {
+            lines.Add(codeSecondary);
+        }
+
+        if (snapshot.Credits is not null) {
+            if (snapshot.Credits.Unlimited) {
+                lines.Add("credits: unlimited");
+            } else if (snapshot.Credits.Balance.HasValue) {
+                lines.Add($"credits: {snapshot.Credits.Balance.Value.ToString("0.####", CultureInfo.InvariantCulture)}");
+            } else if (!snapshot.Credits.HasCredits) {
+                lines.Add("credits: none");
+            }
+        }
+
+        if (lines.Count == 0) {
+            return string.Empty;
+        }
+        return UsageSummaryPrefix + string.Join(UsageSummarySeparator, lines);
+    }
+
+    private enum UsageLimitLineKind {
+        GeneralPrimary,
+        GeneralSecondary,
+        CodeReviewPrimary,
+        CodeReviewSecondary
+    }
+
+    private static string? FormatRateLimitLine(ChatGptRateLimitWindow? window, UsageLimitLineKind lineKind) {
+        if (window is null) {
+            return null;
+        }
+        var remaining = FormatRemainingPercent(window.UsedPercent);
+        if (string.IsNullOrWhiteSpace(remaining)) {
+            return null;
+        }
+        var fallbackLabel = GetUsageLimitFallbackLabel(lineKind);
+        var windowLabel = FormatWindowLabel(window);
+        var label = fallbackLabel;
+        if (!string.IsNullOrWhiteSpace(windowLabel)) {
+            label = IsCodeReviewWindow(lineKind)
+                ? FormatCodeReviewLabel(windowLabel, IsSecondaryWindow(lineKind))
+                : windowLabel;
+        }
+        return $"{label}: {remaining}% remaining";
+    }
+
+    private static string FormatCodeReviewLabel(string windowLabel, bool isSecondaryWindow) {
+        var label = windowLabel.Trim();
+        // Secondary suffix ownership lives here for code-review labels.
+        // If upstream window labels ever include a secondary suffix, this guard avoids double-appending.
+        if (isSecondaryWindow && !label.EndsWith(SecondaryWindowSuffix, StringComparison.OrdinalIgnoreCase)) {
+            label += SecondaryWindowSuffix;
+        }
+        return CodeReviewPrefix + label;
+    }
+
+    private static string GetUsageLimitFallbackLabel(UsageLimitLineKind lineKind) {
+        return lineKind switch {
+            UsageLimitLineKind.GeneralPrimary => "rate limit",
+            UsageLimitLineKind.GeneralSecondary => "rate limit (secondary)",
+            UsageLimitLineKind.CodeReviewPrimary => CodeReviewPrefix + "limit",
+            UsageLimitLineKind.CodeReviewSecondary => CodeReviewPrefix + "limit (secondary)",
+            _ => throw new ArgumentOutOfRangeException(nameof(lineKind), lineKind, "Unsupported usage limit line kind")
+        };
+    }
+
+    private static bool IsCodeReviewWindow(UsageLimitLineKind lineKind) {
+        return lineKind == UsageLimitLineKind.CodeReviewPrimary
+            || lineKind == UsageLimitLineKind.CodeReviewSecondary;
+    }
+
+    private static bool IsSecondaryWindow(UsageLimitLineKind lineKind) {
+        return lineKind == UsageLimitLineKind.GeneralSecondary
+            || lineKind == UsageLimitLineKind.CodeReviewSecondary;
+    }
+
+    private static string? FormatWindowLabel(ChatGptRateLimitWindow window) {
+        if (!window.LimitWindowSeconds.HasValue) {
+            return null;
+        }
+        var seconds = Math.Max(0, window.LimitWindowSeconds.Value);
+        if (IsWithin(seconds, 5 * 3600, 600)) {
+            return "5h limit";
+        }
+        if (IsWithin(seconds, 7 * 24 * 3600, 3600)) {
+            return "weekly limit";
+        }
+        if (IsWithin(seconds, 24 * 3600, 3600)) {
+            return "daily limit";
+        }
+        if (IsWithin(seconds, 3600, 120)) {
+            return "hourly limit";
+        }
+        return $"{FormatDuration(seconds)} limit";
+    }
+
+    private static bool IsWithin(long value, long target, long tolerance) {
+        return Math.Abs(value - target) <= tolerance;
+    }
+
+    private static string FormatDuration(long seconds) {
+        if (seconds <= 0) {
+            return "0s";
+        }
+        var span = TimeSpan.FromSeconds(seconds);
+        if (span.TotalDays >= 1 && span.TotalDays % 1 == 0) {
+            return $"{(int)span.TotalDays}d";
+        }
+        if (span.TotalHours >= 1 && span.TotalHours % 1 == 0) {
+            return $"{(int)span.TotalHours}h";
+        }
+        if (span.TotalMinutes >= 1) {
+            return $"{(int)Math.Round(span.TotalMinutes)}m";
+        }
+        return $"{(int)Math.Round(span.TotalSeconds)}s";
+    }
+
+    private static string? FormatRemainingPercent(double? usedPercent) {
+        if (!usedPercent.HasValue) {
+            return null;
+        }
+        var remaining = Math.Max(0, 100 - usedPercent.Value);
+        return remaining.ToString("0.#", CultureInfo.InvariantCulture);
+    }
+
+    private static async Task<string?> FindOldestSummaryCommitAsync(IReviewCodeHostReader codeHostReader, PullRequestContext context,
+        ReviewSettings settings, CancellationToken cancellationToken) {
+        var limit = Math.Max(0, settings.CommentSearchLimit);
+        var comments = await codeHostReader.ListIssueCommentsAsync(context, limit, cancellationToken)
+            .ConfigureAwait(false);
+        string? oldest = null;
+        foreach (var comment in comments) {
+            if (!comment.Body.Contains(ReviewFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            var commit = ExtractReviewedCommit(comment.Body);
+            if (!string.IsNullOrWhiteSpace(commit)) {
+                oldest = commit;
+            }
+        }
+        return oldest;
+    }
+
+}
