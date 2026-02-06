@@ -108,6 +108,8 @@ internal static partial class Program {
             TestAnalysisLoadReportDoesNotCountEmptyFilesAsParsed);
         failed += Run("Analysis load report deduplicates resolved files across inputs",
             TestAnalysisLoadReportDeduplicatesResolvedFilesAcrossInputs);
+        failed += Run("Analysis load report counts single failure for duplicate bad input",
+            TestAnalysisLoadReportCountsSingleFailureForDuplicateBadInput);
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);
         failed += Run("Trim patch tail hunk", TestTrimPatchKeepsTailHunk);

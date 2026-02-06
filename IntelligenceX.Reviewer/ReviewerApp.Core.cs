@@ -386,15 +386,14 @@ public static partial class ReviewerApp {
                     }
                 } catch (Exception ex) {
                     Console.WriteLine($"Static analysis load failed; rendering unavailable summary. ({ex.GetType().Name})");
-                    var unavailablePolicy = AnalysisPolicyBuilder.BuildUnavailablePolicy(settings,
-                        "internal error while loading analysis results");
+                    var reason = BuildAnalysisLoadFailureReason(ex);
+                    var unavailablePolicy = AnalysisPolicyBuilder.BuildUnavailablePolicy(settings, reason);
                     var analysisBlocks = new List<string>();
                     if (!string.IsNullOrWhiteSpace(unavailablePolicy)) {
                         analysisBlocks.Add(unavailablePolicy);
                     }
                     if (analysisResults.Summary) {
-                        var unavailableSummary = AnalysisSummaryBuilder.BuildUnavailableSummary(
-                            "internal error while loading analysis results");
+                        var unavailableSummary = AnalysisSummaryBuilder.BuildUnavailableSummary(reason);
                         analysisBlocks.Add(unavailableSummary);
                     }
                     if (analysisBlocks.Count > 0) {
@@ -511,6 +510,32 @@ public static partial class ReviewerApp {
                 Console.CancelKeyPress -= cancelHandler;
             }
         }
+    }
+
+    private static string BuildAnalysisLoadFailureReason(Exception ex) {
+        const string defaultReason = "internal error while loading analysis results";
+        if (ex is null) {
+            return defaultReason;
+        }
+
+        var message = (ex.Message ?? string.Empty).Replace("\r", " ").Replace("\n", " ").Trim();
+        if (string.IsNullOrWhiteSpace(message)) {
+            return ex.GetType().Name;
+        }
+
+        var workspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        if (!string.IsNullOrWhiteSpace(workspace)) {
+            message = message.Replace(workspace, "<workspace>", StringComparison.OrdinalIgnoreCase);
+        }
+        var current = Environment.CurrentDirectory;
+        if (!string.IsNullOrWhiteSpace(current)) {
+            message = message.Replace(current, "<workspace>", StringComparison.OrdinalIgnoreCase);
+        }
+        if (message.Length > 200) {
+            message = message.Substring(0, 200) + "...";
+        }
+
+        return $"{ex.GetType().Name}: {message}";
     }
 
     internal static async Task<bool> TryUpdateFailureSummaryAsync(string? githubToken, string? apiBaseUrl,

@@ -40,7 +40,6 @@ internal static class AnalysisFindingsLoader {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var resolvedFiles = ResolveInputFiles(workspace, inputs);
         var uniqueResolvedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        // Parsed means non-empty result files successfully deserialized as SARIF/findings payloads.
         var parsedInputFiles = 0;
         var failedInputFiles = 0;
 

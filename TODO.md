@@ -249,6 +249,17 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Add test for deduplicated resolved inputs with one parse success and one parse failure counter path. Links: user request in Codex thread (2026-02-06)
 </details>
 <details>
+<summary>PR #112 Address remaining static-analysis follow-up TODOs</summary>
+
+- [x] Use one computed sanitized analysis-load failure reason and pass it consistently to unavailable policy and summary builders. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774571048, https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774571128
+- [x] Decouple unavailable policy rendering from `BuildPolicy(settings)` output shape via dedicated base-policy preparation path. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774571204
+- [x] Move parsed/failed counter semantics into `AnalysisLoadReport` XML docs to reduce drift. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774571298
+- [x] Add ordering-insensitive dedupe regression coverage for resolved analysis inputs. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774571405
+- [x] Add explicit coverage that duplicate bad input matches increment `FailedInputFiles` once per unique file. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774571492
+- [x] Keep unavailable reason exposure bounded (type + sanitized/truncated message) for user-facing review blocks. Links: https://github.com/EvotecIT/IntelligenceX/pull/112#discussion_r2774571048
+
+</details>
+<details>
 <summary>PR #85 Static analysis catalog + CLI export</summary>
 
 - [x] Update analysis loading to use `reviewFiles` so analysis findings respect filters. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#pullrequestreview-3757563544

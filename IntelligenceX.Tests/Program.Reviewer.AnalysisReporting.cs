@@ -288,21 +288,61 @@ internal static partial class Program {
             File.WriteAllText(successFile, "{ \"schema\": \"intelligencex.findings.v1\", \"items\": [ { \"path\": \"src/FileA.cs\", \"line\": 5, \"severity\": \"warning\", \"message\": \"ok\", \"ruleId\": \"IXTEST001\", \"tool\": \"Roslyn\" } ] }");
             File.WriteAllText(badFile, "{");
 
-            var settings = new ReviewSettings();
-            settings.Analysis.Enabled = true;
-            settings.Analysis.Results.Inputs = new[] {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+
+            void AssertCase(string[] inputs, string nameSuffix) {
+                var settings = new ReviewSettings();
+                settings.Analysis.Enabled = true;
+                settings.Analysis.Results.Inputs = inputs;
+
+                var result = IntelligenceX.Reviewer.AnalysisFindingsLoader.LoadWithReport(settings, Array.Empty<PullRequestFile>());
+                AssertEqual(2, result.Report.ResolvedInputFiles, $"analysis load dedupe resolved files {nameSuffix}");
+                AssertEqual(1, result.Report.ParsedInputFiles, $"analysis load dedupe parsed files {nameSuffix}");
+                AssertEqual(1, result.Report.FailedInputFiles, $"analysis load dedupe failed files {nameSuffix}");
+                AssertEqual(1, result.Findings.Count, $"analysis load dedupe findings count {nameSuffix}");
+            }
+
+            AssertCase(new[] {
                 "artifacts/*.findings.json",
                 "artifacts/success.findings.json",
                 "artifacts/bad.findings.json"
+            }, "glob-first");
+            AssertCase(new[] {
+                "artifacts/bad.findings.json",
+                "artifacts/success.findings.json",
+                "artifacts/*.findings.json"
+            }, "glob-last");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalysisLoadReportCountsSingleFailureForDuplicateBadInput() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-loader-dup-bad-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            var artifactsDir = Path.Combine(temp, "artifacts");
+            Directory.CreateDirectory(artifactsDir);
+            var badFile = Path.Combine(artifactsDir, "bad.findings.json");
+            File.WriteAllText(badFile, "{");
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Results.Inputs = new[] {
+                "artifacts/bad.findings.json",
+                "artifacts/*.findings.json"
             };
 
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
 
             var result = IntelligenceX.Reviewer.AnalysisFindingsLoader.LoadWithReport(settings, Array.Empty<PullRequestFile>());
-            AssertEqual(2, result.Report.ResolvedInputFiles, "analysis load dedupe resolved files");
-            AssertEqual(1, result.Report.ParsedInputFiles, "analysis load dedupe parsed files");
-            AssertEqual(1, result.Report.FailedInputFiles, "analysis load dedupe failed files");
-            AssertEqual(1, result.Findings.Count, "analysis load dedupe findings count");
+            AssertEqual(1, result.Report.ResolvedInputFiles, "analysis load duplicate bad resolved");
+            AssertEqual(0, result.Report.ParsedInputFiles, "analysis load duplicate bad parsed");
+            AssertEqual(1, result.Report.FailedInputFiles, "analysis load duplicate bad failed");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             if (Directory.Exists(temp)) {
