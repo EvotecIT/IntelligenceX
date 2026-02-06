@@ -232,6 +232,67 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalysisPolicyEnabledRulePreviewTruncatesAndFallsBackToId() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-policy-preview-truncation-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+
+            var ruleIds = new List<string>();
+            for (var i = 1; i <= 11; i++) {
+                var id = $"IXPREV{i:000}";
+                var title = i == 2 ? string.Empty : $"Rule {i}";
+                ruleIds.Add(id);
+                File.WriteAllText(Path.Combine(rulesDir, $"{id}.json"), $$"""
+{
+  "id": "{{id}}",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "{{id}}",
+  "title": "{{title}}",
+  "description": "{{id}}",
+  "category": "Maintainability",
+  "defaultSeverity": "warning"
+}
+""");
+            }
+
+            var ruleListJson = string.Join(", ", ruleIds.Select(id => $"\"{id}\""));
+            File.WriteAllText(Path.Combine(packsDir, "ix-preview-pack.json"), $$"""
+{
+  "id": "ix-preview-pack",
+  "label": "IX Preview Pack",
+  "rules": [{{ruleListJson}}]
+}
+""");
+
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Packs = new[] { "ix-preview-pack" };
+            settings.Analysis.Results.ShowPolicy = true;
+
+            var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
+                new AnalysisLoadResult(Array.Empty<AnalysisFinding>(), new AnalysisLoadReport(1, 1, 1, 0)));
+
+            AssertContainsText(policy, "Enabled rules preview: IXPREV001 (Rule 1), IXPREV002, IXPREV003 (Rule 3)",
+                "analysis policy preview leading entries");
+            AssertContainsText(policy, "(truncated)", "analysis policy preview truncation suffix");
+            AssertEqual(false, policy.Contains("IXPREV011", StringComparison.Ordinal),
+                "analysis policy preview excludes overflow rules");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalysisPolicyMarksPartialWhenOnlyOutsideFindingsAndEnabledRulesExist() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-policy-enabled-outside-only-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

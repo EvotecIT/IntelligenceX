@@ -278,6 +278,17 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 
 </details>
 <details>
+<summary>PR #113 Improve static analysis policy readability with enabled-rules preview</summary>
+
+- [x] Keep enabled-rules preview API signatures intent-focused for append-only list building. Links: https://github.com/EvotecIT/IntelligenceX/pull/113#discussion_r2775200950
+- [x] Add defensive null handling for preview rule description fallback paths. Links: https://github.com/EvotecIT/IntelligenceX/pull/113#discussion_r2775201048
+- [x] Preserve configured rule order in enabled-rules preview output (no implicit sorting). Links: https://github.com/EvotecIT/IntelligenceX/pull/113#discussion_r2775201172
+- [x] Add regression coverage for enabled-rules preview truncation formatting (`(truncated)`). Links: https://github.com/EvotecIT/IntelligenceX/pull/113#discussion_r2775201255
+- [x] Add regression coverage for blank-title rule preview fallback to rule ID. Links: https://github.com/EvotecIT/IntelligenceX/pull/113#discussion_r2775201327
+- [x] Align static-analysis docs example with real enabled-rules preview output format and truncation suffix. Links: https://github.com/EvotecIT/IntelligenceX/pull/113#discussion_r2775201649
+
+</details>
+<details>
 <summary>PR #85 Static analysis catalog + CLI export</summary>
 
 - [x] Update analysis loading to use `reviewFiles` so analysis findings respect filters. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#pullrequestreview-3757563544

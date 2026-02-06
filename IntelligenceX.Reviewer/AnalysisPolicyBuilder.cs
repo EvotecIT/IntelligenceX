@@ -69,7 +69,8 @@ internal static class AnalysisPolicyBuilder {
         var overrideCount = overrideMap.Count;
 
         var packSummaries = new List<string>();
-        var selectedRules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var selectedRuleIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var selectedRules = new List<string>();
         var missingPacks = new List<string>();
         foreach (var packId in packs) {
             if (catalog.TryGetPack(packId, out var pack)) {
@@ -78,7 +79,9 @@ internal static class AnalysisPolicyBuilder {
                     if (string.IsNullOrWhiteSpace(ruleId)) {
                         continue;
                     }
-                    selectedRules.Add(ruleId);
+                    if (selectedRuleIds.Add(ruleId)) {
+                        selectedRules.Add(ruleId);
+                    }
                 }
             } else if (!string.IsNullOrWhiteSpace(packId)) {
                 missingPacks.Add(packId);
@@ -151,7 +154,7 @@ internal static class AnalysisPolicyBuilder {
         return Environment.CurrentDirectory;
     }
 
-    private static void AddEnabledRulePreviewLine(ICollection<string> lines, IReadOnlyList<string> enabledRules,
+    private static void AddEnabledRulePreviewLine(IList<string> lines, IReadOnlyList<string> enabledRules,
         AnalysisCatalog catalog) {
         if (enabledRules.Count == 0) {
             lines.Add("- Enabled rules preview: none");
@@ -159,7 +162,6 @@ internal static class AnalysisPolicyBuilder {
         }
 
         var preview = enabledRules
-            .OrderBy(rule => rule, StringComparer.OrdinalIgnoreCase)
             .Take(MaxListItems)
             .Select(ruleId => DescribeRuleForPreview(ruleId, catalog))
             .ToList();
@@ -167,8 +169,8 @@ internal static class AnalysisPolicyBuilder {
         lines.Add($"- Enabled rules preview: {string.Join(", ", preview)}{suffix}");
     }
 
-    private static string DescribeRuleForPreview(string ruleId, AnalysisCatalog catalog) {
-        if (!catalog.TryGetRule(ruleId, out var rule)) {
+    private static string DescribeRuleForPreview(string ruleId, AnalysisCatalog? catalog) {
+        if (catalog is null || !catalog.TryGetRule(ruleId, out var rule)) {
             return ruleId;
         }
         if (string.IsNullOrWhiteSpace(rule.Title)) {
