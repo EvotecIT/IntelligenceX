@@ -102,6 +102,7 @@ internal static class AnalysisPolicyBuilder {
         lines.Add($"- Rules: {enabledRules.Count} enabled" +
                   (disabledSet.Count > 0 ? $", {disabledSet.Count} disabled" : string.Empty) +
                   (overrideCount > 0 ? $", {overrideCount} overrides" : string.Empty));
+        AddEnabledRulePreviewLine(lines, enabledRules, catalog);
         disabled = disabledSet;
         overrides = overrideMap;
         overridesCount = overrideCount;
@@ -148,6 +149,32 @@ internal static class AnalysisPolicyBuilder {
             return workspace;
         }
         return Environment.CurrentDirectory;
+    }
+
+    private static void AddEnabledRulePreviewLine(ICollection<string> lines, IReadOnlyList<string> enabledRules,
+        AnalysisCatalog catalog) {
+        if (enabledRules.Count == 0) {
+            lines.Add("- Enabled rules preview: none");
+            return;
+        }
+
+        var preview = enabledRules
+            .OrderBy(rule => rule, StringComparer.OrdinalIgnoreCase)
+            .Take(MaxListItems)
+            .Select(ruleId => DescribeRuleForPreview(ruleId, catalog))
+            .ToList();
+        var suffix = enabledRules.Count > preview.Count ? " (truncated)" : string.Empty;
+        lines.Add($"- Enabled rules preview: {string.Join(", ", preview)}{suffix}");
+    }
+
+    private static string DescribeRuleForPreview(string ruleId, AnalysisCatalog catalog) {
+        if (!catalog.TryGetRule(ruleId, out var rule)) {
+            return ruleId;
+        }
+        if (string.IsNullOrWhiteSpace(rule.Title)) {
+            return rule.Id;
+        }
+        return $"{rule.Id} ({rule.Title})";
     }
 
     private static void AddOutcomeLines(ICollection<string> lines, IReadOnlyList<string> enabledRules,

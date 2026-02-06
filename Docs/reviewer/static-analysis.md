@@ -113,6 +113,7 @@ Review comments now include analysis execution context and outcomes even when no
 - Config mode: respect
 - Packs: C# Default, PowerShell Default, IntelligenceX Maintainability
 - Rules: 5 enabled
+- Enabled rules preview: CA2000 (Dispose objects before losing scope), CA1822 (Mark members as static), PSAvoidUsingWriteHost (Avoid Write-Host), ...
 - Result files: 2 input patterns, 2 matched, 2 parsed, 0 failed
 - Status: pass ✅
 - Rule outcomes: 0 with findings, 5 clean

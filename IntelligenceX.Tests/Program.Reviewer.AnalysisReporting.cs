@@ -30,6 +30,8 @@ internal static partial class Program {
             AssertContainsText(policy, "Rules with findings: IXTEST001=1, PS9999=1", "analysis policy rules with findings");
             AssertContainsText(policy, "Result files: 2 input patterns, 2 matched, 2 parsed, 0 failed",
                 "analysis policy file stats");
+            AssertContainsText(policy, "Enabled rules preview: IXTEST001 (Rule one), IXTEST002 (Rule two)",
+                "analysis policy enabled rule preview");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             if (Directory.Exists(temp)) {
@@ -221,6 +223,7 @@ internal static partial class Program {
             AssertContainsText(policy, "Status: unavailable", "analysis policy no-enabled-rules status");
             AssertContainsText(policy, "Rule outcomes: unavailable (no enabled rules configured)",
                 "analysis policy no-enabled-rules outcomes");
+            AssertContainsText(policy, "Enabled rules preview: none", "analysis policy no-enabled-rules preview");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             if (Directory.Exists(temp)) {
