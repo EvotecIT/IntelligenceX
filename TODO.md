@@ -293,6 +293,18 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 
 </details>
 <details>
+<summary>PR #114 Improve static analysis policy with explicit failing/clean rule previews</summary>
+
+- [x] Make `AddOutcomeLines` null-safe for findings input and preserve safe policy rendering when findings are null. Links: https://github.com/EvotecIT/IntelligenceX/pull/114#issuecomment-3861788077
+- [x] Refactor `TryBuildBasePolicy` multi-out return shape to a typed context object for maintainability. Links: https://github.com/EvotecIT/IntelligenceX/pull/114#issuecomment-3861788077
+- [x] Add docs note describing deterministic ordering and truncation behavior for outcome preview lines. Links: https://github.com/EvotecIT/IntelligenceX/pull/114#discussion_r2775319845, https://github.com/EvotecIT/IntelligenceX/pull/114#issuecomment-3861788077
+- [x] Add regression test for null findings with a present load report. Links: https://github.com/EvotecIT/IntelligenceX/pull/114#issuecomment-3861788077
+- [x] Add regression test asserting deterministic ordering for failing and outside-pack preview sections. Links: https://github.com/EvotecIT/IntelligenceX/pull/114#issuecomment-3861788077
+- [x] Sort failing-rule preview by finding count (desc) then rule id to keep truncation behavior focused on highest-impact failures. Links: https://github.com/EvotecIT/IntelligenceX/pull/114#discussion_r2775323218
+- [x] Align static-analysis docs sample with actual truncation behavior when only 5 enabled rules are shown. Links: https://github.com/EvotecIT/IntelligenceX/pull/114#discussion_r2775323255
+- [x] Keep explicit aggregate outside-pack count assertion in analysis policy tests to protect status/count semantics. Links: https://github.com/EvotecIT/IntelligenceX/pull/114#discussion_r2775368110
+</details>
+<details>
 <summary>PR #85 Static analysis catalog + CLI export</summary>
 
 - [x] Update analysis loading to use `reviewFiles` so analysis findings respect filters. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#pullrequestreview-3757563544

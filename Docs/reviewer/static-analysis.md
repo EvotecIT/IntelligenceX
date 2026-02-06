@@ -117,6 +117,9 @@ Review comments now include analysis execution context and outcomes even when no
 - Result files: 2 input patterns, 2 matched, 2 parsed, 0 failed
 - Status: pass ✅
 - Rule outcomes: 0 with findings, 5 clean
+- Failing rules: none
+- Clean rules: CA2000 (Dispose objects before losing scope), CA1822 (Mark members as static), SA1600 (Elements should be documented), PSAvoidUsingWriteHost (Avoid using Write-Host), IXLOC001 (Source files should stay below 700 lines)
+- Outside-pack rules: none
 
 ### Static Analysis 🔎
 - Findings: 0 (no issues at or above configured severity)
@@ -130,6 +133,9 @@ Review comments now include analysis execution context and outcomes even when no
 If static-analysis load fails at review time, the reviewer renders an unavailable block instead of silently omitting analysis output.
 - If `analysis.results.showPolicy` is enabled, policy includes `Status: unavailable`.
 - If `analysis.results.summary` is enabled, summary includes `Findings: unavailable`.
+
+Rule preview lines (`Enabled rules preview`, `Failing rules`, `Clean rules`, `Outside-pack rules`) are deterministic and
+show up to 10 items, appending `(truncated)` when more rules exist.
 
 For JS/TS and Python today, teams can still produce SARIF with their preferred tools and include those files in
 `analysis.results.inputs`.
