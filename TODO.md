@@ -305,6 +305,26 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Keep explicit aggregate outside-pack count assertion in analysis policy tests to protect status/count semantics. Links: https://github.com/EvotecIT/IntelligenceX/pull/114#discussion_r2775368110
 </details>
 <details>
+<summary>PR #115 Harden static analysis policy load path and preview tests</summary>
+
+- [x] Narrow exception handling in catalog load path and avoid blanket catch behavior. Links: user request in Codex thread (2026-02-06), https://github.com/EvotecIT/IntelligenceX/pull/115
+- [x] Return an unavailable policy block (`Status: unavailable`) when catalog load fails instead of empty output. Links: user request in Codex thread (2026-02-06), https://github.com/EvotecIT/IntelligenceX/pull/115
+- [x] Reduce mutable state exposure in policy context by using read-only/immutable collections. Links: user request in Codex thread (2026-02-06), https://github.com/EvotecIT/IntelligenceX/pull/115
+- [x] Strengthen analysis policy tests with structured line assertions instead of only `AssertContainsText`. Links: user request in Codex thread (2026-02-06), https://github.com/EvotecIT/IntelligenceX/pull/115
+- [x] Verify nullability handling around findings and counters in `AddOutcomeLines`. Links: user request in Codex thread (2026-02-06), https://github.com/EvotecIT/IntelligenceX/pull/115
+- [x] Keep deterministic ordering culture-invariant with ordinal comparers in sorted output paths. Links: user request in Codex thread (2026-02-06), https://github.com/EvotecIT/IntelligenceX/pull/115
+- [x] Make `TruncatePreviewTitle` null-safe at signature level. Links: user request in Codex thread (2026-02-06), https://github.com/EvotecIT/IntelligenceX/pull/115
+- [x] Reduce brittle expected-string construction in truncation tests. Links: user request in Codex thread (2026-02-06), https://github.com/EvotecIT/IntelligenceX/pull/115
+- [x] Add assertion for single `(truncated)` marker occurrence on preview line. Links: user request in Codex thread (2026-02-06), https://github.com/EvotecIT/IntelligenceX/pull/115
+- [x] Add regression coverage for non-BMP Unicode preview title truncation behavior. Links: user request in Codex thread (2026-02-06), https://github.com/EvotecIT/IntelligenceX/pull/115
+- [x] Centralize preview formatting constants for policy/test alignment. Links: user request in Codex thread (2026-02-06), https://github.com/EvotecIT/IntelligenceX/pull/115
+- [x] Normalize unavailable-policy pack display to skip blank pack IDs and preserve trimmed values. Links: https://github.com/EvotecIT/IntelligenceX/pull/115#discussion_r2775613244
+- [x] Keep one lightweight `AssertContainsText` header assertion alongside strict line assertions for policy output stability. Links: https://github.com/EvotecIT/IntelligenceX/pull/115#discussion_r2775620847
+- [x] Group analysis-policy test registration into a dedicated helper (`RunAnalysisPolicyReportingTests`) to reduce main-runner churn. Links: https://github.com/EvotecIT/IntelligenceX/pull/115#discussion_r2775620879
+- [x] Complete constant migration and behavior-oriented naming (`MaxRulePreviewItems`, `TruncatedPreviewSuffix`, `TruncationEllipsis`) in policy builder and tests. Links: https://github.com/EvotecIT/IntelligenceX/pull/115#discussion_r2775620920, https://github.com/EvotecIT/IntelligenceX/pull/115#discussion_r2775625708
+- [x] Split oversized analysis reporting tests into topic files to satisfy internal LOC maintainability rule (`IXLOC001`). Links: https://github.com/EvotecIT/IntelligenceX/pull/115
+</details>
+<details>
 <summary>PR #85 Static analysis catalog + CLI export</summary>
 
 - [x] Update analysis loading to use `reviewFiles` so analysis findings respect filters. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#pullrequestreview-3757563544
