@@ -302,6 +302,7 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Add regression test asserting deterministic ordering for failing and outside-pack preview sections. Links: https://github.com/EvotecIT/IntelligenceX/pull/114#issuecomment-3861788077
 - [x] Sort failing-rule preview by finding count (desc) then rule id to keep truncation behavior focused on highest-impact failures. Links: https://github.com/EvotecIT/IntelligenceX/pull/114#discussion_r2775323218
 - [x] Align static-analysis docs sample with actual truncation behavior when only 5 enabled rules are shown. Links: https://github.com/EvotecIT/IntelligenceX/pull/114#discussion_r2775323255
+- [x] Keep explicit aggregate outside-pack count assertion in analysis policy tests to protect status/count semantics. Links: https://github.com/EvotecIT/IntelligenceX/pull/114#discussion_r2775368110
 </details>
 <details>
 <summary>PR #85 Static analysis catalog + CLI export</summary>

@@ -26,6 +26,8 @@ internal static partial class Program {
             AssertContainsText(policy, "Status: fail", "analysis policy status");
             AssertContainsText(policy, "Rule outcomes: 1 with findings, 1 clean, 1 outside enabled packs",
                 "analysis policy outcomes");
+            AssertContainsText(policy, "1 outside enabled packs",
+                "analysis policy aggregate outside-pack count");
             AssertContainsText(policy, "Failing rules: IXTEST001 (Rule one)=1",
                 "analysis policy failing rules");
             AssertContainsText(policy, "Clean rules: IXTEST002 (Rule two)", "analysis policy clean rules");
