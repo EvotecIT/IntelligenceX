@@ -49,31 +49,31 @@ internal static class AnalysisPolicyBuilder {
         var overridesCount = overrides.Count;
 
         var lines = new List<string> {
-            "### Static analysis policy",
-            $"Config mode: {DescribeConfigMode(settings.Analysis.ConfigMode)}"
+            "### Static Analysis Policy 🧭",
+            $"- Config mode: {DescribeConfigMode(settings.Analysis.ConfigMode)}"
         };
 
         lines.Add(packSummaries.Count > 0
-            ? $"Packs: {string.Join(", ", packSummaries)}"
-            : "Packs: none");
+            ? $"- Packs: {string.Join(", ", packSummaries)}"
+            : "- Packs: none");
         if (missingPacks.Count > 0) {
-            lines.Add($"Missing packs: {string.Join(", ", missingPacks)}");
+            lines.Add($"- Missing packs: {string.Join(", ", missingPacks)}");
         }
 
-        lines.Add($"Rules: {enabledRules.Count} enabled" +
+        lines.Add($"- Rules: {enabledRules.Count} enabled" +
                   (disabled.Count > 0 ? $", {disabled.Count} disabled" : string.Empty) +
                   (overridesCount > 0 ? $", {overridesCount} overrides" : string.Empty));
         if (loadResult?.Report is not null) {
             var loadReport = loadResult.Report;
             lines.Add(
-                $"Result files: {loadReport.ConfiguredInputs} input patterns, {loadReport.ResolvedInputFiles} matched, {loadReport.ParsedInputFiles} parsed, {loadReport.FailedInputFiles} failed");
+                $"- Result files: {loadReport.ConfiguredInputs} input patterns, {loadReport.ResolvedInputFiles} matched, {loadReport.ParsedInputFiles} parsed, {loadReport.FailedInputFiles} failed");
             AddOutcomeLines(lines, enabledRules, loadResult.Findings ?? Array.Empty<AnalysisFinding>(), loadReport);
         }
 
         if (disabled.Count > 0) {
             var disabledList = disabled.OrderBy(item => item, StringComparer.OrdinalIgnoreCase).Take(MaxListItems).ToList();
             var suffix = disabled.Count > disabledList.Count ? " (truncated)" : string.Empty;
-            lines.Add($"Disabled: {string.Join(", ", disabledList)}{suffix}");
+            lines.Add($"- Disabled: {string.Join(", ", disabledList)}{suffix}");
         }
 
         if (overridesCount > 0) {
@@ -83,7 +83,7 @@ internal static class AnalysisPolicyBuilder {
                 .Select(item => $"{item.Key}={item.Value}")
                 .ToList();
             var suffix = overridesCount > overrideList.Count ? " (truncated)" : string.Empty;
-            lines.Add($"Overrides: {string.Join(", ", overrideList)}{suffix}");
+            lines.Add($"- Overrides: {string.Join(", ", overrideList)}{suffix}");
         }
 
         return string.Join("\n", lines).TrimEnd();
@@ -109,41 +109,39 @@ internal static class AnalysisPolicyBuilder {
     private static void AddOutcomeLines(ICollection<string> lines, IReadOnlyList<string> enabledRules,
         IReadOnlyList<AnalysisFinding> findings, AnalysisLoadReport loadReport) {
         if (loadReport.ResolvedInputFiles == 0) {
-            lines.Add("Status: unavailable");
-            lines.Add("Rule outcomes: unavailable (no analysis result files matched configured inputs)");
+            lines.Add("- Status: unavailable ℹ️");
+            lines.Add("- Rule outcomes: unavailable (no analysis result files matched configured inputs)");
             return;
         }
 
-        var enabledSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var rule in enabledRules ?? Array.Empty<string>()) {
-            var normalizedRuleId = NormalizeRuleId(rule);
-            if (!string.IsNullOrWhiteSpace(normalizedRuleId)) {
-                enabledSet.Add(normalizedRuleId);
-            }
-        }
-        var findingRuleCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        foreach (var finding in findings ?? Array.Empty<AnalysisFinding>()) {
-            var normalizedRuleId = NormalizeRuleId(finding.RuleId);
-            if (string.IsNullOrWhiteSpace(normalizedRuleId)) {
-                continue;
-            }
-            findingRuleCounts[normalizedRuleId] =
-                (findingRuleCounts.TryGetValue(normalizedRuleId, out var count) ? count : 0) + 1;
-        }
+        var enabledSet = new HashSet<string>(
+            (enabledRules ?? Array.Empty<string>())
+            .Select(NormalizeRuleId)
+            .OfType<string>(),
+            StringComparer.OrdinalIgnoreCase);
+
+        var findingRuleCounts = (findings ?? Array.Empty<AnalysisFinding>())
+            .Select(finding => NormalizeRuleId(finding.RuleId))
+            .OfType<string>()
+            .GroupBy(normalizedRuleId => normalizedRuleId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
 
         var impactedEnabledRules = findingRuleCounts.Keys.Where(rule => enabledSet.Contains(rule)).ToList();
+        var outsideEnabledRules = findingRuleCounts.Keys.Count(rule => !enabledSet.Contains(rule));
         var cleanEnabledRules = Math.Max(0, enabledSet.Count - impactedEnabledRules.Count);
-        var status = impactedEnabledRules.Count > 0 ? "fail" : (loadReport.FailedInputFiles > 0 ? "partial" : "pass");
-        lines.Add($"Status: {status}");
-        lines.Add($"Rule outcomes: {impactedEnabledRules.Count} with findings, {cleanEnabledRules} clean");
+        var status = impactedEnabledRules.Count > 0
+            ? "fail"
+            : (loadReport.FailedInputFiles > 0 || outsideEnabledRules > 0 ? "partial" : "pass");
+        lines.Add($"- Status: {FormatStatus(status)}");
+        lines.Add($"- Rule outcomes: {impactedEnabledRules.Count} with findings, {cleanEnabledRules} clean" +
+                  (outsideEnabledRules > 0 ? $", {outsideEnabledRules} outside enabled packs" : string.Empty));
 
         if (findingRuleCounts.Count == 0) {
             return;
         }
 
-        var unknownRuleCount = findingRuleCounts.Keys.Count(rule => !enabledSet.Contains(rule));
-        if (unknownRuleCount > 0) {
-            lines.Add($"Findings outside enabled packs: {unknownRuleCount} rule(s)");
+        if (outsideEnabledRules > 0) {
+            lines.Add($"- Findings outside enabled packs: {outsideEnabledRules} rule(s)");
         }
 
         var topRules = findingRuleCounts
@@ -153,7 +151,17 @@ internal static class AnalysisPolicyBuilder {
             .Select(item => $"{item.Key}={item.Value}")
             .ToList();
         var suffix = findingRuleCounts.Count > topRules.Count ? " (truncated)" : string.Empty;
-        lines.Add($"Rules with findings: {string.Join(", ", topRules)}{suffix}");
+        lines.Add($"- Rules with findings: {string.Join(", ", topRules)}{suffix}");
+    }
+
+    private static string FormatStatus(string status) {
+        return status switch {
+            "fail" => "fail ❌",
+            "partial" => "partial ⚠️",
+            "pass" => "pass ✅",
+            "unavailable" => "unavailable ℹ️",
+            _ => status
+        };
     }
 
     private static string? NormalizeRuleId(string? ruleId) {

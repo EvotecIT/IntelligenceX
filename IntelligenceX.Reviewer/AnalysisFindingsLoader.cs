@@ -37,7 +37,9 @@ internal static class AnalysisFindingsLoader {
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var findings = new List<AnalysisFinding>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var resolvedFiles = ResolveInputFiles(workspace, inputs);
+        var resolvedFiles = ResolveInputFiles(workspace, inputs)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
         var parsedInputFiles = 0;
         var failedInputFiles = 0;
 
@@ -367,7 +369,7 @@ internal static class AnalysisFindingsLoader {
     }
 
     private static bool IsRecoverableLoadException(Exception ex) {
-        return ex is IOException or UnauthorizedAccessException or InvalidOperationException or FormatException or ArgumentException;
+        return ex is IOException or UnauthorizedAccessException or InvalidOperationException or FormatException;
     }
 
     private static string BuildFindingKey(AnalysisFinding finding) {

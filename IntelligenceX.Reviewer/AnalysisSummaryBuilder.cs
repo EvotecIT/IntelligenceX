@@ -16,10 +16,10 @@ internal static class AnalysisSummaryBuilder {
         findings ??= Array.Empty<AnalysisFinding>();
         if (findings.Count == 0) {
             var emptyLines = new List<string> {
-                "### Static analysis",
+                "### Static Analysis 🔎",
                 loadReport is not null && loadReport.ResolvedInputFiles == 0
-                    ? "Findings: unavailable (no analysis result files matched configured inputs)"
-                    : "Findings: 0 (no issues at or above configured severity)"
+                    ? "- Findings: unavailable (no analysis result files matched configured inputs)"
+                    : "- Findings: 0 (no issues at or above configured severity)"
             };
             return string.Join("\n", emptyLines).TrimEnd();
         }
@@ -41,7 +41,7 @@ internal static class AnalysisSummaryBuilder {
             }
         }
 
-        var header = "### Static analysis";
+        var header = "### Static Analysis 🔎";
         var totals = new List<string>();
         if (errorCount > 0) {
             totals.Add($"error: {errorCount}");
@@ -53,8 +53,8 @@ internal static class AnalysisSummaryBuilder {
             totals.Add($"info: {infoCount}");
         }
         var totalLine = totals.Count == 0
-            ? $"Findings: {findings.Count}"
-            : $"Findings: {findings.Count} ({string.Join(", ", totals)})";
+            ? $"- Findings: {findings.Count}"
+            : $"- Findings: {findings.Count} ({string.Join(", ", totals)})";
 
         var maxItems = results.SummaryMaxItems <= 0 ? findings.Count : results.SummaryMaxItems;
         var ordered = OrderFindings(findings).Take(maxItems).ToList();

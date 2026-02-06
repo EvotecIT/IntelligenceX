@@ -9,6 +9,10 @@ Reviewing PR #{{Number}}: **{{Title}}**
 {{BudgetNote}}
 {{ReviewBody}}
 
-_Model: {{Model}} | Length: {{Length}} | Mode: {{Mode}}{{ReasoningLine}}_
-{{UsageLine}}
+### Model & Usage 🤖
+- Model: `{{Model}}`
+- Length: `{{Length}}`
+- Mode: `{{Mode}}`
+{{ReasoningMeta}}
+{{UsageMeta}}
 {{FindingsBlock}}

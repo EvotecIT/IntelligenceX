@@ -109,16 +109,16 @@ Current built-in runners in `analyze run`:
 Review comments now include analysis execution context and outcomes even when no findings are present:
 
 ```text
-### Static analysis policy
-Config mode: respect
-Packs: C# Default, PowerShell Default, IntelligenceX Maintainability
-Rules: 5 enabled
-Result files: 2 input patterns, 2 matched, 2 parsed, 0 failed
-Status: pass
-Rule outcomes: 0 with findings, 5 clean
+### Static Analysis Policy 🧭
+- Config mode: respect
+- Packs: C# Default, PowerShell Default, IntelligenceX Maintainability
+- Rules: 5 enabled
+- Result files: 2 input patterns, 2 matched, 2 parsed, 0 failed
+- Status: pass ✅
+- Rule outcomes: 0 with findings, 5 clean
 
-### Static analysis
-Findings: 0 (no issues at or above configured severity)
+### Static Analysis 🔎
+- Findings: 0 (no issues at or above configured severity)
 ```
 
 For JS/TS and Python today, teams can still produce SARIF with their preferred tools and include those files in

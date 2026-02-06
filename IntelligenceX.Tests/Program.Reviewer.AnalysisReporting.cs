@@ -65,6 +65,37 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalysisPolicyMarksPartialWhenOnlyOutsidePackFindingsExist() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-policy-outside-only-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            WriteAnalysisCatalogFixture(temp);
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Packs = Array.Empty<string>();
+            settings.Analysis.Results.ShowPolicy = true;
+
+            var report = new AnalysisLoadReport(2, 1, 1, 0);
+            var findings = new[] {
+                new AnalysisFinding("scripts/test.ps1", 3, "Unknown rule payload", "warning", "PS9999", "PSScriptAnalyzer")
+            };
+
+            var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
+                new AnalysisLoadResult(findings, report));
+            AssertContainsText(policy, "Status: partial", "analysis policy outside-only status");
+            AssertContainsText(policy, "Rule outcomes: 0 with findings, 0 clean, 1 outside enabled packs",
+                "analysis policy outside-only outcomes");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalysisSummaryShowsZeroFindings() {
         var results = new AnalysisResultsSettings {
             Summary = true,
@@ -73,7 +104,7 @@ internal static partial class Program {
         var report = new AnalysisLoadReport(2, 1, 1, 0);
 
         var summary = IntelligenceX.Reviewer.AnalysisSummaryBuilder.BuildSummary(Array.Empty<AnalysisFinding>(), results, report);
-        AssertContainsText(summary, "### Static analysis", "analysis summary header");
+        AssertContainsText(summary, "### Static Analysis 🔎", "analysis summary header");
         AssertContainsText(summary, "Findings: 0", "analysis summary no findings");
     }
 

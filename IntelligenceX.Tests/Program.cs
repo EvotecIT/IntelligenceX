@@ -90,6 +90,8 @@ internal static partial class Program {
         failed += Run("Analysis policy reports rule outcomes", TestAnalysisPolicyReportsRuleOutcomes);
         failed += Run("Analysis policy shows unavailable when no result files",
             TestAnalysisPolicyShowsUnavailableWhenNoResultFiles);
+        failed += Run("Analysis policy marks partial when only outside-pack findings exist",
+            TestAnalysisPolicyMarksPartialWhenOnlyOutsidePackFindingsExist);
         failed += Run("Analysis summary shows zero findings", TestAnalysisSummaryShowsZeroFindings);
         failed += Run("Analysis summary shows unavailable when no input files",
             TestAnalysisSummaryShowsUnavailableWhenNoInputFiles);
@@ -168,6 +170,8 @@ internal static partial class Program {
         failed += Run("Context deny invalid regex", TestContextDenyInvalidRegex);
         failed += Run("Context deny timeout", TestContextDenyTimeout);
         failed += Run("Review summary parser", TestReviewSummaryParser);
+        failed += Run("Review formatter model usage section", TestReviewFormatterModelUsageSection);
+        failed += Run("Review formatter model usage unavailable", TestReviewFormatterModelUsageUnavailable);
         failed += Run("Review usage summary line", TestReviewUsageSummaryLine);
         failed += Run("Review usage summary disambiguates code review weekly", TestReviewUsageSummaryDisambiguatesCodeReviewWeekly);
         failed += Run("Review usage summary disambiguates code review weekly secondary", TestReviewUsageSummaryDisambiguatesCodeReviewWeeklySecondary);

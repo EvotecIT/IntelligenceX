@@ -41,7 +41,11 @@ internal static class ReviewFormatter {
         var reasoningLine = reasoningParts.Count == 0
             ? string.Empty
             : $" | Reasoning: {string.Join(", ", reasoningParts)}";
+        var reasoningMeta = reasoningParts.Count == 0
+            ? string.Empty
+            : $"- Reasoning: {string.Join(", ", reasoningParts)}";
         var reasoningLabel = BuildReasoningLabel(settings.ReasoningEffort);
+        var usageMeta = BuildUsageMetaLine(usageLine);
         var tokens = new Dictionary<string, string> {
             ["SummaryMarker"] = SummaryMarker,
             ["Number"] = context.Number.ToString(),
@@ -56,7 +60,9 @@ internal static class ReviewFormatter {
             ["Length"] = settings.Length.ToString().ToLowerInvariant(),
             ["Mode"] = settings.Mode,
             ["ReasoningLine"] = reasoningLine,
+            ["ReasoningMeta"] = reasoningMeta,
             ["UsageLine"] = string.IsNullOrWhiteSpace(usageLine) ? string.Empty : usageLine.Trim(),
+            ["UsageMeta"] = usageMeta,
             ["FindingsBlock"] = string.IsNullOrWhiteSpace(findingsBlock) ? string.Empty : findingsBlock.Trim()
         };
 
@@ -161,6 +167,20 @@ internal static class ReviewFormatter {
             ReviewProgressState.InProgress => $"- [ ] {label} (in progress)",
             _ => $"- [ ] {label}"
         };
+    }
+
+    private static string BuildUsageMetaLine(string? usageLine) {
+        if (string.IsNullOrWhiteSpace(usageLine)) {
+            return "- Usage: unavailable";
+        }
+        const string prefix = "Usage: ";
+        var trimmed = usageLine.Trim();
+        if (trimmed.StartsWith(prefix, System.StringComparison.OrdinalIgnoreCase)) {
+            trimmed = trimmed.Substring(prefix.Length).Trim();
+        }
+        return string.IsNullOrWhiteSpace(trimmed)
+            ? "- Usage: unavailable"
+            : $"- Usage: {trimmed}";
     }
 
     private static string TrimPreview(string? value, int maxChars) {
