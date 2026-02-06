@@ -393,6 +393,29 @@ p { color: var(--pf-muted); margin: 0 0 1rem; }
 .type-title-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 .type-title-row h1 { margin: 0; }
 
+.type-actions {
+  margin-top: 0.75rem;
+}
+
+.type-source-action {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 217, 255, 0.35);
+  background: rgba(0, 217, 255, 0.1);
+  color: var(--pf-accent);
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+
+.type-source-action:hover {
+  border-color: var(--pf-accent);
+  background: rgba(0, 217, 255, 0.16);
+  color: var(--pf-ink);
+}
+
 .type-badge {
   display: inline-block;
   font-size: 0.65rem;
