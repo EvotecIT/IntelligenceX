@@ -318,6 +318,7 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Add assertion for single `(truncated)` marker occurrence on preview line. Links: user request in Codex thread (2026-02-06), https://github.com/EvotecIT/IntelligenceX/pull/115
 - [x] Add regression coverage for non-BMP Unicode preview title truncation behavior. Links: user request in Codex thread (2026-02-06), https://github.com/EvotecIT/IntelligenceX/pull/115
 - [x] Centralize preview formatting constants for policy/test alignment. Links: user request in Codex thread (2026-02-06), https://github.com/EvotecIT/IntelligenceX/pull/115
+- [x] Normalize unavailable-policy pack display to skip blank pack IDs and preserve trimmed values. Links: https://github.com/EvotecIT/IntelligenceX/pull/115#discussion_r2775613244
 </details>
 <details>
 <summary>PR #85 Static analysis catalog + CLI export</summary>

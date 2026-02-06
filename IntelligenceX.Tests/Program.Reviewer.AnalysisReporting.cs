@@ -105,6 +105,21 @@ internal static partial class Program {
             "analysis unavailable policy catalog-failure reason");
     }
 
+    private static void TestAnalysisPolicyCatalogUnavailableNormalizesPackDisplay() {
+        var settings = new ReviewSettings();
+        settings.Analysis.Enabled = true;
+        settings.Analysis.Packs = new[] { "  ", "ix-test-pack ", string.Empty, "ix-second-pack" };
+        settings.Analysis.Results.ShowPolicy = true;
+
+        var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(
+            settings,
+            new AnalysisLoadResult(Array.Empty<AnalysisFinding>(), new AnalysisLoadReport(1, 1, 1, 0)),
+            _ => throw new IOException("disk I/O"));
+
+        AssertPolicyLineEquals(policy, "Packs", "ix-test-pack, ix-second-pack",
+            "analysis policy catalog-failure packs normalized");
+    }
+
     private static void TestAnalysisPolicyDoesNotSwallowUnexpectedCatalogLoadExceptions() {
         var settings = new ReviewSettings();
         settings.Analysis.Enabled = true;

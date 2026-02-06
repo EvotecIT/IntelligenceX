@@ -93,6 +93,8 @@ internal static partial class Program {
             TestAnalysisPolicyBuildsUnavailableWhenCatalogLoadFails);
         failed += Run("Analysis policy unavailable uses catalog fallback when catalog load fails",
             TestAnalysisPolicyUnavailableUsesCatalogFallbackWhenCatalogLoadFails);
+        failed += Run("Analysis policy catalog unavailable normalizes pack display",
+            TestAnalysisPolicyCatalogUnavailableNormalizesPackDisplay);
         failed += Run("Analysis policy does not swallow unexpected catalog load exceptions",
             TestAnalysisPolicyDoesNotSwallowUnexpectedCatalogLoadExceptions);
         failed += Run("Analysis load failure embeds policy when summary disabled",

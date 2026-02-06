@@ -188,8 +188,11 @@ internal static class AnalysisPolicyBuilder {
             $"- Config mode: {DescribeConfigMode(settings.Analysis.ConfigMode)}"
         };
 
-        var packs = settings.Analysis.Packs ?? Array.Empty<string>();
-        lines.Add(packs.Count > 0
+        var packs = (settings.Analysis.Packs ?? Array.Empty<string>())
+            .Where(pack => !string.IsNullOrWhiteSpace(pack))
+            .Select(pack => pack.Trim())
+            .ToArray();
+        lines.Add(packs.Length > 0
             ? $"- Packs: {string.Join(", ", packs)}"
             : "- Packs: none");
         lines.Add("- Rules: unavailable (analysis catalog could not be loaded)");
