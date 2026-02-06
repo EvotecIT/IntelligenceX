@@ -332,6 +332,16 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Keep analysis-policy helper under `INTELLIGENCEX_REVIEWER` symbol to preserve existing test-variant coverage boundaries. Links: https://github.com/EvotecIT/IntelligenceX/pull/115#discussion_r2775698460
 </details>
 <details>
+<summary>PR #116 Cleanup static-analysis review followups and TODO backlog</summary>
+
+- [x] Remove raw-string snapshot literal in analysis-policy test to keep Windows/net472 compilation compatible. Links: https://github.com/EvotecIT/IntelligenceX/actions/runs/21765222612/job/62799147040
+- [x] Set analysis config mode explicitly in snapshot test setup to avoid default-coupled expectations. Links: https://github.com/EvotecIT/IntelligenceX/pull/116#discussion_r2775950426
+- [x] Make `AssertTextBlockEquals` trim both ends to reduce non-semantic formatting noise failures. Links: https://github.com/EvotecIT/IntelligenceX/pull/116#discussion_r2775951574
+- [x] Make `NormalizeNewlines` null-safe for future helper reuse. Links: https://github.com/EvotecIT/IntelligenceX/pull/116#discussion_r2775951622
+- [x] Keep full policy block snapshot strict in this scenario to intentionally catch line-order and formatting regressions. Links: https://github.com/EvotecIT/IntelligenceX/pull/116#discussion_r2775951509
+
+</details>
+<details>
 <summary>PR #85 Static analysis catalog + CLI export</summary>
 
 - [x] Update analysis loading to use `reviewFiles` so analysis findings respect filters. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#pullrequestreview-3757563544
