@@ -1,6 +1,4 @@
-# FAQ / Troubleshooting (TODO)
-
-> TODO: expand with real-world issues and links.
+# FAQ
 
 ## Auth
 

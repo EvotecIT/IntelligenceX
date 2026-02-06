@@ -1,21 +1,10 @@
----
-title: Examples
-description: Real-world configuration examples for IntelligenceX - presets, custom configs, and multi-repo setups
-collection: docs
-layout: docs
----
-
 # Examples
 
-Practical configuration examples to help you get the most out of IntelligenceX.
+Practical configuration examples for common IntelligenceX setups.
 
 ## Reviewer Presets
 
-IntelligenceX ships with built-in presets that control how thorough the review is.
-
-### Minimal Preset
-
-Quick feedback on obvious issues only:
+### Minimal
 
 ```json
 {
@@ -29,9 +18,7 @@ Quick feedback on obvious issues only:
 }
 ```
 
-### Balanced Preset (Default)
-
-Good coverage without being noisy:
+### Balanced
 
 ```json
 {
@@ -46,15 +33,13 @@ Good coverage without being noisy:
 }
 ```
 
-### Picky Preset
-
-Thorough review with inline comments on every file:
+### Picky
 
 ```json
 {
   "review": {
     "provider": "openai",
-    "model": "gpt-5.2-codex",
+    "model": "gpt-5.3-codex",
     "mode": "inline",
     "length": "long",
     "outputStyle": "claude",
@@ -63,9 +48,7 @@ Thorough review with inline comments on every file:
 }
 ```
 
-## Custom Configuration
-
-### Using GitHub Copilot Instead of OpenAI
+## Provider Example: Copilot
 
 ```json
 {
@@ -78,9 +61,7 @@ Thorough review with inline comments on every file:
 }
 ```
 
-### Filtering Files
-
-Exclude test files and auto-generated code from reviews:
+## File Filtering Example
 
 ```json
 {
@@ -99,17 +80,15 @@ Exclude test files and auto-generated code from reviews:
 
 ## Multi-Repo Setup
 
-Use the CLI wizard to onboard multiple repositories at once:
-
 ```bash
-# Interactive multi-repo setup
 intelligencex setup wizard --repos org/repo1 org/repo2 org/repo3
-
-# Or use a config file
-intelligencex setup wizard --config repos.json
 ```
 
-Example `repos.json`:
+Or with a file:
+
+```bash
+intelligencex setup wizard --config repos.json
+```
 
 ```json
 {
@@ -121,9 +100,7 @@ Example `repos.json`:
 }
 ```
 
-## GitHub Actions Workflow
-
-### Basic Workflow
+## Workflow Example
 
 ```yaml
 name: AI Code Review
@@ -139,17 +116,5 @@ jobs:
       openai_transport: native
       output_style: claude
       style: balanced
-    secrets: inherit
-```
-
-### With Custom Config File
-
-```yaml
-jobs:
-  review:
-    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@master
-    with:
-      reviewer_source: release
-      config_path: .github/intelligencex.json
     secrets: inherit
 ```

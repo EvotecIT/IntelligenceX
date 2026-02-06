@@ -1,10 +1,3 @@
----
-title: Getting Started
-description: Set up AI-powered code reviews with IntelligenceX in under a minute
-collection: docs
-layout: docs
----
-
 # Getting Started with IntelligenceX
 
 Get up and running with AI-powered code reviews in under a minute.
@@ -13,7 +6,7 @@ Get up and running with AI-powered code reviews in under a minute.
 
 - .NET 8.0 or later
 - GitHub account with repository access
-- ChatGPT account **or** GitHub Copilot access
+- ChatGPT account or GitHub Copilot access
 
 ## Option 1 - CLI Wizard (Recommended)
 
@@ -28,11 +21,12 @@ intelligencex setup wizard
 ```
 
 The wizard guides you through:
-1. **Authenticating** with ChatGPT or Copilot (your own account)
-2. **Connecting to GitHub** (OAuth, PAT, or your own GitHub App)
-3. **Selecting repositories** for review
-4. **Choosing a review preset** (balanced, picky, security, minimal, etc.)
-5. **Creating a PR** with the GitHub Actions workflow
+
+1. Authenticating with ChatGPT or Copilot (your own account)
+2. Connecting to GitHub (OAuth, PAT, or your own GitHub App)
+3. Selecting repositories for review
+4. Choosing a review preset (balanced, picky, security, minimal, etc.)
+5. Creating a PR with the GitHub Actions workflow
 
 ## Option 2 - Local Web UI (Preview)
 
@@ -65,10 +59,10 @@ See [CLI Quick Start](/docs/cli/quickstart/) for the complete manual flow.
 
 Once the workflow is in place, IntelligenceX automatically reviews every PR:
 
-- **Inline comments** on specific code lines with suggestions
-- **Summary review** with overall assessment
-- **Hybrid mode** combines both
-- **Auto-resolve** cleans up stale bot threads
+- Inline comments on specific code lines with suggestions
+- Summary review with overall assessment
+- Hybrid mode combines both
+- Auto-resolve cleans up stale bot threads
 
 ## Configuring the Reviewer
 
@@ -78,7 +72,7 @@ Create `.intelligencex/reviewer.json` in your repo:
 {
   "review": {
     "provider": "openai",
-    "model": "gpt-5.2-codex",
+    "model": "gpt-5.3-codex",
     "mode": "hybrid",
     "length": "long",
     "outputStyle": "claude"
