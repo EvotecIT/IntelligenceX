@@ -100,10 +100,14 @@ Current built-in runners in `analyze run`:
 - C#: Roslyn via `dotnet build` (SARIF output).
 - PowerShell: PSScriptAnalyzer via `pwsh` (IntelligenceX findings JSON output).
 - Internal: IntelligenceX maintainability checks (for example `IXLOC001`).
-  - `IXLOC001` reads `max-lines:<n>` rule tags (default `700`) and supports configurable generated suffix tags (`generated-suffix:<value>`).
+  - `IXLOC001` reads `max-lines:<n>` rule tags (default `700`) and supports configurable generated suffix tags (`generated-suffix:<value>`) and generated header marker tags (`generated-marker:<value>`).
 
 For JS/TS and Python today, teams can still produce SARIF with their preferred tools and include those files in
 `analysis.results.inputs`.
+
+## Migration Note
+If you enable `intelligencex-maintainability-default` in an existing repository, expect new warnings for large source files.
+Use `analysis.disabledRules` or `analysis.severityOverrides` in `.intelligencex/reviewer.json` to phase in enforcement.
 
 ## Workflow Integration (Example)
 Analysis runs before review and publishes findings as artifacts. The reviewer reads those artifacts and merges findings into the summary and optional inline comments.

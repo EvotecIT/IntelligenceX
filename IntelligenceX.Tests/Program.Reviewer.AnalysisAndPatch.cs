@@ -41,8 +41,13 @@ internal static partial class Program {
             var findingsPath = Path.Combine(output, "intelligencex.findings.json");
             AssertEqual(true, File.Exists(findingsPath), "analyze run findings exists");
             var content = File.ReadAllText(findingsPath);
-            AssertEqual(true, content.Contains("intelligencex.findings.v1", StringComparison.Ordinal),
-                "analyze run schema");
+            var findingsJson = JsonLite.Parse(content)?.AsObject();
+            AssertNotNull(findingsJson, "analyze run disabled findings json");
+            AssertEqual("intelligencex.findings.v1", findingsJson!.GetString("schema") ?? string.Empty,
+                "analyze run disabled schema");
+            var items = findingsJson.GetArray("items");
+            AssertNotNull(items, "analyze run disabled findings items");
+            AssertEqual(0, items!.Count, "analyze run disabled findings count");
         } finally {
             if (Directory.Exists(temp)) {
                 Directory.Delete(temp, true);
@@ -106,6 +111,8 @@ internal static partial class Program {
             var content = File.ReadAllText(findingsPath);
             var findingsJson = JsonLite.Parse(content).AsObject();
             AssertNotNull(findingsJson, "analyze run internal findings json");
+            AssertEqual("intelligencex.findings.v1", findingsJson!.GetString("schema") ?? string.Empty,
+                "analyze run internal schema");
             var findingsItems = findingsJson!.GetArray("items");
             AssertNotNull(findingsItems, "analyze run internal findings items");
             var hasMappedInternalRule = false;
@@ -127,6 +134,89 @@ internal static partial class Program {
                 "analyze run internal tool id");
             AssertEqual(true, hasMappedInternalRule, "analyze run internal rule/tool correlation");
             AssertEqual(true, content.Contains("LargeFile.cs", StringComparison.Ordinal), "analyze run internal file path");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalyzeRunInternalFindingsUseCatalogToolMetadata() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-size-toolmeta-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["intelligencex-maintainability-default"]
+  }
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXLOC001.json"), """
+{
+  "id": "IXLOC001",
+  "language": "internal",
+  "tool": "IntelligenceX.CustomMaintainability",
+  "toolRuleId": "IX-LOC-TOOL-001",
+  "title": "Source files should stay below 700 lines",
+  "description": "Flags oversized source files.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["max-lines:700"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "rules": ["IXLOC001"]
+}
+""");
+
+            var largeFile = Path.Combine(temp, "LargeFile.cs");
+            var lines = Enumerable.Repeat("public class X { }", 705);
+            File.WriteAllText(largeFile, string.Join('\n', lines) + "\n");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run internal metadata exit");
+            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
+            AssertEqual(true, File.Exists(findingsPath), "analyze run internal metadata findings exists");
+            var findingsJson = JsonLite.Parse(File.ReadAllText(findingsPath))?.AsObject();
+            AssertNotNull(findingsJson, "analyze run internal metadata findings json");
+            var findingsItems = findingsJson!.GetArray("items");
+            AssertNotNull(findingsItems, "analyze run internal metadata findings items");
+
+            var matched = false;
+            foreach (var item in findingsItems!) {
+                var finding = item.AsObject();
+                if (finding is null) {
+                    continue;
+                }
+                var path = finding.GetString("path");
+                var ruleId = finding.GetString("ruleId");
+                var tool = finding.GetString("tool");
+                if (!string.Equals(path, "LargeFile.cs", StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+                AssertEqual("IX-LOC-TOOL-001", ruleId ?? string.Empty, "analyze run internal metadata rule id");
+                AssertEqual("IntelligenceX.CustomMaintainability", tool ?? string.Empty, "analyze run internal metadata tool");
+                matched = true;
+                break;
+            }
+            AssertEqual(true, matched, "analyze run internal metadata finding");
         } finally {
             if (Directory.Exists(temp)) {
                 Directory.Delete(temp, true);
@@ -208,6 +298,7 @@ internal static partial class Program {
             Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
             Directory.CreateDirectory(Path.Combine(temp, "OBJ"));
             Directory.CreateDirectory(Path.Combine(temp, "node_modules"));
+            Directory.CreateDirectory(Path.Combine(temp, "obj-model"));
 
             File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
 {
@@ -248,6 +339,7 @@ internal static partial class Program {
                 "// <AUTO-GENERATED>\n" + string.Join('\n', lines) + "\n");
             File.WriteAllText(Path.Combine(temp, "OBJ", "Ignored.cs"), string.Join('\n', lines) + "\n");
             File.WriteAllText(Path.Combine(temp, "node_modules", "Ignored.cs"), string.Join('\n', lines) + "\n");
+            File.WriteAllText(Path.Combine(temp, "obj-model", "StillIncluded.cs"), string.Join('\n', lines) + "\n");
 
             var output = Path.Combine(temp, "artifacts");
             var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
@@ -271,6 +363,72 @@ internal static partial class Program {
                 "analyze run internal skip excluded directory");
             AssertEqual(false, content.Contains("node_modules/Ignored.cs", StringComparison.OrdinalIgnoreCase),
                 "analyze run internal skip node_modules");
+            AssertEqual(true, content.Contains("obj-model/StillIncluded.cs", StringComparison.OrdinalIgnoreCase),
+                "analyze run internal does not exclude directory substring");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalyzeRunInternalFileSizeRuleCustomGeneratedSuffixCaseInsensitive() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-size-customsuffix-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["intelligencex-maintainability-default"]
+  }
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXLOC001.json"), """
+{
+  "id": "IXLOC001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXLOC001",
+  "title": "Source files should stay below 700 lines",
+  "description": "Flags oversized source files.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["max-lines:700", "generated-suffix:*.DTO.CS"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "rules": ["IXLOC001"]
+}
+""");
+
+            var lines = Enumerable.Repeat("public class X { }", 705);
+            File.WriteAllText(Path.Combine(temp, "Regular.cs"), string.Join('\n', lines) + "\n");
+            File.WriteAllText(Path.Combine(temp, "CustomGenerated.dto.cs"), string.Join('\n', lines) + "\n");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run internal custom suffix exit");
+            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
+            AssertEqual(true, File.Exists(findingsPath), "analyze run internal custom suffix findings exists");
+            var content = File.ReadAllText(findingsPath);
+            AssertEqual(true, content.Contains("Regular.cs", StringComparison.Ordinal), "analyze run internal custom suffix regular");
+            AssertEqual(false, content.Contains("CustomGenerated.dto.cs", StringComparison.OrdinalIgnoreCase),
+                "analyze run internal custom suffix case-insensitive");
         } finally {
             if (Directory.Exists(temp)) {
                 Directory.Delete(temp, true);
