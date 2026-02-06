@@ -112,6 +112,7 @@ For JS/TS and Python today, teams can still produce SARIF with their preferred t
 ## Migration Note
 If you enable `intelligencex-maintainability-default` in an existing repository, expect new warnings for large source files.
 Use `analysis.disabledRules` or `analysis.severityOverrides` in `.intelligencex/reviewer.json` to phase in enforcement.
+IntelligenceX does not push analysis configuration into existing user repositories; policy only changes when the repository configuration is updated explicitly.
 
 ## Workflow Integration (Example)
 Analysis runs before review and publishes findings as artifacts. The reviewer reads those artifacts and merges findings into the summary and optional inline comments.

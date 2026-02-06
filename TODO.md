@@ -242,4 +242,5 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Match generated suffixes against filename (not full path) with normalized suffix handling. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2773050517
 - [x] Keep generated marker/suffix defaults in catalog tags as canonical source (no duplicate in runner constants). Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2773234767
 - [x] Warn on unknown/malformed IXLOC001 tags to avoid silent config typos. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2773420136, https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2773420211
+- [x] Clarify maintainability pack enablement is explicit repo-config change (no forced migration/push into existing repos). Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2773653898
 </details>
