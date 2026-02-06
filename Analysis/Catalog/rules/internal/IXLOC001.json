@@ -7,6 +7,15 @@
   "description": "Flags oversized source files to keep modules maintainable and easier to review.",
   "category": "Maintainability",
   "defaultSeverity": "warning",
-  "tags": ["maintainability", "size", "structure"],
+  "tags": [
+    "maintainability",
+    "size",
+    "structure",
+    "max-lines:700",
+    "generated-suffix:.designer.cs",
+    "generated-suffix:.generated.cs",
+    "generated-suffix:.g.cs",
+    "generated-suffix:.g.i.cs"
+  ],
   "docs": "Docs/reviewer/static-analysis.md"
 }

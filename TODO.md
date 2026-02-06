@@ -222,3 +222,13 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Treat unknown severities distinctly from `none` to avoid silent suppression. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#discussion_r2770655013
 - [x] Log malformed glob patterns so config errors are visible. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#discussion_r2770655055
 </details>
+<details>
+<summary>PR #99 Add maintainability LOC rule and split setup runner</summary>
+
+- [x] Replace string-marker path exclusion with robust normalized path segment checks. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#issuecomment-3858550015
+- [x] De-duplicate rule ID/threshold by loading from catalog or centralized constants. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#issuecomment-3858550015
+- [x] Expand generated-file detection (header-based + configurable patterns). Links: https://github.com/EvotecIT/IntelligenceX/pull/99#issuecomment-3858550015
+- [x] Add tests for CRLF/LF and trailing newline/no-trailing-newline LOC counting. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#issuecomment-3858550015
+- [x] Add test for case-insensitive path exclusions on Windows. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#issuecomment-3858550015
+- [x] Validate docs path resolution strategy for rule metadata. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#issuecomment-3858550015
+</details>

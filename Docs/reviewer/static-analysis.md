@@ -99,7 +99,8 @@ During analysis runs, configs are generated to a temporary directory and cleaned
 Current built-in runners in `analyze run`:
 - C#: Roslyn via `dotnet build` (SARIF output).
 - PowerShell: PSScriptAnalyzer via `pwsh` (IntelligenceX findings JSON output).
-- Internal: IntelligenceX maintainability checks (for example `IXLOC001` max 700 lines per `.cs` file).
+- Internal: IntelligenceX maintainability checks (for example `IXLOC001`).
+  - `IXLOC001` reads `max-lines:<n>` rule tags (default `700`) and supports configurable generated suffix tags (`generated-suffix:<value>`).
 
 For JS/TS and Python today, teams can still produce SARIF with their preferred tools and include those files in
 `analysis.results.inputs`.
