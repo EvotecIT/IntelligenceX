@@ -2,6 +2,7 @@
   { "title": "Documentation", "href": "/docs/" },
   { "title": "Getting Started", "href": "/docs/getting-started/" },
   { "title": "Security & Trust", "href": "/docs/security/" },
+  { "title": "FAQ", "href": "/docs/faq/" },
   {
     "title": "GitHub Actions Reviewer",
     "items": [
@@ -9,12 +10,14 @@
       { "title": "Onboarding Wizard", "href": "/docs/reviewer/onboarding-wizard/" },
       { "title": "Web Setup UI", "href": "/docs/reviewer/setup-web/" },
       { "title": "Configuration", "href": "/docs/reviewer/configuration/" },
-      { "title": "Security & Trust", "href": "/docs/reviewer/security-trust/" }
+      { "title": "Security & Trust", "href": "/docs/reviewer/security-trust/" },
+      { "title": "Static Analysis", "href": "/docs/reviewer/static-analysis/" }
     ]
   },
   {
     "title": "CLI Tools",
     "items": [
+      { "title": "Install", "href": "/docs/cli/install/" },
       { "title": "Overview", "href": "/docs/cli/overview/" },
       { "title": "Quick Start", "href": "/docs/cli/quickstart/" }
     ]
@@ -23,14 +26,17 @@
     "title": ".NET Library",
     "items": [
       { "title": "Overview", "href": "/docs/library/overview/" },
+      { "title": "Quickstart", "href": "/docs/library/quickstart/" },
       { "title": "Providers", "href": "/docs/library/providers/" },
+      { "title": "Tool Calling", "href": "/docs/library/tools/" },
       { "title": "API Reference", "href": "/api/" }
     ]
   },
   {
     "title": "PowerShell Module",
     "items": [
-      { "title": "Overview", "href": "/docs/powershell/overview/" }
+      { "title": "Overview", "href": "/docs/powershell/overview/" },
+      { "title": "Quickstart", "href": "/docs/powershell/quickstart/" }
     ]
   },
   {

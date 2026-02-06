@@ -20,11 +20,13 @@
     },
     {
       "Name": "docs",
-      "Input": "content/docs",
+      "Input": "../Docs",
       "Output": "/docs",
       "DefaultLayout": "docs",
-      "UseToc": false,
-      "Include": ["*.md", "**/*.md"]
+      "UseToc": true,
+      "TocFile": "../Docs/toc.json",
+      "Include": ["*.md", "**/*.md"],
+      "Exclude": ["cli/commands/**", "screenshots/**", "reviewer/review-smoke.md", "reviewer/web-onboarding.md"]
     }
   ],
   "Head": {
