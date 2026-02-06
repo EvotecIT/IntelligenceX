@@ -11,18 +11,20 @@ internal static partial class AnalyzeRunCommand {
         string outputDirectory,
         IReadOnlyList<AnalysisPolicyRule> rules, List<string> warnings) {
         var findings = new List<AnalysisFindingItem>();
-        var maxLinesRule = ResolveMaxLinesRule(rules, out var maxLinesLimit);
+        var maxLinesRule = ResolveMaxLinesRule(rules);
         if (maxLinesRule is null) {
             return findings;
         }
+        var maxLinesLimit = ResolveMaxLinesLimit(maxLinesRule.Rule, warnings);
 
         var severity = NormalizeSeverity(maxLinesRule.Severity);
         if (string.IsNullOrWhiteSpace(severity)) {
             Console.WriteLine($"Internal maintainability rule {maxLinesRule.Rule.Id} is disabled by policy severity.");
             return findings;
         }
-        var generatedSuffixes = ResolveGeneratedSuffixes(maxLinesRule.Rule);
-        var generatedHeaderMarkers = ResolveGeneratedHeaderMarkers(maxLinesRule.Rule);
+        var generatedSuffixes = ResolveGeneratedSuffixes(maxLinesRule.Rule, warnings);
+        var generatedHeaderMarkers = ResolveGeneratedHeaderMarkers(maxLinesRule.Rule, warnings);
+        var generatedHeaderLinesToInspect = ResolveGeneratedHeaderLinesToInspect(maxLinesRule.Rule, warnings);
         var excludedOutputPath = TryGetRelativePathWithinWorkspace(workspace, outputDirectory);
         var emittedRuleId = string.IsNullOrWhiteSpace(maxLinesRule.Rule.ToolRuleId)
             ? maxLinesRule.Rule.Id
@@ -38,7 +40,7 @@ internal static partial class AnalyzeRunCommand {
                 RelativePath = Path.GetRelativePath(workspace, fullPath).Replace('\\', '/')
             })
             .Where(file => !IsExcludedSourceFile(file.FullPath, file.RelativePath, generatedSuffixes, generatedHeaderMarkers,
-                excludedOutputPath));
+                generatedHeaderLinesToInspect, excludedOutputPath));
 
         foreach (var sourceFile in sourceFiles) {
             var relativePath = sourceFile.RelativePath;
@@ -69,8 +71,7 @@ internal static partial class AnalyzeRunCommand {
         return findings;
     }
 
-    private static AnalysisPolicyRule? ResolveMaxLinesRule(IReadOnlyList<AnalysisPolicyRule> rules, out int maxLinesLimit) {
-        maxLinesLimit = DefaultMaxFileLinesLimit;
+    private static AnalysisPolicyRule? ResolveMaxLinesRule(IReadOnlyList<AnalysisPolicyRule> rules) {
         if (rules is null || rules.Count == 0) {
             return null;
         }
@@ -81,8 +82,7 @@ internal static partial class AnalyzeRunCommand {
                 continue;
             }
             fallbackRule ??= rule;
-            if (TryResolveLineLimit(rule.Rule, out var parsedLimit)) {
-                maxLinesLimit = parsedLimit;
+            if (HasTagWithPrefix(rule.Rule.Tags, MaxLinesTagPrefix)) {
                 return rule;
             }
         }
@@ -90,10 +90,10 @@ internal static partial class AnalyzeRunCommand {
         return fallbackRule;
     }
 
-    private static bool TryResolveLineLimit(AnalysisRule rule, out int limit) {
-        limit = DefaultMaxFileLinesLimit;
+    private static int ResolveMaxLinesLimit(AnalysisRule rule, List<string> warnings) {
+        var limit = DefaultMaxFileLinesLimit;
         if (rule is null || rule.Tags is null || rule.Tags.Count == 0) {
-            return false;
+            return limit;
         }
         foreach (var tag in rule.Tags) {
             if (string.IsNullOrWhiteSpace(tag) || !tag.StartsWith(MaxLinesTagPrefix, StringComparison.OrdinalIgnoreCase)) {
@@ -101,15 +101,20 @@ internal static partial class AnalyzeRunCommand {
             }
             var value = tag.Substring(MaxLinesTagPrefix.Length).Trim();
             if (int.TryParse(value, out var parsed) && parsed > 0) {
-                limit = parsed;
-                return true;
+                return parsed;
             }
+            warnings.Add(
+                $"Rule {rule.Id} has malformed tag '{tag}'. Expected '{MaxLinesTagPrefix}<positive-int>'; using {DefaultMaxFileLinesLimit}.");
+            return limit;
         }
-        return false;
+        return limit;
     }
 
-    private static IReadOnlyCollection<string> ResolveGeneratedSuffixes(AnalysisRule rule) {
+    private static IReadOnlyCollection<string> ResolveGeneratedSuffixes(AnalysisRule rule, List<string> warnings) {
         var suffixes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var suffix in DefaultGeneratedSuffixes) {
+            suffixes.Add(suffix);
+        }
         if (rule?.Tags is not null && rule.Tags.Count > 0) {
             foreach (var tag in rule.Tags) {
                 if (string.IsNullOrWhiteSpace(tag) || !tag.StartsWith(GeneratedSuffixTagPrefix, StringComparison.OrdinalIgnoreCase)) {
@@ -118,16 +123,13 @@ internal static partial class AnalyzeRunCommand {
                 var value = NormalizeGeneratedSuffixTagValue(tag.Substring(GeneratedSuffixTagPrefix.Length));
                 if (!string.IsNullOrWhiteSpace(value)) {
                     suffixes.Add(value);
+                } else {
+                    warnings.Add(
+                        $"Rule {rule.Id} has malformed tag '{tag}'. Expected '{GeneratedSuffixTagPrefix}<suffix>'.");
                 }
             }
         }
 
-        if (suffixes.Count > 0) {
-            return suffixes;
-        }
-        foreach (var suffix in DefaultGeneratedSuffixes) {
-            suffixes.Add(suffix);
-        }
         return suffixes;
     }
 
@@ -151,8 +153,11 @@ internal static partial class AnalyzeRunCommand {
         return value;
     }
 
-    private static IReadOnlyCollection<string> ResolveGeneratedHeaderMarkers(AnalysisRule rule) {
+    private static IReadOnlyCollection<string> ResolveGeneratedHeaderMarkers(AnalysisRule rule, List<string> warnings) {
         var markers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var marker in DefaultGeneratedHeaderMarkers) {
+            markers.Add(marker);
+        }
         if (rule?.Tags is not null && rule.Tags.Count > 0) {
             foreach (var tag in rule.Tags) {
                 if (string.IsNullOrWhiteSpace(tag) || !tag.StartsWith(GeneratedMarkerTagPrefix, StringComparison.OrdinalIgnoreCase)) {
@@ -161,16 +166,33 @@ internal static partial class AnalyzeRunCommand {
                 var marker = NormalizeGeneratedHeaderMarkerTagValue(tag.Substring(GeneratedMarkerTagPrefix.Length));
                 if (!string.IsNullOrWhiteSpace(marker)) {
                     markers.Add(marker);
+                } else {
+                    warnings.Add(
+                        $"Rule {rule.Id} has malformed tag '{tag}'. Expected '{GeneratedMarkerTagPrefix}<text>'.");
                 }
             }
         }
-        if (markers.Count > 0) {
-            return markers;
-        }
-        foreach (var marker in DefaultGeneratedHeaderMarkers) {
-            markers.Add(marker);
-        }
         return markers;
+    }
+
+    private static int ResolveGeneratedHeaderLinesToInspect(AnalysisRule rule, List<string> warnings) {
+        if (rule is null || rule.Tags is null || rule.Tags.Count == 0) {
+            return GeneratedHeaderLinesToInspect;
+        }
+        foreach (var tag in rule.Tags) {
+            if (string.IsNullOrWhiteSpace(tag) ||
+                !tag.StartsWith(GeneratedHeaderLinesTagPrefix, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            var value = tag.Substring(GeneratedHeaderLinesTagPrefix.Length).Trim();
+            if (int.TryParse(value, out var parsed) && parsed > 0) {
+                return parsed;
+            }
+            warnings.Add(
+                $"Rule {rule.Id} has malformed tag '{tag}'. Expected '{GeneratedHeaderLinesTagPrefix}<positive-int>'; using {GeneratedHeaderLinesToInspect}.");
+            return GeneratedHeaderLinesToInspect;
+        }
+        return GeneratedHeaderLinesToInspect;
     }
 
     private static string? NormalizeGeneratedHeaderMarkerTagValue(string rawValue) {
@@ -225,7 +247,7 @@ internal static partial class AnalyzeRunCommand {
     }
 
     private static bool IsExcludedSourceFile(string fullPath, string relativePath, IReadOnlyCollection<string> generatedSuffixes,
-        IReadOnlyCollection<string> generatedHeaderMarkers, string? excludedOutputPath) {
+        IReadOnlyCollection<string> generatedHeaderMarkers, int generatedHeaderLinesToInspect, string? excludedOutputPath) {
         if (string.IsNullOrWhiteSpace(relativePath)) {
             return true;
         }
@@ -242,7 +264,7 @@ internal static partial class AnalyzeRunCommand {
             return true;
         }
 
-        return HasGeneratedFileHeader(fullPath, generatedHeaderMarkers);
+        return HasGeneratedFileHeader(fullPath, generatedHeaderMarkers, generatedHeaderLinesToInspect);
     }
 
     private static bool ContainsExcludedDirectorySegment(string relativePath) {
@@ -282,11 +304,12 @@ internal static partial class AnalyzeRunCommand {
             normalizedPath.StartsWith(normalizedRoot + "/", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool HasGeneratedFileHeader(string fullPath, IReadOnlyCollection<string> generatedHeaderMarkers) {
+    private static bool HasGeneratedFileHeader(string fullPath, IReadOnlyCollection<string> generatedHeaderMarkers,
+        int generatedHeaderLinesToInspect) {
         try {
             using var reader = new StreamReader(fullPath);
             var inBlockComment = false;
-            for (var i = 0; i < GeneratedHeaderLinesToInspect; i++) {
+            for (var i = 0; i < Math.Max(1, generatedHeaderLinesToInspect); i++) {
                 var line = reader.ReadLine();
                 if (line is null) {
                     break;
@@ -317,6 +340,18 @@ internal static partial class AnalyzeRunCommand {
             }
         } catch {
             // Treat read failures as non-generated here; caller will report read failure during counting.
+        }
+        return false;
+    }
+
+    private static bool HasTagWithPrefix(IReadOnlyList<string>? tags, string prefix) {
+        if (tags is null || tags.Count == 0 || string.IsNullOrWhiteSpace(prefix)) {
+            return false;
+        }
+        foreach (var tag in tags) {
+            if (!string.IsNullOrWhiteSpace(tag) && tag.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
         }
         return false;
     }

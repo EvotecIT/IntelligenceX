@@ -16,6 +16,7 @@ internal static partial class AnalyzeRunCommand {
     private const int DefaultMaxFileLinesLimit = 700;
     private const string MaxLinesTagPrefix = "max-lines:";
     private const int GeneratedHeaderLinesToInspect = 80;
+    private const string GeneratedHeaderLinesTagPrefix = "generated-header-lines:";
     private const string InternalToolName = "IntelligenceX.Maintainability";
     private const string GeneratedSuffixTagPrefix = "generated-suffix:";
     private const string GeneratedMarkerTagPrefix = "generated-marker:";
