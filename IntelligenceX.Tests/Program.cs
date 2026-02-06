@@ -81,6 +81,12 @@ internal static partial class Program {
             TestAnalyzeRunInternalFileSizeRuleCustomExcludedDirectory);
         failed += Run("Analyze run internal file size newline variants",
             TestAnalyzeRunInternalFileSizeRuleHandlesLineEndings);
+        failed += Run("Analyze run internal malformed tags warn and fallback",
+            TestAnalyzeRunInternalFileSizeRuleWarnsOnMalformedTags);
+        failed += Run("Analyze run internal unknown tag prefixes warn",
+            TestAnalyzeRunInternalFileSizeRuleWarnsOnUnknownTagPrefixes);
+        failed += Run("Analyze run internal generated header scan can be disabled",
+            TestAnalyzeRunInternalFileSizeRuleGeneratedHeaderScanCanBeDisabled);
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);
         failed += Run("Trim patch tail hunk", TestTrimPatchKeepsTailHunk);

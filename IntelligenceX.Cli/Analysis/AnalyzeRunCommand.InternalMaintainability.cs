@@ -22,6 +22,7 @@ internal static partial class AnalyzeRunCommand {
             Console.WriteLine($"Internal maintainability rule {maxLinesRule.Rule.Id} is disabled by policy severity.");
             return findings;
         }
+        ValidateInternalMaintainabilityTags(maxLinesRule.Rule, warnings);
         var generatedSuffixes = ResolveGeneratedSuffixes(maxLinesRule.Rule, warnings);
         var generatedHeaderMarkers = ResolveGeneratedHeaderMarkers(maxLinesRule.Rule, warnings);
         var generatedHeaderLinesToInspect = ResolveGeneratedHeaderLinesToInspect(maxLinesRule.Rule, warnings);
@@ -114,9 +115,6 @@ internal static partial class AnalyzeRunCommand {
 
     private static IReadOnlyCollection<string> ResolveGeneratedSuffixes(AnalysisRule rule, List<string> warnings) {
         var suffixes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var suffix in DefaultGeneratedSuffixes) {
-            suffixes.Add(suffix);
-        }
         if (rule?.Tags is not null && rule.Tags.Count > 0) {
             foreach (var tag in rule.Tags) {
                 if (string.IsNullOrWhiteSpace(tag) || !tag.StartsWith(GeneratedSuffixTagPrefix, StringComparison.OrdinalIgnoreCase)) {
@@ -157,9 +155,6 @@ internal static partial class AnalyzeRunCommand {
 
     private static IReadOnlyCollection<string> ResolveGeneratedHeaderMarkers(AnalysisRule rule, List<string> warnings) {
         var markers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var marker in DefaultGeneratedHeaderMarkers) {
-            markers.Add(marker);
-        }
         if (rule?.Tags is not null && rule.Tags.Count > 0) {
             foreach (var tag in rule.Tags) {
                 if (string.IsNullOrWhiteSpace(tag) || !tag.StartsWith(GeneratedMarkerTagPrefix, StringComparison.OrdinalIgnoreCase)) {
@@ -187,14 +182,43 @@ internal static partial class AnalyzeRunCommand {
                 continue;
             }
             var value = tag.Substring(GeneratedHeaderLinesTagPrefix.Length).Trim();
-            if (int.TryParse(value, out var parsed) && parsed > 0) {
+            if (int.TryParse(value, out var parsed) && parsed >= 0) {
                 return parsed;
             }
             warnings.Add(
-                $"Rule {rule.Id} has malformed tag '{tag}'. Expected '{GeneratedHeaderLinesTagPrefix}<positive-int>'; using {GeneratedHeaderLinesToInspect}.");
+                $"Rule {rule.Id} has malformed tag '{tag}'. Expected '{GeneratedHeaderLinesTagPrefix}<non-negative-int>'; using {GeneratedHeaderLinesToInspect}.");
             return GeneratedHeaderLinesToInspect;
         }
         return GeneratedHeaderLinesToInspect;
+    }
+
+    private static void ValidateInternalMaintainabilityTags(AnalysisRule rule, List<string> warnings) {
+        if (rule?.Tags is null || rule.Tags.Count == 0) {
+            return;
+        }
+
+        var unknownTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var tag in rule.Tags) {
+            if (string.IsNullOrWhiteSpace(tag)) {
+                continue;
+            }
+            if (tag.StartsWith(MaxLinesTagPrefix, StringComparison.OrdinalIgnoreCase) ||
+                tag.StartsWith(GeneratedSuffixTagPrefix, StringComparison.OrdinalIgnoreCase) ||
+                tag.StartsWith(GeneratedMarkerTagPrefix, StringComparison.OrdinalIgnoreCase) ||
+                tag.StartsWith(GeneratedHeaderLinesTagPrefix, StringComparison.OrdinalIgnoreCase) ||
+                tag.StartsWith(ExcludedDirectoryTagPrefix, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (!tag.Contains(':', StringComparison.Ordinal)) {
+                continue;
+            }
+            unknownTags.Add(tag);
+        }
+
+        foreach (var tag in unknownTags) {
+            warnings.Add(
+                $"Rule {rule.Id} has unknown tag '{tag}'. Supported prefixes: {MaxLinesTagPrefix}, {GeneratedSuffixTagPrefix}, {GeneratedMarkerTagPrefix}, {GeneratedHeaderLinesTagPrefix}, {ExcludedDirectoryTagPrefix}.");
+        }
     }
 
     private static IReadOnlySet<string> ResolveExcludedDirectorySegments(AnalysisRule rule, List<string> warnings) {
@@ -348,10 +372,13 @@ internal static partial class AnalyzeRunCommand {
 
     private static bool HasGeneratedFileHeader(string fullPath, IReadOnlyCollection<string> generatedHeaderMarkers,
         int generatedHeaderLinesToInspect) {
+        if (generatedHeaderLinesToInspect <= 0) {
+            return false;
+        }
         try {
             using var reader = new StreamReader(fullPath);
             var inBlockComment = false;
-            for (var i = 0; i < Math.Max(1, generatedHeaderLinesToInspect); i++) {
+            for (var i = 0; i < generatedHeaderLinesToInspect; i++) {
                 var line = reader.ReadLine();
                 if (line is null) {
                     break;
