@@ -1,0 +1,6 @@
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "description": "Built-in maintainability checks implemented by IntelligenceX.",
+  "rules": ["IXLOC001"]
+}

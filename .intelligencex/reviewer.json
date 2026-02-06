@@ -3,7 +3,8 @@
     "enabled": true,
     "packs": [
       "csharp-default",
-      "powershell-default"
+      "powershell-default",
+      "intelligencex-maintainability-default"
     ],
     "configMode": "respect",
     "results": {

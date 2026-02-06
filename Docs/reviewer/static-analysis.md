@@ -11,7 +11,7 @@ This document proposes how IntelligenceX can offer default static analysis rules
 
 ## User Experience (Onboarding)
 - The wizard offers a single toggle: "Enable static analysis (recommended)."
-- Users select one or more packs (for example `csharp-default`, `powershell-default`).
+- Users select one or more packs (for example `csharp-default`, `powershell-default`, `intelligencex-maintainability-default`).
 - Users can optionally toggle individual rules and change severities.
 - The wizard writes the `analysis` section into `.intelligencex/reviewer.json`.
 
@@ -23,7 +23,7 @@ All enablement decisions live in `.intelligencex/reviewer.json`. Analyzer tool c
 {
   "analysis": {
     "enabled": true,
-    "packs": ["csharp-default", "powershell-default"],
+    "packs": ["csharp-default", "powershell-default", "intelligencex-maintainability-default"],
     "disabledRules": ["CA2000"],
     "severityOverrides": { "CA1062": "error" },
     "configMode": "respect",
@@ -51,6 +51,7 @@ Each rule has a metadata file with descriptions and mapping to the underlying an
 Proposed layout:
 - `Analysis/Catalog/rules/csharp/CA2000.json`
 - `Analysis/Catalog/rules/powershell/PSAvoidUsingWriteHost.json`
+- `Analysis/Catalog/rules/internal/IXLOC001.json`
 
 Example rule file:
 ```json
@@ -73,6 +74,7 @@ Packs are curated lists of rule IDs plus optional severity overrides.
 Proposed layout:
 - `Analysis/Packs/csharp-default.json`
 - `Analysis/Packs/powershell-default.json`
+- `Analysis/Packs/intelligencex-maintainability-default.json`
 
 Example pack:
 ```json
@@ -97,9 +99,20 @@ During analysis runs, configs are generated to a temporary directory and cleaned
 Current built-in runners in `analyze run`:
 - C#: Roslyn via `dotnet build` (SARIF output).
 - PowerShell: PSScriptAnalyzer via `pwsh` (IntelligenceX findings JSON output).
+- Internal: IntelligenceX maintainability checks (for example `IXLOC001`).
+  - `IXLOC001` reads `max-lines:<n>` rule tags (default `700`) and supports configurable generated suffix tags (`generated-suffix:<value>`), generated header marker tags (`generated-marker:<value>`), optional generated header scan depth tags (`generated-header-lines:<n>`, `0` disables header scanning), and additional excluded directory segments (`exclude-dir:<segment>`).
+  - Generated marker/suffix defaults are defined in the rule catalog tags (`Analysis/Catalog/rules/internal/IXLOC001.json`).
+  - Unknown or malformed maintainability tags are ignored with explicit warnings in `analyze run` output.
+  - Tag warnings are aggregated per prefix/type to avoid log spam on large tag sets.
+  - Generated suffix and marker tags are additive; defaults remain enabled unless you disable the rule.
 
 For JS/TS and Python today, teams can still produce SARIF with their preferred tools and include those files in
 `analysis.results.inputs`.
+
+## Migration Note
+If you enable `intelligencex-maintainability-default` in an existing repository, expect new warnings for large source files.
+Use `analysis.disabledRules` or `analysis.severityOverrides` in `.intelligencex/reviewer.json` to phase in enforcement.
+IntelligenceX does not push analysis configuration into existing user repositories; policy only changes when the repository configuration is updated explicitly.
 
 ## Workflow Integration (Example)
 Analysis runs before review and publishes findings as artifacts. The reviewer reads those artifacts and merges findings into the summary and optional inline comments.

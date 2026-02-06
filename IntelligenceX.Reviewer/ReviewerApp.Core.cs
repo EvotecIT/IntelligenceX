@@ -1,0 +1,516 @@
+namespace IntelligenceX.Reviewer;
+
+/// <summary>
+/// Entry point for running the IntelligenceX review workflow.
+/// </summary>
+public static partial class ReviewerApp {
+    private const string ThreadReplyMarker = "<!-- intelligencex:thread-reply -->";
+    private const string UsageSummaryPrefix = "Usage: ";
+    private const string UsageSummarySeparator = " | ";
+    private const string CodeReviewPrefix = "code review ";
+    private const string SecondaryWindowSuffix = " (secondary)";
+    private static int _integrationForbiddenHintLogged;
+    private static readonly HashSet<string> BinaryExtensions = new(StringComparer.OrdinalIgnoreCase) {
+        ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".ico", ".webp",
+        ".mp3", ".wav", ".flac", ".ogg", ".mp4", ".mov", ".mkv", ".avi", ".mpeg", ".mpg", ".webm",
+        ".pdf", ".psd", ".ai", ".sketch",
+        ".zip", ".rar", ".7z", ".gz", ".tgz", ".bz2", ".xz", ".tar",
+        ".exe", ".dll", ".so", ".dylib", ".bin", ".class", ".jar", ".war",
+        ".woff", ".woff2", ".ttf", ".otf", ".eot",
+        ".pdb", ".dmg", ".iso", ".apk", ".ipa", ".wasm"
+    };
+    private static readonly IReadOnlyList<string> GeneratedGlobs = new[] {
+        "**/bin/**",
+        "bin/**",
+        "**/obj/**",
+        "obj/**",
+        "**/dist/**",
+        "dist/**",
+        "**/build/**",
+        "build/**",
+        "**/out/**",
+        "out/**",
+        "**/coverage/**",
+        "coverage/**",
+        "**/.next/**",
+        ".next/**",
+        "**/.nuxt/**",
+        ".nuxt/**",
+        "**/.turbo/**",
+        ".turbo/**",
+        "**/.cache/**",
+        ".cache/**",
+        "**/.parcel-cache/**",
+        ".parcel-cache/**",
+        "**/node_modules/**",
+        "node_modules/**",
+        "**/*.g.cs",
+        "*.g.cs",
+        "**/*.g.i.cs",
+        "*.g.i.cs",
+        "**/*.g.i.vb",
+        "*.g.i.vb",
+        "**/*.generated.*",
+        "*.generated.*",
+        "**/*.gen.*",
+        "*.gen.*",
+        "**/*.designer.*",
+        "*.designer.*",
+        "**/*.min.js",
+        "*.min.js",
+        "**/*.min.css",
+        "*.min.css",
+        "**/*.bundle.js",
+        "*.bundle.js",
+        "**/*.bundle.css",
+        "*.bundle.css",
+        "**/*.js.map",
+        "*.js.map",
+        "**/*.css.map",
+        "*.css.map"
+    };
+    /// <summary>
+    /// Executes the reviewer workflow with the provided arguments.
+    /// </summary>
+    /// <param name="args">Command-line arguments.</param>
+    /// <returns>Process exit code (0 for success).</returns>
+    public static async Task<int> RunAsync(string[] args) {
+        using var cts = new CancellationTokenSource();
+        var runOptions = ParseRunOptions(args);
+        if (runOptions.ShowHelp) {
+            PrintRunHelp();
+            return 0;
+        }
+        if (runOptions.Errors.Count > 0) {
+            foreach (var error in runOptions.Errors) {
+                Console.Error.WriteLine(error);
+            }
+            Console.Error.WriteLine("Use --help to see available options.");
+            PrintRunHelp(Console.Error);
+            return 1;
+        }
+        ApplyRunOptions(runOptions);
+        ConsoleCancelEventHandler? cancelHandler = (_, evt) => {
+            evt.Cancel = true;
+            cts.Cancel();
+        };
+        Console.CancelKeyPress += cancelHandler;
+        // Hoist state so the exception handler can update the progress comment on failure.
+        SecretsAuditSession? secretsAudit = null;
+        ReviewSettings? settings = null;
+        PullRequestContext? context = null;
+        string? githubToken = null;
+        bool allowWrites = false;
+        bool inlineSupported = false;
+        bool summaryPosted = false;
+        long? commentId = null;
+        var progress = new ReviewProgress { StatusLine = "Starting review." };
+        try {
+            var cancellationToken = cts.Token;
+            if (!await TryWriteAuthFromEnvAsync().ConfigureAwait(false)) {
+                return 1;
+            }
+            settings = ReviewSettings.Load();
+            secretsAudit = SecretsAudit.TryStart(settings);
+            var validation = ReviewConfigValidator.ValidateCurrent();
+            if (validation is not null) {
+                if (validation.Warnings.Count > 0) {
+                    Console.Error.WriteLine($"Configuration warnings in {validation.ConfigPath}:");
+                    foreach (var warning in validation.Warnings) {
+                        Console.Error.WriteLine($"- {warning.Path}: {warning.Message}");
+                    }
+                    Console.Error.WriteLine($"Schema: {validation.SchemaHint}");
+                }
+                if (validation.Errors.Count > 0) {
+                    Console.Error.WriteLine($"Configuration errors in {validation.ConfigPath}:");
+                    foreach (var error in validation.Errors) {
+                        Console.Error.WriteLine($"- {error.Path}: {error.Message}");
+                    }
+                    Console.Error.WriteLine($"Schema: {validation.SchemaHint}");
+                    return 1;
+                }
+            }
+            var providerContract = ReviewProviderContracts.Get(settings.Provider);
+            if (settings.Diagnostics && settings.RetryCount > providerContract.MaxRecommendedRetryCount) {
+                Console.Error.WriteLine(
+                    $"Retry count ({settings.RetryCount}) exceeds recommended limit ({providerContract.MaxRecommendedRetryCount}) for {providerContract.DisplayName}.");
+            }
+            if (settings.CodeHost == ReviewCodeHost.AzureDevOps) {
+                if (!await ValidateAuthAsync(settings).ConfigureAwait(false)) {
+                    return 1;
+                }
+                return await AzureDevOpsReviewRunner.RunAsync(settings, cancellationToken).ConfigureAwait(false);
+            }
+            var primaryToken = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN");
+            var token = !string.IsNullOrWhiteSpace(primaryToken)
+                ? primaryToken
+                : Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+            var tokenSource = !string.IsNullOrWhiteSpace(primaryToken)
+                ? "INTELLIGENCEX_GITHUB_TOKEN"
+                : "GITHUB_TOKEN";
+
+            if (string.IsNullOrWhiteSpace(token)) {
+                Console.Error.WriteLine("Missing GitHub token (INTELLIGENCEX_GITHUB_TOKEN or GITHUB_TOKEN).");
+                return 1;
+            }
+            githubToken = token;
+            SecretsAudit.Record($"GitHub token from {tokenSource}");
+
+            var fallbackToken = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+            if (string.Equals(token, fallbackToken, StringComparison.Ordinal)) {
+                fallbackToken = null;
+            }
+            if (!string.IsNullOrWhiteSpace(fallbackToken)) {
+                SecretsAudit.Record("GitHub fallback token from GITHUB_TOKEN");
+            }
+
+            using var github = new GitHubClient(token, maxConcurrency: settings.GitHubMaxConcurrency);
+            // Lightweight adapter over github; it does not own additional resources.
+            IReviewCodeHostReader codeHostReader = new GitHubCodeHostReader(github);
+            using var fallbackGithub = string.IsNullOrWhiteSpace(fallbackToken)
+                ? null
+                : new GitHubClient(fallbackToken, maxConcurrency: settings.GitHubMaxConcurrency);
+            var eventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
+            if (!string.IsNullOrWhiteSpace(eventPath) && File.Exists(eventPath)) {
+                var json = await File.ReadAllTextAsync(eventPath).ConfigureAwait(false);
+                var rootValue = JsonLite.Parse(json);
+                var root = rootValue?.AsObject();
+                if (root is null) {
+                    Console.Error.WriteLine("Invalid GitHub event payload.");
+                    return 1;
+                }
+                context = GitHubEventParser.TryParsePullRequest(root);
+            }
+            if (context is null) {
+                var repoName = GetInput("repo") ?? GetInput("repository") ?? Environment.GetEnvironmentVariable("GITHUB_REPOSITORY");
+                var prNumber = GetInputInt("pr_number") ?? GetInputInt("pull_request") ?? GetInputInt("number");
+                if (string.IsNullOrWhiteSpace(repoName) || !prNumber.HasValue) {
+                    Console.Error.WriteLine("Missing pull_request data. Provide inputs: repo and pr_number.");
+                    return 1;
+                }
+                var repoParts = repoName.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (repoParts.Length != 2) {
+                    Console.Error.WriteLine($"Invalid repo name '{repoName}'. Expected owner/repo.");
+                    return 1;
+                }
+                context = await codeHostReader.GetPullRequestAsync(repoName!, prNumber.Value, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            var isUntrusted = context.IsFromFork;
+            if (isUntrusted) {
+                Console.WriteLine("Untrusted pull request detected (fork).");
+                if (!settings.UntrustedPrAllowSecrets) {
+                    Console.WriteLine("Skipping review to avoid secret access. Set review.untrustedPrAllowSecrets=true to override.");
+                    return 0;
+                }
+            }
+
+            if (!await ValidateAuthAsync(settings).ConfigureAwait(false)) {
+                return 1;
+            }
+
+            allowWrites = !isUntrusted || settings.UntrustedPrAllowWrites;
+            if (!allowWrites && isUntrusted) {
+                Console.WriteLine("Write actions disabled for untrusted pull requests.");
+            }
+
+            if (settings.SkipDraft && context.Draft) {
+                Console.WriteLine("Skipping draft pull request.");
+                return 0;
+            }
+            if (ShouldSkipByTitle(context.Title, settings.SkipTitles)) {
+                Console.WriteLine("Skipping pull request due to title filter.");
+                return 0;
+            }
+            if (ShouldSkipByLabels(context.Labels, settings.SkipLabels)) {
+                Console.WriteLine("Skipping pull request due to label filter.");
+                return 0;
+            }
+
+            var files = await codeHostReader.GetPullRequestFilesAsync(context, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (files.Count == 0) {
+                Console.WriteLine("No files to review.");
+                return 0;
+            }
+
+            if (!settings.AllowWorkflowChanges && HasWorkflowChanges(files)) {
+                Console.WriteLine("Workflow file changes detected; skipping review. Set allowWorkflowChanges or REVIEW_ALLOW_WORKFLOW_CHANGES=true to override.");
+                return 0;
+            }
+
+            if (allowWrites) {
+                context = await CleanupService.RunAsync(github, context, settings, cancellationToken)
+                    .ConfigureAwait(false);
+            } else {
+                Console.WriteLine("Skipping cleanup for untrusted pull request.");
+            }
+
+            IssueComment? existingSummary = null;
+            string? previousSummary = null;
+            if (settings.SummaryStability && !string.IsNullOrWhiteSpace(context.HeadSha)) {
+                existingSummary = await FindExistingSummaryAsync(codeHostReader, context, settings, cancellationToken)
+                    .ConfigureAwait(false);
+                if (existingSummary is not null && !IsSummaryOutdated(existingSummary, context.HeadSha)) {
+                    previousSummary = ExtractSummaryBody(existingSummary.Body, settings.MaxCommentChars);
+                }
+            }
+
+            progress = new ReviewProgress { StatusLine = "Starting review." };
+
+            if (ShouldSkipByPaths(files, settings.SkipPaths)) {
+                Console.WriteLine("Skipping pull request due to path filter.");
+                return 0;
+            }
+
+            var allFiles = files;
+            var (reviewFiles, diffNote) = await ResolveReviewFilesAsync(codeHostReader, context, settings, files, cancellationToken)
+                .ConfigureAwait(false);
+            reviewFiles = FilterFilesByPaths(reviewFiles, settings.IncludePaths, settings.ExcludePaths,
+                settings.SkipBinaryFiles, settings.SkipGeneratedFiles, settings.GeneratedFileGlobs);
+            if (reviewFiles.Count == 0) {
+                progress.Context = ReviewProgressState.Complete;
+                Console.WriteLine("No files matched include/exclude filters.");
+                return 0;
+            }
+            files = reviewFiles;
+
+            progress.Context = ReviewProgressState.Complete;
+            progress.Files = ReviewProgressState.Complete;
+            progress.StatusLine = "Analyzed changed files.";
+
+            var extras = await BuildExtrasAsync(codeHostReader, github, fallbackGithub, context, settings, cancellationToken,
+                    settings.TriageOnly)
+                .ConfigureAwait(false);
+            if (settings.TriageOnly) {
+                if (!allowWrites) {
+                    Console.WriteLine("Skipping thread triage for untrusted pull request.");
+                    return 0;
+                }
+                var triageRunner = new ReviewRunner(settings);
+                var (triageOnlyFiles, triageOnlyNote) = await ResolveThreadTriageFilesAsync(codeHostReader, context, settings, allFiles,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                var triageOnlyResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, triageRunner, context, triageOnlyFiles,
+                        settings, extras, false, triageOnlyNote, cancellationToken, true, false)
+                    .ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(triageOnlyResult.EmbeddedBlock)) {
+                    await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, triageOnlyResult.EmbeddedBlock, cancellationToken)
+                        .ConfigureAwait(false);
+                    Console.WriteLine("Posted thread triage comment.");
+                } else {
+                    Console.WriteLine("No threads eligible for triage.");
+                }
+                return 0;
+            }
+            inlineSupported = !string.Equals(settings.Mode, "summary", StringComparison.OrdinalIgnoreCase) &&
+                                  settings.MaxInlineComments > 0 &&
+                                  !string.IsNullOrWhiteSpace(context.HeadSha);
+            var (limitedFiles, budgetNote) = PrepareFiles(files, settings.MaxFiles, settings.MaxPatchChars);
+            if (!settings.ReviewBudgetSummary) {
+                budgetNote = string.Empty;
+            }
+            var prompt = PromptBuilder.Build(context, limitedFiles, settings, diffNote, extras, inlineSupported, previousSummary);
+            if (settings.RedactPii) {
+                prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
+            }
+
+            if (allowWrites && settings.ProgressUpdates) {
+                var progressBody = ReviewFormatter.BuildProgressComment(context, settings, progress, null, inlineSupported);
+                commentId = await CreateOrUpdateProgressCommentAsync(codeHostReader, github, context, settings, progressBody, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            var runner = new ReviewRunner(settings);
+            progress.Review = ReviewProgressState.InProgress;
+            progress.StatusLine = "Generating review findings.";
+
+            Func<string, Task>? onPartial = null;
+            if (allowWrites && settings.ProgressUpdates && commentId.HasValue) {
+                onPartial = async partial => {
+                    var body = ReviewFormatter.BuildProgressComment(context, settings, progress, partial, inlineSupported);
+                    await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, body, cancellationToken)
+                        .ConfigureAwait(false);
+                };
+            }
+
+            var reviewBody = await runner.RunAsync(prompt, onPartial, TimeSpan.FromSeconds(settings.ProgressUpdateSeconds),
+                cancellationToken).ConfigureAwait(false);
+            var effectiveProvider = runner.EffectiveProvider;
+            if (runner.FallbackActivated && settings.Diagnostics) {
+                Console.Error.WriteLine(
+                    $"Provider fallback activated: {settings.Provider.ToString().ToLowerInvariant()} -> {effectiveProvider.ToString().ToLowerInvariant()}.");
+            }
+
+            var reviewFailed = ReviewDiagnostics.IsFailureBody(reviewBody);
+            var inlineAllowed = inlineSupported && !reviewFailed && allowWrites;
+            var inlineComments = Array.Empty<InlineReviewComment>();
+            var summaryBody = reviewBody;
+            if (inlineAllowed) {
+                var inlineResult = ReviewInlineParser.Extract(reviewBody, settings.MaxInlineComments);
+                inlineComments = inlineResult.Comments as InlineReviewComment[] ?? inlineResult.Comments.ToArray();
+                if (inlineResult.HadInlineSection && !string.IsNullOrWhiteSpace(inlineResult.Body)) {
+                    summaryBody = inlineResult.Body;
+                }
+            }
+
+            var analysisSettings = settings.Analysis;
+            var analysisResults = analysisSettings?.Results;
+            if (analysisSettings?.Enabled == true && analysisResults is not null) {
+                try {
+                    var analysisFindings = AnalysisFindingsLoader.Load(settings, reviewFiles);
+                    var analysisBlocks = new List<string>();
+                    var analysisPolicy = AnalysisPolicyBuilder.BuildPolicy(settings);
+                    if (!string.IsNullOrWhiteSpace(analysisPolicy)) {
+                        analysisBlocks.Add(analysisPolicy);
+                    }
+                    var analysisSummary = AnalysisSummaryBuilder.BuildSummary(analysisFindings, analysisResults);
+                    if (!string.IsNullOrWhiteSpace(analysisSummary)) {
+                        analysisBlocks.Add(analysisSummary);
+                    }
+                    if (analysisBlocks.Count > 0) {
+                        var analysisBlock = string.Join("\n\n", analysisBlocks);
+                        summaryBody = ApplyEmbedPlacement(summaryBody, analysisBlock, analysisResults.SummaryPlacement);
+                    }
+                    if (inlineAllowed && analysisFindings.Count > 0) {
+                        var analysisInline = AnalysisSummaryBuilder.BuildInlineComments(analysisFindings, analysisResults);
+                        if (analysisInline.Count > 0) {
+                            var merged = new List<InlineReviewComment>(inlineComments.Length + analysisInline.Count);
+                            merged.AddRange(inlineComments);
+                            merged.AddRange(analysisInline);
+                            inlineComments = merged.ToArray();
+                        }
+                    }
+                } catch {
+                    Console.WriteLine("Static analysis load failed; skipping analysis findings.");
+                }
+            }
+
+            HashSet<string>? inlineKeys = null;
+            if (inlineAllowed) {
+                inlineKeys = await PostInlineCommentsAsync(codeHostReader, github, context, files, settings, inlineComments,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (settings.ReviewThreadsAutoResolveMissingInline &&
+                    !string.IsNullOrWhiteSpace(context.HeadSha) &&
+                    inlineKeys is not null &&
+                    inlineKeys.Count > 0) {
+                    await AutoResolveMissingInlineThreadsAsync(codeHostReader, github, fallbackGithub, context, inlineKeys, settings,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+            }
+
+            var triageResult = ThreadTriageResult.Empty;
+            if (allowWrites) {
+                var (triageFiles, triageNote) = await ResolveThreadTriageFilesAsync(codeHostReader, context, settings, allFiles,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                triageResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, runner, context, triageFiles,
+                        settings, extras, reviewFailed, triageNote, cancellationToken, false,
+                        settings.ReviewThreadsAutoResolveAIPostComment)
+                    .ConfigureAwait(false);
+                if (settings.ReviewThreadsAutoResolveAIEmbed && !string.IsNullOrWhiteSpace(triageResult.EmbeddedBlock)) {
+                    summaryBody = ApplyEmbedPlacement(summaryBody, triageResult.EmbeddedBlock,
+                        settings.ReviewThreadsAutoResolveAIEmbedPlacement);
+                }
+            }
+            var inlineSuppressed = inlineSupported && !inlineAllowed;
+            var autoResolveSummary = allowWrites && settings.ReviewThreadsAutoResolveAISummary ? triageResult.SummaryLine : string.Empty;
+            if (allowWrites && settings.ReviewThreadsAutoResolveSummaryAlways && string.IsNullOrWhiteSpace(autoResolveSummary)) {
+                autoResolveSummary = triageResult.FallbackSummary;
+            }
+            var usageLine = await TryBuildUsageLineAsync(settings, effectiveProvider).ConfigureAwait(false);
+            var findingsBlock = settings.StructuredFindings ? ReviewFindingsBuilder.Build(inlineComments) : string.Empty;
+            var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported, inlineSuppressed,
+                autoResolveSummary, budgetNote, usageLine, findingsBlock);
+            progress.Review = ReviewProgressState.Complete;
+            progress.Finalize = ReviewProgressState.InProgress;
+            progress.StatusLine = "Finalizing summary.";
+
+            if (!allowWrites) {
+                Console.WriteLine("Skipping GitHub writes for untrusted pull request.");
+                Console.WriteLine(commentBody);
+                return 0;
+            }
+
+            if (commentId.HasValue) {
+                await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, commentBody, cancellationToken)
+                    .ConfigureAwait(false);
+                summaryPosted = true;
+                Console.WriteLine("Updated review comment.");
+            } else if (settings.CommentMode == ReviewCommentMode.Sticky) {
+                var shouldSearch = settings.OverwriteSummary || settings.OverwriteSummaryOnNewCommit;
+                IssueComment? existing = null;
+                if (shouldSearch) {
+                    existing = existingSummary ?? await FindExistingSummaryAsync(codeHostReader, context, settings, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                var shouldOverwrite = settings.OverwriteSummary ||
+                                      (settings.OverwriteSummaryOnNewCommit && IsSummaryOutdated(existing, context.HeadSha));
+                if (existing is not null && shouldOverwrite) {
+                    await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, commentBody, cancellationToken)
+                        .ConfigureAwait(false);
+                    summaryPosted = true;
+                    Console.WriteLine("Updated existing review comment.");
+                    return 0;
+                }
+                await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, cancellationToken)
+                    .ConfigureAwait(false);
+                summaryPosted = true;
+                Console.WriteLine("Posted review comment.");
+            } else {
+                await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, cancellationToken)
+                    .ConfigureAwait(false);
+                summaryPosted = true;
+                Console.WriteLine("Posted review comment.");
+            }
+
+            return 0;
+        } catch (Exception ex) {
+            Console.Error.WriteLine(ex.Message);
+            if (!summaryPosted &&
+                commentId.HasValue &&
+                allowWrites &&
+                context is not null &&
+                settings is not null) {
+                try {
+                    var updated = await TryUpdateFailureSummaryAsync(githubToken, null, context, settings, commentId.Value, ex,
+                            inlineSupported)
+                        .ConfigureAwait(false);
+                    if (updated) {
+                        Console.WriteLine("Updated review comment with failure summary.");
+                    }
+                } catch (Exception updateEx) {
+                    Console.Error.WriteLine($"Failed to update review comment after error: {updateEx.Message}");
+                }
+            }
+            return 1;
+        } finally {
+            secretsAudit?.WriteSummary();
+            secretsAudit?.Dispose();
+            if (cancelHandler is not null) {
+                Console.CancelKeyPress -= cancelHandler;
+            }
+        }
+    }
+
+    internal static async Task<bool> TryUpdateFailureSummaryAsync(string? githubToken, string? apiBaseUrl,
+        PullRequestContext context, ReviewSettings settings, long commentId, Exception ex, bool inlineSupported) {
+        if (string.IsNullOrWhiteSpace(githubToken)) {
+            return false;
+        }
+        var failureBody = ReviewDiagnostics.BuildFailureBody(ex, settings, null, null);
+        var inlineSuppressed = inlineSupported;
+        var commentBody = ReviewFormatter.BuildComment(context, failureBody, settings, inlineSupported, inlineSuppressed,
+            string.Empty, string.Empty, string.Empty, string.Empty);
+        using var failureClient = new GitHubClient(githubToken, apiBaseUrl, settings.GitHubMaxConcurrency);
+        await failureClient.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId, commentBody,
+                CancellationToken.None)
+            .ConfigureAwait(false);
+        return true;
+    }
+
+}

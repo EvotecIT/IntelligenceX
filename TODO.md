@@ -222,3 +222,25 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Treat unknown severities distinctly from `none` to avoid silent suppression. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#discussion_r2770655013
 - [x] Log malformed glob patterns so config errors are visible. Links: https://github.com/EvotecIT/IntelligenceX/pull/85#discussion_r2770655055
 </details>
+<details>
+<summary>PR #99 Add maintainability LOC rule and split setup runner</summary>
+
+- [x] Replace string-marker path exclusion with robust normalized path segment checks. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#issuecomment-3858550015
+- [x] De-duplicate rule ID/threshold by loading from catalog or centralized constants. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#issuecomment-3858550015
+- [x] Expand generated-file detection (header-based + configurable patterns). Links: https://github.com/EvotecIT/IntelligenceX/pull/99#issuecomment-3858550015
+- [x] Add tests for CRLF/LF and trailing newline/no-trailing-newline LOC counting. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#issuecomment-3858550015
+- [x] Add test for case-insensitive path exclusions on Windows. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#issuecomment-3858550015
+- [x] Validate docs path resolution strategy for rule metadata. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#issuecomment-3858550015
+- [x] Prefer metadata-driven internal LOC rule selection/limits over hardcoded rule IDs. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2772931157
+- [x] Normalize and de-duplicate generated suffix handling before matching. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2772931230
+- [x] Make generated-header markers stricter/configurable to reduce false positives. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2772931318
+- [x] Keep partial-class shared state minimal/immutable during setup-runner split. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2772931392
+- [x] Keep internal findings `tool` value aligned with rule metadata (`IntelligenceX.Maintainability`). Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2772961232
+- [x] Extend internal scan directory exclusions to cover `.vs` and `node_modules`. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2772961320
+- [x] Make generated-header marker checks case-insensitive on trimmed comment lines. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2772961368
+- [x] Increase generated-header scan window and keep early stop at first code token. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2773050456
+- [x] Match generated suffixes against filename (not full path) with normalized suffix handling. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2773050517
+- [x] Keep generated marker/suffix defaults in catalog tags as canonical source (no duplicate in runner constants). Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2773234767
+- [x] Warn on unknown/malformed IXLOC001 tags to avoid silent config typos. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2773420136, https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2773420211
+- [x] Clarify maintainability pack enablement is explicit repo-config change (no forced migration/push into existing repos). Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2773653898
+</details>
