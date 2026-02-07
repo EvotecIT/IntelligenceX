@@ -355,9 +355,34 @@ internal static partial class Program {
         AssertEqual(true, resolvedThreadIdObserved, "auto resolve missing inline targets thread1");
     }
 
+    private static void TestResolveThreadPayloadParserRejectsInvalidJson() {
+        var emptyPayloadResult = TryGetResolveThreadIdFromGraphQlPayload(string.Empty, out var emptyPayloadThreadId);
+        AssertEqual(false, emptyPayloadResult, "resolve payload empty rejected");
+        AssertEqual<string?>(null, emptyPayloadThreadId, "resolve payload empty id");
+
+        var malformedPayloadResult = TryGetResolveThreadIdFromGraphQlPayload("{not-json}", out var malformedPayloadThreadId);
+        AssertEqual(false, malformedPayloadResult, "resolve payload malformed rejected");
+        AssertEqual<string?>(null, malformedPayloadThreadId, "resolve payload malformed id");
+
+        const string noThreadIdPayload = "{\"query\":\"mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ id } } }\",\"variables\":{}}";
+        var noThreadIdResult = TryGetResolveThreadIdFromGraphQlPayload(noThreadIdPayload, out var noThreadId);
+        AssertEqual(false, noThreadIdResult, "resolve payload missing id rejected");
+        AssertEqual<string?>(null, noThreadId, "resolve payload missing id value");
+    }
+
     private static bool TryGetResolveThreadIdFromGraphQlPayload(string body, out string? threadId) {
         threadId = null;
-        var payload = JsonLite.Parse(body)?.AsObject();
+        if (string.IsNullOrWhiteSpace(body)) {
+            return false;
+        }
+        JsonObject? payload;
+        try {
+            payload = JsonLite.Parse(body).AsObject();
+        } catch (FormatException) {
+            return false;
+        } catch (ArgumentNullException) {
+            return false;
+        }
         if (payload is null) {
             return false;
         }
