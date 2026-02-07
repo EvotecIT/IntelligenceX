@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
+using IntelligenceX.Cli.Auth;
 using IntelligenceX.Cli.Usage;
 using IntelligenceX.OpenAI.Auth;
 
@@ -28,6 +29,7 @@ internal static class Program {
             "analyze" => await Analysis.AnalyzeRunner.RunAsync(rest).ConfigureAwait(false),
             "reviewer" => await RunReviewerAsync(rest).ConfigureAwait(false),
             "setup" => await RunSetupAsync(rest).ConfigureAwait(false),
+            "doctor" => await Doctor.DoctorRunner.RunAsync(rest).ConfigureAwait(false),
             "release" => await RunReleaseAsync(rest).ConfigureAwait(false),
             "usage" => await UsageRunner.RunAsync(rest).ConfigureAwait(false),
             "help" or "-h" or "--help" => PrintHelpReturn(),
@@ -50,6 +52,7 @@ internal static class Program {
         Console.WriteLine("  intelligencex setup [options]");
         Console.WriteLine("  intelligencex setup wizard [options]");
         Console.WriteLine("  intelligencex setup web [url]");
+        Console.WriteLine("  intelligencex doctor [options]");
         Console.WriteLine("  intelligencex release <command>");
         Console.WriteLine("  intelligencex usage [options]");
         Console.WriteLine();
@@ -71,6 +74,9 @@ internal static class Program {
         Console.WriteLine();
         Console.WriteLine("Setup:");
         Console.WriteLine("  setup            Configure GitHub Actions workflow and secrets");
+        Console.WriteLine();
+        Console.WriteLine("Doctor:");
+        Console.WriteLine("  doctor           Preflight checks for auth/config/GitHub access");
         Console.WriteLine();
         Console.WriteLine("Release commands:");
         Console.WriteLine("  release notes    Generate release notes from git tags/commits");
@@ -231,8 +237,8 @@ internal static class Program {
                 return 1;
             }
 
-            var json = DecryptAuthStoreIfNeeded(raw);
-            var entries = ParseAuthStoreEntries(json);
+            var json = AuthStoreUtils.DecryptAuthStoreIfNeeded(raw);
+            var entries = AuthStoreUtils.ParseAuthStoreEntries(json);
             if (entries.Count == 0) {
                 Console.Error.WriteLine("No auth bundles found.");
                 return 1;
@@ -437,7 +443,7 @@ internal static class Program {
             Console.Error.WriteLine("Auth store is empty.");
             return 1;
         }
-        var json = DecryptAuthStoreIfNeeded(raw);
+        var json = AuthStoreUtils.DecryptAuthStoreIfNeeded(raw);
         var node = JsonNode.Parse(json) as JsonObject;
         if (node is null) {
             Console.Error.WriteLine("Auth store content is invalid.");
@@ -801,85 +807,6 @@ internal static class Program {
         }
 
         return options;
-    }
-
-    private sealed record AuthStoreEntry(string Provider, string? AccountId, DateTimeOffset? ExpiresAt);
-
-    private static string DecryptAuthStoreIfNeeded(string content) {
-        if (string.IsNullOrWhiteSpace(content)) {
-            return content;
-        }
-        var trimmed = content.TrimStart();
-        if (!trimmed.StartsWith("{\"encrypted\":", StringComparison.OrdinalIgnoreCase)) {
-            return content;
-        }
-
-        var keyBase64 = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_KEY");
-        if (string.IsNullOrWhiteSpace(keyBase64)) {
-            throw new InvalidOperationException("Auth store is encrypted but INTELLIGENCEX_AUTH_KEY is not set.");
-        }
-        byte[] key;
-        try {
-            key = Convert.FromBase64String(keyBase64);
-        } catch {
-            throw new InvalidOperationException("INTELLIGENCEX_AUTH_KEY must be base64.");
-        }
-        if (key.Length != 32) {
-            throw new InvalidOperationException("INTELLIGENCEX_AUTH_KEY must decode to 32 bytes.");
-        }
-
-        using var doc = JsonDocument.Parse(content);
-        var root = doc.RootElement;
-        var nonce = Convert.FromBase64String(root.GetProperty("nonce").GetString() ?? string.Empty);
-        var cipher = Convert.FromBase64String(root.GetProperty("ciphertext").GetString() ?? string.Empty);
-        var tag = Convert.FromBase64String(root.GetProperty("tag").GetString() ?? string.Empty);
-        var plain = new byte[cipher.Length];
-        using var aes = new AesGcm(key, 16);
-        aes.Decrypt(nonce, cipher, tag, plain);
-        return Encoding.UTF8.GetString(plain);
-    }
-
-    private static List<AuthStoreEntry> ParseAuthStoreEntries(string json) {
-        var list = new List<AuthStoreEntry>();
-        using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
-        if (root.ValueKind != JsonValueKind.Object) {
-            return list;
-        }
-        if (root.TryGetProperty("bundles", out var bundles) && bundles.ValueKind == JsonValueKind.Object) {
-            foreach (var prop in bundles.EnumerateObject()) {
-                if (prop.Value.ValueKind != JsonValueKind.Object) {
-                    continue;
-                }
-                var provider = prop.Value.TryGetProperty("provider", out var p) ? p.GetString() : null;
-                if (string.IsNullOrWhiteSpace(provider)) {
-                    continue;
-                }
-                var accountId = prop.Value.TryGetProperty("account_id", out var a) ? a.GetString() : null;
-                DateTimeOffset? expiresAt = null;
-                if (prop.Value.TryGetProperty("expires_at", out var exp) && exp.ValueKind == JsonValueKind.Number &&
-                    exp.TryGetInt64(out var expMs) && expMs > 0) {
-                    expiresAt = DateTimeOffset.FromUnixTimeMilliseconds(expMs);
-                }
-                list.Add(new AuthStoreEntry(provider!, accountId, expiresAt));
-            }
-            return list;
-        }
-
-        // Single-bundle format (supported by reviewer env ingestion).
-        if (root.TryGetProperty("provider", out var providerProp) && providerProp.ValueKind == JsonValueKind.String) {
-            var provider = providerProp.GetString();
-            var accountId = root.TryGetProperty("account_id", out var a) ? a.GetString() : null;
-            DateTimeOffset? expiresAt = null;
-            if (root.TryGetProperty("expires_at", out var exp) && exp.ValueKind == JsonValueKind.Number &&
-                exp.TryGetInt64(out var expMs) && expMs > 0) {
-                expiresAt = DateTimeOffset.FromUnixTimeMilliseconds(expMs);
-            }
-            if (!string.IsNullOrWhiteSpace(provider)) {
-                list.Add(new AuthStoreEntry(provider!, accountId, expiresAt));
-            }
-        }
-        return list;
     }
 
     private static void TryOpenBrowser(string url) {
