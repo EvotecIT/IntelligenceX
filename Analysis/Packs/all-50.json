@@ -1,0 +1,11 @@
+{
+  "id": "all-50",
+  "label": "All Essentials (50)",
+  "description": "Cross-language baseline pack. Includes each language essentials tier.",
+  "includes": [
+    "csharp-50",
+    "powershell-50",
+    "intelligencex-maintainability-50"
+  ],
+  "rules": []
+}

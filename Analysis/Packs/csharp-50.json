@@ -1,0 +1,7 @@
+{
+  "id": "csharp-50",
+  "label": "C# Essentials (50)",
+  "description": "C# baseline pack for small-to-medium repositories. Grows toward ~50 rules as catalog expands.",
+  "includes": ["csharp-default"],
+  "rules": []
+}

@@ -11,7 +11,7 @@ This document proposes how IntelligenceX can offer default static analysis rules
 
 ## User Experience (Onboarding)
 - The wizard offers a single toggle: "Enable static analysis (recommended)."
-- Users select one or more packs (for example `csharp-default`, `powershell-default`, `intelligencex-maintainability-default`).
+- Users select one or more packs (for example `all-50`, `all-100`, `all-500`).
 - Users can optionally toggle individual rules and change severities.
 - The wizard writes the `analysis` section into `.intelligencex/reviewer.json`.
 
@@ -23,7 +23,7 @@ All enablement decisions live in `.intelligencex/reviewer.json`. Analyzer tool c
 {
   "analysis": {
     "enabled": true,
-    "packs": ["csharp-default", "powershell-default", "intelligencex-maintainability-default"],
+    "packs": ["all-50"],
     "disabledRules": ["CA2000"],
     "severityOverrides": { "CA1062": "error" },
     "configMode": "respect",
@@ -76,6 +76,18 @@ Proposed layout:
 - `Analysis/Packs/csharp-default.json`
 - `Analysis/Packs/powershell-default.json`
 - `Analysis/Packs/intelligencex-maintainability-default.json`
+- `Analysis/Packs/csharp-50.json`
+- `Analysis/Packs/csharp-100.json`
+- `Analysis/Packs/csharp-500.json`
+- `Analysis/Packs/powershell-50.json`
+- `Analysis/Packs/powershell-100.json`
+- `Analysis/Packs/powershell-500.json`
+- `Analysis/Packs/intelligencex-maintainability-50.json`
+- `Analysis/Packs/intelligencex-maintainability-100.json`
+- `Analysis/Packs/intelligencex-maintainability-500.json`
+- `Analysis/Packs/all-50.json`
+- `Analysis/Packs/all-100.json`
+- `Analysis/Packs/all-500.json`
 - `Analysis/Packs/all-default.json`
 
 Example pack:
@@ -95,10 +107,17 @@ Packs can include other packs to build tiers without duplicating rule lists:
 {
   "id": "all-default",
   "label": "All Default",
-  "includes": ["csharp-default", "powershell-default", "intelligencex-maintainability-default"],
+  "includes": ["all-50"],
   "rules": []
 }
 ```
+
+Recommended tier selection:
+- `all-50`: baseline/default onboarding tier.
+- `all-100`: broader coverage with higher review noise.
+- `all-500`: strict tier for mature repositories and dedicated cleanup cycles.
+
+Today, the built-in catalog has fewer than 50 total rules. Tier IDs are forward-compatible aliases that grow via `includes` as catalog coverage expands.
 
 ## Temporary Analyzer Config Generation
 During analysis runs, configs are generated to a temporary directory and cleaned up at the end. Examples:
@@ -110,6 +129,7 @@ During analysis runs, configs are generated to a temporary directory and cleaned
 `intelligencex analyze run` executes analysis for configured packs and emits findings artifacts for the reviewer.
 `intelligencex analyze export-config` remains available for teams that explicitly want committed analyzer configs for IDE support.
 `intelligencex analyze validate-catalog` validates rules/packs integrity (duplicates, bad refs, cycles, invalid severities).
+`intelligencex analyze list-rules` prints the built-in rule inventory (`--format text|markdown|json`) and supports pack-scoped views (`--pack` / `--packs`).
 
 Current built-in runners in `analyze run`:
 - C#: Roslyn via `dotnet build` (SARIF output).
@@ -126,15 +146,15 @@ Review comments now include analysis execution context and outcomes even when no
 ```text
 ### Static Analysis Policy 🧭
 - Config mode: respect
-- Packs: C# Default, PowerShell Default, IntelligenceX Maintainability
+- Packs: All Essentials (50)
 - Rules: 5 enabled
 - Rule list display: up to 10 items per section
-- Enabled rules preview: CA2000 (Dispose objects before losing scope), CA1822 (Mark members as static), PSAvoidUsingWriteHost (Avoid using Write-Host) (truncated)
+- Enabled rules preview: CA2000 (Dispose objects before losing scope), CA1062 (Validate arguments of public methods), SA1600 (Elements should be documented), PSAvoidUsingWriteHost (Avoid using Write-Host), IXLOC001 (Source files should stay below 700 lines)
 - Result files: 2 input patterns, 2 matched, 2 parsed, 0 failed
 - Status: pass ✅
 - Rule outcomes: 0 with findings, 5 clean
 - Failing rules: none
-- Clean rules: CA2000 (Dispose objects before losing scope), CA1822 (Mark members as static), SA1600 (Elements should be documented), PSAvoidUsingWriteHost (Avoid using Write-Host), IXLOC001 (Source files should stay below 700 lines)
+- Clean rules: CA2000 (Dispose objects before losing scope), CA1062 (Validate arguments of public methods), SA1600 (Elements should be documented), PSAvoidUsingWriteHost (Avoid using Write-Host), IXLOC001 (Source files should stay below 700 lines)
 - Outside-pack rules: none
 
 ### Static Analysis 🔎

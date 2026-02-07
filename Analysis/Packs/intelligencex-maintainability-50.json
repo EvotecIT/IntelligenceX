@@ -1,0 +1,7 @@
+{
+  "id": "intelligencex-maintainability-50",
+  "label": "IntelligenceX Maintainability Essentials (50)",
+  "description": "Internal maintainability baseline pack. Grows toward ~50 checks as the internal catalog expands.",
+  "includes": ["intelligencex-maintainability-default"],
+  "rules": []
+}

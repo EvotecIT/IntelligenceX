@@ -1,0 +1,7 @@
+{
+  "id": "powershell-100",
+  "label": "PowerShell Standard (100)",
+  "description": "PowerShell standard pack for broader coverage. Extends powershell-50 as new rules are added.",
+  "includes": ["powershell-50"],
+  "rules": []
+}

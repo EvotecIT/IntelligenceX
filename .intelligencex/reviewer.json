@@ -2,9 +2,7 @@
   "analysis": {
     "enabled": true,
     "packs": [
-      "csharp-default",
-      "powershell-default",
-      "intelligencex-maintainability-default"
+      "all-50"
     ],
     "configMode": "respect",
     "results": {

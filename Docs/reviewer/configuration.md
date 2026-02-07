@@ -221,7 +221,7 @@ Enable analysis summaries and inline findings sourced from SARIF or Intelligence
 {
   "analysis": {
     "enabled": true,
-    "packs": ["csharp-default", "powershell-default", "intelligencex-maintainability-default"],
+    "packs": ["all-50"],
     "configMode": "respect",
     "disabledRules": ["CA2000"],
     "severityOverrides": { "CA1062": "error" },

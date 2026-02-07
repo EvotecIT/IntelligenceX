@@ -317,6 +317,128 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeListRulesMarkdownFormat() {
+        var workspace = ResolveWorkspaceRoot();
+        var (exitCode, output) = RunAnalyzeAndCaptureOutput(new[] {
+            "list-rules",
+            "--workspace",
+            workspace,
+            "--format",
+            "markdown"
+        });
+        AssertEqual(0, exitCode, "analyze list-rules markdown exit");
+        AssertContainsText(output, "| ID | Language | Tool | Tool Rule ID | Default Severity | Category | Title | Docs |",
+            "analyze list-rules markdown header");
+        AssertContainsText(output, "CA2000", "analyze list-rules markdown includes CA2000");
+        AssertContainsText(output, "PSAvoidUsingWriteHost", "analyze list-rules markdown includes powershell rule");
+    }
+
+    private static void TestAnalyzeListRulesJsonWithPackFilter() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-list-rules-json-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+
+            File.WriteAllText(Path.Combine(rulesDir, "IX001.json"), """
+{
+  "id": "IX001",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "title": "Rule one",
+  "description": "Rule one"
+}
+""");
+            File.WriteAllText(Path.Combine(rulesDir, "IX002.json"), """
+{
+  "id": "IX002",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "title": "Rule two",
+  "description": "Rule two"
+}
+""");
+            File.WriteAllText(Path.Combine(rulesDir, "IX003.json"), """
+{
+  "id": "IX003",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "title": "Rule three",
+  "description": "Rule three"
+}
+""");
+
+            File.WriteAllText(Path.Combine(packsDir, "core.json"), """
+{
+  "id": "core",
+  "label": "Core",
+  "rules": ["IX001"]
+}
+""");
+            File.WriteAllText(Path.Combine(packsDir, "standard.json"), """
+{
+  "id": "standard",
+  "label": "Standard",
+  "includes": ["core"],
+  "rules": ["IX002"]
+}
+""");
+            File.WriteAllText(Path.Combine(packsDir, "strict.json"), """
+{
+  "id": "strict",
+  "label": "Strict",
+  "includes": ["standard"],
+  "rules": ["IX003"]
+}
+""");
+
+            var (exitCode, output) = RunAnalyzeAndCaptureOutput(new[] {
+                "list-rules",
+                "--workspace",
+                temp,
+                "--pack",
+                "strict",
+                "--format",
+                "json"
+            });
+
+            AssertEqual(0, exitCode, "analyze list-rules json exit");
+            var parsed = JsonLite.Parse(output.Trim())?.AsArray();
+            AssertNotNull(parsed, "analyze list-rules json payload");
+            var ids = new List<string>();
+            foreach (var item in parsed!) {
+                var obj = item.AsObject();
+                if (obj is null) {
+                    continue;
+                }
+                var id = obj.GetString("id");
+                if (!string.IsNullOrWhiteSpace(id)) {
+                    ids.Add(id!);
+                }
+            }
+            ids.Sort(StringComparer.OrdinalIgnoreCase);
+            AssertSequenceEqual(new[] { "IX001", "IX002", "IX003" }, ids, "analyze list-rules json pack includes");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalyzeListRulesInvalidFormat() {
+        var (exitCode, output) = RunAnalyzeAndCaptureOutput(new[] {
+            "list-rules",
+            "--workspace",
+            ResolveWorkspaceRoot(),
+            "--format",
+            "yaml"
+        });
+        AssertEqual(1, exitCode, "analyze list-rules invalid format exit");
+        AssertContainsText(output, "Unsupported format 'yaml'", "analyze list-rules invalid format message");
+    }
+
     private static void TestAnalysisCatalogRuleDocsPath() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-docs-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
@@ -352,6 +474,19 @@ internal static partial class Program {
             if (Directory.Exists(temp)) {
                 Directory.Delete(temp, true);
             }
+        }
+    }
+
+    private static (int ExitCode, string Output) RunAnalyzeAndCaptureOutput(string[] args) {
+        var originalOut = Console.Out;
+        using var writer = new StringWriter();
+        Console.SetOut(writer);
+        try {
+            var exitCode = IntelligenceX.Cli.Analysis.AnalyzeRunner.RunAsync(args).GetAwaiter().GetResult();
+            writer.Flush();
+            return (exitCode, writer.ToString());
+        } finally {
+            Console.SetOut(originalOut);
         }
     }
 

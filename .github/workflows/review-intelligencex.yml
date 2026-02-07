@@ -44,6 +44,14 @@ jobs:
           app-id: ${{ env.INTELLIGENCEX_APP_ID }}
           private-key: ${{ env.INTELLIGENCEX_APP_KEY }}
 
+      - name: Validate analysis catalog
+        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze validate-catalog --workspace .
+
+      - name: Export rule inventory
+        run: |
+          mkdir -p artifacts
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze list-rules --workspace . --format markdown --pack all-50 > artifacts/analysis-rules.md
+
       - name: Run static analysis
         run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze run --config .intelligencex/reviewer.json --out artifacts --framework net8.0
 

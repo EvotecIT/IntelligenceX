@@ -82,6 +82,9 @@ internal static partial class Program {
         failed += Run("Analysis catalog validator detects invalid catalog", TestAnalysisCatalogValidatorDetectsInvalidCatalog);
         failed += Run("Analysis catalog validator detects missing rule metadata", TestAnalysisCatalogValidatorDetectsMissingRuleMetadata);
         failed += Run("Analyze validate-catalog command", TestAnalyzeValidateCatalogCommand);
+        failed += Run("Analyze list-rules markdown format", TestAnalyzeListRulesMarkdownFormat);
+        failed += Run("Analyze list-rules json with pack filter", TestAnalyzeListRulesJsonWithPackFilter);
+        failed += Run("Analyze list-rules invalid format", TestAnalyzeListRulesInvalidFormat);
         failed += Run("Analyze run disabled writes empty findings", TestAnalyzeRunDisabledWritesEmptyFindings);
         failed += Run("Analyze run internal file size rule", TestAnalyzeRunInternalFileSizeRule);
         failed += Run("Analyze run internal findings use catalog tool metadata",

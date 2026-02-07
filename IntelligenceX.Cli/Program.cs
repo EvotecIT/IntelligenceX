@@ -59,7 +59,7 @@ internal static class Program {
         Console.WriteLine("  analyze run             Execute configured analysis packs and emit findings");
         Console.WriteLine("  analyze export-config   Export analyzer configs from reviewer.json");
         Console.WriteLine("  analyze list-packs      List available rule packs");
-        Console.WriteLine("  analyze list-rules      List available rules");
+        Console.WriteLine("  analyze list-rules      List available rules (text/markdown/json, optional pack filter)");
         Console.WriteLine("  analyze validate-catalog Validate rules/packs integrity");
         Console.WriteLine();
         Console.WriteLine("Reviewer commands:");

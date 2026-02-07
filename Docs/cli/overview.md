@@ -15,6 +15,8 @@ intelligencex reviewer run
 intelligencex reviewer resolve-threads
 intelligencex analyze run --config .intelligencex/reviewer.json --out artifacts
 intelligencex analyze export-config --out artifacts/analysis-config
+intelligencex analyze validate-catalog
+intelligencex analyze list-rules --format markdown --pack all-50
 intelligencex usage
 ```
 
