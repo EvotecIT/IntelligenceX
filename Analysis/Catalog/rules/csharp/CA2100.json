@@ -1,0 +1,11 @@
+{
+  "id": "CA2100",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2100",
+  "title": "Review SQL queries for security vulnerabilities",
+  "description": "SQL queries that directly use user input can be vulnerable to SQL injection attacks. Review this SQL query for potential vulnerabilities, and consider using a parameterized SQL query.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2100"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "CA1419",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1419",
+  "title": "Provide a parameterless constructor that is as visible as the containing type for concrete types derived from 'System.Runtime.InteropServices.SafeHandle'",
+  "description": "Providing a parameterless constructor that is as visible as the containing type for a type derived from 'System.Runtime.InteropServices.SafeHandle' enables better performance and usage with source-generated interop solutions.",
+  "category": "Interoperability",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1419"
+}

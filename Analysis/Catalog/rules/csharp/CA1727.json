@@ -1,0 +1,11 @@
+{
+  "id": "CA1727",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1727",
+  "title": "Use PascalCase for named placeholders",
+  "description": "Use PascalCase for named placeholders in the logging message template.",
+  "category": "Naming",
+  "defaultSeverity": "none",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1727"
+}

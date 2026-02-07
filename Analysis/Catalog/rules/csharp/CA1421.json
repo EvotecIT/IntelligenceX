@@ -1,0 +1,11 @@
+{
+  "id": "CA1421",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1421",
+  "title": "This method uses runtime marshalling even when the 'DisableRuntimeMarshallingAttribute' is applied",
+  "description": "This method uses runtime marshalling even when runtime marshalling is disabled, which can cause unexpected behavior differences at runtime due to different expectations of a type's native layout.",
+  "category": "Interoperability",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1421"
+}

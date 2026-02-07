@@ -1,0 +1,11 @@
+{
+  "id": "CA5404",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA5404",
+  "title": "Do not disable token validation checks",
+  "description": "Token validation checks ensure that while validating tokens, all aspects are analyzed and verified. Turning off validation can lead to security holes by allowing untrusted tokens to make it through validation.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca5404"
+}

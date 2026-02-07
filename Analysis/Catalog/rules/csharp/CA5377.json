@@ -1,0 +1,11 @@
+{
+  "id": "CA5377",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA5377",
+  "title": "Use Container Level Access Policy",
+  "description": "No access policy identifier is specified, making tokens non-revocable.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca5377"
+}

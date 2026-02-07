@@ -1,0 +1,11 @@
+{
+  "id": "CA1012",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1012",
+  "title": "Abstract types should not have public constructors",
+  "description": "Constructors on abstract types can be called only by derived types. Because public constructors create instances of a type, and you cannot create instances of an abstract type, an abstract type that has a public constructor is incorrectly designed.",
+  "category": "Design",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1012"
+}

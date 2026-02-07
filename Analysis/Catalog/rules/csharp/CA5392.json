@@ -1,0 +1,11 @@
+{
+  "id": "CA5392",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA5392",
+  "title": "Use DefaultDllImportSearchPaths attribute for P/Invokes",
+  "description": "By default, P/Invokes using DllImportAttribute probe a number of directories, including the current working directory for the library to load. This can be a security issue for certain applications, leading to DLL hijacking.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca5392"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "CA1018",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1018",
+  "title": "Mark attributes with AttributeUsageAttribute",
+  "description": "Specify AttributeUsage on {0}",
+  "category": "Design",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1018"
+}

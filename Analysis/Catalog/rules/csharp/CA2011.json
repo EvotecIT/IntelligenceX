@@ -1,0 +1,11 @@
+{
+  "id": "CA2011",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2011",
+  "title": "Avoid infinite recursion",
+  "description": "Do not assign the property within its setter. This call might result in an infinite recursion.",
+  "category": "Reliability",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2011"
+}

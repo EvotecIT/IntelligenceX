@@ -1,0 +1,11 @@
+{
+  "id": "CA1838",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1838",
+  "title": "Avoid 'StringBuilder' parameters for P/Invokes",
+  "description": "Marshalling of 'StringBuilder' always creates a native buffer copy, resulting in multiple allocations for one marshalling operation.",
+  "category": "Performance",
+  "defaultSeverity": "none",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1838"
+}

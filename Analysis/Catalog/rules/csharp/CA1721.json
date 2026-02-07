@@ -1,0 +1,11 @@
+{
+  "id": "CA1721",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1721",
+  "title": "Property names should not match get methods",
+  "description": "The name of a public or protected member starts with \"\"Get\"\" and otherwise matches the name of a public or protected property. \"\"Get\"\" methods and properties should have names that clearly distinguish their function.",
+  "category": "Naming",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1721"
+}

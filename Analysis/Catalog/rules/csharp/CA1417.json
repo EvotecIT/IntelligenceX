@@ -1,0 +1,11 @@
+{
+  "id": "CA1417",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1417",
+  "title": "Do not use 'OutAttribute' on string parameters for P/Invokes",
+  "description": "String parameters passed by value with the 'OutAttribute' can destabilize the runtime if the string is an interned string.",
+  "category": "Interoperability",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1417"
+}

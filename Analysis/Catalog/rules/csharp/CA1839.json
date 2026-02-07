@@ -1,0 +1,11 @@
+{
+  "id": "CA1839",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1839",
+  "title": "Use 'Environment.ProcessPath'",
+  "description": "'Environment.ProcessPath' is simpler and faster than 'Process.GetCurrentProcess().MainModule.FileName'.",
+  "category": "Performance",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1839"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "CA1032",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1032",
+  "title": "Implement standard exception constructors",
+  "description": "Failure to provide the full set of constructors can make it difficult to correctly handle exceptions.",
+  "category": "Design",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1032"
+}

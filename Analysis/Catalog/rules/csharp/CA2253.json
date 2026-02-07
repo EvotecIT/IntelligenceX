@@ -1,0 +1,11 @@
+{
+  "id": "CA2253",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2253",
+  "title": "Named placeholders should not be numeric values",
+  "description": "Named placeholders in the logging message template should not be comprised of only numeric characters.",
+  "category": "Usage",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2253"
+}

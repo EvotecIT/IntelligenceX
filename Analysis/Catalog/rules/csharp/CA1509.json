@@ -1,0 +1,11 @@
+{
+  "id": "CA1509",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1509",
+  "title": "Invalid entry in code metrics rule specification file",
+  "description": "Invalid entry in code metrics rule specification file.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1509"
+}

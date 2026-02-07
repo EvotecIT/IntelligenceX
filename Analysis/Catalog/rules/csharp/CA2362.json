@@ -1,0 +1,11 @@
+{
+  "id": "CA2362",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2362",
+  "title": "Unsafe DataSet or DataTable in auto-generated serializable type can be vulnerable to remote code execution attacks",
+  "description": "When deserializing untrusted input with an IFormatter-based serializer, deserializing a {0} object is insecure. '{1}' either is or derives from {0}. Ensure that the auto-generated type is never deserialized with untrusted data.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2362"
+}

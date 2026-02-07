@@ -1,0 +1,11 @@
+{
+  "id": "CA1857",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1857",
+  "title": "A constant is expected for the parameter",
+  "description": "The parameter expects a constant for optimal performance.",
+  "category": "Performance",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1857"
+}

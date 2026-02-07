@@ -1,0 +1,11 @@
+{
+  "id": "CA1814",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1814",
+  "title": "Prefer jagged arrays over multidimensional",
+  "description": "A jagged array is an array whose elements are arrays. The arrays that make up the elements can be of different sizes, leading to less wasted space for some sets of data.",
+  "category": "Performance",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1814"
+}

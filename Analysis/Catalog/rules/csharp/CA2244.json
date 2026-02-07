@@ -1,0 +1,11 @@
+{
+  "id": "CA2244",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2244",
+  "title": "Do not duplicate indexed element initializations",
+  "description": "Indexed elements in objects initializers must initialize unique elements. A duplicate index might overwrite a previous element initialization.",
+  "category": "Usage",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2244"
+}

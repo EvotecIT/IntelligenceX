@@ -1,0 +1,11 @@
+{
+  "id": "CA2200",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2200",
+  "title": "Rethrow to preserve stack details",
+  "description": "Re-throwing caught exception changes stack information",
+  "category": "Usage",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2200"
+}

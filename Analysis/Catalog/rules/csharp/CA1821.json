@@ -1,0 +1,11 @@
+{
+  "id": "CA1821",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1821",
+  "title": "Remove empty Finalizers",
+  "description": "Finalizers should be avoided where possible, to avoid the additional performance overhead involved in tracking object lifetime.",
+  "category": "Performance",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1821"
+}

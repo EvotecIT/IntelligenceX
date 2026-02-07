@@ -1,0 +1,11 @@
+{
+  "id": "CA1853",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1853",
+  "title": "Unnecessary call to 'Dictionary.ContainsKey(key)'",
+  "description": "Do not guard 'Dictionary.Remove(key)' with 'Dictionary.ContainsKey(key)'. The former already checks whether the key exists, and will not throw if it does not.",
+  "category": "Performance",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1853"
+}

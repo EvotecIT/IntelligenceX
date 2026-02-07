@@ -1,0 +1,11 @@
+{
+  "id": "CA1033",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1033",
+  "title": "Interface methods should be callable by child types",
+  "description": "An unsealed externally visible type provides an explicit method implementation of a public interface and does not provide an alternative externally visible method that has the same name.",
+  "category": "Design",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1033"
+}

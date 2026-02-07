@@ -1,0 +1,11 @@
+{
+  "id": "CA1846",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1846",
+  "title": "Prefer 'AsSpan' over 'Substring'",
+  "description": "'AsSpan' is more efficient than 'Substring'. 'Substring' performs an O(n) string copy, while 'AsSpan' does not and has a constant cost.",
+  "category": "Performance",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1846"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "CA2300",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2300",
+  "title": "Do not use insecure deserializer BinaryFormatter",
+  "description": "The method '{0}' is insecure when deserializing untrusted data. If you need to instead detect BinaryFormatter deserialization without a SerializationBinder set, then disable rule CA2300, and enable rules CA2301 and CA2302.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2300"
+}

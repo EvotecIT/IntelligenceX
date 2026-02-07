@@ -1,0 +1,11 @@
+{
+  "id": "CA1715",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1715",
+  "title": "Identifiers should have correct prefix",
+  "description": "The name of an externally visible interface does not start with an uppercase \"\"I\"\". The name of a generic type parameter on an externally visible type or method does not start with an uppercase \"\"T\"\".",
+  "category": "Naming",
+  "defaultSeverity": "none",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1715"
+}

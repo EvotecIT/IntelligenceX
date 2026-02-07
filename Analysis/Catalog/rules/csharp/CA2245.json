@@ -1,0 +1,11 @@
+{
+  "id": "CA2245",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2245",
+  "title": "Do not assign a property to itself",
+  "description": "The property {0} should not be assigned to itself",
+  "category": "Usage",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2245"
+}

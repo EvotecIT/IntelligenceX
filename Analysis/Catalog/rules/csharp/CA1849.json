@@ -1,0 +1,11 @@
+{
+  "id": "CA1849",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1849",
+  "title": "Call async methods when in an async method",
+  "description": "When inside a Task-returning method, use the async version of methods, if they exist.",
+  "category": "Performance",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1849"
+}

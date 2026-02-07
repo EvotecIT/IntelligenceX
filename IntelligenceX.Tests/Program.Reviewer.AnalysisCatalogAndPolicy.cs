@@ -427,6 +427,51 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeListRulesTierCounts() {
+        var workspace = ResolveWorkspaceRoot();
+        var (exit50, output50) = RunAnalyzeAndCaptureOutput(new[] {
+            "list-rules",
+            "--workspace",
+            workspace,
+            "--pack",
+            "all-50",
+            "--format",
+            "json"
+        });
+        var (exit100, output100) = RunAnalyzeAndCaptureOutput(new[] {
+            "list-rules",
+            "--workspace",
+            workspace,
+            "--pack",
+            "all-100",
+            "--format",
+            "json"
+        });
+        var (exit500, output500) = RunAnalyzeAndCaptureOutput(new[] {
+            "list-rules",
+            "--workspace",
+            workspace,
+            "--pack",
+            "all-500",
+            "--format",
+            "json"
+        });
+
+        AssertEqual(0, exit50, "analyze list-rules all-50 exit");
+        AssertEqual(0, exit100, "analyze list-rules all-100 exit");
+        AssertEqual(0, exit500, "analyze list-rules all-500 exit");
+
+        var count50 = ParseListedRuleCount(output50, "all-50");
+        var count100 = ParseListedRuleCount(output100, "all-100");
+        var count500 = ParseListedRuleCount(output500, "all-500");
+
+        AssertEqual(true, count50 >= 50, "analyze list-rules all-50 minimum");
+        AssertEqual(true, count100 >= 100, "analyze list-rules all-100 minimum");
+        AssertEqual(true, count100 >= count50, "analyze list-rules all-100 expands all-50");
+        AssertEqual(true, count500 >= count100, "analyze list-rules all-500 expands all-100");
+        AssertEqual(true, count500 <= 500, "analyze list-rules all-500 max bound");
+    }
+
     private static void TestAnalyzeListRulesInvalidFormat() {
         var (exitCode, output) = RunAnalyzeAndCaptureOutput(new[] {
             "list-rules",
@@ -437,6 +482,18 @@ internal static partial class Program {
         });
         AssertEqual(1, exitCode, "analyze list-rules invalid format exit");
         AssertContainsText(output, "Unsupported format 'yaml'", "analyze list-rules invalid format message");
+    }
+
+    private static int ParseListedRuleCount(string output, string scope) {
+        var parsed = JsonLite.Parse((output ?? string.Empty).Trim())?.AsArray();
+        AssertNotNull(parsed, $"analyze list-rules {scope} json payload");
+        var count = 0;
+        foreach (var item in parsed!) {
+            if (item.AsObject() is not null) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static void TestAnalysisCatalogRuleDocsPath() {

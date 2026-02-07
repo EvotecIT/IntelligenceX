@@ -1,0 +1,11 @@
+{
+  "id": "CA1859",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1859",
+  "title": "Use concrete types when possible for improved performance",
+  "description": "Using concrete types avoids virtual or interface call overhead and enables inlining.",
+  "category": "Performance",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1859"
+}

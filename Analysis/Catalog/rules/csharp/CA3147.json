@@ -1,0 +1,11 @@
+{
+  "id": "CA3147",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA3147",
+  "title": "Mark Verb Handlers With Validate Antiforgery Token",
+  "description": "Missing ValidateAntiForgeryTokenAttribute on controller action {0}",
+  "category": "Security",
+  "defaultSeverity": "none",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca3147"
+}

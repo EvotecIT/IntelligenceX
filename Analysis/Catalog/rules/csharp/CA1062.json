@@ -4,9 +4,8 @@
   "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
   "toolRuleId": "CA1062",
   "title": "Validate arguments of public methods",
-  "description": "Ensures public method arguments are validated for null before use.",
-  "category": "Reliability",
+  "description": "An externally visible method dereferences one of its reference arguments without verifying whether that argument is 'null' ('Nothing' in Visual Basic). All reference arguments that are passed to externally visible methods should be checked against 'null'. If appropriate, throw an 'ArgumentNullException' when the argument is 'null'. If the method is designed to be called only by known assemblies, you should make the method internal.",
+  "category": "Design",
   "defaultSeverity": "warning",
-  "tags": ["nullability", "defensive"],
   "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1062"
 }

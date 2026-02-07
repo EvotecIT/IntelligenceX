@@ -1,0 +1,11 @@
+{
+  "id": "CA1712",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1712",
+  "title": "Do not prefix enum values with type name",
+  "description": "An enumeration's values should not start with the type name of the enumeration.",
+  "category": "Naming",
+  "defaultSeverity": "none",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1712"
+}

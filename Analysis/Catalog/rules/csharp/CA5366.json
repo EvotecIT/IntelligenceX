@@ -1,0 +1,11 @@
+{
+  "id": "CA5366",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA5366",
+  "title": "Use XmlReader for 'DataSet.ReadXml()'",
+  "description": "Processing XML from untrusted data may load dangerous external references, which should be restricted by using an XmlReader with a secure resolver or with DTD processing disabled.",
+  "category": "Security",
+  "defaultSeverity": "none",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca5366"
+}

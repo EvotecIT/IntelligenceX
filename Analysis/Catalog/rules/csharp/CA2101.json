@@ -1,0 +1,11 @@
+{
+  "id": "CA2101",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2101",
+  "title": "Specify marshaling for P/Invoke string arguments",
+  "description": "A platform invoke member allows partially trusted callers, has a string parameter, and does not explicitly marshal the string. This can cause a potential security vulnerability.",
+  "category": "Globalization",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2101"
+}

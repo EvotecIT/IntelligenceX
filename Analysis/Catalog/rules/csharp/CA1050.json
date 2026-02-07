@@ -1,0 +1,11 @@
+{
+  "id": "CA1050",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1050",
+  "title": "Declare types in namespaces",
+  "description": "Types are declared in namespaces to prevent name collisions and as a way to organize related types in an object hierarchy.",
+  "category": "Design",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1050"
+}

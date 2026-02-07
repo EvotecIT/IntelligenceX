@@ -1,0 +1,11 @@
+{
+  "id": "CA1867",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1867",
+  "title": "Use char overload",
+  "description": "The char overload is a better performing overload than a string with a single char.",
+  "category": "Performance",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1867"
+}

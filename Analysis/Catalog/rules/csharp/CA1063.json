@@ -1,0 +1,11 @@
+{
+  "id": "CA1063",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1063",
+  "title": "Implement IDisposable Correctly",
+  "description": "All IDisposable types should implement the Dispose pattern correctly.",
+  "category": "Design",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1063"
+}

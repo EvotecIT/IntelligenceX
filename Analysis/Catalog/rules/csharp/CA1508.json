@@ -1,0 +1,11 @@
+{
+  "id": "CA1508",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1508",
+  "title": "Avoid dead conditional code",
+  "description": "'{0}' is never '{1}'. Remove or refactor the condition(s) to avoid dead code.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1508"
+}

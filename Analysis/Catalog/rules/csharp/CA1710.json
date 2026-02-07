@@ -1,0 +1,11 @@
+{
+  "id": "CA1710",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1710",
+  "title": "Identifiers should have correct suffix",
+  "description": "By convention, the names of types that extend certain base types or that implement certain interfaces, or types that are derived from these types, have a suffix that is associated with the base type or interface.",
+  "category": "Naming",
+  "defaultSeverity": "none",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1710"
+}

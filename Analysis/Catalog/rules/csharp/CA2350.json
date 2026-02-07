@@ -1,0 +1,11 @@
+{
+  "id": "CA2350",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2350",
+  "title": "Do not use DataTable.ReadXml() with untrusted data",
+  "description": "The method '{0}' is insecure when deserializing untrusted data",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2350"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "CA2252",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2252",
+  "title": "This API requires opting into preview features",
+  "description": "An assembly has to opt into preview features before using them.",
+  "category": "Usage",
+  "defaultSeverity": "error",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2252"
+}

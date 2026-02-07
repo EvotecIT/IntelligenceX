@@ -1,0 +1,11 @@
+{
+  "id": "CA2250",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2250",
+  "title": "Use 'ThrowIfCancellationRequested'",
+  "description": "'ThrowIfCancellationRequested' automatically checks whether the token has been canceled, and throws an 'OperationCanceledException' if it has.",
+  "category": "Usage",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2250"
+}

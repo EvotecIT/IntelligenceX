@@ -1,0 +1,11 @@
+{
+  "id": "CA2312",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2312",
+  "title": "Ensure NetDataContractSerializer.Binder is set before deserializing",
+  "description": "The method '{0}' is insecure when deserializing untrusted data without a SerializationBinder to restrict the type of objects in the deserialized object graph.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2312"
+}

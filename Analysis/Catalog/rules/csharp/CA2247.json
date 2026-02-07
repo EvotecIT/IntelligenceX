@@ -1,0 +1,11 @@
+{
+  "id": "CA2247",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2247",
+  "title": "Argument passed to TaskCompletionSource constructor should be TaskCreationOptions enum instead of TaskContinuationOptions enum",
+  "description": "TaskCompletionSource has constructors that take TaskCreationOptions that control the underlying Task, and constructors that take object state that's stored in the task. Accidentally passing a TaskContinuationOptions instead of a TaskCreationOptions will result in the call treating the options as state.",
+  "category": "Usage",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2247"
+}

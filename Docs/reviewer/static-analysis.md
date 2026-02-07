@@ -117,7 +117,8 @@ Recommended tier selection:
 - `all-100`: broader coverage with higher review noise.
 - `all-500`: strict tier for mature repositories and dedicated cleanup cycles.
 
-Today, the built-in catalog has fewer than 50 total rules. Tier IDs are forward-compatible aliases that grow via `includes` as catalog coverage expands.
+The built-in catalog now contains hundreds of C# rules plus PowerShell/internal rules, and tier IDs remain stable
+for policy compatibility as coverage evolves.
 
 ## Temporary Analyzer Config Generation
 During analysis runs, configs are generated to a temporary directory and cleaned up at the end. Examples:
@@ -147,14 +148,14 @@ Review comments now include analysis execution context and outcomes even when no
 ### Static Analysis Policy 🧭
 - Config mode: respect
 - Packs: All Essentials (50)
-- Rules: 5 enabled
+- Rules: 52 enabled
 - Rule list display: up to 10 items per section
-- Enabled rules preview: CA2000 (Dispose objects before losing scope), CA1062 (Validate arguments of public methods), SA1600 (Elements should be documented), PSAvoidUsingWriteHost (Avoid using Write-Host), IXLOC001 (Source files should stay below 700 lines)
+- Enabled rules preview: CA2000 (Dispose objects before losing scope), CA1062 (Validate arguments of public methods), SA1600 (Elements should be documented), CA1000 (Do not declare static members on generic types), CA1001 (Types that own disposable fields should be disposable), CA1010 (Generic interface should also be implemented), CA1016 (Mark assemblies with assembly version), CA1018 (Mark attributes with AttributeUsageAttribute), CA1036 (Override methods on comparable types), CA1041 (Provide ObsoleteAttribute message), ... (truncated)
 - Result files: 2 input patterns, 2 matched, 2 parsed, 0 failed
 - Status: pass ✅
-- Rule outcomes: 0 with findings, 5 clean
+- Rule outcomes: 0 with findings, 52 clean
 - Failing rules: none
-- Clean rules: CA2000 (Dispose objects before losing scope), CA1062 (Validate arguments of public methods), SA1600 (Elements should be documented), PSAvoidUsingWriteHost (Avoid using Write-Host), IXLOC001 (Source files should stay below 700 lines)
+- Clean rules: CA2000 (Dispose objects before losing scope), CA1062 (Validate arguments of public methods), SA1600 (Elements should be documented), CA1000 (Do not declare static members on generic types), CA1001 (Types that own disposable fields should be disposable), CA1010 (Generic interface should also be implemented), CA1016 (Mark assemblies with assembly version), CA1018 (Mark attributes with AttributeUsageAttribute), CA1036 (Override methods on comparable types), CA1041 (Provide ObsoleteAttribute message), ... (truncated)
 - Outside-pack rules: none
 
 ### Static Analysis 🔎

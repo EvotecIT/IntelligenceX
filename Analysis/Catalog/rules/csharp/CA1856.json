@@ -1,0 +1,11 @@
+{
+  "id": "CA1856",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1856",
+  "title": "Incorrect usage of ConstantExpected attribute",
+  "description": "ConstantExpected attribute is not applied correctly on the parameter.",
+  "category": "Performance",
+  "defaultSeverity": "error",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1856"
+}

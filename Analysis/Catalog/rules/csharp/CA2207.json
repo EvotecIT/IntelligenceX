@@ -1,0 +1,11 @@
+{
+  "id": "CA2207",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2207",
+  "title": "Initialize value type static fields inline",
+  "description": "A value type declares an explicit static constructor. To fix a violation of this rule, initialize all static data when it is declared and remove the static constructor.",
+  "category": "Usage",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2207"
+}

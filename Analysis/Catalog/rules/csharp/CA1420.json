@@ -1,0 +1,11 @@
+{
+  "id": "CA1420",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1420",
+  "title": "Property, type, or attribute requires runtime marshalling",
+  "description": "Using features that require runtime marshalling when runtime marshalling is disabled will result in runtime exceptions.",
+  "category": "Interoperability",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1420"
+}

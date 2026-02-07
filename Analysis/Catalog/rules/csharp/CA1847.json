@@ -1,0 +1,11 @@
+{
+  "id": "CA1847",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1847",
+  "title": "Use char literal for a single character lookup",
+  "description": "'string.Contains(char)' is available as a better performing overload for single char lookup.",
+  "category": "Performance",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1847"
+}

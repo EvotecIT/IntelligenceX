@@ -1,0 +1,11 @@
+{
+  "id": "CA2260",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2260",
+  "title": "Use correct type parameter",
+  "description": "Generic math interfaces require the derived type itself to be used for the self recurring type parameter.",
+  "category": "Usage",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2260"
+}

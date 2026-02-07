@@ -1,0 +1,11 @@
+{
+  "id": "CA2265",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2265",
+  "title": "Do not compare Span\\<T> to 'null' or 'default'",
+  "description": "Comparing a span to 'null' or 'default' might not do what you intended. 'default' and the 'null' literal are implicitly converted to 'Span\\<T>.Empty'. Remove the redundant comparison or make the code more explicit by using 'IsEmpty'.",
+  "category": "Usage",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2265"
+}

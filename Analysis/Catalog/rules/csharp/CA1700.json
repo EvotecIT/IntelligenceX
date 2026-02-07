@@ -1,0 +1,11 @@
+{
+  "id": "CA1700",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1700",
+  "title": "Do not name enum values 'Reserved'",
+  "description": "This rule assumes that an enumeration member that has a name that contains \"reserved\" is not currently used but is a placeholder to be renamed or removed in a future version. Renaming or removing a member is a breaking change.",
+  "category": "Naming",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1700"
+}

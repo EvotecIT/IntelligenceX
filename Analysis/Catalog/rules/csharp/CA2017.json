@@ -1,0 +1,11 @@
+{
+  "id": "CA2017",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2017",
+  "title": "Parameter count mismatch",
+  "description": "Number of parameters supplied in the logging message template do not match the number of named placeholders.",
+  "category": "Reliability",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2017"
+}

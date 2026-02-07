@@ -1,0 +1,11 @@
+{
+  "id": "CA5364",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA5364",
+  "title": "Do Not Use Deprecated Security Protocols",
+  "description": "Using a deprecated security protocol rather than the system default is risky.",
+  "category": "Security",
+  "defaultSeverity": "none",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca5364"
+}

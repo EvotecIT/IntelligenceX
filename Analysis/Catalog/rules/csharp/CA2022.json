@@ -1,0 +1,11 @@
+{
+  "id": "CA2022",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2022",
+  "title": "Avoid inexact read with 'Stream.Read'",
+  "description": "A call to 'Stream.Read' may return fewer bytes than requested, resulting in unreliable code if the return value is not checked.",
+  "category": "Reliability",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2022"
+}

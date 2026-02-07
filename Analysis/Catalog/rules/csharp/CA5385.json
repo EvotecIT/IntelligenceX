@@ -1,0 +1,11 @@
+{
+  "id": "CA5385",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA5385",
+  "title": "Use Rivest-Shamir-Adleman (RSA) Algorithm With Sufficient Key Size",
+  "description": "Encryption algorithms are vulnerable to brute force attacks when too small a key size is used.",
+  "category": "Security",
+  "defaultSeverity": "none",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca5385"
+}

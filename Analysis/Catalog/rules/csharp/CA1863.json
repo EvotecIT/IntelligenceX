@@ -1,0 +1,11 @@
+{
+  "id": "CA1863",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1863",
+  "title": "Use 'CompositeFormat'",
+  "description": "Cache and use a 'CompositeFormat' instance as the argument to this formatting operation, rather than passing in the original format string. This reduces the cost of the formatting operation.",
+  "category": "Performance",
+  "defaultSeverity": "none",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1863"
+}

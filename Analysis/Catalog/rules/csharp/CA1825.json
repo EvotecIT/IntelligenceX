@@ -1,0 +1,11 @@
+{
+  "id": "CA1825",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1825",
+  "title": "Avoid zero-length array allocations",
+  "description": "Avoid unnecessary zero-length array allocations. Use {0} instead.",
+  "category": "Performance",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1825"
+}

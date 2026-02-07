@@ -1,0 +1,11 @@
+{
+  "id": "CA1858",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1858",
+  "title": "Use 'StartsWith' instead of 'IndexOf'",
+  "description": "It is both clearer and faster to use 'StartsWith' instead of comparing the result of 'IndexOf' to zero.",
+  "category": "Performance",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1858"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "CA2224",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2224",
+  "title": "Override Equals on overloading operator equals",
+  "description": "A public type implements the equality operator but does not override Object.Equals.",
+  "category": "Usage",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2224"
+}

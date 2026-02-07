@@ -1,0 +1,11 @@
+{
+  "id": "CA1068",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1068",
+  "title": "CancellationToken parameters must come last",
+  "description": "Method '{0}' should take CancellationToken as the last parameter",
+  "category": "Design",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1068"
+}

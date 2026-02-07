@@ -1,0 +1,11 @@
+{
+  "id": "CA1708",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1708",
+  "title": "Identifiers should differ by more than case",
+  "description": "Identifiers for namespaces, types, members, and parameters cannot differ only by case because languages that target the common language runtime are not required to be case-sensitive.",
+  "category": "Naming",
+  "defaultSeverity": "none",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1708"
+}

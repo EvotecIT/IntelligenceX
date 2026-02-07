@@ -1,0 +1,11 @@
+{
+  "id": "CA2326",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2326",
+  "title": "Do not use TypeNameHandling values other than None",
+  "description": "Deserializing JSON when using a TypeNameHandling value other than None can be insecure. If you need to instead detect Json.NET deserialization when a SerializationBinder isn't specified, then disable rule CA2326, and enable rules CA2327, CA2328, CA2329, and CA2330.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2326"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "CA1510",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1510",
+  "title": "Use ArgumentNullException throw helper",
+  "description": "Throw helpers are simpler and more efficient than an if block constructing a new exception instance.",
+  "category": "Maintainability",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1510"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "CA2235",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2235",
+  "title": "Mark all non-serializable fields",
+  "description": "An instance field of a type that is not serializable is declared in a type that is serializable.",
+  "category": "Usage",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2235"
+}

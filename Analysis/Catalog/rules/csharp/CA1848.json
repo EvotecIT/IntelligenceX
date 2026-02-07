@@ -1,0 +1,11 @@
+{
+  "id": "CA1848",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1848",
+  "title": "Use the LoggerMessage delegates",
+  "description": "For improved performance, use the LoggerMessage delegates.",
+  "category": "Performance",
+  "defaultSeverity": "none",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1848"
+}

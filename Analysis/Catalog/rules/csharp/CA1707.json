@@ -1,0 +1,11 @@
+{
+  "id": "CA1707",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1707",
+  "title": "Identifiers should not contain underscores",
+  "description": "By convention, identifier names do not contain the underscore (_) character. This rule checks namespaces, types, members, and parameters.",
+  "category": "Naming",
+  "defaultSeverity": "none",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1707"
+}

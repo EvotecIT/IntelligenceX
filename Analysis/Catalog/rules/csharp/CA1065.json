@@ -1,0 +1,11 @@
+{
+  "id": "CA1065",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1065",
+  "title": "Do not raise exceptions in unexpected locations",
+  "description": "A method that is not expected to throw exceptions throws an exception.",
+  "category": "Design",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1065"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "CA2018",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2018",
+  "title": "'Buffer.BlockCopy' expects the number of bytes to be copied for the 'count' argument",
+  "description": "'Buffer.BlockCopy' expects the number of bytes to be copied for the 'count' argument. Using 'Array.Length' may not match the number of bytes that needs to be copied.",
+  "category": "Reliability",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2018"
+}

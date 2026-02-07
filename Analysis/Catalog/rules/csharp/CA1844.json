@@ -1,0 +1,11 @@
+{
+  "id": "CA1844",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1844",
+  "title": "Provide memory-based overrides of async methods when subclassing 'Stream'",
+  "description": "To improve performance, override the memory-based async methods when subclassing 'Stream'. Then implement the array-based methods in terms of the memory-based methods.",
+  "category": "Performance",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1844"
+}
