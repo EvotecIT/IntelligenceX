@@ -164,6 +164,12 @@ internal static partial class Program {
     }
 
     private static string GetReviewerFixturePath(string filename) {
+        if (string.IsNullOrWhiteSpace(filename)) {
+            throw new ArgumentException("Fixture filename cannot be empty.", nameof(filename));
+        }
+        if (Path.IsPathRooted(filename)) {
+            throw new ArgumentException("Fixture filename must be a relative path.", nameof(filename));
+        }
         return Path.Combine("Tests", "Fixtures", "Reviewer", filename);
     }
 
