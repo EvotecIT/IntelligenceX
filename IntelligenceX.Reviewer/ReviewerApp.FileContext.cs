@@ -13,7 +13,10 @@ public static partial class ReviewerApp {
         if (parts.Count == 0) {
             return string.Empty;
         }
-        return $"Review context truncated: {string.Join("; ", parts)}.";
+        return
+            $"Review context truncated: {string.Join("; ", parts)}. " +
+            "Impact: review covers only included diff context; issues outside it may be missed. " +
+            "Increase review.maxFiles/review.maxPatchChars for wider coverage.";
     }
 
     private static string ApplyEmbedPlacement(string reviewBody, string embedBlock, string placement) {

@@ -123,6 +123,27 @@ internal static partial class Program {
         AssertEqual(false, ReviewerApp.HasWorkflowChanges(withoutWorkflow), "workflow changes ignored");
     }
 
+    private static void TestWorkflowChangesFiltering() {
+        var files = BuildFiles(".github/workflows/ci.yml", "src/app.cs", ".github/workflows/release.yaml", "docs/readme.md");
+        var filtered = ReviewerApp.ExcludeWorkflowFiles(files);
+
+        AssertEqual(2, ReviewerApp.CountWorkflowFiles(files), "workflow file count");
+        AssertSequenceEqual(new[] { "src/app.cs", "docs/readme.md" }, GetFilenames(filtered), "exclude workflow files");
+    }
+
+    private static void TestWorkflowGuardNoteSkip() {
+        var note = ReviewerApp.BuildWorkflowGuardNote("1234567890abcdef", 2, 0, skipped: true);
+        AssertContainsText(note, "Workflow-only changes detected", "workflow guard skip prefix");
+        AssertContainsText(note, "Head SHA: 1234567890abcdef", "workflow guard skip sha");
+        AssertContainsText(note, "Review skipped", "workflow guard skip action");
+    }
+
+    private static void TestWorkflowGuardNoteFiltered() {
+        var note = ReviewerApp.BuildWorkflowGuardNote("abc1234", 1, 3, skipped: false);
+        AssertContainsText(note, "excluded 1 workflow file", "workflow guard filtered count");
+        AssertContainsText(note, "reviewed 3 non-workflow file(s)", "workflow guard filtered reviewed");
+    }
+
     private static void TestSecretsAuditRecords() {
         SecretsAudit.Record("pending secret source");
 
@@ -182,6 +203,8 @@ internal static partial class Program {
         var note = ReviewerApp.BuildBudgetNote(10, 5, 2, 4000);
         AssertContainsText(note, "first 5 of 10 files", "budget note files");
         AssertContainsText(note, "2 patches trimmed to 4000 chars", "budget note patches");
+        AssertContainsText(note, "review covers only included diff context", "budget note impact");
+        AssertContainsText(note, "Increase review.maxFiles/review.maxPatchChars", "budget note guidance");
     }
 
     private static void TestReviewBudgetNoteEmpty() {
@@ -197,6 +220,17 @@ internal static partial class Program {
             autoResolveNote: string.Empty, budgetNote: "Review context truncated: showing first 1 of 2 files.",
             usageLine: string.Empty, findingsBlock: string.Empty);
         AssertContainsText(comment, "Review context truncated", "budget note comment");
+    }
+
+    private static void TestCombineNotes() {
+        var combined = ReviewerApp.CombineNotes("first note", "second note");
+        AssertEqual("first note\nsecond note", combined, "combine notes two values");
+
+        var firstOnly = ReviewerApp.CombineNotes("first note", string.Empty);
+        AssertEqual("first note", firstOnly, "combine notes first only");
+
+        var secondOnly = ReviewerApp.CombineNotes(string.Empty, "second note");
+        AssertEqual("second note", secondOnly, "combine notes second only");
     }
 
     private static void TestReviewRetryBackoffMultiplierConfig() {

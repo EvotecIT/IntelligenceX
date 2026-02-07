@@ -198,6 +198,11 @@ When code-review rate-limit windows are present, their labels are prefixed with 
 }
 ```
 
+When context is truncated, the note explains impact directly in the PR comment:
+- only included files/patch snippets were reviewed
+- findings may miss issues outside included diff context
+- increase `review.maxFiles` and/or `review.maxPatchChars` to widen coverage
+
 ## Structured findings (automation)
 
 ```json
@@ -227,11 +232,17 @@ Enable analysis summaries and inline findings sourced from SARIF or Intelligence
       "summary": true,
       "summaryMaxItems": 10,
       "summaryPlacement": "bottom",
-      "showPolicy": true
+      "showPolicy": true,
+      "policyRulePreviewItems": 10
     }
   }
 }
 ```
+
+`analysis.results.policyRulePreviewItems` controls how many rule IDs are shown per policy line:
+- `0`: hide per-rule lists and keep counts only
+- `10` (default): compact preview
+- `50`, `100`, `500`: progressively fuller visibility (schema max: `500`)
 
 ## Summary stability (avoid noisy reruns)
 
@@ -282,8 +293,12 @@ to allow posting comments or resolving threads on untrusted PRs (default is `fal
 
 ## Workflow integrity guardrail
 
-By default the reviewer skips PRs that modify GitHub Actions workflows. This prevents self-modifying workflow runs.
-Set `allowWorkflowChanges` (or `REVIEW_ALLOW_WORKFLOW_CHANGES=true`) to override.
+By default the reviewer applies a workflow integrity guardrail:
+- Workflow files (`.github/workflows/*.yml|*.yaml`) are excluded from review context.
+- If a PR changes only workflow files, the reviewer skips with an explicit summary note.
+
+This prevents self-modifying workflow runs while still reviewing non-workflow changes in mixed PRs.
+Set `allowWorkflowChanges` (or `REVIEW_ALLOW_WORKFLOW_CHANGES=true`) to review workflow files too.
 
 ```json
 {
@@ -395,7 +410,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `generatedFileGlobs`: extra glob patterns to treat as generated files (appended to defaults)
 - `includePaths`: only review files matching these globs
 - `excludePaths`: ignore files matching these globs
-- `allowWorkflowChanges`: allow reviews to run when `.github/workflows/*` changes are present
+- `allowWorkflowChanges`: include `.github/workflows/*` changes in review context (default excludes them)
 - `secretsAudit`: emit an audit log of secret sources used (default true)
 - `includeReviewThreads`: include existing review threads in context
 - `triageOnly`: run thread triage only (skip full review)

@@ -32,7 +32,8 @@ All enablement decisions live in `.intelligencex/reviewer.json`. Analyzer tool c
       "minSeverity": "warning",
       "maxInline": 20,
       "summary": true,
-      "showPolicy": true
+      "showPolicy": true,
+      "policyRulePreviewItems": 10
     }
   }
 }
@@ -113,6 +114,7 @@ Review comments now include analysis execution context and outcomes even when no
 - Config mode: respect
 - Packs: C# Default, PowerShell Default, IntelligenceX Maintainability
 - Rules: 5 enabled
+- Rule list display: up to 10 items per section
 - Enabled rules preview: CA2000 (Dispose objects before losing scope), CA1822 (Mark members as static), PSAvoidUsingWriteHost (Avoid using Write-Host) (truncated)
 - Result files: 2 input patterns, 2 matched, 2 parsed, 0 failed
 - Status: pass ✅
@@ -135,7 +137,9 @@ If static-analysis load fails at review time, the reviewer renders an unavailabl
 - If `analysis.results.summary` is enabled, summary includes `Findings: unavailable`.
 
 Rule preview lines (`Enabled rules preview`, `Failing rules`, `Clean rules`, `Outside-pack rules`) are deterministic and
-show up to 10 items, appending `(truncated)` when more rules exist.
+show up to `analysis.results.policyRulePreviewItems` items (default `10`, max `500`), appending `(truncated)` when more rules exist.
+Set `policyRulePreviewItems` to `0` to hide per-rule lists and keep counts only.
+If your enabled rule count is less than or equal to the configured limit, the policy effectively shows all enabled rules.
 
 For JS/TS and Python today, teams can still produce SARIF with their preferred tools and include those files in
 `analysis.results.inputs`.

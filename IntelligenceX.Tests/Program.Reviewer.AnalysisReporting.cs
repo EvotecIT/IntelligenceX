@@ -29,6 +29,7 @@ internal static partial class Program {
                 "- Config mode: respect",
                 "- Packs: IX Test Pack",
                 "- Rules: 2 enabled",
+                "- Rule list display: up to 10 items per section",
                 "- Enabled rules preview: IXTEST001 (Rule one), IXTEST002 (Rule two)",
                 "- Result files: 2 input patterns, 2 matched, 2 parsed, 0 failed",
                 "- Status: fail ❌",
@@ -48,6 +49,8 @@ internal static partial class Program {
             AssertPolicyLineEquals(policy, "Outside-pack rules", "PS9999=1", "analysis policy outside-pack rules");
             AssertPolicyLineEquals(policy, "Result files", "2 input patterns, 2 matched, 2 parsed, 0 failed",
                 "analysis policy file stats");
+            AssertPolicyLineEquals(policy, "Rule list display", "up to 10 items per section",
+                "analysis policy rule list display");
             AssertPolicyLineEquals(policy, "Enabled rules preview", "IXTEST001 (Rule one), IXTEST002 (Rule two)",
                 "analysis policy enabled rule preview");
         } finally {
@@ -312,6 +315,144 @@ internal static partial class Program {
             AssertContainsText(policy, "Enabled rules preview: none", "analysis policy no-enabled-rules preview");
             AssertEqual(false, policy.Contains("(truncated)", StringComparison.Ordinal),
                 "analysis policy no-enabled-rules truncation absence");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalysisPolicyRulePreviewLimitIsConfigurable() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-policy-preview-limit-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            WriteAnalysisCatalogFixture(temp);
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Packs = new[] { "ix-test-pack" };
+            settings.Analysis.Results.ShowPolicy = true;
+            settings.Analysis.Results.PolicyRulePreviewItems = 1;
+
+            var report = new AnalysisLoadReport(1, 1, 1, 0);
+            var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
+                new AnalysisLoadResult(Array.Empty<AnalysisFinding>(), report));
+
+            AssertPolicyLineEquals(policy, "Rule list display", "up to 1 item per section",
+                "analysis policy configurable display limit");
+            AssertPolicyLineEquals(policy, "Enabled rules preview",
+                "IXTEST001 (Rule one) (truncated)",
+                "analysis policy configurable enabled preview");
+            AssertPolicyLineEquals(policy, "Clean rules",
+                "IXTEST001 (Rule one) (truncated)",
+                "analysis policy configurable clean preview");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalysisPolicyRulePreviewLinesCanBeHidden() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-policy-preview-hidden-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            WriteAnalysisCatalogFixture(temp);
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Packs = new[] { "ix-test-pack" };
+            settings.Analysis.Results.ShowPolicy = true;
+            settings.Analysis.Results.PolicyRulePreviewItems = 0;
+
+            var report = new AnalysisLoadReport(1, 1, 1, 0);
+            var findings = new[] {
+                new AnalysisFinding("src/FileA.cs", 42, "Dispose object", "warning", "IXTEST001", "Roslyn"),
+                new AnalysisFinding("scripts/test.ps1", 3, "Unknown rule payload", "warning", "PS9999", "PSScriptAnalyzer")
+            };
+            var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
+                new AnalysisLoadResult(findings, report));
+
+            AssertPolicyLineEquals(policy, "Rule list display", "hidden (policyRulePreviewItems=0)",
+                "analysis policy hidden display limit");
+            AssertPolicyLineEquals(policy, "Enabled rules preview", AnalysisPolicyFormatting.RulePreviewHiddenValue,
+                "analysis policy hidden enabled preview");
+            AssertPolicyLineEquals(policy, "Failing rules", AnalysisPolicyFormatting.RulePreviewHiddenValue,
+                "analysis policy hidden failing rules");
+            AssertPolicyLineEquals(policy, "Clean rules", AnalysisPolicyFormatting.RulePreviewHiddenValue,
+                "analysis policy hidden clean rules");
+            AssertPolicyLineEquals(policy, "Outside-pack rules", AnalysisPolicyFormatting.RulePreviewHiddenValue,
+                "analysis policy hidden outside rules");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalysisPolicyRulePreviewLimitNegativeClampsToHidden() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-policy-preview-negative-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            WriteAnalysisCatalogFixture(temp);
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Packs = new[] { "ix-test-pack" };
+            settings.Analysis.Results.ShowPolicy = true;
+            settings.Analysis.Results.PolicyRulePreviewItems = -1;
+
+            var report = new AnalysisLoadReport(1, 1, 1, 0);
+            var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
+                new AnalysisLoadResult(Array.Empty<AnalysisFinding>(), report));
+
+            AssertPolicyLineEquals(policy, "Rule list display", "hidden (policyRulePreviewItems=0)",
+                "analysis policy negative hidden display limit");
+            AssertPolicyLineEquals(policy, "Enabled rules preview", AnalysisPolicyFormatting.RulePreviewHiddenValue,
+                "analysis policy negative hidden enabled preview");
+            AssertPolicyLineEquals(policy, "Clean rules", AnalysisPolicyFormatting.RulePreviewHiddenValue,
+                "analysis policy negative hidden clean rules");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalysisPolicyRulePreviewLimitClampsToMax() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-policy-preview-max-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            WriteAnalysisCatalogFixture(temp);
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Packs = new[] { "ix-test-pack" };
+            settings.Analysis.Results.ShowPolicy = true;
+            settings.Analysis.Results.PolicyRulePreviewItems = AnalysisPolicyFormatting.MaxConfigurableRulePreviewItems + 1;
+
+            var report = new AnalysisLoadReport(1, 1, 1, 0);
+            var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
+                new AnalysisLoadResult(Array.Empty<AnalysisFinding>(), report));
+
+            AssertPolicyLineEquals(policy, "Rule list display",
+                $"up to {AnalysisPolicyFormatting.MaxConfigurableRulePreviewItems} items per section",
+                "analysis policy max clamp display limit");
+            AssertPolicyLineEquals(policy, "Enabled rules preview",
+                "IXTEST001 (Rule one), IXTEST002 (Rule two)",
+                "analysis policy max clamp enabled preview");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             if (Directory.Exists(temp)) {

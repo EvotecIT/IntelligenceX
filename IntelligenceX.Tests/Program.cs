@@ -121,6 +121,7 @@ internal static partial class Program {
         failed += Run("Azure auth scheme invalid env", TestAzureAuthSchemeInvalidEnv);
         failed += Run("Review settings defaults and env merge", TestReviewSettingsDefaultsAndEnvMerge);
         failed += Run("Review settings load config then env precedence", TestReviewSettingsLoadConfigThenEnvPrecedence);
+        failed += Run("Review settings policy preview clamp range", TestReviewSettingsPolicyRulePreviewConfigClampRange);
         failed += Run("Azure code host reader smoke", TestAzureDevOpsCodeHostReaderSmoke);
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
         failed += Run("Copilot env allowlist config", TestCopilotEnvAllowlistConfig);
@@ -144,6 +145,9 @@ internal static partial class Program {
         failed += Run("Filter files skip before include", TestFilterFilesSkipBeforeInclude);
         failed += Run("Filter files generated globs extend", TestFilterFilesGeneratedGlobsExtend);
         failed += Run("Workflow changes detection", TestWorkflowChangesDetection);
+        failed += Run("Workflow changes filtering", TestWorkflowChangesFiltering);
+        failed += Run("Workflow guard note skip", TestWorkflowGuardNoteSkip);
+        failed += Run("Workflow guard note filtered", TestWorkflowGuardNoteFiltered);
         failed += Run("Secrets audit records", TestSecretsAuditRecords);
         failed += Run("Prompt language hints", TestPromptBuilderLanguageHints);
         failed += Run("Prompt language hints disabled", TestPromptBuilderLanguageHintsDisabled);
@@ -151,6 +155,7 @@ internal static partial class Program {
         failed += Run("Review budget note", TestReviewBudgetNote);
         failed += Run("Review budget note empty", TestReviewBudgetNoteEmpty);
         failed += Run("Review budget note comment", TestReviewBudgetNoteComment);
+        failed += Run("Combine notes", TestCombineNotes);
         failed += Run("Review retry backoff multiplier config", TestReviewRetryBackoffMultiplierConfig);
         failed += Run("Review retry backoff multiplier env", TestReviewRetryBackoffMultiplierEnv);
         failed += Run("Prepare files max files zero", TestPrepareFilesMaxFilesZero);

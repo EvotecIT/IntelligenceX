@@ -236,9 +236,25 @@ public static partial class ReviewerApp {
                 return 0;
             }
 
+            var workflowGuardNote = string.Empty;
             if (!settings.AllowWorkflowChanges && HasWorkflowChanges(files)) {
-                Console.WriteLine("Workflow file changes detected; skipping review. Set allowWorkflowChanges or REVIEW_ALLOW_WORKFLOW_CHANGES=true to override.");
-                return 0;
+                var workflowFileCount = CountWorkflowFiles(files);
+                var reviewableFiles = ExcludeWorkflowFiles(files);
+                if (reviewableFiles.Count == 0) {
+                    var skipNote = BuildWorkflowGuardNote(context.HeadSha, workflowFileCount, 0, skipped: true);
+                    Console.WriteLine(skipNote);
+                    if (allowWrites) {
+                        await PostWorkflowGuardSummaryAsync(codeHostReader, github, context, settings, skipNote, cancellationToken)
+                            .ConfigureAwait(false);
+                        Console.WriteLine("Posted workflow policy summary.");
+                    }
+                    return 0;
+                }
+
+                workflowGuardNote = BuildWorkflowGuardNote(context.HeadSha, workflowFileCount, reviewableFiles.Count, skipped: false);
+                Console.WriteLine(
+                    $"Workflow file changes detected; excluding {workflowFileCount} workflow file(s) from review. Reviewing {reviewableFiles.Count} non-workflow file(s).");
+                files = reviewableFiles;
             }
 
             if (allowWrites) {
@@ -312,6 +328,7 @@ public static partial class ReviewerApp {
             if (!settings.ReviewBudgetSummary) {
                 budgetNote = string.Empty;
             }
+            budgetNote = CombineNotes(workflowGuardNote, budgetNote);
             var prompt = PromptBuilder.Build(context, limitedFiles, settings, diffNote, extras, inlineSupported, previousSummary);
             if (settings.RedactPii) {
                 prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);

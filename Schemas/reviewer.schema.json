@@ -137,7 +137,8 @@
             "summary": { "type": "boolean" },
             "summaryMaxItems": { "type": "integer", "minimum": 0 },
             "summaryPlacement": { "type": "string", "enum": ["top", "bottom", "header", "footer", "above", "below"] },
-            "showPolicy": { "type": "boolean" }
+            "showPolicy": { "type": "boolean" },
+            "policyRulePreviewItems": { "type": "integer", "minimum": 0, "maximum": 500 }
           }
         }
       }
