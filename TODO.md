@@ -290,6 +290,9 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Bound long rule preview titles to keep policy lines readable and stable. Links: https://github.com/EvotecIT/IntelligenceX/pull/113#discussion_r2775238253
 - [x] Add no-truncation assertion for empty enabled-rules preview path. Links: https://github.com/EvotecIT/IntelligenceX/pull/113#discussion_r2775238338
 - [x] Add boundary assertion that preview includes item `MaxListItems` and excludes overflow. Links: https://github.com/EvotecIT/IntelligenceX/pull/113#discussion_r2775238434
+- [x] Keep `TruncatePreviewTitle` null-safe with text-element-aware truncation (`string?` input + `StringInfo`). Links: https://github.com/EvotecIT/IntelligenceX/pull/113#discussion_r2775275828
+- [x] Remove brittle hardcoded truncation math from tests and derive expected preview from shared formatting behavior. Links: https://github.com/EvotecIT/IntelligenceX/pull/113#discussion_r2775275886
+- [x] Assert a single truncation marker occurrence when preview output is truncated. Links: https://github.com/EvotecIT/IntelligenceX/pull/113#discussion_r2775275936
 
 </details>
 <details>
@@ -323,6 +326,20 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Group analysis-policy test registration into a dedicated helper (`RunAnalysisPolicyReportingTests`) to reduce main-runner churn. Links: https://github.com/EvotecIT/IntelligenceX/pull/115#discussion_r2775620879
 - [x] Complete constant migration and behavior-oriented naming (`MaxRulePreviewItems`, `TruncatedPreviewSuffix`, `TruncationEllipsis`) in policy builder and tests. Links: https://github.com/EvotecIT/IntelligenceX/pull/115#discussion_r2775620920, https://github.com/EvotecIT/IntelligenceX/pull/115#discussion_r2775625708
 - [x] Split oversized analysis reporting tests into topic files to satisfy internal LOC maintainability rule (`IXLOC001`). Links: https://github.com/EvotecIT/IntelligenceX/pull/115
+- [x] Keep analysis-policy helper registration grouped by feature with table-driven execution for easier reorder/maintenance. Links: https://github.com/EvotecIT/IntelligenceX/pull/115#discussion_r2775698320
+- [x] Align analysis-policy test display naming with `unavailable` terminology for catalog-load fallback scenarios. Links: https://github.com/EvotecIT/IntelligenceX/pull/115#discussion_r2775698368
+- [x] Add one snapshot-style full policy block assertion to protect against line-order or formatting regressions beyond key/value checks. Links: https://github.com/EvotecIT/IntelligenceX/pull/115#discussion_r2775698408
+- [x] Keep analysis-policy helper under `INTELLIGENCEX_REVIEWER` symbol to preserve existing test-variant coverage boundaries. Links: https://github.com/EvotecIT/IntelligenceX/pull/115#discussion_r2775698460
+</details>
+<details>
+<summary>PR #116 Cleanup static-analysis review followups and TODO backlog</summary>
+
+- [x] Remove raw-string snapshot literal in analysis-policy test to keep Windows/net472 compilation compatible. Links: https://github.com/EvotecIT/IntelligenceX/actions/runs/21765222612/job/62799147040
+- [x] Set analysis config mode explicitly in snapshot test setup to avoid default-coupled expectations. Links: https://github.com/EvotecIT/IntelligenceX/pull/116#discussion_r2775950426
+- [x] Make `AssertTextBlockEquals` trim both ends to reduce non-semantic formatting noise failures. Links: https://github.com/EvotecIT/IntelligenceX/pull/116#discussion_r2775951574
+- [x] Make `NormalizeNewlines` null-safe for future helper reuse. Links: https://github.com/EvotecIT/IntelligenceX/pull/116#discussion_r2775951622
+- [x] Keep full policy block snapshot strict in this scenario to intentionally catch line-order and formatting regressions. Links: https://github.com/EvotecIT/IntelligenceX/pull/116#discussion_r2775951509
+
 </details>
 <details>
 <summary>PR #85 Static analysis catalog + CLI export</summary>

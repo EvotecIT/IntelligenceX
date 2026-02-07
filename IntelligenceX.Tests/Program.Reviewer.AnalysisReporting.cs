@@ -12,6 +12,7 @@ internal static partial class Program {
 
             var settings = new ReviewSettings();
             settings.Analysis.Enabled = true;
+            settings.Analysis.ConfigMode = AnalysisConfigMode.Respect;
             settings.Analysis.Packs = new[] { "ix-test-pack" };
             settings.Analysis.Results.ShowPolicy = true;
 
@@ -23,7 +24,21 @@ internal static partial class Program {
 
             var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
                 new AnalysisLoadResult(findings, report));
+            var expectedPolicy = string.Join("\n", new[] {
+                "### Static Analysis Policy 🧭",
+                "- Config mode: respect",
+                "- Packs: IX Test Pack",
+                "- Rules: 2 enabled",
+                "- Enabled rules preview: IXTEST001 (Rule one), IXTEST002 (Rule two)",
+                "- Result files: 2 input patterns, 2 matched, 2 parsed, 0 failed",
+                "- Status: fail ❌",
+                "- Rule outcomes: 1 with findings, 1 clean, 1 outside enabled packs",
+                "- Failing rules: IXTEST001 (Rule one)=1",
+                "- Clean rules: IXTEST002 (Rule two)",
+                "- Outside-pack rules: PS9999=1"
+            });
             AssertContainsText(policy, "### Static Analysis Policy 🧭", "analysis policy header");
+            AssertTextBlockEquals(expectedPolicy, policy, "analysis policy full block snapshot");
             AssertPolicyLineEquals(policy, "Status", "fail ❌", "analysis policy status");
             AssertPolicyLineEquals(policy, "Rule outcomes", "1 with findings, 1 clean, 1 outside enabled packs",
                 "analysis policy outcomes");
@@ -547,6 +562,19 @@ internal static partial class Program {
             }
         }
         throw new InvalidOperationException($"Expected {name} line '{prefix}' to exist.");
+    }
+
+    private static void AssertTextBlockEquals(string expected, string actual, string name) {
+        var normalizedExpected = NormalizeNewlines(expected).Trim();
+        var normalizedActual = NormalizeNewlines(actual).Trim();
+        AssertEqual(normalizedExpected, normalizedActual, name);
+    }
+
+    private static string NormalizeNewlines(string? value) {
+        if (string.IsNullOrEmpty(value)) {
+            return string.Empty;
+        }
+        return value.Replace("\r\n", "\n").Replace('\r', '\n');
     }
 
     private static int CountOccurrences(string value, string marker) {
