@@ -86,6 +86,10 @@ jobs:
           INPUT_DIAGNOSTICS: true
           INPUT_PREFLIGHT: true
           INPUT_PREFLIGHT_TIMEOUT_SECONDS: 15
+          # Avoid blocking PR merges on provider auth issues (e.g., OAuth refresh-token reuse on runners).
+          # The reviewer will still report diagnostics, but the workflow won't fail the check.
+          INPUT_FAIL_OPEN: true
+          INPUT_FAIL_OPEN_TRANSIENT_ONLY: false
           INPUT_CLEANUP_ENABLED: false
           INPUT_CLEANUP_MODE: comment
           INPUT_CLEANUP_SCOPE: pr
