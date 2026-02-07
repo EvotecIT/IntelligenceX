@@ -68,8 +68,8 @@ jobs:
           INPUT_PROVIDER: openai
           INPUT_MODEL: gpt-5.3-codex
           INPUT_OPENAI_TRANSPORT: native
+          INPUT_LENGTH: medium
           INPUT_STYLE: direct
-          INPUT_OUTPUT_STYLE: claude
           INPUT_MODE: inline
           INPUT_INCLUDE_ISSUE_COMMENTS: true
           INPUT_INCLUDE_REVIEW_COMMENTS: true

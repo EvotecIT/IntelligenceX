@@ -21,6 +21,9 @@
     }
   },
   "review": {
+    "maxFiles": 30,
+    "maxPatchChars": 8000,
+    "includeNextSteps": false,
     "reviewThreadsAutoResolveAIReply": true,
     "reviewUsageSummary": true,
     "reviewUsageSummaryCacheMinutes": 10,
