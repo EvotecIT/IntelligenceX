@@ -488,14 +488,21 @@ internal static partial class Program {
         var options = new OpenAINativeOptions {
             ChatGptApiBaseUrl = "http://127.0.0.1:1"
         };
+        static bool IsExpectedSocketFailureMessage(string message) {
+            return message.Contains("Connectivity preflight failed", StringComparison.OrdinalIgnoreCase) ||
+                   message.Contains("Connectivity preflight timed out", StringComparison.OrdinalIgnoreCase);
+        }
         try {
             CallPreflightNativeConnectivity(options, TimeSpan.FromSeconds(1));
             throw new InvalidOperationException("Expected socket failure.");
         } catch (InvalidOperationException ex) {
             var message = ex.Message ?? string.Empty;
-            var isSocketFailure = message.Contains("Connectivity preflight failed", StringComparison.OrdinalIgnoreCase) ||
-                                  message.Contains("Connectivity preflight timed out", StringComparison.OrdinalIgnoreCase);
+            var isSocketFailure = IsExpectedSocketFailureMessage(message);
             AssertEqual(true, isSocketFailure, "preflight socket failure");
+        } catch (TimeoutException ex) {
+            var message = ex.Message ?? string.Empty;
+            var isSocketFailure = IsExpectedSocketFailureMessage(message);
+            AssertEqual(true, isSocketFailure, "preflight socket failure timeout");
         }
     }
 
