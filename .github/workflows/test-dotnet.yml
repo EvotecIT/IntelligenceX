@@ -21,7 +21,9 @@ env:
 jobs:
     test-windows:
         name: 'Windows'
-        runs-on: [self-hosted, windows]
+        # Use self-hosted runners for private repos (avoid GitHub-hosted costs).
+        # When the repo becomes public, switch to GitHub-hosted runners automatically.
+        runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","windows"]' || '["windows-latest"]') }}
         timeout-minutes: 20
         steps:
             - name: Checkout code
@@ -72,7 +74,7 @@ jobs:
 
     test-ubuntu:
         name: 'Ubuntu'
-        runs-on: [self-hosted, ubuntu]
+        runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
         timeout-minutes: 20
         steps:
             - name: Checkout code
@@ -116,7 +118,7 @@ jobs:
 
     test-macos:
         name: 'macOS'
-        runs-on: [self-hosted, macos]
+        runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","macos"]' || '["macos-latest"]') }}
         timeout-minutes: 20
         steps:
             - name: Checkout code
