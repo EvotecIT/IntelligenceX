@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace IntelligenceX.Analysis;
@@ -10,13 +11,14 @@ public sealed class AnalysisPack {
     /// Creates a new pack definition.
     /// </summary>
     public AnalysisPack(string id, string label, string? description, IReadOnlyList<string> rules,
-        IReadOnlyDictionary<string, string> severityOverrides, string? sourcePath) {
+        IReadOnlyDictionary<string, string> severityOverrides, string? sourcePath, IReadOnlyList<string>? includes = null) {
         Id = id;
         Label = label;
         Description = description;
         Rules = rules;
         SeverityOverrides = severityOverrides;
         SourcePath = sourcePath;
+        Includes = includes ?? Array.Empty<string>();
     }
 
     /// <summary>
@@ -39,6 +41,10 @@ public sealed class AnalysisPack {
     /// Optional severity overrides applied by the pack.
     /// </summary>
     public IReadOnlyDictionary<string, string> SeverityOverrides { get; }
+    /// <summary>
+    /// Optional included pack IDs. Included packs are resolved before this pack.
+    /// </summary>
+    public IReadOnlyList<string> Includes { get; }
     /// <summary>
     /// Source file path for the pack definition.
     /// </summary>

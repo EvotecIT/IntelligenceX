@@ -76,14 +76,27 @@ Proposed layout:
 - `Analysis/Packs/csharp-default.json`
 - `Analysis/Packs/powershell-default.json`
 - `Analysis/Packs/intelligencex-maintainability-default.json`
+- `Analysis/Packs/all-default.json`
 
 Example pack:
 ```json
 {
   "id": "csharp-default",
   "label": "C# Default",
+  "includes": [],
   "rules": ["CA2000", "CA1062", "SA1600"],
   "severityOverrides": { "CA1062": "error" }
+}
+```
+
+Packs can include other packs to build tiers without duplicating rule lists:
+
+```json
+{
+  "id": "all-default",
+  "label": "All Default",
+  "includes": ["csharp-default", "powershell-default", "intelligencex-maintainability-default"],
+  "rules": []
 }
 ```
 
@@ -96,6 +109,7 @@ During analysis runs, configs are generated to a temporary directory and cleaned
 
 `intelligencex analyze run` executes analysis for configured packs and emits findings artifacts for the reviewer.
 `intelligencex analyze export-config` remains available for teams that explicitly want committed analyzer configs for IDE support.
+`intelligencex analyze validate-catalog` validates rules/packs integrity (duplicates, bad refs, cycles, invalid severities).
 
 Current built-in runners in `analyze run`:
 - C#: Roslyn via `dotnet build` (SARIF output).

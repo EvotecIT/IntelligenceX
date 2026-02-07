@@ -65,7 +65,12 @@ internal static partial class Program {
         failed += Run("Analysis config export tool ids", TestAnalysisConfigExportToolIds);
         failed += Run("Analysis catalog rule docs path", TestAnalysisCatalogRuleDocsPath);
         failed += Run("Analysis policy resolves overrides", TestAnalysisPolicyResolvesOverrides);
+        failed += Run("Analysis policy resolves included packs", TestAnalysisPolicyResolvesIncludedPacks);
+        failed += Run("Analysis policy included pack cycle warning", TestAnalysisPolicyIncludedPackCycleWarning);
         failed += Run("Analysis policy disable tool rule id", TestAnalysisPolicyDisableToolRuleId);
+        failed += Run("Analysis catalog validator passes built-in catalog", TestAnalysisCatalogValidatorPassesBuiltInCatalog);
+        failed += Run("Analysis catalog validator detects invalid catalog", TestAnalysisCatalogValidatorDetectsInvalidCatalog);
+        failed += Run("Analyze validate-catalog command", TestAnalyzeValidateCatalogCommand);
         failed += Run("Analyze run disabled writes empty findings", TestAnalyzeRunDisabledWritesEmptyFindings);
         failed += Run("Analyze run internal file size rule", TestAnalyzeRunInternalFileSizeRule);
         failed += Run("Analyze run internal findings use catalog tool metadata",
