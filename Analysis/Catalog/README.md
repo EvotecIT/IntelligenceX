@@ -13,3 +13,14 @@ Pack files support:
 Validate catalog integrity before CI rollouts:
 
 `intelligencex analyze validate-catalog --workspace <repo-root>`
+
+List built-in rules (inventory):
+
+- Plain text (default): `intelligencex analyze list-rules --workspace <repo-root>`
+- Markdown table: `intelligencex analyze list-rules --workspace <repo-root> --format markdown`
+- JSON: `intelligencex analyze list-rules --workspace <repo-root> --format json`
+
+Filter inventory by packs (includes applied):
+
+- `intelligencex analyze list-rules --workspace <repo-root> --pack all-50`
+- `intelligencex analyze list-rules --workspace <repo-root> --packs csharp-100,powershell-100`

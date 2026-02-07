@@ -1,0 +1,7 @@
+{
+  "id": "intelligencex-maintainability-500",
+  "label": "IntelligenceX Maintainability Strict (500)",
+  "description": "Internal maintainability strict pack for deep coverage at scale. Extends intelligencex-maintainability-100.",
+  "includes": ["intelligencex-maintainability-100"],
+  "rules": []
+}

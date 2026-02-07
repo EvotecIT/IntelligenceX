@@ -1,0 +1,7 @@
+{
+  "id": "csharp-500",
+  "label": "C# Strict (500)",
+  "description": "C# strict pack for deep coverage at scale. Extends csharp-100 over time.",
+  "includes": ["csharp-100"],
+  "rules": []
+}

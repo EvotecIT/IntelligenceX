@@ -1,0 +1,11 @@
+{
+  "id": "all-100",
+  "label": "All Standard (100)",
+  "description": "Cross-language standard pack. Includes each language standard tier.",
+  "includes": [
+    "csharp-100",
+    "powershell-100",
+    "intelligencex-maintainability-100"
+  ],
+  "rules": []
+}

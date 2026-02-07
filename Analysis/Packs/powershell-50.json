@@ -1,0 +1,7 @@
+{
+  "id": "powershell-50",
+  "label": "PowerShell Essentials (50)",
+  "description": "PowerShell baseline pack for small-to-medium repositories. Grows toward ~50 rules as catalog expands.",
+  "includes": ["powershell-default"],
+  "rules": []
+}

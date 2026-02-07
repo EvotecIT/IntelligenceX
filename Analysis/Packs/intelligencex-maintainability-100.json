@@ -1,0 +1,7 @@
+{
+  "id": "intelligencex-maintainability-100",
+  "label": "IntelligenceX Maintainability Standard (100)",
+  "description": "Internal maintainability standard pack for broader coverage. Extends intelligencex-maintainability-50.",
+  "includes": ["intelligencex-maintainability-50"],
+  "rules": []
+}

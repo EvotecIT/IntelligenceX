@@ -1,11 +1,9 @@
 {
   "id": "all-default",
   "label": "All Default",
-  "description": "Includes all built-in default packs.",
+  "description": "Compatibility alias for the current cross-language essentials tier.",
   "includes": [
-    "csharp-default",
-    "powershell-default",
-    "intelligencex-maintainability-default"
+    "all-50"
   ],
   "rules": []
 }

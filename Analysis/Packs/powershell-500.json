@@ -1,0 +1,7 @@
+{
+  "id": "powershell-500",
+  "label": "PowerShell Strict (500)",
+  "description": "PowerShell strict pack for deep coverage at scale. Extends powershell-100 over time.",
+  "includes": ["powershell-100"],
+  "rules": []
+}
