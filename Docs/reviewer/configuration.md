@@ -293,8 +293,12 @@ to allow posting comments or resolving threads on untrusted PRs (default is `fal
 
 ## Workflow integrity guardrail
 
-By default the reviewer skips PRs that modify GitHub Actions workflows. This prevents self-modifying workflow runs.
-Set `allowWorkflowChanges` (or `REVIEW_ALLOW_WORKFLOW_CHANGES=true`) to override.
+By default the reviewer applies a workflow integrity guardrail:
+- Workflow files (`.github/workflows/*.yml|*.yaml`) are excluded from review context.
+- If a PR changes only workflow files, the reviewer skips with an explicit summary note.
+
+This prevents self-modifying workflow runs while still reviewing non-workflow changes in mixed PRs.
+Set `allowWorkflowChanges` (or `REVIEW_ALLOW_WORKFLOW_CHANGES=true`) to review workflow files too.
 
 ```json
 {
@@ -406,7 +410,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `generatedFileGlobs`: extra glob patterns to treat as generated files (appended to defaults)
 - `includePaths`: only review files matching these globs
 - `excludePaths`: ignore files matching these globs
-- `allowWorkflowChanges`: allow reviews to run when `.github/workflows/*` changes are present
+- `allowWorkflowChanges`: include `.github/workflows/*` changes in review context (default excludes them)
 - `secretsAudit`: emit an audit log of secret sources used (default true)
 - `includeReviewThreads`: include existing review threads in context
 - `triageOnly`: run thread triage only (skip full review)

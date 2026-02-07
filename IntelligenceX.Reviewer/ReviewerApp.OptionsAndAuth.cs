@@ -344,6 +344,40 @@ public static partial class ReviewerApp {
         return false;
     }
 
+    internal static int CountWorkflowFiles(IReadOnlyList<PullRequestFile> files) {
+        var count = 0;
+        foreach (var file in files) {
+            if (IsWorkflowPath(file.Filename)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    internal static IReadOnlyList<PullRequestFile> ExcludeWorkflowFiles(IReadOnlyList<PullRequestFile> files) {
+        var filtered = new List<PullRequestFile>(files.Count);
+        foreach (var file in files) {
+            if (!IsWorkflowPath(file.Filename)) {
+                filtered.Add(file);
+            }
+        }
+        return filtered;
+    }
+
+    internal static string BuildWorkflowGuardNote(string? headSha, int workflowFileCount, int reviewedFiles, bool skipped) {
+        var normalizedWorkflowCount = Math.Max(0, workflowFileCount);
+        var normalizedReviewedCount = Math.Max(0, reviewedFiles);
+        var workflowLabel = normalizedWorkflowCount == 1 ? "workflow file" : "workflow files";
+        var head = string.IsNullOrWhiteSpace(headSha) ? "unknown" : headSha.Trim();
+        if (skipped) {
+            return $"Workflow-only changes detected ({normalizedWorkflowCount} {workflowLabel}). " +
+                   $"Head SHA: {head}. Review skipped to avoid self-modifying workflow runs. " +
+                   "Set allowWorkflowChanges or REVIEW_ALLOW_WORKFLOW_CHANGES=true to override.";
+        }
+        return $"Workflow guardrail active: excluded {normalizedWorkflowCount} {workflowLabel} at commit {head}; " +
+               $"reviewed {normalizedReviewedCount} non-workflow file(s).";
+    }
+
     private static bool IsWorkflowPath(string? path) {
         if (string.IsNullOrWhiteSpace(path)) {
             return false;
@@ -378,6 +412,16 @@ public static partial class ReviewerApp {
         }
         var budgetNote = BuildBudgetNote(files.Count, list.Count, truncatedPatches, maxPatchChars);
         return (list, budgetNote);
+    }
+
+    internal static string CombineNotes(string? first, string? second) {
+        if (string.IsNullOrWhiteSpace(first)) {
+            return string.IsNullOrWhiteSpace(second) ? string.Empty : second!.Trim();
+        }
+        if (string.IsNullOrWhiteSpace(second)) {
+            return first.Trim();
+        }
+        return $"{first.Trim()}\n{second.Trim()}";
     }
 
 }

@@ -549,6 +549,14 @@ public static partial class ReviewerApp {
         return created.Id;
     }
 
+    private static async Task PostWorkflowGuardSummaryAsync(IReviewCodeHostReader codeHostReader, GitHubClient github,
+        PullRequestContext context, ReviewSettings settings, string note, CancellationToken cancellationToken) {
+        var summary = ReviewFormatter.BuildComment(context, note, settings, inlineSupported: true, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+        await CreateOrUpdateProgressCommentAsync(codeHostReader, github, context, settings, summary, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private static string? GetInput(string name) {
         var value = Environment.GetEnvironmentVariable($"INPUT_{name.ToUpperInvariant()}");
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
