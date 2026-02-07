@@ -29,6 +29,14 @@ public sealed class AnalysisResultsSettings {
         "artifacts/**/*.sarif",
         "artifacts/intelligencex.findings.json"
     };
+    /// <summary>
+    /// Default number of rules shown per policy preview line.
+    /// </summary>
+    public const int DefaultPolicyRulePreviewItems = 10;
+    /// <summary>
+    /// Maximum number of rules shown per policy preview line.
+    /// </summary>
+    public const int MaxPolicyRulePreviewItems = 500;
 
     /// <summary>
     /// Paths or globs to analysis result files (SARIF or IntelligenceX findings JSON).
@@ -62,7 +70,7 @@ public sealed class AnalysisResultsSettings {
     /// Maximum number of rules shown per policy rule list line (for example enabled, failing, clean).
     /// Set to 0 to hide per-rule lists while keeping aggregate counts.
     /// </summary>
-    public int PolicyRulePreviewItems { get; set; } = 10;
+    public int PolicyRulePreviewItems { get; set; } = DefaultPolicyRulePreviewItems;
 }
 
 /// <summary>

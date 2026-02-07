@@ -208,6 +208,13 @@ internal sealed partial class ReviewSettings {
         if (!string.IsNullOrWhiteSpace(maxInlineComments)) {
             settings.MaxInlineComments = ParsePositiveInt(maxInlineComments, settings.MaxInlineComments);
         }
+        var policyRulePreviewItems = GetInput("analysis_policy_rule_preview_items",
+            "REVIEW_ANALYSIS_POLICY_RULE_PREVIEW_ITEMS");
+        if (!string.IsNullOrWhiteSpace(policyRulePreviewItems) &&
+            int.TryParse(policyRulePreviewItems, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedPreviewItems)) {
+            settings.Analysis.Results.PolicyRulePreviewItems =
+                AnalysisPolicyFormatting.NormalizeRulePreviewItems(parsedPreviewItems);
+        }
 
         var severityThreshold = GetInput("severity_threshold", "REVIEW_SEVERITY_THRESHOLD");
         if (!string.IsNullOrWhiteSpace(severityThreshold)) {

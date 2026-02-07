@@ -121,6 +121,7 @@ internal static partial class Program {
         failed += Run("Azure auth scheme invalid env", TestAzureAuthSchemeInvalidEnv);
         failed += Run("Review settings defaults and env merge", TestReviewSettingsDefaultsAndEnvMerge);
         failed += Run("Review settings load config then env precedence", TestReviewSettingsLoadConfigThenEnvPrecedence);
+        failed += Run("Review settings policy preview clamp range", TestReviewSettingsPolicyRulePreviewConfigClampRange);
         failed += Run("Azure code host reader smoke", TestAzureDevOpsCodeHostReaderSmoke);
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
         failed += Run("Copilot env allowlist config", TestCopilotEnvAllowlistConfig);

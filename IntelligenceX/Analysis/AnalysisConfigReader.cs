@@ -58,7 +58,7 @@ public static class AnalysisConfigReader {
             settings.Results.SummaryPlacement = NormalizePlacement(placement, settings.Results.SummaryPlacement);
         }
         settings.Results.ShowPolicy = ReadBool(results, "showPolicy", settings.Results.ShowPolicy);
-        settings.Results.PolicyRulePreviewItems = ReadNonNegativeInt(
+        settings.Results.PolicyRulePreviewItems = ReadPolicyRulePreviewItems(
             results, "policyRulePreviewItems", settings.Results.PolicyRulePreviewItems);
     }
 
@@ -68,6 +68,20 @@ public static class AnalysisConfigReader {
             return (int)value.Value;
         }
         return fallback;
+    }
+
+    private static int ReadPolicyRulePreviewItems(JsonObject obj, string key, int fallback) {
+        var value = obj.GetInt64(key);
+        if (!value.HasValue) {
+            return fallback;
+        }
+        if (value.Value < 0) {
+            return 0;
+        }
+        if (value.Value > AnalysisResultsSettings.MaxPolicyRulePreviewItems) {
+            return AnalysisResultsSettings.MaxPolicyRulePreviewItems;
+        }
+        return (int)value.Value;
     }
 
     private static bool ReadBool(JsonObject obj, string key, bool fallback) {

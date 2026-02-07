@@ -390,9 +390,13 @@ internal static class AnalysisPolicyBuilder {
     }
 
     private static string BuildRulePreviewLimitLine(int rulePreviewItems) {
-        return rulePreviewItems == 0
-            ? "- Rule list display: hidden (policyRulePreviewItems=0)"
-            : $"- Rule list display: up to {rulePreviewItems} items per section";
+        if (rulePreviewItems == 0) {
+            return $"- Rule list display: {AnalysisPolicyFormatting.RulePreviewHiddenValue}";
+        }
+        if (rulePreviewItems == 1) {
+            return "- Rule list display: up to 1 item per section";
+        }
+        return $"- Rule list display: up to {rulePreviewItems} items per section";
     }
 
     private static int ResolveRulePreviewItems(ReviewSettings settings) {

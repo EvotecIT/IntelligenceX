@@ -15,8 +15,8 @@ public static partial class ReviewerApp {
         }
         return
             $"Review context truncated: {string.Join("; ", parts)}. " +
-            "Impact: findings only reflect the included diff context and may miss issues outside it. " +
-            "To expand coverage, increase review.maxFiles and/or review.maxPatchChars.";
+            "Impact: review covers only included diff context; issues outside it may be missed. " +
+            "Increase review.maxFiles/review.maxPatchChars for wider coverage.";
     }
 
     private static string ApplyEmbedPlacement(string reviewBody, string embedBlock, string placement) {

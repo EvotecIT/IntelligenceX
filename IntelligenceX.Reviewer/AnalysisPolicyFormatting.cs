@@ -1,8 +1,10 @@
+using IntelligenceX.Analysis;
+
 namespace IntelligenceX.Reviewer;
 
 internal static class AnalysisPolicyFormatting {
-    internal const int MaxRulePreviewItems = 10;
-    internal const int MaxConfigurableRulePreviewItems = 500;
+    internal const int MaxRulePreviewItems = AnalysisResultsSettings.DefaultPolicyRulePreviewItems;
+    internal const int MaxConfigurableRulePreviewItems = AnalysisResultsSettings.MaxPolicyRulePreviewItems;
     internal const int MaxUnavailableReasonTextElements = 120;
     internal const int MaxRulePreviewTitleTextElements = 80;
     internal const string TruncatedPreviewSuffix = " (truncated)";
@@ -11,7 +13,7 @@ internal static class AnalysisPolicyFormatting {
 
     internal static int NormalizeRulePreviewItems(int value) {
         if (value < 0) {
-            return MaxRulePreviewItems;
+            return 0;
         }
         if (value > MaxConfigurableRulePreviewItems) {
             return MaxConfigurableRulePreviewItems;
