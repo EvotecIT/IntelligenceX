@@ -292,6 +292,38 @@ internal static partial class Program {
         AssertEqual(1, resolved, "auto resolve missing inline empty keys");
     }
 
+    private static void TestAutoResolveMissingInlineGateAllowsEmptySet() {
+        var settings = new ReviewSettings {
+            ReviewThreadsAutoResolveMissingInline = true
+        };
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var shouldRun = CallShouldAutoResolveMissingInlineThreads(settings, context, keys, inlineCommentsCount: 0);
+        AssertEqual(true, shouldRun, "auto resolve missing inline gate empty set");
+    }
+
+    private static void TestAutoResolveMissingInlineGateRejectsNull() {
+        var settings = new ReviewSettings {
+            ReviewThreadsAutoResolveMissingInline = true
+        };
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+        var shouldRun = CallShouldAutoResolveMissingInlineThreads(settings, context, null, inlineCommentsCount: 0);
+        AssertEqual(false, shouldRun, "auto resolve missing inline gate null set");
+    }
+
+    private static void TestAutoResolveMissingInlineGateRejectsEmptyWhenInlineCommentsPresent() {
+        var settings = new ReviewSettings {
+            ReviewThreadsAutoResolveMissingInline = true
+        };
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var shouldRun = CallShouldAutoResolveMissingInlineThreads(settings, context, keys, inlineCommentsCount: 1);
+        AssertEqual(false, shouldRun, "auto resolve missing inline gate empty mapped keys");
+    }
+
     private static void TestReviewRetryTransient() {
         var attempts = 0;
         var result = ReviewRunner.ReviewRetryPolicy.RunAsync(() => {
@@ -506,6 +538,20 @@ internal static partial class Program {
         }
     }
 
+    private static void TestPreflightAuthStatusesAreReachable() {
+        var statuses = new[] {
+            (Code: 401, Reason: "Unauthorized"),
+            (Code: 403, Reason: "Forbidden")
+        };
+        foreach (var status in statuses) {
+            using var server = new LocalHttpServer(_ => new HttpResponse("{}", null, status.Code, status.Reason));
+            var options = new OpenAINativeOptions {
+                ChatGptApiBaseUrl = server.BaseUri.ToString().TrimEnd('/')
+            };
+            CallPreflightNativeConnectivity(options, TimeSpan.FromSeconds(1));
+        }
+    }
+
     private static void TestPreflightNonSuccessStatus() {
         using var server = new LocalHttpServer(_ => new HttpResponse("{}", null, 500, "Server Error"));
         var options = new OpenAINativeOptions {
@@ -517,6 +563,34 @@ internal static partial class Program {
         } catch (HttpRequestException ex) {
             AssertContainsText(ex.Message, "HTTP 500", "preflight non-2xx");
         }
+    }
+
+    private static void TestPreflightDnsFailureMapping() {
+        var httpException = new HttpRequestException("dns failed", new SocketException((int)SocketError.HostNotFound));
+        var mapped = CallMapPreflightConnectivityException(httpException, "example.invalid", TimeSpan.FromSeconds(1), false);
+        AssertNotNull(mapped, "preflight dns mapped");
+        AssertEqual(true, mapped is InvalidOperationException, "preflight dns mapped type");
+        AssertContainsText(mapped!.Message, "DNS resolution", "preflight dns mapped message");
+    }
+
+    private static void TestPreflightSocketFailureMapping() {
+        var httpException = new HttpRequestException("connect failed", new SocketException((int)SocketError.ConnectionRefused));
+        var mapped = CallMapPreflightConnectivityException(httpException, "example.invalid", TimeSpan.FromSeconds(1), false);
+        AssertNotNull(mapped, "preflight socket mapped");
+        AssertEqual(true, mapped is InvalidOperationException, "preflight socket mapped type");
+        AssertContainsText(mapped!.Message, "network connectivity", "preflight socket mapped message");
+    }
+
+    private static void TestPreflightHttpStatusMappingBypass() {
+        var httpException = new HttpRequestException("bad request", null, HttpStatusCode.BadRequest);
+        var mapped = CallMapPreflightConnectivityException(httpException, "example.invalid", TimeSpan.FromSeconds(1), false);
+        AssertEqual<Exception?>(null, mapped, "preflight status mapping bypass");
+    }
+
+    private static void TestPreflightCancellationRequestedMappingBypass() {
+        var httpException = new HttpRequestException("cancelled", new TaskCanceledException("cancelled"));
+        var mapped = CallMapPreflightConnectivityException(httpException, "example.invalid", TimeSpan.FromSeconds(1), true);
+        AssertEqual<Exception?>(null, mapped, "preflight cancellation mapping bypass");
     }
 
     private static void TestReviewConfigValidatorAllowsAdditionalProperties() {
