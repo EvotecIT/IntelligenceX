@@ -38,21 +38,23 @@ internal static partial class SetupRunner {
         return PlanWrite(path, existingContent, upgraded, options.Force);
     }
 
-    private static FilePlan PlanConfigChange(SetupOptions options, string? existingContent) {
-        var path = ".intelligencex/config.json";
+    private static FilePlan PlanConfigChange(SetupOptions options, string? existingReviewerContent, string? seedContent) {
+        // Reviewer config is consumed by IntelligenceX.Reviewer at runtime.
+        // `.intelligencex/config.json` is reserved for the .NET library/app-server client config.
+        var path = ".intelligencex/reviewer.json";
         var overrideContent = ReadConfigOverride(options);
         if (!string.IsNullOrWhiteSpace(overrideContent)) {
-            return PlanWrite(path, existingContent, overrideContent, options.Force);
+            return PlanWrite(path, existingReviewerContent, overrideContent, options.Force);
         }
-        var settings = ResolveConfigSettings(options, existingContent, out var parsed);
-        if (!parsed && !options.Force && !string.IsNullOrWhiteSpace(existingContent)) {
+        var settings = ResolveConfigSettings(options, seedContent, out var parsed);
+        if (!parsed && !options.Force && !string.IsNullOrWhiteSpace(seedContent)) {
             return FilePlan.Skip(path, "Config exists but could not be parsed (use --force to overwrite)");
         }
 
-        var content = !string.IsNullOrWhiteSpace(existingContent) && parsed
-            ? MergeConfigJson(existingContent, settings)
+        var content = !string.IsNullOrWhiteSpace(seedContent) && parsed
+            ? MergeConfigJson(seedContent, settings)
             : BuildConfigJson(settings);
-        return PlanWrite(path, existingContent, content, options.Force);
+        return PlanWrite(path, existingReviewerContent, content, options.Force);
     }
 
     private static string? ReadConfigOverride(SetupOptions options) {
@@ -226,7 +228,7 @@ internal static partial class SetupRunner {
             ["review"] = new JsonObject {
                 ["provider"] = settings.Provider,
                 ["openaiTransport"] = settings.OpenAITransport,
-                ["openaiModel"] = settings.OpenAIModel,
+                ["model"] = settings.OpenAIModel,
                 ["profile"] = settings.Profile,
                 ["mode"] = settings.Mode,
                 ["commentMode"] = settings.CommentMode,
@@ -248,7 +250,7 @@ internal static partial class SetupRunner {
         var review = node["review"] as JsonObject ?? new JsonObject();
         review["provider"] = settings.Provider;
         review["openaiTransport"] = settings.OpenAITransport;
-        review["openaiModel"] = settings.OpenAIModel;
+        review["model"] = settings.OpenAIModel;
         review["profile"] = settings.Profile;
         review["mode"] = settings.Mode;
         review["commentMode"] = settings.CommentMode;
@@ -482,7 +484,7 @@ internal static partial class SetupRunner {
             if (review is not null) {
                 snapshot.Provider = ReadJsonString(review, "provider");
                 snapshot.OpenAITransport = ReadJsonString(review, "openaiTransport");
-                snapshot.OpenAIModel = ReadJsonString(review, "openaiModel");
+                snapshot.OpenAIModel = ReadJsonString(review, "model") ?? ReadJsonString(review, "openaiModel");
                 snapshot.Profile = ReadJsonString(review, "profile");
                 snapshot.Mode = ReadJsonString(review, "mode");
                 snapshot.CommentMode = ReadJsonString(review, "commentMode");
@@ -577,7 +579,7 @@ internal static partial class SetupRunner {
         Console.WriteLine("  --cleanup-min-confidence <0-1>");
         Console.WriteLine("  --cleanup-allowed-edits <comma-list>");
         Console.WriteLine("  --cleanup-post-edit-comment <true|false>");
-        Console.WriteLine("  --with-config (also write .intelligencex/config.json)");
+        Console.WriteLine("  --with-config (also write .intelligencex/reviewer.json)");
         Console.WriteLine("  --upgrade (update managed sections instead of skipping)");
         Console.WriteLine("  --update-secret (refresh INTELLIGENCEX_AUTH_B64 only)");
         Console.WriteLine("  --skip-secret (skip secret update during setup)");

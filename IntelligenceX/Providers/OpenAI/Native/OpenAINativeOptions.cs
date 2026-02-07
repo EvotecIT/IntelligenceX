@@ -26,6 +26,13 @@ public sealed class OpenAINativeOptions {
     public IAuthBundleStore AuthStore { get; set; } = new FileAuthBundleStore();
 
     /// <summary>
+    /// Optional ChatGPT account id to use when multiple bundles are present in the auth store.
+    /// When set, native transport will load the bundle for this account id.
+    /// </summary>
+    public string? AuthAccountId { get; set; } =
+        Environment.GetEnvironmentVariable("INTELLIGENCEX_OPENAI_ACCOUNT_ID");
+
+    /// <summary>
     /// Endpoint for responses in the native transport.
     /// </summary>
     public string ResponsesUrl { get; set; } = "https://chatgpt.com/backend-api/codex/responses";
@@ -124,6 +131,14 @@ public sealed class OpenAINativeOptions {
         }
         if (string.IsNullOrWhiteSpace(Instructions)) {
             throw new ArgumentException("Instructions cannot be null or whitespace.", nameof(Instructions));
+        }
+        // Use a local to keep nullable flow analysis happy for older TFMs (netstandard2.0/net472).
+        var authAccountId = AuthAccountId;
+        if (authAccountId is null) {
+            AuthAccountId = null;
+        } else {
+            var trimmed = authAccountId.Trim();
+            AuthAccountId = string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
         }
         if (OAuthTimeout <= TimeSpan.Zero) {
             throw new ArgumentOutOfRangeException(nameof(OAuthTimeout), "OAuthTimeout must be positive.");

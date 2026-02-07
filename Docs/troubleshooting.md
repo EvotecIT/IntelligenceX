@@ -23,8 +23,8 @@ Token or app permissions are insufficient.
 ### Copilot Authentication Fails
 
 1. Verify Copilot access at [github.com/settings/copilot](https://github.com/settings/copilot)
-2. Run `intelligencex auth login --provider copilot`
-3. Complete device flow in browser
+2. Install GitHub Copilot CLI (for example `brew install copilot-cli` or `winget install GitHub.Copilot`)
+3. Run `copilot` and use the `/login` slash command (first run), then retry the reviewer
 
 ## Rate Limits
 

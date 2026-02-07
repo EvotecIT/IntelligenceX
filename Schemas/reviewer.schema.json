@@ -33,6 +33,8 @@
         "reviewUsageSummaryTimeoutSeconds": { "type": "integer", "minimum": 1 },
         "structuredFindings": { "type": "boolean" },
         "openaiTransport": { "type": "string", "enum": ["native", "appserver"] },
+        "openaiAccountId": { "type": "string" },
+        "authAccountId": { "type": "string" },
         "commentMode": { "type": "string", "enum": ["sticky", "fresh"] },
         "includeIssueComments": { "type": "boolean" },
         "includeReviewComments": { "type": "boolean" },

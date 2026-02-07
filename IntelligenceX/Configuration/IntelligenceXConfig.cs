@@ -142,6 +142,10 @@ public sealed class OpenAIConfig {
     /// </summary>
     public string? ChatGptApiBaseUrl { get; set; }
     /// <summary>
+    /// Optional ChatGPT account id to use when multiple bundles exist in the auth store.
+    /// </summary>
+    public string? AuthAccountId { get; set; }
+    /// <summary>
     /// Default system instructions for native sessions.
     /// </summary>
     public string? Instructions { get; set; }
@@ -202,6 +206,7 @@ public sealed class OpenAIConfig {
         Originator = obj.GetString("originator") ?? Originator;
         ResponsesUrl = obj.GetString("responsesUrl") ?? ResponsesUrl;
         ChatGptApiBaseUrl = obj.GetString("chatGptApiBaseUrl") ?? obj.GetString("chatgptApiBaseUrl") ?? ChatGptApiBaseUrl;
+        AuthAccountId = obj.GetString("authAccountId") ?? obj.GetString("openaiAccountId") ?? obj.GetString("openAiAccountId") ?? AuthAccountId;
         Instructions = obj.GetString("instructions") ?? Instructions;
         TextVerbosity = obj.GetString("textVerbosity") ?? TextVerbosity;
         AppServerPath = obj.GetString("appServerPath") ?? AppServerPath;
@@ -246,6 +251,9 @@ public sealed class OpenAIConfig {
         }
         if (!string.IsNullOrWhiteSpace(ChatGptApiBaseUrl)) {
             options.NativeOptions.ChatGptApiBaseUrl = ChatGptApiBaseUrl!;
+        }
+        if (!string.IsNullOrWhiteSpace(AuthAccountId)) {
+            options.NativeOptions.AuthAccountId = AuthAccountId!;
         }
         if (!string.IsNullOrWhiteSpace(Instructions)) {
             options.NativeOptions.Instructions = Instructions!;
@@ -322,6 +330,9 @@ public sealed class OpenAIConfig {
         }
         if (!string.IsNullOrWhiteSpace(ChatGptApiBaseUrl)) {
             options.NativeOptions.ChatGptApiBaseUrl = ChatGptApiBaseUrl!;
+        }
+        if (!string.IsNullOrWhiteSpace(AuthAccountId)) {
+            options.NativeOptions.AuthAccountId = AuthAccountId!;
         }
         if (!string.IsNullOrWhiteSpace(Instructions)) {
             options.NativeOptions.Instructions = Instructions!;
@@ -447,5 +458,4 @@ public sealed class CopilotConfig {
         return value.AsBoolean();
     }
 }
-
 

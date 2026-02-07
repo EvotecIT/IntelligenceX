@@ -121,6 +121,10 @@ internal sealed partial class ReviewSettings {
         if (!string.IsNullOrWhiteSpace(transport)) {
             settings.OpenAITransport = ParseTransport(transport);
         }
+        var openAiAccountId = GetInput("openai_account_id", "REVIEW_OPENAI_ACCOUNT_ID", "INTELLIGENCEX_OPENAI_ACCOUNT_ID");
+        if (!string.IsNullOrWhiteSpace(openAiAccountId)) {
+            settings.OpenAiAccountId = openAiAccountId;
+        }
 
         var overwriteSummary = GetInput("overwrite_summary", "OVERWRITE_SUMMARY");
         if (!string.IsNullOrWhiteSpace(overwriteSummary)) {

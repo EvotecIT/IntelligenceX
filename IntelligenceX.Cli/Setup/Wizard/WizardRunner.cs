@@ -547,8 +547,19 @@ internal static class WizardRunner {
                 state.ConfigSourceLabel = null;
                 return;
             }
-            var (content, branch) = await TryLoadRepoFileAsync(state, repo, ".intelligencex/config.json")
+            state.ConfigSourceLabel = "loaded from repo";
+            string? content;
+            string? branch;
+            (content, branch) = await TryLoadRepoFileAsync(state, repo, ".intelligencex/reviewer.json")
                 .ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(content)) {
+                // Backward compatibility: older setup flows wrote reviewer settings into `.intelligencex/config.json`.
+                (content, branch) = await TryLoadRepoFileAsync(state, repo, ".intelligencex/config.json")
+                    .ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(content)) {
+                    state.ConfigSourceLabel = "loaded from repo (legacy config.json)";
+                }
+            }
             if (string.IsNullOrWhiteSpace(content)) {
                 AnsiConsole.MarkupLine("[yellow]Config not found in default branch.[/]");
                 state.WithConfig = false;

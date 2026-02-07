@@ -37,7 +37,7 @@ The CLI prints the base64 auth store for manual paste into GitHub secrets.
 ## What the tool changes
 
 - Adds or updates `.github/workflows/review-intelligencex.yml`
-- Optionally adds `.intelligencex/config.json`
+- Optionally adds `.intelligencex/reviewer.json`
 
 All changes are made via PRs by default.
 

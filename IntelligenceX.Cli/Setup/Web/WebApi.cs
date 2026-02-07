@@ -175,8 +175,15 @@ internal sealed class WebApi {
                     var defaultBranch = await client.GetDefaultBranchAsync(owner, name).ConfigureAwait(false);
                     var workflow = await client.TryGetFileAsync(owner, name, ".github/workflows/review-intelligencex.yml", defaultBranch)
                         .ConfigureAwait(false);
-                    var config = await client.TryGetFileAsync(owner, name, ".intelligencex/config.json", defaultBranch)
+                    var config = await client.TryGetFileAsync(owner, name, ".intelligencex/reviewer.json", defaultBranch)
                         .ConfigureAwait(false);
+                    GitHubRepoClient.RepoFile? legacyConfig = null;
+                    if (config is null) {
+                        legacyConfig = await client.TryGetFileAsync(owner, name, ".intelligencex/config.json", defaultBranch)
+                            .ConfigureAwait(false);
+                    }
+                    var hasReviewerConfig = config is not null ||
+                                           (legacyConfig is not null && LooksLikeReviewerConfig(legacyConfig.Content));
 
                     var managed = workflow?.Content?.Contains("INTELLIGENCEX:BEGIN", StringComparison.Ordinal) ?? false;
                     results.Add(new RepoStatusResponse {
@@ -184,7 +191,7 @@ internal sealed class WebApi {
                         DefaultBranch = defaultBranch,
                         WorkflowExists = workflow is not null,
                         WorkflowManaged = managed,
-                        ConfigExists = config is not null
+                        ConfigExists = hasReviewerConfig
                     });
                 } catch (Exception ex) {
                     results.Add(new RepoStatusResponse { Repo = repo, Error = ex.Message });
@@ -224,12 +231,18 @@ internal sealed class WebApi {
         try {
             using var client = new GitHubRepoClient(request.Token!, apiBaseUrl);
             var defaultBranch = await client.GetDefaultBranchAsync(owner, name).ConfigureAwait(false);
-            var config = await client.TryGetFileAsync(owner, name, ".intelligencex/config.json", defaultBranch)
+            var config = await client.TryGetFileAsync(owner, name, ".intelligencex/reviewer.json", defaultBranch)
                 .ConfigureAwait(false);
             if (config is null) {
-                context.Response.StatusCode = 404;
-                await WriteJsonAsync(context, new { error = "Config not found in default branch." }).ConfigureAwait(false);
-                return;
+                // Backward compatibility: older setup flows wrote reviewer settings into `.intelligencex/config.json`.
+                var legacyConfig = await client.TryGetFileAsync(owner, name, ".intelligencex/config.json", defaultBranch)
+                    .ConfigureAwait(false);
+                if (legacyConfig is null || !LooksLikeReviewerConfig(legacyConfig.Content)) {
+                    context.Response.StatusCode = 404;
+                    await WriteJsonAsync(context, new { error = "Config not found in default branch." }).ConfigureAwait(false);
+                    return;
+                }
+                config = legacyConfig;
             }
 
             await WriteJsonAsync(context, new {
@@ -239,6 +252,30 @@ internal sealed class WebApi {
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
             await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+        }
+    }
+
+    private static bool LooksLikeReviewerConfig(string json) {
+        if (string.IsNullOrWhiteSpace(json)) {
+            return false;
+        }
+        try {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) {
+                return false;
+            }
+            if (root.TryGetProperty("review", out var review) && review.ValueKind == JsonValueKind.Object) {
+                return true;
+            }
+            if (root.TryGetProperty("provider", out _) ||
+                root.TryGetProperty("model", out _) ||
+                root.TryGetProperty("openaiModel", out _)) {
+                return true;
+            }
+            return false;
+        } catch {
+            return false;
         }
     }
 
@@ -473,7 +510,7 @@ internal sealed class WebApi {
         if (!request.SkipSecret && !request.Cleanup && !request.UpdateSecret && !hasAuthBundle) {
             context.Response.StatusCode = 400;
             await WriteJsonAsync(context, new {
-                error = "Web UI cannot perform OpenAI login yet. Provide authB64/authB64Path or set skipSecret=true."
+                error = "Missing OpenAI auth bundle. Click 'Sign in with ChatGPT', provide authB64/authB64Path, or set skipSecret=true."
             }).ConfigureAwait(false);
             return;
         }
@@ -1222,4 +1259,3 @@ internal sealed class WebApi {
         return true;
     }
 }
-

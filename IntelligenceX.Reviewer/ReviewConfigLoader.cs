@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using IntelligenceX.Analysis;
 using IntelligenceX.Copilot;
+using IntelligenceX.OpenAI;
 using IntelligenceX.Json;
 
 namespace IntelligenceX.Reviewer;
@@ -89,7 +90,16 @@ internal static class ReviewConfigLoader {
         settings.Tone = obj.GetString("tone") ?? settings.Tone;
         settings.Persona = obj.GetString("persona") ?? settings.Persona;
         settings.Notes = obj.GetString("notes") ?? settings.Notes;
-        settings.Model = obj.GetString("model") ?? settings.Model;
+        settings.Model = obj.GetString("model") ?? obj.GetString("openaiModel") ?? obj.GetString("openAiModel") ?? settings.Model;
+        var openAiTransport = obj.GetString("openaiTransport") ?? obj.GetString("openAiTransport") ?? obj.GetString("openai_transport");
+        if (!string.IsNullOrWhiteSpace(openAiTransport)) {
+            settings.OpenAITransport = ParseOpenAiTransport(openAiTransport, settings.OpenAITransport);
+        }
+        settings.OpenAiAccountId =
+            obj.GetString("openaiAccountId")
+            ?? obj.GetString("openAiAccountId")
+            ?? obj.GetString("authAccountId")
+            ?? settings.OpenAiAccountId;
         var reviewDiffRange = obj.GetString("reviewDiffRange");
         if (!string.IsNullOrWhiteSpace(reviewDiffRange)) {
             settings.ReviewDiffRange = ReviewSettings.NormalizeDiffRange(reviewDiffRange, settings.ReviewDiffRange);
@@ -115,6 +125,15 @@ internal static class ReviewConfigLoader {
         settings.OutputStyle = obj.GetString("outputStyle") ?? settings.OutputStyle;
         settings.SummaryTemplate = obj.GetString("summaryTemplate") ?? settings.SummaryTemplate;
         settings.SummaryTemplatePath = obj.GetString("summaryTemplatePath") ?? settings.SummaryTemplatePath;
+    }
+
+    private static OpenAITransportKind ParseOpenAiTransport(string value, OpenAITransportKind fallback) {
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "native" => OpenAITransportKind.Native,
+            "appserver" or "app-server" or "codex" => OpenAITransportKind.AppServer,
+            _ => fallback
+        };
     }
 
     private static void ApplyLists(JsonObject obj, ReviewSettings settings) {
