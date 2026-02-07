@@ -21,6 +21,7 @@ internal static class AnalyzeRunner {
             "export-config" => ExportConfigAsync(rest),
             "list-packs" => ListPacksAsync(rest),
             "list-rules" => ListRulesAsync(rest),
+            "validate-catalog" => ValidateCatalogAsync(rest),
             _ => Task.FromResult(PrintHelpReturn())
         };
     }
@@ -102,6 +103,19 @@ internal static class AnalyzeRunner {
         return Task.FromResult(0);
     }
 
+    private static Task<int> ValidateCatalogAsync(string[] args) {
+        var workspace = ResolveWorkspace(ParseWorkspace(args));
+        var validation = AnalysisCatalogValidator.ValidateWorkspace(workspace);
+        Console.WriteLine(validation.BuildSummary());
+        foreach (var warning in validation.Warnings) {
+            Console.WriteLine($"Warning: {warning}");
+        }
+        foreach (var error in validation.Errors) {
+            Console.WriteLine($"Error: {error}");
+        }
+        return Task.FromResult(validation.IsValid ? 0 : 1);
+    }
+
     private static (string? configPath, string? outputDir, string? workspace) ParseExportArgs(string[] args) {
         string? config = null;
         string? output = null;
@@ -162,6 +176,7 @@ internal static class AnalyzeRunner {
         Console.WriteLine("  intelligencex analyze export-config --out <dir> [--config <path>] [--workspace <path>]");
         Console.WriteLine("  intelligencex analyze list-packs [--workspace <path>]");
         Console.WriteLine("  intelligencex analyze list-rules [--workspace <path>]");
+        Console.WriteLine("  intelligencex analyze validate-catalog [--workspace <path>]");
     }
 
     private static int PrintHelpReturn() {

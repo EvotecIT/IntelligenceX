@@ -108,9 +108,10 @@ public static class AnalysisCatalogLoader {
                 return null;
             }
             var rules = AnalysisJsonHelpers.ReadStringList(obj, "rules") ?? Array.Empty<string>();
+            var includes = AnalysisJsonHelpers.ReadStringList(obj, "includes") ?? Array.Empty<string>();
             var overrides = AnalysisJsonHelpers.ReadStringMap(obj, "severityOverrides") ??
                 new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            return new AnalysisPack(id!, label!, description, rules, overrides, path);
+            return new AnalysisPack(id!, label!, description, rules, overrides, path, includes);
         } catch {
             return null;
         }

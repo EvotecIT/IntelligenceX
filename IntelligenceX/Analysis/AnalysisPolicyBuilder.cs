@@ -27,12 +27,7 @@ public static class AnalysisPolicyBuilder {
             .Select(value => value.Trim()),
             StringComparer.OrdinalIgnoreCase);
 
-        foreach (var packId in settings.Packs ?? Array.Empty<string>()) {
-            if (!catalog.TryGetPack(packId, out var pack)) {
-                warnings.Add($"Pack not found: {packId}");
-                continue;
-            }
-
+        foreach (var pack in ResolveConfiguredPacks(settings.Packs, catalog, warnings)) {
             foreach (var configuredRuleId in pack.Rules ?? Array.Empty<string>()) {
                 if (string.IsNullOrWhiteSpace(configuredRuleId)) {
                     continue;
@@ -45,13 +40,10 @@ public static class AnalysisPolicyBuilder {
                     continue;
                 }
 
-                var severity = rule.DefaultSeverity;
-                if (TryResolveOverride(pack.SeverityOverrides, rule, out var packSeverity)) {
-                    severity = packSeverity;
-                }
-
-                selected[rule.Id] = new AnalysisPolicyRule(rule, severity);
+                selected[rule.Id] = new AnalysisPolicyRule(rule, rule.DefaultSeverity);
             }
+
+            ApplyOverrides(selected, pack.SeverityOverrides);
         }
 
         foreach (var overrideEntry in settings.SeverityOverrides ??
@@ -76,32 +68,78 @@ public static class AnalysisPolicyBuilder {
         return new AnalysisPolicy(selected, warnings);
     }
 
-    private static bool TryResolveOverride(IReadOnlyDictionary<string, string>? overrides, AnalysisRule rule,
-        out string severity) {
-        severity = string.Empty;
-        if (overrides is null || overrides.Count == 0 || rule is null) {
-            return false;
+    private static IReadOnlyList<AnalysisPack> ResolveConfiguredPacks(IReadOnlyList<string>? configuredPackIds,
+        AnalysisCatalog catalog, ICollection<string> warnings) {
+        var ordered = new List<AnalysisPack>();
+        if (configuredPackIds is null || configuredPackIds.Count == 0) {
+            return ordered;
         }
-        if (TryReadOverride(overrides, rule.Id, out severity)) {
-            return true;
+
+        var resolved = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var visiting = new List<string>();
+        foreach (var configuredPackId in configuredPackIds) {
+            if (string.IsNullOrWhiteSpace(configuredPackId)) {
+                continue;
+            }
+            AddPackAndIncludes(configuredPackId.Trim(), parentPackId: null, catalog, warnings, visiting, resolved, ordered);
         }
-        var toolRuleId = rule.ToolRuleId;
-        if (!string.IsNullOrWhiteSpace(toolRuleId) && TryReadOverride(overrides, toolRuleId, out severity)) {
-            return true;
-        }
-        return false;
+        return ordered;
     }
 
-    private static bool TryReadOverride(IReadOnlyDictionary<string, string> overrides, string key, out string severity) {
-        severity = string.Empty;
-        if (string.IsNullOrWhiteSpace(key)) {
-            return false;
+    private static void AddPackAndIncludes(string packId, string? parentPackId, AnalysisCatalog catalog,
+        ICollection<string> warnings, IList<string> visiting, ISet<string> resolved, ICollection<AnalysisPack> ordered) {
+        if (string.IsNullOrWhiteSpace(packId)) {
+            return;
         }
-        if (!overrides.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value)) {
-            return false;
+        if (resolved.Contains(packId)) {
+            return;
         }
-        severity = value;
-        return true;
+
+        var cycleIndex = IndexOf(visiting, packId);
+        if (cycleIndex >= 0) {
+            var cycle = new List<string>();
+            for (var i = cycleIndex; i < visiting.Count; i++) {
+                cycle.Add(visiting[i]);
+            }
+            cycle.Add(packId);
+            warnings.Add($"Pack include cycle detected: {string.Join(" -> ", cycle)}");
+            return;
+        }
+
+        if (!catalog.TryGetPack(packId, out var pack)) {
+            if (string.IsNullOrWhiteSpace(parentPackId)) {
+                warnings.Add($"Pack not found: {packId}");
+            } else {
+                warnings.Add($"Included pack not found: {packId} (from {parentPackId})");
+            }
+            return;
+        }
+
+        visiting.Add(pack.Id);
+        foreach (var includeId in pack.Includes ?? Array.Empty<string>()) {
+            if (string.IsNullOrWhiteSpace(includeId)) {
+                continue;
+            }
+            AddPackAndIncludes(includeId.Trim(), pack.Id, catalog, warnings, visiting, resolved, ordered);
+        }
+        visiting.RemoveAt(visiting.Count - 1);
+
+        if (!resolved.Add(pack.Id)) {
+            return;
+        }
+        ordered.Add(pack);
+    }
+
+    private static int IndexOf(IList<string> values, string value) {
+        if (values is null || values.Count == 0 || string.IsNullOrWhiteSpace(value)) {
+            return -1;
+        }
+        for (var i = 0; i < values.Count; i++) {
+            if (value.Equals(values[i], StringComparison.OrdinalIgnoreCase)) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private static bool IsRuleDisabled(ISet<string> disabled, AnalysisRule rule) {
@@ -126,5 +164,29 @@ public static class AnalysisPolicyBuilder {
             return true;
         }
         return false;
+    }
+
+    private static void ApplyOverrides(IDictionary<string, AnalysisPolicyRule> selected,
+        IReadOnlyDictionary<string, string>? overrides) {
+        if (selected is null || selected.Count == 0 || overrides is null || overrides.Count == 0) {
+            return;
+        }
+
+        var selectedRuleIds = selected.Keys.ToList();
+        foreach (var overrideEntry in overrides) {
+            if (string.IsNullOrWhiteSpace(overrideEntry.Key) || string.IsNullOrWhiteSpace(overrideEntry.Value)) {
+                continue;
+            }
+
+            foreach (var selectedRuleId in selectedRuleIds) {
+                if (!selected.TryGetValue(selectedRuleId, out var existing) || existing?.Rule is null) {
+                    continue;
+                }
+                if (!IsRuleMatch(overrideEntry.Key, existing.Rule)) {
+                    continue;
+                }
+                selected[selectedRuleId] = new AnalysisPolicyRule(existing.Rule, overrideEntry.Value);
+            }
+        }
     }
 }
