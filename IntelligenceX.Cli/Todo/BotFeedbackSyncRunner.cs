@@ -14,6 +14,8 @@ namespace IntelligenceX.Cli.Todo;
 internal static class BotFeedbackSyncRunner {
     private static readonly Regex TaskLine = new(@"^\s*[-*]\s+\[(?<state>[ xX])\]\s+(?<text>.+?)\s*$",
         RegexOptions.Compiled);
+    private static readonly Regex TodoTaskLine = new(@"^\s*-\s+\[(?<state>[ xX])\]\s+(?<text>.+?)\s*$",
+        RegexOptions.Compiled);
 
     private sealed record TaskItem(bool Checked, string Text, string Url);
     private sealed record PrTasks(int Number, string Title, string Url, IReadOnlyList<TaskItem> Tasks);
@@ -329,7 +331,9 @@ query($owner: String!, $name: String!, $n: Int!) {
 
         var text = section;
         foreach (var pr in prs) {
-            var block = RenderPrBlock(pr);
+            var existing = TryParseExistingPrBlock(text, pr.Number);
+            var merged = MergeTasks(existing, pr);
+            var block = RenderPrBlock(merged);
             var pattern = new Regex(
                 @$"(?s)<details>\s*\n<summary>PR\s*#\s*{pr.Number}\b.*?\n</details>\s*\n",
                 RegexOptions.Compiled);
@@ -349,6 +353,109 @@ query($owner: String!, $name: String!, $n: Int!) {
         return text;
     }
 
+    private sealed record ExistingPrBlock(int Number, IReadOnlyList<TaskItem> Tasks);
+
+    private static ExistingPrBlock? TryParseExistingPrBlock(string section, int prNumber) {
+        var pattern = new Regex(
+            @$"(?s)<details>\s*\n<summary>PR\s*#\s*{prNumber}\b.*?\n</details>\s*\n",
+            RegexOptions.Compiled);
+        var match = pattern.Match(section);
+        if (!match.Success) {
+            return null;
+        }
+
+        var tasks = new List<TaskItem>();
+        foreach (var line in match.Value.Split('\n')) {
+            var m = TodoTaskLine.Match(line);
+            if (!m.Success) {
+                continue;
+            }
+            var state = m.Groups["state"].Value;
+            var text = m.Groups["text"].Value.Trim();
+            if (string.IsNullOrWhiteSpace(text)) {
+                continue;
+            }
+
+            // We render as: "- [ ] <text>. Links: <url>"
+            // Preserve anything before ". Links:" as task text key; keep URL if present.
+            var url = string.Empty;
+            var marker = ". Links:";
+            var markerIndex = text.LastIndexOf(marker, StringComparison.Ordinal);
+            if (markerIndex >= 0) {
+                url = text.Substring(markerIndex + marker.Length).Trim();
+                text = text.Substring(0, markerIndex).TrimEnd();
+            }
+
+            var isChecked = state.Equals("x", StringComparison.OrdinalIgnoreCase);
+            tasks.Add(new TaskItem(isChecked, text, url));
+        }
+        return new ExistingPrBlock(prNumber, tasks);
+    }
+
+    private static PrTasks MergeTasks(ExistingPrBlock? existing, PrTasks current) {
+        if (existing is null || existing.Tasks.Count == 0) {
+            // De-dup current tasks by text; OR checked for repeated occurrences.
+            var dedup = new Dictionary<string, TaskItem>(StringComparer.Ordinal);
+            foreach (var t in current.Tasks) {
+                if (!dedup.TryGetValue(t.Text, out var seen)) {
+                    dedup[t.Text] = t;
+                } else {
+                    dedup[t.Text] = new TaskItem(seen.Checked || t.Checked, t.Text, string.IsNullOrWhiteSpace(seen.Url) ? t.Url : seen.Url);
+                }
+            }
+            return current with { Tasks = dedup.Values.ToList() };
+        }
+
+        // Build a map of existing TODO items by text so manual checking in TODO.md is preserved.
+        var existingByText = new Dictionary<string, TaskItem>(StringComparer.OrdinalIgnoreCase);
+        foreach (var t in existing.Tasks) {
+            if (string.IsNullOrWhiteSpace(t.Text)) {
+                continue;
+            }
+            if (!existingByText.TryGetValue(t.Text, out var seen)) {
+                existingByText[t.Text] = t;
+            } else {
+                existingByText[t.Text] = new TaskItem(seen.Checked || t.Checked, t.Text, string.IsNullOrWhiteSpace(seen.Url) ? t.Url : seen.Url);
+            }
+        }
+
+        var mergedByText = new Dictionary<string, TaskItem>(StringComparer.OrdinalIgnoreCase);
+
+        // Start with existing tasks to preserve manual edits.
+        foreach (var kvp in existingByText) {
+            mergedByText[kvp.Key] = kvp.Value;
+        }
+
+        // Merge in current bot tasks: never downgrade checked -> unchecked.
+        foreach (var t in current.Tasks) {
+            if (string.IsNullOrWhiteSpace(t.Text)) {
+                continue;
+            }
+            if (!mergedByText.TryGetValue(t.Text, out var prev)) {
+                mergedByText[t.Text] = t;
+                continue;
+            }
+            var url = !string.IsNullOrWhiteSpace(prev.Url) ? prev.Url : t.Url;
+            mergedByText[t.Text] = new TaskItem(prev.Checked || t.Checked, t.Text, url);
+        }
+
+        // Stable ordering: keep existing order first, then new tasks.
+        var ordered = new List<TaskItem>();
+        var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var t in existing.Tasks) {
+            if (mergedByText.TryGetValue(t.Text, out var merged) && seenKeys.Add(merged.Text)) {
+                ordered.Add(merged);
+            }
+        }
+        foreach (var t in current.Tasks) {
+            if (mergedByText.TryGetValue(t.Text, out var merged) && seenKeys.Add(merged.Text)) {
+                ordered.Add(merged);
+            }
+        }
+
+        return current with { Tasks = ordered };
+    }
+
     private static int FindInsertPoint(string section) {
         var firstDetails = section.IndexOf("<details>", StringComparison.Ordinal);
         if (firstDetails >= 0) {
@@ -366,7 +473,11 @@ query($owner: String!, $name: String!, $n: Int!) {
         sb.AppendLine();
         foreach (var t in pr.Tasks) {
             var state = t.Checked ? "x" : " ";
-            sb.AppendLine($"- [{state}] {t.Text}. Links: {t.Url}");
+            if (string.IsNullOrWhiteSpace(t.Url)) {
+                sb.AppendLine($"- [{state}] {t.Text}");
+            } else {
+                sb.AppendLine($"- [{state}] {t.Text}. Links: {t.Url}");
+            }
         }
         sb.AppendLine("</details>");
         sb.AppendLine();

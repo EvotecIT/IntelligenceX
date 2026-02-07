@@ -8,7 +8,7 @@ internal static class TodoRunner {
     public static Task<int> RunAsync(string[] args) {
         if (args.Length == 0 || IsHelp(args[0])) {
             PrintHelp();
-            return Task.FromResult(1);
+            return Task.FromResult(0);
         }
         var command = args[0].ToLowerInvariant();
         var rest = args.Skip(1).ToArray();
@@ -36,4 +36,3 @@ internal static class TodoRunner {
         Console.WriteLine("Use `intelligencex todo sync-bot-feedback --help` for options.");
     }
 }
-

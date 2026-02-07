@@ -14,7 +14,7 @@ internal static partial class Program {
             outWriter.Flush();
             errWriter.Flush();
             var output = outWriter.ToString() + errWriter.ToString();
-            AssertEqual(1, exitCode, "todo help exit");
+            AssertEqual(0, exitCode, "todo help exit");
             AssertContainsText(output, "TODO commands:", "todo help header");
             AssertContainsText(output, "sync-bot-feedback", "todo help includes command");
         } finally {
@@ -24,4 +24,3 @@ internal static partial class Program {
     }
 #endif
 }
-
