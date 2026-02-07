@@ -286,15 +286,17 @@ internal static partial class Program {
 
     private static void TestAutoResolveStaleThreadsSmoke() {
         var resolved = 0;
+        var resolvePayloadObserved = false;
         var resolvedThreadIdObserved = false;
         using var server = new LocalHttpServer(request => {
             if (!request.Path.Equals("/graphql", StringComparison.OrdinalIgnoreCase)) {
                 return null;
             }
-            if (!request.Body.Contains("resolveReviewThread", StringComparison.Ordinal)) {
+            if (!TryGetResolveThreadIdFromGraphQlPayload(request.Body, out var threadId)) {
                 return null;
             }
-            resolvedThreadIdObserved = request.Body.Contains("thread-old", StringComparison.Ordinal);
+            resolvePayloadObserved = true;
+            resolvedThreadIdObserved = string.Equals(threadId, "thread-old", StringComparison.Ordinal);
             resolved++;
             return new HttpResponse("{\"data\":{\"resolveReviewThread\":{\"thread\":{\"id\":\"thread-old\",\"isResolved\":true}}}}");
         });
@@ -315,17 +317,22 @@ internal static partial class Program {
 
         CallAutoResolveStaleThreads(github, threads, settings);
         AssertEqual(1, resolved, "stale auto-resolve smoke");
+        AssertEqual(true, resolvePayloadObserved, "stale auto-resolve payload observed");
         AssertEqual(true, resolvedThreadIdObserved, "stale auto-resolve targets thread-old");
     }
 
     private static void TestAutoResolveMissingInlineEmptyKeys() {
         var resolved = 0;
+        var resolvePayloadObserved = false;
+        var resolvedThreadIdObserved = false;
         var inlineBody = $"{ReviewFormatter.InlineMarker}\nFix it.";
         using var server = new LocalHttpServer(request => {
             if (!request.Path.Equals("/graphql", StringComparison.OrdinalIgnoreCase)) {
                 return null;
             }
-            if (request.Body.Contains("resolveReviewThread", StringComparison.Ordinal)) {
+            if (TryGetResolveThreadIdFromGraphQlPayload(request.Body, out var threadId)) {
+                resolvePayloadObserved = true;
+                resolvedThreadIdObserved = string.Equals(threadId, "thread1", StringComparison.Ordinal);
                 resolved++;
                 return new HttpResponse("{\"data\":{\"resolveReviewThread\":{\"thread\":{\"id\":\"thread1\",\"isResolved\":true}}}}");
             }
@@ -344,6 +351,47 @@ internal static partial class Program {
 
         CallAutoResolveMissingInlineThreads(github, context, new HashSet<string>(StringComparer.OrdinalIgnoreCase), settings);
         AssertEqual(1, resolved, "auto resolve missing inline empty keys");
+        AssertEqual(true, resolvePayloadObserved, "auto resolve missing inline payload observed");
+        AssertEqual(true, resolvedThreadIdObserved, "auto resolve missing inline targets thread1");
+    }
+
+    private static void TestResolveThreadPayloadParserRejectsInvalidJson() {
+        var emptyPayloadResult = TryGetResolveThreadIdFromGraphQlPayload(string.Empty, out var emptyPayloadThreadId);
+        AssertEqual(false, emptyPayloadResult, "resolve payload empty rejected");
+        AssertEqual<string?>(null, emptyPayloadThreadId, "resolve payload empty id");
+
+        var malformedPayloadResult = TryGetResolveThreadIdFromGraphQlPayload("{not-json}", out var malformedPayloadThreadId);
+        AssertEqual(false, malformedPayloadResult, "resolve payload malformed rejected");
+        AssertEqual<string?>(null, malformedPayloadThreadId, "resolve payload malformed id");
+
+        const string noThreadIdPayload = "{\"query\":\"mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ id } } }\",\"variables\":{}}";
+        var noThreadIdResult = TryGetResolveThreadIdFromGraphQlPayload(noThreadIdPayload, out var noThreadId);
+        AssertEqual(false, noThreadIdResult, "resolve payload missing id rejected");
+        AssertEqual<string?>(null, noThreadId, "resolve payload missing id value");
+    }
+
+    private static bool TryGetResolveThreadIdFromGraphQlPayload(string body, out string? threadId) {
+        threadId = null;
+        if (string.IsNullOrWhiteSpace(body)) {
+            return false;
+        }
+        JsonObject? payload;
+        try {
+            payload = JsonLite.Parse(body).AsObject();
+        } catch (FormatException) {
+            return false;
+        } catch (ArgumentNullException) {
+            return false;
+        }
+        if (payload is null) {
+            return false;
+        }
+        var query = payload.GetString("query");
+        if (string.IsNullOrWhiteSpace(query) || !query.Contains("resolveReviewThread", StringComparison.Ordinal)) {
+            return false;
+        }
+        threadId = payload.GetObject("variables")?.GetString("id");
+        return !string.IsNullOrWhiteSpace(threadId);
     }
 
     private static void TestAutoResolveMissingInlineGateAllowsEmptySet() {
