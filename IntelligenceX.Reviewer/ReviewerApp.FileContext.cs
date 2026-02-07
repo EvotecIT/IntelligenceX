@@ -357,6 +357,9 @@ public static partial class ReviewerApp {
             try {
                 var compareResult = await codeHostReader.GetCompareFilesAsync(context, baseSha, context.HeadSha!, cancellationToken)
                     .ConfigureAwait(false);
+                if (compareResult.IsTruncated) {
+                    return (false, Array.Empty<PullRequestFile>(), $"{label} diff truncated");
+                }
                 var compareFiles = compareResult.Files;
                 if (compareFiles.Count == 0) {
                     return (false, Array.Empty<PullRequestFile>(), $"{label} diff empty");

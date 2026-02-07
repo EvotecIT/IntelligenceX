@@ -614,21 +614,62 @@ internal static partial class Program {
         private async Task HandleClientAsync(TcpClient client) {
             using var _ = client;
             using var stream = client.GetStream();
-            using var reader = new StreamReader(stream, Encoding.UTF8, false, 1024, leaveOpen: true);
-            var requestLine = await reader.ReadLineAsync().ConfigureAwait(false);
-            if (string.IsNullOrWhiteSpace(requestLine)) {
+            var request = await ReadRequestAsync(stream).ConfigureAwait(false);
+            if (request is null) {
                 return;
             }
-            var parts = requestLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 2) {
+
+            var response = _handler(request);
+            if (response is null) {
+                await WriteResponseAsync(stream, 404, "Not Found", "{}").ConfigureAwait(false);
                 return;
             }
-            var method = parts[0];
-            var path = parts[1];
+
+            await WriteResponseAsync(stream, response.StatusCode, response.StatusText, response.Body, response.Headers)
+                .ConfigureAwait(false);
+        }
+
+        private static async Task<HttpRequest?> ReadRequestAsync(NetworkStream stream) {
+            var headerBytes = new List<byte>(1024);
+            var delimiter = new byte[] { 13, 10, 13, 10 };
+            var matched = 0;
+            var singleByte = new byte[1];
+
+            while (true) {
+                var read = await stream.ReadAsync(singleByte, 0, 1).ConfigureAwait(false);
+                if (read == 0) {
+                    return null;
+                }
+                var b = singleByte[0];
+                headerBytes.Add(b);
+
+                if (b == delimiter[matched]) {
+                    matched++;
+                    if (matched == delimiter.Length) {
+                        break;
+                    }
+                } else {
+                    matched = b == delimiter[0] ? 1 : 0;
+                }
+            }
+
+            var headerText = Encoding.ASCII.GetString(headerBytes.ToArray());
+            var headerLines = headerText.Split(new[] { "\r\n" }, StringSplitOptions.None);
+            if (headerLines.Length == 0 || string.IsNullOrWhiteSpace(headerLines[0])) {
+                return null;
+            }
+
+            var requestParts = headerLines[0].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (requestParts.Length < 2) {
+                return null;
+            }
 
             var contentLength = 0;
-            string? line;
-            while (!string.IsNullOrEmpty(line = await reader.ReadLineAsync().ConfigureAwait(false))) {
+            for (var i = 1; i < headerLines.Length; i++) {
+                var line = headerLines[i];
+                if (string.IsNullOrEmpty(line)) {
+                    break;
+                }
                 var headerParts = line.Split(':', 2);
                 if (headerParts.Length == 2 &&
                     headerParts[0].Trim().Equals("Content-Length", StringComparison.OrdinalIgnoreCase)) {
@@ -638,26 +679,21 @@ internal static partial class Program {
 
             var body = string.Empty;
             if (contentLength > 0) {
-                var buffer = new char[contentLength];
-                var read = 0;
-                while (read < contentLength) {
-                    var count = await reader.ReadAsync(buffer, read, contentLength - read).ConfigureAwait(false);
+                var bodyBytes = new byte[contentLength];
+                var bodyRead = 0;
+                while (bodyRead < contentLength) {
+                    var count = await stream.ReadAsync(bodyBytes, bodyRead, contentLength - bodyRead).ConfigureAwait(false);
                     if (count == 0) {
                         break;
                     }
-                    read += count;
+                    bodyRead += count;
                 }
-                body = new string(buffer, 0, read);
+                if (bodyRead > 0) {
+                    body = Encoding.UTF8.GetString(bodyBytes, 0, bodyRead);
+                }
             }
 
-            var response = _handler(new HttpRequest(method, path, body));
-            if (response is null) {
-                await WriteResponseAsync(stream, 404, "Not Found", "{}").ConfigureAwait(false);
-                return;
-            }
-
-            await WriteResponseAsync(stream, response.StatusCode, response.StatusText, response.Body, response.Headers)
-                .ConfigureAwait(false);
+            return new HttpRequest(requestParts[0], requestParts[1], body);
         }
 
         private static async Task WriteResponseAsync(NetworkStream stream, int statusCode, string statusText, string body,
