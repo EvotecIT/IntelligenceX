@@ -51,6 +51,6 @@ intelligencex setup --repo owner/name --cleanup --keep-secret
 ## Notes
 
 - Default workflow path: `.github/workflows/review-intelligencex.yml`
-- Default config path: `.intelligencex/config.json`
+- Default reviewer config path: `.intelligencex/reviewer.json`
 - Setup uses PRs by default (safe review before merge).
 - Use `--reviewer-source local` if you want to run the repo-local reviewer binary.

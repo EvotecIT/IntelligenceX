@@ -93,6 +93,10 @@ internal sealed partial class ReviewSettings {
     public int ReviewUsageSummaryTimeoutSeconds { get; set; } = 10;
     public bool StructuredFindings { get; set; }
     public OpenAITransportKind OpenAITransport { get; set; } = OpenAITransportKind.AppServer;
+    /// <summary>
+    /// Optional ChatGPT account id to use when multiple OpenAI bundles are present in the auth store.
+    /// </summary>
+    public string? OpenAiAccountId { get; set; }
     public int RetryCount { get; set; } = 3;
     public int RetryDelaySeconds { get; set; } = 5;
     public int RetryMaxDelaySeconds { get; set; } = 30;

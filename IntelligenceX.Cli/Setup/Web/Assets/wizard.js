@@ -218,33 +218,71 @@ function selectSecretOption(opt) {
 }
 
 // ── ChatGPT Login ──
+async function runChatGptLogin() {
+  const statusEl = $('chatgptLoginStatus');
+  const btn = $('chatgptLogin');
+  if (statusEl) statusEl.innerHTML = '<span class="spinner"></span> Opening ChatGPT login...';
+  if (btn) {
+    btn.disabled = true;
+  }
+
+  try {
+    const data = await fetchJsonSafe('/api/openai-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    if (data.authB64) {
+      if (authB64) authB64.value = data.authB64;
+      if (statusEl) statusEl.innerHTML = '<span style="color: var(--pf-success);">&#x2713; Authenticated with ChatGPT</span>';
+      if (btn) {
+        btn.textContent = 'Switch ChatGPT account';
+        btn.classList.add('success');
+      }
+      // Refresh usage button enablement.
+      try { updateUsageBtn(); } catch { }
+      return true;
+    }
+
+    if (statusEl) statusEl.innerHTML = '<span style="color: var(--pf-danger);">Login did not return an auth bundle.</span>';
+    return false;
+  } catch (e) {
+    if (statusEl) statusEl.innerHTML = `<span style="color: var(--pf-danger);">Error: ${e.message || e}</span>`;
+    return false;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+    }
+  }
+}
+
 const chatgptLoginBtn = $('chatgptLogin');
 if (chatgptLoginBtn) {
   chatgptLoginBtn.addEventListener('click', async () => {
-    const statusEl = $('chatgptLoginStatus');
-    statusEl.innerHTML = '<span class="spinner"></span> Opening ChatGPT login...';
-    chatgptLoginBtn.disabled = true;
-
-    try {
-      const data = await fetchJsonSafe('/api/openai-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      });
-      if (data.authB64) {
-        authB64.value = data.authB64;
-        statusEl.innerHTML = '<span style="color: var(--pf-success);">&#x2713; Authenticated with ChatGPT</span>';
-        chatgptLoginBtn.textContent = 'Signed in';
-        chatgptLoginBtn.classList.add('success');
-      } else {
-        statusEl.innerHTML = 'Login window opened. Complete login in browser...';
-        // Would need to poll for completion
-      }
-    } catch (e) {
-      statusEl.innerHTML = `<span style="color: var(--pf-danger);">Error: ${e.message || e}</span>`;
-      chatgptLoginBtn.disabled = false;
-    }
+    await runChatGptLogin();
   });
+}
+
+async function ensureOpenAiAuthIfNeeded() {
+  if (shouldSkipSecrets()) return true;
+  if (selectedProvider !== 'openai') return true;
+  if (secretOption === 'skip') return true;
+
+  const hasAuth = (authB64 && authB64.value.trim().length > 0) || (authB64Path && authB64Path.value.trim().length > 0);
+  if (hasAuth) return true;
+
+  if (secretOption === 'login') {
+    write('OpenAI auth is required. Starting ChatGPT login...');
+    const ok = await runChatGptLogin();
+    if (!ok) {
+      write('OpenAI auth login failed. You can paste authB64/authB64Path or enable "Skip OpenAI secret".');
+      return false;
+    }
+    return true;
+  }
+
+  write('OpenAI auth bundle is missing. Provide authB64/authB64Path or select "ChatGPT browser login".');
+  return false;
 }
 
 // ── Manual entry toggle ──
@@ -1083,6 +1121,7 @@ async function doPlan() {
   const repos = selectedRepos();
   if (repos.length === 0) { write('Select repos first.'); return; }
   if (!getToken()) { write('Token required.'); return; }
+  if (!await ensureOpenAiAuthIfNeeded()) { return; }
   write('Planning (dry run)...');
   try {
     const data = await fetchJsonSafe('/api/setup/plan', {
@@ -1113,6 +1152,7 @@ async function doApply() {
   const repos = selectedRepos();
   if (repos.length === 0) { write('Select repos first.'); return; }
   if (!getToken()) { write('Token required.'); return; }
+  if (!await ensureOpenAiAuthIfNeeded()) { return; }
   write('Applying...');
   try {
     const data = await fetchJsonSafe('/api/setup/apply', {

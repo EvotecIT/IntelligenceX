@@ -16,7 +16,7 @@ internal sealed class OpenAINativeAuthManager {
     }
 
     public async Task<AuthBundle?> TryGetValidBundleAsync(CancellationToken cancellationToken) {
-        var bundle = await _options.AuthStore.GetAsync(OpenAICodexDefaults.Provider, cancellationToken: cancellationToken)
+        var bundle = await _options.AuthStore.GetAsync(OpenAICodexDefaults.Provider, _options.AuthAccountId, cancellationToken)
             .ConfigureAwait(false);
         if (bundle is null) {
             return null;
@@ -95,4 +95,3 @@ internal sealed class OpenAINativeAuthManager {
         return Task.FromResult(input);
     }
 }
-

@@ -275,11 +275,14 @@ public static partial class ReviewerApp {
 
         try {
             var store = new FileAuthBundleStore();
-            var bundle = await store.GetAsync("openai-codex").ConfigureAwait(false)
-                         ?? await store.GetAsync("openai").ConfigureAwait(false)
-                         ?? await store.GetAsync("chatgpt").ConfigureAwait(false);
+            var accountId = settings.OpenAiAccountId;
+            var bundle = await store.GetAsync("openai-codex", accountId).ConfigureAwait(false)
+                         ?? await store.GetAsync("openai", accountId).ConfigureAwait(false)
+                         ?? await store.GetAsync("chatgpt", accountId).ConfigureAwait(false);
             if (bundle is null) {
-                Console.Error.WriteLine($"No OpenAI auth bundle found in {authPath}.");
+                Console.Error.WriteLine(string.IsNullOrWhiteSpace(accountId)
+                    ? $"No OpenAI auth bundle found in {authPath}."
+                    : $"No OpenAI auth bundle found for account '{accountId}' in {authPath}.");
                 Console.Error.WriteLine("Export a store bundle with `intelligencex auth export --format store-base64`.");
                 return false;
             }

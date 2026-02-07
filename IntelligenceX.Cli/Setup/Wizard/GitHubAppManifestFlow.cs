@@ -132,7 +132,11 @@ internal static class GitHubAppManifestFlow {
             ["default_permissions"] = new Dictionary<string, string> {
                 ["pull_requests"] = "write",
                 ["issues"] = "write",
-                ["contents"] = "read"
+                // Setup wizard needs to create branches/PRs, commit workflow + reviewer.json, and upload Actions secrets.
+                // Note: modifying workflow files requires the dedicated "workflows" permission (in addition to contents).
+                ["contents"] = "write",
+                ["workflows"] = "write",
+                ["secrets"] = "write"
             },
             ["default_events"] = Array.Empty<string>()
         };

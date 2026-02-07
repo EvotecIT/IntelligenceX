@@ -43,12 +43,33 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
             var key = BuildKey(provider, accountId);
             return file.Bundles.TryGetValue(key, out var bundle) ? bundle : null;
         }
+        // Deterministic selection when multiple bundles exist for the same provider.
+        // Prefer the bundle with the farthest expiry; fall back to stable AccountId ordering.
+        AuthBundle? best = null;
         foreach (var entry in file.Bundles.Values) {
-            if (string.Equals(entry.Provider, provider, StringComparison.OrdinalIgnoreCase)) {
-                return entry;
+            if (!string.Equals(entry.Provider, provider, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (best is null) {
+                best = entry;
+                continue;
+            }
+            var bestExpiry = best.ExpiresAt ?? DateTimeOffset.MinValue;
+            var candidateExpiry = entry.ExpiresAt ?? DateTimeOffset.MinValue;
+            if (candidateExpiry > bestExpiry) {
+                best = entry;
+                continue;
+            }
+            if (candidateExpiry < bestExpiry) {
+                continue;
+            }
+            var bestAccount = best.AccountId ?? string.Empty;
+            var candidateAccount = entry.AccountId ?? string.Empty;
+            if (string.CompareOrdinal(candidateAccount, bestAccount) < 0) {
+                best = entry;
             }
         }
-        return null;
+        return best;
     }
 
     /// <summary>

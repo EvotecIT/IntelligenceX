@@ -216,7 +216,7 @@ internal static class WizardPrompts {
     }
 
     public static bool PromptWithConfig(bool current) {
-        return AnsiConsole.Confirm("Also create .intelligencex/config.json?", current);
+        return AnsiConsole.Confirm("Also create .intelligencex/reviewer.json?", current);
     }
 
     public static bool PromptSkipSecret(bool current) {

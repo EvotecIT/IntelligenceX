@@ -73,15 +73,31 @@ internal static partial class SetupRunner {
             var existingWorkflow = await github.TryGetFileAsync(owner, repo, ".github/workflows/review-intelligencex.yml", defaultBranch)
                 .ConfigureAwait(false);
             RepoFile? existingConfig = null;
+            RepoFile? legacyConfig = null;
+            var legacyConfigLooksLikeReviewer = false;
+            string? seedConfigContent = null;
             if (options.WithConfig) {
-                existingConfig = await github.TryGetFileAsync(owner, repo, ".intelligencex/config.json", defaultBranch)
+                existingConfig = await github.TryGetFileAsync(owner, repo, ".intelligencex/reviewer.json", defaultBranch)
                     .ConfigureAwait(false);
+                if (existingConfig is not null) {
+                    seedConfigContent = existingConfig.Content;
+                } else {
+                    // Backward compatibility: older setup flows wrote reviewer settings into `.intelligencex/config.json`.
+                    legacyConfig = await github.TryGetFileAsync(owner, repo, ".intelligencex/config.json", defaultBranch)
+                        .ConfigureAwait(false);
+                    if (legacyConfig is not null) {
+                        legacyConfigLooksLikeReviewer = LooksLikeReviewerConfig(legacyConfig.Content);
+                        if (legacyConfigLooksLikeReviewer) {
+                            seedConfigContent = legacyConfig.Content;
+                        }
+                    }
+                }
             }
 
             var workflowPlan = PlanWorkflowChange(options, existingWorkflow?.Content);
             var configPlan = options.WithConfig
-                ? PlanConfigChange(options, existingConfig?.Content)
-                : FilePlan.Skip(".intelligencex/config.json", "Not requested (--with-config not set)");
+                ? PlanConfigChange(options, existingConfig?.Content, seedConfigContent)
+                : FilePlan.Skip(".intelligencex/reviewer.json", "Not requested (--with-config not set)");
 
             if (options.DryRun) {
                 PrintDryRun(state, workflowPlan, configPlan);
@@ -124,6 +140,11 @@ internal static partial class SetupRunner {
             if (configPlan.IsWrite && configPlan.Content is not null) {
                 changed |= await github.CreateOrUpdateFileAsync(owner, repo, configPlan.Path, configPlan.Content,
                     "Configure IntelligenceX reviewer", branchName, overwrite: true).ConfigureAwait(false);
+            }
+            if (legacyConfigLooksLikeReviewer && legacyConfig is not null && configPlan.IsWrite) {
+                // Migrate legacy reviewer config location to the correct file name.
+                changed |= await github.DeleteFileAsync(owner, repo, ".intelligencex/config.json",
+                    "Migrate IntelligenceX reviewer config to reviewer.json", branchName).ConfigureAwait(false);
             }
 
             if (!changed) {
@@ -225,15 +246,19 @@ internal static partial class SetupRunner {
         var defaultBranch = await github.GetDefaultBranchAsync(owner, repo).ConfigureAwait(false);
         var workflow = await github.TryGetFileAsync(owner, repo, ".github/workflows/review-intelligencex.yml", defaultBranch)
             .ConfigureAwait(false);
-        var config = await github.TryGetFileAsync(owner, repo, ".intelligencex/config.json", defaultBranch)
+        var reviewerConfig = await github.TryGetFileAsync(owner, repo, ".intelligencex/reviewer.json", defaultBranch)
             .ConfigureAwait(false);
+        var legacyConfig = await github.TryGetFileAsync(owner, repo, ".intelligencex/config.json", defaultBranch)
+            .ConfigureAwait(false);
+        var legacyLooksLikeReviewer = legacyConfig is not null && LooksLikeReviewerConfig(legacyConfig.Content);
 
         if (options.DryRun) {
             Console.WriteLine("Cleanup dry run:");
             Console.WriteLine($"- Repo: {state.GitHub.RepositoryFullName}");
             Console.WriteLine($"- Secret: INTELLIGENCEX_AUTH_B64 ({(options.KeepSecret ? "keep" : "delete")})");
             Console.WriteLine($"- File: .github/workflows/review-intelligencex.yml ({(workflow is null ? "skip (missing)" : "delete")})");
-            Console.WriteLine($"- File: .intelligencex/config.json ({(config is null ? "skip (missing)" : "delete")})");
+            Console.WriteLine($"- File: .intelligencex/reviewer.json ({(reviewerConfig is null ? "skip (missing)" : "delete")})");
+            Console.WriteLine($"- File: .intelligencex/config.json ({(legacyLooksLikeReviewer ? "delete (legacy reviewer config)" : "skip (reserved for library config)")})");
             Console.WriteLine("- PR: would be created on a new branch for file removals");
             return 0;
         }
@@ -242,7 +267,7 @@ internal static partial class SetupRunner {
             await github.DeleteSecretAsync(owner, repo, "INTELLIGENCEX_AUTH_B64").ConfigureAwait(false);
         }
 
-        if (workflow is null && config is null) {
+        if (workflow is null && reviewerConfig is null && !legacyLooksLikeReviewer) {
             Console.WriteLine("No files found to remove. Skipping PR creation.");
             return 0;
         }
@@ -256,9 +281,13 @@ internal static partial class SetupRunner {
             changed |= await github.DeleteFileAsync(owner, repo, ".github/workflows/review-intelligencex.yml",
                 "Remove IntelligenceX review workflow", branchName).ConfigureAwait(false);
         }
-        if (config is not null) {
-            changed |= await github.DeleteFileAsync(owner, repo, ".intelligencex/config.json",
+        if (reviewerConfig is not null) {
+            changed |= await github.DeleteFileAsync(owner, repo, ".intelligencex/reviewer.json",
                 "Remove IntelligenceX reviewer config", branchName).ConfigureAwait(false);
+        }
+        if (legacyLooksLikeReviewer) {
+            changed |= await github.DeleteFileAsync(owner, repo, ".intelligencex/config.json",
+                "Remove legacy IntelligenceX reviewer config", branchName).ConfigureAwait(false);
         }
 
         if (!changed) {
@@ -267,7 +296,7 @@ internal static partial class SetupRunner {
         }
 
         var prTitle = "Remove IntelligenceX review automation";
-        var prBody = "This removes the IntelligenceX review workflow and config.";
+        var prBody = "This removes the IntelligenceX review workflow and reviewer config.";
         var prUrl = await github.CreatePullRequestAsync(owner, repo, prTitle, branchName, defaultBranch, prBody)
             .ConfigureAwait(false);
 
@@ -403,6 +432,33 @@ internal static partial class SetupRunner {
     private static (string owner, string repo) SplitRepo(string fullName) {
         var parts = fullName.Split('/');
         return (parts[0], parts[1]);
+    }
+
+    private static bool LooksLikeReviewerConfig(string json) {
+        if (string.IsNullOrWhiteSpace(json)) {
+            return false;
+        }
+        try {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) {
+                return false;
+            }
+
+            // Current schema uses `{ "review": { ... } }` (or occasionally root-as-review).
+            if (root.TryGetProperty("review", out var review) && review.ValueKind == JsonValueKind.Object) {
+                return true;
+            }
+            if (root.TryGetProperty("provider", out _) ||
+                root.TryGetProperty("model", out _) ||
+                root.TryGetProperty("openaiModel", out _)) {
+                return true;
+            }
+
+            return false;
+        } catch {
+            return false;
+        }
     }
 
     private static string Prompt(string label) {

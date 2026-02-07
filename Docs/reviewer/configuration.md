@@ -8,6 +8,15 @@ Schema: `../../Schemas/reviewer.schema.json`
 The reviewer validates `.intelligencex/reviewer.json` against the schema at runtime.
 Unknown properties emit warnings; invalid types or enum values fail the run.
 
+## Multiple ChatGPT accounts
+
+If your auth store contains more than one ChatGPT login, set `review.openaiAccountId` to select which account to use.
+List available account ids with:
+
+```powershell
+intelligencex auth list
+```
+
 ## Minimal example
 
 ```json

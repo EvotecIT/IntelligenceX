@@ -260,7 +260,7 @@ internal static partial class SetupRunner {
             using var response = await _http.GetAsync(url).ConfigureAwait(false);
             var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) {
-                throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {content}");
+                throw new InvalidOperationException(FormatGitHubFailure(response, content));
             }
             using var doc = JsonDocument.Parse(content);
             return doc.RootElement.Clone();
@@ -275,7 +275,7 @@ internal static partial class SetupRunner {
                 if (allowConflict && response.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity) {
                     return null;
                 }
-                throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {responseText}");
+                throw new InvalidOperationException(FormatGitHubFailure(response, responseText));
             }
             using var doc = JsonDocument.Parse(responseText);
             return doc.RootElement.Clone();
@@ -287,7 +287,7 @@ internal static partial class SetupRunner {
             using var response = await _http.PutAsync(url, content).ConfigureAwait(false);
             var responseText = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) {
-                throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {responseText}");
+                throw new InvalidOperationException(FormatGitHubFailure(response, responseText));
             }
         }
 
@@ -299,8 +299,27 @@ internal static partial class SetupRunner {
             using var response = await _http.SendAsync(request).ConfigureAwait(false);
             var responseText = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) {
-                throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {responseText}");
+                throw new InvalidOperationException(FormatGitHubFailure(response, responseText));
             }
+        }
+
+        private static string FormatGitHubFailure(HttpResponseMessage response, string body) {
+            var msg = $"GitHub API request failed ({(int)response.StatusCode}): {body}";
+            // Helpful when a GitHub App token is missing repository permissions for the endpoint.
+            if (response.Headers.TryGetValues("X-Accepted-GitHub-Permissions", out var accepted)) {
+                var joined = string.Join(", ", accepted);
+                if (!string.IsNullOrWhiteSpace(joined)) {
+                    msg += $"{Environment.NewLine}Accepted permissions: {joined}";
+                }
+            }
+            // Helpful when a user OAuth/PAT token is missing scopes.
+            if (response.Headers.TryGetValues("X-OAuth-Scopes", out var scopes)) {
+                var joined = string.Join(", ", scopes);
+                if (!string.IsNullOrWhiteSpace(joined)) {
+                    msg += $"{Environment.NewLine}Token scopes: {joined}";
+                }
+            }
+            return msg;
         }
     }
 }

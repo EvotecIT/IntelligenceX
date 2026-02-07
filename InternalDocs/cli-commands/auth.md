@@ -42,6 +42,18 @@ intelligencex auth login --set-github-secret MY_AUTH --repo owner/name --github-
 intelligencex auth export --format store-base64
 ```
 
+Filter to a specific account id (when multiple logins exist in the store):
+
+```powershell
+intelligencex auth export --format store-base64 --provider openai-codex --account-id <accountId>
+```
+
+## List saved logins
+
+```powershell
+intelligencex auth list
+```
+
 ## Sync for Codex CLI
 
 ```powershell

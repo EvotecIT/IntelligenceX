@@ -44,9 +44,8 @@ If you want to avoid personal access tokens, you can use the GitHub App manifest
 
 ## Current limitations
 
-- OpenAI login is not wired into the web UI yet.
-  Provide `authB64`/`authB64Path` (INTELLIGENCEX_AUTH_B64 export) or keep “Skip OpenAI secret” enabled.
-- Update-secret in the web UI requires a pre-exported auth bundle.
+- OpenAI login runs locally in the web UI ("Sign in with ChatGPT") and returns an auth bundle (`authB64`) you can upload as `INTELLIGENCEX_AUTH_B64`.
+- Update-secret in the web UI requires an auth bundle (either from the login button or pasted via `authB64`/`authB64Path`).
 - The UI supports multi-repo setup (plan/apply), repo inspection, and setup recommendations.
 - GitHub App installation tokens can only list repos the app is installed on.
 - Buttons are disabled until required inputs are provided (token, repo selection, auth bundle).

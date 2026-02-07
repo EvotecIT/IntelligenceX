@@ -1,7 +1,10 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.Usage;
 using IntelligenceX.OpenAI.Auth;
@@ -90,6 +93,7 @@ internal static class Program {
         var command = args[0].ToLowerInvariant();
         return command switch {
             "login" => await RunLoginAsync(args.Skip(1).ToArray()).ConfigureAwait(false),
+            "list" => await RunListAsync(args.Skip(1).ToArray()).ConfigureAwait(false),
             "export" => await RunExportAsync(args.Skip(1).ToArray()).ConfigureAwait(false),
             "sync-codex" => await RunSyncCodexAsync().ConfigureAwait(false),
             "help" or "-h" or "--help" => PrintAuthHelpReturn(),
@@ -131,6 +135,7 @@ internal static class Program {
     private static void PrintAuthHelp() {
         Console.WriteLine("Auth commands:");
         Console.WriteLine("  intelligencex auth login [options]");
+        Console.WriteLine("  intelligencex auth list");
         Console.WriteLine("  intelligencex auth export");
         Console.WriteLine("  intelligencex auth sync-codex");
         Console.WriteLine();
@@ -143,6 +148,11 @@ internal static class Program {
         Console.WriteLine("  --org <org>                    Target organization secret (visibility defaults to all)");
         Console.WriteLine("  --visibility <all|private|selected>     Org secret visibility");
         Console.WriteLine("  --github-token <token>         Token for GitHub API (or set INTELLIGENCEX_GITHUB_TOKEN/GITHUB_TOKEN/GH_TOKEN)");
+        Console.WriteLine();
+        Console.WriteLine("Auth export options:");
+        Console.WriteLine("  --format <json|base64|store|store-base64>");
+        Console.WriteLine("  --provider <id>                Filter to a provider (e.g. openai-codex)");
+        Console.WriteLine("  --account-id <id>              Filter to a ChatGPT account id");
     }
 
     private static void PrintReviewerHelp() {
@@ -201,6 +211,46 @@ internal static class Program {
             "sync-codex" => true,
             _ => false
         };
+    }
+
+    private static async Task<int> RunListAsync(string[] args) {
+        try {
+            if (args.Length > 0 && (args[0].Equals("-h", StringComparison.OrdinalIgnoreCase) || args[0].Equals("--help", StringComparison.OrdinalIgnoreCase))) {
+                Console.WriteLine("Usage: intelligencex auth list");
+                return 0;
+            }
+
+            var path = AuthPaths.ResolveAuthPath();
+            if (!File.Exists(path)) {
+                Console.Error.WriteLine("No auth store found.");
+                return 1;
+            }
+            var raw = await File.ReadAllTextAsync(path).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(raw)) {
+                Console.Error.WriteLine("Auth store is empty.");
+                return 1;
+            }
+
+            var json = DecryptAuthStoreIfNeeded(raw);
+            var entries = ParseAuthStoreEntries(json);
+            if (entries.Count == 0) {
+                Console.Error.WriteLine("No auth bundles found.");
+                return 1;
+            }
+
+            Console.WriteLine("Auth store bundles:");
+            foreach (var e in entries
+                         .OrderBy(e => e.Provider, StringComparer.OrdinalIgnoreCase)
+                         .ThenBy(e => e.AccountId ?? string.Empty, StringComparer.OrdinalIgnoreCase)) {
+                var account = string.IsNullOrWhiteSpace(e.AccountId) ? "-" : e.AccountId;
+                var expires = e.ExpiresAt.HasValue ? e.ExpiresAt.Value.ToUniversalTime().ToString("u") : "-";
+                Console.WriteLine($"- Provider: {e.Provider}; Account: {account}; Expires: {expires}");
+            }
+            return 0;
+        } catch (Exception ex) {
+            Console.Error.WriteLine(ex.Message);
+            return 1;
+        }
     }
 
     private static async Task<int> RunLoginAsync(string[] args) {
@@ -288,16 +338,22 @@ internal static class Program {
 
     private static async Task<int> RunExportAsync(string[] args) {
         try {
+            var providerFilter = ReadArgValue(args, "--provider");
+            var accountIdFilter = ReadArgValue(args, "--account-id");
             var format = ResolveExportFormat(args)
                          ?? Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_EXPORT_FORMAT")
                          ?? "json";
             var normalized = format.Trim().ToLowerInvariant();
             if (normalized is "store" or "store-base64" or "store_b64") {
-                return await ExportAuthStoreAsync(normalized).ConfigureAwait(false);
+                if (string.IsNullOrWhiteSpace(providerFilter) && string.IsNullOrWhiteSpace(accountIdFilter)) {
+                    return await ExportAuthStoreAsync(normalized).ConfigureAwait(false);
+                }
+                return await ExportAuthStoreFilteredAsync(normalized, providerFilter, accountIdFilter).ConfigureAwait(false);
             }
 
             var store = new FileAuthBundleStore();
-            var bundle = await store.GetAsync("openai-codex").ConfigureAwait(false);
+            var provider = string.IsNullOrWhiteSpace(providerFilter) ? "openai-codex" : providerFilter!;
+            var bundle = await store.GetAsync(provider, accountIdFilter).ConfigureAwait(false);
             if (bundle is null) {
                 Console.Error.WriteLine("No auth bundle found.");
                 return 1;
@@ -368,6 +424,72 @@ internal static class Program {
             Console.WriteLine(content);
         }
         return 0;
+    }
+
+    private static async Task<int> ExportAuthStoreFilteredAsync(string format, string? providerFilter, string? accountIdFilter) {
+        var path = AuthPaths.ResolveAuthPath();
+        if (!File.Exists(path)) {
+            Console.Error.WriteLine("No auth store found.");
+            return 1;
+        }
+        var raw = await File.ReadAllTextAsync(path).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(raw)) {
+            Console.Error.WriteLine("Auth store is empty.");
+            return 1;
+        }
+        var json = DecryptAuthStoreIfNeeded(raw);
+        var node = JsonNode.Parse(json) as JsonObject;
+        if (node is null) {
+            Console.Error.WriteLine("Auth store content is invalid.");
+            return 1;
+        }
+        var bundles = node["bundles"] as JsonObject;
+        if (bundles is null) {
+            Console.Error.WriteLine("Auth store has no bundles.");
+            return 1;
+        }
+
+        var filtered = new JsonObject();
+        foreach (var entry in bundles) {
+            var bundleObj = entry.Value as JsonObject;
+            if (bundleObj is null) {
+                continue;
+            }
+            var provider = (bundleObj["provider"]?.GetValue<string>() ?? string.Empty).Trim();
+            var accountId = (bundleObj["account_id"]?.GetValue<string>() ?? bundleObj["accountId"]?.GetValue<string>())?.Trim();
+            if (!string.IsNullOrWhiteSpace(providerFilter) && !provider.Equals(providerFilter.Trim(), StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (!string.IsNullOrWhiteSpace(accountIdFilter) && !string.Equals(accountId, accountIdFilter.Trim(), StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            filtered[entry.Key] = bundleObj;
+        }
+
+        var outRoot = new JsonObject();
+        outRoot["version"] = node["version"]?.DeepClone() ?? 1;
+        outRoot["bundles"] = filtered;
+        var outJson = outRoot.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+        if (IsStoreBase64Format(format)) {
+            Console.WriteLine(Convert.ToBase64String(Encoding.UTF8.GetBytes(outJson)));
+        } else {
+            Console.WriteLine(outJson);
+        }
+        return 0;
+    }
+
+    private static string? ReadArgValue(string[] args, string key) {
+        for (var i = 0; i < args.Length; i++) {
+            if (!args[i].Equals(key, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (i + 1 >= args.Length) {
+                return string.Empty;
+            }
+            var value = args[i + 1];
+            return value.StartsWith("--", StringComparison.Ordinal) ? string.Empty : value;
+        }
+        return null;
     }
 
     private static async Task<string?> ExportAuthStoreContentAsync(string format) {
@@ -679,6 +801,85 @@ internal static class Program {
         }
 
         return options;
+    }
+
+    private sealed record AuthStoreEntry(string Provider, string? AccountId, DateTimeOffset? ExpiresAt);
+
+    private static string DecryptAuthStoreIfNeeded(string content) {
+        if (string.IsNullOrWhiteSpace(content)) {
+            return content;
+        }
+        var trimmed = content.TrimStart();
+        if (!trimmed.StartsWith("{\"encrypted\":", StringComparison.OrdinalIgnoreCase)) {
+            return content;
+        }
+
+        var keyBase64 = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_KEY");
+        if (string.IsNullOrWhiteSpace(keyBase64)) {
+            throw new InvalidOperationException("Auth store is encrypted but INTELLIGENCEX_AUTH_KEY is not set.");
+        }
+        byte[] key;
+        try {
+            key = Convert.FromBase64String(keyBase64);
+        } catch {
+            throw new InvalidOperationException("INTELLIGENCEX_AUTH_KEY must be base64.");
+        }
+        if (key.Length != 32) {
+            throw new InvalidOperationException("INTELLIGENCEX_AUTH_KEY must decode to 32 bytes.");
+        }
+
+        using var doc = JsonDocument.Parse(content);
+        var root = doc.RootElement;
+        var nonce = Convert.FromBase64String(root.GetProperty("nonce").GetString() ?? string.Empty);
+        var cipher = Convert.FromBase64String(root.GetProperty("ciphertext").GetString() ?? string.Empty);
+        var tag = Convert.FromBase64String(root.GetProperty("tag").GetString() ?? string.Empty);
+        var plain = new byte[cipher.Length];
+        using var aes = new AesGcm(key, 16);
+        aes.Decrypt(nonce, cipher, tag, plain);
+        return Encoding.UTF8.GetString(plain);
+    }
+
+    private static List<AuthStoreEntry> ParseAuthStoreEntries(string json) {
+        var list = new List<AuthStoreEntry>();
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) {
+            return list;
+        }
+        if (root.TryGetProperty("bundles", out var bundles) && bundles.ValueKind == JsonValueKind.Object) {
+            foreach (var prop in bundles.EnumerateObject()) {
+                if (prop.Value.ValueKind != JsonValueKind.Object) {
+                    continue;
+                }
+                var provider = prop.Value.TryGetProperty("provider", out var p) ? p.GetString() : null;
+                if (string.IsNullOrWhiteSpace(provider)) {
+                    continue;
+                }
+                var accountId = prop.Value.TryGetProperty("account_id", out var a) ? a.GetString() : null;
+                DateTimeOffset? expiresAt = null;
+                if (prop.Value.TryGetProperty("expires_at", out var exp) && exp.ValueKind == JsonValueKind.Number &&
+                    exp.TryGetInt64(out var expMs) && expMs > 0) {
+                    expiresAt = DateTimeOffset.FromUnixTimeMilliseconds(expMs);
+                }
+                list.Add(new AuthStoreEntry(provider!, accountId, expiresAt));
+            }
+            return list;
+        }
+
+        // Single-bundle format (supported by reviewer env ingestion).
+        if (root.TryGetProperty("provider", out var providerProp) && providerProp.ValueKind == JsonValueKind.String) {
+            var provider = providerProp.GetString();
+            var accountId = root.TryGetProperty("account_id", out var a) ? a.GetString() : null;
+            DateTimeOffset? expiresAt = null;
+            if (root.TryGetProperty("expires_at", out var exp) && exp.ValueKind == JsonValueKind.Number &&
+                exp.TryGetInt64(out var expMs) && expMs > 0) {
+                expiresAt = DateTimeOffset.FromUnixTimeMilliseconds(expMs);
+            }
+            if (!string.IsNullOrWhiteSpace(provider)) {
+                list.Add(new AuthStoreEntry(provider!, accountId, expiresAt));
+            }
+        }
+        return list;
     }
 
     private static void TryOpenBrowser(string url) {

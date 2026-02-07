@@ -36,6 +36,7 @@ internal sealed class ReviewRunner {
             DefaultModel = _settings.Model,
             TransportKind = _settings.OpenAITransport
         };
+        options.NativeOptions.AuthAccountId = _settings.OpenAiAccountId;
         if (options.TransportKind == OpenAITransportKind.AppServer) {
             if (!string.IsNullOrWhiteSpace(_settings.CodexPath)) {
                 options.AppServerOptions.ExecutablePath = _settings.CodexPath!;

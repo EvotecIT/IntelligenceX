@@ -94,10 +94,27 @@ internal sealed class GitHubRepoClient : IDisposable {
         using var response = await _http.GetAsync(url).ConfigureAwait(false);
         var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
         if (!response.IsSuccessStatusCode) {
-            throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {content}");
+            throw new InvalidOperationException(FormatGitHubFailure(response, content));
         }
         using var doc = JsonDocument.Parse(content);
         return doc.RootElement.Clone();
+    }
+
+    private static string FormatGitHubFailure(HttpResponseMessage response, string body) {
+        var msg = $"GitHub API request failed ({(int)response.StatusCode}): {body}";
+        if (response.Headers.TryGetValues("X-Accepted-GitHub-Permissions", out var accepted)) {
+            var joined = string.Join(", ", accepted);
+            if (!string.IsNullOrWhiteSpace(joined)) {
+                msg += $"{Environment.NewLine}Accepted permissions: {joined}";
+            }
+        }
+        if (response.Headers.TryGetValues("X-OAuth-Scopes", out var scopes)) {
+            var joined = string.Join(", ", scopes);
+            if (!string.IsNullOrWhiteSpace(joined)) {
+                msg += $"{Environment.NewLine}Token scopes: {joined}";
+            }
+        }
+        return msg;
     }
 
     private static bool TryParseRepository(JsonElement item, out RepositoryInfo info) {
