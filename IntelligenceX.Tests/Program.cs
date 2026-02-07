@@ -46,6 +46,8 @@ internal static partial class Program {
         failed += Run("Review thread inline key allowlist", TestReviewThreadInlineKeyAllowlist);
         failed += Run("Thread auto-resolve summary comment", TestThreadAutoResolveSummaryComment);
         failed += Run("Thread triage embed placement", TestThreadTriageEmbedPlacement);
+        failed += Run("Thread assessment prompt smoke", TestThreadAssessmentPromptSmoke);
+        failed += Run("Auto-resolve stale threads smoke", TestAutoResolveStaleThreadsSmoke);
         failed += Run("Auto-resolve missing inline empty keys", TestAutoResolveMissingInlineEmptyKeys);
         failed += Run("Auto-resolve missing inline gate empty set", TestAutoResolveMissingInlineGateAllowsEmptySet);
         failed += Run("Auto-resolve missing inline gate null set", TestAutoResolveMissingInlineGateRejectsNull);
@@ -176,6 +178,8 @@ internal static partial class Program {
         failed += Run("Review summary parser", TestReviewSummaryParser);
         failed += Run("Review formatter model usage section", TestReviewFormatterModelUsageSection);
         failed += Run("Review formatter model usage unavailable", TestReviewFormatterModelUsageUnavailable);
+        failed += Run("Review formatter golden snapshot", TestReviewFormatterGoldenSnapshot);
+        failed += Run("Review usage integration display", TestReviewUsageIntegrationDisplay);
         failed += Run("Review usage summary line", TestReviewUsageSummaryLine);
         failed += Run("Review usage summary disambiguates code review weekly", TestReviewUsageSummaryDisambiguatesCodeReviewWeekly);
         failed += Run("Review usage summary disambiguates code review weekly secondary", TestReviewUsageSummaryDisambiguatesCodeReviewWeeklySecondary);

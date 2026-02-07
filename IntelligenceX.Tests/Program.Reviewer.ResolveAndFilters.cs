@@ -421,6 +421,48 @@ internal static partial class Program {
         AssertContainsText(comment, "- Usage: unavailable", "model usage unavailable line");
     }
 
+    private static void TestReviewFormatterGoldenSnapshot() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 42, "Formatter Golden Snapshot", "Body", false,
+            "deadbeefcafebabe", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            Model = "gpt-5-test",
+            Length = ReviewLength.Medium,
+            Mode = "summary"
+        };
+        var comment = ReviewFormatter.BuildComment(context, "Summary line.", settings, inlineSupported: true, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+        MaybeUpdateReviewerFixture("review-summary-golden.md", comment);
+        var expected = LoadReviewerFixture("review-summary-golden.md");
+        AssertTextBlockEquals(expected, comment, "review formatter golden snapshot");
+    }
+
+    private static void TestReviewUsageIntegrationDisplay() {
+        const string json = "{"
+            + "\"plan_type\":\"pro\","
+            + "\"rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
+            + "\"primary_window\":{\"used_percent\":12.5,\"limit_window_seconds\":18000,\"reset_after_seconds\":120}},"
+            + "\"code_review_rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
+            + "\"primary_window\":{\"used_percent\":25.0,\"limit_window_seconds\":18000,\"reset_after_seconds\":120}},"
+            + "\"credits\":{\"has_credits\":true,\"unlimited\":false,\"balance\":4.52}"
+            + "}";
+        var obj = JsonLite.Parse(json).AsObject();
+        AssertNotNull(obj, "usage integration json");
+        var snapshot = ChatGptUsageSnapshot.FromJson(obj!);
+        var usageLine = CallFormatUsageSummary(snapshot);
+        var context = BuildContext();
+        var settings = new ReviewSettings {
+            Model = "gpt-5-test",
+            Length = ReviewLength.Long,
+            Mode = "inline"
+        };
+        var comment = ReviewFormatter.BuildComment(context, "Body", settings, inlineSupported: true, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: usageLine, findingsBlock: string.Empty);
+
+        AssertContainsText(comment, "### Model & Usage 🤖", "usage integration section");
+        AssertContainsText(comment, "- Usage: 5h limit: 87.5% remaining", "usage integration 5h");
+        AssertContainsText(comment, "code review 5h limit: 75% remaining", "usage integration code review 5h");
+    }
+
     private static void TestReviewUsageSummaryLine() {
         const string json = "{"
             + "\"plan_type\":\"pro\","

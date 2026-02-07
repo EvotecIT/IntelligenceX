@@ -84,9 +84,9 @@ Status: In progress
 
 ### Phase 8 — Testing + validation
 - [ ] Add deterministic test harness with recorded provider responses.
-- [ ] Add golden-file tests for formatter output stability.
-- [ ] Add smoke tests for thread triage + auto-resolve.
-- [ ] Add integration test for usage/limits display.
+- [x] Add golden-file tests for formatter output stability.
+- [x] Add smoke tests for thread triage + auto-resolve.
+- [x] Add integration test for usage/limits display.
 
 ### Phase 9 — Developer experience
 - [ ] Provide local "engine replay" CLI (load PR snapshot + run offline).

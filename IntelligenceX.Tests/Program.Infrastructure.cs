@@ -144,6 +144,26 @@ internal static partial class Program {
         return false;
     }
 
+    private static string LoadReviewerFixture(string filename) {
+        var path = GetReviewerFixturePath(filename);
+        if (!File.Exists(path)) {
+            throw new InvalidOperationException($"Fixture not found: {path}");
+        }
+        return File.ReadAllText(path);
+    }
+
+    private static void MaybeUpdateReviewerFixture(string filename, string content) {
+        var update = Environment.GetEnvironmentVariable("INTELLIGENCEX_UPDATE_GOLDEN");
+        if (!string.Equals(update, "1", StringComparison.Ordinal)) {
+            return;
+        }
+        File.WriteAllText(GetReviewerFixturePath(filename), NormalizeNewlines(content).Trim() + "\n");
+    }
+
+    private static string GetReviewerFixturePath(string filename) {
+        return Path.Combine("Tests", "Fixtures", "Reviewer", filename);
+    }
+
     private static void AssertEqual<T>(T expected, T? actual, string name) {
         if (!Equals(expected, actual)) {
             throw new InvalidOperationException($"Expected {name} to be '{expected}', got '{actual}'.");
