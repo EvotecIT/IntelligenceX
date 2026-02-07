@@ -573,26 +573,61 @@ internal sealed class ReviewRunner {
                 .ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) {
                 var code = (int)response.StatusCode;
-                if (response.StatusCode == HttpStatusCode.Unauthorized ||
-                    response.StatusCode == HttpStatusCode.Forbidden) {
+                if (IsPreflightAuthReachableStatus(response.StatusCode)) {
                     if (_settings.Diagnostics) {
                         Console.Error.WriteLine($"Connectivity preflight returned HTTP {code} for {uri.Host} (reachable, auth required).");
                     }
                     return;
                 }
-                throw new HttpRequestException($"Connectivity preflight returned HTTP {code} for {uri.Host}.", null, response.StatusCode);
+                throw new HttpRequestException(BuildPreflightStatusErrorMessage(response.StatusCode, uri.Host), null,
+                    response.StatusCode);
             }
         } catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested) {
             throw new TimeoutException($"Connectivity preflight timed out after {timeout.TotalSeconds:0.#}s for {uri.Host}.", ex);
-        } catch (HttpRequestException ex) when (ex.InnerException is TaskCanceledException && !cancellationToken.IsCancellationRequested) {
-            throw new TimeoutException($"Connectivity preflight timed out after {timeout.TotalSeconds:0.#}s for {uri.Host}.", ex);
-        } catch (HttpRequestException ex) when (!ex.StatusCode.HasValue && ex.InnerException is SocketException) {
-            throw new InvalidOperationException(
-                $"Connectivity preflight failed for {uri.Host}. Check DNS resolution, proxy settings, and firewall rules.", ex);
-        } catch (HttpRequestException ex) when (!ex.StatusCode.HasValue) {
-            throw new InvalidOperationException(
-                $"Connectivity preflight failed for {uri.Host}. Check TLS/proxy settings and network connectivity.", ex);
+        } catch (HttpRequestException ex) {
+            var mapped = MapPreflightConnectivityException(ex, uri.Host, timeout, cancellationToken.IsCancellationRequested);
+            if (mapped is not null) {
+                throw mapped;
+            }
+            throw;
         }
+    }
+
+    private static bool IsPreflightAuthReachableStatus(HttpStatusCode statusCode) {
+        return statusCode == HttpStatusCode.Unauthorized || statusCode == HttpStatusCode.Forbidden;
+    }
+
+    private static string BuildPreflightStatusErrorMessage(HttpStatusCode statusCode, string host) {
+        var code = (int)statusCode;
+        if (statusCode == HttpStatusCode.TooManyRequests) {
+            return $"Connectivity preflight returned HTTP {code} for {host} (reachable, rate limited).";
+        }
+        if (code >= 500) {
+            return $"Connectivity preflight returned HTTP {code} for {host} (reachable, server error).";
+        }
+        return $"Connectivity preflight returned HTTP {code} for {host}.";
+    }
+
+    private static Exception? MapPreflightConnectivityException(HttpRequestException ex, string host, TimeSpan timeout,
+        bool cancellationRequested) {
+        if (ex.InnerException is TaskCanceledException && !cancellationRequested) {
+            return new TimeoutException($"Connectivity preflight timed out after {timeout.TotalSeconds:0.#}s for {host}.", ex);
+        }
+        if (ex.StatusCode.HasValue) {
+            return null;
+        }
+        if (ex.InnerException is SocketException socketException) {
+            if (socketException.SocketErrorCode == SocketError.HostNotFound ||
+                socketException.SocketErrorCode == SocketError.NoData ||
+                socketException.SocketErrorCode == SocketError.TryAgain) {
+                return new InvalidOperationException(
+                    $"Connectivity preflight failed for {host}. Check DNS resolution, proxy settings, and firewall rules.", ex);
+            }
+            return new InvalidOperationException(
+                $"Connectivity preflight failed for {host}. Check proxy settings, firewall rules, and network connectivity.", ex);
+        }
+        return new InvalidOperationException(
+            $"Connectivity preflight failed for {host}. Check TLS/proxy settings and network connectivity.", ex);
     }
 
     private async Task<string> WaitForDeltasAsync(StringBuilder deltas, Func<DateTimeOffset> getLastDelta,

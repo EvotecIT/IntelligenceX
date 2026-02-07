@@ -47,6 +47,8 @@ internal static partial class Program {
         failed += Run("Thread auto-resolve summary comment", TestThreadAutoResolveSummaryComment);
         failed += Run("Thread triage embed placement", TestThreadTriageEmbedPlacement);
         failed += Run("Auto-resolve missing inline empty keys", TestAutoResolveMissingInlineEmptyKeys);
+        failed += Run("Auto-resolve missing inline gate empty set", TestAutoResolveMissingInlineGateAllowsEmptySet);
+        failed += Run("Auto-resolve missing inline gate null set", TestAutoResolveMissingInlineGateRejectsNull);
         failed += Run("Review retry transient", TestReviewRetryTransient);
         failed += Run("Review retry non-transient", TestReviewRetryNonTransient);
         failed += Run("Review retry rethrows", TestReviewRetryRethrows);
@@ -58,7 +60,11 @@ internal static partial class Program {
         failed += Run("Review fail-open decision", TestReviewFailOpenDecision);
         failed += Run("Preflight timeout", TestPreflightTimeout);
         failed += Run("Preflight socket failure", TestPreflightSocketFailure);
+        failed += Run("Preflight auth statuses are reachable", TestPreflightAuthStatusesAreReachable);
         failed += Run("Preflight non-2xx", TestPreflightNonSuccessStatus);
+        failed += Run("Preflight DNS failure mapping", TestPreflightDnsFailureMapping);
+        failed += Run("Preflight socket failure mapping", TestPreflightSocketFailureMapping);
+        failed += Run("Preflight HTTP status mapping bypass", TestPreflightHttpStatusMappingBypass);
         failed += Run("Review config validator allows additional", TestReviewConfigValidatorAllowsAdditionalProperties);
         failed += Run("Review config validator invalid enum", TestReviewConfigValidatorInvalidEnum);
         failed += Run("Analysis severity critical", TestAnalysisSeverityCritical);

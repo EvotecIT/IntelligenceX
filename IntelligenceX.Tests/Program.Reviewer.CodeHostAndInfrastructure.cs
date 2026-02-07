@@ -444,6 +444,31 @@ internal static partial class Program {
         task.GetAwaiter().GetResult();
     }
 
+    private static Exception? CallMapPreflightConnectivityException(HttpRequestException ex, string host, TimeSpan timeout,
+        bool cancellationRequested) {
+        var method = typeof(ReviewRunner).GetMethod("MapPreflightConnectivityException",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("MapPreflightConnectivityException method not found.");
+        }
+        var result = method.Invoke(null, new object?[] { ex, host, timeout, cancellationRequested });
+        return result as Exception;
+    }
+
+    private static bool CallShouldAutoResolveMissingInlineThreads(ReviewSettings settings, PullRequestContext context,
+        HashSet<string>? inlineKeys) {
+        var method = typeof(ReviewerApp).GetMethod("ShouldAutoResolveMissingInlineThreads",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("ShouldAutoResolveMissingInlineThreads method not found.");
+        }
+        var result = method.Invoke(null, new object?[] { settings, context, inlineKeys });
+        if (result is bool value) {
+            return value;
+        }
+        throw new InvalidOperationException("ShouldAutoResolveMissingInlineThreads returned unexpected result.");
+    }
+
     private static ReviewContextExtras CallBuildExtrasAsync(GitHubClient github, PullRequestContext context,
         ReviewSettings settings, bool forceReviewThreads) {
         var method = typeof(ReviewerApp).GetMethod("BuildExtrasAsync", BindingFlags.NonPublic | BindingFlags.Static);
