@@ -456,13 +456,13 @@ internal static partial class Program {
     }
 
     private static bool CallShouldAutoResolveMissingInlineThreads(ReviewSettings settings, PullRequestContext context,
-        HashSet<string>? inlineKeys) {
+        HashSet<string>? inlineKeys, int inlineCommentsCount) {
         var method = typeof(ReviewerApp).GetMethod("ShouldAutoResolveMissingInlineThreads",
             BindingFlags.NonPublic | BindingFlags.Static);
         if (method is null) {
             throw new InvalidOperationException("ShouldAutoResolveMissingInlineThreads method not found.");
         }
-        var result = method.Invoke(null, new object?[] { settings, context, inlineKeys });
+        var result = method.Invoke(null, new object?[] { settings, context, inlineKeys, inlineCommentsCount });
         if (result is bool value) {
             return value;
         }

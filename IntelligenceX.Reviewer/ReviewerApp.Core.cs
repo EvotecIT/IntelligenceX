@@ -414,7 +414,7 @@ public static partial class ReviewerApp {
                 inlineKeys = await PostInlineCommentsAsync(codeHostReader, github, context, files, settings, inlineComments,
                         cancellationToken)
                     .ConfigureAwait(false);
-                if (ShouldAutoResolveMissingInlineThreads(settings, context, inlineKeys)) {
+                if (ShouldAutoResolveMissingInlineThreads(settings, context, inlineKeys, inlineComments.Length)) {
                     await AutoResolveMissingInlineThreadsAsync(codeHostReader, github, fallbackGithub, context, inlineKeys, settings,
                             cancellationToken)
                         .ConfigureAwait(false);
@@ -542,10 +542,11 @@ public static partial class ReviewerApp {
     }
 
     private static bool ShouldAutoResolveMissingInlineThreads(ReviewSettings settings, PullRequestContext context,
-        HashSet<string>? inlineKeys) {
+        HashSet<string>? inlineKeys, int inlineCommentsCount) {
         return settings.ReviewThreadsAutoResolveMissingInline &&
                !string.IsNullOrWhiteSpace(context.HeadSha) &&
-               inlineKeys is not null;
+               inlineKeys is not null &&
+               (inlineCommentsCount == 0 || inlineKeys.Count > 0);
     }
 
     private static string BuildAnalysisLoadFailureReason(Exception ex) {

@@ -299,7 +299,7 @@ internal static partial class Program {
         var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
             Array.Empty<string>(), "owner/repo", false, null);
         var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var shouldRun = CallShouldAutoResolveMissingInlineThreads(settings, context, keys);
+        var shouldRun = CallShouldAutoResolveMissingInlineThreads(settings, context, keys, inlineCommentsCount: 0);
         AssertEqual(true, shouldRun, "auto resolve missing inline gate empty set");
     }
 
@@ -309,8 +309,19 @@ internal static partial class Program {
         };
         var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
             Array.Empty<string>(), "owner/repo", false, null);
-        var shouldRun = CallShouldAutoResolveMissingInlineThreads(settings, context, null);
+        var shouldRun = CallShouldAutoResolveMissingInlineThreads(settings, context, null, inlineCommentsCount: 0);
         AssertEqual(false, shouldRun, "auto resolve missing inline gate null set");
+    }
+
+    private static void TestAutoResolveMissingInlineGateRejectsEmptyWhenInlineCommentsPresent() {
+        var settings = new ReviewSettings {
+            ReviewThreadsAutoResolveMissingInline = true
+        };
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var shouldRun = CallShouldAutoResolveMissingInlineThreads(settings, context, keys, inlineCommentsCount: 1);
+        AssertEqual(false, shouldRun, "auto resolve missing inline gate empty mapped keys");
     }
 
     private static void TestReviewRetryTransient() {
@@ -574,6 +585,12 @@ internal static partial class Program {
         var httpException = new HttpRequestException("bad request", null, HttpStatusCode.BadRequest);
         var mapped = CallMapPreflightConnectivityException(httpException, "example.invalid", TimeSpan.FromSeconds(1), false);
         AssertEqual<Exception?>(null, mapped, "preflight status mapping bypass");
+    }
+
+    private static void TestPreflightCancellationRequestedMappingBypass() {
+        var httpException = new HttpRequestException("cancelled", new TaskCanceledException("cancelled"));
+        var mapped = CallMapPreflightConnectivityException(httpException, "example.invalid", TimeSpan.FromSeconds(1), true);
+        AssertEqual<Exception?>(null, mapped, "preflight cancellation mapping bypass");
     }
 
     private static void TestReviewConfigValidatorAllowsAdditionalProperties() {

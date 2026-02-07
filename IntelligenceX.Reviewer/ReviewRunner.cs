@@ -610,6 +610,10 @@ internal sealed class ReviewRunner {
 
     private static Exception? MapPreflightConnectivityException(HttpRequestException ex, string host, TimeSpan timeout,
         bool cancellationRequested) {
+        if (cancellationRequested &&
+            (ex.InnerException is TaskCanceledException || ex.InnerException is OperationCanceledException)) {
+            return null;
+        }
         if (ex.InnerException is TaskCanceledException && !cancellationRequested) {
             return new TimeoutException($"Connectivity preflight timed out after {timeout.TotalSeconds:0.#}s for {host}.", ex);
         }
