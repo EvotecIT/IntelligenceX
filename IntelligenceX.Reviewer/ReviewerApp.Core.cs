@@ -237,7 +237,6 @@ public static partial class ReviewerApp {
             }
 
             var workflowGuardNote = string.Empty;
-            var filesForSkipPathEvaluation = files;
             if (!settings.AllowWorkflowChanges && HasWorkflowChanges(files)) {
                 var workflowFileCount = CountWorkflowFiles(files);
                 var reviewableFiles = ExcludeWorkflowFiles(files);
@@ -277,7 +276,7 @@ public static partial class ReviewerApp {
 
             progress = new ReviewProgress { StatusLine = "Starting review." };
 
-            if (ShouldSkipByPaths(filesForSkipPathEvaluation, settings.SkipPaths)) {
+            if (ShouldSkipByPaths(files, settings.SkipPaths)) {
                 Console.WriteLine("Skipping pull request due to path filter.");
                 return 0;
             }

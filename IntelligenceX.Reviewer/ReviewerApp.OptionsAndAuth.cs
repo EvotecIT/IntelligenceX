@@ -345,23 +345,11 @@ public static partial class ReviewerApp {
     }
 
     internal static int CountWorkflowFiles(IReadOnlyList<PullRequestFile> files) {
-        var count = 0;
-        foreach (var file in files) {
-            if (IsWorkflowPath(file.Filename)) {
-                count++;
-            }
-        }
-        return count;
+        return files.Count(file => IsWorkflowPath(file.Filename));
     }
 
     internal static IReadOnlyList<PullRequestFile> ExcludeWorkflowFiles(IReadOnlyList<PullRequestFile> files) {
-        var filtered = new List<PullRequestFile>(files.Count);
-        foreach (var file in files) {
-            if (!IsWorkflowPath(file.Filename)) {
-                filtered.Add(file);
-            }
-        }
-        return filtered;
+        return files.Where(file => !IsWorkflowPath(file.Filename)).ToList();
     }
 
     internal static string BuildWorkflowGuardNote(string? headSha, int workflowFileCount, int reviewedFiles, bool skipped) {
