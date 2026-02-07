@@ -70,6 +70,7 @@ internal static partial class Program {
         failed += Run("Analysis policy disable tool rule id", TestAnalysisPolicyDisableToolRuleId);
         failed += Run("Analysis catalog validator passes built-in catalog", TestAnalysisCatalogValidatorPassesBuiltInCatalog);
         failed += Run("Analysis catalog validator detects invalid catalog", TestAnalysisCatalogValidatorDetectsInvalidCatalog);
+        failed += Run("Analysis catalog validator detects missing rule metadata", TestAnalysisCatalogValidatorDetectsMissingRuleMetadata);
         failed += Run("Analyze validate-catalog command", TestAnalyzeValidateCatalogCommand);
         failed += Run("Analyze run disabled writes empty findings", TestAnalyzeRunDisabledWritesEmptyFindings);
         failed += Run("Analyze run internal file size rule", TestAnalyzeRunInternalFileSizeRule);

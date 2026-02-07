@@ -40,12 +40,7 @@ public static class AnalysisPolicyBuilder {
                     continue;
                 }
 
-                var severity = rule.DefaultSeverity;
-                if (TryResolveOverride(pack.SeverityOverrides, rule, out var packSeverity)) {
-                    severity = packSeverity;
-                }
-
-                selected[rule.Id] = new AnalysisPolicyRule(rule, severity);
+                selected[rule.Id] = new AnalysisPolicyRule(rule, rule.DefaultSeverity);
             }
 
             ApplyOverrides(selected, pack.SeverityOverrides);
@@ -147,34 +142,6 @@ public static class AnalysisPolicyBuilder {
         return -1;
     }
 
-    private static bool TryResolveOverride(IReadOnlyDictionary<string, string>? overrides, AnalysisRule rule,
-        out string severity) {
-        severity = string.Empty;
-        if (overrides is null || overrides.Count == 0 || rule is null) {
-            return false;
-        }
-        if (TryReadOverride(overrides, rule.Id, out severity)) {
-            return true;
-        }
-        var toolRuleId = rule.ToolRuleId;
-        if (!string.IsNullOrWhiteSpace(toolRuleId) && TryReadOverride(overrides, toolRuleId, out severity)) {
-            return true;
-        }
-        return false;
-    }
-
-    private static bool TryReadOverride(IReadOnlyDictionary<string, string> overrides, string key, out string severity) {
-        severity = string.Empty;
-        if (string.IsNullOrWhiteSpace(key)) {
-            return false;
-        }
-        if (!overrides.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value)) {
-            return false;
-        }
-        severity = value;
-        return true;
-    }
-
     private static bool IsRuleDisabled(ISet<string> disabled, AnalysisRule rule) {
         if (disabled is null || disabled.Count == 0 || rule is null) {
             return false;
@@ -205,13 +172,13 @@ public static class AnalysisPolicyBuilder {
             return;
         }
 
+        var selectedRuleIds = selected.Keys.ToList();
         foreach (var overrideEntry in overrides) {
             if (string.IsNullOrWhiteSpace(overrideEntry.Key) || string.IsNullOrWhiteSpace(overrideEntry.Value)) {
                 continue;
             }
 
-            var keys = selected.Keys.ToList();
-            foreach (var selectedRuleId in keys) {
+            foreach (var selectedRuleId in selectedRuleIds) {
                 if (!selected.TryGetValue(selectedRuleId, out var existing) || existing?.Rule is null) {
                     continue;
                 }

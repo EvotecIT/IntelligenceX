@@ -156,6 +156,7 @@ public static class AnalysisConfigExporter {
             "info" => "Information",
             "information" => "Information",
             "low" => "Information",
+            "suggestion" => "Information",
             "none" => null,
             _ => "Warning"
         };

@@ -24,8 +24,9 @@ public static class AnalysisCatalogValidator {
         var resolvedWorkspace = string.IsNullOrWhiteSpace(workspace)
             ? Environment.CurrentDirectory
             : Path.GetFullPath(workspace);
-        var rulesRoot = Path.Combine(resolvedWorkspace, "Analysis", "Catalog", "rules");
-        var packsRoot = Path.Combine(resolvedWorkspace, "Analysis", "Packs");
+        var analysisRoot = Path.Combine(resolvedWorkspace, "Analysis");
+        var rulesRoot = Path.Combine(Path.Combine(analysisRoot, "Catalog"), "rules");
+        var packsRoot = Path.Combine(analysisRoot, "Packs");
         return ValidatePaths(rulesRoot, packsRoot);
     }
 
@@ -70,7 +71,7 @@ public static class AnalysisCatalogValidator {
             try {
                 var parsed = JsonLite.Parse(File.ReadAllText(path));
                 obj = parsed?.AsObject();
-            } catch (Exception ex) {
+            } catch (Exception ex) when (!IsFatalException(ex)) {
                 errors.Add($"Invalid rule JSON '{path}': {ex.Message}");
                 continue;
             }
@@ -86,7 +87,17 @@ public static class AnalysisCatalogValidator {
                 continue;
             }
 
-            entries.Add(new RuleEntry(id.Trim(), path));
+            var normalizedId = (id ?? string.Empty).Trim();
+            var hasRequiredFields = true;
+            hasRequiredFields &= ValidateRequiredRuleField(obj, normalizedId, path, "language", errors);
+            hasRequiredFields &= ValidateRequiredRuleField(obj, normalizedId, path, "tool", errors);
+            hasRequiredFields &= ValidateRequiredRuleField(obj, normalizedId, path, "title", errors);
+            hasRequiredFields &= ValidateRequiredRuleField(obj, normalizedId, path, "description", errors);
+            if (!hasRequiredFields) {
+                continue;
+            }
+
+            entries.Add(new RuleEntry(normalizedId, path));
         }
         return entries;
     }
@@ -98,7 +109,7 @@ public static class AnalysisCatalogValidator {
             try {
                 var parsed = JsonLite.Parse(File.ReadAllText(path));
                 obj = parsed?.AsObject();
-            } catch (Exception ex) {
+            } catch (Exception ex) when (!IsFatalException(ex)) {
                 errors.Add($"Invalid pack JSON '{path}': {ex.Message}");
                 continue;
             }
@@ -118,13 +129,20 @@ public static class AnalysisCatalogValidator {
             var includes = AnalysisJsonHelpers.ReadStringList(obj, "includes") ?? Array.Empty<string>();
             var overrides = AnalysisJsonHelpers.ReadStringMap(obj, "severityOverrides") ??
                 new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var normalizedOverrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var overrideEntry in overrides) {
+                if (string.IsNullOrWhiteSpace(overrideEntry.Key)) {
+                    continue;
+                }
+                normalizedOverrides[overrideEntry.Key] = overrideEntry.Value;
+            }
 
             entries.Add(new PackEntry(
-                id.Trim(),
+                (id ?? string.Empty).Trim(),
                 path,
                 rules.Where(rule => !string.IsNullOrWhiteSpace(rule)).Select(rule => rule.Trim()).ToList(),
                 includes.Where(include => !string.IsNullOrWhiteSpace(include)).Select(include => include.Trim()).ToList(),
-                new Dictionary<string, string>(overrides, StringComparer.OrdinalIgnoreCase)));
+                normalizedOverrides));
         }
         return entries;
     }
@@ -271,26 +289,59 @@ public static class AnalysisCatalogValidator {
         return -1;
     }
 
+    private static bool ValidateRequiredRuleField(JsonObject obj, string ruleId, string path, string fieldName,
+        ICollection<string> errors) {
+        if (!string.IsNullOrWhiteSpace(obj.GetString(fieldName))) {
+            return true;
+        }
+        errors.Add($"Rule '{ruleId}' missing required field '{fieldName}' ({path}).");
+        return false;
+    }
+
+    private static bool IsFatalException(Exception ex) {
+        return ex is OutOfMemoryException
+               || ex is StackOverflowException
+               || ex is AccessViolationException;
+    }
+
     private static IEnumerable<string> EnumerateJsonFiles(string root, SearchOption searchOption) {
         if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root)) {
             yield break;
         }
-        var rootFull = Path.GetFullPath(root);
-        foreach (var file in Directory.EnumerateFiles(root, "*.json", searchOption)) {
-            var full = Path.GetFullPath(file);
-            if (!full.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase)) {
+        var rootFull = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var rootPrefix = rootFull + Path.DirectorySeparatorChar;
+        foreach (var full in Directory.EnumerateFiles(root, "*.json", searchOption).Select(Path.GetFullPath)) {
+            if (!full.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
             yield return full;
         }
     }
 
-    private sealed record RuleEntry(string Id, string Path);
+    private sealed class RuleEntry {
+        public RuleEntry(string id, string path) {
+            Id = id;
+            Path = path;
+        }
 
-    private sealed record PackEntry(
-        string Id,
-        string Path,
-        IReadOnlyList<string> Rules,
-        IReadOnlyList<string> Includes,
-        IReadOnlyDictionary<string, string> SeverityOverrides);
+        public string Id { get; }
+        public string Path { get; }
+    }
+
+    private sealed class PackEntry {
+        public PackEntry(string id, string path, IReadOnlyList<string> rules, IReadOnlyList<string> includes,
+            IReadOnlyDictionary<string, string> severityOverrides) {
+            Id = id;
+            Path = path;
+            Rules = rules;
+            Includes = includes;
+            SeverityOverrides = severityOverrides;
+        }
+
+        public string Id { get; }
+        public string Path { get; }
+        public IReadOnlyList<string> Rules { get; }
+        public IReadOnlyList<string> Includes { get; }
+        public IReadOnlyDictionary<string, string> SeverityOverrides { get; }
+    }
 }

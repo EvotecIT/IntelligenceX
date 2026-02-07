@@ -551,7 +551,7 @@ internal static partial class Program {
                     "Reliability", "warning", Array.Empty<string>(), null, null),
                 ["PS001"] = new AnalysisRule(
                     "PS001", "powershell", "psscriptanalyzer", "PSAvoidUsingWriteHost",
-                    "Avoid Write-Host", "Use Write-Output instead", "BestPractices", "warning",
+                    "Avoid Write-Host", "Use Write-Output instead", "BestPractices", "suggestion",
                     Array.Empty<string>(), null, null),
                 ["PS002"] = new AnalysisRule(
                     "PS002", "ps", "psscriptanalyzer", "PSUseSupportsShouldProcess",
@@ -577,6 +577,8 @@ internal static partial class Program {
             var psConfig = File.ReadAllText(Path.Combine(temp, "PSScriptAnalyzerSettings.psd1"));
             AssertEqual(true, psConfig.Contains("PSAvoidUsingWriteHost", StringComparison.Ordinal),
                 "psconfig PSAvoidUsingWriteHost");
+            AssertEqual(true, psConfig.Contains("PSAvoidUsingWriteHost = @{ Severity = 'Information' }", StringComparison.Ordinal),
+                "psconfig suggestion maps to information");
             AssertEqual(true, psConfig.Contains("PSUseSupportsShouldProcess", StringComparison.Ordinal),
                 "psconfig PSUseSupportsShouldProcess");
         } finally {
@@ -753,6 +755,37 @@ internal static partial class Program {
                 "catalog validator unsupported severity");
             AssertEqual(true, validation.Errors.Any(error => error.Contains("Pack include cycle detected", StringComparison.OrdinalIgnoreCase)),
                 "catalog validator include cycle");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalysisCatalogValidatorDetectsMissingRuleMetadata() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-validate-missing-field-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "csharp");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+
+            File.WriteAllText(Path.Combine(rulesDir, "IXMISSING.json"), """
+{
+  "id": "IXMISSING",
+  "language": "csharp",
+  "tool": "roslyn",
+  "description": "Missing title"
+}
+""");
+
+            var validation = IntelligenceX.Analysis.AnalysisCatalogValidator.ValidateWorkspace(temp);
+            AssertEqual(false, validation.IsValid, "catalog validator missing required metadata invalid");
+            AssertEqual(true,
+                validation.Errors.Any(error => error.Contains("Rule 'IXMISSING' missing required field 'title'",
+                    StringComparison.OrdinalIgnoreCase)),
+                "catalog validator missing required metadata");
         } finally {
             if (Directory.Exists(temp)) {
                 Directory.Delete(temp, true);
