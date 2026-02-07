@@ -157,7 +157,10 @@ internal static partial class Program {
         if (!string.Equals(update, "1", StringComparison.Ordinal)) {
             return;
         }
-        File.WriteAllText(GetReviewerFixturePath(filename), NormalizeNewlines(content).Trim() + "\n");
+        var normalized = string.IsNullOrEmpty(content)
+            ? string.Empty
+            : content.Replace("\r\n", "\n").Replace('\r', '\n');
+        File.WriteAllText(GetReviewerFixturePath(filename), normalized.Trim() + "\n");
     }
 
     private static string GetReviewerFixturePath(string filename) {
