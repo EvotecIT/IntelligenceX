@@ -284,7 +284,8 @@ internal static partial class Program {
         var settings = new ReviewSettings {
             ReviewThreadsAutoResolveMax = 1,
             ReviewThreadsMax = 1,
-            ReviewThreadsMaxComments = 1
+            ReviewThreadsMaxComments = 1,
+            ReviewThreadsAutoResolveBotsOnly = false
         };
 
         CallAutoResolveMissingInlineThreads(github, context, new HashSet<string>(StringComparer.OrdinalIgnoreCase), settings);

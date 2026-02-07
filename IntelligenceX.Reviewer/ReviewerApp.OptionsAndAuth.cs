@@ -360,9 +360,10 @@ public static partial class ReviewerApp {
         int maxFiles, int maxPatchChars) {
         var list = new List<PullRequestFile>();
         var truncatedPatches = 0;
+        var effectiveMaxFiles = maxFiles <= 0 ? int.MaxValue : maxFiles;
         var count = 0;
         foreach (var file in files) {
-            if (count >= maxFiles) {
+            if (count >= effectiveMaxFiles) {
                 break;
             }
             var patch = file.Patch;
