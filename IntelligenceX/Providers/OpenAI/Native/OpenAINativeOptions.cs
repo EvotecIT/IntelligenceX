@@ -132,10 +132,13 @@ public sealed class OpenAINativeOptions {
         if (string.IsNullOrWhiteSpace(Instructions)) {
             throw new ArgumentException("Instructions cannot be null or whitespace.", nameof(Instructions));
         }
-        if (string.IsNullOrWhiteSpace(AuthAccountId)) {
+        // Use a local to keep nullable flow analysis happy for older TFMs (netstandard2.0/net472).
+        var authAccountId = AuthAccountId;
+        if (authAccountId is null) {
             AuthAccountId = null;
         } else {
-            AuthAccountId = AuthAccountId.Trim();
+            var trimmed = authAccountId.Trim();
+            AuthAccountId = string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
         }
         if (OAuthTimeout <= TimeSpan.Zero) {
             throw new ArgumentOutOfRangeException(nameof(OAuthTimeout), "OAuthTimeout must be positive.");
