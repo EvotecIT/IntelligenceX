@@ -93,6 +93,10 @@ internal static class AnalyzeRunner {
 
     private static Task<int> ListRulesAsync(string[] args) {
         var options = ParseListRulesArgs(args);
+        if (options.ShowHelp) {
+            PrintListRulesHelp();
+            return Task.FromResult(0);
+        }
         if (options.Error is not null) {
             Console.WriteLine(options.Error);
             return Task.FromResult(1);
@@ -100,11 +104,14 @@ internal static class AnalyzeRunner {
 
         var catalog = AnalysisCatalogLoader.LoadFromWorkspace(ResolveWorkspace(options.Workspace));
         var (rules, warnings) = ResolveListRules(catalog, options.Packs);
-        foreach (var warning in warnings) {
-            Console.WriteLine($"Warning: {warning}");
-        }
+        var jsonOutput = options.Format.Equals("json", StringComparison.OrdinalIgnoreCase);
         if (rules.Count == 0) {
-            Console.WriteLine("No rules found.");
+            if (jsonOutput) {
+                PrintRulesJson(Array.Empty<AnalysisRule>());
+            } else {
+                Console.WriteLine("No rules found.");
+            }
+            WriteListRulesWarnings(warnings, jsonOutput);
             return Task.FromResult(0);
         }
 
@@ -125,6 +132,7 @@ internal static class AnalyzeRunner {
                 return Task.FromResult(1);
         }
 
+        WriteListRulesWarnings(warnings, jsonOutput);
         return Task.FromResult(0);
     }
 
@@ -175,6 +183,10 @@ internal static class AnalyzeRunner {
         var options = new ListRulesOptions();
         for (var i = 0; i < args.Length; i++) {
             var arg = args[i];
+            if (IsHelp(arg)) {
+                options.ShowHelp = true;
+                return options;
+            }
             if (arg.Equals("--workspace", StringComparison.OrdinalIgnoreCase)) {
                 if (i + 1 >= args.Length) {
                     options.Error = "Missing value for --workspace.";
@@ -220,6 +232,16 @@ internal static class AnalyzeRunner {
             options.Error = $"Unsupported format '{options.Format}'. Use text, markdown, or json.";
         }
         return options;
+    }
+
+    private static void WriteListRulesWarnings(IReadOnlyList<string> warnings, bool jsonOutput) {
+        if (warnings is null || warnings.Count == 0) {
+            return;
+        }
+        var writer = jsonOutput ? Console.Error : Console.Out;
+        foreach (var warning in warnings) {
+            writer.WriteLine($"Warning: {warning}");
+        }
     }
 
     private static void AddPackValues(ICollection<string> packs, string? raw) {
@@ -330,6 +352,11 @@ internal static class AnalyzeRunner {
         Console.WriteLine("  intelligencex analyze validate-catalog [--workspace <path>]");
     }
 
+    private static void PrintListRulesHelp() {
+        Console.WriteLine("Usage:");
+        Console.WriteLine("  intelligencex analyze list-rules [--workspace <path>] [--format text|markdown|json] [--pack <id>] [--packs <id1,id2>]");
+    }
+
     private static int PrintHelpReturn() {
         PrintHelp();
         return 1;
@@ -345,6 +372,7 @@ internal static class AnalyzeRunner {
         public string? Workspace { get; set; }
         public string Format { get; set; } = "text";
         public List<string> Packs { get; } = new List<string>();
+        public bool ShowHelp { get; set; }
         public string? Error { get; set; }
     }
 }

@@ -31,3 +31,4 @@ Filter inventory by packs (includes applied):
 Regenerate built-in C# catalog metadata and C# tier packs from NetAnalyzers:
 
 - `./scripts/update_analysis_catalog.py --repo-root .`
+- `python3 scripts/update_analysis_catalog.py --repo-root .`

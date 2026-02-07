@@ -484,6 +484,88 @@ internal static partial class Program {
         AssertContainsText(output, "Unsupported format 'yaml'", "analyze list-rules invalid format message");
     }
 
+    private static void TestAnalyzeListRulesHelp() {
+        var (exitCode, output) = RunAnalyzeAndCaptureOutput(new[] {
+            "list-rules",
+            "--help"
+        });
+        AssertEqual(0, exitCode, "analyze list-rules help exit");
+        AssertContainsText(output, "intelligencex analyze list-rules", "analyze list-rules help usage");
+    }
+
+    private static void TestAnalyzeListRulesJsonWarningsToStderr() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-list-rules-warn-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+
+            File.WriteAllText(Path.Combine(rulesDir, "IX001.json"), """
+{
+  "id": "IX001",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "title": "Rule one",
+  "description": "Rule one"
+}
+""");
+            File.WriteAllText(Path.Combine(packsDir, "strict.json"), """
+{
+  "id": "strict",
+  "label": "Strict",
+  "includes": ["missing-pack"],
+  "rules": ["IX001"]
+}
+""");
+
+            var (exitCode, stdout, stderr) = RunAnalyzeAndCaptureStreams(new[] {
+                "list-rules",
+                "--workspace",
+                temp,
+                "--pack",
+                "strict",
+                "--format",
+                "json"
+            });
+            AssertEqual(0, exitCode, "analyze list-rules json warnings exit");
+            var parsed = JsonLite.Parse(stdout.Trim())?.AsArray();
+            AssertNotNull(parsed, "analyze list-rules json warnings payload");
+            AssertContainsText(stderr, "Warning: Included pack not found: missing-pack", "analyze list-rules json warnings stderr");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalyzeListRulesJsonEmptyOutputsArray() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-list-rules-empty-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+
+            var (exitCode, stdout, stderr) = RunAnalyzeAndCaptureStreams(new[] {
+                "list-rules",
+                "--workspace",
+                temp,
+                "--format",
+                "json"
+            });
+            AssertEqual(0, exitCode, "analyze list-rules empty json exit");
+            AssertEqual("[]", stdout.Trim(), "analyze list-rules empty json payload");
+            AssertEqual(string.Empty, stderr.Trim(), "analyze list-rules empty json stderr");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static int ParseListedRuleCount(string output, string scope) {
         var parsed = JsonLite.Parse((output ?? string.Empty).Trim())?.AsArray();
         AssertNotNull(parsed, $"analyze list-rules {scope} json payload");
@@ -534,17 +616,27 @@ internal static partial class Program {
         }
     }
 
-    private static (int ExitCode, string Output) RunAnalyzeAndCaptureOutput(string[] args) {
+    private static (int ExitCode, string StdOut, string StdErr) RunAnalyzeAndCaptureStreams(string[] args) {
         var originalOut = Console.Out;
-        using var writer = new StringWriter();
-        Console.SetOut(writer);
+        var originalError = Console.Error;
+        using var outWriter = new StringWriter();
+        using var errWriter = new StringWriter();
+        Console.SetOut(outWriter);
+        Console.SetError(errWriter);
         try {
             var exitCode = IntelligenceX.Cli.Analysis.AnalyzeRunner.RunAsync(args).GetAwaiter().GetResult();
-            writer.Flush();
-            return (exitCode, writer.ToString());
+            outWriter.Flush();
+            errWriter.Flush();
+            return (exitCode, outWriter.ToString(), errWriter.ToString());
         } finally {
             Console.SetOut(originalOut);
+            Console.SetError(originalError);
         }
+    }
+
+    private static (int ExitCode, string Output) RunAnalyzeAndCaptureOutput(string[] args) {
+        var (exitCode, stdout, stderr) = RunAnalyzeAndCaptureStreams(args);
+        return (exitCode, stdout + stderr);
     }
 
     private static string ResolveWorkspaceRoot() {
