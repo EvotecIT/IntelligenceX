@@ -24,7 +24,7 @@ This file defines how automated agents should operate in this repo. Follow it fo
 
 **Review Feedback Backlog**
 1. Aggregate bot review feedback using `gh api graphql`.
-1. Preferred: run `python3 scripts/sync_bot_feedback_todo.py` to sync explicit checklist items from open PR bot reviews/comments into `TODO.md`.
+1. Preferred: run `intelligencex todo sync-bot-feedback` (or `dotnet run ... -- todo sync-bot-feedback`) to sync explicit checklist items into `TODO.md` and optionally create issues.
 2. Track only explicit checklist items in `TODO.md`.
 3. Group backlog by PR in `TODO.md` and keep it collapsed.
 4. Avoid nested bullets in `TODO.md`.

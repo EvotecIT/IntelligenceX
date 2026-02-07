@@ -93,6 +93,7 @@ internal static partial class Program {
         failed += Run("Doctor help", TestDoctorHelp);
         failed += Run("Doctor missing auth store fails", TestDoctorMissingAuthStoreFails);
         failed += Run("Doctor multiple bundles warns", TestDoctorMultipleBundlesWarns);
+        failed += Run("Todo help", TestTodoHelp);
         failed += Run("Analyze run disabled writes empty findings", TestAnalyzeRunDisabledWritesEmptyFindings);
         failed += Run("Analyze run internal file size rule", TestAnalyzeRunInternalFileSizeRule);
         failed += Run("Analyze run internal findings use catalog tool metadata",

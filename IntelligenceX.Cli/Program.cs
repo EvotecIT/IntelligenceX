@@ -30,6 +30,7 @@ internal static class Program {
             "reviewer" => await RunReviewerAsync(rest).ConfigureAwait(false),
             "setup" => await RunSetupAsync(rest).ConfigureAwait(false),
             "doctor" => await Doctor.DoctorRunner.RunAsync(rest).ConfigureAwait(false),
+            "todo" => await Todo.TodoRunner.RunAsync(rest).ConfigureAwait(false),
             "release" => await RunReleaseAsync(rest).ConfigureAwait(false),
             "usage" => await UsageRunner.RunAsync(rest).ConfigureAwait(false),
             "help" or "-h" or "--help" => PrintHelpReturn(),
@@ -53,6 +54,7 @@ internal static class Program {
         Console.WriteLine("  intelligencex setup wizard [options]");
         Console.WriteLine("  intelligencex setup web [url]");
         Console.WriteLine("  intelligencex doctor [options]");
+        Console.WriteLine("  intelligencex todo <command>");
         Console.WriteLine("  intelligencex release <command>");
         Console.WriteLine("  intelligencex usage [options]");
         Console.WriteLine();
@@ -77,6 +79,9 @@ internal static class Program {
         Console.WriteLine();
         Console.WriteLine("Doctor:");
         Console.WriteLine("  doctor           Preflight checks for auth/config/GitHub access");
+        Console.WriteLine();
+        Console.WriteLine("TODO:");
+        Console.WriteLine("  todo sync-bot-feedback   Sync bot checklist items into TODO.md (optional issue creation)");
         Console.WriteLine();
         Console.WriteLine("Release commands:");
         Console.WriteLine("  release notes    Generate release notes from git tags/commits");
