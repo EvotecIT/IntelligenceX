@@ -1,12 +1,17 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace IntelligenceX.Reviewer;
 
 internal static class AzureDevOpsReviewRunner {
+    private static readonly Regex PatchHunkHeader =
+        new Regex(@"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@", RegexOptions.Compiled);
+
     public static async Task<int> RunAsync(ReviewSettings settings, CancellationToken cancellationToken) {
         var options = ResolveOptions(settings);
         if (!options.Success || options.BaseUri is null || options.Project is null || options.Token is null) {
@@ -67,20 +72,46 @@ internal static class AzureDevOpsReviewRunner {
         if (!settings.ReviewBudgetSummary) {
             budgetNote = string.Empty;
         }
+
+        // Phase 2: include local git diffs where available to enable inline comments + better prompts.
+        // In Azure Pipelines, sources are typically checked out already; we use the PR commit ids from the REST API.
+        var withPatches = await TryAttachGitPatchesAsync(limited, pr.TargetCommit, pr.SourceCommit, settings.MaxPatchChars,
+            cancellationToken).ConfigureAwait(false);
+
         var repoFullName = $"{pr.Project}/{pr.RepositoryName}";
         var context = new PullRequestContext(repoFullName, pr.Project, pr.RepositoryName,
             pr.PullRequestId, pr.Title, pr.Description, pr.IsDraft, pr.SourceCommit, pr.TargetCommit, Array.Empty<string>(),
             repoFullName, false, null);
         var diffNote = BuildDiffNote(iterationIds);
-        var prompt = PromptBuilder.Build(context, limited, settings, diffNote, null, inlineSupported: false);
+        var inlineSupported = true;
+        var prompt = PromptBuilder.Build(context, withPatches, settings, diffNote, null, inlineSupported, null);
         if (settings.RedactPii) {
             prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
         }
 
         var runner = new ReviewRunner(settings);
         var reviewBody = await runner.RunAsync(prompt, null, null, cancellationToken).ConfigureAwait(false);
-        var commentBody = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: false,
-            inlineSuppressed: false, autoResolveNote: string.Empty, budgetNote, usageLine: string.Empty, findingsBlock: string.Empty);
+        var reviewFailed = ReviewDiagnostics.IsFailureBody(reviewBody);
+        var inlineAllowed = inlineSupported && !reviewFailed && settings.MaxInlineComments > 0;
+        var inlineComments = Array.Empty<InlineReviewComment>();
+        var summaryBody = reviewBody;
+        if (inlineAllowed) {
+            var inlineResult = ReviewInlineParser.Extract(reviewBody, settings.MaxInlineComments);
+            inlineComments = inlineResult.Comments as InlineReviewComment[] ?? inlineResult.Comments.ToArray();
+            if (inlineResult.HadInlineSection && !string.IsNullOrWhiteSpace(inlineResult.Body)) {
+                summaryBody = inlineResult.Body;
+            }
+        }
+
+        if (inlineAllowed && inlineComments.Length > 0) {
+            await TryPostInlineThreadsAsync(client, project, repositoryId, pr.PullRequestId, withPatches, settings,
+                inlineComments, cancellationToken).ConfigureAwait(false);
+        }
+
+        var inlineSuppressed = inlineSupported && !inlineAllowed;
+        var findingsBlock = settings.StructuredFindings ? ReviewFindingsBuilder.Build(inlineComments) : string.Empty;
+        var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported,
+            inlineSuppressed, autoResolveNote: string.Empty, budgetNote, usageLine: string.Empty, findingsBlock);
 
         await client.CreatePullRequestThreadAsync(project, repositoryId, pr.PullRequestId, commentBody, cancellationToken)
             .ConfigureAwait(false);
@@ -109,6 +140,171 @@ internal static class AzureDevOpsReviewRunner {
         var limited = files.Take(maxFiles).ToList();
         var note = ReviewerApp.BuildBudgetNote(files.Count, limited.Count, 0, maxPatchChars);
         return (limited, note);
+    }
+
+    private static async Task<IReadOnlyList<PullRequestFile>> TryAttachGitPatchesAsync(IReadOnlyList<PullRequestFile> files,
+        string? baseSha, string? headSha, int maxPatchChars, CancellationToken cancellationToken) {
+        if (files.Count == 0) {
+            return files;
+        }
+        if (string.IsNullOrWhiteSpace(baseSha) || string.IsNullOrWhiteSpace(headSha)) {
+            return files;
+        }
+
+        var list = new List<PullRequestFile>(files.Count);
+        var truncated = 0;
+        foreach (var file in files) {
+            var patch = await TryGetGitPatchAsync(baseSha!, headSha!, file.Filename, cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(patch) && maxPatchChars > 0 && patch.Length > maxPatchChars) {
+                patch = patch.Substring(0, maxPatchChars) + "\n... (truncated) ...\n";
+                truncated++;
+            }
+            list.Add(new PullRequestFile(file.Filename, file.Status, patch));
+        }
+        if (truncated > 0 && maxPatchChars > 0) {
+            Console.WriteLine($"Note: trimmed {truncated} patch(es) to {maxPatchChars} chars for Azure DevOps review prompt.");
+        }
+        return list;
+    }
+
+    private static async Task<string?> TryGetGitPatchAsync(string baseSha, string headSha, string path, CancellationToken cancellationToken) {
+        if (string.IsNullOrWhiteSpace(path)) {
+            return null;
+        }
+
+        // Use local repo checkout to avoid REST API diff limitations for ADO.
+        // We intentionally scope to a single file to keep memory bounded.
+        var psi = new ProcessStartInfo {
+            FileName = "git",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        psi.ArgumentList.Add("diff");
+        psi.ArgumentList.Add("--no-color");
+        psi.ArgumentList.Add(baseSha);
+        psi.ArgumentList.Add(headSha);
+        psi.ArgumentList.Add("--");
+        psi.ArgumentList.Add(path);
+
+        try {
+            using var proc = Process.Start(psi);
+            if (proc is null) {
+                return null;
+            }
+            var stdout = await proc.StandardOutput.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+            var stderr = await proc.StandardError.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+            await proc.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            if (proc.ExitCode != 0) {
+                if (!string.IsNullOrWhiteSpace(stderr)) {
+                    Console.Error.WriteLine($"git diff failed for {path}: {stderr.Trim()}");
+                }
+                return null;
+            }
+            return string.IsNullOrWhiteSpace(stdout) ? null : stdout.TrimEnd();
+        } catch (OperationCanceledException) {
+            throw;
+        } catch (Exception ex) {
+            Console.Error.WriteLine($"git diff failed for {path}: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static async Task TryPostInlineThreadsAsync(AzureDevOpsClient client, string project, string repositoryId,
+        int pullRequestId, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
+        IReadOnlyList<InlineReviewComment> inlineComments, CancellationToken cancellationToken) {
+        var lineMap = BuildInlineLineMap(files);
+        if (lineMap.Count == 0) {
+            Console.WriteLine("No diff hunks available for Azure DevOps inline comments; skipping inline thread posting.");
+            return;
+        }
+
+        var posted = 0;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var inline in inlineComments) {
+            if (posted >= settings.MaxInlineComments) {
+                break;
+            }
+
+            var normalizedPath = NormalizePath(inline.Path);
+            var line = inline.Line;
+            if (string.IsNullOrWhiteSpace(normalizedPath) || line <= 0) {
+                continue;
+            }
+            if (!lineMap.TryGetValue(normalizedPath, out var allowedLines) || !allowedLines.Contains(line)) {
+                continue;
+            }
+            var key = $"{normalizedPath}:{line}";
+            if (!seen.Add(key)) {
+                continue;
+            }
+            var body = inline.Body?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(body)) {
+                continue;
+            }
+
+            var content = $"{ReviewFormatter.InlineMarker}\n{body}";
+            try {
+                await client.CreatePullRequestInlineThreadAsync(project, repositoryId, pullRequestId, normalizedPath, line,
+                    content, cancellationToken).ConfigureAwait(false);
+                posted++;
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Azure DevOps inline thread failed for {normalizedPath}:{line} - {ex.Message}");
+            }
+        }
+        if (posted > 0) {
+            Console.WriteLine($"Posted Azure DevOps inline threads: {posted}");
+        }
+    }
+
+    private static Dictionary<string, HashSet<int>> BuildInlineLineMap(IReadOnlyList<PullRequestFile> files) {
+        var map = new Dictionary<string, HashSet<int>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in files) {
+            if (string.IsNullOrWhiteSpace(file.Patch)) {
+                continue;
+            }
+            var normalizedPath = NormalizePath(file.Filename);
+            if (string.IsNullOrWhiteSpace(normalizedPath)) {
+                continue;
+            }
+            var allowed = ParsePatchLines(file.Patch!);
+            if (allowed.Count > 0) {
+                map[normalizedPath] = allowed;
+            }
+        }
+        return map;
+    }
+
+    private static HashSet<int> ParsePatchLines(string patch) {
+        var allowed = new HashSet<int>();
+        var lines = patch.Replace("\r", "").Split('\n');
+        var newLine = 0;
+        foreach (var line in lines) {
+            var match = PatchHunkHeader.Match(line);
+            if (match.Success) {
+                _ = int.TryParse(match.Groups[2].Value, out newLine);
+                continue;
+            }
+            if (newLine <= 0) {
+                continue;
+            }
+            if (line.StartsWith("+", StringComparison.Ordinal) && !line.StartsWith("+++", StringComparison.Ordinal)) {
+                allowed.Add(newLine);
+                newLine++;
+                continue;
+            }
+            if (line.StartsWith(" ", StringComparison.Ordinal)) {
+                newLine++;
+            }
+        }
+        return allowed;
+    }
+
+    private static string NormalizePath(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return string.Empty;
+        }
+        return value.Replace('\\', '/').TrimStart('/');
     }
 
     internal static string BuildDiffNote(IReadOnlyList<int> iterationIds) {

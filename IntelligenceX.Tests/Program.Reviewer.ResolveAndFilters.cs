@@ -311,6 +311,33 @@ internal static partial class Program {
         AssertEqual("pull request changes", note, "ado diff note zero");
     }
 
+    private static void TestAzureDevOpsInlinePatchLineMapParsesAddedLines() {
+        var patch = string.Join("\n", new[] {
+            "diff --git a/src/A.cs b/src/A.cs",
+            "index 1111111..2222222 100644",
+            "--- a/src/A.cs",
+            "+++ b/src/A.cs",
+            "@@ -1,2 +10,4 @@",
+            " line1",
+            "+added1",
+            "+added2",
+            " line2",
+            "@@ -20,1 +99,2 @@",
+            "+added3",
+            " line3"
+        });
+
+        var method = typeof(AzureDevOpsReviewRunner).GetMethod("ParsePatchLines", BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("ParsePatchLines method not found.");
+        }
+        var result = method.Invoke(null, new object?[] { patch }) as HashSet<int>;
+        AssertNotNull(result, "ado patch lines result");
+        AssertEqual(true, result!.Contains(11), "ado patch contains line 11");
+        AssertEqual(true, result.Contains(12), "ado patch contains line 12");
+        AssertEqual(true, result.Contains(99), "ado patch contains line 99");
+    }
+
     private static void TestAzureDevOpsErrorSanitization() {
         var errorJson = "{\"message\":\"Authorization: Bearer abc123\"}";
         var sanitized = CallAzureDevOpsSanitize(errorJson);

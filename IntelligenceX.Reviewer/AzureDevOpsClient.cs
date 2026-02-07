@@ -20,6 +20,7 @@ internal sealed class AzureDevOpsClient : IDisposable {
     private const int RootCommentId = 0;
     private const int CommentTypeText = 1;
     private const int ThreadStatusActive = 1;
+    private const int ThreadStatusFixed = 2;
     private static readonly SocketsHttpHandler SharedHandler = new() {
         PooledConnectionLifetime = TimeSpan.FromMinutes(10),
         PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2)
@@ -161,6 +162,42 @@ internal sealed class AzureDevOpsClient : IDisposable {
                 .Add("content", content)
                 .Add("commentType", CommentTypeText)))
             .Add("status", ThreadStatusActive);
+        await PostJsonAsync(url, payload, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Creates a new pull request discussion thread attached to a file/line position.
+    /// </summary>
+    public async Task CreatePullRequestInlineThreadAsync(string project, string repositoryId, int pullRequestId,
+        string filePath, int lineNumber, string content, CancellationToken cancellationToken) {
+        if (string.IsNullOrWhiteSpace(filePath)) {
+            throw new ArgumentException("File path is required.", nameof(filePath));
+        }
+        if (lineNumber <= 0) {
+            throw new ArgumentOutOfRangeException(nameof(lineNumber), "Line number must be positive.");
+        }
+
+        var url = $"{Escape(project)}/_apis/git/repositories/{Escape(repositoryId)}/pullRequests/{pullRequestId}/threads?api-version={ApiVersion}";
+
+        // Azure DevOps expects a leading '/' in threadContext filePath.
+        var normalizedPath = filePath.Replace('\\', '/').TrimStart('/');
+        normalizedPath = "/" + normalizedPath;
+
+        var payload = new JsonObject()
+            .Add("comments", new JsonArray().Add(new JsonObject()
+                .Add("parentCommentId", RootCommentId)
+                .Add("content", content)
+                .Add("commentType", CommentTypeText)))
+            .Add("status", ThreadStatusActive)
+            .Add("threadContext", new JsonObject()
+                .Add("filePath", normalizedPath)
+                .Add("rightFileStart", new JsonObject()
+                    .Add("line", lineNumber)
+                    .Add("offset", 1))
+                .Add("rightFileEnd", new JsonObject()
+                    .Add("line", lineNumber)
+                    .Add("offset", 1)));
+
         await PostJsonAsync(url, payload, cancellationToken).ConfigureAwait(false);
     }
 
