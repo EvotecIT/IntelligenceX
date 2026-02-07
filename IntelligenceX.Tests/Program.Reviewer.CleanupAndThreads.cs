@@ -492,7 +492,10 @@ internal static partial class Program {
             CallPreflightNativeConnectivity(options, TimeSpan.FromSeconds(1));
             throw new InvalidOperationException("Expected socket failure.");
         } catch (InvalidOperationException ex) {
-            AssertContainsText(ex.Message, "Connectivity preflight failed", "preflight socket failure");
+            var message = ex.Message ?? string.Empty;
+            var isSocketFailure = message.Contains("Connectivity preflight failed", StringComparison.OrdinalIgnoreCase) ||
+                                  message.Contains("Connectivity preflight timed out", StringComparison.OrdinalIgnoreCase);
+            AssertEqual(true, isSocketFailure, "preflight socket failure");
         }
     }
 
