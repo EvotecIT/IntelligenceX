@@ -3,7 +3,7 @@
   "language": "csharp",
   "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
   "toolRuleId": "CA5389",
-  "title": "Do Not Add Archive Item's Path To The Target File System Path",
+  "title": "Do not add archive item's path to the target file system path",
   "description": "When extracting files from an archive and using the archive item's path, check if the path is safe. Archive path can be relative and can lead to file system access outside of the expected file system target path, leading to malicious config changes and remote code execution via lay-and-wait technique.",
   "category": "Security",
   "defaultSeverity": "warning",

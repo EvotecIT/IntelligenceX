@@ -375,3 +375,20 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] Warn on unknown/malformed IXLOC001 tags to avoid silent config typos. Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2773420136, https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2773420211
 - [x] Clarify maintainability pack enablement is explicit repo-config change (no forced migration/push into existing repos). Links: https://github.com/EvotecIT/IntelligenceX/pull/99#discussion_r2773653898
 </details>
+<details>
+<summary>PR #127 Add tiered analysis packs and rule inventory formats</summary>
+
+- [x] `list-rules` should recognize `--help`, `-h`, and `help` and return usage text with exit 0. Links: https://github.com/EvotecIT/IntelligenceX/pull/127#discussion_r2777702370, https://github.com/EvotecIT/IntelligenceX/pull/127#discussion_r2777703517
+- [x] Keep `--format json` output machine-parseable by writing warnings to `stderr` instead of `stdout`. Links: https://github.com/EvotecIT/IntelligenceX/pull/127#discussion_r2777703369
+- [x] Emit `[]` for empty rule sets in JSON mode instead of text output. Links: https://github.com/EvotecIT/IntelligenceX/pull/127#discussion_r2777703370
+- [x] Test helper should capture both `stdout` and `stderr` so diagnostics stream moves do not hide regressions. Links: https://github.com/EvotecIT/IntelligenceX/pull/127#discussion_r2777703538
+</details>
+<details>
+<summary>PR #129 Expand C# static-analysis catalog and tier pack coverage</summary>
+
+- [x] Correct malformed CA5350 description text in generated catalog metadata. Links: https://github.com/EvotecIT/IntelligenceX/pull/129#discussion_r2777725816, https://github.com/EvotecIT/IntelligenceX/pull/129#discussion_r2777731753
+- [x] Normalize CA5389 title casing in generated metadata for user-facing consistency. Links: https://github.com/EvotecIT/IntelligenceX/pull/129#discussion_r2777725822, https://github.com/EvotecIT/IntelligenceX/pull/129#discussion_r2777731774
+- [x] Document interpreter-based catalog refresh command in README for portability. Links: https://github.com/EvotecIT/IntelligenceX/pull/129#discussion_r2777725827, https://github.com/EvotecIT/IntelligenceX/pull/129#discussion_r2777731783
+- [x] Avoid selecting `defaultSeverity: none` rules in tier packs so enabled packs do not silently ship disabled analyzer entries. Links: https://github.com/EvotecIT/IntelligenceX/pull/129#discussion_r2777729122
+- [x] Select latest NetAnalyzers NuGet package using semantic version ordering. Links: https://github.com/EvotecIT/IntelligenceX/pull/129#discussion_r2777729123
+</details>
