@@ -264,6 +264,57 @@ internal static partial class Program {
         AssertEqual("Body\n\nTriage", fallback ?? string.Empty, "embed fallback");
     }
 
+    private static void TestThreadAssessmentPromptSmoke() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 7, "Fix null reference", "Body", false, "head",
+            "base", Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            ReviewThreadsMaxComments = 5,
+            MaxPatchChars = 4000
+        };
+        var comment = new PullRequestReviewThreadComment(null, null, "Please add a null check.", "intelligencex-review",
+            "src/Foo.cs", 10);
+        var thread = new PullRequestReviewThread("thread-1", false, false, 1, new[] { comment });
+        var patch = "@@ -9,2 +9,3 @@\n- var x = y.Name;\n+ if (y == null) return;\n+ var x = y.Name;";
+        var files = new[] { new PullRequestFile("src/Foo.cs", "modified", patch) };
+
+        var prompt = CallBuildThreadAssessmentPrompt(context, new[] { thread }, files, settings, "current PR files");
+        AssertContainsText(prompt, "Thread 1:", "thread prompt header");
+        AssertContainsText(prompt, "location: src/Foo.cs:10", "thread prompt location");
+        AssertContainsText(prompt, "diff context:", "thread prompt diff section");
+        AssertContainsText(prompt, "PR: owner/repo #7", "thread prompt pr line");
+    }
+
+    private static void TestAutoResolveStaleThreadsSmoke() {
+        var resolved = 0;
+        using var server = new LocalHttpServer(request => {
+            if (!request.Path.Equals("/graphql", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            if (!request.Body.Contains("resolveReviewThread", StringComparison.Ordinal)) {
+                return null;
+            }
+            resolved++;
+            return new HttpResponse("{\"data\":{\"resolveReviewThread\":{\"thread\":{\"id\":\"thread-old\",\"isResolved\":true}}}}");
+        });
+        using var github = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+
+        var settings = new ReviewSettings {
+            ReviewThreadsAutoResolveMax = 10,
+            ReviewThreadsAutoResolveBotsOnly = true
+        };
+        var staleBotComment = new PullRequestReviewThreadComment(null, null, "Fix this", "intelligencex-review", "src/Foo.cs", 1);
+        var staleHumanComment = new PullRequestReviewThreadComment(null, null, "Please update", "alice", "src/Bar.cs", 2);
+        var activeBotComment = new PullRequestReviewThreadComment(null, null, "Nit", "intelligencex-review", "src/Baz.cs", 3);
+        var threads = new[] {
+            new PullRequestReviewThread("thread-old", false, true, 1, new[] { staleBotComment }),
+            new PullRequestReviewThread("thread-human", false, true, 1, new[] { staleHumanComment }),
+            new PullRequestReviewThread("thread-active", false, false, 1, new[] { activeBotComment })
+        };
+
+        CallAutoResolveStaleThreads(github, threads, settings);
+        AssertEqual(1, resolved, "stale auto-resolve smoke");
+    }
+
     private static void TestAutoResolveMissingInlineEmptyKeys() {
         var resolved = 0;
         var inlineBody = $"{ReviewFormatter.InlineMarker}\nFix it.";

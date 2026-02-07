@@ -514,6 +514,38 @@ internal static partial class Program {
         task.GetAwaiter().GetResult();
     }
 
+    private static void CallAutoResolveStaleThreads(GitHubClient github, IReadOnlyList<PullRequestReviewThread> threads,
+        ReviewSettings settings) {
+        var method = typeof(ReviewerApp).GetMethod("AutoResolveStaleThreadsAsync",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("AutoResolveStaleThreadsAsync method not found.");
+        }
+        var task = method.Invoke(null, new object?[] {
+            github,
+            null,
+            threads,
+            settings,
+            CancellationToken.None
+        }) as Task;
+        if (task is null) {
+            throw new InvalidOperationException("AutoResolveStaleThreadsAsync did not return a task.");
+        }
+        task.GetAwaiter().GetResult();
+    }
+
+    private static string CallBuildThreadAssessmentPrompt(PullRequestContext context,
+        IReadOnlyList<PullRequestReviewThread> threads, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
+        string? diffNote) {
+        var method = typeof(ReviewerApp).GetMethod("BuildThreadAssessmentPrompt",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("BuildThreadAssessmentPrompt method not found.");
+        }
+        var result = method.Invoke(null, new object?[] { context, threads, files, settings, diffNote }) as string;
+        return result ?? string.Empty;
+    }
+
     private static (IReadOnlyList<PullRequestFile> Files, string Note) CallResolveDiffRangeFiles(GitHubClient github,
         PullRequestContext context, string range, IReadOnlyList<PullRequestFile> currentFiles, ReviewSettings settings) {
         var method = typeof(ReviewerApp).GetMethod("ResolveDiffRangeFilesAsync",

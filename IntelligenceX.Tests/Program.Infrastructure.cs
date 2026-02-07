@@ -144,6 +144,35 @@ internal static partial class Program {
         return false;
     }
 
+    private static string LoadReviewerFixture(string filename) {
+        var path = GetReviewerFixturePath(filename);
+        if (!File.Exists(path)) {
+            throw new InvalidOperationException($"Fixture not found: {path}");
+        }
+        return File.ReadAllText(path);
+    }
+
+    private static void MaybeUpdateReviewerFixture(string filename, string content) {
+        var update = Environment.GetEnvironmentVariable("INTELLIGENCEX_UPDATE_GOLDEN");
+        if (!string.Equals(update, "1", StringComparison.Ordinal)) {
+            return;
+        }
+        var normalized = string.IsNullOrEmpty(content)
+            ? string.Empty
+            : content.Replace("\r\n", "\n").Replace('\r', '\n');
+        File.WriteAllText(GetReviewerFixturePath(filename), normalized.Trim() + "\n");
+    }
+
+    private static string GetReviewerFixturePath(string filename) {
+        if (string.IsNullOrWhiteSpace(filename)) {
+            throw new ArgumentException("Fixture filename cannot be empty.", nameof(filename));
+        }
+        if (Path.IsPathRooted(filename)) {
+            throw new ArgumentException("Fixture filename must be a relative path.", nameof(filename));
+        }
+        return Path.Combine("Tests", "Fixtures", "Reviewer", filename);
+    }
+
     private static void AssertEqual<T>(T expected, T? actual, string name) {
         if (!Equals(expected, actual)) {
             throw new InvalidOperationException($"Expected {name} to be '{expected}', got '{actual}'.");
