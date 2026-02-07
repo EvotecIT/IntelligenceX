@@ -90,6 +90,9 @@ internal static partial class Program {
         failed += Run("Analyze list-rules help", TestAnalyzeListRulesHelp);
         failed += Run("Analyze list-rules json warnings to stderr", TestAnalyzeListRulesJsonWarningsToStderr);
         failed += Run("Analyze list-rules json empty outputs array", TestAnalyzeListRulesJsonEmptyOutputsArray);
+        failed += Run("Doctor help", TestDoctorHelp);
+        failed += Run("Doctor missing auth store fails", TestDoctorMissingAuthStoreFails);
+        failed += Run("Doctor multiple bundles warns", TestDoctorMultipleBundlesWarns);
         failed += Run("Analyze run disabled writes empty findings", TestAnalyzeRunDisabledWritesEmptyFindings);
         failed += Run("Analyze run internal file size rule", TestAnalyzeRunInternalFileSizeRule);
         failed += Run("Analyze run internal findings use catalog tool metadata",
