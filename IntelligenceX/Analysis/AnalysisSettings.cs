@@ -58,6 +58,11 @@ public sealed class AnalysisResultsSettings {
     /// Whether to include a policy overview in the PR summary.
     /// </summary>
     public bool ShowPolicy { get; set; } = true;
+    /// <summary>
+    /// Maximum number of rules shown per policy rule list line (for example enabled, failing, clean).
+    /// Set to 0 to hide per-rule lists while keeping aggregate counts.
+    /// </summary>
+    public int PolicyRulePreviewItems { get; set; } = 10;
 }
 
 /// <summary>

@@ -198,6 +198,11 @@ When code-review rate-limit windows are present, their labels are prefixed with 
 }
 ```
 
+When context is truncated, the note explains impact directly in the PR comment:
+- only included files/patch snippets were reviewed
+- findings may miss issues outside included diff context
+- increase `review.maxFiles` and/or `review.maxPatchChars` to widen coverage
+
 ## Structured findings (automation)
 
 ```json
@@ -227,11 +232,17 @@ Enable analysis summaries and inline findings sourced from SARIF or Intelligence
       "summary": true,
       "summaryMaxItems": 10,
       "summaryPlacement": "bottom",
-      "showPolicy": true
+      "showPolicy": true,
+      "policyRulePreviewItems": 10
     }
   }
 }
 ```
+
+`analysis.results.policyRulePreviewItems` controls how many rule IDs are shown per policy line:
+- `0`: hide per-rule lists and keep counts only
+- `10` (default): compact preview
+- `50`, `100`, `500`: progressively fuller visibility (schema max: `500`)
 
 ## Summary stability (avoid noisy reruns)
 

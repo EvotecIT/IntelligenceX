@@ -58,6 +58,8 @@ public static class AnalysisConfigReader {
             settings.Results.SummaryPlacement = NormalizePlacement(placement, settings.Results.SummaryPlacement);
         }
         settings.Results.ShowPolicy = ReadBool(results, "showPolicy", settings.Results.ShowPolicy);
+        settings.Results.PolicyRulePreviewItems = ReadNonNegativeInt(
+            results, "policyRulePreviewItems", settings.Results.PolicyRulePreviewItems);
     }
 
     private static int ReadNonNegativeInt(JsonObject obj, string key, int fallback) {

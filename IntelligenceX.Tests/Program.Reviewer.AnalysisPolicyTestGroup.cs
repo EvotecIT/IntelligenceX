@@ -14,6 +14,8 @@ internal static partial class Program {
         ("Analysis policy no result files unavailable", TestAnalysisPolicyShowsUnavailableWhenNoResultFiles),
         ("Analysis policy outside-pack findings partial", TestAnalysisPolicyMarksPartialWhenOnlyOutsidePackFindingsExist),
         ("Analysis policy no enabled rules unavailable", TestAnalysisPolicyShowsUnavailableWhenNoEnabledRulesAndNoFindings),
+        ("Analysis policy configurable rule preview limit", TestAnalysisPolicyRulePreviewLimitIsConfigurable),
+        ("Analysis policy hidden rule preview lines", TestAnalysisPolicyRulePreviewLinesCanBeHidden),
         ("Analysis policy preview truncates and id fallback", TestAnalysisPolicyEnabledRulePreviewTruncatesAndFallsBackToId),
         ("Analysis policy preview supports non-BMP unicode", TestAnalysisPolicyEnabledRulePreviewSupportsNonBmpUnicodeTitles),
         ("Analysis policy enabled rules with outside findings partial", TestAnalysisPolicyMarksPartialWhenOnlyOutsideFindingsAndEnabledRulesExist),

@@ -182,6 +182,8 @@ internal static partial class Program {
         var note = ReviewerApp.BuildBudgetNote(10, 5, 2, 4000);
         AssertContainsText(note, "first 5 of 10 files", "budget note files");
         AssertContainsText(note, "2 patches trimmed to 4000 chars", "budget note patches");
+        AssertContainsText(note, "findings only reflect the included diff context", "budget note impact");
+        AssertContainsText(note, "increase review.maxFiles and/or review.maxPatchChars", "budget note guidance");
     }
 
     private static void TestReviewBudgetNoteEmpty() {

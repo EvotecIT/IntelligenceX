@@ -23,7 +23,8 @@ internal static class AnalysisPolicyBuilder {
         IReadOnlyList<string> EnabledRules,
         AnalysisCatalog? Catalog,
         IReadOnlyList<string> DisabledRules,
-        IReadOnlyDictionary<string, string> Overrides
+        IReadOnlyDictionary<string, string> Overrides,
+        int RulePreviewItems
     );
 
     public static string BuildPolicy(ReviewSettings settings, AnalysisLoadResult? loadResult = null,
@@ -41,10 +42,11 @@ internal static class AnalysisPolicyBuilder {
             var loadReport = loadResult.Report;
             lines.Add(
                 $"- Result files: {loadReport.ConfiguredInputs} input patterns, {loadReport.ResolvedInputFiles} matched, {loadReport.ParsedInputFiles} parsed, {loadReport.FailedInputFiles} failed");
-            AddOutcomeLines(lines, context.EnabledRules, loadResult.Findings, loadReport, context.Catalog);
+            AddOutcomeLines(lines, context.EnabledRules, loadResult.Findings, loadReport, context.Catalog,
+                context.RulePreviewItems);
         }
 
-        return RenderPolicy(lines, context.DisabledRules, context.Overrides);
+        return RenderPolicy(lines, context.DisabledRules, context.Overrides, context.RulePreviewItems);
     }
 
     public static string BuildUnavailablePolicy(ReviewSettings settings, string reason,
@@ -61,7 +63,7 @@ internal static class AnalysisPolicyBuilder {
         var resolvedReason = SanitizeUnavailableReason(reason);
         lines.Add("- Status: unavailable ℹ️");
         lines.Add($"- Rule outcomes: unavailable ({resolvedReason})");
-        return RenderPolicy(lines, context.DisabledRules, context.Overrides);
+        return RenderPolicy(lines, context.DisabledRules, context.Overrides, context.RulePreviewItems);
     }
 
     private static PolicyContextBuildResult TryBuildBasePolicy(ReviewSettings settings,
@@ -73,7 +75,8 @@ internal static class AnalysisPolicyBuilder {
             Array.Empty<string>(),
             null,
             Array.Empty<string>(),
-            new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(OrdinalIgnoreCaseComparer)));
+            new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(OrdinalIgnoreCaseComparer)),
+            AnalysisPolicyFormatting.MaxRulePreviewItems);
         unavailableReason = "analysis catalog unavailable";
         if (settings?.Analysis?.Enabled != true || settings.Analysis?.Results?.ShowPolicy != true) {
             return PolicyContextBuildResult.Disabled;
@@ -114,6 +117,7 @@ internal static class AnalysisPolicyBuilder {
 
         // Effective enabled order follows pack rule order after disabled-rule filtering.
         var enabledRules = selectedRules.Where(rule => !disabledSet.Contains(rule)).ToList();
+        var rulePreviewItems = ResolveRulePreviewItems(settings);
 
         var lines = new List<string> {
             "### Static Analysis Policy 🧭",
@@ -130,13 +134,15 @@ internal static class AnalysisPolicyBuilder {
         lines.Add($"- Rules: {enabledRules.Count} enabled" +
                   (disabledSet.Count > 0 ? $", {disabledSet.Count} disabled" : string.Empty) +
                   (overrideMap.Count > 0 ? $", {overrideMap.Count} overrides" : string.Empty));
-        AddEnabledRulePreviewLine(lines, enabledRules, loadedCatalog);
+        lines.Add(BuildRulePreviewLimitLine(rulePreviewItems));
+        AddEnabledRulePreviewLine(lines, enabledRules, loadedCatalog, rulePreviewItems);
         context = new PolicyContext(
             lines.ToArray(),
             enabledRules,
             loadedCatalog,
             disabledSet.ToArray(),
-            new ReadOnlyDictionary<string, string>(overrideMap));
+            new ReadOnlyDictionary<string, string>(overrideMap),
+            rulePreviewItems);
         return PolicyContextBuildResult.Ready;
     }
 
@@ -196,37 +202,46 @@ internal static class AnalysisPolicyBuilder {
             ? $"- Packs: {string.Join(", ", packs)}"
             : "- Packs: none");
         lines.Add("- Rules: unavailable (analysis catalog could not be loaded)");
+        lines.Add(BuildRulePreviewLimitLine(ResolveRulePreviewItems(settings)));
         lines.Add("- Status: unavailable ℹ️");
         lines.Add($"- Rule outcomes: unavailable ({SanitizeUnavailableReason(reason)})");
         return string.Join("\n", lines).TrimEnd();
     }
 
     private static void AddRuleConfigurationLines(ICollection<string> lines, IReadOnlyCollection<string> disabled,
-        IReadOnlyDictionary<string, string> overrides) {
+        IReadOnlyDictionary<string, string> overrides, int rulePreviewItems) {
         if (disabled.Count > 0) {
-            var disabledList = disabled.OrderBy(item => item, OrdinalComparer)
-                .Take(AnalysisPolicyFormatting.MaxRulePreviewItems)
-                .ToList();
-            var suffix = disabled.Count > disabledList.Count ? AnalysisPolicyFormatting.TruncatedPreviewSuffix : string.Empty;
-            lines.Add($"- Disabled: {string.Join(", ", disabledList)}{suffix}");
+            if (rulePreviewItems == 0) {
+                lines.Add($"- Disabled: {AnalysisPolicyFormatting.RulePreviewHiddenValue}");
+            } else {
+                var disabledList = disabled.OrderBy(item => item, OrdinalComparer)
+                    .Take(rulePreviewItems)
+                    .ToList();
+                var suffix = disabled.Count > disabledList.Count ? AnalysisPolicyFormatting.TruncatedPreviewSuffix : string.Empty;
+                lines.Add($"- Disabled: {string.Join(", ", disabledList)}{suffix}");
+            }
         }
 
         if (overrides.Count > 0) {
-            var overrideList = overrides
-                .OrderBy(item => item.Key, OrdinalComparer)
-                .Take(AnalysisPolicyFormatting.MaxRulePreviewItems)
-                .Select(item => $"{item.Key}={item.Value}")
-                .ToList();
-            var suffix = overrides.Count > overrideList.Count
-                ? AnalysisPolicyFormatting.TruncatedPreviewSuffix
-                : string.Empty;
-            lines.Add($"- Overrides: {string.Join(", ", overrideList)}{suffix}");
+            if (rulePreviewItems == 0) {
+                lines.Add($"- Overrides: {AnalysisPolicyFormatting.RulePreviewHiddenValue}");
+            } else {
+                var overrideList = overrides
+                    .OrderBy(item => item.Key, OrdinalComparer)
+                    .Take(rulePreviewItems)
+                    .Select(item => $"{item.Key}={item.Value}")
+                    .ToList();
+                var suffix = overrides.Count > overrideList.Count
+                    ? AnalysisPolicyFormatting.TruncatedPreviewSuffix
+                    : string.Empty;
+                lines.Add($"- Overrides: {string.Join(", ", overrideList)}{suffix}");
+            }
         }
     }
 
     private static string RenderPolicy(ICollection<string> lines, IReadOnlyCollection<string> disabled,
-        IReadOnlyDictionary<string, string> overrides) {
-        AddRuleConfigurationLines(lines, disabled, overrides);
+        IReadOnlyDictionary<string, string> overrides, int rulePreviewItems) {
+        AddRuleConfigurationLines(lines, disabled, overrides, rulePreviewItems);
         return string.Join("\n", lines).TrimEnd();
     }
 
@@ -248,14 +263,19 @@ internal static class AnalysisPolicyBuilder {
     }
 
     private static void AddEnabledRulePreviewLine(IList<string> lines, IReadOnlyList<string> enabledRules,
-        AnalysisCatalog catalog) {
+        AnalysisCatalog catalog, int rulePreviewItems) {
+        if (rulePreviewItems == 0) {
+            lines.Add($"- Enabled rules preview: {AnalysisPolicyFormatting.RulePreviewHiddenValue}");
+            return;
+        }
+
         if (enabledRules.Count == 0) {
             lines.Add("- Enabled rules preview: none");
             return;
         }
 
         var preview = enabledRules
-            .Take(AnalysisPolicyFormatting.MaxRulePreviewItems)
+            .Take(rulePreviewItems)
             .Select(ruleId => DescribeRuleForPreview(ruleId, catalog))
             .ToList();
         var suffix = enabledRules.Count > preview.Count ? AnalysisPolicyFormatting.TruncatedPreviewSuffix : string.Empty;
@@ -273,7 +293,8 @@ internal static class AnalysisPolicyBuilder {
     }
 
     private static void AddOutcomeLines(ICollection<string> lines, IReadOnlyList<string> enabledRules,
-        IReadOnlyList<AnalysisFinding>? findings, AnalysisLoadReport loadReport, AnalysisCatalog? catalog) {
+        IReadOnlyList<AnalysisFinding>? findings, AnalysisLoadReport loadReport, AnalysisCatalog? catalog,
+        int rulePreviewItems) {
         if (loadReport.ResolvedInputFiles == 0) {
             lines.Add("- Status: unavailable ℹ️");
             lines.Add("- Rule outcomes: unavailable (no analysis result files matched configured inputs)");
@@ -319,24 +340,29 @@ internal static class AnalysisPolicyBuilder {
             .Select(ruleId => new KeyValuePair<string, int>(ruleId, findingRuleCounts[ruleId]))
             .OrderByDescending(item => item.Value)
             .ThenBy(item => item.Key, OrdinalComparer)
-            .ToList(), catalog);
-        AddRulePreviewLine(lines, "Clean rules", cleanEnabledRules, catalog);
+            .ToList(), catalog, rulePreviewItems);
+        AddRulePreviewLine(lines, "Clean rules", cleanEnabledRules, catalog, rulePreviewItems);
         AddRuleCountPreviewLine(lines, "Outside-pack rules", findingRuleCounts
             .Where(item => !enabledSet.Contains(item.Key))
             .OrderByDescending(item => item.Value)
             .ThenBy(item => item.Key, OrdinalComparer)
-            .ToList(), catalog);
+            .ToList(), catalog, rulePreviewItems);
     }
 
     private static void AddRulePreviewLine(ICollection<string> lines, string label, IReadOnlyList<string> ruleIds,
-        AnalysisCatalog? catalog) {
+        AnalysisCatalog? catalog, int rulePreviewItems) {
+        if (rulePreviewItems == 0) {
+            lines.Add($"- {label}: {AnalysisPolicyFormatting.RulePreviewHiddenValue}");
+            return;
+        }
+
         if (ruleIds.Count == 0) {
             lines.Add($"- {label}: none");
             return;
         }
 
         var preview = ruleIds
-            .Take(AnalysisPolicyFormatting.MaxRulePreviewItems)
+            .Take(rulePreviewItems)
             .Select(ruleId => DescribeRuleForPreview(ruleId, catalog))
             .ToList();
         var suffix = ruleIds.Count > preview.Count ? AnalysisPolicyFormatting.TruncatedPreviewSuffix : string.Empty;
@@ -344,18 +370,36 @@ internal static class AnalysisPolicyBuilder {
     }
 
     private static void AddRuleCountPreviewLine(ICollection<string> lines, string label,
-        IReadOnlyList<KeyValuePair<string, int>> ruleCounts, AnalysisCatalog? catalog) {
+        IReadOnlyList<KeyValuePair<string, int>> ruleCounts, AnalysisCatalog? catalog, int rulePreviewItems) {
+        if (rulePreviewItems == 0) {
+            lines.Add($"- {label}: {AnalysisPolicyFormatting.RulePreviewHiddenValue}");
+            return;
+        }
+
         if (ruleCounts.Count == 0) {
             lines.Add($"- {label}: none");
             return;
         }
 
         var preview = ruleCounts
-            .Take(AnalysisPolicyFormatting.MaxRulePreviewItems)
+            .Take(rulePreviewItems)
             .Select(item => $"{DescribeRuleForPreview(item.Key, catalog)}={item.Value}")
             .ToList();
         var suffix = ruleCounts.Count > preview.Count ? AnalysisPolicyFormatting.TruncatedPreviewSuffix : string.Empty;
         lines.Add($"- {label}: {string.Join(", ", preview)}{suffix}");
+    }
+
+    private static string BuildRulePreviewLimitLine(int rulePreviewItems) {
+        return rulePreviewItems == 0
+            ? "- Rule list display: hidden (policyRulePreviewItems=0)"
+            : $"- Rule list display: up to {rulePreviewItems} items per section";
+    }
+
+    private static int ResolveRulePreviewItems(ReviewSettings settings) {
+        if (settings?.Analysis?.Results is null) {
+            return AnalysisPolicyFormatting.MaxRulePreviewItems;
+        }
+        return AnalysisPolicyFormatting.NormalizeRulePreviewItems(settings.Analysis.Results.PolicyRulePreviewItems);
     }
 
     private static string FormatStatus(string status) {

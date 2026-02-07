@@ -21,7 +21,10 @@ internal static partial class Program {
     "reviewDiffRange": "pr-base"
   },
   "analysis": {
-    "configMode": "replace"
+    "configMode": "replace",
+    "results": {
+      "policyRulePreviewItems": 50
+    }
   }
 }
 """);
@@ -40,6 +43,8 @@ internal static partial class Program {
             AssertEqual(false, settings.SkipGeneratedFiles, "review settings load env skip generated precedence");
             AssertEqual("current", settings.ReviewDiffRange, "review settings load env diff range precedence");
             AssertEqual(AnalysisConfigMode.Replace, settings.Analysis.ConfigMode, "review settings load config analysis mode");
+            AssertEqual(50, settings.Analysis.Results.PolicyRulePreviewItems,
+                "review settings load config analysis preview size");
         } finally {
             Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
             Environment.SetEnvironmentVariable("REVIEW_PROVIDER", previousProvider);
