@@ -1,0 +1,11 @@
+{
+  "id": "CA5358",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA5358",
+  "title": "Review cipher mode usage with cryptography experts",
+  "description": "These cipher modes might be vulnerable to attacks. Consider using recommended modes (CBC, CTS).",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca5358"
+}

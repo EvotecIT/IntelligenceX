@@ -1,0 +1,11 @@
+{
+  "id": "CA5384",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA5384",
+  "title": "Do Not Use Digital Signature Algorithm (DSA)",
+  "description": "DSA is too weak to use.",
+  "category": "Security",
+  "defaultSeverity": "none",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca5384"
+}

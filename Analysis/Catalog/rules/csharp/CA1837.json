@@ -1,0 +1,11 @@
+{
+  "id": "CA1837",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1837",
+  "title": "Use 'Environment.ProcessId'",
+  "description": "'Environment.ProcessId' is simpler and faster than 'Process.GetCurrentProcess().Id'.",
+  "category": "Performance",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1837"
+}

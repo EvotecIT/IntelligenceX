@@ -1,0 +1,11 @@
+{
+  "id": "CA1855",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1855",
+  "title": "Prefer 'Clear' over 'Fill'",
+  "description": "It is more efficient to use 'Clear', instead of 'Fill' with default value.",
+  "category": "Performance",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1855"
+}

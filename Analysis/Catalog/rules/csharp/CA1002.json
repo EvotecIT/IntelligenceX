@@ -1,0 +1,11 @@
+{
+  "id": "CA1002",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1002",
+  "title": "Do not expose generic lists",
+  "description": "System.Collections.Generic.List\\<T> is a generic collection that's designed for performance and not inheritance. List\\<T> does not contain virtual members that make it easier to change the behavior of an inherited class.",
+  "category": "Design",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1002"
+}

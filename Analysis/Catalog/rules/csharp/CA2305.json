@@ -1,0 +1,11 @@
+{
+  "id": "CA2305",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2305",
+  "title": "Do not use insecure deserializer LosFormatter",
+  "description": "The method '{0}' is insecure when deserializing untrusted data.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2305"
+}

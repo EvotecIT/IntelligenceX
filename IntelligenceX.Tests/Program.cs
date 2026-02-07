@@ -84,6 +84,7 @@ internal static partial class Program {
         failed += Run("Analyze validate-catalog command", TestAnalyzeValidateCatalogCommand);
         failed += Run("Analyze list-rules markdown format", TestAnalyzeListRulesMarkdownFormat);
         failed += Run("Analyze list-rules json with pack filter", TestAnalyzeListRulesJsonWithPackFilter);
+        failed += Run("Analyze list-rules tier counts", TestAnalyzeListRulesTierCounts);
         failed += Run("Analyze list-rules invalid format", TestAnalyzeListRulesInvalidFormat);
         failed += Run("Analyze run disabled writes empty findings", TestAnalyzeRunDisabledWritesEmptyFindings);
         failed += Run("Analyze run internal file size rule", TestAnalyzeRunInternalFileSizeRule);

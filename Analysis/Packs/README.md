@@ -26,5 +26,17 @@ Packs are curated rule sets built from rule IDs and optional includes/overrides.
 
 ## Notes on 50/100/500 tiers
 
-Tier names define target growth and policy intent, not a hard count today. Current catalogs may contain fewer rules.
-As new rules are added, extend language tiers and aggregate tiers via `includes` without breaking existing pack IDs.
+Tier IDs are stable policy tiers.
+
+- `*-50`: baseline onboarding tier
+- `*-100`: broader coverage tier
+- `*-500`: deep/strict coverage tier (capped at 500 entries)
+
+For C#, tiers are generated from built-in NetAnalyzers metadata:
+
+- `csharp-50` and `csharp-100` are seeded from `analysislevel_9_recommended.globalconfig`
+- `csharp-500` extends to the full built-in C# catalog (up to 500)
+
+Regenerate C# catalog + C# tiers with:
+
+`./scripts/update_analysis_catalog.py --repo-root .`

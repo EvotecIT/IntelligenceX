@@ -1,0 +1,11 @@
+{
+  "id": "CA2251",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2251",
+  "title": "Use 'string.Equals'",
+  "description": "It is both clearer and likely faster to use 'string.Equals' instead of comparing the result of 'string.Compare' to zero.",
+  "category": "Usage",
+  "defaultSeverity": "none",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2251"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "CA5403",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA5403",
+  "title": "Do not hard-code certificate",
+  "description": "Hard-coded certificates in source code are vulnerable to being exploited.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca5403"
+}

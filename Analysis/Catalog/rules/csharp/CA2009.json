@@ -1,0 +1,11 @@
+{
+  "id": "CA2009",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2009",
+  "title": "Do not call ToImmutableCollection on an ImmutableCollection value",
+  "description": "Do not call {0} on an {1} value",
+  "category": "Reliability",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2009"
+}

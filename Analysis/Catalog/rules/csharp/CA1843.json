@@ -1,0 +1,11 @@
+{
+  "id": "CA1843",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1843",
+  "title": "Do not use 'WaitAll' with a single task",
+  "description": "Using 'WaitAll' with a single task may result in performance loss, await or return the task instead.",
+  "category": "Performance",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1843"
+}

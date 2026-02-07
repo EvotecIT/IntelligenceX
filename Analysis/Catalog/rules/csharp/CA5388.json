@@ -1,0 +1,11 @@
+{
+  "id": "CA5388",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA5388",
+  "title": "Ensure Sufficient Iteration Count When Using Weak Key Derivation Function",
+  "description": "When deriving cryptographic keys from user-provided inputs such as password, use sufficient iteration count (at least 100k).",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca5388"
+}

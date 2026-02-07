@@ -1,0 +1,11 @@
+{
+  "id": "CA1823",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1823",
+  "title": "Avoid unused private fields",
+  "description": "Private fields were detected that do not appear to be accessed in the assembly.",
+  "category": "Performance",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1823"
+}

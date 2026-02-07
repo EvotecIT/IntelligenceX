@@ -1,0 +1,11 @@
+{
+  "id": "CA2301",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2301",
+  "title": "Do not call BinaryFormatter.Deserialize without first setting BinaryFormatter.Binder",
+  "description": "The method '{0}' is insecure when deserializing untrusted data without a SerializationBinder to restrict the type of objects in the deserialized object graph.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2301"
+}

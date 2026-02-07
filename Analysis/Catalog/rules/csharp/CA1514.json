@@ -1,0 +1,11 @@
+{
+  "id": "CA1514",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1514",
+  "title": "Avoid redundant length argument",
+  "description": "An explicit length calculation can be error-prone and can be avoided when slicing to end of the buffer.",
+  "category": "Maintainability",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1514"
+}

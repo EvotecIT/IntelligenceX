@@ -1,0 +1,11 @@
+{
+  "id": "CA2241",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2241",
+  "title": "Provide correct arguments to formatting methods",
+  "description": "The format argument that is passed to System.String.Format does not contain a format item that corresponds to each object argument, or vice versa.",
+  "category": "Usage",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2241"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "CA1418",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1418",
+  "title": "Use valid platform string",
+  "description": "Platform compatibility analyzer requires a valid platform name and version.",
+  "category": "Interoperability",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1418"
+}

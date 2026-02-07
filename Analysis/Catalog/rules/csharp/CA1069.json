@@ -1,0 +1,11 @@
+{
+  "id": "CA1069",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1069",
+  "title": "Enums values should not be duplicated",
+  "description": "The field reference '{0}' is duplicated in this bitwise initialization",
+  "category": "Design",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1069"
+}

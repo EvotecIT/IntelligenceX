@@ -1,0 +1,11 @@
+{
+  "id": "CA1871",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1871",
+  "title": "Do not pass a nullable struct to 'ArgumentNullException.ThrowIfNull'",
+  "description": "'ArgumentNullException.ThrowIfNull' accepts an 'object', so passing a nullable struct may cause the value to be boxed.",
+  "category": "Performance",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1871"
+}

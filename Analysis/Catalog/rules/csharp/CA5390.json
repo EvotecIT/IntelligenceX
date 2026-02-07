@@ -1,0 +1,11 @@
+{
+  "id": "CA5390",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA5390",
+  "title": "Do not hard-code encryption key",
+  "description": "SymmetricAlgorithm's .Key property, or a method's rgbKey parameter, should never be a hard-coded value.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca5390"
+}

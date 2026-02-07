@@ -1,0 +1,11 @@
+{
+  "id": "CA2014",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2014",
+  "title": "Do not use stackalloc in loops",
+  "description": "Stack space allocated by a stackalloc is only released at the end of the current method's invocation. Using it in a loop can result in unbounded stack growth and eventual stack overflow conditions.",
+  "category": "Reliability",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2014"
+}

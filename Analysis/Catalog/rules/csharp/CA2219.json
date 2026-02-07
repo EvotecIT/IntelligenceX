@@ -1,0 +1,11 @@
+{
+  "id": "CA2219",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2219",
+  "title": "Do not raise exceptions in finally clauses",
+  "description": "When an exception is raised in a finally clause, the new exception hides the active exception. This makes the original error difficult to detect and debug.",
+  "category": "Usage",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2219"
+}

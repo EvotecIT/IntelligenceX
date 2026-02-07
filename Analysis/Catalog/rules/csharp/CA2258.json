@@ -1,0 +1,11 @@
+{
+  "id": "CA2258",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2258",
+  "title": "Providing a 'DynamicInterfaceCastableImplementation' interface in Visual Basic is unsupported",
+  "description": "Providing a functional 'DynamicInterfaceCastableImplementationAttribute'-attributed interface requires the Default Interface Members feature, which is unsupported in Visual Basic.",
+  "category": "Usage",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2258"
+}

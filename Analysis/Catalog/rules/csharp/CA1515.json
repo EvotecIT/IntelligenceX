@@ -1,0 +1,11 @@
+{
+  "id": "CA1515",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1515",
+  "title": "Consider making public types internal",
+  "description": "Unlike a class library, an application's API isn't typically referenced publicly, so types can be marked internal.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1515"
+}

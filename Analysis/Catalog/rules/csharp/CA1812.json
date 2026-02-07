@@ -1,0 +1,11 @@
+{
+  "id": "CA1812",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1812",
+  "title": "Avoid uninstantiated internal classes",
+  "description": "An instance of an assembly-level type is not created by code in the assembly.",
+  "category": "Performance",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1812"
+}

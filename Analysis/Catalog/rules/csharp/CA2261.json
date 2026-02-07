@@ -1,0 +1,11 @@
+{
+  "id": "CA2261",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2261",
+  "title": "Do not use ConfigureAwaitOptions.SuppressThrowing with Task\\<TResult>",
+  "description": "The ConfigureAwaitOptions.SuppressThrowing option is only supported with the non-generic Task, not a Task\\<TResult>. To use it with a Task\\<TResult>, first cast to the base Task.",
+  "category": "Usage",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2261"
+}

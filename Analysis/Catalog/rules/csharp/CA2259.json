@@ -1,0 +1,11 @@
+{
+  "id": "CA2259",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2259",
+  "title": "'ThreadStatic' only affects static fields",
+  "description": "'ThreadStatic' only affects static fields. When applied to instance fields, it has no impact on behavior.",
+  "category": "Usage",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2259"
+}

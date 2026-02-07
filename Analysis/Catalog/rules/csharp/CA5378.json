@@ -1,0 +1,11 @@
+{
+  "id": "CA5378",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA5378",
+  "title": "Do not disable ServicePointManagerSecurityProtocols",
+  "description": "Do not set Switch.System.ServiceModel.DisableUsingServicePointManagerSecurityProtocols to true. Setting this switch limits Windows Communication Framework (WCF) to using Transport Layer Security (TLS) 1.0, which is insecure and obsolete.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca5378"
+}

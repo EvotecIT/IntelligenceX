@@ -1,0 +1,11 @@
+{
+  "id": "CA5374",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA5374",
+  "title": "Do Not Use XslTransform",
+  "description": "Do not use XslTransform. It does not restrict potentially dangerous external references.",
+  "category": "Security",
+  "defaultSeverity": "none",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca5374"
+}

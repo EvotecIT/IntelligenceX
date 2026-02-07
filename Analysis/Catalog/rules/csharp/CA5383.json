@@ -1,0 +1,11 @@
+{
+  "id": "CA5383",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA5383",
+  "title": "Ensure Use Secure Cookies In ASP.NET Core",
+  "description": "Applications available over HTTPS must use secure cookies.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca5383"
+}

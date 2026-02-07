@@ -1,0 +1,11 @@
+{
+  "id": "CA1820",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1820",
+  "title": "Test for empty strings using string length",
+  "description": "Comparing strings by using the String.Length property or the String.IsNullOrEmpty method is significantly faster than using Equals.",
+  "category": "Performance",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1820"
+}

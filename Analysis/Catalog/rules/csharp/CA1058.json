@@ -1,0 +1,11 @@
+{
+  "id": "CA1058",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1058",
+  "title": "Types should not extend certain base types",
+  "description": "An externally visible type extends certain base types. Use one of the alternatives.",
+  "category": "Design",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1058"
+}

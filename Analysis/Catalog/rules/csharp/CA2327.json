@@ -1,0 +1,11 @@
+{
+  "id": "CA2327",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2327",
+  "title": "Do not use insecure JsonSerializerSettings",
+  "description": "When deserializing untrusted input, allowing arbitrary types to be deserialized is insecure. When using JsonSerializerSettings, use TypeNameHandling.None, or for values other than None, restrict deserialized types with a SerializationBinder.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2327"
+}

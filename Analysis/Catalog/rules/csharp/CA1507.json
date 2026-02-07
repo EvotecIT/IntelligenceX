@@ -1,0 +1,11 @@
+{
+  "id": "CA1507",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1507",
+  "title": "Use nameof to express symbol names",
+  "description": "Using nameof helps keep your code valid when refactoring.",
+  "category": "Maintainability",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1507"
+}

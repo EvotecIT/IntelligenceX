@@ -1,0 +1,11 @@
+{
+  "id": "CA1842",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1842",
+  "title": "Do not use 'WhenAll' with a single task",
+  "description": "Using 'WhenAll' with a single task may result in performance loss, await or return the task instead.",
+  "category": "Performance",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1842"
+}

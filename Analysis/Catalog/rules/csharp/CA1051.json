@@ -1,0 +1,11 @@
+{
+  "id": "CA1051",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1051",
+  "title": "Do not declare visible instance fields",
+  "description": "The primary use of a field should be as an implementation detail. Fields should be private or internal and should be exposed by using properties.",
+  "category": "Design",
+  "defaultSeverity": "none",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1051"
+}

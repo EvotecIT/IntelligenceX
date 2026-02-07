@@ -1,0 +1,11 @@
+{
+  "id": "CA1826",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1826",
+  "title": "Do not use Enumerable methods on indexable collections",
+  "description": "This collection is directly indexable. Going through LINQ here causes unnecessary allocations and CPU work.",
+  "category": "Performance",
+  "defaultSeverity": "info",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1826"
+}

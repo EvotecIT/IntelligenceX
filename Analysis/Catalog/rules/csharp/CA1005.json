@@ -1,0 +1,11 @@
+{
+  "id": "CA1005",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1005",
+  "title": "Avoid excessive parameters on generic types",
+  "description": "The more type parameters a generic type contains, the more difficult it is to know and remember what each type parameter represents.",
+  "category": "Design",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1005"
+}

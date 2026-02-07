@@ -1,0 +1,11 @@
+{
+  "id": "CA2013",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2013",
+  "title": "Do not use ReferenceEquals with value types",
+  "description": "Value type typed arguments are uniquely boxed for each call to this method, therefore the result can be unexpected.",
+  "category": "Reliability",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2013"
+}

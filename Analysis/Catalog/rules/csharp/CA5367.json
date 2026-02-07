@@ -1,0 +1,11 @@
+{
+  "id": "CA5367",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA5367",
+  "title": "Do Not Serialize Types With Pointer Fields",
+  "description": "Pointers are not \"type safe\" in the sense that you cannot guarantee the correctness of the memory they point at. So, serializing types with pointer fields is dangerous, as it may allow an attacker to control the pointer.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca5367"
+}

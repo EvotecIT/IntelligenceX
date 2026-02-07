@@ -4,9 +4,8 @@
   "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
   "toolRuleId": "CA2000",
   "title": "Dispose objects before losing scope",
-  "description": "Ensures IDisposable instances are disposed to avoid resource leaks.",
+  "description": "If a disposable object is not explicitly disposed before all references to it are out of scope, the object will be disposed at some indeterminate time when the garbage collector runs the finalizer of the object. Because an exceptional event might occur that will prevent the finalizer of the object from running, the object should be explicitly disposed instead.",
   "category": "Reliability",
   "defaultSeverity": "warning",
-  "tags": ["resource-management", "memory"],
   "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2000"
 }

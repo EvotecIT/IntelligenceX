@@ -1,0 +1,11 @@
+{
+  "id": "CA2361",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA2361",
+  "title": "Ensure auto-generated class containing DataSet.ReadXml() is not used with untrusted data",
+  "description": "The method '{0}' is insecure when deserializing untrusted data. Make sure that auto-generated class containing the '{0}' call is not deserialized with untrusted data.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2361"
+}

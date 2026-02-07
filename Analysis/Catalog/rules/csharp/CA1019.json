@@ -1,0 +1,11 @@
+{
+  "id": "CA1019",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1019",
+  "title": "Define accessors for attribute arguments",
+  "description": "Remove the property setter from {0} or reduce its accessibility because it corresponds to positional argument {1}",
+  "category": "Design",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1019"
+}

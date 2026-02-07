@@ -1,0 +1,11 @@
+{
+  "id": "CA1052",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1052",
+  "title": "Static holder types should be Static or NotInheritable",
+  "description": "Type '{0}' is a static holder type but is neither static nor NotInheritable",
+  "category": "Design",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1052"
+}

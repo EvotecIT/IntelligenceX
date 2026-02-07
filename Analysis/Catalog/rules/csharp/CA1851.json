@@ -1,0 +1,11 @@
+{
+  "id": "CA1851",
+  "language": "csharp",
+  "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
+  "toolRuleId": "CA1851",
+  "title": "Possible multiple enumerations of 'IEnumerable' collection",
+  "description": "Possible multiple enumerations of 'IEnumerable' collection. Consider using an implementation that avoids multiple enumerations.",
+  "category": "Performance",
+  "defaultSeverity": "warning",
+  "docs": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1851"
+}
