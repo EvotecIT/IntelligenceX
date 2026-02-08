@@ -392,7 +392,8 @@ internal static partial class Program {
             AssertContainsText(block, "### Security Hotspots", "hotspots header");
             AssertContainsText(block, "Hotspots: 1", "hotspots count");
             AssertContainsText(block, "Missing state entries: 1", "hotspots missing state count");
-            AssertContainsText(block, "\"key\": \"IXHOT001:fp-123\"", "hotspots suggested key uses fingerprint");
+            AssertContainsText(block, "\"key\": \"IXHOT001:fp-\"", "hotspots suggested key uses fingerprint hash");
+            AssertEqual(false, block.Contains("fp-123", StringComparison.Ordinal), "hotspots suggested key does not include raw fingerprint");
         } finally {
             Environment.CurrentDirectory = originalCwd;
             if (Directory.Exists(temp)) {
@@ -446,7 +447,7 @@ internal static partial class Program {
             };
 
             var block = AnalysisHotspots.BuildBlock(settings, findings);
-            AssertContainsText(block, "- State file: hotspots.json", "hotspots state path redacts absolute directory");
+            AssertContainsText(block, "- State file: `hotspots.json`", "hotspots state path redacts absolute directory");
 
             var tmp = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             AssertEqual(false, block.Contains(tmp, StringComparison.OrdinalIgnoreCase), "hotspots state path not absolute");
@@ -556,19 +557,6 @@ internal static partial class Program {
 }
 """);
 
-            // One visible hotspot (to-review) and one suppressed hotspot.
-            var statePath = Path.Combine(temp, ".intelligencex", "hotspots.json");
-            Directory.CreateDirectory(Path.GetDirectoryName(statePath)!);
-            File.WriteAllText(statePath, """
-{
-  "schema": "intelligencex.hotspots.v1",
-  "items": [
-    { "key": "IXHOT001:fp-visible", "status": "to-review" },
-    { "key": "IXHOT001:fp-suppressed", "status": "suppress" }
-  ]
-}
-""");
-
             Environment.CurrentDirectory = temp;
             var settings = new ReviewSettings();
             settings.Analysis.Enabled = true;
@@ -581,11 +569,25 @@ internal static partial class Program {
                 new AnalysisFinding("src/suppressed.cs", 10, "Review this usage.", "warning", "IXHOT001", "IntelligenceX", "fp-suppressed")
             };
 
+            // One visible hotspot (to-review) and one suppressed hotspot.
+            var visibleKey = AnalysisHotspots.ComputeHotspotKey(findings[0]);
+            var suppressedKey = AnalysisHotspots.ComputeHotspotKey(findings[1]);
+            var statePath = Path.Combine(temp, ".intelligencex", "hotspots.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(statePath)!);
+            File.WriteAllText(statePath,
+                "{\n" +
+                "  \"schema\": \"intelligencex.hotspots.v1\",\n" +
+                "  \"items\": [\n" +
+                $"    {{ \"key\": \"{visibleKey}\", \"status\": \"to-review\" }},\n" +
+                $"    {{ \"key\": \"{suppressedKey}\", \"status\": \"suppress\" }}\n" +
+                "  ]\n" +
+                "}\n");
+
             var block = AnalysisHotspots.BuildBlock(settings, findings);
             AssertContainsText(block, "- Hotspots: 1", "hotspots headline excludes suppressed");
             AssertContainsText(block, "(suppressed: 1)", "hotspots suppressed count is reported");
-            AssertContainsText(block, "IXHOT001:fp-visible", "hotspots list includes visible key");
-            AssertEqual(false, block.Contains("IXHOT001:fp-suppressed", StringComparison.OrdinalIgnoreCase),
+            AssertContainsText(block, visibleKey, "hotspots list includes visible key");
+            AssertEqual(false, block.Contains(suppressedKey, StringComparison.OrdinalIgnoreCase),
                 "hotspots list excludes suppressed key");
         } finally {
             Environment.CurrentDirectory = originalCwd;
@@ -608,6 +610,76 @@ internal static partial class Program {
 
         var key = AnalysisHotspots.ComputeHotspotKey(finding);
         AssertEqual("IXHOT002:e4ab3f06e3e88089", key, "hotspots key hashing uses UTF-8 bytes (FNV-1a 64)");
+    }
+
+    private static void TestAnalysisHotspotsOutputEscapesMarkdownInjection() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-hotspots-escape-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var originalCwd = Environment.CurrentDirectory;
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+
+            File.WriteAllText(Path.Combine(rulesDir, "IXHOT001.json"), """
+{
+  "id": "IXHOT001",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "toolRuleId": "IXHOT001",
+  "type": "security-hotspot",
+  "title": "Security hotspot",
+  "description": "Requires review.",
+  "category": "Security",
+  "defaultSeverity": "info"
+}
+""");
+            File.WriteAllText(Path.Combine(packsDir, "all-50.json"), """
+{
+  "id": "all-50",
+  "label": "All Essentials (50)",
+  "rules": ["IXHOT001"]
+}
+""");
+
+            Environment.CurrentDirectory = temp;
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Hotspots.Show = true;
+            settings.Analysis.Hotspots.StatePath = ".intelligencex/hotspots.json";
+            settings.Analysis.Hotspots.ShowStateSummary = false;
+
+            var finding = new AnalysisFinding(
+                "src/test.cs",
+                10,
+                "Hello\n- [x] injected",
+                "warning",
+                "IXHOT001",
+                "IntelligenceX",
+                "fp-inject");
+            var findings = new List<AnalysisFinding> { finding };
+
+            var key = AnalysisHotspots.ComputeHotspotKey(finding);
+            var statePath = Path.Combine(temp, ".intelligencex", "hotspots.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(statePath)!);
+            File.WriteAllText(statePath,
+                "{\n" +
+                "  \"schema\": \"intelligencex.hotspots.v1\",\n" +
+                "  \"items\": [\n" +
+                $"    {{ \"key\": \"{key}\", \"status\": \"to-review\", \"note\": \"`oops`\\n**bold**\" }}\n" +
+                "  ]\n" +
+                "}\n");
+
+            var block = AnalysisHotspots.BuildBlock(settings, findings);
+            AssertContainsText(block, "`Hello - [x] injected`", "hotspots message is rendered as safe inline code");
+            AssertContainsText(block, "Note: `'oops' **bold**`", "hotspots note is rendered as safe inline code");
+        } finally {
+            Environment.CurrentDirectory = originalCwd;
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
     }
 
     private static void TestAnalysisLoaderIncludesHotspotsBelowMinSeverity() {

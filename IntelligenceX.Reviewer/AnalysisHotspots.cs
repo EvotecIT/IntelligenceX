@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using IntelligenceX.Analysis;
 
@@ -78,7 +79,8 @@ internal static class AnalysisHotspots {
             var stateNote = stateFile.Loaded
                 ? "found"
                 : (File.Exists(statePath) ? "unreadable" : "missing");
-            lines.Add($"- State file: {relStatePath.Replace('\\', '/')} ({stateNote})");
+            var displayStatePath = relStatePath.Replace('\\', '/');
+            lines.Add($"- State file: {RenderInlineCode(displayStatePath, maxLen: 200)} ({stateNote})");
             if (missingKeys.Count > 0) {
                 lines.Add($"- Missing state entries: {missingKeys.Count}");
             }
@@ -102,11 +104,15 @@ internal static class AnalysisHotspots {
             lines.Add("- Items:");
             foreach (var item in shown) {
                 var location = FormatLocation(item.Finding);
-                var rule = string.IsNullOrWhiteSpace(item.Finding.RuleId) ? string.Empty : $" ({item.Finding.RuleId})";
+                var rule = string.IsNullOrWhiteSpace(item.Finding.RuleId)
+                    ? string.Empty
+                    : $" (rule {RenderInlineCode(item.Finding.RuleId, maxLen: 80)})";
                 var status = NormalizeStatus(item.Status);
-                var message = TrimMessage(item.Finding.Message);
-                var note = string.IsNullOrWhiteSpace(item.Note) ? string.Empty : $" Note: {TrimMessage(item.Note)}";
-                lines.Add($"- [{status}] `{location}`{rule} {message} (key {item.Key}){note}");
+                var message = RenderInlineCode(item.Finding.Message, maxLen: 220);
+                var note = string.IsNullOrWhiteSpace(item.Note)
+                    ? string.Empty
+                    : $" Note: {RenderInlineCode(item.Note, maxLen: 220)}";
+                lines.Add($"- [{status}] `{location}`{rule} {message} (key {RenderInlineCode(item.Key, maxLen: 120)}){note}");
             }
             if (visibleRendered.Count > shown.Count) {
                 lines.Add($"- Showing first {shown.Count} of {visibleRendered.Count} hotspot(s).");
@@ -206,7 +212,9 @@ internal static class AnalysisHotspots {
         var ruleId = string.IsNullOrWhiteSpace(finding.RuleId) ? "unknown" : finding.RuleId!.Trim();
         var fingerprint = finding.Fingerprint;
         if (!string.IsNullOrWhiteSpace(fingerprint)) {
-            return $"{ruleId}:{fingerprint!.Trim()}";
+            // Fingerprints may be long/untrusted. Hash to produce a bounded, safe, low-collision key.
+            var fpHash = Sha256Hex(fingerprint!.Trim(), bytesToTake: 16);
+            return $"{ruleId}:fp-{fpHash}";
         }
 
         // Fallback: stable 64-bit hash over finding identity.
@@ -249,12 +257,46 @@ internal static class AnalysisHotspots {
         return finding.Path;
     }
 
-    private static string TrimMessage(string? message) {
-        if (string.IsNullOrWhiteSpace(message)) {
+    private static string RenderInlineCode(string? value, int maxLen) {
+        var content = SanitizeInlineCodeContent(value, maxLen);
+        return $"`{content}`";
+    }
+
+    private static string SanitizeInlineCodeContent(string? value, int maxLen) {
+        if (string.IsNullOrWhiteSpace(value)) {
             return string.Empty;
         }
-        var trimmed = message.Trim();
-        return trimmed.Length <= 220 ? trimmed : trimmed.Substring(0, 220) + "...";
+
+        // Normalize to a single line, remove control chars, collapse whitespace, and avoid backticks
+        // so output can't break markdown structure.
+        var trimmed = value.Trim();
+        var sb = new StringBuilder(trimmed.Length);
+        var lastWasSpace = false;
+        foreach (var ch in trimmed) {
+            var normalized = ch == '`' ? '\'' : ch;
+            if (char.IsControl(normalized) || char.IsWhiteSpace(normalized)) {
+                if (!lastWasSpace) {
+                    sb.Append(' ');
+                    lastWasSpace = true;
+                }
+                continue;
+            }
+            sb.Append(normalized);
+            lastWasSpace = false;
+        }
+
+        var content = sb.ToString().Trim();
+        if (maxLen <= 0 || content.Length <= maxLen) {
+            return content;
+        }
+        return content.Substring(0, maxLen) + "...";
+    }
+
+    private static string Sha256Hex(string value, int bytesToTake) {
+        var input = Encoding.UTF8.GetBytes(value ?? string.Empty);
+        var hash = SHA256.HashData(input);
+        var take = bytesToTake <= 0 || bytesToTake > hash.Length ? hash.Length : bytesToTake;
+        return Convert.ToHexString(hash.AsSpan(0, take)).ToLowerInvariant();
     }
 
     private static AnalysisCatalog? TryLoadCatalog(string workspace) {
