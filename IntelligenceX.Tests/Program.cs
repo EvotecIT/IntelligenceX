@@ -94,6 +94,11 @@ internal static partial class Program {
         failed += Run("Doctor missing auth store fails", TestDoctorMissingAuthStoreFails);
         failed += Run("Doctor multiple bundles warns", TestDoctorMultipleBundlesWarns);
         failed += Run("Todo help", TestTodoHelp);
+        failed += Run("Todo unknown command", TestTodoUnknownCommandShowsMessage);
+        failed += Run("Todo bot feedback render LF", TestBotFeedbackRenderHonorsLfNewlines);
+        failed += Run("Todo bot feedback parse existing", TestBotFeedbackParseExistingPrBlockExtractsTasks);
+        failed += Run("Todo bot feedback merge", TestBotFeedbackMergePreservesManualCheckedStateAndOrder);
+        failed += Run("Todo bot feedback update section", TestBotFeedbackUpdateSectionIsDeterministicAndNoDuplicates);
         failed += Run("Analyze run disabled writes empty findings", TestAnalyzeRunDisabledWritesEmptyFindings);
         failed += Run("Analyze run internal file size rule", TestAnalyzeRunInternalFileSizeRule);
         failed += Run("Analyze run internal findings use catalog tool metadata",

@@ -12,13 +12,14 @@ using IntelligenceX.Cli.GitHub;
 namespace IntelligenceX.Cli.Todo;
 
 internal static class BotFeedbackSyncRunner {
+    private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
     private static readonly Regex TaskLine = new(@"^\s*[-*]\s+\[(?<state>[ xX])\]\s+(?<text>.+?)\s*$",
         RegexOptions.Compiled);
     private static readonly Regex TodoTaskLine = new(@"^\s*-\s+\[(?<state>[ xX])\]\s+(?<text>.+?)\s*$",
         RegexOptions.Compiled);
 
-    private sealed record TaskItem(bool Checked, string Text, string Url);
-    private sealed record PrTasks(int Number, string Title, string Url, IReadOnlyList<TaskItem> Tasks);
+    internal sealed record TaskItem(bool Checked, string Text, string Url);
+    internal sealed record PrTasks(int Number, string Title, string Url, IReadOnlyList<TaskItem> Tasks);
 
     private sealed class Options {
         public string Repo { get; set; } = "EvotecIT/IntelligenceX";
@@ -61,7 +62,7 @@ internal static class BotFeedbackSyncRunner {
 
         var updated = UpdateTodo(options.TodoPath, prs, out var changed);
         if (changed) {
-            File.WriteAllText(options.TodoPath, updated, Encoding.UTF8);
+            File.WriteAllText(options.TodoPath, updated, Utf8NoBom);
             Console.WriteLine($"Updated {options.TodoPath} with {prs.Count} PR block(s).");
         } else {
             Console.WriteLine($"{options.TodoPath} already up to date.");
@@ -218,7 +219,7 @@ query($owner: String!, $name: String!, $n: Int!) {
 }
 """;
 
-        var (code, stdout, stderr) = await GhCli.RunAsync(
+        var (code, stdout, stderr) = await GhCli.RunAsync(TimeSpan.FromSeconds(90),
             "api", "graphql",
             "-f", $"query={query}",
             "-F", $"owner={owner}",
@@ -231,15 +232,28 @@ query($owner: String!, $name: String!, $n: Int!) {
 
         using var doc = JsonDocument.Parse(stdout);
         var root = doc.RootElement;
-        var nodes = root
-            .GetProperty("data")
-            .GetProperty("repository")
-            .GetProperty("pullRequests")
-            .GetProperty("nodes");
+        if (root.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Array && errors.GetArrayLength() > 0) {
+            var first = errors[0];
+            var message = first.TryGetProperty("message", out var msg) ? (msg.GetString() ?? "GraphQL error") : "GraphQL error";
+            throw new InvalidOperationException($"GitHub GraphQL returned errors: {message}");
+        }
+
+        if (!TryGetProperty(root, "data", out var data) ||
+            !TryGetProperty(data, "repository", out var repoObj) ||
+            repoObj.ValueKind == JsonValueKind.Null) {
+            throw new InvalidOperationException("GitHub GraphQL response missing repository data.");
+        }
+        if (!TryGetProperty(repoObj, "pullRequests", out var prConn) ||
+            !TryGetProperty(prConn, "nodes", out var nodes) ||
+            nodes.ValueKind != JsonValueKind.Array) {
+            throw new InvalidOperationException("GitHub GraphQL response missing pull request list.");
+        }
 
         var results = new List<PrTasks>();
         foreach (var pr in nodes.EnumerateArray()) {
-            var number = pr.GetProperty("number").GetInt32();
+            if (!TryGetProperty(pr, "number", out var numProp) || numProp.ValueKind != JsonValueKind.Number || !numProp.TryGetInt32(out var number)) {
+                continue;
+            }
             var title = pr.TryGetProperty("title", out var t) ? (t.GetString() ?? "") : "";
             var prUrl = pr.TryGetProperty("url", out var u) ? (u.GetString() ?? "") : "";
 
@@ -253,20 +267,45 @@ query($owner: String!, $name: String!, $n: Int!) {
         return results;
     }
 
+    private static bool TryGetProperty(JsonElement obj, string name, out JsonElement value) {
+        value = default;
+        if (obj.ValueKind != JsonValueKind.Object) {
+            return false;
+        }
+        return obj.TryGetProperty(name, out value);
+    }
+
     private static void ExtractTasks(JsonElement pr, string field, HashSet<string> bots, List<TaskItem> tasks) {
         if (!pr.TryGetProperty(field, out var conn) || !conn.TryGetProperty("nodes", out var nodes) ||
             nodes.ValueKind != JsonValueKind.Array) {
             return;
         }
         foreach (var n in nodes.EnumerateArray()) {
-            var author = n.GetProperty("author").GetProperty("login").GetString() ?? "";
+            var author = TryReadLogin(n);
             if (!bots.Contains(author)) {
                 continue;
             }
-            var body = n.TryGetProperty("body", out var b) ? (b.GetString() ?? "") : "";
-            var url = n.TryGetProperty("url", out var u) ? (u.GetString() ?? "") : "";
+            var body = ReadStringOrEmpty(n, "body");
+            var url = ReadStringOrEmpty(n, "url");
             tasks.AddRange(ParseTasks(body, url));
         }
+    }
+
+    private static string TryReadLogin(JsonElement obj) {
+        if (!TryGetProperty(obj, "author", out var author) || author.ValueKind != JsonValueKind.Object) {
+            return string.Empty;
+        }
+        if (!TryGetProperty(author, "login", out var loginProp) || loginProp.ValueKind != JsonValueKind.String) {
+            return string.Empty;
+        }
+        return loginProp.GetString() ?? string.Empty;
+    }
+
+    private static string ReadStringOrEmpty(JsonElement obj, string name) {
+        if (!TryGetProperty(obj, name, out var prop) || prop.ValueKind != JsonValueKind.String) {
+            return string.Empty;
+        }
+        return prop.GetString() ?? string.Empty;
     }
 
     private static IEnumerable<TaskItem> ParseTasks(string body, string url) {
@@ -300,18 +339,23 @@ query($owner: String!, $name: String!, $n: Int!) {
             throw new InvalidOperationException($"Missing section header in {todoPath}: {header}");
         }
 
+        var newline = DetectNewline(original);
         var sectionStart = headerIndex;
         var sectionEnd = FindNextH2(original, sectionStart + header.Length);
         if (sectionEnd < 0) {
             sectionEnd = original.Length;
         }
         var section = original.Substring(sectionStart, sectionEnd - sectionStart);
-        var newSection = UpdateSection(section, prs, out var sectionChanged);
+        var newSection = UpdateSection(section, prs, newline, out var sectionChanged);
         if (!sectionChanged) {
             return original;
         }
         changed = true;
         return original.Substring(0, sectionStart) + newSection + original.Substring(sectionEnd);
+    }
+
+    private static string DetectNewline(string text) {
+        return text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
     }
 
     private static int FindNextH2(string text, int startAt) {
@@ -326,14 +370,16 @@ query($owner: String!, $name: String!, $n: Int!) {
         return -1;
     }
 
-    private static string UpdateSection(string section, IReadOnlyList<PrTasks> prs, out bool changed) {
+    // Internal for tests.
+    internal static string UpdateSection(string section, IReadOnlyList<PrTasks> prs, string newline, out bool changed) {
         changed = false;
 
         var text = section;
+        var inserts = new List<string>();
         foreach (var pr in prs) {
             var existing = TryParseExistingPrBlock(text, pr.Number);
             var merged = MergeTasks(existing, pr);
-            var block = RenderPrBlock(merged);
+            var block = RenderPrBlock(merged, newline);
             var pattern = new Regex(
                 @$"(?s)<details>\s*\n<summary>PR\s*#\s*{pr.Number}\b.*?\n</details>\s*\n",
                 RegexOptions.Compiled);
@@ -344,18 +390,22 @@ query($owner: String!, $name: String!, $n: Int!) {
                     changed = true;
                 }
             } else {
-                var insertAt = FindInsertPoint(text);
-                text = text.Insert(insertAt, block);
-                changed = true;
+                inserts.Add(block);
             }
         }
 
+        if (inserts.Count > 0) {
+            var insertAt = FindInsertPoint(text);
+            text = text.Insert(insertAt, string.Join(string.Empty, inserts));
+            changed = true;
+        }
         return text;
     }
 
-    private sealed record ExistingPrBlock(int Number, IReadOnlyList<TaskItem> Tasks);
+    internal sealed record ExistingPrBlock(int Number, IReadOnlyList<TaskItem> Tasks);
 
-    private static ExistingPrBlock? TryParseExistingPrBlock(string section, int prNumber) {
+    // Internal for tests.
+    internal static ExistingPrBlock? TryParseExistingPrBlock(string section, int prNumber) {
         var pattern = new Regex(
             @$"(?s)<details>\s*\n<summary>PR\s*#\s*{prNumber}\b.*?\n</details>\s*\n",
             RegexOptions.Compiled);
@@ -392,7 +442,8 @@ query($owner: String!, $name: String!, $n: Int!) {
         return new ExistingPrBlock(prNumber, tasks);
     }
 
-    private static PrTasks MergeTasks(ExistingPrBlock? existing, PrTasks current) {
+    // Internal for tests.
+    internal static PrTasks MergeTasks(ExistingPrBlock? existing, PrTasks current) {
         if (existing is null || existing.Tasks.Count == 0) {
             // De-dup current tasks by text; OR checked for repeated occurrences.
             var dedup = new Dictionary<string, TaskItem>(StringComparer.Ordinal);
@@ -465,22 +516,23 @@ query($owner: String!, $name: String!, $n: Int!) {
         return section.Length;
     }
 
-    private static string RenderPrBlock(PrTasks pr) {
+    // Internal for tests.
+    internal static string RenderPrBlock(PrTasks pr, string newline) {
         var safeSummary = HtmlEscape($"PR #{pr.Number} {pr.Title}".Trim());
         var sb = new StringBuilder();
-        sb.AppendLine("<details>");
-        sb.AppendLine($"<summary>{safeSummary}</summary>");
-        sb.AppendLine();
+        sb.Append("<details>").Append(newline);
+        sb.Append("<summary>").Append(safeSummary).Append("</summary>").Append(newline);
+        sb.Append(newline);
         foreach (var t in pr.Tasks) {
             var state = t.Checked ? "x" : " ";
             if (string.IsNullOrWhiteSpace(t.Url)) {
-                sb.AppendLine($"- [{state}] {t.Text}");
+                sb.Append("- [").Append(state).Append("] ").Append(t.Text).Append(newline);
             } else {
-                sb.AppendLine($"- [{state}] {t.Text}. Links: {t.Url}");
+                sb.Append("- [").Append(state).Append("] ").Append(t.Text).Append(". Links: ").Append(t.Url).Append(newline);
             }
         }
-        sb.AppendLine("</details>");
-        sb.AppendLine();
+        sb.Append("</details>").Append(newline);
+        sb.Append(newline);
         return sb.ToString();
     }
 

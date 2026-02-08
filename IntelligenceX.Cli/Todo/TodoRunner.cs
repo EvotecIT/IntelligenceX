@@ -14,7 +14,7 @@ internal static class TodoRunner {
         var rest = args.Skip(1).ToArray();
         return command switch {
             "sync-bot-feedback" => BotFeedbackSyncRunner.RunAsync(rest),
-            _ => Task.FromResult(PrintHelpReturn())
+            _ => Task.FromResult(PrintHelpReturn(command))
         };
     }
 
@@ -24,7 +24,10 @@ internal static class TodoRunner {
                value.Equals("help", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static int PrintHelpReturn() {
+    private static int PrintHelpReturn(string? command) {
+        if (!string.IsNullOrWhiteSpace(command)) {
+            Console.Error.WriteLine($"Unknown todo command: {command}");
+        }
         PrintHelp();
         return 1;
     }
