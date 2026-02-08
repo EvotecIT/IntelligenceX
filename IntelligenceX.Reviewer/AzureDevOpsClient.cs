@@ -192,7 +192,10 @@ internal sealed class AzureDevOpsClient : IDisposable {
             throw new ArgumentException("File path must not contain '..' segments.", nameof(filePath));
         }
         normalizedPath = "/" + normalizedPath;
-        // ADO threadContext offsets are 0-based character offsets within the line; default to column 0.
+        // ADO threadContext positions:
+        // - line starts at 1 (not 0)
+        // - offset starts at 0
+        // https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-threads/create?view=azure-devops-rest-7.2#commentposition
         const int offset = 0;
 
         var payload = new JsonObject()

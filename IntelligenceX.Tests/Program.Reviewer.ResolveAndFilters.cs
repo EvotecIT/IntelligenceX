@@ -353,6 +353,41 @@ internal static partial class Program {
         AssertEqual(true, result.Contains(3), "ado patch contains line 3");
     }
 
+    private static void TestAzureDevOpsInlineThreadContextUsesOneBasedLineAndZeroBasedOffset() {
+        var project = "proj";
+        var repo = "repo";
+        var prId = 42;
+        string capturedBody = string.Empty;
+
+        using var server = new LocalHttpServer(request => {
+            if (!request.Path.StartsWith($"/{project}/_apis/git/repositories/{repo}/pullRequests/{prId}/threads",
+                    StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            if (!request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            capturedBody = request.Body;
+            return new HttpResponse("{}");
+        });
+
+        using var client = new AzureDevOpsClient(server.BaseUri, "token", AzureDevOpsAuthScheme.Bearer);
+        client.CreatePullRequestInlineThreadAsync(project, repo, prId, "src/A.cs", 5, "Hello", CancellationToken.None)
+            .GetAwaiter().GetResult();
+
+        var json = JsonLite.Parse(capturedBody);
+        var obj = json?.AsObject();
+        AssertNotNull(obj, "ado inline thread payload");
+
+        var context = obj!.GetObject("threadContext");
+        AssertNotNull(context, "ado threadContext");
+        AssertEqual("/src/A.cs", context!.GetString("filePath"), "ado threadContext filePath");
+        AssertEqual(5L, context.GetObject("rightFileStart")!.GetInt64("line"), "ado rightFileStart line");
+        AssertEqual(0L, context.GetObject("rightFileStart")!.GetInt64("offset"), "ado rightFileStart offset");
+        AssertEqual(5L, context.GetObject("rightFileEnd")!.GetInt64("line"), "ado rightFileEnd line");
+        AssertEqual(0L, context.GetObject("rightFileEnd")!.GetInt64("offset"), "ado rightFileEnd offset");
+    }
+
     private static void TestAzureDevOpsErrorSanitization() {
         var errorJson = "{\"message\":\"Authorization: Bearer abc123\"}";
         var sanitized = CallAzureDevOpsSanitize(errorJson);
