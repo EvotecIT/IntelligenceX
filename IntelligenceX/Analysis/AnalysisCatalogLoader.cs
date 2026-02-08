@@ -126,7 +126,7 @@ public static class AnalysisCatalogLoader {
             return null;
         }
         // string.IsNullOrWhiteSpace is not annotated for netstandard2.0 flow analysis; force non-null.
-        var normalized = NormalizeCategoryKey(category);
+        var normalized = NormalizeCategoryKey(category!);
         if (normalized.Equals("Security", StringComparison.OrdinalIgnoreCase)) {
             return "vulnerability";
         }
@@ -166,10 +166,14 @@ public static class AnalysisCatalogLoader {
     }
 
     private static string? NormalizeRuleType(string? type) {
-        if (string.IsNullOrWhiteSpace(type)) {
+        // string.IsNullOrWhiteSpace is not annotated for netstandard2.0 flow analysis; force non-null.
+        if (type is null) {
             return null;
         }
         var trimmed = type.Trim();
+        if (trimmed.Length == 0) {
+            return null;
+        }
         // Canonical supported types.
         if (trimmed.Equals("bug", StringComparison.OrdinalIgnoreCase)) {
             return "bug";
