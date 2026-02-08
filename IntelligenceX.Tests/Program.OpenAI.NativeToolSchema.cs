@@ -32,6 +32,7 @@ internal static partial class Program {
         var args = new object?[] { "Unknown parameter: 'foo'.", null };
         var ok = (bool)method!.Invoke(null, args)!;
         AssertEqual(false, ok, "ok");
+        AssertEqual("Parameters", args[1]?.ToString() ?? string.Empty, "fallbackKind");
     }
 
     private static void TestNativeToolSchemaSerializationSwitchesFieldName() {
