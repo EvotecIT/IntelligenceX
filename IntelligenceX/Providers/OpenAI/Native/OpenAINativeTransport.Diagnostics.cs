@@ -36,9 +36,18 @@ internal sealed partial class OpenAINativeTransport {
             var value = JsonLite.Parse(text);
             var obj = value?.AsObject();
             var error = obj?.GetObject("error");
-            var message = error?.GetString("message") ?? obj?.GetString("message") ?? text;
-            var code = error?.GetString("code") ?? error?.GetString("type");
-            var param = error?.GetString("param") ?? error?.GetString("parameter");
+            // Prefer the structured { error: { ... } } shape. If it's absent, keep the raw payload text rather than
+            // an unrelated top-level "message" field (which can be generic/proxy HTML wrappers).
+            var message = error?.GetString("message");
+            if (string.IsNullOrWhiteSpace(message)) {
+                message = error is not null
+                    ? (obj?.GetString("message") ?? text)
+                    : text;
+            }
+            message ??= text;
+
+            var code = error?.GetString("code") ?? error?.GetString("type") ?? obj?.GetString("code") ?? obj?.GetString("type");
+            var param = error?.GetString("param") ?? error?.GetString("parameter") ?? obj?.GetString("param") ?? obj?.GetString("parameter");
 
             if (response.StatusCode == (HttpStatusCode)429) {
                 var resetsAt = error?.GetInt64("resets_at");
