@@ -26,8 +26,8 @@ internal static partial class Program {
     private static void TestNativeToolSchemaFallbackIgnoresUnrelated() {
         var ix = typeof(IntelligenceXClient).Assembly;
         var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
-        var method = transportType.GetMethod("TryGetToolSchemaFallbackKind", BindingFlags.NonPublic | BindingFlags.Static);
-        AssertNotNull(method, "TryGetToolSchemaFallbackKind method");
+        var method = transportType.GetMethod("TryGetToolSchemaKeyFallback", BindingFlags.NonPublic | BindingFlags.Static);
+        AssertNotNull(method, "TryGetToolSchemaKeyFallback method");
 
         var args = new object?[] { "Unknown parameter: 'foo'.", null };
         var ok = (bool)method!.Invoke(null, args)!;
@@ -39,8 +39,8 @@ internal static partial class Program {
         var ix = typeof(IntelligenceXClient).Assembly;
         var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
 
-        var enumType = transportType.GetNestedType("ToolSchemaKind", BindingFlags.NonPublic);
-        AssertNotNull(enumType, "ToolSchemaKind enum");
+        var enumType = transportType.GetNestedType("ToolWireFormat", BindingFlags.NonPublic);
+        AssertNotNull(enumType, "ToolWireFormat enum");
 
         var serialize = transportType.GetMethod("SerializeToolDefinition", BindingFlags.NonPublic | BindingFlags.Static);
         AssertNotNull(serialize, "SerializeToolDefinition method");
@@ -48,23 +48,39 @@ internal static partial class Program {
         var schema = new JsonObject().Add("type", "object");
         var tool = new ToolDefinition("test-tool", parameters: schema);
 
-        var parametersKind = Enum.Parse(enumType!, "Parameters");
-        var inputSchemaKind = Enum.Parse(enumType!, "InputSchema");
+        var customParameters = Enum.Parse(enumType!, "CustomParameters");
+        var customInputSchema = Enum.Parse(enumType!, "CustomInputSchema");
+        var functionFlatParameters = Enum.Parse(enumType!, "FunctionFlatParameters");
+        var functionFlatInputSchema = Enum.Parse(enumType!, "FunctionFlatInputSchema");
 
-        var withParameters = (JsonObject)serialize!.Invoke(null, new object?[] { tool, parametersKind })!;
-        AssertEqual(true, withParameters.TryGetValue("parameters", out _), "parameters present");
-        AssertEqual(false, withParameters.TryGetValue("input_schema", out _), "input_schema absent");
+        var withCustomParameters = (JsonObject)serialize!.Invoke(null, new object?[] { tool, customParameters })!;
+        AssertEqual("custom", withCustomParameters.GetString("type") ?? string.Empty, "type");
+        AssertEqual(true, withCustomParameters.TryGetValue("parameters", out _), "parameters present");
+        AssertEqual(false, withCustomParameters.TryGetValue("input_schema", out _), "input_schema absent");
 
-        var withInputSchema = (JsonObject)serialize!.Invoke(null, new object?[] { tool, inputSchemaKind })!;
-        AssertEqual(false, withInputSchema.TryGetValue("parameters", out _), "parameters absent");
-        AssertEqual(true, withInputSchema.TryGetValue("input_schema", out _), "input_schema present");
+        var withCustomInputSchema = (JsonObject)serialize!.Invoke(null, new object?[] { tool, customInputSchema })!;
+        AssertEqual("custom", withCustomInputSchema.GetString("type") ?? string.Empty, "type");
+        AssertEqual(false, withCustomInputSchema.TryGetValue("parameters", out _), "parameters absent");
+        AssertEqual(true, withCustomInputSchema.TryGetValue("input_schema", out _), "input_schema present");
+
+        var withFunctionFlatParameters = (JsonObject)serialize!.Invoke(null, new object?[] { tool, functionFlatParameters })!;
+        AssertEqual("function", withFunctionFlatParameters.GetString("type") ?? string.Empty, "type");
+        AssertEqual(true, withFunctionFlatParameters.TryGetValue("name", out _), "name present");
+        AssertEqual(true, withFunctionFlatParameters.TryGetValue("parameters", out _), "parameters present");
+        AssertEqual(false, withFunctionFlatParameters.TryGetValue("input_schema", out _), "input_schema absent");
+
+        var withFunctionFlatInputSchema = (JsonObject)serialize!.Invoke(null, new object?[] { tool, functionFlatInputSchema })!;
+        AssertEqual("function", withFunctionFlatInputSchema.GetString("type") ?? string.Empty, "type");
+        AssertEqual(true, withFunctionFlatInputSchema.TryGetValue("name", out _), "name present");
+        AssertEqual(false, withFunctionFlatInputSchema.TryGetValue("parameters", out _), "parameters absent");
+        AssertEqual(true, withFunctionFlatInputSchema.TryGetValue("input_schema", out _), "input_schema present");
     }
 
     private static string DetectFallbackKind(string message) {
         var ix = typeof(IntelligenceXClient).Assembly;
         var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
-        var method = transportType.GetMethod("TryGetToolSchemaFallbackKind", BindingFlags.NonPublic | BindingFlags.Static);
-        AssertNotNull(method, "TryGetToolSchemaFallbackKind method");
+        var method = transportType.GetMethod("TryGetToolSchemaKeyFallback", BindingFlags.NonPublic | BindingFlags.Static);
+        AssertNotNull(method, "TryGetToolSchemaKeyFallback method");
 
         var args = new object?[] { message, null };
         var ok = (bool)method!.Invoke(null, args)!;

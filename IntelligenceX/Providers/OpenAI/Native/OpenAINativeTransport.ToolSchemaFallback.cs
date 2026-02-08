@@ -3,13 +3,13 @@ using System;
 namespace IntelligenceX.OpenAI.Native;
 
 internal sealed partial class OpenAINativeTransport {
-    private static bool TryGetToolSchemaFallbackKind(string? message, out ToolSchemaKind fallbackKind) {
+    private static bool TryGetToolSchemaKeyFallback(string? message, out ToolSchemaKey fallbackKey) {
         // Server error messages vary; the stable signal is the field path that was rejected:
         // - tools[<n>].parameters
         // - tools[<n>].input_schema
         // - tools.<n>.parameters (seen in some variants)
         // - tools.<n>.input_schema
-        fallbackKind = ToolSchemaKind.Parameters;
+        fallbackKey = ToolSchemaKey.Parameters;
         if (string.IsNullOrWhiteSpace(message)) {
             return false;
         }
@@ -44,11 +44,11 @@ internal sealed partial class OpenAINativeTransport {
 
             if (TryReadIdentifier(text, i, out var identifier)) {
                 if (string.Equals(identifier, "parameters", StringComparison.OrdinalIgnoreCase)) {
-                    fallbackKind = ToolSchemaKind.InputSchema;
+                    fallbackKey = ToolSchemaKey.InputSchema;
                     return true;
                 }
                 if (string.Equals(identifier, "input_schema", StringComparison.OrdinalIgnoreCase)) {
-                    fallbackKind = ToolSchemaKind.Parameters;
+                    fallbackKey = ToolSchemaKey.Parameters;
                     return true;
                 }
             }
@@ -80,11 +80,11 @@ internal sealed partial class OpenAINativeTransport {
 
             if (TryReadIdentifier(text, i, out var identifier)) {
                 if (string.Equals(identifier, "parameters", StringComparison.OrdinalIgnoreCase)) {
-                    fallbackKind = ToolSchemaKind.InputSchema;
+                    fallbackKey = ToolSchemaKey.InputSchema;
                     return true;
                 }
                 if (string.Equals(identifier, "input_schema", StringComparison.OrdinalIgnoreCase)) {
-                    fallbackKind = ToolSchemaKind.Parameters;
+                    fallbackKey = ToolSchemaKey.Parameters;
                     return true;
                 }
             }
@@ -115,4 +115,3 @@ internal sealed partial class OpenAINativeTransport {
         return true;
     }
 }
-

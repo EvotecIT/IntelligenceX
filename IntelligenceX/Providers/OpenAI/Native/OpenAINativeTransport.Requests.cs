@@ -11,13 +11,20 @@ using IntelligenceX.Utils;
 namespace IntelligenceX.OpenAI.Native;
 
 internal sealed partial class OpenAINativeTransport {
-    private enum ToolSchemaKind {
+    private enum ToolWireFormat {
+        CustomParameters,
+        CustomInputSchema,
+        FunctionFlatParameters,
+        FunctionFlatInputSchema
+    }
+
+    private enum ToolSchemaKey {
         Parameters,
         InputSchema
     }
 
     private JsonObject BuildRequestBody(string model, IReadOnlyList<JsonObject> messages, string sessionId, ChatOptions options,
-        ToolSchemaKind toolSchemaKind = ToolSchemaKind.Parameters) {
+        ToolWireFormat toolWireFormat = ToolWireFormat.CustomParameters) {
         var input = new JsonArray();
         foreach (var message in messages) {
             input.Add(message);
@@ -68,7 +75,7 @@ internal sealed partial class OpenAINativeTransport {
         if (options.Tools is not null && options.Tools.Count > 0) {
             var tools = new JsonArray();
             foreach (var tool in options.Tools) {
-                tools.Add(SerializeToolDefinition(tool, toolSchemaKind));
+                tools.Add(SerializeToolDefinition(tool, toolWireFormat));
             }
             body.Add("tools", tools);
 
@@ -91,19 +98,40 @@ internal sealed partial class OpenAINativeTransport {
         return body;
     }
 
-    private static JsonObject SerializeToolDefinition(ToolDefinition tool, ToolSchemaKind toolSchemaKind) {
-        var obj = new JsonObject()
-            .Add("type", "custom")
-            .Add("name", tool.Name);
-        if (!string.IsNullOrWhiteSpace(tool.Description)) {
-            obj.Add("description", tool.Description);
+    private static JsonObject SerializeToolDefinition(ToolDefinition tool, ToolWireFormat toolWireFormat) {
+        switch (toolWireFormat) {
+            case ToolWireFormat.CustomInputSchema:
+            case ToolWireFormat.CustomParameters: {
+                var obj = new JsonObject()
+                    .Add("type", "custom")
+                    .Add("name", tool.Name);
+                if (!string.IsNullOrWhiteSpace(tool.Description)) {
+                    obj.Add("description", tool.Description);
+                }
+                if (tool.Parameters is not null) {
+                    // ChatGPT native API has historically accepted either `parameters` or `input_schema` for custom tools.
+                    // We start with `parameters`, retry `input_schema`, and finally fall back to function-style tools if needed.
+                    obj.Add(toolWireFormat == ToolWireFormat.CustomInputSchema ? "input_schema" : "parameters", tool.Parameters);
+                }
+                return obj;
+            }
+            case ToolWireFormat.FunctionFlatInputSchema:
+            case ToolWireFormat.FunctionFlatParameters: {
+                // ChatGPT native variants have been observed to require `tools[].name` at the top level (not nested).
+                var obj = new JsonObject()
+                    .Add("type", "function")
+                    .Add("name", tool.Name);
+                if (!string.IsNullOrWhiteSpace(tool.Description)) {
+                    obj.Add("description", tool.Description);
+                }
+                if (tool.Parameters is not null) {
+                    obj.Add(toolWireFormat == ToolWireFormat.FunctionFlatInputSchema ? "input_schema" : "parameters", tool.Parameters);
+                }
+                return obj;
+            }
+            default:
+                throw new InvalidOperationException($"Unsupported tool wire format: {toolWireFormat}");
         }
-        if (tool.Parameters is not null) {
-            // ChatGPT native API has historically accepted either `parameters` or `input_schema` for custom tools.
-            // We default to `parameters` and retry with `input_schema` if the server rejects it.
-            obj.Add(toolSchemaKind == ToolSchemaKind.InputSchema ? "input_schema" : "parameters", tool.Parameters);
-        }
-        return obj;
     }
 
     private IEnumerable<KeyValuePair<string, string>> BuildHeaders(string accessToken, string accountId, string sessionId) {
