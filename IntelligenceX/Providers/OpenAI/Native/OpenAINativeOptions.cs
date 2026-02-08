@@ -84,6 +84,13 @@ public sealed class OpenAINativeOptions {
     public bool IncludeReasoningEncryptedContent { get; set; } = true;
 
     /// <summary>
+    /// Whether the native transport should retry request tool definitions when the server rejects the tool schema
+    /// (e.g., unknown parameter under <c>tools[*]</c>).
+    /// Disable if you require strict single-attempt semantics.
+    /// </summary>
+    public bool EnableToolSchemaFallback { get; set; } = true;
+
+    /// <summary>
     /// Timeout for OAuth login flows.
     /// </summary>
     public TimeSpan OAuthTimeout { get; set; } = TimeSpan.FromMinutes(3);

@@ -344,7 +344,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
     private async Task<TurnInfo> SendWithToolSchemaFallbackAsync(JsonObject body, IReadOnlyList<JsonObject> requestMessages,
         string accessToken, string accountId, NativeThreadState state, IReadOnlyList<JsonObject> inputItems, bool trackMessages,
         string model, string turnId, ChatOptions options, CancellationToken cancellationToken) {
-        if (options.Tools is null || options.Tools.Count == 0) {
+        if (!_options.EnableToolSchemaFallback || options.Tools is null || options.Tools.Count == 0) {
             using var response = await SendAsync(body, accessToken, accountId, state.SessionId, cancellationToken)
                 .ConfigureAwait(false);
             return await ProcessResponseAsync(response, turnId, model, state, inputItems, trackMessages, cancellationToken)
