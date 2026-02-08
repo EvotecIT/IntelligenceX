@@ -59,6 +59,12 @@ This command:
 - Loads configured results inputs (SARIF and/or IntelligenceX findings JSON).
 - Fails with exit code `2` when policy violations are detected or when results are unavailable (by default).
 
+Gate behavior is configured by `analysis.gate` in `.intelligencex/reviewer.json`, including:
+- `minSeverity`: minimum severity to consider for gating.
+- `types`: optional type filter (for example `vulnerability`, `bug`).
+- `includeOutsidePackRules`: when true, findings outside enabled packs can fail the gate.
+- `failOnHotspotsToReview`: when true, security hotspots in `to-review` state can fail the gate.
+
 Optional flags:
 - `--config <path>`: explicit path to `.intelligencex/reviewer.json`.
 - `--workspace <path>`: repository root for catalog/config discovery.

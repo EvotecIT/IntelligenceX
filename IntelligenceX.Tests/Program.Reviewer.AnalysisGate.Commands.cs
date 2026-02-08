@@ -2,6 +2,12 @@ namespace IntelligenceX.Tests;
 
 #if INTELLIGENCEX_REVIEWER
 internal static partial class Program {
+    private static void TestAnalyzeGateHelpToken() {
+        var (exit, output) = RunAnalyzeAndCaptureOutput(new[] { "gate", "help" });
+        AssertEqual(0, exit, "analyze gate help exit");
+        AssertContainsText(output, "intelligencex analyze gate", "analyze gate help usage");
+    }
+
     private static void TestAnalyzeGateDisabledSkips() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-disabled-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

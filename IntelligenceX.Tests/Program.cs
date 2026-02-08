@@ -112,6 +112,7 @@ internal static partial class Program {
         failed += Run("Analyze gate fails on no enabled rules", TestAnalyzeGateFailsOnNoEnabledRules);
         failed += Run("Analyze gate minSeverity filters", TestAnalyzeGateMinSeverityFilters);
         failed += Run("Analyze gate hotspot state path bound", TestAnalyzeGateHotspotsStatePathIsWorkspaceBound);
+        failed += Run("Analyze gate help token", TestAnalyzeGateHelpToken);
         failed += Run("Doctor help", TestDoctorHelp);
         failed += Run("Doctor missing auth store fails", TestDoctorMissingAuthStoreFails);
         failed += Run("Doctor multiple bundles warns", TestDoctorMultipleBundlesWarns);

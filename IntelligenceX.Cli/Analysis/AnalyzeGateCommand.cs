@@ -349,8 +349,7 @@ internal static class AnalyzeGateCommand {
         var options = new GateOptions();
         for (var i = 0; i < args.Length; i++) {
             var arg = args[i];
-            if (arg.Equals("--help", StringComparison.OrdinalIgnoreCase) ||
-                arg.Equals("-h", StringComparison.OrdinalIgnoreCase)) {
+            if (IsHelpToken(arg)) {
                 options.ShowHelp = true;
                 return options;
             }
@@ -382,6 +381,12 @@ internal static class AnalyzeGateCommand {
             return options;
         }
         return options;
+    }
+
+    private static bool IsHelpToken(string value) {
+        return value.Equals("help", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("-h", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("--help", StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class GateOptions {

@@ -98,7 +98,7 @@ internal static partial class Program {
         }
     }
 
-	    private static void TestAnalyzeHotspotsHelpHasNoSideEffects() {
+    private static void TestAnalyzeHotspotsHelpHasNoSideEffects() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-hotspots-help-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try {
@@ -108,7 +108,7 @@ internal static partial class Program {
             var stateDir = Path.GetDirectoryName(statePath);
             if (!string.IsNullOrWhiteSpace(stateDir) && Directory.Exists(stateDir)) {
                 Directory.Delete(stateDir, true);
-            }
+    }
 
             var (syncExit, syncOutput) = RunAnalyzeAndCaptureOutput(new[] {
                 "hotspots",
@@ -146,11 +146,11 @@ internal static partial class Program {
                 Directory.Delete(temp, true);
             }
         }
-	    }
+        }
 
-	    private static void TestAnalyzeHotspotsStatePathIsWorkspaceBound() {
-	        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-hotspots-statepath-bound-" + Guid.NewGuid().ToString("N"));
-	        Directory.CreateDirectory(temp);
+    private static void TestAnalyzeHotspotsStatePathIsWorkspaceBound() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-hotspots-statepath-bound-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
         var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
         var outsideRoot = Path.Combine(Path.GetTempPath(), "ix-outside-" + Guid.NewGuid().ToString("N"));
         var outsideStatePath = Path.Combine(outsideRoot, "hotspots.json");
