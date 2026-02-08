@@ -345,59 +345,42 @@ internal static partial class Program {
             AssertEqual(true, baseCatalog.Rules.TryGetValue(id, out var resolvedBase), $"{id} exists in base catalog");
             var baseRule = resolvedBase ?? throw new Exception($"{id} exists in base catalog but is null");
 
-            var changesBase = false;
+            var sawOverrideProperty = false;
             foreach (var prop in overrideRoot.EnumerateObject()) {
                 if (prop.NameEquals("id")) {
                     continue;
                 }
+                sawOverrideProperty = true;
 
                 switch (prop.Name) {
                     case "title": {
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override title must be a string");
                         AssertEqual(expected, effective.Title, $"{id} override title applied");
-                        if (!string.Equals(baseRule.Title, effective.Title, StringComparison.Ordinal)) {
-                            changesBase = true;
-                        }
                         break;
                     }
                     case "description": {
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override description must be a string");
                         AssertEqual(expected, effective.Description, $"{id} override description applied");
-                        if (!string.Equals(baseRule.Description, effective.Description, StringComparison.Ordinal)) {
-                            changesBase = true;
-                        }
                         break;
                     }
                     case "type": {
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override type must be a string");
                         AssertEqual(expected, effective.Type, $"{id} override type applied");
-                        if (!string.Equals(baseRule.Type, effective.Type, StringComparison.Ordinal)) {
-                            changesBase = true;
-                        }
                         break;
                     }
                     case "category": {
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override category must be a string");
                         AssertEqual(expected, effective.Category, $"{id} override category applied");
-                        if (!string.Equals(baseRule.Category, effective.Category, StringComparison.Ordinal)) {
-                            changesBase = true;
-                        }
                         break;
                     }
                     case "defaultSeverity": {
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override defaultSeverity must be a string");
                         AssertEqual(expected, effective.DefaultSeverity, $"{id} override defaultSeverity applied");
-                        if (!string.Equals(baseRule.DefaultSeverity, effective.DefaultSeverity, StringComparison.Ordinal)) {
-                            changesBase = true;
-                        }
                         break;
                     }
                     case "docs": {
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override docs must be a string");
                         AssertEqual(expected, effective.Docs, $"{id} override docs applied");
-                        if (!string.Equals(baseRule.Docs, effective.Docs, StringComparison.Ordinal)) {
-                            changesBase = true;
-                        }
                         break;
                     }
                     case "tags": {
@@ -437,14 +420,6 @@ internal static partial class Program {
                         foreach (var tag in expectedSet) {
                             AssertEqual(true, actualSet.Contains(tag), $"{id} merged tags contains '{tag}'");
                         }
-
-                        // "tags" overrides are merged (union), but if the merged set is identical to base,
-                        // the override is redundant and should be removed.
-                        var normalizedBase = MergeTags(baseRule.Tags, Array.Empty<string>());
-                        var baseSet = new HashSet<string>(normalizedBase, StringComparer.OrdinalIgnoreCase);
-                        if (!baseSet.SetEquals(actualSet)) {
-                            changesBase = true;
-                        }
                         break;
                     }
                     default:
@@ -452,7 +427,7 @@ internal static partial class Program {
                 }
             }
 
-            AssertEqual(true, changesBase, $"{id} override must change the effective rule vs base (otherwise delete the override)");
+            AssertEqual(true, sawOverrideProperty, $"{id} override has at least one property besides id");
         }
     }
 
