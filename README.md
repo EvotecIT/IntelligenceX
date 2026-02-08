@@ -18,6 +18,7 @@ Status: Active development | APIs in flux | Actions in beta
 - CLI + local web wizard for onboarding and auth
 - .NET library for Codex app-server + Copilot JSON-RPC
 - PowerShell module (binary cmdlets)
+- Optional tool contract + tool calling, with tool packs living in a separate repo (`EvotecIT/IntelligenceX.Tools`)
 
 ## Choose your path
 
@@ -25,6 +26,7 @@ Status: Active development | APIs in flux | Actions in beta
 - CLI tools: `Docs/cli/overview.md`
 - .NET library: `Docs/library/overview.md`
 - PowerShell module: `Docs/powershell/overview.md`
+- Tool packs: `Docs/library/tool-packs.md`
 
 ## Quick start (Reviewer)
 

@@ -5,6 +5,7 @@ The core library provides a Codex app-server client, ChatGPT auth helpers, and a
 Quickstart: [Library Quickstart](/docs/library/quickstart/)  
 Providers: [Provider Setup](/docs/library/providers/)  
 Tools: [Tool Calling](/docs/library/tools/)
+Tool packs: [Tool Packs](/docs/library/tool-packs/)
 
 ## Quick start (app-server)
 
