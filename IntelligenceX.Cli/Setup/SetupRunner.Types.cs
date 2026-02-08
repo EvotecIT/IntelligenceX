@@ -87,8 +87,11 @@ internal static partial class SetupRunner {
 
         public static SetupOptions Parse(string[] args) {
             var options = new SetupOptions {
-                GitHubClientId = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_CLIENT_ID"),
-                GitHubToken = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN"),
+                // Prefer non-interactive tokens when available; otherwise fall back to device flow via default Client ID.
+                GitHubClientId = IntelligenceXDefaults.GetEffectiveGitHubClientId(),
+                GitHubToken = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN")
+                    ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN")
+                    ?? Environment.GetEnvironmentVariable("GH_TOKEN"),
                 GitHubApiBaseUrl = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_API_BASE_URL") ?? "https://api.github.com",
                 GitHubAuthBaseUrl = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_AUTH_BASE_URL") ?? "https://github.com"
             };
@@ -527,7 +530,6 @@ internal static partial class SetupRunner {
     }
 
 }
-
 
 
 

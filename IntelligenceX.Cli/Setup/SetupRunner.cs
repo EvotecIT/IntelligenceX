@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using IntelligenceX.Cli.GitHub;
 using IntelligenceX.OpenAI.Auth;
 
 namespace IntelligenceX.Cli.Setup;
@@ -173,20 +174,15 @@ internal static partial class SetupRunner {
     private static async Task ResolveGitHubAuthAsync(SetupState state) {
         var options = state.Options;
 
-        if (string.IsNullOrWhiteSpace(options.GitHubToken) && string.IsNullOrWhiteSpace(options.GitHubClientId)) {
-            options.GitHubClientId = Prompt("GitHub OAuth client id (or press Enter to use env INTELLIGENCEX_GITHUB_CLIENT_ID)");
-            if (string.IsNullOrWhiteSpace(options.GitHubClientId)) {
-                options.GitHubClientId = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_CLIENT_ID");
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(options.GitHubToken) && string.IsNullOrWhiteSpace(options.GitHubClientId)) {
-            Console.Error.WriteLine("GitHub auth required. Provide --github-token or --github-client-id.");
-            return;
-        }
-
         var token = options.GitHubToken;
         if (string.IsNullOrWhiteSpace(token)) {
+            token = await TryReadGhTokenAsync().ConfigureAwait(false);
+        }
+        if (string.IsNullOrWhiteSpace(token)) {
+            // Fall back to device flow using the built-in IntelligenceX OAuth app client id.
+            if (string.IsNullOrWhiteSpace(options.GitHubClientId)) {
+                options.GitHubClientId = IntelligenceXDefaults.GetEffectiveGitHubClientId();
+            }
             token = await GitHubDeviceFlow.LoginAsync(options.GitHubClientId!, options.GitHubAuthBaseUrl, options.GitHubScopes)
                 .ConfigureAwait(false);
         }
@@ -195,10 +191,26 @@ internal static partial class SetupRunner {
         state.GitHub.ClientId = options.GitHubClientId;
     }
 
+    private static async Task<string?> TryReadGhTokenAsync() {
+        // Prefer reusing existing `gh auth login` state to keep setup to ~1-3 steps.
+        var (code, stdout, _) = await GhCli.RunAsync(TimeSpan.FromSeconds(15), "auth", "token").ConfigureAwait(false);
+        if (code != 0) {
+            return null;
+        }
+        var token = (stdout ?? string.Empty).Trim();
+        return string.IsNullOrWhiteSpace(token) ? null : token;
+    }
+
     private static async Task<string?> ResolveRepositoryAsync(SetupState state) {
         var options = state.Options;
         if (!string.IsNullOrWhiteSpace(options.RepoFullName)) {
             return options.RepoFullName;
+        }
+
+        var autoRepo = TryResolveRepoFromEnvironmentOrGit();
+        if (!string.IsNullOrWhiteSpace(autoRepo)) {
+            Console.WriteLine($"Auto-detected repository: {autoRepo}");
+            return autoRepo;
         }
 
         if (state.GitHub.Repositories.Count == 0) {
@@ -464,5 +476,117 @@ internal static partial class SetupRunner {
     private static string Prompt(string label) {
         Console.Write(label + ": ");
         return Console.ReadLine() ?? string.Empty;
+    }
+
+    private static string? TryResolveRepoFromEnvironmentOrGit() {
+        var envRepo = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_REPO")
+                   ?? Environment.GetEnvironmentVariable("GITHUB_REPOSITORY");
+        if (!string.IsNullOrWhiteSpace(envRepo) && envRepo.Contains('/')) {
+            return envRepo.Trim();
+        }
+        return TryResolveRepoFromGit();
+    }
+
+    private static string? TryResolveRepoFromGit() {
+        var root = TryFindGitRoot(Environment.CurrentDirectory);
+        if (string.IsNullOrWhiteSpace(root)) {
+            return null;
+        }
+        var configPath = Path.Combine(root, ".git", "config");
+        if (!File.Exists(configPath)) {
+            return null;
+        }
+        var url = TryReadGitRemoteUrl(configPath, "origin") ?? TryReadFirstRemoteUrl(configPath);
+        if (string.IsNullOrWhiteSpace(url)) {
+            return null;
+        }
+        return ParseGitHubRepoFromUrl(url);
+    }
+
+    private static string? TryFindGitRoot(string start) {
+        var current = new DirectoryInfo(start);
+        while (current is not null) {
+            var gitDir = Path.Combine(current.FullName, ".git");
+            if (Directory.Exists(gitDir) || File.Exists(gitDir)) {
+                return current.FullName;
+            }
+            current = current.Parent;
+        }
+        return null;
+    }
+
+    private static string? TryReadGitRemoteUrl(string configPath, string remoteName) {
+        try {
+            var lines = File.ReadAllLines(configPath);
+            var inRemote = false;
+            foreach (var raw in lines) {
+                var line = raw.Trim();
+                if (line.StartsWith("[remote \"", StringComparison.OrdinalIgnoreCase)) {
+                    inRemote = line.Contains($"\"{remoteName}\"", StringComparison.OrdinalIgnoreCase);
+                    continue;
+                }
+                if (inRemote && line.StartsWith("url", StringComparison.OrdinalIgnoreCase)) {
+                    var idx = line.IndexOf('=');
+                    if (idx >= 0) {
+                        return line.Substring(idx + 1).Trim();
+                    }
+                }
+            }
+        } catch {
+            // ignore
+        }
+        return null;
+    }
+
+    private static string? TryReadFirstRemoteUrl(string configPath) {
+        try {
+            var lines = File.ReadAllLines(configPath);
+            var inRemote = false;
+            foreach (var raw in lines) {
+                var line = raw.Trim();
+                if (line.StartsWith("[remote \"", StringComparison.OrdinalIgnoreCase)) {
+                    inRemote = true;
+                    continue;
+                }
+                if (inRemote && line.StartsWith("url", StringComparison.OrdinalIgnoreCase)) {
+                    var idx = line.IndexOf('=');
+                    if (idx >= 0) {
+                        return line.Substring(idx + 1).Trim();
+                    }
+                }
+            }
+        } catch {
+            // ignore
+        }
+        return null;
+    }
+
+    private static string? ParseGitHubRepoFromUrl(string url) {
+        if (string.IsNullOrWhiteSpace(url)) {
+            return null;
+        }
+        var u = url.Trim();
+        // git@github.com:owner/name.git
+        if (u.StartsWith("git@github.com:", StringComparison.OrdinalIgnoreCase)) {
+            var repo = u.Substring("git@github.com:".Length);
+            if (repo.EndsWith(".git", StringComparison.OrdinalIgnoreCase)) {
+                repo = repo.Substring(0, repo.Length - 4);
+            }
+            return repo.Contains('/') ? repo : null;
+        }
+        // https://github.com/owner/name(.git)
+        if (u.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase) ||
+            u.StartsWith("http://github.com/", StringComparison.OrdinalIgnoreCase)) {
+            var idx = u.IndexOf("github.com/", StringComparison.OrdinalIgnoreCase);
+            var repo = u.Substring(idx + "github.com/".Length);
+            if (repo.EndsWith(".git", StringComparison.OrdinalIgnoreCase)) {
+                repo = repo.Substring(0, repo.Length - 4);
+            }
+            var parts = repo.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2) {
+                return $"{parts[0]}/{parts[1]}";
+            }
+        }
+        return null;
     }
 }

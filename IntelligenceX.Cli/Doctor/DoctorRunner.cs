@@ -45,6 +45,10 @@ internal static class DoctorRunner {
             return 1;
         }
 
+        if (string.IsNullOrWhiteSpace(options.Repo)) {
+            options.Repo = TryResolveRepoFromEnvironmentOrGit(workspace);
+        }
+
         var configPath = ResolveConfigPath(options, workspace);
         var config = TryLoadReviewConfig(configPath, out var configError);
         if (config is null) {
@@ -420,5 +424,115 @@ internal static class DoctorRunner {
         Console.WriteLine("  --repo <owner/name>    Optional GitHub repo for permission probes");
         Console.WriteLine("  --skip-openai          Skip OpenAI auth store checks");
         Console.WriteLine("  --skip-github          Skip GitHub token/API checks");
+    }
+
+    private static string? TryResolveRepoFromEnvironmentOrGit(string workspace) {
+        var envRepo = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_REPO")
+                   ?? Environment.GetEnvironmentVariable("GITHUB_REPOSITORY");
+        if (!string.IsNullOrWhiteSpace(envRepo) && envRepo.Contains('/')) {
+            return envRepo.Trim();
+        }
+        return TryResolveRepoFromGit(workspace);
+    }
+
+    private static string? TryResolveRepoFromGit(string start) {
+        var root = TryFindGitRoot(start);
+        if (string.IsNullOrWhiteSpace(root)) {
+            return null;
+        }
+        var configPath = Path.Combine(root, ".git", "config");
+        if (!File.Exists(configPath)) {
+            return null;
+        }
+        var url = TryReadGitRemoteUrl(configPath, "origin") ?? TryReadFirstRemoteUrl(configPath);
+        if (string.IsNullOrWhiteSpace(url)) {
+            return null;
+        }
+        return ParseGitHubRepoFromUrl(url);
+    }
+
+    private static string? TryFindGitRoot(string start) {
+        var current = new DirectoryInfo(start);
+        while (current is not null) {
+            var gitDir = Path.Combine(current.FullName, ".git");
+            if (Directory.Exists(gitDir) || File.Exists(gitDir)) {
+                return current.FullName;
+            }
+            current = current.Parent;
+        }
+        return null;
+    }
+
+    private static string? TryReadGitRemoteUrl(string configPath, string remoteName) {
+        try {
+            var lines = File.ReadAllLines(configPath);
+            var inRemote = false;
+            foreach (var raw in lines) {
+                var line = raw.Trim();
+                if (line.StartsWith("[remote \"", StringComparison.OrdinalIgnoreCase)) {
+                    inRemote = line.Contains($"\"{remoteName}\"", StringComparison.OrdinalIgnoreCase);
+                    continue;
+                }
+                if (inRemote && line.StartsWith("url", StringComparison.OrdinalIgnoreCase)) {
+                    var idx = line.IndexOf('=');
+                    if (idx >= 0) {
+                        return line.Substring(idx + 1).Trim();
+                    }
+                }
+            }
+        } catch {
+            // ignore
+        }
+        return null;
+    }
+
+    private static string? TryReadFirstRemoteUrl(string configPath) {
+        try {
+            var lines = File.ReadAllLines(configPath);
+            var inRemote = false;
+            foreach (var raw in lines) {
+                var line = raw.Trim();
+                if (line.StartsWith("[remote \"", StringComparison.OrdinalIgnoreCase)) {
+                    inRemote = true;
+                    continue;
+                }
+                if (inRemote && line.StartsWith("url", StringComparison.OrdinalIgnoreCase)) {
+                    var idx = line.IndexOf('=');
+                    if (idx >= 0) {
+                        return line.Substring(idx + 1).Trim();
+                    }
+                }
+            }
+        } catch {
+            // ignore
+        }
+        return null;
+    }
+
+    private static string? ParseGitHubRepoFromUrl(string url) {
+        if (string.IsNullOrWhiteSpace(url)) {
+            return null;
+        }
+        var u = url.Trim();
+        if (u.StartsWith("git@github.com:", StringComparison.OrdinalIgnoreCase)) {
+            var repo = u.Substring("git@github.com:".Length);
+            if (repo.EndsWith(".git", StringComparison.OrdinalIgnoreCase)) {
+                repo = repo.Substring(0, repo.Length - 4);
+            }
+            return repo.Contains('/') ? repo : null;
+        }
+        if (u.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase) ||
+            u.StartsWith("http://github.com/", StringComparison.OrdinalIgnoreCase)) {
+            var idx = u.IndexOf("github.com/", StringComparison.OrdinalIgnoreCase);
+            var repo = u.Substring(idx + "github.com/".Length);
+            if (repo.EndsWith(".git", StringComparison.OrdinalIgnoreCase)) {
+                repo = repo.Substring(0, repo.Length - 4);
+            }
+            var parts = repo.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2) {
+                return $"{parts[0]}/{parts[1]}";
+            }
+        }
+        return null;
     }
 }
