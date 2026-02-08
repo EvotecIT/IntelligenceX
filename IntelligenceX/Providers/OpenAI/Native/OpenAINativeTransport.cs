@@ -264,7 +264,9 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
                     : error.Message;
                 throw new OpenAIAuthenticationRequiredException(message);
             }
-            throw new OpenAINativeErrorResponseException(error.Message, error.RawText, error.Code, error.Param, response.StatusCode, OpenAINativeTrace.IsEnabled());
+            var httpFailure = new HttpRequestException($"ChatGPT request failed ({(int)response.StatusCode}).");
+            throw new OpenAINativeErrorResponseException(error.Message, error.RawText, error.Code, error.Param, response.StatusCode,
+                OpenAINativeTrace.IsEnabled(), httpFailure);
         }
 
         var delta = new StringBuilder();

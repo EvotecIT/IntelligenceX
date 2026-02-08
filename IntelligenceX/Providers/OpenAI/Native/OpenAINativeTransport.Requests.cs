@@ -122,8 +122,7 @@ internal sealed partial class OpenAINativeTransport {
             return "none";
         }
 
-        // Defensive: ToolChoice has a private constructor but keep wire output constrained.
-        return "auto";
+        throw new InvalidOperationException($"Unsupported tool choice type: {choice.Type ?? "<null>"}");
     }
 
     private static JsonObject SerializeToolDefinition(ToolDefinition tool, ToolWireFormat toolWireFormat) {

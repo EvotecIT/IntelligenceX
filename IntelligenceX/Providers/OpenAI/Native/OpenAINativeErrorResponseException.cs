@@ -6,7 +6,12 @@ namespace IntelligenceX.OpenAI.Native;
 internal sealed class OpenAINativeErrorResponseException : InvalidOperationException {
     internal OpenAINativeErrorResponseException(string? message, string? rawText, string? code, string? param, HttpStatusCode statusCode,
         bool includeRawText)
-        : base(string.IsNullOrWhiteSpace(message) ? "OpenAI request failed." : message) {
+        : this(message, rawText, code, param, statusCode, includeRawText, innerException: null) {
+    }
+
+    internal OpenAINativeErrorResponseException(string? message, string? rawText, string? code, string? param, HttpStatusCode statusCode,
+        bool includeRawText, Exception? innerException)
+        : base(string.IsNullOrWhiteSpace(message) ? "OpenAI request failed." : message, innerException) {
         ErrorCode = string.IsNullOrWhiteSpace(code) ? null : code;
         ErrorParam = string.IsNullOrWhiteSpace(param) ? null : param;
         StatusCode = statusCode;
