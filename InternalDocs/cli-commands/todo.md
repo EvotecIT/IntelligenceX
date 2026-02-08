@@ -4,12 +4,12 @@ This repo tracks only explicit checklist items from bot reviews/comments in `TOD
 
 `## Review Feedback Backlog (Bots)`
 
-## Sync Command
+## Sync Command (Recommended)
 
 Run:
 
 ```bash
-python3 scripts/sync_bot_feedback_todo.py --repo EvotecIT/IntelligenceX
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- todo sync-bot-feedback --repo EvotecIT/IntelligenceX
 ```
 
 Notes:
@@ -17,3 +17,20 @@ Notes:
 - It only imports explicit markdown task list items (`- [ ] ...`, `- [x] ...`).
 - Each imported task includes a link back to the originating review/comment.
 
+## GitHub Issues (Optional)
+
+To create GitHub issues for unchecked items:
+
+```bash
+dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- todo sync-bot-feedback --repo EvotecIT/IntelligenceX --create-issues
+```
+
+This will add `ix-bot-feedback-id:<id>` markers to issue bodies to avoid duplicates on re-runs.
+
+## Legacy Script
+
+The legacy helper is still available:
+
+```bash
+python3 scripts/sync_bot_feedback_todo.py --repo EvotecIT/IntelligenceX
+```
