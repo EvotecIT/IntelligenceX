@@ -320,9 +320,9 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         NativeThreadState state, IReadOnlyList<JsonObject> inputItems, bool trackMessages, string model, string turnId,
         ChatOptions options, CancellationToken cancellationToken) {
         ToolSchemaKind retryKind;
-        using var response = await SendAsync(body, accessToken, accountId, state.SessionId, cancellationToken)
-            .ConfigureAwait(false);
         try {
+            using var response = await SendAsync(body, accessToken, accountId, state.SessionId, cancellationToken)
+                .ConfigureAwait(false);
             return await ProcessResponseAsync(response, turnId, model, state, inputItems, trackMessages, cancellationToken)
                 .ConfigureAwait(false);
         } catch (InvalidOperationException ex) when (options.Tools is not null && options.Tools.Count > 0 &&
@@ -353,9 +353,9 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             foreach (var fallback in GetChatGptFallbackModels(model)) {
                 state.Touch(fallback);
                 var retryBody = BuildRequestBody(fallback, requestMessages, state.SessionId, options);
-                using var retry = await SendAsync(retryBody, accessToken, accountId, state.SessionId, cancellationToken)
-                    .ConfigureAwait(false);
                 try {
+                    using var retry = await SendAsync(retryBody, accessToken, accountId, state.SessionId, cancellationToken)
+                        .ConfigureAwait(false);
                     return await ProcessResponseAsync(retry, turnId, fallback, state, inputItems, trackMessages, cancellationToken)
                         .ConfigureAwait(false);
                 } catch (InvalidOperationException retryEx) when (IsModelNotSupportedForChatGpt(retryEx)) {
