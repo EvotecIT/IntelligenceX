@@ -8,9 +8,44 @@ internal static partial class Program {
         AssertContainsText(output, "intelligencex analyze gate", "analyze gate help usage");
     }
 
+    private static void TestAnalyzeGateRejectsConfigOutsideWorkspace() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-config-outside-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var outsideRoot = temp + "2";
+        Directory.CreateDirectory(outsideRoot);
+        try {
+            var outsideConfig = Path.Combine(outsideRoot, "reviewer.json");
+            File.WriteAllText(outsideConfig, "{ }\n");
+
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunner.RunAsync(new[] {
+                "gate",
+                "--workspace",
+                temp,
+                "--config",
+                outsideConfig
+            }).GetAwaiter().GetResult();
+            AssertEqual(1, exit, "analyze gate exit (config outside workspace rejected)");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+            if (Directory.Exists(outsideRoot)) {
+                Directory.Delete(outsideRoot, true);
+            }
+        }
+    }
+
+    private static void TestAnalysisFindingsLoaderRejectsRelativeWorkspaceOverride() {
+        AssertThrows<ArgumentException>(() =>
+            IntelligenceX.Reviewer.AnalysisFindingsLoader.LoadWithReport(new ReviewSettings(),
+                Array.Empty<PullRequestFile>(),
+                "relative/path"),
+            "analysis loader rejects relative workspace override");
+    }
+
     private static void TestAnalyzeGateResolveWorkspaceBoundPathAcceptsWorkspaceRoot() {
-            var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-workspace-root-" + Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(temp);
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-workspace-root-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
         try {
             var flags = global::System.Reflection.BindingFlags.NonPublic | global::System.Reflection.BindingFlags.Static;
             var method = typeof(IntelligenceX.Cli.Analysis.AnalyzeGateCommand).GetMethod("ResolveWorkspaceBoundPath", flags);

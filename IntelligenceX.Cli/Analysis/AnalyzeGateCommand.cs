@@ -32,6 +32,12 @@ internal static class AnalyzeGateCommand {
             Console.WriteLine($"Config not found: {configPath ?? "<null>"}");
             return Task.FromResult(ExitError);
         }
+        var workspaceBoundConfig = ResolveWorkspaceBoundFilePath(workspace, configPath);
+        if (workspaceBoundConfig is null) {
+            Console.WriteLine($"Config path resolves outside workspace: {configPath}");
+            return Task.FromResult(ExitError);
+        }
+        configPath = workspaceBoundConfig;
 
         JsonObject? root;
         try {
@@ -269,7 +275,11 @@ internal static class AnalyzeGateCommand {
         if (string.IsNullOrWhiteSpace(path)) {
             return Array.Empty<PullRequestFile>();
         }
-        var resolved = Path.IsPathRooted(path) ? path : Path.Combine(workspace, path);
+        var resolved = ResolveWorkspaceBoundFilePath(workspace, path);
+        if (resolved is null) {
+            error = $"Invalid changed files list path outside workspace: {path}";
+            return Array.Empty<PullRequestFile>();
+        }
         if (!File.Exists(resolved)) {
             Console.WriteLine($"Warning: changed files list not found: {resolved}");
             return Array.Empty<PullRequestFile>();
@@ -387,6 +397,35 @@ internal static class AnalyzeGateCommand {
             }
         }
         return list;
+    }
+
+    private static string? ResolveWorkspaceBoundFilePath(string workspace, string configuredPath) {
+        if (string.IsNullOrWhiteSpace(configuredPath)) {
+            return null;
+        }
+        var resolved = Path.IsPathRooted(configuredPath)
+            ? configuredPath
+            : Path.Combine(workspace, configuredPath);
+        try {
+            var fullWorkspace = Path.GetFullPath(workspace);
+            var full = Path.GetFullPath(resolved);
+            var relative = Path.GetRelativePath(fullWorkspace, full);
+            if (string.IsNullOrWhiteSpace(relative)) {
+                relative = ".";
+            }
+            var normalized = relative.Replace('\\', '/');
+            if (normalized.Equals(".", StringComparison.Ordinal)) {
+                return full;
+            }
+            if (Path.IsPathRooted(relative) ||
+                normalized.Equals("..", StringComparison.Ordinal) ||
+                normalized.StartsWith("../", StringComparison.Ordinal)) {
+                return null;
+            }
+            return full;
+        } catch {
+            return null;
+        }
     }
 
     private static string? ResolveWorkspaceBoundPath(string workspace, string configuredPath) {

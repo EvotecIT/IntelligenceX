@@ -20,7 +20,13 @@ internal static class AnalysisFindingsLoader {
     }
 
     public static AnalysisLoadResult LoadWithReport(ReviewSettings settings, IReadOnlyList<PullRequestFile> files, string workspaceRoot) {
-        return LoadWithReportInternal(settings, files, workspaceRootOverride: workspaceRoot);
+        if (string.IsNullOrWhiteSpace(workspaceRoot)) {
+            throw new ArgumentException("workspaceRoot must be a non-empty absolute path.", nameof(workspaceRoot));
+        }
+        if (!Path.IsPathRooted(workspaceRoot)) {
+            throw new ArgumentException("workspaceRoot must be an absolute path.", nameof(workspaceRoot));
+        }
+        return LoadWithReportInternal(settings, files, workspaceRootOverride: Path.GetFullPath(workspaceRoot));
     }
 
     private static AnalysisLoadResult LoadWithReportInternal(ReviewSettings settings, IReadOnlyList<PullRequestFile> files,
