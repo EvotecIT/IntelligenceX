@@ -318,7 +318,8 @@ internal static partial class Program {
         // Load the catalog without overrides so we can compare base vs effective without needing per-override temp workspaces.
         var rulesRoot = Path.Combine(workspace, "Analysis", "Catalog", "rules");
         var packsRoot = Path.Combine(workspace, "Analysis", "Packs");
-        var emptyOverridesRoot = Path.Combine(Path.GetTempPath(), "ix-analysis-overrides-disabled-" + Guid.NewGuid().ToString("N"));
+        // Use a fully random temp dir name to avoid collisions across parallel runs (and avoid shared prefixes).
+        var emptyOverridesRoot = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
         try {
             Directory.CreateDirectory(emptyOverridesRoot);
             var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, emptyOverridesRoot, packsRoot);

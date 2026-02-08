@@ -7,6 +7,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+$runningOnWindows = ($env:OS -eq 'Windows_NT')
+
 $module = Get-Module -ListAvailable -Name PSScriptAnalyzer |
     Sort-Object Version -Descending |
     Select-Object -First 1
@@ -48,7 +50,7 @@ function Test-IsTrustedModuleBase([string]$moduleBase) {
     if ($PSHOME) { $trustedRoots += (Join-Path -Path $PSHOME -ChildPath 'Modules') }
 
     # Common system-wide module locations.
-    if ($IsWindows) {
+    if ($runningOnWindows) {
         if ($env:ProgramFiles) {
             $trustedRoots += (Join-Path -Path $env:ProgramFiles -ChildPath (Join-Path -Path 'WindowsPowerShell' -ChildPath 'Modules'))
             $trustedRoots += (Join-Path -Path $env:ProgramFiles -ChildPath (Join-Path -Path 'PowerShell' -ChildPath 'Modules'))
