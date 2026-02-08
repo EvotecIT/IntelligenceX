@@ -367,9 +367,12 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
                 return await ProcessResponseAsync(retry, turnId, model, state, inputItems, trackMessages, cancellationToken)
                     .ConfigureAwait(false);
             } catch (InvalidOperationException retryEx) when (options.Tools is not null && options.Tools.Count > 0 &&
-                                                             TryGetToolSchemaKeyFallback(retryEx, out _)) {
+                                                             TryGetToolSchemaKeyFallback(retryEx, out var retryKey2)) {
                 // Some ChatGPT native variants don't accept custom tool schema fields at all. Fall back to function-style tools.
-                var functionBody = BuildRequestBody(model, requestMessages, state.SessionId, options, ToolWireFormat.FunctionFlatParameters);
+                var initialFunctionFormat = retryKey2 == ToolSchemaKey.InputSchema
+                    ? ToolWireFormat.FunctionFlatInputSchema
+                    : ToolWireFormat.FunctionFlatParameters;
+                var functionBody = BuildRequestBody(model, requestMessages, state.SessionId, options, initialFunctionFormat);
                 try {
                     using var retryFunction = await SendAsync(functionBody, accessToken, accountId, state.SessionId, cancellationToken)
                         .ConfigureAwait(false);

@@ -81,8 +81,12 @@ internal sealed partial class OpenAINativeTransport {
 
             var choice = options.ToolChoice ?? ToolChoice.Auto;
             if (string.Equals(choice.Type, "custom", StringComparison.OrdinalIgnoreCase)) {
+                var wireType = toolWireFormat == ToolWireFormat.FunctionFlatParameters ||
+                               toolWireFormat == ToolWireFormat.FunctionFlatInputSchema
+                    ? "function"
+                    : "custom";
                 body.Add("tool_choice", new JsonObject()
-                    .Add("type", "custom")
+                    .Add("type", wireType)
                     .Add("name", choice.Name ?? string.Empty));
             } else {
                 body.Add("tool_choice", choice.Type);
