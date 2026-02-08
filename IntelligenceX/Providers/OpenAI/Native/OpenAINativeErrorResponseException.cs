@@ -4,13 +4,14 @@ using System.Net;
 namespace IntelligenceX.OpenAI.Native;
 
 internal sealed class OpenAINativeErrorResponseException : InvalidOperationException {
-    internal OpenAINativeErrorResponseException(string? message, string? rawText, string? code, string? param, HttpStatusCode statusCode)
+    internal OpenAINativeErrorResponseException(string? message, string? rawText, string? code, string? param, HttpStatusCode statusCode,
+        bool includeRawText)
         : base(string.IsNullOrWhiteSpace(message) ? "OpenAI request failed." : message) {
         ErrorCode = string.IsNullOrWhiteSpace(code) ? null : code;
         ErrorParam = string.IsNullOrWhiteSpace(param) ? null : param;
         StatusCode = statusCode;
         RawTextLength = rawText?.Length ?? 0;
-        RawText = string.IsNullOrWhiteSpace(rawText) ? string.Empty : Truncate(rawText!, 8192);
+        RawText = includeRawText && !string.IsNullOrWhiteSpace(rawText) ? Truncate(rawText!, 8192) : string.Empty;
 
         Data["openai:native_transport"] = true;
         Data["openai:status_code"] = (int)statusCode;

@@ -81,7 +81,7 @@ internal static partial class Program {
         var ctor = errorExType.GetConstructor(
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
             binder: null,
-            types: new[] { typeof(string), typeof(string), typeof(string), typeof(string), typeof(System.Net.HttpStatusCode) },
+            types: new[] { typeof(string), typeof(string), typeof(string), typeof(string), typeof(System.Net.HttpStatusCode), typeof(bool) },
             modifiers: null);
         AssertNotNull(ctor, "OpenAINativeErrorResponseException ctor");
 
@@ -90,7 +90,8 @@ internal static partial class Program {
             "raw payload",
             "unknown_parameter",
             "tools[0].parameters",
-            System.Net.HttpStatusCode.BadRequest
+            System.Net.HttpStatusCode.BadRequest,
+            false
         })!;
 
         var aggregate = new AggregateException(errorEx);
@@ -126,7 +127,7 @@ internal static partial class Program {
         var ctor = errorExType.GetConstructor(
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
             binder: null,
-            types: new[] { typeof(string), typeof(string), typeof(string), typeof(string), typeof(System.Net.HttpStatusCode) },
+            types: new[] { typeof(string), typeof(string), typeof(string), typeof(string), typeof(System.Net.HttpStatusCode), typeof(bool) },
             modifiers: null);
         AssertNotNull(ctor, "OpenAINativeErrorResponseException ctor");
 
@@ -135,7 +136,8 @@ internal static partial class Program {
             "raw payload",
             "unknown_parameter",
             "tools[0].parameters",
-            System.Net.HttpStatusCode.BadRequest
+            System.Net.HttpStatusCode.BadRequest,
+            false
         })!;
 
         var args = new object?[] { errorEx, CreateOutSlot(method!) };

@@ -76,9 +76,20 @@ internal sealed partial class OpenAINativeTransport {
         }
 
         // Tool schema fallback is only valid for unknown-parameter errors (schema key mismatch).
-        if (string.IsNullOrWhiteSpace(code) ||
-            code!.IndexOf("unknown_parameter", StringComparison.OrdinalIgnoreCase) < 0) {
-            return false;
+        if (!string.IsNullOrWhiteSpace(code)) {
+            if (code!.IndexOf("unknown_parameter", StringComparison.OrdinalIgnoreCase) < 0) {
+                return false;
+            }
+        } else {
+            var msg = ex.Message;
+            if (string.IsNullOrWhiteSpace(msg)) {
+                return false;
+            }
+            if (msg!.IndexOf("unknown parameter", StringComparison.OrdinalIgnoreCase) < 0 &&
+                msg.IndexOf("unknown field", StringComparison.OrdinalIgnoreCase) < 0 &&
+                msg.IndexOf("unrecognized request argument", StringComparison.OrdinalIgnoreCase) < 0) {
+                return false;
+            }
         }
 
         return TryGetToolSchemaKeyFallback(param, out fallbackKey);
