@@ -27,6 +27,13 @@ All enablement decisions live in `.intelligencex/reviewer.json`. Analyzer tool c
     "disabledRules": ["CA2000"],
     "severityOverrides": { "CA1062": "error" },
     "configMode": "respect",
+    "hotspots": {
+      "show": true,
+      "maxItems": 10,
+      "statePath": ".intelligencex/hotspots.json",
+      "showStateSummary": true,
+      "alwaysRender": false
+    },
     "results": {
       "inputs": ["artifacts/**/*.sarif", "artifacts/intelligencex.findings.json"],
       "minSeverity": "warning",
@@ -53,6 +60,7 @@ Proposed layout:
 - `Analysis/Catalog/rules/csharp/CA2000.json`
 - `Analysis/Catalog/rules/powershell/PSAvoidUsingWriteHost.json`
 - `Analysis/Catalog/rules/internal/IXLOC001.json`
+- `Analysis/Catalog/overrides/csharp/CA5350.json` (optional, IntelligenceX-specific overlay)
 
 Example rule file:
 ```json
@@ -61,6 +69,7 @@ Example rule file:
   "language": "csharp",
   "tool": "Microsoft.CodeAnalysis.NetAnalyzers",
   "toolRuleId": "CA2000",
+  "type": "bug",
   "title": "Dispose objects before losing scope",
   "description": "Ensures IDisposable instances are disposed to avoid leaks.",
   "category": "Reliability",
@@ -68,6 +77,24 @@ Example rule file:
   "tags": ["resource-management", "memory"]
 }
 ```
+
+### Rule Overrides (Our Style Layer)
+Some catalogs (notably NetAnalyzers `CA*`) are regenerated from upstream metadata. To keep those files machine-owned while
+still allowing IntelligenceX-specific classification, we support rule overrides under `Analysis/Catalog/overrides`.
+
+Overrides can add/replace fields like `type`, `tags`, `docs`, and optional internal descriptions without changing the
+generated rule file.
+
+### Rule Types (Sonar-Style)
+To align with how Sonar structures rule triage, we classify rules into one of these types:
+
+- `bug`: likely correctness issue
+- `vulnerability`: likely security issue with direct exploitability risk
+- `code-smell`: maintainability/performance/style issues
+- `security-hotspot`: security-sensitive pattern that requires human review/context
+
+If `type` is not explicitly set, IntelligenceX infers a default based on `category` (for example `Security` -> `vulnerability`,
+`Reliability` -> `bug`, `Maintainability` -> `code-smell`), and you can override this per-rule in `Analysis/Catalog/overrides`.
 
 ## Rule Packs
 Packs are curated lists of rule IDs plus optional severity overrides.
@@ -223,3 +250,13 @@ jobs:
 - Rule catalogs synced from upstream analyzer metadata.
 - UI for per-rule toggles and severity edits.
 - Per-repo pack overrides without local config files.
+- Security hotspots with first-class output:
+  - Separate `### Security Hotspots 🔥` section (distinct from findings severities).
+  - Persistent triage state keyed by (ruleId + fingerprint) stored under `.intelligencex/` (for example `ToReview`, `Safe`, `Fixed`).
+  - Reviewer output surfaces hotspots even when `minSeverity` filters out `info`.
+  - Manage state via CLI helpers:
+    - `intelligencex analyze hotspots sync-state` to add missing keys (deterministic merge).
+    - `intelligencex analyze hotspots set` to mark hotspots as `safe`, `fixed`, `accepted-risk`, `wont-fix`, or `suppress`.
+- Rule fixability metadata (AI + deterministic fixes):
+  - Mark rules as `fixable` (safe mechanical change) vs `ai-fixable` (LLM-assisted suggestion).
+  - Use rule tags and/or override metadata to drive “suggested fix” text in inline comments.

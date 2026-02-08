@@ -384,6 +384,10 @@ public static partial class ReviewerApp {
                     if (!string.IsNullOrWhiteSpace(analysisPolicy)) {
                         analysisBlocks.Add(analysisPolicy);
                     }
+                    var hotspotsBlock = AnalysisHotspots.BuildBlock(settings, analysisFindings);
+                    if (!string.IsNullOrWhiteSpace(hotspotsBlock)) {
+                        analysisBlocks.Add(hotspotsBlock);
+                    }
                     var analysisSummary = AnalysisSummaryBuilder.BuildSummary(analysisFindings, analysisResults, analysisLoad.Report);
                     if (!string.IsNullOrWhiteSpace(analysisSummary)) {
                         analysisBlocks.Add(analysisSummary);

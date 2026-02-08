@@ -10,7 +10,8 @@ public sealed class AnalysisRule {
     /// Creates a new rule description.
     /// </summary>
     public AnalysisRule(string id, string language, string tool, string toolRuleId, string title, string description,
-        string category, string defaultSeverity, IReadOnlyList<string> tags, string? docs, string? sourcePath) {
+        string category, string defaultSeverity, IReadOnlyList<string> tags, string? docs, string? sourcePath,
+        string? type = null) {
         Id = id;
         Language = language;
         Tool = tool;
@@ -22,6 +23,7 @@ public sealed class AnalysisRule {
         Tags = tags;
         Docs = docs;
         SourcePath = sourcePath;
+        Type = type;
     }
 
     /// <summary>
@@ -66,6 +68,10 @@ public sealed class AnalysisRule {
     public string? Docs { get; }
     /// <summary>
     /// Source file path for the rule definition.
-    /// </summary>
+     /// </summary>
     public string? SourcePath { get; }
+    /// <summary>
+    /// Optional rule type classification (for example: bug, vulnerability, code-smell, security-hotspot).
+    /// </summary>
+    public string? Type { get; }
 }

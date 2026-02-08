@@ -263,6 +263,300 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalysisCatalogRuleOverridesApply() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-overrides-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var overridesDir = Path.Combine(temp, "Analysis", "Catalog", "overrides", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(overridesDir);
+            Directory.CreateDirectory(packsDir);
+
+            File.WriteAllText(Path.Combine(rulesDir, "IX001.json"), """
+{
+  "id": "IX001",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "toolRuleId": "IX001",
+  "title": "Base rule",
+  "description": "Base description",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["base"]
+}
+""");
+            File.WriteAllText(Path.Combine(overridesDir, "IX001.json"), """
+{
+  "id": "IX001",
+  "type": "code-smell",
+  "tags": ["override", "base"]
+}
+""");
+
+            var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(temp);
+            AssertEqual(true, catalog.Rules.TryGetValue("IX001", out var rule), "override rule exists");
+            AssertEqual("code-smell", rule!.Type, "override type applied");
+            AssertEqual(true, rule.Tags.Contains("base"), "override tags include base");
+            AssertEqual(true, rule.Tags.Contains("override"), "override tags include override");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalysisCatalogValidatorRejectsDanglingOverride() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-overrides-invalid-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var overridesDir = Path.Combine(temp, "Analysis", "Catalog", "overrides", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(overridesDir);
+            Directory.CreateDirectory(packsDir);
+
+            File.WriteAllText(Path.Combine(rulesDir, "IX001.json"), """
+{
+  "id": "IX001",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "title": "Base rule",
+  "description": "Base description"
+}
+""");
+            File.WriteAllText(Path.Combine(overridesDir, "IX404.json"), """
+{
+  "id": "IX404",
+  "type": "bug",
+  "tags": ["dangling"]
+}
+""");
+
+            var validation = IntelligenceX.Analysis.AnalysisCatalogValidator.ValidateWorkspace(temp);
+            AssertEqual(false, validation.IsValid, "dangling override invalid");
+            AssertEqual(true, validation.Errors.Any(error => error.Contains("does not match any base rule", StringComparison.OrdinalIgnoreCase)),
+                "dangling override error");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalysisHotspotsRenderAndStateSnippet() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-hotspots-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var originalCwd = Environment.CurrentDirectory;
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+
+            File.WriteAllText(Path.Combine(rulesDir, "IXHOT001.json"), """
+{
+  "id": "IXHOT001",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "toolRuleId": "IXHOT001",
+  "type": "security-hotspot",
+  "title": "Potential hardcoded secret usage",
+  "description": "Security-sensitive pattern that requires human review.",
+  "category": "Security",
+  "defaultSeverity": "info",
+  "tags": ["security-hotspot"]
+}
+""");
+            File.WriteAllText(Path.Combine(packsDir, "all-50.json"), """
+{
+  "id": "all-50",
+  "label": "All Essentials (50)",
+  "rules": ["IXHOT001"]
+}
+""");
+
+            Environment.CurrentDirectory = temp;
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Hotspots.Show = true;
+            settings.Analysis.Hotspots.StatePath = ".intelligencex/hotspots.json";
+
+            var findings = new List<AnalysisFinding> {
+                new AnalysisFinding("src/test.cs", 10, "Review this usage.", "warning", "IXHOT001", "IntelligenceX", "fp-123")
+            };
+
+            var block = AnalysisHotspots.BuildBlock(settings, findings);
+            AssertContainsText(block, "### Security Hotspots", "hotspots header");
+            AssertContainsText(block, "Hotspots: 1", "hotspots count");
+            AssertContainsText(block, "Missing state entries: 1", "hotspots missing state count");
+            AssertContainsText(block, "\"key\": \"IXHOT001:fp-123\"", "hotspots suggested key uses fingerprint");
+        } finally {
+            Environment.CurrentDirectory = originalCwd;
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalysisLoaderIncludesHotspotsBelowMinSeverity() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-hotspots-minseverity-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var originalCwd = Environment.CurrentDirectory;
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            var artifactsDir = Path.Combine(temp, "artifacts");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+            Directory.CreateDirectory(artifactsDir);
+
+            File.WriteAllText(Path.Combine(rulesDir, "IXHOT001.json"), """
+{
+  "id": "IXHOT001",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "toolRuleId": "IXHOT001",
+  "type": "security-hotspot",
+  "title": "Security hotspot",
+  "description": "Requires review.",
+  "category": "Security",
+  "defaultSeverity": "info"
+}
+""");
+            File.WriteAllText(Path.Combine(packsDir, "all-50.json"), """
+{
+  "id": "all-50",
+  "label": "All Essentials (50)",
+  "rules": ["IXHOT001"]
+}
+""");
+            File.WriteAllText(Path.Combine(artifactsDir, "intelligencex.findings.json"), """
+{
+  "items": [
+    {
+      "path": "src/test.cs",
+      "line": 10,
+      "severity": "info",
+      "message": "This is a hotspot that should be shown even when minSeverity=warning.",
+      "ruleId": "IXHOT001",
+      "tool": "IntelligenceX",
+      "fingerprint": "fp-1"
+    }
+  ]
+}
+""");
+
+            Environment.CurrentDirectory = temp;
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Results.Inputs = new[] { "artifacts/intelligencex.findings.json" };
+            settings.Analysis.Results.MinSeverity = "warning";
+
+            var load = AnalysisFindingsLoader.LoadWithReport(settings, Array.Empty<PullRequestFile>());
+            AssertEqual(1, load.Findings.Count, "hotspot finding not filtered by minSeverity");
+            AssertEqual("IXHOT001", load.Findings[0].RuleId, "hotspot rule id");
+        } finally {
+            Environment.CurrentDirectory = originalCwd;
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalyzeHotspotsSyncStateWritesStateFile() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-hotspots-sync-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            var artifactsDir = Path.Combine(temp, "artifacts");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+            Directory.CreateDirectory(artifactsDir);
+
+            File.WriteAllText(Path.Combine(rulesDir, "IXHOT001.json"), """
+{
+  "id": "IXHOT001",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "toolRuleId": "IXHOT001",
+  "type": "security-hotspot",
+  "title": "Security hotspot",
+  "description": "Requires review.",
+  "category": "Security",
+  "defaultSeverity": "info"
+}
+""");
+            File.WriteAllText(Path.Combine(packsDir, "all-50.json"), """
+{
+  "id": "all-50",
+  "label": "All Essentials (50)",
+  "rules": ["IXHOT001"]
+}
+""");
+            File.WriteAllText(Path.Combine(artifactsDir, "intelligencex.findings.json"), """
+{
+  "items": [
+    {
+      "path": "src/test.cs",
+      "line": 10,
+      "severity": "info",
+      "message": "Hotspot finding.",
+      "ruleId": "IXHOT001",
+      "tool": "IntelligenceX",
+      "fingerprint": "fp-xyz"
+    }
+  ]
+}
+""");
+
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            var configPath = Path.Combine(temp, ".intelligencex", "reviewer.json");
+            File.WriteAllText(configPath, """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["all-50"],
+    "hotspots": {
+      "show": true,
+      "statePath": ".intelligencex/hotspots.json"
+    },
+    "results": {
+      "inputs": ["artifacts/intelligencex.findings.json"],
+      "minSeverity": "warning",
+      "showPolicy": false,
+      "summary": false
+    }
+  }
+}
+""");
+
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunner.RunAsync(new[] {
+                "hotspots",
+                "sync-state",
+                "--workspace",
+                temp,
+                "--config",
+                configPath
+            }).GetAwaiter().GetResult();
+            AssertEqual(0, exit, "analyze hotspots sync-state exit");
+
+            var statePath = Path.Combine(temp, ".intelligencex", "hotspots.json");
+            AssertEqual(true, File.Exists(statePath), "hotspots state file created");
+            var text = File.ReadAllText(statePath);
+            AssertContainsText(text, "\"schema\": \"intelligencex.hotspots.v1\"", "hotspots state schema");
+            AssertContainsText(text, "\"key\": \"IXHOT001:fp-xyz\"", "hotspots state key");
+            AssertContainsText(text, "\"status\": \"to-review\"", "hotspots state default status");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalyzeValidateCatalogCommand() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-validate-command-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
@@ -327,7 +621,7 @@ internal static partial class Program {
             "markdown"
         });
         AssertEqual(0, exitCode, "analyze list-rules markdown exit");
-        AssertContainsText(output, "| ID | Language | Tool | Tool Rule ID | Default Severity | Category | Title | Docs |",
+        AssertContainsText(output, "| ID | Language | Type | Tool | Tool Rule ID | Default Severity | Category | Title | Docs |",
             "analyze list-rules markdown header");
         AssertContainsText(output, "CA2000", "analyze list-rules markdown includes CA2000");
         AssertContainsText(output, "PSAvoidUsingWriteHost", "analyze list-rules markdown includes powershell rule");

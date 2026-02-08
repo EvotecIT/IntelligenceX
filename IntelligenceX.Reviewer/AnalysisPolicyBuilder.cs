@@ -102,16 +102,21 @@ internal static class AnalysisPolicyBuilder {
         foreach (var packId in packs) {
             if (loadedCatalog.TryGetPack(packId, out var pack)) {
                 packSummaries.Add(string.IsNullOrWhiteSpace(pack.Label) ? pack.Id : pack.Label);
-                foreach (var ruleId in pack.Rules ?? Array.Empty<string>()) {
-                    if (string.IsNullOrWhiteSpace(ruleId)) {
-                        continue;
-                    }
-                    if (selectedRuleIds.Add(ruleId)) {
-                        selectedRules.Add(ruleId);
-                    }
-                }
             } else if (!string.IsNullOrWhiteSpace(packId)) {
                 missingPacks.Add(packId);
+            }
+        }
+
+        // Resolve pack includes for effective rule enablement.
+        var orderedPacks = ResolveConfiguredPacks(packs, loadedCatalog);
+        foreach (var pack in orderedPacks) {
+            foreach (var ruleId in pack.Rules ?? Array.Empty<string>()) {
+                if (string.IsNullOrWhiteSpace(ruleId)) {
+                    continue;
+                }
+                if (selectedRuleIds.Add(ruleId)) {
+                    selectedRules.Add(ruleId);
+                }
             }
         }
 
@@ -144,6 +149,67 @@ internal static class AnalysisPolicyBuilder {
             new ReadOnlyDictionary<string, string>(overrideMap),
             rulePreviewItems);
         return PolicyContextBuildResult.Ready;
+    }
+
+    private static IReadOnlyList<AnalysisPack> ResolveConfiguredPacks(IReadOnlyList<string> configuredPackIds,
+        AnalysisCatalog catalog) {
+        var ordered = new List<AnalysisPack>();
+        if (configuredPackIds is null || configuredPackIds.Count == 0 || catalog is null || catalog.Packs.Count == 0) {
+            return ordered;
+        }
+
+        var resolved = new HashSet<string>(OrdinalIgnoreCaseComparer);
+        var visiting = new List<string>();
+        foreach (var configuredPackId in configuredPackIds) {
+            if (string.IsNullOrWhiteSpace(configuredPackId)) {
+                continue;
+            }
+            AddPackAndIncludes(configuredPackId.Trim(), catalog, visiting, resolved, ordered);
+        }
+        return ordered;
+    }
+
+    private static void AddPackAndIncludes(string packId, AnalysisCatalog catalog,
+        IList<string> visiting, ISet<string> resolved, ICollection<AnalysisPack> ordered) {
+        if (string.IsNullOrWhiteSpace(packId) || catalog is null) {
+            return;
+        }
+        if (resolved.Contains(packId)) {
+            return;
+        }
+        if (IndexOfIgnoreCase(visiting, packId) >= 0) {
+            // Cycle detected; skip to avoid infinite recursion.
+            return;
+        }
+        if (!catalog.TryGetPack(packId, out var pack)) {
+            return;
+        }
+
+        visiting.Add(pack.Id);
+        foreach (var includeId in pack.Includes ?? Array.Empty<string>()) {
+            if (string.IsNullOrWhiteSpace(includeId)) {
+                continue;
+            }
+            AddPackAndIncludes(includeId.Trim(), catalog, visiting, resolved, ordered);
+        }
+        visiting.RemoveAt(visiting.Count - 1);
+
+        if (!resolved.Add(pack.Id)) {
+            return;
+        }
+        ordered.Add(pack);
+    }
+
+    private static int IndexOfIgnoreCase(IList<string> values, string value) {
+        if (values is null || values.Count == 0 || string.IsNullOrWhiteSpace(value)) {
+            return -1;
+        }
+        for (var i = 0; i < values.Count; i++) {
+            if (value.Equals(values[i], StringComparison.OrdinalIgnoreCase)) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private static bool TryLoadCatalog(string workspace, Func<string, AnalysisCatalog>? catalogLoader,

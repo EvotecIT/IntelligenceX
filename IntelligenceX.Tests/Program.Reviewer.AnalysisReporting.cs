@@ -61,6 +61,45 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalysisPolicyPackIncludesEnableRules() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-policy-includes-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            WriteAnalysisCatalogFixture(temp);
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            File.WriteAllText(Path.Combine(packsDir, "ix-wrapper-pack.json"), """
+{
+  "id": "ix-wrapper-pack",
+  "label": "IX Wrapper Pack",
+  "includes": ["ix-test-pack"],
+  "rules": []
+}
+""");
+
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Packs = new[] { "ix-wrapper-pack" };
+            settings.Analysis.Results.ShowPolicy = true;
+
+            var report = new AnalysisLoadReport(1, 1, 1, 0);
+            var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
+                new AnalysisLoadResult(Array.Empty<AnalysisFinding>(), report));
+
+            AssertPolicyLineEquals(policy, "Packs", "IX Wrapper Pack", "analysis policy includes packs line");
+            AssertPolicyLineEquals(policy, "Rules", "2 enabled", "analysis policy includes enabled rules");
+            AssertContainsText(policy, "Enabled rules preview: IXTEST001 (Rule one), IXTEST002 (Rule two)",
+                "analysis policy includes enabled preview");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalysisPolicyBuildUnavailablePolicy() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-policy-unavailable-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

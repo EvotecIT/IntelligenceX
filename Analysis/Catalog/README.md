@@ -6,6 +6,9 @@ mapping to the underlying analyzer rule ID.
 Rule IDs are the primary key and file name (`CA2000.json`, `PSAvoidUsingWriteHost.json`).
 Human-readable names belong in `title`.
 
+Optional IntelligenceX-specific metadata can be layered on top of upstream-generated rules using rule overrides under
+`Analysis/Catalog/overrides` (for example to add tags, classify rule type, or attach internal documentation).
+
 Use packs under `Analysis/Packs` to enable curated sets of rules.
 
 Pack files support:

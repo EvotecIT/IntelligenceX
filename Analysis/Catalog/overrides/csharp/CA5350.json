@@ -1,0 +1,11 @@
+{
+  "id": "CA5350",
+  "type": "vulnerability",
+  "tags": [
+    "security",
+    "crypto",
+    "cwe:327",
+    "owasp-a02:2021"
+  ]
+}
+
