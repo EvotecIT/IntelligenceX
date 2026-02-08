@@ -10,35 +10,50 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.Native;
 
 internal sealed partial class OpenAINativeTransport {
-    private static async Task<string> ParseErrorResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken) {
+    private readonly struct NativeErrorDetails {
+        public NativeErrorDetails(string message, string? code, string? param) {
+            Message = message;
+            Code = code;
+            Param = param;
+        }
+
+        public string Message { get; }
+        public string? Code { get; }
+        public string? Param { get; }
+    }
+
+    private static async Task<NativeErrorDetails> ParseErrorResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken) {
+#if NET8_0_OR_GREATER
+        var text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+#else
         var text = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+#endif
         if (string.IsNullOrWhiteSpace(text)) {
-            return $"ChatGPT request failed ({(int)response.StatusCode}).";
+            return new NativeErrorDetails($"ChatGPT request failed ({(int)response.StatusCode}).", null, null);
         }
         try {
             var value = JsonLite.Parse(text);
             var obj = value?.AsObject();
             var error = obj?.GetObject("error");
-            var message = error?.GetString("message") ?? obj?.GetString("message");
+            var message = error?.GetString("message") ?? obj?.GetString("message") ?? text;
             var code = error?.GetString("code") ?? error?.GetString("type");
+            var param = error?.GetString("param") ?? error?.GetString("parameter");
+
             if (response.StatusCode == (HttpStatusCode)429) {
                 var resetsAt = error?.GetInt64("resets_at");
                 if (resetsAt.HasValue) {
                     var mins = Math.Max(0, (int)Math.Round((resetsAt.Value * 1000 - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) / 60000d));
-                    return $"ChatGPT usage limit reached. Try again in about {mins} minute(s).";
+                    return new NativeErrorDetails($"ChatGPT usage limit reached. Try again in about {mins} minute(s).", code, param);
                 }
-                return "ChatGPT usage limit reached (HTTP 429).";
+                return new NativeErrorDetails("ChatGPT usage limit reached (HTTP 429).", code, param);
             }
-            if (!string.IsNullOrWhiteSpace(message)) {
-                return message!;
-            }
-            if (!string.IsNullOrWhiteSpace(code)) {
-                return $"ChatGPT error: {code}";
-            }
+
+            return new NativeErrorDetails(message, code, param);
         } catch {
             // Fall back to raw text.
         }
-        return text;
+        return new NativeErrorDetails(text, null, null);
     }
 
     private static void TryDumpRequest(HttpRequestMessage request, string json) {
@@ -79,4 +94,3 @@ internal sealed partial class OpenAINativeTransport {
                string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
     }
 }
-

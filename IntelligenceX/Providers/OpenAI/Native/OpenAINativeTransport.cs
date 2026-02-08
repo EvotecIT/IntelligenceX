@@ -258,12 +258,19 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         if (!response.IsSuccessStatusCode) {
             var error = await ParseErrorResponseAsync(response, cancellationToken).ConfigureAwait(false);
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) {
-                var message = string.IsNullOrWhiteSpace(error)
+                var message = string.IsNullOrWhiteSpace(error.Message)
                     ? OpenAIAuthenticationRequiredException.DefaultMessage
-                    : error;
+                    : error.Message;
                 throw new OpenAIAuthenticationRequiredException(message);
             }
-            throw new InvalidOperationException(error);
+            var ex = new InvalidOperationException(error.Message);
+            if (!string.IsNullOrWhiteSpace(error.Code)) {
+                ex.Data["openai:error_code"] = error.Code;
+            }
+            if (!string.IsNullOrWhiteSpace(error.Param)) {
+                ex.Data["openai:error_param"] = error.Param;
+            }
+            throw ex;
         }
 
         var delta = new StringBuilder();
@@ -350,7 +357,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             return await ProcessResponseAsync(response, turnId, model, state, inputItems, trackMessages, cancellationToken)
                 .ConfigureAwait(false);
         } catch (InvalidOperationException ex) when (options.Tools is not null && options.Tools.Count > 0 &&
-                                                    TryGetToolSchemaKeyFallback(ex.Message, out retryKey)) {
+                                                    TryGetToolSchemaKeyFallback(ex, out retryKey)) {
             // Server rejected our tool schema. Retry with the alternate custom-tool schema key first.
             var retryFormat = retryKey == ToolSchemaKey.InputSchema ? ToolWireFormat.CustomInputSchema : ToolWireFormat.CustomParameters;
             var retryBody = BuildRequestBody(model, requestMessages, state.SessionId, options, retryFormat);
@@ -360,7 +367,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
                 return await ProcessResponseAsync(retry, turnId, model, state, inputItems, trackMessages, cancellationToken)
                     .ConfigureAwait(false);
             } catch (InvalidOperationException retryEx) when (options.Tools is not null && options.Tools.Count > 0 &&
-                                                             TryGetToolSchemaKeyFallback(retryEx.Message, out _)) {
+                                                             TryGetToolSchemaKeyFallback(retryEx, out _)) {
                 // Some ChatGPT native variants don't accept custom tool schema fields at all. Fall back to function-style tools.
                 var functionBody = BuildRequestBody(model, requestMessages, state.SessionId, options, ToolWireFormat.FunctionFlatParameters);
                 try {
@@ -369,7 +376,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
                     return await ProcessResponseAsync(retryFunction, turnId, model, state, inputItems, trackMessages, cancellationToken)
                         .ConfigureAwait(false);
                 } catch (InvalidOperationException functionEx) when (options.Tools is not null && options.Tools.Count > 0 &&
-                                                                    TryGetToolSchemaKeyFallback(functionEx.Message, out var functionKey)) {
+                                                                    TryGetToolSchemaKeyFallback(functionEx, out var functionKey)) {
                     var functionRetryFormat = functionKey == ToolSchemaKey.InputSchema
                         ? ToolWireFormat.FunctionFlatInputSchema
                         : ToolWireFormat.FunctionFlatParameters;

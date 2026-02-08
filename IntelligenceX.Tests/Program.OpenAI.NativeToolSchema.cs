@@ -26,8 +26,7 @@ internal static partial class Program {
     private static void TestNativeToolSchemaFallbackIgnoresUnrelated() {
         var ix = typeof(IntelligenceXClient).Assembly;
         var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
-        var method = transportType.GetMethod("TryGetToolSchemaKeyFallback", BindingFlags.NonPublic | BindingFlags.Static);
-        AssertNotNull(method, "TryGetToolSchemaKeyFallback method");
+        var method = GetStringFallbackMethod(transportType);
 
         var args = new object?[] { "Unknown parameter: 'foo'.", null };
         var ok = (bool)method!.Invoke(null, args)!;
@@ -79,8 +78,7 @@ internal static partial class Program {
     private static string DetectFallbackKind(string message) {
         var ix = typeof(IntelligenceXClient).Assembly;
         var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
-        var method = transportType.GetMethod("TryGetToolSchemaKeyFallback", BindingFlags.NonPublic | BindingFlags.Static);
-        AssertNotNull(method, "TryGetToolSchemaKeyFallback method");
+        var method = GetStringFallbackMethod(transportType);
 
         var args = new object?[] { message, null };
         var ok = (bool)method!.Invoke(null, args)!;
@@ -91,5 +89,19 @@ internal static partial class Program {
             throw new InvalidOperationException("Expected fallback kind to be non-empty.");
         }
         return kind;
+    }
+
+    private static MethodInfo GetStringFallbackMethod(Type transportType) {
+        var methods = transportType.GetMethods(BindingFlags.NonPublic | BindingFlags.Static);
+        foreach (var m in methods) {
+            if (!string.Equals(m.Name, "TryGetToolSchemaKeyFallback", StringComparison.Ordinal)) {
+                continue;
+            }
+            var ps = m.GetParameters();
+            if (ps.Length == 2 && ps[0].ParameterType == typeof(string) && ps[1].IsOut) {
+                return m;
+            }
+        }
+        throw new InvalidOperationException("TryGetToolSchemaKeyFallback(string, out ...) method not found.");
     }
 }

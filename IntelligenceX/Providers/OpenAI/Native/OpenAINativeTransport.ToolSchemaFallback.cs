@@ -3,6 +3,27 @@ using System;
 namespace IntelligenceX.OpenAI.Native;
 
 internal sealed partial class OpenAINativeTransport {
+    private static bool TryGetToolSchemaKeyFallback(InvalidOperationException ex, out ToolSchemaKey fallbackKey) {
+        fallbackKey = ToolSchemaKey.Parameters;
+        if (ex is null) {
+            return false;
+        }
+
+        var param = ex.Data?["openai:error_param"] as string;
+        if (string.IsNullOrWhiteSpace(param)) {
+            return false;
+        }
+
+        // If the server provided a structured code, require it to match an unknown-parameter style error.
+        var code = ex.Data?["openai:error_code"] as string;
+        if (!string.IsNullOrWhiteSpace(code) &&
+            code!.IndexOf("unknown_parameter", StringComparison.OrdinalIgnoreCase) < 0) {
+            return false;
+        }
+
+        return TryGetToolSchemaKeyFallback(param, out fallbackKey);
+    }
+
     private static bool TryGetToolSchemaKeyFallback(string? message, out ToolSchemaKey fallbackKey) {
         // Server error messages vary; the stable signal is the field path that was rejected:
         // - tools[<n>].parameters
