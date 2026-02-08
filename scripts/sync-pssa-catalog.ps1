@@ -1,6 +1,7 @@
 param(
     [Parameter()][string]$OutDir = (Join-Path -Path $PSScriptRoot -ChildPath (Join-Path -Path '..' -ChildPath (Join-Path -Path 'Analysis' -ChildPath (Join-Path -Path 'Catalog' -ChildPath (Join-Path -Path 'rules' -ChildPath 'powershell'))))),
-    [Parameter()][switch]$PruneStale
+    [Parameter()][switch]$PruneStale,
+    [Parameter()][switch]$ForcePrune
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,6 +36,12 @@ if ($module.Path) {
 }
 
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
+
+$intendedOutDir = [System.IO.Path]::GetFullPath((Join-Path -Path $workspaceRoot -ChildPath (Join-Path -Path 'Analysis' -ChildPath (Join-Path -Path 'Catalog' -ChildPath (Join-Path -Path 'rules' -ChildPath 'powershell')))))
+$resolvedOutDir = [System.IO.Path]::GetFullPath((Resolve-Path -LiteralPath $OutDir).Path)
+if ($PruneStale -and (-not $ForcePrune) -and (-not $resolvedOutDir.Equals($intendedOutDir, [System.StringComparison]::OrdinalIgnoreCase))) {
+    throw ("Refusing to prune outside intended catalog directory. OutDir='{0}', intended='{1}'. Pass -ForcePrune to override." -f $resolvedOutDir, $intendedOutDir)
+}
 
 $securityRules = @(
     'PSAvoidUsingAllowUnencryptedAuthentication',
