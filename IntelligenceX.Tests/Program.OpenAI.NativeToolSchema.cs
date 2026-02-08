@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using IntelligenceX.OpenAI;
 using IntelligenceX.Json;
@@ -21,6 +22,40 @@ internal static partial class Program {
 
         fallback = DetectFallbackKind("Unknown parameter tools.0.input_schema");
         AssertEqual("Parameters", fallback, "fallbackKind");
+    }
+
+    private static void TestNativeToolSchemaFallbackUsesStructuredErrorData() {
+        var ix = typeof(IntelligenceXClient).Assembly;
+        var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
+        var enumType = transportType.GetNestedType("ToolSchemaKey", BindingFlags.NonPublic);
+        AssertNotNull(enumType, "ToolSchemaKey enum");
+
+        var methods = transportType.GetMethods(BindingFlags.NonPublic | BindingFlags.Static);
+        MethodInfo? method = null;
+        foreach (var m in methods) {
+            if (!string.Equals(m.Name, "TryGetToolSchemaKeyFallback", StringComparison.Ordinal)) {
+                continue;
+            }
+            var ps = m.GetParameters();
+            if (ps.Length == 2 &&
+                ps[0].ParameterType == typeof(InvalidOperationException) &&
+                ps[1].IsOut &&
+                ps[1].ParameterType.IsByRef &&
+                ps[1].ParameterType.GetElementType() == enumType) {
+                method = m;
+                break;
+            }
+        }
+        AssertNotNull(method, "TryGetToolSchemaKeyFallback(InvalidOperationException, out ToolSchemaKey)");
+
+        var ex = new InvalidOperationException("Server rejected tool schema.");
+        ex.Data["openai:error_param"] = "tools[0].parameters";
+        ex.Data["openai:error_code"] = "unknown_parameter";
+
+        var args = new object?[] { ex, CreateOutSlot(method!) };
+        var ok = (bool)method!.Invoke(null, args)!;
+        AssertEqual(true, ok, "ok");
+        AssertEqual("InputSchema", args[1]?.ToString() ?? string.Empty, "fallbackKind");
     }
 
     private static void TestNativeToolSchemaFallbackIgnoresUnrelated() {
@@ -106,6 +141,7 @@ internal static partial class Program {
 
     private static MethodInfo GetStringFallbackMethod(Type transportType) {
         var methods = transportType.GetMethods(BindingFlags.NonPublic | BindingFlags.Static);
+        var candidates = new List<MethodInfo>();
         foreach (var m in methods) {
             if (!string.Equals(m.Name, "TryGetToolSchemaKeyFallback", StringComparison.Ordinal)) {
                 continue;
@@ -115,10 +151,24 @@ internal static partial class Program {
                 ps[0].ParameterType == typeof(string) &&
                 ps[1].IsOut &&
                 ps[1].ParameterType.IsByRef &&
-                string.Equals(ps[1].ParameterType.GetElementType()?.Name, "ToolSchemaKey", StringComparison.Ordinal)) {
-                return m;
+                (ps[1].ParameterType.GetElementType()?.IsEnum ?? false)) {
+                candidates.Add(m);
             }
         }
-        throw new InvalidOperationException("TryGetToolSchemaKeyFallback(string, out ...) method not found.");
+
+        if (candidates.Count == 1) {
+            return candidates[0];
+        }
+
+        // If there are multiple candidates, select the one that actually detects a tool-schema key swap.
+        foreach (var candidate in candidates) {
+            var args = new object?[] { "Unknown parameter: 'tools[1].parameters'.", CreateOutSlot(candidate) };
+            var ok = (bool)candidate.Invoke(null, args)!;
+            if (ok) {
+                return candidate;
+            }
+        }
+
+        throw new InvalidOperationException("TryGetToolSchemaKeyFallback(string, out enum) method not found.");
     }
 }
