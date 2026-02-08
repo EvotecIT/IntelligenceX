@@ -12,7 +12,7 @@ using IntelligenceX.OpenAI.Auth;
 
 namespace IntelligenceX.Cli;
 
-internal static class Program {
+internal static partial class Program {
     private static async Task<int> Main(string[] args) {
         if (args.Length == 0) {
             PrintHelp();
@@ -36,64 +36,6 @@ internal static class Program {
             "help" or "-h" or "--help" => PrintHelpReturn(),
             _ => PrintHelpReturn()
         };
-    }
-
-    private static int PrintHelpReturn() {
-        PrintHelp();
-        return 1;
-    }
-
-    private static void PrintHelp() {
-        Console.WriteLine("IntelligenceX CLI");
-        Console.WriteLine();
-        Console.WriteLine("Usage:");
-        Console.WriteLine("  intelligencex auth <command>");
-        Console.WriteLine("  intelligencex reviewer run [options]");
-        Console.WriteLine("  intelligencex analyze <command>");
-        Console.WriteLine("  intelligencex setup [options]");
-        Console.WriteLine("  intelligencex setup wizard [options]");
-        Console.WriteLine("  intelligencex setup web [url]");
-        Console.WriteLine("  intelligencex doctor [options]");
-        Console.WriteLine("  intelligencex todo <command>");
-        Console.WriteLine("  intelligencex release <command>");
-        Console.WriteLine("  intelligencex usage [options]");
-        Console.WriteLine();
-        Console.WriteLine("Auth commands:");
-        Console.WriteLine("  auth login       Start OAuth login flow and store credentials");
-        Console.WriteLine("  auth export      Export stored credentials (json or base64)");
-        Console.WriteLine("  auth sync-codex  Write tokens to CODEX_HOME/auth.json");
-        Console.WriteLine();
-        Console.WriteLine("Analyze commands:");
-        Console.WriteLine("  analyze run             Execute configured analysis packs and emit findings");
-        Console.WriteLine("  analyze gate            Fail CI on policy violations (when enabled in reviewer.json)");
-        Console.WriteLine("  analyze export-config   Export analyzer configs from reviewer.json");
-        Console.WriteLine("  analyze list-packs      List available rule packs");
-        Console.WriteLine("  analyze list-rules      List available rules (text/markdown/json, optional pack filter)");
-        Console.WriteLine("  analyze validate-catalog Validate rules/packs integrity");
-        Console.WriteLine();
-        Console.WriteLine("Reviewer commands:");
-        Console.WriteLine("  reviewer run     Run reviewer using GitHub event payload or inputs");
-        Console.WriteLine("  reviewer resolve-threads   Auto-resolve IntelligenceX bot review threads");
-        Console.WriteLine();
-        Console.WriteLine("Setup:");
-        Console.WriteLine("  setup            Configure GitHub Actions workflow and secrets");
-        Console.WriteLine();
-        Console.WriteLine("Doctor:");
-        Console.WriteLine("  doctor           Preflight checks for auth/config/GitHub access");
-        Console.WriteLine();
-        Console.WriteLine("TODO:");
-        Console.WriteLine("  todo sync-bot-feedback   Sync bot checklist items into TODO.md (optional issue creation)");
-        Console.WriteLine();
-        Console.WriteLine("Release commands:");
-        Console.WriteLine("  release notes    Generate release notes from git tags/commits");
-        Console.WriteLine("  release reviewer Build and publish reviewer release assets");
-        Console.WriteLine();
-        Console.WriteLine("Environment variables (optional overrides):");
-        Console.WriteLine("  OPENAI_AUTH_AUTHORIZE_URL, OPENAI_AUTH_TOKEN_URL, OPENAI_AUTH_CLIENT_ID");
-        Console.WriteLine("  OPENAI_AUTH_SCOPES, OPENAI_AUTH_REDIRECT_URL");
-        Console.WriteLine("  INTELLIGENCEX_AUTH_PATH (optional)");
-        Console.WriteLine("  INTELLIGENCEX_AUTH_KEY (base64 32 bytes to encrypt store)");
-        Console.WriteLine("  CODEX_HOME (used by sync-codex)");
     }
 
     private static async Task<int> RunAuthAsync(string[] args) {
@@ -139,43 +81,6 @@ internal static class Program {
         return 1;
     }
 
-    private static int PrintAuthHelpReturn() {
-        PrintAuthHelp();
-        return 1;
-    }
-
-    private static void PrintAuthHelp() {
-        Console.WriteLine("Auth commands:");
-        Console.WriteLine("  intelligencex auth login [options]");
-        Console.WriteLine("  intelligencex auth list");
-        Console.WriteLine("  intelligencex auth export");
-        Console.WriteLine("  intelligencex auth sync-codex");
-        Console.WriteLine();
-        Console.WriteLine("Auth login options:");
-        Console.WriteLine("  --export [format]              Export auth store after login (default: store-base64)");
-        Console.WriteLine("  --out <path>                   Write export to file");
-        Console.WriteLine("  --print                        Print export to stdout");
-        Console.WriteLine("  --set-github-secret [name]     Upload export to GitHub Actions secret (default name: INTELLIGENCEX_AUTH_B64)");
-        Console.WriteLine("  --repo <owner/name>            Target repository secret");
-        Console.WriteLine("  --org <org>                    Target organization secret (visibility defaults to all)");
-        Console.WriteLine("  --visibility <all|private|selected>     Org secret visibility");
-        Console.WriteLine("  --github-token <token>         Token for GitHub API (or set INTELLIGENCEX_GITHUB_TOKEN/GITHUB_TOKEN/GH_TOKEN)");
-        Console.WriteLine();
-        Console.WriteLine("Auth export options:");
-        Console.WriteLine("  --format <json|base64|store|store-base64>");
-        Console.WriteLine("  --provider <id>                Filter to a provider (e.g. openai-codex)");
-        Console.WriteLine("  --account-id <id>              Filter to a ChatGPT account id");
-    }
-
-    private static void PrintReviewerHelp() {
-        Console.WriteLine("Reviewer commands:");
-        Console.WriteLine("  intelligencex reviewer run [options]");
-        Console.WriteLine("  intelligencex reviewer resolve-threads [options]");
-        Console.WriteLine("  intelligencex reviewer threads resolve [options]");
-        Console.WriteLine();
-        Console.WriteLine("Reviewer run options: run `intelligencex reviewer run --help` for the full list.");
-    }
-
     private static async Task<int> RunSetupAsync(string[] args) {
         if (args.Length > 0 && args[0].Equals("wizard", StringComparison.OrdinalIgnoreCase)) {
             var rest = args.Skip(1).ToArray();
@@ -202,18 +107,6 @@ internal static class Program {
             "help" or "-h" or "--help" => PrintReleaseHelpReturn(),
             _ => PrintReleaseHelpReturn()
         };
-    }
-
-    private static int PrintReleaseHelpReturn() {
-        PrintReleaseHelp();
-        return 1;
-    }
-
-    private static void PrintReleaseHelp() {
-        Console.WriteLine("Release commands:");
-        Console.WriteLine("  release notes    Generate release notes from git tags/commits");
-        Console.WriteLine("  release reviewer Build and publish reviewer release assets");
-        Console.WriteLine("  release help");
     }
 
     private static bool IsLegacyAuthCommand(string command) {

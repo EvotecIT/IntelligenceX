@@ -82,6 +82,7 @@ internal static class AnalyzeGateCommand {
         var minSeverity = string.IsNullOrWhiteSpace(analysisSettings.Gate.MinSeverity)
             ? analysisSettings.Results.MinSeverity
             : analysisSettings.Gate.MinSeverity;
+        var minRank = AnalysisSeverity.Rank(minSeverity);
 
         var prFiles = LoadChangedFiles(options.ChangedFilesPath, workspace);
         var reviewSettings = new ReviewSettings();
@@ -119,6 +120,9 @@ internal static class AnalyzeGateCommand {
         var outsidePack = 0;
 
         foreach (var finding in allFindings) {
+            if (AnalysisSeverity.Rank(finding.Severity) < minRank) {
+                continue;
+            }
             if (string.IsNullOrWhiteSpace(finding.RuleId)) {
                 continue;
             }
@@ -284,7 +288,8 @@ internal static class AnalyzeGateCommand {
 
         var statePath = ResolveWorkspaceBoundPath(workspace, settings.Hotspots.StatePath);
         if (statePath is null) {
-            // If state path escapes the workspace, do not attempt to read it.
+            // When hotspot gating is enabled, treat an out-of-workspace path as a hard failure signal.
+            list.Add("hotspots statePath resolves outside workspace");
             return list;
         }
         var stateFile = HotspotStateStore.TryLoad(statePath);
@@ -319,9 +324,20 @@ internal static class AnalyzeGateCommand {
             var fullWorkspace = Path.GetFullPath(workspace)
                 .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             var full = Path.GetFullPath(resolved);
-            if (!full.StartsWith(fullWorkspace, StringComparison.OrdinalIgnoreCase)) {
+
+            // Use relative path computation to avoid prefix-matching bypasses (e.g. /ws2 matching /ws).
+            var relative = Path.GetRelativePath(fullWorkspace, full);
+            if (string.IsNullOrWhiteSpace(relative)) {
                 return null;
             }
+            var normalized = relative.Replace('\\', '/');
+            if (normalized.Equals("..", StringComparison.Ordinal) || normalized.StartsWith("../", StringComparison.Ordinal)) {
+                return null;
+            }
+            if (Path.IsPathRooted(relative)) {
+                return null;
+            }
+
             return full;
         } catch {
             return null;
