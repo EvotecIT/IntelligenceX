@@ -13,7 +13,7 @@ internal static class AnalyzeHotspotsCommand {
     public static Task<int> RunAsync(string[] args) {
         if (args.Length == 0 || IsHelp(args[0])) {
             PrintHelp();
-            return Task.FromResult(1);
+            return Task.FromResult(0);
         }
 
         var command = args[0].ToLowerInvariant();
@@ -26,7 +26,7 @@ internal static class AnalyzeHotspotsCommand {
     }
 
     public static void PrintHelp() {
-        Console.WriteLine("  intelligencex analyze hotspots sync-state [--workspace <path>] [--config <path>] [--state <path>] [--new-status <status>] [--prune-fixed] [--dry-run]");
+        Console.WriteLine("  intelligencex analyze hotspots sync-state [--workspace <path>] [--config <path>] [--state <path>] [--new-status <status>] [--prune-fixed] [--dry-run] [--check]");
         Console.WriteLine("  intelligencex analyze hotspots set --key <key> [--keys <k1,k2>] --status <status> [--note <text>] [--workspace <path>] [--config <path>] [--state <path>]");
         Console.WriteLine();
         Console.WriteLine("Hotspot statuses: to-review, safe, fixed, accepted-risk, wont-fix, suppress");
@@ -34,6 +34,10 @@ internal static class AnalyzeHotspotsCommand {
 
     private static int SyncState(string[] args) {
         var options = ParseSyncArgs(args, out var error);
+        if (options.ShowHelp) {
+            PrintHelp();
+            return 0;
+        }
         if (error is not null) {
             Console.WriteLine(error);
             return 1;
@@ -102,6 +106,18 @@ internal static class AnalyzeHotspotsCommand {
         Console.WriteLine($"State entries: {existing.Count} existing, {missingKeys.Count} missing, {next.Count} total");
         Console.WriteLine($"State file: {TryGetRelative(workspace, resolvedStatePath) ?? resolvedStatePath}");
 
+        if (options.Check) {
+            if (missingKeys.Count == 0) {
+                Console.WriteLine("State is up-to-date.");
+                return 0;
+            }
+            Console.WriteLine("State is missing entries for current hotspots.");
+            Console.WriteLine();
+            Console.WriteLine("Suggested entries:");
+            Console.WriteLine(HotspotStateStore.BuildSuggestedStateSnippet(missingKeys, desiredDefaultStatus));
+            return 1;
+        }
+
         if (options.DryRun) {
             if (missingKeys.Count > 0) {
                 Console.WriteLine();
@@ -118,6 +134,10 @@ internal static class AnalyzeHotspotsCommand {
 
     private static int SetStatus(string[] args) {
         var options = ParseSetArgs(args, out var error);
+        if (options.ShowHelp) {
+            PrintHelp();
+            return 0;
+        }
         if (error is not null) {
             Console.WriteLine(error);
             return 1;
@@ -227,12 +247,14 @@ internal static class AnalyzeHotspotsCommand {
     }
 
     private sealed class SyncOptions {
+        public bool ShowHelp { get; set; }
         public string? Workspace { get; set; }
         public string? ConfigPath { get; set; }
         public string? StatePath { get; set; }
         public string? NewStatus { get; set; }
         public bool PruneFixed { get; set; }
         public bool DryRun { get; set; }
+        public bool Check { get; set; }
     }
 
     private static SyncOptions ParseSyncArgs(string[] args, out string? error) {
@@ -241,7 +263,7 @@ internal static class AnalyzeHotspotsCommand {
         for (var i = 0; i < args.Length; i++) {
             var arg = args[i];
             if (IsHelp(arg)) {
-                error = null;
+                options.ShowHelp = true;
                 return options;
             }
             if (arg.Equals("--workspace", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length) {
@@ -268,6 +290,10 @@ internal static class AnalyzeHotspotsCommand {
                 options.DryRun = true;
                 continue;
             }
+            if (arg.Equals("--check", StringComparison.OrdinalIgnoreCase)) {
+                options.Check = true;
+                continue;
+            }
             error = $"Unknown argument: {arg}";
             return options;
         }
@@ -275,6 +301,7 @@ internal static class AnalyzeHotspotsCommand {
     }
 
     private sealed class SetOptions {
+        public bool ShowHelp { get; set; }
         public string? Workspace { get; set; }
         public string? ConfigPath { get; set; }
         public string? StatePath { get; set; }
@@ -289,7 +316,7 @@ internal static class AnalyzeHotspotsCommand {
         for (var i = 0; i < args.Length; i++) {
             var arg = args[i];
             if (IsHelp(arg)) {
-                error = null;
+                options.ShowHelp = true;
                 return options;
             }
             if (arg.Equals("--workspace", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length) {

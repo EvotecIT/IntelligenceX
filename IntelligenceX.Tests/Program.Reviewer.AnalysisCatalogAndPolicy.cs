@@ -557,6 +557,59 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeHotspotsHelpHasNoSideEffects() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-hotspots-help-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            var configPath = Path.Combine(temp, ".intelligencex", "reviewer.json");
+            File.WriteAllText(configPath, """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["all-50"],
+    "results": {
+      "inputs": ["artifacts/intelligencex.findings.json"],
+      "minSeverity": "warning",
+      "showPolicy": false,
+      "summary": false
+    }
+  }
+}
+""");
+
+            var statePath = Path.Combine(temp, ".intelligencex", "hotspots.json");
+
+            var syncExit = IntelligenceX.Cli.Analysis.AnalyzeRunner.RunAsync(new[] {
+                "hotspots",
+                "sync-state",
+                "--help",
+                "--workspace",
+                temp,
+                "--config",
+                configPath
+            }).GetAwaiter().GetResult();
+            AssertEqual(0, syncExit, "hotspots sync-state --help exit");
+            AssertEqual(false, File.Exists(statePath), "hotspots sync-state --help should not write state");
+
+            var setExit = IntelligenceX.Cli.Analysis.AnalyzeRunner.RunAsync(new[] {
+                "hotspots",
+                "set",
+                "--help",
+                "--workspace",
+                temp,
+                "--config",
+                configPath
+            }).GetAwaiter().GetResult();
+            AssertEqual(0, setExit, "hotspots set --help exit");
+            AssertEqual(false, File.Exists(statePath), "hotspots set --help should not write state");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalyzeValidateCatalogCommand() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-validate-command-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

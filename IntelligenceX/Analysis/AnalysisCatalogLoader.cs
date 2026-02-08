@@ -120,7 +120,8 @@ public static class AnalysisCatalogLoader {
         if (string.IsNullOrWhiteSpace(category)) {
             return null;
         }
-        var normalized = category.Trim();
+        // string.IsNullOrWhiteSpace is not annotated for netstandard2.0 flow analysis; force non-null.
+        var normalized = category!.Trim();
         if (normalized.Equals("Security", StringComparison.OrdinalIgnoreCase)) {
             return "vulnerability";
         }
@@ -166,7 +167,8 @@ public static class AnalysisCatalogLoader {
             var docs = obj.GetString("docs");
 
             return new AnalysisRuleOverride(
-                id.Trim(),
+                // string.IsNullOrWhiteSpace is not annotated for netstandard2.0 flow analysis; force non-null.
+                id!.Trim(),
                 tags,
                 type,
                 category,

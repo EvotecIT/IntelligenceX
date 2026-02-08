@@ -73,7 +73,7 @@ internal static class AnalysisHotspots {
             $"- Hotspots: {rendered.Count} (to-review: {toReviewCount}, safe: {safeCount}, fixed: {fixedCount}, accepted-risk: {acceptedRiskCount}, wont-fix: {wontFixCount}, suppress: {suppressCount})");
 
         if (hotspotSettings.ShowStateSummary) {
-            var relStatePath = TryGetRelativePathWithinWorkspace(workspace, statePath) ?? statePath;
+            var relStatePath = DescribeStatePathForOutput(workspace, hotspotSettings.StatePath, statePath);
             var stateNote = stateFile.Loaded
                 ? "found"
                 : (File.Exists(statePath) ? "unreadable" : "missing");
@@ -268,6 +268,24 @@ internal static class AnalysisHotspots {
         } catch {
             return null;
         }
+    }
+
+    private static string DescribeStatePathForOutput(string workspace, string configuredPath, string resolvedPath) {
+        // Avoid leaking runner filesystem layout into public PR comments.
+        // If the user configured a relative path, show it.
+        if (!string.IsNullOrWhiteSpace(configuredPath) && !Path.IsPathRooted(configuredPath.Trim())) {
+            return configuredPath.Trim().Replace('\\', '/');
+        }
+
+        // If the resolved path is within the workspace, show it relative.
+        var relative = TryGetRelativePathWithinWorkspace(workspace, resolvedPath);
+        if (!string.IsNullOrWhiteSpace(relative)) {
+            return relative.Replace('\\', '/');
+        }
+
+        // Otherwise, only show the file name (no absolute path).
+        var fileName = Path.GetFileName(resolvedPath);
+        return string.IsNullOrWhiteSpace(fileName) ? "<absolute path hidden>" : fileName;
     }
 
     private static string ResolveWorkspaceRoot() {

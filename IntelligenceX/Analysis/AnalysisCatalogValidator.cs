@@ -372,7 +372,8 @@ public static class AnalysisCatalogValidator {
         if (string.IsNullOrWhiteSpace(type)) {
             return;
         }
-        if (SupportedRuleTypes.Contains(type.Trim())) {
+        // string.IsNullOrWhiteSpace is not annotated for netstandard2.0 flow analysis; force non-null.
+        if (SupportedRuleTypes.Contains(type!.Trim())) {
             return;
         }
         errors.Add($"Rule '{ruleId}' has unsupported type '{type}' ({path}).");
