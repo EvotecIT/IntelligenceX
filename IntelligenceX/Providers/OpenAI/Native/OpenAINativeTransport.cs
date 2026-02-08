@@ -319,12 +319,14 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
     private async Task<TurnInfo> SendWithModelFallbackAsync(JsonObject body, string accessToken, string accountId,
         NativeThreadState state, IReadOnlyList<JsonObject> inputItems, bool trackMessages, string model, string turnId,
         ChatOptions options, CancellationToken cancellationToken) {
+        ToolSchemaKind retryKind;
         var response = await SendAsync(body, accessToken, accountId, state.SessionId, cancellationToken)
             .ConfigureAwait(false);
         try {
             return await ProcessResponseAsync(response, turnId, model, state, inputItems, trackMessages, cancellationToken)
                 .ConfigureAwait(false);
-        } catch (InvalidOperationException ex) when (IsToolSchemaNotSupported(ex)) {
+        } catch (InvalidOperationException ex) when (options.Tools is not null && options.Tools.Count > 0 &&
+                                                     TryGetToolSchemaFallbackKind(ex.Message, out retryKind)) {
             // Server rejected our tool schema. Retry once with the alternate field name.
             var requestMessages = trackMessages
                 ? new List<JsonObject>(state.Messages.Count + inputItems.Count)
@@ -334,7 +336,6 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             }
             requestMessages.AddRange(inputItems);
 
-            var retryKind = GetFallbackToolSchemaKind(ex);
             var retryBody = BuildRequestBody(model, requestMessages, state.SessionId, options, retryKind);
             var retry = await SendAsync(retryBody, accessToken, accountId, state.SessionId, cancellationToken)
                 .ConfigureAwait(false);
@@ -366,22 +367,116 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         }
     }
 
-    private static bool IsToolSchemaNotSupported(InvalidOperationException ex) {
-        // Observed server errors:
-        // - Unknown parameter: 'tools[0].parameters'.
-        // - Unknown parameter: 'tools[0].input_schema'.
-        var message = ex.Message ?? string.Empty;
-        return message.IndexOf("Unknown parameter", StringComparison.OrdinalIgnoreCase) >= 0 &&
-               (message.IndexOf("tools[0].parameters", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                message.IndexOf("tools[0].input_schema", StringComparison.OrdinalIgnoreCase) >= 0);
+    private static bool TryGetToolSchemaFallbackKind(string? message, out ToolSchemaKind fallbackKind) {
+        // Server error messages vary; the stable signal is the field path that was rejected:
+        // - tools[<n>].parameters
+        // - tools[<n>].input_schema
+        // - tools.<n>.parameters (seen in some variants)
+        // - tools.<n>.input_schema
+        fallbackKind = ToolSchemaKind.Parameters;
+        if (string.IsNullOrWhiteSpace(message)) {
+            return false;
+        }
+
+        var text = message!;
+        var idx = 0;
+        while (idx < text.Length) {
+            // Bracket form: tools[12].parameters
+            var start = text.IndexOf("tools[", idx, StringComparison.OrdinalIgnoreCase);
+            if (start < 0) {
+                break;
+            }
+
+            var i = start + "tools[".Length;
+            if (i >= text.Length || !char.IsDigit(text[i])) {
+                idx = i;
+                continue;
+            }
+            while (i < text.Length && char.IsDigit(text[i])) {
+                i++;
+            }
+            if (i >= text.Length || text[i] != ']') {
+                idx = i;
+                continue;
+            }
+            i++;
+            if (i >= text.Length || text[i] != '.') {
+                idx = i;
+                continue;
+            }
+            i++;
+
+            if (TryReadIdentifier(text, i, out var identifier)) {
+                if (string.Equals(identifier, "parameters", StringComparison.OrdinalIgnoreCase)) {
+                    fallbackKind = ToolSchemaKind.InputSchema;
+                    return true;
+                }
+                if (string.Equals(identifier, "input_schema", StringComparison.OrdinalIgnoreCase)) {
+                    fallbackKind = ToolSchemaKind.Parameters;
+                    return true;
+                }
+            }
+
+            idx = i;
+        }
+
+        idx = 0;
+        while (idx < text.Length) {
+            // Dot form: tools.12.parameters
+            var start = text.IndexOf("tools.", idx, StringComparison.OrdinalIgnoreCase);
+            if (start < 0) {
+                break;
+            }
+
+            var i = start + "tools.".Length;
+            if (i >= text.Length || !char.IsDigit(text[i])) {
+                idx = i;
+                continue;
+            }
+            while (i < text.Length && char.IsDigit(text[i])) {
+                i++;
+            }
+            if (i >= text.Length || text[i] != '.') {
+                idx = i;
+                continue;
+            }
+            i++;
+
+            if (TryReadIdentifier(text, i, out var identifier)) {
+                if (string.Equals(identifier, "parameters", StringComparison.OrdinalIgnoreCase)) {
+                    fallbackKind = ToolSchemaKind.InputSchema;
+                    return true;
+                }
+                if (string.Equals(identifier, "input_schema", StringComparison.OrdinalIgnoreCase)) {
+                    fallbackKind = ToolSchemaKind.Parameters;
+                    return true;
+                }
+            }
+
+            idx = i;
+        }
+
+        return false;
     }
 
-    private static ToolSchemaKind GetFallbackToolSchemaKind(InvalidOperationException ex) {
-        var message = ex.Message ?? string.Empty;
-        if (message.IndexOf("tools[0].parameters", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return ToolSchemaKind.InputSchema;
+    private static bool TryReadIdentifier(string text, int startIndex, out string identifier) {
+        identifier = string.Empty;
+        if (startIndex < 0 || startIndex >= text.Length) {
+            return false;
         }
-        return ToolSchemaKind.Parameters;
+        var i = startIndex;
+        while (i < text.Length) {
+            var c = text[i];
+            if (!(char.IsLetterOrDigit(c) || c == '_')) {
+                break;
+            }
+            i++;
+        }
+        if (i == startIndex) {
+            return false;
+        }
+        identifier = text.Substring(startIndex, i - startIndex);
+        return true;
     }
 
     private void HandleStreamEvent(JsonObject evt, StringBuilder delta, ref string? status, ref JsonObject? completedResponse,
