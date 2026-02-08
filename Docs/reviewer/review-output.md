@@ -21,6 +21,8 @@ Rules of thumb:
 - If a merge blocker has a specific location, expect an inline comment for it.
 - Style-only nits should not block merges unless they affect correctness, security, or reliability.
 
+In this repo, “reliability” includes maintainability concerns that can realistically cause defects over time (for example unclear ownership, error handling gaps, brittle parsing, or drift-prone duplicated logic).
+
 ## Other reviews
 
 You may also see additional automated review comments (for example “Claude Code Review”).

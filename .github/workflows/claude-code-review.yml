@@ -29,6 +29,15 @@ jobs:
       GH_TOKEN: ${{ github.token }}
 
     steps:
+      - name: Detect workflow file changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            claude_workflows:
+              - '.github/workflows/claude-code-review.yml'
+              - '.github/workflows/claude.yml'
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -43,6 +52,7 @@ jobs:
 
       - name: Run Claude Code Review
         id: claude-review
+        if: steps.changes.outputs.claude_workflows != 'true'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -77,3 +87,7 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
           claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
+
+      - name: Skip Claude Code Review (workflow modified in PR)
+        if: steps.changes.outputs.claude_workflows == 'true'
+        run: echo "Skipping Claude Code Review because the Claude workflow file changed in this PR (GitHub app token validation would fail)."
