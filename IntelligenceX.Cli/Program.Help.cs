@@ -28,13 +28,9 @@ internal static partial class Program {
         Console.WriteLine("  auth export      Export stored credentials (json or base64)");
         Console.WriteLine("  auth sync-codex  Write tokens to CODEX_HOME/auth.json");
         Console.WriteLine();
-        Console.WriteLine("Analyze commands:");
-        Console.WriteLine("  analyze run             Execute configured analysis packs and emit findings");
-        Console.WriteLine("  analyze gate            Fail CI on policy violations (when enabled in reviewer.json)");
-        Console.WriteLine("  analyze export-config   Export analyzer configs from reviewer.json");
-        Console.WriteLine("  analyze list-packs      List available rule packs");
-        Console.WriteLine("  analyze list-rules      List available rules (text/markdown/json, optional pack filter)");
-        Console.WriteLine("  analyze validate-catalog Validate rules/packs integrity");
+        // Keep analyze subcommand help in a single place: `intelligencex analyze --help`.
+        Console.WriteLine("Analyze:");
+        Console.WriteLine("  analyze  Static analysis commands (run `intelligencex analyze --help` for subcommands)");
         Console.WriteLine();
         Console.WriteLine("Reviewer commands:");
         Console.WriteLine("  reviewer run     Run reviewer using GitHub event payload or inputs");
@@ -110,4 +106,3 @@ internal static partial class Program {
         Console.WriteLine("  release help");
     }
 }
-

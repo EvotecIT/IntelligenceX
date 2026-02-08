@@ -43,6 +43,49 @@ internal static partial class Program {
             "analysis loader rejects relative workspace override");
     }
 
+    private static void TestAnalysisFindingsLoaderIgnoresInputsOutsideWorkspace() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-loader-input-outside-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var outsideRoot = temp + "2";
+        Directory.CreateDirectory(outsideRoot);
+        try {
+            var outsideInput = Path.Combine(outsideRoot, "intelligencex.findings.json");
+            File.WriteAllText(outsideInput, """
+{
+  "items": [
+    {
+      "path": "src/test.cs",
+      "line": 10,
+      "severity": "warning",
+      "message": "Broken.",
+      "ruleId": "IX001",
+      "tool": "IntelligenceX"
+    }
+  ]
+}
+""");
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Results.MinSeverity = "info";
+            settings.Analysis.Results.Inputs = new[] { outsideInput };
+
+            var load = IntelligenceX.Reviewer.AnalysisFindingsLoader.LoadWithReport(
+                settings,
+                Array.Empty<PullRequestFile>(),
+                temp);
+            AssertEqual(0, load.Report.ResolvedInputFiles, "analysis loader resolves 0 inputs (outside ignored)");
+            AssertEqual(0, load.Findings.Count, "analysis loader findings empty (outside ignored)");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+            if (Directory.Exists(outsideRoot)) {
+                Directory.Delete(outsideRoot, true);
+            }
+        }
+    }
+
     private static void TestAnalyzeGateResolveWorkspaceBoundPathAcceptsWorkspaceRoot() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-workspace-root-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

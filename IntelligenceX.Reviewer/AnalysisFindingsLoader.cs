@@ -325,19 +325,22 @@ internal static class AnalysisFindingsLoader {
             }
             var trimmed = input.Trim();
             if (trimmed.IndexOfAny(GlobChars) < 0) {
-                var candidate = Path.IsPathRooted(trimmed) ? trimmed : Path.Combine(workspace, trimmed);
-                if (File.Exists(candidate)) {
-                    results.Add(Path.GetFullPath(candidate));
+                var candidate = ResolveWorkspaceBoundAbsolutePath(workspace, trimmed);
+                if (candidate is not null && File.Exists(candidate)) {
+                    results.Add(candidate);
                 }
                 continue;
             }
             var searchRoot = ResolveSearchRoot(workspace, trimmed);
-            if (string.IsNullOrWhiteSpace(searchRoot) || !Directory.Exists(searchRoot)) {
+            var boundSearchRoot = string.IsNullOrWhiteSpace(searchRoot)
+                ? null
+                : ResolveWorkspaceBoundAbsolutePath(workspace, searchRoot);
+            if (boundSearchRoot is null || !Directory.Exists(boundSearchRoot)) {
                 continue;
             }
             var normalizedPattern = NormalizeGlobPattern(trimmed, workspace);
             var useAbsolute = Path.IsPathRooted(trimmed);
-            foreach (var file in Directory.EnumerateFiles(searchRoot, "*", SearchOption.AllDirectories)) {
+            foreach (var file in Directory.EnumerateFiles(boundSearchRoot, "*", SearchOption.AllDirectories)) {
                 var full = Path.GetFullPath(file);
                 var value = useAbsolute
                     ? full.Replace('\\', '/')
@@ -498,6 +501,35 @@ internal static class AnalysisFindingsLoader {
             return workspace;
         }
         return Environment.CurrentDirectory;
+    }
+
+    private static string? ResolveWorkspaceBoundAbsolutePath(string workspace, string configuredPath) {
+        if (string.IsNullOrWhiteSpace(configuredPath)) {
+            return null;
+        }
+        var resolved = Path.IsPathRooted(configuredPath)
+            ? configuredPath
+            : Path.Combine(workspace, configuredPath);
+        try {
+            var fullWorkspace = Path.GetFullPath(workspace);
+            var full = Path.GetFullPath(resolved);
+            var relative = Path.GetRelativePath(fullWorkspace, full);
+            if (string.IsNullOrWhiteSpace(relative)) {
+                relative = ".";
+            }
+            var normalized = relative.Replace('\\', '/');
+            if (normalized.Equals(".", StringComparison.Ordinal)) {
+                return full;
+            }
+            if (Path.IsPathRooted(relative) ||
+                normalized.Equals("..", StringComparison.Ordinal) ||
+                normalized.StartsWith("../", StringComparison.Ordinal)) {
+                return null;
+            }
+            return full;
+        } catch {
+            return null;
+        }
     }
 
     private static IEnumerable<JsonObject> EnumerateObjects(JsonArray? array) {
