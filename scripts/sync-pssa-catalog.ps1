@@ -203,10 +203,12 @@ foreach ($rule in $rules) {
                     }
                 } catch {
                     # Ignore invalid existing docs; fall back to Learn.
+                    $existingDocs = $null
                 }
             }
         } catch {
             # Ignore read/parse errors; fall back to Learn.
+            $existingDocs = $null
         }
     }
 
