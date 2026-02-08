@@ -258,7 +258,10 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         if (!response.IsSuccessStatusCode) {
             var error = await ParseErrorResponseAsync(response, cancellationToken).ConfigureAwait(false);
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) {
-                throw new OpenAIAuthenticationRequiredException(error);
+                var message = string.IsNullOrWhiteSpace(error)
+                    ? OpenAIAuthenticationRequiredException.DefaultMessage
+                    : error;
+                throw new OpenAIAuthenticationRequiredException(message);
             }
             throw new InvalidOperationException(error);
         }
