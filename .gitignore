@@ -98,6 +98,9 @@ StyleCopReport.xml
 *.svclog
 *.scc
 
+# Local agent/worktree checkouts
+.worktrees/
+
 # Chutzpah Test files
 _Chutzpah*
 
