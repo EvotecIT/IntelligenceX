@@ -4,7 +4,7 @@
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSAvoidAssignmentToAutomaticVariable",
   "title": "Changing automatic variables might have undesired side effects",
-  "description": "This automatic variables is built into PowerShell and readonly.",
+  "description": "Automatic variables are built into PowerShell and are read-only. Avoid assigning to them.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [
