@@ -4,7 +4,7 @@
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSAvoidSemicolonsAsLineTerminators",
   "title": "Avoid semicolons as line terminators",
-  "description": "Line should not end with a semicolon",
+  "description": "Line should not end with a semicolon.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

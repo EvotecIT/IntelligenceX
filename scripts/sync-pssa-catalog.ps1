@@ -54,6 +54,23 @@ function Compress-Whitespace([string]$text) {
     ($text -replace '[\r\n]+', ' ' -replace '\s+', ' ').Trim()
 }
 
+function Fix-MetadataText([string]$text) {
+    if ([string]::IsNullOrWhiteSpace($text)) { return '' }
+    $fixed = $text
+    # Upstream typos we don't want to publish as-is.
+    $fixed = $fixed -replace '\bwhitepsace\b', 'whitespace'
+    $fixed = $fixed -replace '\bautomtic\b', 'automatic'
+    $fixed = $fixed -replace '\breadonly\b', 'read-only'
+    $fixed = $fixed -replace '\bPrameter\b', 'Parameter'
+    $fixed = $fixed -replace '\bequaltiy\b', 'equality'
+    $fixed = $fixed -replace '\bcomaprision\b', 'comparison'
+    $fixed = $fixed -replace '\bfunctiosn\b', 'functions'
+    $fixed = $fixed -replace '\bindenation\b', 'indentation'
+    $fixed = $fixed -replace '\bassigment\b', 'assignment'
+    $fixed = $fixed -replace '\bIN\b', 'in'
+    $fixed
+}
+
 function Get-RuleTitleFromRuleName([string]$ruleName) {
     if ([string]::IsNullOrWhiteSpace($ruleName)) { return '' }
     $name = $ruleName.Trim()
@@ -100,6 +117,34 @@ foreach ($rule in $rules) {
 
     $description = Compress-Whitespace ([string]$rule.Description)
     if ([string]::IsNullOrWhiteSpace($description)) { $description = "PSScriptAnalyzer rule '$ruleName'. See docs for details." }
+
+    $title = Fix-MetadataText $title
+    $description = Fix-MetadataText $description
+
+    switch ($ruleName) {
+        'PSAvoidAssignmentToAutomaticVariable' {
+            $title = 'Changing automatic variables might have undesired side effects'
+            $description = 'Automatic variables are built into PowerShell and are read-only. Avoid assigning to them.'
+        }
+        'PSAlignAssignmentStatement' {
+            $title = 'Align Assignment Statements'
+            $description = 'Line up assignment statements so that the assignment operators are aligned.'
+        }
+        'PSPossibleIncorrectComparisonWithNull' {
+            $title = 'Possible Incorrect Comparison With Null'
+            $description = 'Checks that $null is on the left side of any equality comparisons (eq, ne, ceq, cne, ieq, ine). When there is an array on the left side of a null equality comparison, PowerShell will check for a $null in the array rather than whether the array is null. If the two sides of the comparison are switched, this is fixed. Therefore, $null should always be on the left side of equality comparisons just in case.'
+        }
+        'PSUseConsistentWhitespace' {
+            $title = 'Use Consistent Whitespace'
+            $description = "Check for whitespace between keyword and open paren/curly, around assignment operator ('='), around arithmetic operators and after separators (',' and ';')."
+        }
+    }
+
+    # Minor grammar cleanup
+    $description = $description -replace '\boperator are\b', 'operators are'
+    if (-not [string]::IsNullOrWhiteSpace($description) -and $description -notmatch '[\.\!\?]$') {
+        $description = $description + '.'
+    }
 
     $path = Join-Path $OutDir ($ruleName + '.json')
     $docs = $null

@@ -1,6 +1,0 @@
-{
-  "id": "PSUseConsistentWhitespace",
-  "title": "Use Consistent Whitespace",
-  "description": "Check for whitespace between keyword and open paren/curly, around assignment operator ('='), around arithmetic operators and after separators (',' and ';')."
-}
-

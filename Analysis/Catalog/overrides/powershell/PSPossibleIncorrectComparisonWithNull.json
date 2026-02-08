@@ -1,5 +1,0 @@
-{
-  "id": "PSPossibleIncorrectComparisonWithNull",
-  "title": "Possible Incorrect Comparison With Null",
-  "description": "Checks that $null is on the left side of any equality comparisons (eq, ne, ceq, cne, ieq, ine). When there is an array on the left side of a null equality comparison, PowerShell will check for a $null in the array rather than whether the array is null. If the two sides of the comparison are switched, this is fixed. Therefore, $null should always be on the left side of equality comparisons just in case."
-}

@@ -4,7 +4,7 @@
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSUseLiteralInitializerForHashtable",
   "title": "Create hashtables with literal initializers",
-  "description": "Use literal initializer, @{}, for creating a hashtable as they are case-insensitive by default",
+  "description": "Use literal initializer, @{}, for creating a hashtable as they are case-insensitive by default.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

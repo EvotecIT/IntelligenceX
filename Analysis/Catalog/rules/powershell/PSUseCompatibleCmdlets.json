@@ -4,7 +4,7 @@
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSUseCompatibleCmdlets",
   "title": "Use compatible cmdlets",
-  "description": "Use cmdlets compatible with the given PowerShell version and edition and operating system",
+  "description": "Use cmdlets compatible with the given PowerShell version and edition and operating system.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

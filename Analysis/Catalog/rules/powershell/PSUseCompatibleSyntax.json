@@ -4,7 +4,7 @@
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSUseCompatibleSyntax",
   "title": "Use compatible syntax",
-  "description": "Use script syntax compatible with the given PowerShell versions",
+  "description": "Use script syntax compatible with the given PowerShell versions.",
   "category": "BestPractices",
   "defaultSeverity": "error",
   "tags": [

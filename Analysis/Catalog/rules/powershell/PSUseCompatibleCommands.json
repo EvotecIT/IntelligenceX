@@ -4,7 +4,7 @@
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSUseCompatibleCommands",
   "title": "Use compatible commands",
-  "description": "Use commands compatible with the given PowerShell version and operating system",
+  "description": "Use commands compatible with the given PowerShell version and operating system.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [
