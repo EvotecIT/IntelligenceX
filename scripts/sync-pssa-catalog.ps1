@@ -39,6 +39,18 @@ New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 
 $intendedOutDir = [System.IO.Path]::GetFullPath((Join-Path -Path $workspaceRoot -ChildPath (Join-Path -Path 'Analysis' -ChildPath (Join-Path -Path 'Catalog' -ChildPath (Join-Path -Path 'rules' -ChildPath 'powershell')))))
 $resolvedOutDir = [System.IO.Path]::GetFullPath((Resolve-Path -LiteralPath $OutDir).Path)
+
+# Even with -ForcePrune, never allow pruning outside the repo workspace.
+$workspaceFull = [System.IO.Path]::GetFullPath($workspaceRoot)
+$workspaceTrim = $workspaceFull.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+$workspacePrefix = $workspaceTrim + [System.IO.Path]::DirectorySeparatorChar
+$isUnderWorkspace =
+    $resolvedOutDir.Equals($workspaceTrim, [System.StringComparison]::OrdinalIgnoreCase) -or
+    $resolvedOutDir.StartsWith($workspacePrefix, [System.StringComparison]::OrdinalIgnoreCase)
+if ($PruneStale -and (-not $isUnderWorkspace)) {
+    throw ("Refusing to prune outside workspace. OutDir='{0}', workspace='{1}'." -f $resolvedOutDir, $workspaceTrim)
+}
+
 if ($PruneStale -and (-not $ForcePrune) -and (-not $resolvedOutDir.Equals($intendedOutDir, [System.StringComparison]::OrdinalIgnoreCase))) {
     throw ("Refusing to prune outside intended catalog directory. OutDir='{0}', intended='{1}'. Pass -ForcePrune to override." -f $resolvedOutDir, $intendedOutDir)
 }
@@ -219,15 +231,19 @@ foreach ($file in $existingRuleFiles) {
 }
 
 # Also delete stale overrides for rules that no longer exist.
-$rulesRoot = Split-Path -Parent $OutDir
-$catalogRoot = Split-Path -Parent $rulesRoot
-$overridesDir = Join-Path -Path $catalogRoot -ChildPath (Join-Path -Path 'overrides' -ChildPath 'powershell')
 $staleOverrideFiles = @()
-if (Test-Path -LiteralPath $overridesDir) {
-    foreach ($file in @(Get-ChildItem -LiteralPath $overridesDir -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
-        $id = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
-        if ($id -and -not $ruleIdSet.ContainsKey($id)) { $staleOverrideFiles += $file }
+if ($resolvedOutDir.Equals($intendedOutDir, [System.StringComparison]::OrdinalIgnoreCase)) {
+    $rulesRoot = Split-Path -Parent $OutDir
+    $catalogRoot = Split-Path -Parent $rulesRoot
+    $overridesDir = Join-Path -Path $catalogRoot -ChildPath (Join-Path -Path 'overrides' -ChildPath 'powershell')
+    if (Test-Path -LiteralPath $overridesDir) {
+        foreach ($file in @(Get-ChildItem -LiteralPath $overridesDir -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
+            $id = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
+            if ($id -and -not $ruleIdSet.ContainsKey($id)) { $staleOverrideFiles += $file }
+        }
     }
+} elseif ($PruneStale) {
+    Write-Warning ("Skipping overrides pruning because OutDir does not match intended catalog directory. OutDir='{0}', intended='{1}'." -f $resolvedOutDir, $intendedOutDir)
 }
 
 $deleted = 0

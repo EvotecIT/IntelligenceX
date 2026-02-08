@@ -459,8 +459,10 @@ internal static partial class Program {
                 if (Directory.Exists(tempOverridesRoot)) {
                     Directory.Delete(tempOverridesRoot, true);
                 }
-            } catch {
-                // Best-effort cleanup: do not fail tests if the directory can't be deleted (e.g., AV/FS locks).
+            } catch (Exception ex) {
+                // Best-effort cleanup: do not fail tests if the directory can't be deleted (e.g., AV/FS locks),
+                // but also don't silently ignore leaks.
+                Console.Error.WriteLine($"WARN: failed to delete temp overrides dir '{tempOverridesRoot}': {ex.Message}");
             }
         }
     }
