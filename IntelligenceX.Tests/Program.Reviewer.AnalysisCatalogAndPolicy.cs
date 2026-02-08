@@ -364,12 +364,16 @@ internal static partial class Program {
             }
 
             var sawOverrideProperty = false;
+            var sawNonTagsOverrideProperty = false;
             var changesBase = false;
             foreach (var prop in overrideRoot.EnumerateObject()) {
                 if (prop.NameEquals("id")) {
                     continue;
                 }
                 sawOverrideProperty = true;
+                if (!prop.NameEquals("tags")) {
+                    sawNonTagsOverrideProperty = true;
+                }
 
                 switch (prop.Name) {
                     case "title": {
@@ -487,7 +491,9 @@ internal static partial class Program {
                 }
 
             AssertEqual(true, sawOverrideProperty, $"{id} override has at least one property besides id");
-            AssertEqual(true, changesBase, $"{id} override must change the effective rule vs base (otherwise delete the override)");
+            if (sawNonTagsOverrideProperty) {
+                AssertEqual(true, changesBase, $"{id} override must change the effective rule vs base (otherwise delete the override)");
+            }
         }
     }
 

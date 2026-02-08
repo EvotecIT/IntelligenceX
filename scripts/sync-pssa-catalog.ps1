@@ -180,19 +180,34 @@ foreach ($rule in $rules) {
     }
 
     $path = Join-Path $OutDir ($ruleName + '.json')
-    $docs = $null
-    if (Test-Path -LiteralPath $path) {
+
+    # Prefer a stable Learn URL. Only preserve existing docs if it matches the expected Learn URL exactly
+    # (no query/fragment and correct slug), to avoid carrying forward bad/unstable URLs forever.
+    $docs = Get-LearnDocsUrl $ruleName
+    if ([string]::IsNullOrWhiteSpace($docs)) { $docs = $null }
+    if ($docs -and (Test-Path -LiteralPath $path)) {
         try {
             $existing = Get-Content -LiteralPath $path -Raw -ErrorAction Stop | ConvertFrom-Json
-            $docs = [string]$existing.docs
-            if ([string]::IsNullOrWhiteSpace($docs)) { $docs = $null }
+            $existingDocs = [string]$existing.docs
+            if (-not [string]::IsNullOrWhiteSpace($existingDocs)) {
+                $existingDocs = $existingDocs.Trim()
+                try {
+                    $existingUri = [System.Uri]::new($existingDocs)
+                    $expectedUri = [System.Uri]::new($docs)
+                    if ($existingUri.Scheme -eq 'https' -and
+                        $existingUri.Host -eq 'learn.microsoft.com' -and
+                        [string]::IsNullOrEmpty($existingUri.Query) -and
+                        [string]::IsNullOrEmpty($existingUri.Fragment) -and
+                        $existingUri.AbsolutePath -eq $expectedUri.AbsolutePath) {
+                        $docs = $existingDocs
+                    }
+                } catch {
+                    # Ignore invalid existing docs; fall back to Learn.
+                }
+            }
         } catch {
-            $docs = $null
+            # Ignore read/parse errors; fall back to Learn.
         }
-    }
-    if (-not $docs) {
-        $docs = Get-LearnDocsUrl $ruleName
-        if ([string]::IsNullOrWhiteSpace($docs)) { $docs = $null }
     }
 
     $category = Get-Category $ruleName
