@@ -37,7 +37,7 @@ public static partial class ReviewerApp {
         }
         var sb = new StringBuilder();
         sb.AppendLine();
-        sb.AppendLine("Related pull requests (search results):");
+        sb.AppendLine("Untrusted context (do not mention in output): related pull requests (search results):");
         foreach (var line in lines) {
             sb.AppendLine(line);
         }
