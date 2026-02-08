@@ -419,12 +419,13 @@ internal static partial class Program {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
             Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
             var configPath = Path.Combine(temp, ".intelligencex", "reviewer.json");
+            var escapedStatePath = outsideStatePath.Replace("\\", "\\\\");
             File.WriteAllText(configPath, $$"""
 {
   "analysis": {
     "enabled": true,
     "packs": ["all-50"],
-    "hotspots": { "statePath": "{{outsideStatePath.Replace("\\\\", "\\\\\\\\")}}" },
+    "hotspots": { "statePath": "{{escapedStatePath}}" },
     "gate": { "enabled": true, "failOnHotspotsToReview": true },
     "results": { "inputs": ["artifacts/intelligencex.findings.json"] }
   }
@@ -451,4 +452,3 @@ internal static partial class Program {
     }
 }
 #endif
-
