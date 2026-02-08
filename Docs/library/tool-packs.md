@@ -19,6 +19,19 @@ Core idea:
   - `IntelligenceX.Tools.System` (OS-specific helpers; keep isolated)
   - Future Windows-only packs (recommended): `IntelligenceX.Tools.ActiveDirectory`, `IntelligenceX.Tools.EventLog`, etc.
 
+## Recommended libraries (by domain)
+
+These are the preferred building blocks for tool packs (so behavior is consistent across tools and AI prompts):
+
+- Email (IMAP/SMTP/Graph):
+  - `Mailozaurr` (wraps MailKit/MimeKit and adds retries/ergonomics)
+- Active Directory (Windows-only):
+  - `ADPlayground` (preferred over raw `System.DirectoryServices` patterns)
+- Windows Event Log / EVTX analysis (Windows-only):
+  - `EventViewerX` / `PSEventViewer` templates and parsing helpers (AI-friendly output)
+- Local persistence for tools/apps:
+  - `DbaClientX` (SQLite wrapper) when you need a small embedded store
+
 ## Dependency policy (non-negotiable)
 
 - `IntelligenceX` core packages must **not** take dependencies on tool-pack libraries.
@@ -42,4 +55,3 @@ Note: Some third-party dependencies may not be fully AOT-safe; this is a per-pac
 
 - Tool packs: `IntelligenceX.Tools.<Domain>` (no provider name in the package/namespace).
 - Provider integrations stay provider-namespaced: `IntelligenceX.OpenAI.*`, `IntelligenceX.Copilot.*`, etc.
-
