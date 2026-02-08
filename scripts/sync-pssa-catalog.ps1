@@ -42,7 +42,7 @@ function Compress-Whitespace([string]$text) {
     ($text -replace '[\r\n]+', ' ' -replace '\s+', ' ').Trim()
 }
 
-function Fix-KnownTypos([string]$text) {
+function Get-KnownTypoFixedText([string]$text) {
     if ([string]::IsNullOrWhiteSpace($text)) { return '' }
     $t = $text
 
@@ -82,11 +82,11 @@ foreach ($rule in $rules) {
     }
     $slug = $slug.ToLowerInvariant()
 
-    $title = Fix-KnownTypos (Compress-Whitespace ([string]$rule.CommonName))
+    $title = Get-KnownTypoFixedText (Compress-Whitespace ([string]$rule.CommonName))
     if ([string]::IsNullOrWhiteSpace($title)) { $title = Get-RuleTitleFromRuleName $ruleName }
     if ([string]::IsNullOrWhiteSpace($title)) { $title = $ruleName }
 
-    $description = Fix-KnownTypos (Compress-Whitespace ([string]$rule.Description))
+    $description = Get-KnownTypoFixedText (Compress-Whitespace ([string]$rule.Description))
     if ([string]::IsNullOrWhiteSpace($description)) { $description = "PSScriptAnalyzer rule '$ruleName'. See docs for details." }
 
     $category = Get-Category $ruleName
@@ -94,6 +94,8 @@ foreach ($rule in $rules) {
 
     $tags = @('powershell', 'psscriptanalyzer')
     if ($category -eq 'Security') { $tags += 'security' }
+    if ($category -eq 'Reliability') { $tags += 'reliability' }
+    if ($category -eq 'BestPractices') { $tags += 'best-practices' }
 
     $obj = [ordered]@{
         id = $ruleName

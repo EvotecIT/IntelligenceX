@@ -1,0 +1,5 @@
+{
+  "id": "PSAvoidDefaultValueSwitchParameter",
+  "description": "Switch parameters should not default to true.",
+  "tags": ["best-practices"]
+}

@@ -9,7 +9,8 @@
   "defaultSeverity": "info",
   "tags": [
     "powershell",
-    "psscriptanalyzer"
+    "psscriptanalyzer",
+    "best-practices"
   ],
   "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/dscdscexamplespresent"
 }
