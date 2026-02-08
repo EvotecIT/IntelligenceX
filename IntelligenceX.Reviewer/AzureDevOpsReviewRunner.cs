@@ -347,12 +347,14 @@ internal static class AzureDevOpsReviewRunner {
                 }
                 continue;
             }
-            if (line.StartsWith("+", StringComparison.Ordinal) && !line.StartsWith("+++", StringComparison.Ordinal)) {
+            // Ignore unified diff file headers ("+++ b/..."), but keep added lines whose content starts with "++".
+            if (line.StartsWith("+", StringComparison.Ordinal) && !line.StartsWith("+++ ", StringComparison.Ordinal)) {
                 newLine++;
                 allowed.Add(newLine);
                 continue;
             }
-            if (line.StartsWith("-", StringComparison.Ordinal) && !line.StartsWith("---", StringComparison.Ordinal)) {
+            // Ignore unified diff file headers ("--- a/..."), but keep removed lines whose content starts with "--".
+            if (line.StartsWith("-", StringComparison.Ordinal) && !line.StartsWith("--- ", StringComparison.Ordinal)) {
                 oldLine++;
                 continue;
             }
@@ -400,12 +402,12 @@ internal static class AzureDevOpsReviewRunner {
                 }
                 continue;
             }
-            if (line.StartsWith("+", StringComparison.Ordinal) && !line.StartsWith("+++", StringComparison.Ordinal)) {
+            if (line.StartsWith("+", StringComparison.Ordinal) && !line.StartsWith("+++ ", StringComparison.Ordinal)) {
                 newLine++;
                 AddPatchLine(results, newLine, line.Substring(1));
                 continue;
             }
-            if (line.StartsWith("-", StringComparison.Ordinal) && !line.StartsWith("---", StringComparison.Ordinal)) {
+            if (line.StartsWith("-", StringComparison.Ordinal) && !line.StartsWith("--- ", StringComparison.Ordinal)) {
                 oldLine++;
                 continue;
             }
