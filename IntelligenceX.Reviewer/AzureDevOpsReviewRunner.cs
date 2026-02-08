@@ -169,10 +169,12 @@ internal static class AzureDevOpsReviewRunner {
         var inlineFiles = new List<PullRequestFile>(files.Count);
         var truncated = 0;
         foreach (var file in files) {
-            var patch = await TryGetGitPatchAsync(baseSha!, headSha!, file.Filename, cancellationToken).ConfigureAwait(false);
-            inlineFiles.Add(new PullRequestFile(file.Filename, file.Status, patch));
+            var fullPatch = await TryGetGitPatchAsync(baseSha!, headSha!, file.Filename, cancellationToken).ConfigureAwait(false);
+            // Inline placement/mapping must use the full, untrimmed patch text.
+            // Only the prompt patch is trimmed to maxPatchChars.
+            inlineFiles.Add(new PullRequestFile(file.Filename, file.Status, fullPatch));
 
-            var promptPatch = patch;
+            var promptPatch = fullPatch;
             if (!string.IsNullOrWhiteSpace(promptPatch) && maxPatchChars > 0 && promptPatch.Length > maxPatchChars) {
                 promptPatch = promptPatch.Substring(0, maxPatchChars) + PatchTruncationMessage;
                 truncated++;
