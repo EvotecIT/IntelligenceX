@@ -109,7 +109,7 @@ internal static partial class Program {
                 Directory.Delete(stateDir, true);
             }
 
-            var syncExit = IntelligenceX.Cli.Analysis.AnalyzeRunner.RunAsync(new[] {
+            var (syncExit, syncOutput) = RunAnalyzeAndCaptureOutput(new[] {
                 "hotspots",
                 "sync-state",
                 "--help",
@@ -117,12 +117,15 @@ internal static partial class Program {
                 temp,
                 "--config",
                 configPath
-            }).GetAwaiter().GetResult();
+            });
             AssertEqual(0, syncExit, "hotspots sync-state --help exit");
+            AssertContainsText(syncOutput, "intelligencex analyze hotspots sync-state", "hotspots sync-state --help usage");
+            AssertEqual(false, syncOutput.Contains("intelligencex analyze hotspots set", StringComparison.Ordinal),
+                "hotspots sync-state --help should be subcommand-specific");
             AssertEqual(false, Directory.Exists(Path.Combine(temp, ".intelligencex")), "hotspots sync-state --help should not create state dir");
             AssertEqual(false, File.Exists(statePath), "hotspots sync-state --help should not write state");
 
-            var setExit = IntelligenceX.Cli.Analysis.AnalyzeRunner.RunAsync(new[] {
+            var (setExit, setOutput) = RunAnalyzeAndCaptureOutput(new[] {
                 "hotspots",
                 "set",
                 "--help",
@@ -130,8 +133,11 @@ internal static partial class Program {
                 temp,
                 "--config",
                 configPath
-            }).GetAwaiter().GetResult();
+            });
             AssertEqual(0, setExit, "hotspots set --help exit");
+            AssertContainsText(setOutput, "intelligencex analyze hotspots set", "hotspots set --help usage");
+            AssertEqual(false, setOutput.Contains("intelligencex analyze hotspots sync-state", StringComparison.Ordinal),
+                "hotspots set --help should be subcommand-specific");
             AssertEqual(false, Directory.Exists(Path.Combine(temp, ".intelligencex")), "hotspots set --help should not create state dir");
             AssertEqual(false, File.Exists(statePath), "hotspots set --help should not write state");
         } finally {

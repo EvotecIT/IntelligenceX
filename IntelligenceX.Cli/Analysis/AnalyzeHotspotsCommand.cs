@@ -26,7 +26,17 @@ internal static class AnalyzeHotspotsCommand {
     }
 
     public static void PrintHelp() {
+        PrintSyncHelp();
+        PrintSetHelp();
+    }
+
+    private static void PrintSyncHelp() {
         Console.WriteLine("  intelligencex analyze hotspots sync-state [--workspace <path>] [--config <path>] [--state <path>] [--new-status <status>] [--prune-fixed] [--dry-run] [--check]");
+        Console.WriteLine();
+        Console.WriteLine("Hotspot statuses: to-review, safe, fixed, accepted-risk, wont-fix, suppress");
+    }
+
+    private static void PrintSetHelp() {
         Console.WriteLine("  intelligencex analyze hotspots set --key <key> [--keys <k1,k2>] --status <status> [--note <text>] [--workspace <path>] [--config <path>] [--state <path>]");
         Console.WriteLine();
         Console.WriteLine("Hotspot statuses: to-review, safe, fixed, accepted-risk, wont-fix, suppress");
@@ -35,7 +45,7 @@ internal static class AnalyzeHotspotsCommand {
     private static int SyncState(string[] args) {
         var options = ParseSyncArgs(args, out var error);
         if (options.ShowHelp) {
-            PrintHelp();
+            PrintSyncHelp();
             return 0;
         }
         if (error is not null) {
@@ -135,7 +145,7 @@ internal static class AnalyzeHotspotsCommand {
     private static int SetStatus(string[] args) {
         var options = ParseSetArgs(args, out var error);
         if (options.ShowHelp) {
-            PrintHelp();
+            PrintSetHelp();
             return 0;
         }
         if (error is not null) {
