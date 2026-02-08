@@ -55,6 +55,9 @@ jobs:
       - name: Run static analysis
         run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze run --config .intelligencex/reviewer.json --out artifacts --framework net8.0
 
+      - name: Check security hotspot state
+        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze hotspots sync-state --config .intelligencex/reviewer.json --workspace . --check
+
       - name: Upload analysis artifacts
         uses: actions/upload-artifact@v4
         if: always()
