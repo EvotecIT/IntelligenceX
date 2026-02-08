@@ -4,15 +4,27 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
+$module = Get-Module -ListAvailable -Name PSScriptAnalyzer |
+    Sort-Object Version -Descending |
+    Select-Object -First 1
+if (-not $module) {
     throw 'PSScriptAnalyzer module not found. Install with: Install-Module PSScriptAnalyzer -Scope CurrentUser'
 }
 
-Import-Module PSScriptAnalyzer -ErrorAction Stop
+# Avoid importing a module that is (accidentally or maliciously) located under the repo workspace.
+$workspaceRoot = (Resolve-Path (Join-Path -Path $PSScriptRoot -ChildPath '..')).Path
+if ($module.ModuleBase -and $module.ModuleBase.StartsWith($workspaceRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw ("Refusing to import PSScriptAnalyzer from workspace path: {0}" -f $module.ModuleBase)
+}
+
+if ($module.Path) {
+    Import-Module -Name $module.Path -RequiredVersion $module.Version -ErrorAction Stop
+} else {
+    Import-Module -Name PSScriptAnalyzer -RequiredVersion $module.Version -ErrorAction Stop
+}
 
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 
-$docsBase = 'https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/'
 $securityRules = @(
     'PSAvoidUsingAllowUnencryptedAuthentication',
     'PSAvoidUsingBrokenHashAlgorithms',
@@ -54,17 +66,6 @@ function Get-RuleTitleFromRuleName([string]$ruleName) {
     $name.Trim()
 }
 
-function Get-LearnRuleSlug([string]$ruleName) {
-    # Microsoft Learn PSScriptAnalyzer rule pages use:
-    #   rules/<rule-name-without-leading-PS, lowercased>
-    if ([string]::IsNullOrWhiteSpace($ruleName)) { return '' }
-    $name = $ruleName.Trim()
-    if ($name.StartsWith('PS', [System.StringComparison]::OrdinalIgnoreCase)) {
-        $name = $name.Substring(2)
-    }
-    $name.ToLowerInvariant()
-}
-
 function Write-FileUtf8NoBomLf([string]$path, [string]$content) {
     # Avoid BOM differences across PowerShell versions and normalize newlines for stable diffs.
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -79,14 +80,24 @@ foreach ($rule in $rules) {
     $ruleName = [string]$rule.RuleName
     if ([string]::IsNullOrWhiteSpace($ruleName)) { continue }
 
-    $slug = Get-LearnRuleSlug $ruleName
-
     $title = Compress-Whitespace ([string]$rule.CommonName)
     if ([string]::IsNullOrWhiteSpace($title)) { $title = Get-RuleTitleFromRuleName $ruleName }
     if ([string]::IsNullOrWhiteSpace($title)) { $title = $ruleName }
 
     $description = Compress-Whitespace ([string]$rule.Description)
     if ([string]::IsNullOrWhiteSpace($description)) { $description = "PSScriptAnalyzer rule '$ruleName'. See docs for details." }
+
+    $path = Join-Path $OutDir ($ruleName + '.json')
+    $docs = $null
+    if (Test-Path -LiteralPath $path) {
+        try {
+            $existing = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+            $docs = [string]$existing.docs
+            if ([string]::IsNullOrWhiteSpace($docs)) { $docs = $null }
+        } catch {
+            $docs = $null
+        }
+    }
 
     $category = Get-Category $ruleName
     $defaultSeverity = Get-DefaultSeverity ([string]$rule.Severity)
@@ -106,11 +117,10 @@ foreach ($rule in $rules) {
         category = $category
         defaultSeverity = $defaultSeverity
         tags = $tags
-        docs = ($docsBase + $slug)
     }
+    if ($docs) { $obj.docs = $docs }
 
     $json = $obj | ConvertTo-Json -Depth 6
-    $path = Join-Path $OutDir ($ruleName + '.json')
     Write-FileUtf8NoBomLf $path $json
 }
 

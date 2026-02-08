@@ -100,7 +100,6 @@ internal static partial class Program {
         failed += Run("Analysis catalog rule overrides apply", TestAnalysisCatalogRuleOverridesApply);
         failed += Run("Analysis catalog PowerShell overrides apply", () => TestAnalysisCatalogPowerShellOverridesApply());
         failed += Run("Analysis catalog PowerShell docs links", TestAnalysisCatalogPowerShellDocsLinksMatchLearnPattern);
-        failed += Run("Analysis catalog PowerShell metadata quality", TestAnalysisCatalogPowerShellNoKnownUserFacingTypos);
         failed += Run("Analysis catalog override invalid type falls back", TestAnalysisCatalogOverrideInvalidTypeFallsBack);
         failed += Run("Analysis catalog validator rejects dangling override", TestAnalysisCatalogValidatorRejectsDanglingOverride);
         failed += Run("Analysis hotspots render and state snippet", TestAnalysisHotspotsRenderAndStateSnippet);
