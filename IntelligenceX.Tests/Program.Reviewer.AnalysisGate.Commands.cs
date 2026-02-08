@@ -622,7 +622,12 @@ internal static partial class Program {
     "enabled": true,
     "packs": ["all-50"],
     "hotspots": { "statePath": "{{escapedStatePath}}" },
-    "gate": { "enabled": true, "failOnHotspotsToReview": true },
+    "gate": {
+      "enabled": true,
+      "minSeverity": "info",
+      "types": ["security-hotspot"],
+      "failOnHotspotsToReview": true
+    },
     "results": { "inputs": ["artifacts/intelligencex.findings.json"] }
   }
 }
