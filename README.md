@@ -20,6 +20,12 @@ Status: Active development | APIs in flux | Actions in beta
 - PowerShell module (binary cmdlets)
 - Optional tool contract + tool calling, with tool packs living in a separate repo (`EvotecIT/IntelligenceX.Tools`)
 
+## Ecosystem repos
+
+- `EvotecIT/IntelligenceX` (this repo): core library + reviewer + CLI
+- `EvotecIT/IntelligenceX.Tools`: optional tool packs (Email/FileSystem/System, future AD/EventLog, etc.)
+- `EvotecIT/IntelligenceX.Chat`: planned Windows tray chat app (UI) that hosts providers + tool packs
+
 ## Choose your path
 
 - Reviewer (GitHub Actions): `Docs/reviewer/overview.md`
