@@ -26,7 +26,8 @@ internal static class AnalysisFindingsLoader {
         if (!Path.IsPathRooted(workspaceRoot)) {
             throw new ArgumentException("workspaceRoot must be an absolute path.", nameof(workspaceRoot));
         }
-        return LoadWithReportInternal(settings, files, workspaceRootOverride: Path.GetFullPath(workspaceRoot));
+        // Canonicalization is handled inside ResolveWorkspaceRoot() to keep a single source of truth.
+        return LoadWithReportInternal(settings, files, workspaceRootOverride: workspaceRoot);
     }
 
     private static AnalysisLoadResult LoadWithReportInternal(ReviewSettings settings, IReadOnlyList<PullRequestFile> files,
@@ -494,13 +495,13 @@ internal static class AnalysisFindingsLoader {
 
     private static string ResolveWorkspaceRoot(string? workspaceRootOverride) {
         if (!string.IsNullOrWhiteSpace(workspaceRootOverride)) {
-            return workspaceRootOverride!;
+            return Path.GetFullPath(workspaceRootOverride!);
         }
         var workspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
         if (!string.IsNullOrWhiteSpace(workspace)) {
-            return workspace;
+            return Path.GetFullPath(workspace);
         }
-        return Environment.CurrentDirectory;
+        return Path.GetFullPath(Environment.CurrentDirectory);
     }
 
     private static string? ResolveWorkspaceBoundAbsolutePath(string workspace, string configuredPath) {
@@ -515,7 +516,8 @@ internal static class AnalysisFindingsLoader {
             var full = Path.GetFullPath(resolved);
             var relative = Path.GetRelativePath(fullWorkspace, full);
             if (string.IsNullOrWhiteSpace(relative)) {
-                relative = ".";
+                // Defensive: empty relative paths are unexpected and can mask edge cases in boundary checks.
+                return null;
             }
             var normalized = relative.Replace('\\', '/');
             if (normalized.Equals(".", StringComparison.Ordinal)) {
