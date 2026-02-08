@@ -33,8 +33,6 @@ dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- todo sync-bot
 
 This will add `ix-bot-feedback-id:<id>` markers to issue bodies to avoid duplicates on re-runs.
 
-## Legacy Script (Deprecated)
+## Legacy Script
 
-```bash
-python3 scripts/sync_bot_feedback_todo.py --repo EvotecIT/IntelligenceX
-```
+Removed. Use the CLI command above.
