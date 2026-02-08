@@ -1,7 +1,8 @@
 param(
     [Parameter()][string]$OutDir = (Join-Path -Path $PSScriptRoot -ChildPath (Join-Path -Path '..' -ChildPath (Join-Path -Path 'Analysis' -ChildPath (Join-Path -Path 'Catalog' -ChildPath (Join-Path -Path 'rules' -ChildPath 'powershell'))))),
     [Parameter()][switch]$PruneStale,
-    [Parameter()][switch]$ForcePrune
+    [Parameter()][switch]$ForcePrune,
+    [Parameter()][switch]$AllowNonIntendedOutDir
 )
 
 $ErrorActionPreference = 'Stop'
@@ -51,8 +52,13 @@ if ($PruneStale -and (-not $isUnderWorkspace)) {
     throw ("Refusing to prune outside workspace. OutDir='{0}', workspace='{1}'." -f $resolvedOutDir, $workspaceTrim)
 }
 
-if ($PruneStale -and (-not $ForcePrune) -and (-not $resolvedOutDir.Equals($intendedOutDir, [System.StringComparison]::OrdinalIgnoreCase))) {
-    throw ("Refusing to prune outside intended catalog directory. OutDir='{0}', intended='{1}'. Pass -ForcePrune to override." -f $resolvedOutDir, $intendedOutDir)
+if ($PruneStale -and (-not $resolvedOutDir.Equals($intendedOutDir, [System.StringComparison]::OrdinalIgnoreCase))) {
+    if (-not $ForcePrune) {
+        throw ("Refusing to prune outside intended catalog directory. OutDir='{0}', intended='{1}'. Pass -ForcePrune to prune." -f $resolvedOutDir, $intendedOutDir)
+    }
+    if (-not $AllowNonIntendedOutDir) {
+        throw ("Refusing to prune outside intended catalog directory. OutDir='{0}', intended='{1}'. Pass -AllowNonIntendedOutDir to explicitly allow pruning a non-standard directory." -f $resolvedOutDir, $intendedOutDir)
+    }
 }
 
 $securityRules = @(
