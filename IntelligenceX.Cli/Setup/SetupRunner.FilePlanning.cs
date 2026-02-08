@@ -189,6 +189,9 @@ internal static partial class SetupRunner {
         if (!options.OpenAIModelSet && !string.IsNullOrWhiteSpace(snapshot.OpenAIModel)) {
             settings.OpenAIModel = snapshot.OpenAIModel!;
         }
+        if (string.IsNullOrWhiteSpace(settings.OpenAIAccountId) && !string.IsNullOrWhiteSpace(snapshot.OpenAIAccountId)) {
+            settings.OpenAIAccountId = snapshot.OpenAIAccountId;
+        }
         if (!options.ReviewProfileSet && !string.IsNullOrWhiteSpace(snapshot.Profile)) {
             settings.Profile = snapshot.Profile!;
         }
@@ -241,6 +244,9 @@ internal static partial class SetupRunner {
                 ["preflightTimeoutSeconds"] = settings.PreflightTimeoutSeconds
             }
         };
+        if (!string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
+            ((JsonObject)root["review"]!)["openaiAccountId"] = settings.OpenAIAccountId;
+        }
 
         return root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
@@ -251,6 +257,9 @@ internal static partial class SetupRunner {
         review["provider"] = settings.Provider;
         review["openaiTransport"] = settings.OpenAITransport;
         review["model"] = settings.OpenAIModel;
+        if (!string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
+            review["openaiAccountId"] = settings.OpenAIAccountId;
+        }
         review["profile"] = settings.Profile;
         review["mode"] = settings.Mode;
         review["commentMode"] = settings.CommentMode;
@@ -485,6 +494,7 @@ internal static partial class SetupRunner {
                 snapshot.Provider = ReadJsonString(review, "provider");
                 snapshot.OpenAITransport = ReadJsonString(review, "openaiTransport");
                 snapshot.OpenAIModel = ReadJsonString(review, "model") ?? ReadJsonString(review, "openaiModel");
+                snapshot.OpenAIAccountId = ReadJsonString(review, "openaiAccountId") ?? ReadJsonString(review, "authAccountId");
                 snapshot.Profile = ReadJsonString(review, "profile");
                 snapshot.Mode = ReadJsonString(review, "mode");
                 snapshot.CommentMode = ReadJsonString(review, "commentMode");
@@ -558,6 +568,7 @@ internal static partial class SetupRunner {
         Console.WriteLine("  --provider <openai|copilot> (default openai)");
         Console.WriteLine("  --openai-model <model>");
         Console.WriteLine("  --openai-transport <native|appserver>");
+        Console.WriteLine("  --openai-account-id <id> (pin ChatGPT account when multiple are present)");
         Console.WriteLine("  --include-issue-comments <true|false>");
         Console.WriteLine("  --include-review-comments <true|false>");
         Console.WriteLine("  --include-related-prs <true|false>");
@@ -594,9 +605,10 @@ internal static partial class SetupRunner {
         Console.WriteLine();
         Console.WriteLine("Environment:");
         Console.WriteLine("  INTELLIGENCEX_GITHUB_CLIENT_ID");
-        Console.WriteLine("  INTELLIGENCEX_GITHUB_TOKEN");
+        Console.WriteLine("  INTELLIGENCEX_GITHUB_TOKEN (or GITHUB_TOKEN / GH_TOKEN)");
         Console.WriteLine("  INTELLIGENCEX_GITHUB_API_BASE_URL");
         Console.WriteLine("  INTELLIGENCEX_GITHUB_AUTH_BASE_URL");
+        Console.WriteLine("  INTELLIGENCEX_OPENAI_ACCOUNT_ID");
     }
 
     private static bool ParseBool(string value, bool fallback) {
