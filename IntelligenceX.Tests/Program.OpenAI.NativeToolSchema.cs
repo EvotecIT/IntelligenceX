@@ -156,6 +156,12 @@ internal static partial class Program {
         args = new object?[] { unrelated, CreateOutSlot(method!) };
         ok = (bool)method!.Invoke(null, args)!;
         AssertEqual(true, ok, "ok");
+
+        // Without an unknown-parameter code, we should not attempt schema-key retries.
+        unrelated.Data.Remove("openai:error_code");
+        args = new object?[] { unrelated, CreateOutSlot(method!) };
+        ok = (bool)method!.Invoke(null, args)!;
+        AssertEqual(false, ok, "ok");
     }
 
     private static void TestNativeToolSchemaFallbackIgnoresUnrelated() {

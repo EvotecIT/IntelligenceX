@@ -75,8 +75,8 @@ internal sealed partial class OpenAINativeTransport {
             return false;
         }
 
-        // If the server provided a structured code, require it to match an unknown-parameter style error.
-        if (!string.IsNullOrWhiteSpace(code) &&
+        // Tool schema fallback is only valid for unknown-parameter errors (schema key mismatch).
+        if (string.IsNullOrWhiteSpace(code) ||
             code!.IndexOf("unknown_parameter", StringComparison.OrdinalIgnoreCase) < 0) {
             return false;
         }
