@@ -24,6 +24,10 @@ internal static partial class Program {
         failed += Run("Tool runner max rounds", TestToolRunnerMaxRounds);
         failed += Run("Tool runner unregistered tool", TestToolRunnerUnregisteredTool);
         failed += Run("Tool runner parallel execution", TestToolRunnerParallelExecution);
+        failed += Run("Ensure ChatGPT login uses cache", TestEnsureChatGptLoginUsesCache);
+        failed += Run("Ensure ChatGPT login triggers when missing", TestEnsureChatGptLoginTriggersLoginWhenMissing);
+        failed += Run("Ensure ChatGPT login force triggers", TestEnsureChatGptLoginForceTriggersLogin);
+        failed += Run("Ensure ChatGPT login cancellation propagates", TestEnsureChatGptLoginCancellationPropagates);
 #if !NET472
         failed += Run("Setup args reject skip+update", TestSetupArgsRejectSkipUpdate);
         failed += Run("GitHub repo detector parses remote urls", TestGitHubRepoDetectorParsesRemoteUrls);

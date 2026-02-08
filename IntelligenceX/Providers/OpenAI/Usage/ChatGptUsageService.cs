@@ -75,7 +75,7 @@ public sealed class ChatGptUsageService : IDisposable {
         if (bundle is not null) {
             return bundle;
         }
-        throw new InvalidOperationException("Not logged in. Run ChatGPT login first.");
+        throw new OpenAIAuthenticationRequiredException(OpenAIAuthenticationRequiredException.DefaultMessage);
     }
 
     /// <summary>

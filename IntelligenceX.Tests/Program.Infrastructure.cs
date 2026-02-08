@@ -1,8 +1,7 @@
 namespace IntelligenceX.Tests;
 
 internal static partial class Program {
-    private static IntelligenceXClient CreateToolRunnerClient(TurnInfo turn) {
-        var transport = new FakeToolTransport(turn);
+    private static IntelligenceXClient CreateTestClient(IOpenAITransport transport) {
         var ctor = typeof(IntelligenceXClient).GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance,
             null,
             new[] { typeof(IOpenAITransport), typeof(string), typeof(string), typeof(string), typeof(SandboxPolicy) },
@@ -11,6 +10,11 @@ internal static partial class Program {
             throw new InvalidOperationException("IntelligenceXClient constructor not found.");
         }
         return (IntelligenceXClient)ctor.Invoke(new object?[] { transport, "gpt-5.3-codex", null, null, null });
+    }
+
+    private static IntelligenceXClient CreateToolRunnerClient(TurnInfo turn) {
+        var transport = new FakeToolTransport(turn);
+        return CreateTestClient(transport);
     }
 
     private static TurnInfo BuildToolCallTurn(params (string CallId, string ToolName)[] calls) {
