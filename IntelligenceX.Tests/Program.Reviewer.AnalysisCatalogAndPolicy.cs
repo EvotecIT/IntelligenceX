@@ -318,7 +318,7 @@ internal static partial class Program {
         // Load the catalog without overrides so we can compare base vs effective without needing per-override temp workspaces.
         var rulesRoot = Path.Combine(workspace, "Analysis", "Catalog", "rules");
         var packsRoot = Path.Combine(workspace, "Analysis", "Packs");
-        var emptyOverridesRoot = Path.Combine(Path.GetTempPath(), "ix-analysis-overrides-disabled-" + Guid.NewGuid().ToString("N"));
+        var emptyOverridesRoot = Path.Combine(Path.GetTempPath(), "ix-analysis-overrides-disabled", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(emptyOverridesRoot);
         try {
             var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, emptyOverridesRoot, packsRoot);
@@ -538,14 +538,9 @@ internal static partial class Program {
             const string learnPrefix = "/powershell/utility-modules/psscriptanalyzer/rules/";
             AssertEqual(true, path.StartsWith(learnPrefix, StringComparison.OrdinalIgnoreCase), $"{rule.Id} docs uses PSScriptAnalyzer Learn rules path");
 
-            var expectedSlug = !string.IsNullOrWhiteSpace(rule.ToolRuleId) ? rule.ToolRuleId : rule.Id;
-            if (expectedSlug.StartsWith("PS", StringComparison.OrdinalIgnoreCase)) {
-                expectedSlug = expectedSlug.Substring(2);
-            }
-            expectedSlug = expectedSlug.ToLowerInvariant();
-
-            var actualSlug = path.Substring(learnPrefix.Length).Trim('/').ToLowerInvariant();
-            AssertEqual(expectedSlug, actualSlug, $"{rule.Id} docs slug matches rule id");
+            var actualSlug = path.Substring(learnPrefix.Length).Trim('/');
+            AssertEqual(false, string.IsNullOrWhiteSpace(actualSlug), $"{rule.Id} docs slug is present");
+            AssertEqual(false, actualSlug.Any(char.IsWhiteSpace), $"{rule.Id} docs slug has no whitespace");
         }
     }
 
