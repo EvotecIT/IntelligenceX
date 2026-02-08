@@ -101,6 +101,40 @@ public sealed class AnalysisHotspotsSettings {
 }
 
 /// <summary>
+/// Settings that control CI gating behavior for static analysis.
+/// </summary>
+public sealed class AnalysisGateSettings {
+    /// <summary>
+    /// Enables the analysis gate. When enabled, <c>intelligencex analyze gate</c> can fail CI deterministically.
+    /// </summary>
+    public bool Enabled { get; set; }
+    /// <summary>
+    /// Minimum severity to consider for gate evaluation. Defaults to <c>warning</c>.
+    /// </summary>
+    public string MinSeverity { get; set; } = "warning";
+    /// <summary>
+    /// Optional list of rule types to gate on (e.g. bug, vulnerability). When empty, all types are considered.
+    /// </summary>
+    public IReadOnlyList<string> Types { get; set; } = Array.Empty<string>();
+    /// <summary>
+    /// When true, findings for rules outside the enabled packs can fail the gate (useful to detect untracked tool rules).
+    /// </summary>
+    public bool IncludeOutsidePackRules { get; set; }
+    /// <summary>
+    /// When true (default), fail when results are unavailable (no matched inputs, parse failures, etc.).
+    /// </summary>
+    public bool FailOnUnavailable { get; set; } = true;
+    /// <summary>
+    /// When true (default), fail when no rules are enabled (for example packs missing or empty).
+    /// </summary>
+    public bool FailOnNoEnabledRules { get; set; } = true;
+    /// <summary>
+    /// When true, fail the gate if any in-scope security hotspot has state <c>to-review</c>.
+    /// </summary>
+    public bool FailOnHotspotsToReview { get; set; }
+}
+
+/// <summary>
 /// Analysis configuration derived from reviewer.json.
 /// </summary>
 public sealed class AnalysisSettings {
@@ -133,6 +167,10 @@ public sealed class AnalysisSettings {
     /// Security hotspot rendering and state settings.
     /// </summary>
     public AnalysisHotspotsSettings Hotspots { get; } = new AnalysisHotspotsSettings();
+    /// <summary>
+    /// CI gate settings.
+    /// </summary>
+    public AnalysisGateSettings Gate { get; } = new AnalysisGateSettings();
 
     /// <summary>
     /// Parses a config mode value with a fallback.

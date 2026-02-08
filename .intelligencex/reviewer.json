@@ -5,6 +5,18 @@
       "all-50"
     ],
     "configMode": "respect",
+    "gate": {
+      "enabled": true,
+      "minSeverity": "warning",
+      "types": [
+        "vulnerability",
+        "bug"
+      ],
+      "failOnUnavailable": true,
+      "failOnNoEnabledRules": true,
+      "includeOutsidePackRules": false,
+      "failOnHotspotsToReview": false
+    },
     "results": {
       "inputs": [
         "artifacts/**/*.sarif",

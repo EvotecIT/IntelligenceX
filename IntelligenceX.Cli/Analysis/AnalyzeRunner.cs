@@ -19,6 +19,7 @@ internal static class AnalyzeRunner {
         var rest = args.Skip(1).ToArray();
         return command switch {
             "run" => AnalyzeRunCommand.RunAsync(rest),
+            "gate" => AnalyzeGateCommand.RunAsync(rest),
             "export-config" => ExportConfigAsync(rest),
             "list-packs" => ListPacksAsync(rest),
             "list-rules" => ListRulesAsync(rest),
@@ -349,6 +350,7 @@ internal static class AnalyzeRunner {
     private static void PrintHelp() {
         Console.WriteLine("Analyze commands:");
         AnalyzeRunCommand.PrintHelp();
+        AnalyzeGateCommand.PrintHelp();
         Console.WriteLine("  intelligencex analyze export-config --out <dir> [--config <path>] [--workspace <path>]");
         Console.WriteLine("  intelligencex analyze list-packs [--workspace <path>]");
         Console.WriteLine("  intelligencex analyze list-rules [--workspace <path>] [--format text|markdown|json] [--pack <id>] [--packs <id1,id2>]");

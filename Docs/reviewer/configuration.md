@@ -234,6 +234,15 @@ Enable analysis summaries and inline findings sourced from SARIF or Intelligence
     "configMode": "respect",
     "disabledRules": ["CA2000"],
     "severityOverrides": { "CA1062": "error" },
+    "gate": {
+      "enabled": true,
+      "minSeverity": "warning",
+      "types": ["vulnerability", "bug"],
+      "failOnUnavailable": true,
+      "failOnNoEnabledRules": true,
+      "includeOutsidePackRules": false,
+      "failOnHotspotsToReview": false
+    },
     "results": {
       "inputs": ["artifacts/**/*.sarif", "artifacts/intelligencex.findings.json"],
       "minSeverity": "warning",
@@ -252,6 +261,14 @@ Enable analysis summaries and inline findings sourced from SARIF or Intelligence
 - `0`: hide per-rule lists and keep counts only
 - `10` (default): compact preview
 - `50`, `100`, `500`: progressively fuller visibility (schema max: `500`)
+
+`analysis.gate` enables a deterministic CI gate via `intelligencex analyze gate`:
+- `minSeverity`: minimum severity to consider for gating.
+- `types`: optional filter of rule types (when empty, all types are considered).
+- `failOnUnavailable`: fail when no result files match configured inputs or when result parsing fails.
+- `failOnNoEnabledRules`: fail when `analysis.packs` selects zero rules.
+- `includeOutsidePackRules`: when `true`, findings from non-enabled rules can still fail the gate.
+- `failOnHotspotsToReview`: when `true`, security hotspots in `to-review` state can fail the gate (after `minSeverity`/`types` filtering).
 
 ## Summary stability (avoid noisy reruns)
 

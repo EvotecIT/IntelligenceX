@@ -95,6 +95,8 @@ internal static partial class Program {
         failed += Run("Hotspots key hashing uses UTF-8 bytes", TestAnalysisHotspotsKeyHashingUsesUtf8Bytes);
         failed += Run("Hotspots output escapes markdown injection", TestAnalysisHotspotsOutputEscapesMarkdownInjection);
         failed += Run("Analysis loader includes hotspots below minSeverity", TestAnalysisLoaderIncludesHotspotsBelowMinSeverity);
+        failed += Run("Analysis loader ignores inputs outside workspace", TestAnalysisFindingsLoaderIgnoresInputsOutsideWorkspace);
+        failed += Run("Analysis loader rejects sibling prefix paths", TestAnalysisFindingsLoaderWorkspaceBoundRejectsSiblingPrefix);
         failed += Run("Analyze hotspots sync-state writes state file", TestAnalyzeHotspotsSyncStateWritesStateFile);
         failed += Run("Analyze hotspots help has no side effects", TestAnalyzeHotspotsHelpHasNoSideEffects);
         failed += Run("Analyze hotspots state path is workspace-bound", TestAnalyzeHotspotsStatePathIsWorkspaceBound);
@@ -106,6 +108,13 @@ internal static partial class Program {
         failed += Run("Analyze list-rules help", TestAnalyzeListRulesHelp);
         failed += Run("Analyze list-rules json warnings to stderr", TestAnalyzeListRulesJsonWarningsToStderr);
         failed += Run("Analyze list-rules json empty outputs array", TestAnalyzeListRulesJsonEmptyOutputsArray);
+        failed += Run("Analyze gate disabled skips", TestAnalyzeGateDisabledSkips);
+        failed += Run("Analyze gate fails on violations", TestAnalyzeGateFailsOnViolations);
+        failed += Run("Analyze gate passes on clean", TestAnalyzeGatePassesOnClean);
+        failed += Run("Analyze gate fails on no enabled rules", TestAnalyzeGateFailsOnNoEnabledRules);
+        failed += Run("Analyze gate minSeverity filters", TestAnalyzeGateMinSeverityFilters);
+        failed += Run("Analyze gate hotspot state path bound", TestAnalyzeGateHotspotsStatePathIsWorkspaceBound);
+        failed += Run("Analyze gate help token", TestAnalyzeGateHelpToken);
         failed += Run("Doctor help", TestDoctorHelp);
         failed += Run("Doctor missing auth store fails", TestDoctorMissingAuthStoreFails);
         failed += Run("Doctor multiple bundles warns", TestDoctorMultipleBundlesWarns);

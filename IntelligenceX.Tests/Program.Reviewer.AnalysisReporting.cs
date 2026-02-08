@@ -32,7 +32,7 @@ internal static partial class Program {
                 "- Rule list display: up to 10 items per section",
                 "- Enabled rules preview: IXTEST001 (Rule one), IXTEST002 (Rule two)",
                 "- Result files: 2 input patterns, 2 matched, 2 parsed, 0 failed",
-                "- Status: fail ❌",
+                "- Status: fail",
                 "- Rule outcomes: 1 with findings, 1 clean, 1 outside enabled packs",
                 "- Failing rules: IXTEST001 (Rule one)=1",
                 "- Clean rules: IXTEST002 (Rule two)",
@@ -40,7 +40,7 @@ internal static partial class Program {
             });
             AssertContainsText(policy, "### Static Analysis Policy 🧭", "analysis policy header");
             AssertTextBlockEquals(expectedPolicy, policy, "analysis policy full block snapshot");
-            AssertPolicyLineEquals(policy, "Status", "fail ❌", "analysis policy status");
+            AssertPolicyLineEquals(policy, "Status", "fail", "analysis policy status");
             AssertPolicyLineEquals(policy, "Rule outcomes", "1 with findings, 1 clean, 1 outside enabled packs",
                 "analysis policy outcomes");
             AssertPolicyLineEquals(policy, "Failing rules", "IXTEST001 (Rule one)=1",
@@ -138,7 +138,7 @@ internal static partial class Program {
             new AnalysisLoadResult(Array.Empty<AnalysisFinding>(), new AnalysisLoadReport(1, 1, 1, 0)),
             _ => throw new IOException("disk I/O"));
 
-        AssertPolicyLineEquals(policy, "Status", "unavailable ℹ️", "analysis policy catalog-failure status");
+        AssertPolicyLineEquals(policy, "Status", "unavailable", "analysis policy catalog-failure status");
         AssertPolicyLineEquals(policy, "Rule outcomes", "unavailable (I/O error while loading analysis catalog)",
             "analysis policy catalog-failure reason");
         AssertPolicyLineEquals(policy, "Rules", "unavailable (analysis catalog could not be loaded)",
@@ -156,7 +156,7 @@ internal static partial class Program {
             "analysis payload malformed",
             _ => throw new UnauthorizedAccessException("denied"));
 
-        AssertPolicyLineEquals(policy, "Status", "unavailable ℹ️",
+        AssertPolicyLineEquals(policy, "Status", "unavailable",
             "analysis unavailable policy catalog-failure status");
         AssertPolicyLineEquals(policy, "Rule outcomes",
             "unavailable (insufficient permissions while loading analysis catalog)",
@@ -317,7 +317,7 @@ internal static partial class Program {
 
             var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
                 new AnalysisLoadResult(findings, report));
-            AssertPolicyLineEquals(policy, "Status", "partial ⚠️", "analysis policy outside-only status");
+            AssertPolicyLineEquals(policy, "Status", "partial", "analysis policy outside-only status");
             AssertPolicyLineEquals(policy, "Rule outcomes", "0 with findings, 0 clean, 1 outside enabled packs",
                 "analysis policy outside-only outcomes");
             AssertPolicyLineEquals(policy, "Failing rules", "none", "analysis policy outside-only failing rules");

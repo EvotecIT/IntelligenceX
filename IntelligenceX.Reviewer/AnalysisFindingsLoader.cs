@@ -16,6 +16,22 @@ internal static class AnalysisFindingsLoader {
     }
 
     public static AnalysisLoadResult LoadWithReport(ReviewSettings settings, IReadOnlyList<PullRequestFile> files) {
+        return LoadWithReportInternal(settings, files, workspaceRootOverride: null);
+    }
+
+    public static AnalysisLoadResult LoadWithReport(ReviewSettings settings, IReadOnlyList<PullRequestFile> files, string workspaceRoot) {
+        if (string.IsNullOrWhiteSpace(workspaceRoot)) {
+            throw new ArgumentException("workspaceRoot must be a non-empty absolute path.", nameof(workspaceRoot));
+        }
+        if (!Path.IsPathRooted(workspaceRoot)) {
+            throw new ArgumentException("workspaceRoot must be an absolute path.", nameof(workspaceRoot));
+        }
+        // Canonicalization is handled inside ResolveWorkspaceRoot() to keep a single source of truth.
+        return LoadWithReportInternal(settings, files, workspaceRootOverride: workspaceRoot);
+    }
+
+    private static AnalysisLoadResult LoadWithReportInternal(ReviewSettings settings, IReadOnlyList<PullRequestFile> files,
+        string? workspaceRootOverride) {
         if (settings?.Analysis?.Enabled != true) {
             return new AnalysisLoadResult(Array.Empty<AnalysisFinding>(), new AnalysisLoadReport(0, 0, 0, 0));
         }
@@ -27,7 +43,7 @@ internal static class AnalysisFindingsLoader {
                 new AnalysisLoadReport(configuredInputs, 0, 0, 0));
         }
 
-        var workspace = ResolveWorkspaceRoot();
+        var workspace = ResolveWorkspaceRoot(workspaceRootOverride);
         var catalog = TryLoadCatalog(workspace);
         var toolRuleIndex = BuildToolRuleIndex(catalog);
         var minRank = AnalysisSeverity.Rank(results?.MinSeverity);
@@ -310,19 +326,22 @@ internal static class AnalysisFindingsLoader {
             }
             var trimmed = input.Trim();
             if (trimmed.IndexOfAny(GlobChars) < 0) {
-                var candidate = Path.IsPathRooted(trimmed) ? trimmed : Path.Combine(workspace, trimmed);
-                if (File.Exists(candidate)) {
-                    results.Add(Path.GetFullPath(candidate));
+                var candidate = ResolveWorkspaceBoundAbsolutePath(workspace, trimmed);
+                if (candidate is not null && File.Exists(candidate)) {
+                    results.Add(candidate);
                 }
                 continue;
             }
             var searchRoot = ResolveSearchRoot(workspace, trimmed);
-            if (string.IsNullOrWhiteSpace(searchRoot) || !Directory.Exists(searchRoot)) {
+            var boundSearchRoot = string.IsNullOrWhiteSpace(searchRoot)
+                ? null
+                : ResolveWorkspaceBoundAbsolutePath(workspace, searchRoot);
+            if (boundSearchRoot is null || !Directory.Exists(boundSearchRoot)) {
                 continue;
             }
             var normalizedPattern = NormalizeGlobPattern(trimmed, workspace);
             var useAbsolute = Path.IsPathRooted(trimmed);
-            foreach (var file in Directory.EnumerateFiles(searchRoot, "*", SearchOption.AllDirectories)) {
+            foreach (var file in Directory.EnumerateFiles(boundSearchRoot, "*", SearchOption.AllDirectories)) {
                 var full = Path.GetFullPath(file);
                 var value = useAbsolute
                     ? full.Replace('\\', '/')
@@ -474,12 +493,54 @@ internal static class AnalysisFindingsLoader {
         return $"{finding.Path}:{finding.Line}:{rule}:{message}";
     }
 
-    private static string ResolveWorkspaceRoot() {
+    private static string ResolveWorkspaceRoot(string? workspaceRootOverride) {
+        if (!string.IsNullOrWhiteSpace(workspaceRootOverride)) {
+            return Path.GetFullPath(workspaceRootOverride!);
+        }
         var workspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
         if (!string.IsNullOrWhiteSpace(workspace)) {
-            return workspace;
+            return Path.GetFullPath(workspace);
         }
-        return Environment.CurrentDirectory;
+        return Path.GetFullPath(Environment.CurrentDirectory);
+    }
+
+    private static string? ResolveWorkspaceBoundAbsolutePath(string workspace, string configuredPath) {
+        if (string.IsNullOrWhiteSpace(configuredPath)) {
+            return null;
+        }
+        var resolved = Path.IsPathRooted(configuredPath)
+            ? configuredPath
+            : Path.Combine(workspace, configuredPath);
+        try {
+            var fullWorkspace = Path.GetFullPath(workspace);
+            var full = Path.GetFullPath(resolved);
+            return IsWithinWorkspace(fullWorkspace, full) ? full : null;
+        } catch {
+            return null;
+        }
+    }
+
+    private static bool IsWithinWorkspace(string workspaceFullPath, string candidateFullPath) {
+        if (string.IsNullOrWhiteSpace(workspaceFullPath) || string.IsNullOrWhiteSpace(candidateFullPath)) {
+            return false;
+        }
+
+        var root = Path.TrimEndingDirectorySeparator(workspaceFullPath)
+            .Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+        var candidate = Path.TrimEndingDirectorySeparator(candidateFullPath)
+            .Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        if (string.Equals(candidate, root, comparison)) {
+            return true;
+        }
+
+        // Separator-aware prefix to avoid /repo2 matching /repo.
+        var prefix = root + Path.DirectorySeparatorChar;
+        return candidate.StartsWith(prefix, comparison);
     }
 
     private static IEnumerable<JsonObject> EnumerateObjects(JsonArray? array) {

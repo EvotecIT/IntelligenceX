@@ -179,7 +179,7 @@ Review comments now include analysis execution context and outcomes even when no
 - Rule list display: up to 10 items per section
 - Enabled rules preview: CA2000 (Dispose objects before losing scope), CA1062 (Validate arguments of public methods), SA1600 (Elements should be documented), CA1000 (Do not declare static members on generic types), CA1001 (Types that own disposable fields should be disposable), CA1010 (Generic interface should also be implemented), CA1016 (Mark assemblies with assembly version), CA1018 (Mark attributes with AttributeUsageAttribute), CA1036 (Override methods on comparable types), CA1041 (Provide ObsoleteAttribute message), ... (truncated)
 - Result files: 2 input patterns, 2 matched, 2 parsed, 0 failed
-- Status: pass ✅
+- Status: pass
 - Rule outcomes: 0 with findings, 52 clean
 - Failing rules: none
 - Clean rules: CA2000 (Dispose objects before losing scope), CA1062 (Validate arguments of public methods), SA1600 (Elements should be documented), CA1000 (Do not declare static members on generic types), CA1001 (Types that own disposable fields should be disposable), CA1010 (Generic interface should also be implemented), CA1016 (Mark assemblies with assembly version), CA1018 (Mark attributes with AttributeUsageAttribute), CA1036 (Override methods on comparable types), CA1041 (Provide ObsoleteAttribute message), ... (truncated)
