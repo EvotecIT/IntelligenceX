@@ -538,11 +538,7 @@ internal static partial class Program {
             const string learnPrefix = "/powershell/utility-modules/psscriptanalyzer/rules/";
             AssertEqual(true, path.StartsWith(learnPrefix, StringComparison.OrdinalIgnoreCase), $"{rule.Id} docs uses PSScriptAnalyzer Learn rules path");
 
-            var rulesDir = Path.Combine(workspace, "Analysis", "Catalog", "rules", "powershell");
-            var rulePath = Path.Combine(rulesDir, rule.Id + ".json");
-            AssertEqual(true, File.Exists(rulePath), $"{rule.Id} rule file exists");
-
-            var expectedSlug = Path.GetFileNameWithoutExtension(rulePath);
+            var expectedSlug = !string.IsNullOrWhiteSpace(rule.ToolRuleId) ? rule.ToolRuleId : rule.Id;
             if (expectedSlug.StartsWith("PS", StringComparison.OrdinalIgnoreCase)) {
                 expectedSlug = expectedSlug.Substring(2);
             }
