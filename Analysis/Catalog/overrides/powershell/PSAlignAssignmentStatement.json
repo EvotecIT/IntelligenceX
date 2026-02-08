@@ -1,5 +1,5 @@
 {
   "id": "PSAlignAssignmentStatement",
-  "description": "Line up assignment statements so that the assignment operators are aligned.",
-  "tags": ["style"]
+  "title": "Align Assignment Statements",
+  "description": "Line up assignment statements so that the assignment operators are aligned."
 }

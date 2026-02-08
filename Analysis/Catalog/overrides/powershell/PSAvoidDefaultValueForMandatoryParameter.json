@@ -1,5 +1,4 @@
 {
   "id": "PSAvoidDefaultValueForMandatoryParameter",
-  "description": "Mandatory parameters should not be initialized with a default value in the param block because the value will be ignored.",
-  "tags": ["best-practices"]
+  "description": "Mandatory parameters should not be initialized with a default value in the param block because the value will be ignored."
 }

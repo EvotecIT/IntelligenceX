@@ -1,5 +1,4 @@
 {
   "id": "PSAvoidAssignmentToAutomaticVariable",
-  "description": "Automatic variables are built into PowerShell and are read-only. Avoid assigning to them.",
-  "tags": ["correctness"]
+  "description": "Automatic variables are built into PowerShell and are read-only. Avoid assigning to them."
 }
