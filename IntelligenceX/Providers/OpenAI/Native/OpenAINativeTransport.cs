@@ -367,6 +367,8 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         attempted.Add(ToolWireFormat.CustomParameters);
         try {
             return await SendWithWireFormatAsync(ToolWireFormat.CustomParameters, body).ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            throw;
         } catch (Exception ex) {
             lastError = ExceptionDispatchInfo.Capture(ex);
             if (!TryGetToolSchemaKeyFallback(ex, out retryKey)) {
@@ -383,6 +385,8 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         ToolSchemaKey retryKey2;
         try {
             return await SendWithWireFormatAsync(retryFormat).ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            throw;
         } catch (Exception ex) {
             lastError = ExceptionDispatchInfo.Capture(ex);
             if (!TryGetToolSchemaKeyFallback(ex, out retryKey2)) {
@@ -401,6 +405,8 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         ToolSchemaKey functionRetryKey;
         try {
             return await SendWithWireFormatAsync(initialFunctionFormat).ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            throw;
         } catch (Exception ex) {
             lastError = ExceptionDispatchInfo.Capture(ex);
             if (!TryGetToolSchemaKeyFallback(ex, out functionRetryKey)) {
@@ -422,7 +428,14 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             lastError!.Throw();
         }
 
-        return await SendWithWireFormatAsync(functionRetryFormat).ConfigureAwait(false);
+        try {
+            return await SendWithWireFormatAsync(functionRetryFormat).ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            throw;
+        } catch (Exception ex) {
+            lastError = ExceptionDispatchInfo.Capture(ex);
+            throw;
+        }
     }
 
     private void HandleStreamEvent(JsonObject evt, StringBuilder delta, ref string? status, ref JsonObject? completedResponse,
