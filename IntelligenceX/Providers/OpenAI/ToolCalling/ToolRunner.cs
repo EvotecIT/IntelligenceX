@@ -2,11 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using IntelligenceX.Json;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Chat;
+using IntelligenceX.Tools;
 
-namespace IntelligenceX.OpenAI.Tools;
+namespace IntelligenceX.OpenAI.ToolCalling;
 
 /// <summary>
 /// Executes a chat request with tool calls resolved locally.
@@ -71,7 +71,7 @@ public static class ToolRunner {
                 previousResponseId = TryGetResponseId(turn);
                 nextInput = new ChatInput();
                 foreach (var output in outputs) {
-                    nextInput.AddRaw(output.ToInputItem());
+                    nextInput.AddToolOutput(output.CallId, output.Output);
                 }
             }
 

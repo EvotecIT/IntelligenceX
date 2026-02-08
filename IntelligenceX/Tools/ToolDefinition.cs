@@ -1,7 +1,7 @@
 using System;
 using IntelligenceX.Json;
 
-namespace IntelligenceX.OpenAI.Tools;
+namespace IntelligenceX.Tools;
 
 /// <summary>
 /// Defines a tool that can be invoked by the model.
@@ -34,17 +34,4 @@ public sealed class ToolDefinition {
     /// Gets the JSON schema for tool parameters.
     /// </summary>
     public JsonObject? Parameters { get; }
-
-    internal JsonObject ToJson() {
-        var obj = new JsonObject()
-            .Add("type", "custom")
-            .Add("name", Name);
-        if (!string.IsNullOrWhiteSpace(Description)) {
-            obj.Add("description", Description);
-        }
-        if (Parameters is not null) {
-            obj.Add("parameters", Parameters);
-        }
-        return obj;
-    }
 }
