@@ -55,6 +55,50 @@ internal static partial class Program {
         AssertEqual("auto", autoChoice, "tool_choice");
     }
 
+    private static void TestNativeToolSchemaFallbackHandlesAggregateException() {
+        var ix = typeof(IntelligenceXClient).Assembly;
+        var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
+
+        var methods = transportType.GetMethods(BindingFlags.NonPublic | BindingFlags.Static);
+        MethodInfo? method = null;
+        foreach (var m in methods) {
+            if (!string.Equals(m.Name, "TryGetToolSchemaKeyFallback", StringComparison.Ordinal)) {
+                continue;
+            }
+            var ps = m.GetParameters();
+            if (ps.Length == 2 &&
+                ps[0].ParameterType == typeof(Exception) &&
+                ps[1].IsOut &&
+                ps[1].ParameterType.IsByRef &&
+                (ps[1].ParameterType.GetElementType()?.IsEnum ?? false)) {
+                method = m;
+                break;
+            }
+        }
+        AssertNotNull(method, "TryGetToolSchemaKeyFallback(Exception, out enum)");
+
+        var errorExType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeErrorResponseException", throwOnError: true)!;
+        var ctor = errorExType.GetConstructor(
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            binder: null,
+            types: new[] { typeof(string), typeof(string), typeof(string), typeof(System.Net.HttpStatusCode) },
+            modifiers: null);
+        AssertNotNull(ctor, "OpenAINativeErrorResponseException ctor");
+
+        var errorEx = (Exception)ctor!.Invoke(new object?[] {
+            "Server rejected tool schema.",
+            "unknown_parameter",
+            "tools[0].parameters",
+            System.Net.HttpStatusCode.BadRequest
+        })!;
+
+        var aggregate = new AggregateException(errorEx);
+        var args = new object?[] { aggregate, CreateOutSlot(method!) };
+        var ok = (bool)method!.Invoke(null, args)!;
+        AssertEqual(true, ok, "ok");
+        AssertEqual("InputSchema", args[1]?.ToString() ?? string.Empty, "fallbackKind");
+    }
+
     private static void TestNativeToolSchemaFallbackUsesStructuredErrorData() {
         var ix = typeof(IntelligenceXClient).Assembly;
         var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;

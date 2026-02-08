@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace IntelligenceX.OpenAI.Native;
 
@@ -10,8 +11,12 @@ internal sealed partial class OpenAINativeTransport {
         }
 
         // The transport typically throws InvalidOperationException for server validation errors,
-        // but callers can wrap it. Unwrap defensively so tool fallback still triggers.
-        for (var current = ex; current is not null; current = current.InnerException) {
+        // but callers can wrap it (including AggregateException). Unwrap defensively.
+        var pending = new Stack<Exception>();
+        pending.Push(ex);
+        while (pending.Count > 0) {
+            var current = pending.Pop();
+
             if (current is InvalidOperationException ioe &&
                 TryGetToolSchemaKeyFallback(ioe, out fallbackKey)) {
                 return true;
@@ -19,10 +24,14 @@ internal sealed partial class OpenAINativeTransport {
 
             if (current is AggregateException agg) {
                 foreach (var inner in agg.InnerExceptions) {
-                    if (TryGetToolSchemaKeyFallback(inner, out fallbackKey)) {
-                        return true;
+                    if (inner is not null) {
+                        pending.Push(inner);
                     }
                 }
+            }
+
+            if (current.InnerException is not null) {
+                pending.Push(current.InnerException);
             }
         }
 
