@@ -319,10 +319,13 @@ internal static partial class Program {
         var rulesRoot = Path.Combine(workspace, "Analysis", "Catalog", "rules");
         var packsRoot = Path.Combine(workspace, "Analysis", "Packs");
         var emptyOverridesRoot = Path.Combine(Path.GetTempPath(), "ix-analysis-overrides-disabled", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(emptyOverridesRoot);
         try {
+            Directory.CreateDirectory(emptyOverridesRoot);
             var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, emptyOverridesRoot, packsRoot);
 
+            if (!Directory.Exists(overridesDir)) {
+                throw new InvalidOperationException("Expected PowerShell overrides directory to exist, but it does not: " + overridesDir);
+            }
             foreach (var overridePath in Directory.EnumerateFiles(overridesDir, "*.json")) {
                 var overrideText = File.ReadAllText(overridePath, System.Text.Encoding.UTF8);
                 using var overrideDoc = System.Text.Json.JsonDocument.Parse(overrideText);
@@ -499,13 +502,17 @@ internal static partial class Program {
                 }
             }
         } finally {
-            try {
-                if (Directory.Exists(emptyOverridesRoot)) {
-                    Directory.Delete(emptyOverridesRoot, recursive: true);
+            if (Directory.Exists(emptyOverridesRoot)) {
+                for (var attempt = 1; attempt <= 3; attempt++) {
+                    try {
+                        Directory.Delete(emptyOverridesRoot, recursive: true);
+                        break;
+                    } catch (Exception ex) {
+                        // Best-effort cleanup: temp dirs may be locked by external processes on some CI agents.
+                        System.Diagnostics.Debug.WriteLine($"Failed to delete temp overrides root '{emptyOverridesRoot}' (attempt {attempt}): {ex.Message}");
+                        System.Threading.Thread.Sleep(100 * attempt);
+                    }
                 }
-            } catch (Exception ex) {
-                // Best-effort cleanup: temp dirs may be locked by external processes on some CI agents.
-                System.Diagnostics.Debug.WriteLine($"Failed to delete temp overrides root '{emptyOverridesRoot}': {ex.Message}");
             }
         }
     }

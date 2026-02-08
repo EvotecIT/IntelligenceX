@@ -126,8 +126,8 @@ function Write-FileUtf8NoBomLf([string]$path, [string]$content) {
 
 $rules = Get-ScriptAnalyzerRule | Sort-Object RuleName
 $ruleIds = @($rules | ForEach-Object { [string]$_.RuleName } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-$ruleIdSet = @{}
-foreach ($id in $ruleIds) { $ruleIdSet[$id] = $true }
+$ruleIdSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+foreach ($id in $ruleIds) { [void]$ruleIdSet.Add($id) }
 
 function Get-LearnDocsUrl([string]$ruleName) {
     if ([string]::IsNullOrWhiteSpace($ruleName)) { return $null }
@@ -242,7 +242,7 @@ $existingRuleFiles = @(Get-ChildItem -LiteralPath $OutDir -Filter '*.json' -File
 $staleRuleFiles = @()
 foreach ($file in $existingRuleFiles) {
     $id = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
-    if ($id -and -not $ruleIdSet.ContainsKey($id)) {
+    if ($id -and -not $ruleIdSet.Contains($id)) {
         $staleRuleFiles += $file
     }
 }
@@ -256,7 +256,7 @@ if ($resolvedOutDir.Equals($intendedOutDir, [System.StringComparison]::OrdinalIg
     if (Test-Path -LiteralPath $overridesDir) {
         foreach ($file in @(Get-ChildItem -LiteralPath $overridesDir -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
             $id = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
-            if ($id -and -not $ruleIdSet.ContainsKey($id)) { $staleOverrideFiles += $file }
+            if ($id -and -not $ruleIdSet.Contains($id)) { $staleOverrideFiles += $file }
         }
     }
 } elseif ($PruneStale) {
