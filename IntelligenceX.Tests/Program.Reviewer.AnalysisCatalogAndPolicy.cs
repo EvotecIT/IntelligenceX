@@ -327,12 +327,30 @@ internal static partial class Program {
             var basePath = Path.Combine(rulesDir, id + ".json");
             AssertEqual(true, File.Exists(basePath), $"{id} base rule exists for override");
 
-            using var baseDoc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(basePath));
-            var baseRoot = baseDoc.RootElement;
-
             AssertEqual(true, catalog.Rules.TryGetValue(id, out var effective), $"{id} exists in catalog");
             if (effective is null) {
                 throw new Exception($"{id} exists in catalog but is null");
+            }
+
+            // Load the base rule via the catalog loader as well, so comparisons are resilient to any loader
+            // normalization/canonicalization (and we don't depend on raw JSON formatting).
+            var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-powershell-base-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(temp);
+            AnalysisRule baseRule;
+            try {
+                var tempRulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "powershell");
+                var tempPacksDir = Path.Combine(temp, "Analysis", "Packs");
+                Directory.CreateDirectory(tempRulesDir);
+                Directory.CreateDirectory(tempPacksDir);
+                File.Copy(basePath, Path.Combine(tempRulesDir, id + ".json"), true);
+
+                var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(temp);
+                AssertEqual(true, baseCatalog.Rules.TryGetValue(id, out var resolvedBase), $"{id} exists in base-only catalog");
+                baseRule = resolvedBase ?? throw new Exception($"{id} exists in base-only catalog but is null");
+            } finally {
+                if (Directory.Exists(temp)) {
+                    Directory.Delete(temp, true);
+                }
             }
 
             var changesBase = false;
@@ -341,60 +359,51 @@ internal static partial class Program {
                     continue;
                 }
 
-                static string? GetBaseString(System.Text.Json.JsonElement root, string name) =>
-                    root.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() : null;
-
                 switch (prop.Name) {
                     case "title": {
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override title must be a string");
-                        var baseValue = GetBaseString(baseRoot, "title");
                         AssertEqual(expected, effective.Title, $"{id} override title applied");
-                        if (!string.Equals(baseValue, expected, StringComparison.Ordinal)) {
+                        if (!string.Equals(baseRule.Title, expected, StringComparison.Ordinal)) {
                             changesBase = true;
                         }
                         break;
                     }
                     case "description": {
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override description must be a string");
-                        var baseValue = GetBaseString(baseRoot, "description");
                         AssertEqual(expected, effective.Description, $"{id} override description applied");
-                        if (!string.Equals(baseValue, expected, StringComparison.Ordinal)) {
+                        if (!string.Equals(baseRule.Description, expected, StringComparison.Ordinal)) {
                             changesBase = true;
                         }
                         break;
                     }
                     case "type": {
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override type must be a string");
-                        var baseValue = GetBaseString(baseRoot, "type");
                         AssertEqual(expected, effective.Type, $"{id} override type applied");
-                        if (!string.Equals(baseValue, expected, StringComparison.Ordinal)) {
+                        if (!string.Equals(baseRule.Type, expected, StringComparison.Ordinal)) {
                             changesBase = true;
                         }
                         break;
                     }
                     case "category": {
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override category must be a string");
-                        var baseValue = GetBaseString(baseRoot, "category");
                         AssertEqual(expected, effective.Category, $"{id} override category applied");
-                        if (!string.Equals(baseValue, expected, StringComparison.Ordinal)) {
+                        if (!string.Equals(baseRule.Category, expected, StringComparison.Ordinal)) {
                             changesBase = true;
                         }
                         break;
                     }
                     case "defaultSeverity": {
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override defaultSeverity must be a string");
-                        var baseValue = GetBaseString(baseRoot, "defaultSeverity");
                         AssertEqual(expected, effective.DefaultSeverity, $"{id} override defaultSeverity applied");
-                        if (!string.Equals(baseValue, expected, StringComparison.Ordinal)) {
+                        if (!string.Equals(baseRule.DefaultSeverity, expected, StringComparison.Ordinal)) {
                             changesBase = true;
                         }
                         break;
                     }
                     case "docs": {
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override docs must be a string");
-                        var baseValue = GetBaseString(baseRoot, "docs");
                         AssertEqual(expected, effective.Docs, $"{id} override docs applied");
-                        if (!string.Equals(baseValue, expected, StringComparison.Ordinal)) {
+                        if (!string.Equals(baseRule.Docs, expected, StringComparison.Ordinal)) {
                             changesBase = true;
                         }
                         break;
@@ -429,14 +438,7 @@ internal static partial class Program {
                             .Select(x => x.GetString() ?? throw new Exception($"{id} override tags must be strings"))
                             .ToArray();
 
-                        var baseTags = Array.Empty<string>();
-                        if (baseRoot.TryGetProperty("tags", out var baseTagsEl) && baseTagsEl.ValueKind == System.Text.Json.JsonValueKind.Array) {
-                            baseTags = baseTagsEl.EnumerateArray()
-                                .Select(x => x.GetString() ?? throw new Exception($"{id} base tags must be strings"))
-                                .ToArray();
-                        }
-
-                        var expectedMerged = MergeTags(baseTags, overrideTags);
+                        var expectedMerged = MergeTags(baseRule.Tags, overrideTags);
                         AssertEqual(expectedMerged.Count, effective.Tags.Count, $"{id} merged tag count matches");
                         for (var i = 0; i < expectedMerged.Count; i++) {
                             AssertEqual(expectedMerged[i], effective.Tags[i], $"{id} merged tag {i} matches");
@@ -444,8 +446,7 @@ internal static partial class Program {
 
                         // "tags" overrides are merged (union), but if the merged set is identical to base,
                         // the override is redundant and should be removed.
-                        var normalizedBase = MergeTags(baseTags, Array.Empty<string>());
-                        if (!normalizedBase.SequenceEqual(expectedMerged, StringComparer.OrdinalIgnoreCase)) {
+                        if (!baseRule.Tags.SequenceEqual(expectedMerged, StringComparer.OrdinalIgnoreCase)) {
                             changesBase = true;
                         }
                         break;
@@ -481,8 +482,10 @@ internal static partial class Program {
             }
 
             var docs = rule.Docs!.Trim();
-            AssertEqual(true, Uri.TryCreate(docs, UriKind.Absolute, out var uri), $"{rule.Id} docs is absolute url");
-            AssertEqual("https", uri!.Scheme, $"{rule.Id} docs uses https");
+            if (!Uri.TryCreate(docs, UriKind.Absolute, out var uri) || uri is null) {
+                throw new InvalidOperationException($"Expected {rule.Id} docs to be a valid absolute url, got '{docs}'.");
+            }
+            AssertEqual("https", uri.Scheme, $"{rule.Id} docs uses https");
             AssertEqual("learn.microsoft.com", uri.Host, $"{rule.Id} docs uses learn.microsoft.com");
             AssertEqual(true, learnRulePattern.IsMatch(docs), $"{rule.Id} docs matches Learn PSScriptAnalyzer rule pattern");
         }
