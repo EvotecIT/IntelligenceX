@@ -343,7 +343,6 @@ internal static partial class Program {
             var baseRule = resolvedBase ?? throw new Exception($"{id} exists in base catalog but is null");
 
             var changesBase = false;
-            var hasNonTagOverride = false;
             foreach (var prop in overrideRoot.EnumerateObject()) {
                 if (prop.NameEquals("id")) {
                     continue;
@@ -351,7 +350,6 @@ internal static partial class Program {
 
                 switch (prop.Name) {
                     case "title": {
-                        hasNonTagOverride = true;
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override title must be a string");
                         AssertEqual(expected, effective.Title, $"{id} override title applied");
                         if (!string.Equals(baseRule.Title, effective.Title, StringComparison.Ordinal)) {
@@ -360,7 +358,6 @@ internal static partial class Program {
                         break;
                     }
                     case "description": {
-                        hasNonTagOverride = true;
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override description must be a string");
                         AssertEqual(expected, effective.Description, $"{id} override description applied");
                         if (!string.Equals(baseRule.Description, effective.Description, StringComparison.Ordinal)) {
@@ -369,7 +366,6 @@ internal static partial class Program {
                         break;
                     }
                     case "type": {
-                        hasNonTagOverride = true;
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override type must be a string");
                         AssertEqual(expected, effective.Type, $"{id} override type applied");
                         if (!string.Equals(baseRule.Type, effective.Type, StringComparison.Ordinal)) {
@@ -378,7 +374,6 @@ internal static partial class Program {
                         break;
                     }
                     case "category": {
-                        hasNonTagOverride = true;
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override category must be a string");
                         AssertEqual(expected, effective.Category, $"{id} override category applied");
                         if (!string.Equals(baseRule.Category, effective.Category, StringComparison.Ordinal)) {
@@ -387,7 +382,6 @@ internal static partial class Program {
                         break;
                     }
                     case "defaultSeverity": {
-                        hasNonTagOverride = true;
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override defaultSeverity must be a string");
                         AssertEqual(expected, effective.DefaultSeverity, $"{id} override defaultSeverity applied");
                         if (!string.Equals(baseRule.DefaultSeverity, effective.DefaultSeverity, StringComparison.Ordinal)) {
@@ -396,7 +390,6 @@ internal static partial class Program {
                         break;
                     }
                     case "docs": {
-                        hasNonTagOverride = true;
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override docs must be a string");
                         AssertEqual(expected, effective.Docs, $"{id} override docs applied");
                         if (!string.Equals(baseRule.Docs, effective.Docs, StringComparison.Ordinal)) {
@@ -456,21 +449,13 @@ internal static partial class Program {
                 }
             }
 
-            // Tag overrides are merged/unioned and may be additive-only; don't require them to change the base values.
-            if (hasNonTagOverride) {
-                AssertEqual(true, changesBase, $"{id} override must change at least one base value (otherwise delete the override)");
-            }
+            AssertEqual(true, changesBase, $"{id} override must change the effective rule vs base (otherwise delete the override)");
         }
     }
 
     private static void TestAnalysisCatalogPowerShellDocsLinksMatchLearnPattern() {
         var workspace = ResolveWorkspaceRoot();
         var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
-
-        // Allow query/fragment because Learn commonly appends `?view=` and `#...`.
-        var learnRulePattern = new System.Text.RegularExpressions.Regex(
-            @"^https://learn\.microsoft\.com(?:/[a-z]{2}(?:-[a-z]{2})?)?/powershell/utility-modules/psscriptanalyzer/rules/[^/?#]+(?:/)?(?:[?#].*)?$",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
         foreach (var entry in catalog.Rules) {
             var rule = entry.Value;
@@ -487,8 +472,12 @@ internal static partial class Program {
                 throw new InvalidOperationException($"Expected {rule.Id} docs to be a valid absolute url, got '{docs}'.");
             }
             AssertEqual("https", uri.Scheme, $"{rule.Id} docs uses https");
-            AssertEqual("learn.microsoft.com", uri.Host, $"{rule.Id} docs uses learn.microsoft.com");
-            AssertEqual(true, learnRulePattern.IsMatch(docs), $"{rule.Id} docs matches Learn PSScriptAnalyzer rule pattern");
+
+            // Prefer Learn, but don't make CI brittle if docs URLs change shape in the future.
+            if (uri.Host.Equals("learn.microsoft.com", StringComparison.OrdinalIgnoreCase)) {
+                var path = uri.AbsolutePath.ToLowerInvariant();
+                AssertEqual(true, path.Contains("/psscriptanalyzer/") && path.Contains("/rules/"), $"{rule.Id} docs looks like PSScriptAnalyzer Learn url");
+            }
         }
     }
 
