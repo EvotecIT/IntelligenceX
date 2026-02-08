@@ -477,9 +477,7 @@ internal static partial class Program {
             if (!rule.Tool.Equals("PSScriptAnalyzer", StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
-            if (string.IsNullOrWhiteSpace(rule.Docs)) {
-                continue;
-            }
+            AssertEqual(false, string.IsNullOrWhiteSpace(rule.Docs), $"{rule.Id} docs is populated");
 
             var docs = rule.Docs!.Trim();
             if (!Uri.TryCreate(docs, UriKind.Absolute, out var uri) || uri is null) {

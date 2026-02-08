@@ -75,6 +75,20 @@ function Write-FileUtf8NoBomLf([string]$path, [string]$content) {
 }
 
 $rules = Get-ScriptAnalyzerRule | Sort-Object RuleName
+$ruleIds = @($rules | ForEach-Object { [string]$_.RuleName } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+$ruleIdSet = @{}
+foreach ($id in $ruleIds) { $ruleIdSet[$id] = $true }
+
+function Get-LearnDocsUrl([string]$ruleName) {
+    if ([string]::IsNullOrWhiteSpace($ruleName)) { return $null }
+    $name = $ruleName.Trim()
+    if ($name.StartsWith('PS', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $name = $name.Substring(2)
+    }
+    $slug = $name.ToLowerInvariant()
+    if ([string]::IsNullOrWhiteSpace($slug)) { return $null }
+    return ('https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/{0}' -f $slug)
+}
 
 foreach ($rule in $rules) {
     $ruleName = [string]$rule.RuleName
@@ -97,6 +111,10 @@ foreach ($rule in $rules) {
         } catch {
             $docs = $null
         }
+    }
+    if (-not $docs) {
+        $docs = Get-LearnDocsUrl $ruleName
+        if ([string]::IsNullOrWhiteSpace($docs)) { $docs = $null }
     }
 
     $category = Get-Category $ruleName
@@ -124,4 +142,28 @@ foreach ($rule in $rules) {
     Write-FileUtf8NoBomLf $path $json
 }
 
-Write-Output ("Wrote {0} rule file(s) to {1}" -f $rules.Count, $OutDir)
+# Delete stale rule files so the repo doesn't accumulate orphaned rules over time.
+$existingRuleFiles = @(Get-ChildItem -LiteralPath $OutDir -Filter '*.json' -File -ErrorAction SilentlyContinue)
+$deleted = 0
+foreach ($file in $existingRuleFiles) {
+    $id = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
+    if ($id -and -not $ruleIdSet.ContainsKey($id)) {
+        Remove-Item -LiteralPath $file.FullName -Force
+        $deleted++
+    }
+}
+
+# Also delete stale overrides for rules that no longer exist.
+$rulesRoot = Split-Path -Parent $OutDir
+$catalogRoot = Split-Path -Parent $rulesRoot
+$overridesDir = Join-Path -Path $catalogRoot -ChildPath (Join-Path -Path 'overrides' -ChildPath 'powershell')
+if (Test-Path -LiteralPath $overridesDir) {
+    foreach ($file in @(Get-ChildItem -LiteralPath $overridesDir -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
+        $id = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
+        if ($id -and -not $ruleIdSet.ContainsKey($id)) {
+            Remove-Item -LiteralPath $file.FullName -Force
+        }
+    }
+}
+
+Write-Output ("Wrote {0} rule file(s) to {1} (deleted {2} stale file(s))" -f $rules.Count, $OutDir, $deleted)

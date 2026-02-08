@@ -4,7 +4,7 @@
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSAvoidMultipleTypeAttributes",
   "title": "Avoid multiple type specifiers on parameters",
-  "description": "parameter should not have more than one type specifier.",
+  "description": "Prameter should not have more than one type specifier.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [
