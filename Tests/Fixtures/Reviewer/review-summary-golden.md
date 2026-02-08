@@ -5,6 +5,8 @@ Reviewed commit: `deadbee`
 
 
 
+Merge blockers: items in **Todo List ✅** and **Critical Issues ⚠️** sections (if present). **Other Issues 🧯** are suggestions.
+
 
 
 

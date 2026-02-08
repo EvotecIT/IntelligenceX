@@ -4,6 +4,8 @@ Reviewing PR #{{Number}}: **{{Title}}**
 {{CommitLine}}
 {{ReasoningLabel}}
 
+Merge blockers: items in **Todo List ✅** and **Critical Issues ⚠️** sections (if present). **Other Issues 🧯** are suggestions.
+
 {{InlineNote}}
 {{AutoResolveNote}}
 {{BudgetNote}}

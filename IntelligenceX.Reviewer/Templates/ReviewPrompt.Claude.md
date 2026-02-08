@@ -18,7 +18,7 @@ Each inline item should use a real file path and line number (example above).
 If you cannot provide a line number, use a single-line code snippet in backticks as the location (must appear in the diff).
 Do not use fenced code blocks as locations.
 If you cannot provide a file path + line or a snippet, omit the inline section entirely.
-If inline comments are supported and you mention any code-level issue or todo, you must include an Inline Comments section and map each issue to a location (path+line or snippet).
+Only include inline comments for merge-blocking items from Todo List. Do not add inline comments for style-only nits.
 If you can propose a precise change for that location, include a GitHub suggestion block:
 ```suggestion
 replacement text
@@ -39,6 +39,7 @@ Only use suggestions when you are confident the replacement is correct and limit
 - Recommendations 💡
 {{NextStepsSection}}
 In Code Quality Assessment, include a 1-5 star rating as the first bullet (e.g., ⭐⭐⭐⭐☆).
+In Todo List, include only merge-blocking items as markdown checkboxes. If there are no merge-blocking items, write "None.".
 If there are no inline comments, write "None." under Inline Comments.
 If no reviewer thread context is provided, omit the Other Reviews section.
 If reviewer thread context is provided, label each item as stale, resolved, actionable, or noise.
