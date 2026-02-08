@@ -48,7 +48,7 @@ var options = new IntelligenceXClientOptions {
     TransportKind = OpenAITransportKind.Native
 };
 using var client = await IntelligenceXClient.ConnectAsync(options);
-await client.LoginChatGptAndWaitAsync(url => Console.WriteLine(url));
+await client.EnsureChatGptLoginAsync(onUrl: url => Console.WriteLine(url));
 
 var registry = new ToolRegistry();
 registry.Register(new EchoTool());

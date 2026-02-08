@@ -296,7 +296,7 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
                     }
                     await client.LoginApiKeyAsync(key, CancelToken).ConfigureAwait(false);
                 } else {
-                    await client.LoginChatGptAndWaitAsync(url => {
+                    await client.EnsureChatGptLoginAsync(onUrl: url => {
                         WriteVerbose($"Login URL: {url}");
                         if (OpenBrowser.IsPresent) {
                             TryOpenUrl(url);

@@ -16,7 +16,7 @@ internal sealed class ExampleTelemetry : IExample {
         client.LoginCompleted += (_, args) => Console.WriteLine($"Login completed: {args.LoginType}");
         client.StandardErrorReceived += (_, line) => Console.WriteLine($"STDERR: {line}");
 
-        await client.LoginChatGptAndWaitAsync(url => Console.WriteLine($"Login URL: {url}")).ConfigureAwait(false);
+        await client.EnsureChatGptLoginAsync(onUrl: url => Console.WriteLine($"Login URL: {url}")).ConfigureAwait(false);
         await client.ChatAsync("Hello from telemetry example.").ConfigureAwait(false);
     }
 }

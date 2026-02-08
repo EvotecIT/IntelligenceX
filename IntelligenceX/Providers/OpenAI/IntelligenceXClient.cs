@@ -194,6 +194,37 @@ public sealed class IntelligenceXClient : IDisposable
     }
 
     /// <summary>
+    /// Ensures a valid ChatGPT login is available by using cached credentials when possible and falling back to the OAuth flow.
+    /// </summary>
+    /// <param name="forceLogin">When true, always runs the login flow even if cached credentials appear valid.</param>
+    /// <param name="onUrl">Callback for the login URL.</param>
+    /// <param name="onPrompt">Callback for interactive prompts.</param>
+    /// <param name="useLocalListener">Whether to use a local listener.</param>
+    /// <param name="timeout">Optional timeout.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task EnsureChatGptLoginAsync(bool forceLogin = false, Action<string>? onUrl = null, Func<string, Task<string>>? onPrompt = null,
+        bool useLocalListener = true, TimeSpan? timeout = null, CancellationToken cancellationToken = default) {
+        if (!forceLogin) {
+            try {
+                _ = await GetAccountAsync(cancellationToken).ConfigureAwait(false);
+                return;
+            } catch (OperationCanceledException) {
+                throw;
+            } catch (InvalidOperationException ex) when (IsAuthMissing(ex)) {
+                // Not logged in (or token expired). Fall back to login flow.
+            }
+        }
+
+        await LoginChatGptAndWaitAsync(onUrl, onPrompt, useLocalListener, timeout, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static bool IsAuthMissing(InvalidOperationException ex) {
+        var message = ex.Message ?? string.Empty;
+        return message.IndexOf("not logged in", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               message.IndexOf("login", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    /// <summary>
     /// Logs in using an API key (app-server transport only).
     /// </summary>
     /// <param name="apiKey">API key.</param>

@@ -87,11 +87,17 @@ internal sealed class OpenAINativeAuthManager {
             throw new InvalidOperationException(
                 "ChatGPT login requires user input. Provide a prompt handler or run interactively.");
         }
+
         Console.WriteLine(prompt);
-        var input = Console.ReadLine();
-        if (string.IsNullOrWhiteSpace(input)) {
-            throw new InvalidOperationException("Authorization code was not provided.");
+        while (true) {
+            Console.Write("> ");
+            var input = Console.ReadLine();
+            if (!string.IsNullOrWhiteSpace(input)) {
+                return Task.FromResult(input.Trim());
+            }
+
+            // Keep reprompting instead of failing the whole login flow.
+            Console.WriteLine("Authorization code was not provided. Paste the redirect URL or authorization code.");
         }
-        return Task.FromResult(input);
     }
 }
