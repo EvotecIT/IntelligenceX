@@ -68,9 +68,8 @@ internal sealed partial class OpenAINativeTransport {
             body.Add("include", include);
         }
 
-        if (!string.IsNullOrWhiteSpace(options.PreviousResponseId)) {
-            body.Add("previous_response_id", options.PreviousResponseId);
-        }
+        // ChatGPT-native "responses" backend has been observed to reject previous_response_id.
+        // We keep conversation state client-side via NativeThreadState.Messages.
 
         if (options.Tools is not null && options.Tools.Count > 0) {
             var tools = new JsonArray();

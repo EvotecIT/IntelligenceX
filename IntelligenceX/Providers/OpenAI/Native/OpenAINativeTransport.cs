@@ -165,13 +165,10 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         }
 
         var inputItems = await BuildInputItemsAsync(input, cancellationToken).ConfigureAwait(false);
-        var trackMessages = options.PreviousResponseId is null;
-        var requestMessages = trackMessages
-            ? new List<JsonObject>(state.Messages.Count + inputItems.Count)
-            : new List<JsonObject>(inputItems.Count);
-        if (trackMessages) {
-            requestMessages.AddRange(state.Messages);
-        }
+        // ChatGPT-native transport maintains history client-side; always include thread messages.
+        var trackMessages = true;
+        var requestMessages = new List<JsonObject>(state.Messages.Count + inputItems.Count);
+        requestMessages.AddRange(state.Messages);
         requestMessages.AddRange(inputItems);
 
         var body = BuildRequestBody(resolvedModel, requestMessages, state.SessionId, options);
@@ -292,13 +289,28 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         }
 
         var assistantText = ExtractAssistantText(outputs);
-        var assistantMessage = BuildAssistantMessage(assistantText, state);
 
         if (trackMessages) {
             if (inputItems.Count > 0) {
                 state.Messages.AddRange(inputItems);
             }
-            state.Messages.Add(assistantMessage);
+            // Preserve assistant tool calls in history so tool outputs can be sent without previous_response_id.
+            if (completedResponse is not null && completedResponse.GetArray("output") is { Count: > 0 } historyOutputs) {
+                foreach (var itemValue in historyOutputs) {
+                    var item = itemValue.AsObject();
+                    if (item is null) {
+                        continue;
+                    }
+                    var type = item.GetString("type");
+                    if (string.Equals(type, "message", StringComparison.Ordinal) ||
+                        string.Equals(type, "custom_tool_call", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(type, "tool_call", StringComparison.OrdinalIgnoreCase)) {
+                        state.Messages.Add(item);
+                    }
+                }
+            } else {
+                state.Messages.Add(BuildAssistantMessage(assistantText, state));
+            }
         }
         state.UpdatePreview(TruncatePreview(assistantText));
 
