@@ -343,6 +343,7 @@ internal static partial class Program {
             var baseRule = resolvedBase ?? throw new Exception($"{id} exists in base catalog but is null");
 
             var changesBase = false;
+            var hasNonTagOverride = false;
             foreach (var prop in overrideRoot.EnumerateObject()) {
                 if (prop.NameEquals("id")) {
                     continue;
@@ -350,6 +351,7 @@ internal static partial class Program {
 
                 switch (prop.Name) {
                     case "title": {
+                        hasNonTagOverride = true;
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override title must be a string");
                         AssertEqual(expected, effective.Title, $"{id} override title applied");
                         if (!string.Equals(baseRule.Title, expected, StringComparison.Ordinal)) {
@@ -358,6 +360,7 @@ internal static partial class Program {
                         break;
                     }
                     case "description": {
+                        hasNonTagOverride = true;
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override description must be a string");
                         AssertEqual(expected, effective.Description, $"{id} override description applied");
                         if (!string.Equals(baseRule.Description, expected, StringComparison.Ordinal)) {
@@ -366,6 +369,7 @@ internal static partial class Program {
                         break;
                     }
                     case "type": {
+                        hasNonTagOverride = true;
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override type must be a string");
                         AssertEqual(expected, effective.Type, $"{id} override type applied");
                         if (!string.Equals(baseRule.Type, expected, StringComparison.Ordinal)) {
@@ -374,6 +378,7 @@ internal static partial class Program {
                         break;
                     }
                     case "category": {
+                        hasNonTagOverride = true;
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override category must be a string");
                         AssertEqual(expected, effective.Category, $"{id} override category applied");
                         if (!string.Equals(baseRule.Category, expected, StringComparison.Ordinal)) {
@@ -382,6 +387,7 @@ internal static partial class Program {
                         break;
                     }
                     case "defaultSeverity": {
+                        hasNonTagOverride = true;
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override defaultSeverity must be a string");
                         AssertEqual(expected, effective.DefaultSeverity, $"{id} override defaultSeverity applied");
                         if (!string.Equals(baseRule.DefaultSeverity, expected, StringComparison.Ordinal)) {
@@ -390,6 +396,7 @@ internal static partial class Program {
                         break;
                     }
                     case "docs": {
+                        hasNonTagOverride = true;
                         var expected = prop.Value.GetString() ?? throw new Exception($"{id} override docs must be a string");
                         AssertEqual(expected, effective.Docs, $"{id} override docs applied");
                         if (!string.Equals(baseRule.Docs, expected, StringComparison.Ordinal)) {
@@ -449,7 +456,10 @@ internal static partial class Program {
                 }
             }
 
-            AssertEqual(true, changesBase, $"{id} override must change at least one base value (otherwise delete the override)");
+            // Tag overrides are merged/unioned and may be additive-only; don't require them to change the base values.
+            if (hasNonTagOverride) {
+                AssertEqual(true, changesBase, $"{id} override must change at least one base value (otherwise delete the override)");
+            }
         }
     }
 

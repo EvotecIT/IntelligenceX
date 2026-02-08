@@ -1,7 +1,7 @@
 {
   "id": "powershell-default",
   "label": "PowerShell Default",
-  "description": "Core rules for PowerShell scripts (security + correctness baseline).",
+  "description": "High-signal security and correctness rules for PowerShell scripts (PSScriptAnalyzer).",
   "rules": [
     "PSAvoidOverwritingBuiltInCmdlets",
     "PSAvoidUsingAllowUnencryptedAuthentication",
