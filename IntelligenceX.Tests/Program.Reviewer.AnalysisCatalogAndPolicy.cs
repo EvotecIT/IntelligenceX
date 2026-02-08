@@ -405,6 +405,7 @@ internal static partial class Program {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-hotspots-minseverity-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         var originalCwd = Environment.CurrentDirectory;
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
         try {
             var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
             var packsDir = Path.Combine(temp, "Analysis", "Packs");
@@ -449,6 +450,9 @@ internal static partial class Program {
 }
 """);
 
+            // GitHub Actions sets GITHUB_WORKSPACE; the loader resolves relative inputs against it when present.
+            // Point it at this temp workspace so the test behaves the same locally and in CI.
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
             Environment.CurrentDirectory = temp;
             var settings = new ReviewSettings();
             settings.Analysis.Enabled = true;
@@ -459,6 +463,7 @@ internal static partial class Program {
             AssertEqual(1, load.Findings.Count, "hotspot finding not filtered by minSeverity");
             AssertEqual("IXHOT001", load.Findings[0].RuleId, "hotspot rule id");
         } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             Environment.CurrentDirectory = originalCwd;
             if (Directory.Exists(temp)) {
                 Directory.Delete(temp, true);
@@ -469,6 +474,7 @@ internal static partial class Program {
     private static void TestAnalyzeHotspotsSyncStateWritesStateFile() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-hotspots-sync-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
         try {
             var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
             var packsDir = Path.Combine(temp, "Analysis", "Packs");
@@ -513,6 +519,8 @@ internal static partial class Program {
 }
 """);
 
+            // Ensure all relative path resolution happens inside this test workspace even in CI.
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
             Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
             var configPath = Path.Combine(temp, ".intelligencex", "reviewer.json");
             File.WriteAllText(configPath, """
@@ -551,6 +559,7 @@ internal static partial class Program {
             AssertContainsText(text, "\"key\": \"IXHOT001:fp-xyz\"", "hotspots state key");
             AssertContainsText(text, "\"status\": \"to-review\"", "hotspots state default status");
         } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             if (Directory.Exists(temp)) {
                 Directory.Delete(temp, true);
             }
