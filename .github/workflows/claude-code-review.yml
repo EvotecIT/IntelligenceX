@@ -72,8 +72,8 @@ jobs:
             - Do not add style-only nits as merge blockers.
             - Keep items actionable and specific.
 
-            Use `gh pr comment` with your Bash tool to leave your review as a single sticky comment on the PR.
+            Do not post comments yourself (do not call `gh pr comment`). Output your review in Markdown; the workflow will post/update it as a single sticky PR comment.
           use_sticky_comment: true
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
-          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
+          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'

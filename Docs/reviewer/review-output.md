@@ -19,7 +19,7 @@ Inline comments are used to point at exact locations in the diff.
 
 Rules of thumb:
 - If a merge blocker has a specific location, expect an inline comment for it.
-- Style-only nits should not block merges unless they affect correctness, security, or maintainability.
+- Style-only nits should not block merges unless they affect correctness, security, or reliability.
 
 ## Other reviews
 
