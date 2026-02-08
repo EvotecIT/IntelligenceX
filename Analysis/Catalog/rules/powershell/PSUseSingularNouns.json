@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSUseSingularNouns",
-  "title": "Cmdlet Singular Noun",
-  "description": "Cmdlet should use singular instead of plural nouns.",
+  "title": "Use Singular Nouns",
+  "description": "PSScriptAnalyzer rule 'PSUseSingularNouns'. See docs for details.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

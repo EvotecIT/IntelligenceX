@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSUseCompatibleSyntax",
-  "title": "Use compatible syntax",
-  "description": "Use script syntax compatible with the given PowerShell versions",
+  "title": "Use Compatible Syntax",
+  "description": "PSScriptAnalyzer rule 'PSUseCompatibleSyntax'. See docs for details.",
   "category": "BestPractices",
   "defaultSeverity": "error",
   "tags": [

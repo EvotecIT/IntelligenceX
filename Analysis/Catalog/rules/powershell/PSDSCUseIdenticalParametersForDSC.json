@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSDSCUseIdenticalParametersForDSC",
-  "title": "Use Identical Parameters For DSC Test and Set Functions",
-  "description": "The Test and Set-TargetResource functions of DSC Resource must have the same parameters.",
+  "title": "DSC Use Identical Parameters For DSC",
+  "description": "PSScriptAnalyzer rule 'PSDSCUseIdenticalParametersForDSC'. See docs for details.",
   "category": "BestPractices",
   "defaultSeverity": "error",
   "tags": [

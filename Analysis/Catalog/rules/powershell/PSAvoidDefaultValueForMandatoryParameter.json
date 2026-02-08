@@ -4,7 +4,7 @@
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSAvoidDefaultValueForMandatoryParameter",
   "title": "Avoid Default Value For Mandatory Parameter",
-  "description": "Mandatory parameter should not be initialized with a default value in the param block because this value will be ignored.. To fix a violation of this rule, please avoid initializing a value for the mandatory parameter in the param block.",
+  "description": "PSScriptAnalyzer rule 'PSAvoidDefaultValueForMandatoryParameter'. See docs for details.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

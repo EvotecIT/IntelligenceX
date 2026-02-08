@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSUseUsingScopeModifierInNewRunspaces",
-  "title": "Use 'Using:' scope modifier in RunSpace ScriptBlocks",
-  "description": "If a ScriptBlock is intended to be run as a new RunSpace, variables inside it should use 'Using:' scope modifier, or be initialized within the ScriptBlock.",
+  "title": "Use Using Scope Modifier In New Runspaces",
+  "description": "PSScriptAnalyzer rule 'PSUseUsingScopeModifierInNewRunspaces'. See docs for details.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

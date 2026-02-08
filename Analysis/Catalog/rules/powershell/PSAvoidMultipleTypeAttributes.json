@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSAvoidMultipleTypeAttributes",
-  "title": "Avoid multiple type specifiers on parameters",
-  "description": "Prameter should not have more than one type specifier.",
+  "title": "Avoid Multiple Type Attributes",
+  "description": "PSScriptAnalyzer rule 'PSAvoidMultipleTypeAttributes'. See docs for details.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

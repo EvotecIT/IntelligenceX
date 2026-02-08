@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSUseApprovedVerbs",
-  "title": "Cmdlet Verbs",
-  "description": "Checks that all defined cmdlets use approved verbs. This is in line with PowerShell's best practices.",
+  "title": "Use Approved Verbs",
+  "description": "PSScriptAnalyzer rule 'PSUseApprovedVerbs'. See docs for details.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

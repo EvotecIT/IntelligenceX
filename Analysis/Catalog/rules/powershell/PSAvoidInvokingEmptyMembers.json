@@ -4,7 +4,7 @@
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSAvoidInvokingEmptyMembers",
   "title": "Avoid Invoking Empty Members",
-  "description": "Invoking non-constant members would cause potential bugs. Please double check the syntax to make sure members invoked are non-constant.",
+  "description": "PSScriptAnalyzer rule 'PSAvoidInvokingEmptyMembers'. See docs for details.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

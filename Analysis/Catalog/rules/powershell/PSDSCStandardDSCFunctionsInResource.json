@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSDSCStandardDSCFunctionsInResource",
-  "title": "Use Standard Get/Set/Test TargetResource functions in DSC Resource",
-  "description": "DSC Resource must implement Get, Set and Test-TargetResource functions. DSC Class must implement Get, Set and Test functions.",
+  "title": "DSC Standard DSC Functions In Resource",
+  "description": "PSScriptAnalyzer rule 'PSDSCStandardDSCFunctionsInResource'. See docs for details.",
   "category": "BestPractices",
   "defaultSeverity": "error",
   "tags": [

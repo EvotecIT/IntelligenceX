@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSAvoidExclaimOperator",
-  "title": "Avoid exclaim operator",
-  "description": "The negation operator ! should not be used for readability purposes. Use -not instead.",
+  "title": "Avoid Exclaim Operator",
+  "description": "PSScriptAnalyzer rule 'PSAvoidExclaimOperator'. See docs for details.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

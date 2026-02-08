@@ -4,7 +4,7 @@
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSMisleadingBacktick",
   "title": "Misleading Backtick",
-  "description": "Ending a line with an escaped whitepsace character is misleading. A trailing backtick is usually used for line continuation. Users typically don't intend to end a line with escaped whitespace.",
+  "description": "PSScriptAnalyzer rule 'PSMisleadingBacktick'. See docs for details.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSProvideCommentHelp",
-  "title": "Basic Comment Help",
-  "description": "Checks that all cmdlets have a help comment. This rule only checks existence. It does not check the content of the comment.",
+  "title": "Provide Comment Help",
+  "description": "PSScriptAnalyzer rule 'PSProvideCommentHelp'. See docs for details.",
   "category": "BestPractices",
   "defaultSeverity": "info",
   "tags": [

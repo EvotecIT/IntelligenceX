@@ -42,6 +42,18 @@ function Compress-Whitespace([string]$text) {
     ($text -replace '[\r\n]+', ' ' -replace '\s+', ' ').Trim()
 }
 
+function Title-FromRuleName([string]$ruleName) {
+    if ([string]::IsNullOrWhiteSpace($ruleName)) { return '' }
+    $name = $ruleName.Trim()
+    if ($name.StartsWith('PS', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $name = $name.Substring(2)
+    }
+    # Insert spaces for PascalCase while keeping acronyms (UTF8, DSC, WMI) reasonably intact.
+    $name = $name -creplace '([a-z0-9])([A-Z])', '$1 $2'
+    $name = $name -creplace '([A-Z])([A-Z][a-z])', '$1 $2'
+    $name.Trim()
+}
+
 $rules = Get-ScriptAnalyzerRule | Sort-Object RuleName
 
 foreach ($rule in $rules) {
@@ -54,11 +66,10 @@ foreach ($rule in $rules) {
     }
     $slug = $slug.ToLowerInvariant()
 
-    $title = Compress-Whitespace([string]$rule.CommonName)
+    # Use a deterministic title/description to avoid shipping upstream typos into our catalog UI.
+    $title = Title-FromRuleName $ruleName
     if ([string]::IsNullOrWhiteSpace($title)) { $title = $ruleName }
-
-    $description = Compress-Whitespace([string]$rule.Description)
-    if ([string]::IsNullOrWhiteSpace($description)) { $description = "PSScriptAnalyzer rule: $ruleName." }
+    $description = "PSScriptAnalyzer rule '$ruleName'. See docs for details."
 
     $category = Get-Category $ruleName
     $defaultSeverity = Get-DefaultSeverity ([string]$rule.Severity)

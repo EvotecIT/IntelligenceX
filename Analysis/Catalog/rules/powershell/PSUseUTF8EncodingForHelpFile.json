@@ -4,7 +4,7 @@
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSUseUTF8EncodingForHelpFile",
   "title": "Use UTF8 Encoding For Help File",
-  "description": "PowerShell help file needs to use UTF8 Encoding.",
+  "description": "PSScriptAnalyzer rule 'PSUseUTF8EncodingForHelpFile'. See docs for details.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

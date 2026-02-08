@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSUseCompatibleCommands",
-  "title": "Use compatible commands",
-  "description": "Use commands compatible with the given PowerShell version and operating system",
+  "title": "Use Compatible Commands",
+  "description": "PSScriptAnalyzer rule 'PSUseCompatibleCommands'. See docs for details.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

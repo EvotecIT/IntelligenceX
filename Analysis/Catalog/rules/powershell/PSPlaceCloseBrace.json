@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSPlaceCloseBrace",
-  "title": "Place close braces",
-  "description": "Close brace should be on a new line by itself.",
+  "title": "Place Close Brace",
+  "description": "PSScriptAnalyzer rule 'PSPlaceCloseBrace'. See docs for details.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [
