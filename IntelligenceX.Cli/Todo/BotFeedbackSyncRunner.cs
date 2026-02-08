@@ -60,7 +60,7 @@ internal static class BotFeedbackSyncRunner {
             return 0;
         }
 
-        var updated = UpdateTodo(options.TodoPath, prs, out var changed);
+        var updated = UpdateTodo(options.TodoPath, prs, out var mergedPrs, out var changed);
         if (changed) {
             File.WriteAllText(options.TodoPath, updated, Utf8NoBom);
             Console.WriteLine($"Updated {options.TodoPath} with {prs.Count} PR block(s).");
@@ -72,7 +72,8 @@ internal static class BotFeedbackSyncRunner {
             return 0;
         }
 
-        var uncheckedTasks = prs
+        // Use merged state so manual checking in TODO.md suppresses issue creation.
+        var uncheckedTasks = mergedPrs
             .SelectMany(pr => pr.Tasks.Select(t => (Pr: pr, Task: t)))
             .Where(x => !x.Task.Checked)
             .ToList();
@@ -327,8 +328,9 @@ query($owner: String!, $name: String!, $n: Int!) {
         }
     }
 
-    private static string UpdateTodo(string todoPath, IReadOnlyList<PrTasks> prs, out bool changed) {
+    private static string UpdateTodo(string todoPath, IReadOnlyList<PrTasks> prs, out List<PrTasks> mergedPrs, out bool changed) {
         changed = false;
+        mergedPrs = new List<PrTasks>();
         if (!File.Exists(todoPath)) {
             throw new FileNotFoundException("TODO.md not found.", todoPath);
         }
@@ -346,7 +348,7 @@ query($owner: String!, $name: String!, $n: Int!) {
             sectionEnd = original.Length;
         }
         var section = original.Substring(sectionStart, sectionEnd - sectionStart);
-        var newSection = UpdateSection(section, prs, newline, out var sectionChanged);
+        var newSection = UpdateSection(section, prs, newline, out var sectionChanged, out mergedPrs);
         if (!sectionChanged) {
             return original;
         }
@@ -372,13 +374,22 @@ query($owner: String!, $name: String!, $n: Int!) {
 
     // Internal for tests.
     internal static string UpdateSection(string section, IReadOnlyList<PrTasks> prs, string newline, out bool changed) {
-        changed = false;
+        return UpdateSection(section, prs, newline, out changed, out _);
+    }
 
+    // Internal for tests.
+    internal static string UpdateSection(string section, IReadOnlyList<PrTasks> prs, string newline, out bool changed, out List<PrTasks> mergedPrs) {
+        changed = false;
+        mergedPrs = new List<PrTasks>(prs.Count);
+
+        // Always merge against the original section so manual checkbox state is stable and deterministic.
+        var source = section;
         var text = section;
         var inserts = new List<string>();
         foreach (var pr in prs) {
-            var existing = TryParseExistingPrBlock(text, pr.Number);
+            var existing = TryParseExistingPrBlock(source, pr.Number);
             var merged = MergeTasks(existing, pr);
+            mergedPrs.Add(merged);
             var block = RenderPrBlock(merged, newline);
             var pattern = new Regex(
                 @$"(?s)<details>\s*\n<summary>PR\s*#\s*{pr.Number}\b.*?\n</details>\s*\n",
