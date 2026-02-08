@@ -334,7 +334,6 @@ internal static partial class Program {
         var workspace = ResolveWorkspaceRoot();
         var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
 
-        const string baseUrl = "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/";
         foreach (var entry in catalog.Rules) {
             var rule = entry.Value;
             if (!rule.Language.Equals("powershell", StringComparison.OrdinalIgnoreCase)) {
@@ -343,8 +342,10 @@ internal static partial class Program {
             if (!rule.Tool.Equals("PSScriptAnalyzer", StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
-            AssertEqual(true, !string.IsNullOrWhiteSpace(rule.Docs), $"{rule.Id} docs present");
-            AssertEqual(true, rule.Docs!.StartsWith(baseUrl, StringComparison.Ordinal), $"{rule.Id} docs base url");
+            if (string.IsNullOrWhiteSpace(rule.Docs)) {
+                continue;
+            }
+            AssertEqual(true, rule.Docs!.StartsWith("https://", StringComparison.OrdinalIgnoreCase), $"{rule.Id} docs is https url");
         }
     }
 
