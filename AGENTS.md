@@ -37,10 +37,9 @@ When an agent is assigned a PR to improve or unblock, it must iterate until merg
 **Review Feedback Backlog**
 1. Aggregate bot review feedback using `gh api graphql`.
 2. Preferred: run `intelligencex todo sync-bot-feedback` (or `dotnet run ... -- todo sync-bot-feedback`) to sync explicit checklist items into `TODO.md` and optionally create issues.
-3. Legacy fallback: `python3 scripts/sync_bot_feedback_todo.py` (deprecated; planned removal).
-4. Track only explicit checklist items in `TODO.md`.
-5. Group backlog by PR in `TODO.md` and keep it collapsed.
-6. Avoid nested bullets in `TODO.md`.
+3. Track only explicit checklist items in `TODO.md`.
+4. Group backlog by PR in `TODO.md` and keep it collapsed.
+5. Avoid nested bullets in `TODO.md`.
 
 **Documentation Hygiene**
 - Keep TODO entries accurate: mark items done only when verified in code.
