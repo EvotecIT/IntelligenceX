@@ -73,6 +73,7 @@ function Test-IsTrustedAuthenticode([string]$path) {
         }
     } catch {
         # Ignore Authenticode lookup failures (not all platforms support it consistently).
+        Write-Verbose ("Authenticode signature check failed for '{0}': {1}" -f $path, $_.Exception.Message)
     }
     return $false
 }

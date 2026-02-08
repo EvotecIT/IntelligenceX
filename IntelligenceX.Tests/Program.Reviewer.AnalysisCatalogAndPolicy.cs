@@ -318,7 +318,7 @@ internal static partial class Program {
         // Load the catalog without overrides so we can compare base vs effective without needing per-override temp workspaces.
         var rulesRoot = Path.Combine(workspace, "Analysis", "Catalog", "rules");
         var packsRoot = Path.Combine(workspace, "Analysis", "Packs");
-        var emptyOverridesRoot = Path.Combine(Path.GetTempPath(), "ix-analysis-overrides-disabled", Guid.NewGuid().ToString("N"));
+        var emptyOverridesRoot = Path.Combine(Path.GetTempPath(), "ix-analysis-overrides-disabled-" + Guid.NewGuid().ToString("N"));
         try {
             Directory.CreateDirectory(emptyOverridesRoot);
             var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, emptyOverridesRoot, packsRoot);
@@ -510,7 +510,6 @@ internal static partial class Program {
                     } catch (Exception ex) {
                         // Best-effort cleanup: temp dirs may be locked by external processes on some CI agents.
                         System.Diagnostics.Debug.WriteLine($"Failed to delete temp overrides root '{emptyOverridesRoot}' (attempt {attempt}): {ex.Message}");
-                        System.Threading.Thread.Sleep(100 * attempt);
                     }
                 }
             }
