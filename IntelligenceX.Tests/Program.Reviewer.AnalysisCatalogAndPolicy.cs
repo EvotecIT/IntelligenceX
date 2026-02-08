@@ -494,6 +494,8 @@ internal static partial class Program {
                 AssertEqual(true, sawOverrideProperty, $"{id} override has at least one property besides id");
                 if (sawNonTagsOverrideProperty) {
                     AssertEqual(true, changesBase, $"{id} override must change the effective rule vs base (otherwise delete the override)");
+                } else {
+                    AssertEqual(true, changesBase, $"{id} tags-only override must change effective tags vs base (otherwise delete the override)");
                 }
             }
         } finally {
@@ -536,7 +538,11 @@ internal static partial class Program {
             const string learnPrefix = "/powershell/utility-modules/psscriptanalyzer/rules/";
             AssertEqual(true, path.StartsWith(learnPrefix, StringComparison.OrdinalIgnoreCase), $"{rule.Id} docs uses PSScriptAnalyzer Learn rules path");
 
-            var expectedSlug = rule.ToolRuleId;
+            var rulesDir = Path.Combine(workspace, "Analysis", "Catalog", "rules", "powershell");
+            var rulePath = Path.Combine(rulesDir, rule.Id + ".json");
+            AssertEqual(true, File.Exists(rulePath), $"{rule.Id} rule file exists");
+
+            var expectedSlug = Path.GetFileNameWithoutExtension(rulePath);
             if (expectedSlug.StartsWith("PS", StringComparison.OrdinalIgnoreCase)) {
                 expectedSlug = expectedSlug.Substring(2);
             }
