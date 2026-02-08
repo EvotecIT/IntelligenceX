@@ -28,7 +28,7 @@ internal static partial class Program {
         var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
         var method = GetStringFallbackMethod(transportType);
 
-        var args = new object?[] { "Unknown parameter: 'foo'.", null };
+        var args = new object?[] { "Unknown parameter: 'foo'.", CreateOutSlot(method) };
         var ok = (bool)method!.Invoke(null, args)!;
         AssertEqual(false, ok, "ok");
         AssertEqual("Parameters", args[1]?.ToString() ?? string.Empty, "fallbackKind");
@@ -80,7 +80,7 @@ internal static partial class Program {
         var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
         var method = GetStringFallbackMethod(transportType);
 
-        var args = new object?[] { message, null };
+        var args = new object?[] { message, CreateOutSlot(method) };
         var ok = (bool)method!.Invoke(null, args)!;
         AssertEqual(true, ok, "ok");
 
@@ -89,6 +89,19 @@ internal static partial class Program {
             throw new InvalidOperationException("Expected fallback kind to be non-empty.");
         }
         return kind;
+    }
+
+    private static object CreateOutSlot(MethodInfo method) {
+        var ps = method.GetParameters();
+        if (ps.Length != 2) {
+            throw new InvalidOperationException("Expected TryGetToolSchemaKeyFallback to have exactly two parameters.");
+        }
+        var byRef = ps[1].ParameterType;
+        var type = byRef.IsByRef ? byRef.GetElementType() : byRef;
+        if (type is null) {
+            throw new InvalidOperationException("Failed to determine out parameter type for TryGetToolSchemaKeyFallback.");
+        }
+        return Activator.CreateInstance(type)!;
     }
 
     private static MethodInfo GetStringFallbackMethod(Type transportType) {
