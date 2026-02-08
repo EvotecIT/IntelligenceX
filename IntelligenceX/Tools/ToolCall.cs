@@ -1,7 +1,7 @@
 using System;
 using IntelligenceX.Json;
 
-namespace IntelligenceX.OpenAI.Tools;
+namespace IntelligenceX.Tools;
 
 /// <summary>
 /// Represents a tool call requested by the model.

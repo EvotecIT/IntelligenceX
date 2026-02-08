@@ -1,7 +1,6 @@
 using System;
-using IntelligenceX.Json;
 
-namespace IntelligenceX.OpenAI.Tools;
+namespace IntelligenceX.Tools;
 
 /// <summary>
 /// Represents the output for a tool call.
@@ -26,11 +25,4 @@ public sealed class ToolOutput {
     /// Gets the output text.
     /// </summary>
     public string Output { get; }
-
-    internal JsonObject ToInputItem() {
-        return new JsonObject()
-            .Add("type", "custom_tool_call_output")
-            .Add("call_id", CallId)
-            .Add("output", Output);
-    }
 }

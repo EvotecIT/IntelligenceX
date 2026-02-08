@@ -24,8 +24,20 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
+    env:
+      # Ensure gh never prompts for auth (which can hang CI).
+      GH_TOKEN: ${{ github.token }}
 
     steps:
+      - name: Detect workflow file changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            claude_workflows:
+              - '.github/workflows/claude-code-review.yml'
+              - '.github/workflows/claude.yml'
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -40,6 +52,7 @@ jobs:
 
       - name: Run Claude Code Review
         id: claude-review
+        if: steps.changes.outputs.claude_workflows != 'true'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -54,11 +67,27 @@ jobs:
             - Security concerns
             - Test coverage
 
-            Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
+            Use the repository's CLAUDE.md for guidance on style and conventions.
 
-            Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
+            Output format (use these headings exactly):
+            - Summary 📝
+            - Todo List ✅ (merge blockers; markdown checkboxes; if none, write "None.")
+            - Critical Issues ⚠️ (merge blockers; markdown checkboxes; if none, write "None.")
+            - Other Issues 🧯 (non-blocking; bullet list, no checkboxes)
+            - Tests / Coverage 🧪 (non-blocking)
+            - Next Steps 🚀 (non-blocking)
+
+            Rules:
+            - Only use markdown task list items (`- [ ] ...`, `- [x] ...`) in Todo List and Critical Issues.
+            - Do not add style-only nits as merge blockers.
+            - Keep items actionable and specific.
+
+            Do not post comments yourself (do not call `gh pr comment`). Output your review in Markdown; the workflow will post/update it as a single sticky PR comment.
           use_sticky_comment: true
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
-          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
+          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
 
+      - name: Skip Claude Code Review (workflow modified in PR)
+        if: steps.changes.outputs.claude_workflows == 'true'
+        run: echo "Skipping Claude Code Review because the Claude workflow file changed in this PR (GitHub app token validation would fail)."

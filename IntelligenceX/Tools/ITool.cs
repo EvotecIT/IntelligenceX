@@ -2,7 +2,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
 
-namespace IntelligenceX.OpenAI.Tools;
+namespace IntelligenceX.Tools;
 
 /// <summary>
 /// Represents a tool that can be called by the model.

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using IntelligenceX.OpenAI.Chat;
-using IntelligenceX.OpenAI.Tools;
+using IntelligenceX.OpenAI.ToolCalling;
+using IntelligenceX.Tools;
 
 namespace IntelligenceX.OpenAI;
 

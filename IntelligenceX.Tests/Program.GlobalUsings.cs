@@ -21,11 +21,12 @@ global using IntelligenceX.OpenAI.AppServer;
 global using IntelligenceX.OpenAI.AppServer.Models;
 global using IntelligenceX.OpenAI.Chat;
 global using IntelligenceX.OpenAI.Native;
+global using IntelligenceX.OpenAI.ToolCalling;
 global using IntelligenceX.OpenAI.Transport;
-global using IntelligenceX.OpenAI.Tools;
 global using IntelligenceX.OpenAI.Usage;
 global using IntelligenceX.Rpc;
 global using IntelligenceX.Telemetry;
+global using IntelligenceX.Tools;
 global using IntelligenceX.Utils;
 #if INTELLIGENCEX_REVIEWER
 global using IntelligenceX.Reviewer;
