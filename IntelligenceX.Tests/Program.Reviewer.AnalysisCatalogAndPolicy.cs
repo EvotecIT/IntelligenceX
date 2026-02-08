@@ -324,7 +324,10 @@ internal static partial class Program {
         foreach (var overridePath in Directory.EnumerateFiles(overridesDir, "*.json")) {
             using var overrideDoc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(overridePath));
             var overrideRoot = overrideDoc.RootElement;
-            var id = overrideRoot.GetProperty("id").GetString();
+            if (!overrideRoot.TryGetProperty("id", out var idElement) || idElement.ValueKind != System.Text.Json.JsonValueKind.String) {
+                throw new InvalidOperationException($"Override '{Path.GetFileName(overridePath)}' is missing string 'id' property.");
+            }
+            var id = idElement.GetString();
             AssertEqual(false, string.IsNullOrWhiteSpace(id), $"{Path.GetFileName(overridePath)} override has id");
             if (string.IsNullOrWhiteSpace(id)) {
                 throw new Exception($"{Path.GetFileName(overridePath)} override has no id");
@@ -429,7 +432,7 @@ internal static partial class Program {
 
                         var expectedMerged = MergeTags(baseRule.Tags, overrideTags);
                         var expectedSet = new HashSet<string>(expectedMerged, StringComparer.OrdinalIgnoreCase);
-                        var actualSet = new HashSet<string>(effective.Tags, StringComparer.OrdinalIgnoreCase);
+                        var actualSet = new HashSet<string>(effective.Tags ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
                         AssertEqual(expectedSet.Count, actualSet.Count, $"{id} merged tag count matches");
                         foreach (var tag in expectedSet) {
                             AssertEqual(true, actualSet.Contains(tag), $"{id} merged tags contains '{tag}'");
@@ -459,10 +462,10 @@ internal static partial class Program {
 
         foreach (var entry in catalog.Rules) {
             var rule = entry.Value;
-            if (!rule.Language.Equals("powershell", StringComparison.OrdinalIgnoreCase)) {
+            if (!string.Equals(rule.Language, "powershell", StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
-            if (!rule.Tool.Equals("PSScriptAnalyzer", StringComparison.OrdinalIgnoreCase)) {
+            if (!string.Equals(rule.Tool, "PSScriptAnalyzer", StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
             AssertEqual(false, string.IsNullOrWhiteSpace(rule.Docs), $"{rule.Id} docs is populated");
