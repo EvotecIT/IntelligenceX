@@ -435,8 +435,12 @@ internal static partial class Program {
                 AssertEqual(true, sawOverrideProperty, $"{id} override has at least one property besides id");
             }
         } finally {
-            if (Directory.Exists(tempOverridesRoot)) {
-                Directory.Delete(tempOverridesRoot, true);
+            try {
+                if (Directory.Exists(tempOverridesRoot)) {
+                    Directory.Delete(tempOverridesRoot, true);
+                }
+            } catch {
+                // Best-effort cleanup: do not fail tests if the directory can't be deleted (e.g., AV/FS locks).
             }
         }
     }
