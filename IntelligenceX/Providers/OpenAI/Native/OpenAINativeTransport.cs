@@ -356,8 +356,8 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
                 .ConfigureAwait(false);
             return await ProcessResponseAsync(response, turnId, model, state, inputItems, trackMessages, cancellationToken)
                 .ConfigureAwait(false);
-        } catch (InvalidOperationException ex) when (options.Tools is not null && options.Tools.Count > 0 &&
-                                                    TryGetToolSchemaKeyFallback(ex, out retryKey)) {
+        } catch (Exception ex) when (options.Tools is not null && options.Tools.Count > 0 &&
+                                     TryGetToolSchemaKeyFallback(ex, out retryKey)) {
             // Server rejected our tool schema. Retry with the alternate custom-tool schema key first.
             cancellationToken.ThrowIfCancellationRequested();
             var retryFormat = retryKey == ToolSchemaKey.InputSchema ? ToolWireFormat.CustomInputSchema : ToolWireFormat.CustomParameters;
@@ -368,8 +368,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
                     .ConfigureAwait(false);
                 return await ProcessResponseAsync(retry, turnId, model, state, inputItems, trackMessages, cancellationToken)
                     .ConfigureAwait(false);
-            } catch (InvalidOperationException retryEx) when (options.Tools is not null && options.Tools.Count > 0 &&
-                                                             TryGetToolSchemaKeyFallback(retryEx, out var retryKey2)) {
+            } catch (Exception retryEx) when (TryGetToolSchemaKeyFallback(retryEx, out var retryKey2)) {
                 // Some ChatGPT native variants don't accept custom tool schema fields at all. Fall back to function-style tools.
                 cancellationToken.ThrowIfCancellationRequested();
                 var initialFunctionFormat = retryKey2 == ToolSchemaKey.InputSchema
@@ -382,9 +381,8 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
                         .ConfigureAwait(false);
                     return await ProcessResponseAsync(retryFunction, turnId, model, state, inputItems, trackMessages, cancellationToken)
                         .ConfigureAwait(false);
-                } catch (InvalidOperationException functionEx) when (options.Tools is not null && options.Tools.Count > 0 &&
-                                                                    TryGetToolSchemaKeyFallback(functionEx, out var functionKey)) {
-                    var functionRetryFormat = functionKey == ToolSchemaKey.InputSchema
+                } catch (Exception functionEx) when (TryGetToolSchemaKeyFallback(functionEx, out var functionRetryKey)) {
+                    var functionRetryFormat = functionRetryKey == ToolSchemaKey.InputSchema
                         ? ToolWireFormat.FunctionFlatInputSchema
                         : ToolWireFormat.FunctionFlatParameters;
                     if (functionRetryFormat == initialFunctionFormat) {

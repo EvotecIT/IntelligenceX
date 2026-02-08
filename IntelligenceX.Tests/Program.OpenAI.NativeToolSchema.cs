@@ -111,7 +111,11 @@ internal static partial class Program {
                 continue;
             }
             var ps = m.GetParameters();
-            if (ps.Length == 2 && ps[0].ParameterType == typeof(string) && ps[1].IsOut) {
+            if (ps.Length == 2 &&
+                ps[0].ParameterType == typeof(string) &&
+                ps[1].IsOut &&
+                ps[1].ParameterType.IsByRef &&
+                string.Equals(ps[1].ParameterType.GetElementType()?.Name, "ToolSchemaKey", StringComparison.Ordinal)) {
                 return m;
             }
         }

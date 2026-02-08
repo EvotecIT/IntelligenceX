@@ -3,7 +3,33 @@ using System;
 namespace IntelligenceX.OpenAI.Native;
 
 internal sealed partial class OpenAINativeTransport {
-    private static bool TryGetToolSchemaKeyFallback(InvalidOperationException ex, out ToolSchemaKey fallbackKey) {
+    private static bool TryGetToolSchemaKeyFallback(Exception? ex, out ToolSchemaKey fallbackKey) {
+        fallbackKey = ToolSchemaKey.Parameters;
+        if (ex is null) {
+            return false;
+        }
+
+        // The transport typically throws InvalidOperationException for server validation errors,
+        // but callers can wrap it. Unwrap defensively so tool fallback still triggers.
+        for (var current = ex; current is not null; current = current.InnerException) {
+            if (current is InvalidOperationException ioe &&
+                TryGetToolSchemaKeyFallback(ioe, out fallbackKey)) {
+                return true;
+            }
+
+            if (current is AggregateException agg) {
+                foreach (var inner in agg.InnerExceptions) {
+                    if (TryGetToolSchemaKeyFallback(inner, out fallbackKey)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryGetToolSchemaKeyFallback(InvalidOperationException? ex, out ToolSchemaKey fallbackKey) {
         fallbackKey = ToolSchemaKey.Parameters;
         if (ex is null) {
             return false;
