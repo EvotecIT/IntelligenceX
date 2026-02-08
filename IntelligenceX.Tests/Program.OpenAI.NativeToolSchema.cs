@@ -47,7 +47,14 @@ internal static partial class Program {
         AssertNotNull(method, "TryGetToolSchemaKeyFallback(InvalidOperationException, out ToolSchemaKey)");
 
         var errorExType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeErrorResponseException", throwOnError: true)!;
-        var errorEx = (Exception)Activator.CreateInstance(errorExType, new object?[] {
+        var ctor = errorExType.GetConstructor(
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            binder: null,
+            types: new[] { typeof(string), typeof(string), typeof(string), typeof(System.Net.HttpStatusCode) },
+            modifiers: null);
+        AssertNotNull(ctor, "OpenAINativeErrorResponseException ctor");
+
+        var errorEx = (Exception)ctor!.Invoke(new object?[] {
             "Server rejected tool schema.",
             "unknown_parameter",
             "tools[0].parameters",
