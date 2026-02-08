@@ -320,6 +320,7 @@ internal static partial class Program {
         var packsRoot = Path.Combine(workspace, "Analysis", "Packs");
         var tempOverridesRoot = Path.Combine(Path.GetTempPath(), "ix-analysis-overrides-disabled-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempOverridesRoot);
+        Directory.CreateDirectory(Path.Combine(tempOverridesRoot, "powershell"));
         try {
             var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, tempOverridesRoot, packsRoot);
 
@@ -359,31 +360,49 @@ internal static partial class Program {
 
                     switch (prop.Name) {
                         case "title": {
+                            if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
+                                throw new Exception($"{id} override title must be a string");
+                            }
                             var expected = prop.Value.GetString() ?? throw new Exception($"{id} override title must be a string");
                             AssertEqual(expected, effective.Title, $"{id} override title applied");
                             break;
                         }
                         case "description": {
+                            if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
+                                throw new Exception($"{id} override description must be a string");
+                            }
                             var expected = prop.Value.GetString() ?? throw new Exception($"{id} override description must be a string");
                             AssertEqual(expected, effective.Description, $"{id} override description applied");
                             break;
                         }
                         case "type": {
+                            if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
+                                throw new Exception($"{id} override type must be a string");
+                            }
                             var expected = prop.Value.GetString() ?? throw new Exception($"{id} override type must be a string");
                             AssertEqual(expected, effective.Type, $"{id} override type applied");
                             break;
                         }
                         case "category": {
+                            if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
+                                throw new Exception($"{id} override category must be a string");
+                            }
                             var expected = prop.Value.GetString() ?? throw new Exception($"{id} override category must be a string");
                             AssertEqual(expected, effective.Category, $"{id} override category applied");
                             break;
                         }
                         case "defaultSeverity": {
+                            if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
+                                throw new Exception($"{id} override defaultSeverity must be a string");
+                            }
                             var expected = prop.Value.GetString() ?? throw new Exception($"{id} override defaultSeverity must be a string");
                             AssertEqual(expected, effective.DefaultSeverity, $"{id} override defaultSeverity applied");
                             break;
                         }
                         case "docs": {
+                            if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
+                                throw new Exception($"{id} override docs must be a string");
+                            }
                             var expected = prop.Value.GetString() ?? throw new Exception($"{id} override docs must be a string");
                             AssertEqual(expected, effective.Docs, $"{id} override docs applied");
                             break;
