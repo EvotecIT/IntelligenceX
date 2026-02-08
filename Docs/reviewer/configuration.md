@@ -267,6 +267,8 @@ Enable analysis summaries and inline findings sourced from SARIF or Intelligence
 - `types`: optional filter of rule types (when empty, all types are considered).
 - `failOnUnavailable`: fail when no result files match configured inputs or when result parsing fails.
 - `failOnNoEnabledRules`: fail when `analysis.packs` selects zero rules.
+- `includeOutsidePackRules`: when `true`, findings from non-enabled rules can still fail the gate.
+- `failOnHotspotsToReview`: when `true`, security hotspots in `to-review` state can fail the gate (after `minSeverity`/`types` filtering).
 
 ## Summary stability (avoid noisy reruns)
 

@@ -61,7 +61,7 @@ internal static class AnalysisPolicyBuilder {
 
         var lines = new List<string>(context.BaseLines);
         var resolvedReason = SanitizeUnavailableReason(reason);
-        lines.Add("- Status: unavailable ℹ️");
+        lines.Add("- Status: unavailable");
         lines.Add($"- Rule outcomes: unavailable ({resolvedReason})");
         return RenderPolicy(lines, context.DisabledRules, context.Overrides, context.RulePreviewItems);
     }
@@ -269,7 +269,7 @@ internal static class AnalysisPolicyBuilder {
             : "- Packs: none");
         lines.Add("- Rules: unavailable (analysis catalog could not be loaded)");
         lines.Add(BuildRulePreviewLimitLine(ResolveRulePreviewItems(settings)));
-        lines.Add("- Status: unavailable ℹ️");
+        lines.Add("- Status: unavailable");
         lines.Add($"- Rule outcomes: unavailable ({SanitizeUnavailableReason(reason)})");
         return string.Join("\n", lines).TrimEnd();
     }
@@ -362,7 +362,7 @@ internal static class AnalysisPolicyBuilder {
         IReadOnlyList<AnalysisFinding>? findings, AnalysisLoadReport loadReport, AnalysisCatalog? catalog,
         int rulePreviewItems) {
         if (loadReport.ResolvedInputFiles == 0) {
-            lines.Add("- Status: unavailable ℹ️");
+            lines.Add("- Status: unavailable");
             lines.Add("- Rule outcomes: unavailable (no analysis result files matched configured inputs)");
             return;
         }
@@ -384,7 +384,7 @@ internal static class AnalysisPolicyBuilder {
             .ToDictionary(group => group.Key, group => group.Count(), OrdinalIgnoreCaseComparer);
 
         if (enabledSet.Count == 0 && findingRuleCounts.Count == 0) {
-            lines.Add("- Status: unavailable ℹ️");
+            lines.Add("- Status: unavailable");
             lines.Add("- Rule outcomes: unavailable (no enabled rules configured)");
             return;
         }
@@ -474,10 +474,10 @@ internal static class AnalysisPolicyBuilder {
 
     private static string FormatStatus(string status) {
         return status switch {
-            "fail" => "fail ❌",
-            "partial" => "partial ⚠️",
-            "pass" => "pass ✅",
-            "unavailable" => "unavailable ℹ️",
+            "fail" => "fail",
+            "partial" => "partial",
+            "pass" => "pass",
+            "unavailable" => "unavailable",
             _ => status
         };
     }

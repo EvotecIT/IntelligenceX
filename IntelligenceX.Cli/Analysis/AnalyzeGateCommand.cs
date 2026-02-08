@@ -142,11 +142,19 @@ internal static class AnalyzeGateCommand {
             violations.Add(finding);
         }
 
-        var hotspotFailures = EvaluateHotspotsToReview(analysisSettings, workspace, catalog, allFindings);
+        var hotspotFailures = EvaluateHotspotsToReview(
+            analysisSettings,
+            workspace,
+            catalog,
+            allFindings,
+            enabledRuleIds,
+            minRank,
+            allowedTypes,
+            includeAllTypes);
         var hasHotspotFailures = hotspotFailures.Count > 0;
 
         if (violations.Count == 0 && !hasHotspotFailures) {
-            Console.WriteLine("Static analysis gate: pass ✅");
+            Console.WriteLine("Static analysis gate: pass");
             Console.WriteLine($"- Findings considered: {allFindings.Count}");
             Console.WriteLine($"- Violations: 0");
             if (outsidePack > 0) {
@@ -155,7 +163,7 @@ internal static class AnalyzeGateCommand {
             return Task.FromResult(ExitSuccess);
         }
 
-        Console.WriteLine("Static analysis gate: fail ❌");
+        Console.WriteLine("Static analysis gate: fail");
         Console.WriteLine($"- Findings considered: {allFindings.Count}");
         Console.WriteLine($"- Violations: {violations.Count}" + (hasHotspotFailures ? $", hotspots to-review: {hotspotFailures.Count}" : string.Empty));
         if (outsidePack > 0) {
@@ -267,8 +275,15 @@ internal static class AnalyzeGateCommand {
         return list;
     }
 
-    private static List<string> EvaluateHotspotsToReview(AnalysisSettings settings, string workspace, AnalysisCatalog catalog,
-        IReadOnlyList<AnalysisFinding> findings) {
+    private static List<string> EvaluateHotspotsToReview(
+        AnalysisSettings settings,
+        string workspace,
+        AnalysisCatalog catalog,
+        IReadOnlyList<AnalysisFinding> findings,
+        HashSet<string> enabledRuleIds,
+        int minRank,
+        HashSet<string> allowedTypes,
+        bool includeAllTypes) {
         var list = new List<string>();
         if (settings?.Gate?.FailOnHotspotsToReview != true) {
             return list;
@@ -277,11 +292,35 @@ internal static class AnalyzeGateCommand {
             return list;
         }
 
-        var hotspotFindings = findings
-            .Where(f => !string.IsNullOrWhiteSpace(f.RuleId) &&
-                        (ResolveRuleType(f.RuleId!.Trim(), catalog, fallback: string.Empty) == "security-hotspot" ||
-                         f.RuleId!.Trim().StartsWith("IXHOT", StringComparison.OrdinalIgnoreCase)))
-            .ToList();
+        var hotspotFindings = new List<AnalysisFinding>();
+        foreach (var finding in findings) {
+            if (AnalysisSeverity.Rank(finding.Severity) < minRank) {
+                continue;
+            }
+            if (string.IsNullOrWhiteSpace(finding.RuleId)) {
+                continue;
+            }
+
+            var ruleId = finding.RuleId!.Trim();
+            var resolvedType = ResolveRuleType(
+                ruleId,
+                catalog,
+                fallback: ruleId.StartsWith("IXHOT", StringComparison.OrdinalIgnoreCase) ? "security-hotspot" : string.Empty);
+            var isHotspot = resolvedType == "security-hotspot" || ruleId.StartsWith("IXHOT", StringComparison.OrdinalIgnoreCase);
+            if (!isHotspot) {
+                continue;
+            }
+            if (!includeAllTypes && !allowedTypes.Contains(resolvedType)) {
+                continue;
+            }
+
+            var isEnabled = enabledRuleIds is not null && enabledRuleIds.Contains(ruleId);
+            if (!isEnabled && settings.Gate.IncludeOutsidePackRules != true) {
+                continue;
+            }
+
+            hotspotFindings.Add(finding);
+        }
         if (hotspotFindings.Count == 0) {
             return list;
         }

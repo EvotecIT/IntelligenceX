@@ -78,7 +78,7 @@ internal static partial class Program {
             var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
                 new AnalysisLoadResult(findings, report));
 
-            AssertPolicyLineEquals(policy, "Status", "partial ⚠️", "analysis policy enabled-outside-only status");
+            AssertPolicyLineEquals(policy, "Status", "partial", "analysis policy enabled-outside-only status");
             AssertPolicyLineEquals(policy, "Rule outcomes", "0 with findings, 2 clean, 1 outside enabled packs",
                 "analysis policy enabled-outside-only outcomes");
             AssertPolicyLineEquals(policy, "Failing rules", "none", "analysis policy enabled-outside-only failing rules");
@@ -111,7 +111,7 @@ internal static partial class Program {
             var policy = IntelligenceX.Reviewer.AnalysisPolicyBuilder.BuildPolicy(settings,
                 new AnalysisLoadResult(null!, report));
 
-            AssertPolicyLineEquals(policy, "Status", "pass ✅", "analysis policy null-findings status");
+            AssertPolicyLineEquals(policy, "Status", "pass", "analysis policy null-findings status");
             AssertPolicyLineEquals(policy, "Failing rules", "none", "analysis policy null-findings failing rules");
             AssertPolicyLineEquals(policy, "Clean rules", "IXTEST001 (Rule one), IXTEST002 (Rule two)",
                 "analysis policy null-findings clean rules");
