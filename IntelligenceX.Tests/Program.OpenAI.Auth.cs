@@ -1,5 +1,4 @@
 using System;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI;
@@ -61,18 +60,6 @@ internal static partial class Program {
         AssertThrows<OperationCanceledException>(() => {
             client.EnsureChatGptLoginAsync(cancellationToken: cts.Token).GetAwaiter().GetResult();
         }, "EnsureChatGptLoginAsync cancellation");
-    }
-
-    private static IntelligenceXClient CreateTestClient(IOpenAITransport transport) {
-        var ctor = typeof(IntelligenceXClient).GetConstructor(
-            BindingFlags.NonPublic | BindingFlags.Instance,
-            binder: null,
-            types: new[] { typeof(IOpenAITransport), typeof(string), typeof(string), typeof(string), typeof(SandboxPolicy) },
-            modifiers: null);
-        if (ctor is null) {
-            throw new InvalidOperationException("IntelligenceXClient constructor not found.");
-        }
-        return (IntelligenceXClient)ctor.Invoke(new object?[] { transport, "gpt-5.3-codex", null, null, null });
     }
 
     private enum FakeAccountMode {
@@ -138,4 +125,3 @@ internal static partial class Program {
         public void Dispose() { }
     }
 }
-
