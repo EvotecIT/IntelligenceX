@@ -307,6 +307,45 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalysisCatalogPowerShellOverridesApply() {
+        // This test ensures our checked-in PowerShell overrides actually change the effective catalog,
+        // so we can keep upstream-generated rule JSON pristine and still ship clean user-facing metadata.
+        var workspace = ResolveBuiltInWorkspaceRoot();
+        var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
+
+        AssertEqual(true, catalog.Rules.TryGetValue("PSMisleadingBacktick", out var misleading), "PSMisleadingBacktick exists");
+        AssertEqual(false, misleading!.Description.Contains("whitepsace", StringComparison.OrdinalIgnoreCase), "PSMisleadingBacktick typo fixed via override");
+        AssertEqual(true, misleading.Description.Contains("whitespace", StringComparison.OrdinalIgnoreCase), "PSMisleadingBacktick contains corrected text");
+
+        AssertEqual(true, catalog.Rules.TryGetValue("PSUseConsistentIndentation", out var indentation), "PSUseConsistentIndentation exists");
+        AssertEqual(false, indentation!.Description.Contains("indenation", StringComparison.OrdinalIgnoreCase), "PSUseConsistentIndentation typo fixed via override");
+        AssertEqual(true, indentation.Description.Contains("indentation", StringComparison.OrdinalIgnoreCase), "PSUseConsistentIndentation contains corrected text");
+
+        AssertEqual(true, catalog.Rules.TryGetValue("PSAvoidAssignmentToAutomaticVariable", out var automatic), "PSAvoidAssignmentToAutomaticVariable exists");
+        AssertEqual(false, automatic!.Description.Contains("This automatic variables is", StringComparison.OrdinalIgnoreCase), "PSAvoidAssignmentToAutomaticVariable grammar fixed via override");
+        AssertEqual(true, automatic.Description.Contains("read-only", StringComparison.OrdinalIgnoreCase), "PSAvoidAssignmentToAutomaticVariable uses read-only wording");
+
+        AssertEqual(true, catalog.Rules.TryGetValue("PSAlignAssignmentStatement", out var align), "PSAlignAssignmentStatement exists");
+        AssertEqual(false, align!.Description.Contains("operator are", StringComparison.OrdinalIgnoreCase), "PSAlignAssignmentStatement grammar fixed via override");
+        AssertEqual(true, align.Title.Contains("Statements", StringComparison.OrdinalIgnoreCase), "PSAlignAssignmentStatement title override applied");
+    }
+
+    private static string ResolveBuiltInWorkspaceRoot() {
+        var current = Environment.CurrentDirectory;
+        for (var i = 0; i < 12; i++) {
+            var marker = Path.Combine(current, "Analysis", "Catalog", "rules", "powershell", "PSMisleadingBacktick.json");
+            if (File.Exists(marker)) {
+                return current;
+            }
+            var parent = Directory.GetParent(current);
+            if (parent is null) {
+                break;
+            }
+            current = parent.FullName;
+        }
+        return Environment.CurrentDirectory;
+    }
+
     private static void TestAnalysisCatalogOverrideInvalidTypeFallsBack() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-overrides-invalid-type-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
