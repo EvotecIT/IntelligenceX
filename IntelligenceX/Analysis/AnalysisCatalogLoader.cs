@@ -115,13 +115,18 @@ public static class AnalysisCatalogLoader {
 
     private static string? InferRuleType(string? explicitType, string? category) {
         if (!string.IsNullOrWhiteSpace(explicitType)) {
-            return explicitType!.Trim();
+            var normalizedExplicit = NormalizeRuleType(explicitType);
+            if (!string.IsNullOrWhiteSpace(normalizedExplicit)) {
+                return normalizedExplicit;
+            }
+            // Unsupported explicit types are treated as absent so downstream logic stays consistent.
+            return null;
         }
         if (string.IsNullOrWhiteSpace(category)) {
             return null;
         }
         // string.IsNullOrWhiteSpace is not annotated for netstandard2.0 flow analysis; force non-null.
-        var normalized = category!.Trim();
+        var normalized = NormalizeCategoryKey(category);
         if (normalized.Equals("Security", StringComparison.OrdinalIgnoreCase)) {
             return "vulnerability";
         }
@@ -139,6 +144,47 @@ public static class AnalysisCatalogLoader {
             normalized.Equals("Documentation", StringComparison.OrdinalIgnoreCase) ||
             normalized.Equals("BestPractices", StringComparison.OrdinalIgnoreCase)) {
             return "code-smell";
+        }
+        return null;
+    }
+
+    private static string NormalizeCategoryKey(string category) {
+        if (string.IsNullOrWhiteSpace(category)) {
+            return string.Empty;
+        }
+        // Some analyzers use "Best Practices" (space) or similar; normalize to a stable key.
+        var trimmed = category.Trim();
+        var buffer = new char[trimmed.Length];
+        var count = 0;
+        foreach (var ch in trimmed) {
+            if (char.IsWhiteSpace(ch) || ch == '-' || ch == '_' || ch == '.') {
+                continue;
+            }
+            buffer[count++] = ch;
+        }
+        return count == 0 ? string.Empty : new string(buffer, 0, count);
+    }
+
+    private static string? NormalizeRuleType(string? type) {
+        if (string.IsNullOrWhiteSpace(type)) {
+            return null;
+        }
+        var trimmed = type.Trim();
+        // Canonical supported types.
+        if (trimmed.Equals("bug", StringComparison.OrdinalIgnoreCase)) {
+            return "bug";
+        }
+        if (trimmed.Equals("vulnerability", StringComparison.OrdinalIgnoreCase)) {
+            return "vulnerability";
+        }
+        if (trimmed.Equals("code-smell", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("codesmell", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("code smell", StringComparison.OrdinalIgnoreCase)) {
+            return "code-smell";
+        }
+        if (trimmed.Equals("security-hotspot", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("security hotspot", StringComparison.OrdinalIgnoreCase)) {
+            return "security-hotspot";
         }
         return null;
     }
@@ -184,6 +230,20 @@ public static class AnalysisCatalogLoader {
 
     private static AnalysisRule ApplyOverride(AnalysisRule existing, AnalysisRuleOverride ruleOverride) {
         var mergedTags = MergeTags(existing.Tags, ruleOverride.Tags);
+        var resolvedCategory = string.IsNullOrWhiteSpace(ruleOverride.Category) ? existing.Category : ruleOverride.Category!;
+        string? resolvedType;
+        if (!string.IsNullOrWhiteSpace(ruleOverride.Type)) {
+            resolvedType = InferRuleType(ruleOverride.Type, resolvedCategory);
+            if (string.IsNullOrWhiteSpace(resolvedType)) {
+                resolvedType = InferRuleType(null, resolvedCategory) ?? InferRuleType(existing.Type, existing.Category);
+            }
+        } else if (!string.IsNullOrWhiteSpace(ruleOverride.Category)) {
+            // Category override without explicit type should re-infer.
+            resolvedType = InferRuleType(null, resolvedCategory);
+        } else {
+            // Normalize/validate existing type, falling back to category inference.
+            resolvedType = InferRuleType(existing.Type, resolvedCategory);
+        }
         return new AnalysisRule(
             existing.Id,
             existing.Language,
@@ -191,12 +251,12 @@ public static class AnalysisCatalogLoader {
             existing.ToolRuleId,
             string.IsNullOrWhiteSpace(ruleOverride.Title) ? existing.Title : ruleOverride.Title!,
             string.IsNullOrWhiteSpace(ruleOverride.Description) ? existing.Description : ruleOverride.Description!,
-            string.IsNullOrWhiteSpace(ruleOverride.Category) ? existing.Category : ruleOverride.Category!,
+            resolvedCategory,
             string.IsNullOrWhiteSpace(ruleOverride.DefaultSeverity) ? existing.DefaultSeverity : ruleOverride.DefaultSeverity!,
             mergedTags,
             string.IsNullOrWhiteSpace(ruleOverride.Docs) ? existing.Docs : ruleOverride.Docs,
             existing.SourcePath,
-            string.IsNullOrWhiteSpace(ruleOverride.Type) ? existing.Type : ruleOverride.Type);
+            resolvedType);
     }
 
     private static IReadOnlyList<string> MergeTags(IReadOnlyList<string> existing, IReadOnlyList<string>? overrides) {

@@ -39,8 +39,10 @@ internal static class AnalysisHotspots {
         }
         var itemsHidden = maxItems == 0;
 
-        var statePath = ResolveStatePath(workspace, hotspotSettings.StatePath);
-        var stateFile = HotspotStateStore.TryLoad(statePath);
+        var statePath = ResolveStatePath(workspace, hotspotSettings.StatePath, out var statePathAllowed);
+        var stateFile = statePathAllowed
+            ? HotspotStateStore.TryLoad(statePath)
+            : new HotspotStateStore.HotspotStateFile(Array.Empty<HotspotStateEntry>(), Loaded: false);
         var state = HotspotStateStore.ToMap(stateFile.Items);
 
         var rendered = new List<(AnalysisFinding Finding, string Key, string Status, string? Note)>();
@@ -76,9 +78,11 @@ internal static class AnalysisHotspots {
 
         if (hotspotSettings.ShowStateSummary) {
             var relStatePath = DescribeStatePathForOutput(workspace, hotspotSettings.StatePath, statePath);
-            var stateNote = stateFile.Loaded
-                ? "found"
-                : (File.Exists(statePath) ? "unreadable" : "missing");
+            var stateNote = !statePathAllowed
+                ? "ignored (outside workspace)"
+                : (stateFile.Loaded
+                    ? "found"
+                    : (File.Exists(statePath) ? "unreadable" : "missing"));
             var displayStatePath = relStatePath.Replace('\\', '/');
             lines.Add($"- State file: {RenderInlineCode(displayStatePath, maxLen: 200)} ({stateNote})");
             if (missingKeys.Count > 0) {
@@ -242,12 +246,31 @@ internal static class AnalysisHotspots {
         return hash.ToString("x16", CultureInfo.InvariantCulture);
     }
 
-    private static string ResolveStatePath(string workspace, string configured) {
+    private static string ResolveStatePath(string workspace, string configured, out bool allowed) {
         if (string.IsNullOrWhiteSpace(configured)) {
             configured = ".intelligencex/hotspots.json";
         }
         var trimmed = configured.Trim();
-        return Path.IsPathRooted(trimmed) ? trimmed : Path.Combine(workspace, trimmed);
+        var combined = Path.IsPathRooted(trimmed) ? trimmed : Path.Combine(workspace, trimmed);
+        allowed = IsPathWithinWorkspace(workspace, combined);
+        return combined;
+    }
+
+    private static bool IsPathWithinWorkspace(string workspace, string path) {
+        try {
+            if (string.IsNullOrWhiteSpace(workspace) || string.IsNullOrWhiteSpace(path)) {
+                return false;
+            }
+            var root = Path.GetFullPath(workspace).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var full = Path.GetFullPath(path);
+            if (string.Equals(full, root, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+            var prefix = root + Path.DirectorySeparatorChar;
+            return full.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+        } catch {
+            return false;
+        }
     }
 
     private static string FormatLocation(AnalysisFinding finding) {
