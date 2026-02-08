@@ -7,6 +7,7 @@
     "title": "GitHub Actions Reviewer",
     "items": [
       { "title": "Overview", "href": "/docs/reviewer/overview/" },
+      { "title": "Understanding Reviewer Output", "href": "/docs/reviewer/review-output/" },
       { "title": "Onboarding Wizard", "href": "/docs/reviewer/onboarding-wizard/" },
       { "title": "Web Setup UI", "href": "/docs/reviewer/setup-web/" },
       { "title": "Web Onboarding Flow", "href": "/docs/reviewer/web-onboarding/" },
@@ -20,6 +21,7 @@
     "items": [
       { "title": "Install", "href": "/docs/cli/install/" },
       { "title": "Overview", "href": "/docs/cli/overview/" },
+      { "title": "TODO Backlog Sync", "href": "/docs/cli/todo/" },
       { "title": "Quick Start", "href": "/docs/cli/quickstart/" }
     ]
   },

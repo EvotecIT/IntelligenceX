@@ -6,7 +6,13 @@ This repo tracks only explicit checklist items from bot reviews/comments in `TOD
 
 ## Sync Command (Recommended)
 
-Run:
+If you have the global tool installed:
+
+```bash
+intelligencex todo sync-bot-feedback --repo EvotecIT/IntelligenceX
+```
+
+Otherwise (works from a repo checkout):
 
 ```bash
 dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- todo sync-bot-feedback --repo EvotecIT/IntelligenceX
@@ -27,9 +33,7 @@ dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- todo sync-bot
 
 This will add `ix-bot-feedback-id:<id>` markers to issue bodies to avoid duplicates on re-runs.
 
-## Legacy Script
-
-The legacy helper is still available:
+## Legacy Script (Deprecated)
 
 ```bash
 python3 scripts/sync_bot_feedback_todo.py --repo EvotecIT/IntelligenceX
