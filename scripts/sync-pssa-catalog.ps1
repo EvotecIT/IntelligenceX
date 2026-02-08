@@ -1,5 +1,6 @@
 param(
-    [Parameter()][string]$OutDir = (Join-Path -Path $PSScriptRoot -ChildPath (Join-Path -Path '..' -ChildPath (Join-Path -Path 'Analysis' -ChildPath (Join-Path -Path 'Catalog' -ChildPath (Join-Path -Path 'rules' -ChildPath 'powershell')))))
+    [Parameter()][string]$OutDir = (Join-Path -Path $PSScriptRoot -ChildPath (Join-Path -Path '..' -ChildPath (Join-Path -Path 'Analysis' -ChildPath (Join-Path -Path 'Catalog' -ChildPath (Join-Path -Path 'rules' -ChildPath 'powershell'))))),
+    [Parameter()][switch]$PruneStale
 )
 
 $ErrorActionPreference = 'Stop'
@@ -202,12 +203,11 @@ foreach ($rule in $rules) {
 
 # Delete stale rule files so the repo doesn't accumulate orphaned rules over time.
 $existingRuleFiles = @(Get-ChildItem -LiteralPath $OutDir -Filter '*.json' -File -ErrorAction SilentlyContinue)
-$deleted = 0
+$staleRuleFiles = @()
 foreach ($file in $existingRuleFiles) {
     $id = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
     if ($id -and -not $ruleIdSet.ContainsKey($id)) {
-        Remove-Item -LiteralPath $file.FullName -Force
-        $deleted++
+        $staleRuleFiles += $file
     }
 }
 
@@ -215,12 +215,27 @@ foreach ($file in $existingRuleFiles) {
 $rulesRoot = Split-Path -Parent $OutDir
 $catalogRoot = Split-Path -Parent $rulesRoot
 $overridesDir = Join-Path -Path $catalogRoot -ChildPath (Join-Path -Path 'overrides' -ChildPath 'powershell')
+$staleOverrideFiles = @()
 if (Test-Path -LiteralPath $overridesDir) {
     foreach ($file in @(Get-ChildItem -LiteralPath $overridesDir -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
         $id = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
-        if ($id -and -not $ruleIdSet.ContainsKey($id)) {
-            Remove-Item -LiteralPath $file.FullName -Force
-        }
+        if ($id -and -not $ruleIdSet.ContainsKey($id)) { $staleOverrideFiles += $file }
+    }
+}
+
+$deleted = 0
+if (($staleRuleFiles.Count -gt 0) -or ($staleOverrideFiles.Count -gt 0)) {
+    $totalStale = $staleRuleFiles.Count + $staleOverrideFiles.Count
+    if (-not $PruneStale) {
+        throw ("Found {0} stale file(s). Re-run with -PruneStale to delete them." -f $totalStale)
+    }
+    foreach ($file in $staleRuleFiles) {
+        Remove-Item -LiteralPath $file.FullName -Force
+        $deleted++
+    }
+    foreach ($file in $staleOverrideFiles) {
+        Remove-Item -LiteralPath $file.FullName -Force
+        $deleted++
     }
 }
 

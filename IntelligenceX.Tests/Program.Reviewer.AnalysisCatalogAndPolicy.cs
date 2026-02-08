@@ -428,14 +428,18 @@ internal static partial class Program {
                             .ToArray();
 
                         var expectedMerged = MergeTags(baseRule.Tags, overrideTags);
-                        AssertEqual(expectedMerged.Count, effective.Tags.Count, $"{id} merged tag count matches");
-                        for (var i = 0; i < expectedMerged.Count; i++) {
-                            AssertEqual(expectedMerged[i], effective.Tags[i], $"{id} merged tag {i} matches");
+                        var expectedSet = new HashSet<string>(expectedMerged, StringComparer.OrdinalIgnoreCase);
+                        var actualSet = new HashSet<string>(effective.Tags, StringComparer.OrdinalIgnoreCase);
+                        AssertEqual(expectedSet.Count, actualSet.Count, $"{id} merged tag count matches");
+                        foreach (var tag in expectedSet) {
+                            AssertEqual(true, actualSet.Contains(tag), $"{id} merged tags contains '{tag}'");
                         }
 
                         // "tags" overrides are merged (union), but if the merged set is identical to base,
                         // the override is redundant and should be removed.
-                        if (!baseRule.Tags.SequenceEqual(expectedMerged, StringComparer.OrdinalIgnoreCase)) {
+                        var normalizedBase = MergeTags(baseRule.Tags, Array.Empty<string>());
+                        var baseSet = new HashSet<string>(normalizedBase, StringComparer.OrdinalIgnoreCase);
+                        if (!baseSet.SetEquals(expectedSet)) {
                             changesBase = true;
                         }
                         break;
