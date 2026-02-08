@@ -43,6 +43,9 @@ internal static partial class Program {
         failed += Run("GitHub secrets reject empty value", TestGitHubSecretsRejectEmptyValue);
         failed += Run("Release reviewer env token", TestReleaseReviewerEnvToken);
 #endif
+
+        // Reviewer tests are excluded from NET472 builds (no reviewer references there), and enforced for non-NET472
+        // builds via `IntelligenceX.Tests/ReviewerSymbolGuard.cs` + `IntelligenceX.Tests/IntelligenceX.Tests.csproj`.
 #if INTELLIGENCEX_REVIEWER
         failed += Run("Cleanup normalize allowed edits", TestCleanupNormalizeAllowedEdits);
         failed += Run("Cleanup clamp confidence", TestCleanupClampConfidence);
