@@ -63,7 +63,7 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
     public async Task<AccountInfo> GetAccountAsync(CancellationToken cancellationToken) {
         var bundle = await _auth.TryGetValidBundleAsync(cancellationToken).ConfigureAwait(false);
         if (bundle is null || string.IsNullOrWhiteSpace(bundle.AccessToken)) {
-            throw new InvalidOperationException("Not logged in. Run ChatGPT login first.");
+            throw new OpenAIAuthenticationRequiredException(OpenAIAuthenticationRequiredException.DefaultMessage);
         }
         bundle.AccountId ??= JwtDecoder.TryGetAccountId(bundle.AccessToken);
         if (string.IsNullOrWhiteSpace(bundle.AccountId)) {
@@ -196,7 +196,7 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
         if (bundle is not null) {
             return bundle;
         }
-        throw new InvalidOperationException("Not logged in. Run ChatGPT login first.");
+        throw new OpenAIAuthenticationRequiredException(OpenAIAuthenticationRequiredException.DefaultMessage);
     }
 
     private async Task<HttpResponseMessage> SendAsync(JsonObject body, string accessToken, string accountId, string sessionId,
@@ -257,6 +257,9 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
         NativeThreadState state, IReadOnlyList<JsonObject> inputItems, bool trackMessages, CancellationToken cancellationToken) {
         if (!response.IsSuccessStatusCode) {
             var error = await ParseErrorResponseAsync(response, cancellationToken).ConfigureAwait(false);
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) {
+                throw new OpenAIAuthenticationRequiredException(error);
+            }
             throw new InvalidOperationException(error);
         }
 

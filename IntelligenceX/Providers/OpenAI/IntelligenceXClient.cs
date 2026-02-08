@@ -210,18 +210,12 @@ public sealed class IntelligenceXClient : IDisposable
                 return;
             } catch (OperationCanceledException) {
                 throw;
-            } catch (InvalidOperationException ex) when (IsAuthMissing(ex)) {
+            } catch (OpenAIAuthenticationRequiredException) {
                 // Not logged in (or token expired). Fall back to login flow.
             }
         }
 
         await LoginChatGptAndWaitAsync(onUrl, onPrompt, useLocalListener, timeout, cancellationToken).ConfigureAwait(false);
-    }
-
-    private static bool IsAuthMissing(InvalidOperationException ex) {
-        var message = ex.Message ?? string.Empty;
-        return message.IndexOf("not logged in", StringComparison.OrdinalIgnoreCase) >= 0 ||
-               message.IndexOf("login", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     /// <summary>

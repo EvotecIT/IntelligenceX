@@ -35,7 +35,7 @@ internal sealed class OpenAINativeAuthManager {
 
     public async Task<AuthBundle> LoginAsync(Action<string>? onAuthUrl, Func<string, Task<string>>? onPrompt,
         bool useLocalListener, TimeSpan timeout, CancellationToken cancellationToken) {
-        var prompt = onPrompt ?? DefaultPromptAsync;
+        var prompt = onPrompt ?? (p => DefaultPromptAsync(p, cancellationToken));
         var loginOptions = new OAuthLoginOptions(_options.OAuth) {
             OnAuthUrl = url => {
                 onAuthUrl?.Invoke(url);
@@ -82,22 +82,31 @@ internal sealed class OpenAINativeAuthManager {
         return now >= bundle.ExpiresAt.Value.Subtract(ExpirySkew);
     }
 
-    private static Task<string> DefaultPromptAsync(string prompt) {
+    private static Task<string> DefaultPromptAsync(string prompt, CancellationToken cancellationToken) {
         if (Console.IsInputRedirected) {
             throw new InvalidOperationException(
                 "ChatGPT login requires user input. Provide a prompt handler or run interactively.");
         }
 
+        const int maxAttempts = 5;
         Console.WriteLine(prompt);
-        while (true) {
+        for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+            cancellationToken.ThrowIfCancellationRequested();
             Console.Write("> ");
             var input = Console.ReadLine();
             if (!string.IsNullOrWhiteSpace(input)) {
-                return Task.FromResult(input.Trim());
+                var value = input.Trim();
+                if (string.Equals(value, "cancel", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "exit", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "quit", StringComparison.OrdinalIgnoreCase)) {
+                    throw new OperationCanceledException("Login canceled by user.", cancellationToken);
+                }
+                return Task.FromResult(value);
             }
 
-            // Keep reprompting instead of failing the whole login flow.
             Console.WriteLine("Authorization code was not provided. Paste the redirect URL or authorization code.");
         }
+
+        throw new InvalidOperationException("Authorization code was not provided.");
     }
 }
