@@ -215,35 +215,34 @@ internal sealed class AzureDevOpsClient : IDisposable {
             return Array.Empty<AzureDevOpsPullRequestThread>();
         }
 
-        var threads = new List<AzureDevOpsPullRequestThread>();
-        foreach (var entry in array) {
-            var obj = entry.AsObject();
-            if (obj is null) {
-                continue;
-            }
-
-            var context = obj.GetObject("threadContext");
-            var filePath = context?.GetString("filePath");
-            var rightStartLine = context?.GetObject("rightFileStart")?.GetInt64("line");
-            var line = rightStartLine.HasValue && rightStartLine.Value > 0 && rightStartLine.Value <= int.MaxValue
-                ? (int)rightStartLine.Value
-                : (int?)null;
-
-            var comments = new List<string>();
-            var commentArray = obj.GetArray("comments");
-            if (commentArray is not null && commentArray.Count > 0) {
-                foreach (var comment in commentArray) {
-                    var body = comment.AsObject()?.GetString("content");
-                    if (!string.IsNullOrWhiteSpace(body)) {
-                        comments.Add(body);
-                    }
+        return array
+            .Select(entry => {
+                var obj = entry.AsObject();
+                if (obj is null) {
+                    return null;
                 }
-            }
 
-            threads.Add(new AzureDevOpsPullRequestThread(filePath, line, comments));
-        }
+                var context = obj.GetObject("threadContext");
+                var filePath = context?.GetString("filePath");
+                var rightStartLine = context?.GetObject("rightFileStart")?.GetInt64("line");
+                var line = rightStartLine.HasValue && rightStartLine.Value > 0 && rightStartLine.Value <= int.MaxValue
+                    ? (int)rightStartLine.Value
+                    : (int?)null;
 
-        return threads;
+                var commentArray = obj.GetArray("comments");
+                var comments = commentArray is null || commentArray.Count == 0
+                    ? new List<string>()
+                    : commentArray
+                        .Select(comment => comment.AsObject()?.GetString("content"))
+                        .Where(body => !string.IsNullOrWhiteSpace(body))
+                        .Select(body => body!)
+                        .ToList();
+
+                return new AzureDevOpsPullRequestThread(filePath, line, comments);
+            })
+            .Where(thread => thread is not null)
+            .Select(thread => thread!)
+            .ToList();
     }
 
     /// <summary>

@@ -444,11 +444,9 @@ internal static class AzureDevOpsReviewRunner {
 
         var candidates = new List<(string path, int line, string normalized)>();
         foreach (var (filePath, lines) in patchIndex) {
-            foreach (var line in lines) {
-                if (line.NormalizedText.Contains(normalizedSnippet, StringComparison.Ordinal)) {
-                    candidates.Add((filePath, line.LineNumber, line.NormalizedText));
-                }
-            }
+            candidates.AddRange(lines
+                .Where(line => line.NormalizedText.Contains(normalizedSnippet, StringComparison.Ordinal))
+                .Select(line => (path: filePath, line: line.LineNumber, normalized: line.NormalizedText)));
         }
 
         if (candidates.Count == 1) {
@@ -473,12 +471,9 @@ internal static class AzureDevOpsReviewRunner {
         IReadOnlyList<PatchLine> lines, out string resolvedPath, out int resolvedLine) {
         resolvedPath = string.Empty;
         resolvedLine = 0;
-        var candidates = new List<PatchLine>();
-        foreach (var line in lines) {
-            if (line.NormalizedText.Contains(normalizedSnippet, StringComparison.Ordinal)) {
-                candidates.Add(line);
-            }
-        }
+        var candidates = lines
+            .Where(line => line.NormalizedText.Contains(normalizedSnippet, StringComparison.Ordinal))
+            .ToList();
 
         if (candidates.Count == 1) {
             resolvedPath = path;
