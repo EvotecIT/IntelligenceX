@@ -1,5 +1,5 @@
 param(
-    [Parameter()][string]$OutDir = (Join-Path $PSScriptRoot '..' 'Analysis' 'Catalog' 'rules' 'powershell')
+    [Parameter()][string]$OutDir = (Join-Path -Path $PSScriptRoot -ChildPath (Join-Path -Path '..' -ChildPath (Join-Path -Path 'Analysis' -ChildPath (Join-Path -Path 'Catalog' -ChildPath (Join-Path -Path 'rules' -ChildPath 'powershell')))))
 )
 
 $ErrorActionPreference = 'Stop'
@@ -42,7 +42,7 @@ function Compress-Whitespace([string]$text) {
     ($text -replace '[\r\n]+', ' ' -replace '\s+', ' ').Trim()
 }
 
-function Title-FromRuleName([string]$ruleName) {
+function Get-RuleTitleFromRuleName([string]$ruleName) {
     if ([string]::IsNullOrWhiteSpace($ruleName)) { return '' }
     $name = $ruleName.Trim()
     if ($name.StartsWith('PS', [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -67,7 +67,7 @@ foreach ($rule in $rules) {
     $slug = $slug.ToLowerInvariant()
 
     # Use a deterministic title/description to avoid shipping upstream typos into our catalog UI.
-    $title = Title-FromRuleName $ruleName
+    $title = Get-RuleTitleFromRuleName $ruleName
     if ([string]::IsNullOrWhiteSpace($title)) { $title = $ruleName }
     $description = "PSScriptAnalyzer rule '$ruleName'. See docs for details."
 
