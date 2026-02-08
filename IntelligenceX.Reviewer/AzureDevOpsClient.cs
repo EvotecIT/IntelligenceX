@@ -228,38 +228,41 @@ internal sealed class AzureDevOpsClient : IDisposable {
             return Array.Empty<AzureDevOpsPullRequestThread>();
         }
 
-        return array
-            .Select(entry => {
-                var obj = entry.AsObject();
-                if (obj is null) {
-                    return null;
-                }
+        var threads = new List<AzureDevOpsPullRequestThread>(array.Count);
+        foreach (var entry in array) {
+            cancellationToken.ThrowIfCancellationRequested();
 
-                var context = obj.GetObject("threadContext");
-                var filePath = context?.GetString("filePath");
-                var rightStartLine = context?.GetObject("rightFileStart")?.GetInt64("line");
-                var line = rightStartLine.HasValue && rightStartLine.Value > 0 && rightStartLine.Value <= int.MaxValue
-                    ? (int)rightStartLine.Value
-                    : (int?)null;
+            var obj = entry.AsObject();
+            if (obj is null) {
+                continue;
+            }
 
-                var commentArray = obj.GetArray("comments");
-                IReadOnlyList<string> comments = Array.Empty<string>();
-                if (commentArray is not null && commentArray.Count > 0) {
-                    var filtered = commentArray
-                        .Select(comment => comment.AsObject()?.GetString("content"))
-                        .Where(body => !string.IsNullOrWhiteSpace(body))
-                        .Select(body => body!)
-                        .ToArray();
-                    if (filtered.Length > 0) {
-                        comments = filtered;
+            var context = obj.GetObject("threadContext");
+            var filePath = context?.GetString("filePath");
+            var rightStartLine = context?.GetObject("rightFileStart")?.GetInt64("line");
+            var line = rightStartLine.HasValue && rightStartLine.Value > 0 && rightStartLine.Value <= int.MaxValue
+                ? (int)rightStartLine.Value
+                : (int?)null;
+
+            var commentArray = obj.GetArray("comments");
+            IReadOnlyList<string> comments = Array.Empty<string>();
+            if (commentArray is not null && commentArray.Count > 0) {
+                var list = new List<string>(commentArray.Count);
+                foreach (var comment in commentArray) {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var body = comment.AsObject()?.GetString("content");
+                    if (!string.IsNullOrWhiteSpace(body)) {
+                        list.Add(body!);
                     }
                 }
+                if (list.Count > 0) {
+                    comments = list;
+                }
+            }
 
-                return new AzureDevOpsPullRequestThread(filePath, line, comments);
-            })
-            .Where(thread => thread is not null)
-            .Select(thread => thread!)
-            .ToList();
+            threads.Add(new AzureDevOpsPullRequestThread(filePath, line, comments));
+        }
+        return threads;
     }
 
     /// <summary>
