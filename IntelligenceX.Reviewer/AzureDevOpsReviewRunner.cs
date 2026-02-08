@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -328,7 +329,7 @@ internal static class AzureDevOpsReviewRunner {
         return map;
     }
 
-    private static HashSet<int> ParsePatchLines(string patch) {
+    internal static HashSet<int> ParsePatchLines(string patch) {
         var allowed = new HashSet<int>();
         var lines = patch.Replace("\r\n", "\n").Split('\n');
         var oldLine = 0;
@@ -337,8 +338,8 @@ internal static class AzureDevOpsReviewRunner {
             if (line.StartsWith("@@", StringComparison.Ordinal)) {
                 var match = PatchHunkHeader.Match(line);
                 if (match.Success) {
-                    _ = int.TryParse(match.Groups[1].Value, out oldLine);
-                    _ = int.TryParse(match.Groups[2].Value, out newLine);
+                    _ = int.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out oldLine);
+                    _ = int.TryParse(match.Groups[2].Value, NumberStyles.None, CultureInfo.InvariantCulture, out newLine);
                     oldLine = Math.Max(0, oldLine - 1);
                     newLine = Math.Max(0, newLine - 1);
                 }
@@ -391,8 +392,8 @@ internal static class AzureDevOpsReviewRunner {
             if (line.StartsWith("@@", StringComparison.Ordinal)) {
                 var match = PatchHunkHeader.Match(line);
                 if (match.Success) {
-                    _ = int.TryParse(match.Groups[1].Value, out oldLine);
-                    _ = int.TryParse(match.Groups[2].Value, out newLine);
+                    _ = int.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out oldLine);
+                    _ = int.TryParse(match.Groups[2].Value, NumberStyles.None, CultureInfo.InvariantCulture, out newLine);
                     oldLine = Math.Max(0, oldLine - 1);
                     newLine = Math.Max(0, newLine - 1);
                 }

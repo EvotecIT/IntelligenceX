@@ -182,8 +182,18 @@ internal sealed class AzureDevOpsClient : IDisposable {
         var url = $"{Escape(project)}/_apis/git/repositories/{Escape(repositoryId)}/pullRequests/{pullRequestId}/threads?api-version={ApiVersion}";
 
         // Azure DevOps expects a leading '/' in threadContext filePath.
-        var normalizedPath = filePath.Replace('\\', '/').TrimStart('/');
+        var normalizedPath = filePath.Replace('\\', '/').Trim();
+        normalizedPath = normalizedPath.TrimStart('/');
+        if (string.IsNullOrWhiteSpace(normalizedPath)) {
+            throw new ArgumentException("File path is required.", nameof(filePath));
+        }
+        // Avoid surprising server-side path resolution behavior.
+        if (normalizedPath.Split('/').Any(segment => segment == "..")) {
+            throw new ArgumentException("File path must not contain '..' segments.", nameof(filePath));
+        }
         normalizedPath = "/" + normalizedPath;
+        // ADO threadContext offsets are 0-based character offsets within the line; default to column 0.
+        const int offset = 0;
 
         var payload = new JsonObject()
             .Add("comments", new JsonArray().Add(new JsonObject()
@@ -195,10 +205,10 @@ internal sealed class AzureDevOpsClient : IDisposable {
                 .Add("filePath", normalizedPath)
                 .Add("rightFileStart", new JsonObject()
                     .Add("line", lineNumber)
-                    .Add("offset", 1))
+                    .Add("offset", offset))
                 .Add("rightFileEnd", new JsonObject()
                     .Add("line", lineNumber)
-                    .Add("offset", 1)));
+                    .Add("offset", offset)));
 
         await PostJsonAsync(url, payload, cancellationToken).ConfigureAwait(false);
     }
@@ -230,13 +240,17 @@ internal sealed class AzureDevOpsClient : IDisposable {
                     : (int?)null;
 
                 var commentArray = obj.GetArray("comments");
-                var comments = commentArray is null || commentArray.Count == 0
-                    ? new List<string>()
-                    : commentArray
+                IReadOnlyList<string> comments = Array.Empty<string>();
+                if (commentArray is not null && commentArray.Count > 0) {
+                    var filtered = commentArray
                         .Select(comment => comment.AsObject()?.GetString("content"))
                         .Where(body => !string.IsNullOrWhiteSpace(body))
                         .Select(body => body!)
-                        .ToList();
+                        .ToArray();
+                    if (filtered.Length > 0) {
+                        comments = filtered;
+                    }
+                }
 
                 return new AzureDevOpsPullRequestThread(filePath, line, comments);
             })

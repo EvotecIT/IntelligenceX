@@ -327,13 +327,8 @@ internal static partial class Program {
             " line3"
         });
 
-        var method = typeof(AzureDevOpsReviewRunner).GetMethod("ParsePatchLines", BindingFlags.NonPublic | BindingFlags.Static);
-        if (method is null) {
-            throw new InvalidOperationException("ParsePatchLines method not found.");
-        }
-        var result = method.Invoke(null, new object?[] { patch }) as HashSet<int>;
-        AssertNotNull(result, "ado patch lines result");
-        AssertEqual(true, result!.Contains(11), "ado patch contains line 11");
+        var result = AzureDevOpsReviewRunner.ParsePatchLines(patch);
+        AssertEqual(true, result.Contains(11), "ado patch contains line 11");
         AssertEqual(true, result.Contains(12), "ado patch contains line 12");
         AssertEqual(true, result.Contains(99), "ado patch contains line 99");
     }
@@ -352,13 +347,8 @@ internal static partial class Program {
             "\\ No newline at end of file"
         });
 
-        var method = typeof(AzureDevOpsReviewRunner).GetMethod("ParsePatchLines", BindingFlags.NonPublic | BindingFlags.Static);
-        if (method is null) {
-            throw new InvalidOperationException("ParsePatchLines method not found.");
-        }
-        var result = method.Invoke(null, new object?[] { patch }) as HashSet<int>;
-        AssertNotNull(result, "ado patch lines result");
-        AssertEqual(true, result!.Contains(1), "ado patch contains line 1");
+        var result = AzureDevOpsReviewRunner.ParsePatchLines(patch);
+        AssertEqual(true, result.Contains(1), "ado patch contains line 1");
         AssertEqual(true, result.Contains(2), "ado patch contains line 2");
         AssertEqual(true, result.Contains(3), "ado patch contains line 3");
     }
