@@ -1,7 +1,12 @@
-# Tool Calling (OpenAI Native)
+# Tool Calling
 
 Native tool calling lets the model request local tool execution and continue the response chain with tool outputs.
 Use `ToolRunner` for the simplest flow or drive the loop manually if you need full control.
+
+Notes:
+- The tool **contract** is provider-agnostic (`IntelligenceX.Tools` namespace).
+- Tool-calling orchestration is provider-specific (for example `IntelligenceX.OpenAI.ToolCalling`).
+- Tool implementations should live in separate tool-pack packages. See: `Docs/library/tool-packs.md`.
 
 ## Example tool
 

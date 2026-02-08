@@ -34,6 +34,7 @@ Welcome to the IntelligenceX documentation.
 - [Quickstart](/docs/library/quickstart/)
 - [Providers](/docs/library/providers/)
 - [Tool Calling](/docs/library/tools/)
+- [Tool Packs](/docs/library/tool-packs/)
 - [API Reference](/api/)
 
 ## PowerShell Module
@@ -47,3 +48,7 @@ Welcome to the IntelligenceX documentation.
 - [Troubleshooting](/docs/troubleshooting/)
 - [FAQ](/docs/faq/)
 - [Screenshots (Planned)](/docs/screenshots/)
+
+## Apps (Planned)
+
+- [Windows Tray Chat App](/docs/apps/windows-tray-chat/)
