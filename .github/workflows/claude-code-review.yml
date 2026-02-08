@@ -24,6 +24,9 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
+    env:
+      # Ensure gh never prompts for auth (which can hang CI).
+      GH_TOKEN: ${{ github.token }}
 
     steps:
       - name: Checkout repository
@@ -54,11 +57,23 @@ jobs:
             - Security concerns
             - Test coverage
 
-            Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
+            Use the repository's CLAUDE.md for guidance on style and conventions.
 
-            Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
+            Output format (use these headings exactly):
+            - Summary 📝
+            - Todo List ✅ (merge blockers; markdown checkboxes; if none, write "None.")
+            - Critical Issues ⚠️ (merge blockers; markdown checkboxes; if none, write "None.")
+            - Other Issues 🧯 (non-blocking; bullet list, no checkboxes)
+            - Tests / Coverage 🧪 (non-blocking)
+            - Next Steps 🚀 (non-blocking)
+
+            Rules:
+            - Only use markdown task list items (`- [ ] ...`, `- [x] ...`) in Todo List and Critical Issues.
+            - Do not add style-only nits as merge blockers.
+            - Keep items actionable and specific.
+
+            Use `gh pr comment` with your Bash tool to leave your review as a single sticky comment on the PR.
           use_sticky_comment: true
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
           claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
-
