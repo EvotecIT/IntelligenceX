@@ -508,10 +508,10 @@ internal static partial class Program {
             var hidden = AnalysisHotspots.BuildBlock(baseSettings, findings);
             AssertContainsText(hidden, "Items: hidden (maxItems=0)", "hotspots maxItems 0 hides items");
 
-            // MaxItems<0 uses default limit.
-            baseSettings.Analysis.Hotspots.MaxItems = -1;
+            // Default MaxItems=10 limits to 10 items.
+            baseSettings.Analysis.Hotspots.MaxItems = 10;
             var defaulted = AnalysisHotspots.BuildBlock(baseSettings, findings);
-            AssertContainsText(defaulted, "- Showing first 10 of 11 hotspot(s).", "hotspots maxItems -1 uses default");
+            AssertContainsText(defaulted, "- Showing first 10 of 11 hotspot(s).", "hotspots maxItems default 10 limits items");
 
             // MaxItems>0 limits to that number.
             baseSettings.Analysis.Hotspots.MaxItems = 2;

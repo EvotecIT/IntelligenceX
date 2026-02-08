@@ -9,7 +9,6 @@ namespace IntelligenceX.Reviewer;
 
 internal static class AnalysisHotspots {
     private const string HotspotHeader = "### Security Hotspots 🔥";
-    private const int DefaultMaxItems = 10;
 
     internal static string BuildBlock(ReviewSettings settings, IReadOnlyList<AnalysisFinding> findings) {
         if (settings?.Analysis?.Enabled != true) {
@@ -30,12 +29,13 @@ internal static class AnalysisHotspots {
             return string.Empty;
         }
 
-        var configuredMaxItems = hotspotSettings.MaxItems;
-        var itemsHidden = configuredMaxItems == 0;
-        var effectiveMaxItems = configuredMaxItems < 0 ? DefaultMaxItems : configuredMaxItems;
-        if (effectiveMaxItems < 0) {
-            effectiveMaxItems = DefaultMaxItems;
+        // `maxItems`: 0 hides the list; otherwise limit to the configured positive value.
+        // Config parsing clamps to non-negative; keep rendering semantics aligned.
+        var maxItems = hotspotSettings.MaxItems;
+        if (maxItems < 0) {
+            maxItems = 0;
         }
+        var itemsHidden = maxItems == 0;
 
         var statePath = ResolveStatePath(workspace, hotspotSettings.StatePath);
         var stateFile = HotspotStateStore.TryLoad(statePath);
@@ -90,7 +90,7 @@ internal static class AnalysisHotspots {
         } else {
             var visibleItems = rendered.Where(item => !IsSuppressedStatus(item.Status)).ToList();
             var ordered = OrderFindings(visibleItems);
-            var shown = ordered.Take(effectiveMaxItems <= 0 ? DefaultMaxItems : effectiveMaxItems).ToList();
+            var shown = ordered.Take(maxItems).ToList();
             lines.Add("- Items:");
             foreach (var item in shown) {
                 var location = FormatLocation(item.Finding);
