@@ -45,13 +45,13 @@ internal static class AnalyzeHotspotsCommand {
     }
 
     private static void PrintSyncHelp() {
-        Console.WriteLine("  intelligencex analyze hotspots sync-state [--workspace <path>] [--config <path>] [--state <path>] [--new-status <status>] [--prune-fixed] [--dry-run] [--check]");
+        Console.WriteLine("  intelligencex analyze hotspots sync-state [--workspace <path>] [--config <path>] [--state <path>] [--allow-outside-workspace] [--new-status <status>] [--prune-fixed] [--dry-run] [--check]");
         Console.WriteLine();
         Console.WriteLine("Hotspot statuses: to-review, safe, fixed, accepted-risk, wont-fix, suppress");
     }
 
     private static void PrintSetHelp() {
-        Console.WriteLine("  intelligencex analyze hotspots set --key <key> [--keys <k1,k2>] --status <status> [--note <text>] [--workspace <path>] [--config <path>] [--state <path>]");
+        Console.WriteLine("  intelligencex analyze hotspots set --key <key> [--keys <k1,k2>] --status <status> [--note <text>] [--workspace <path>] [--config <path>] [--state <path>] [--allow-outside-workspace]");
         Console.WriteLine();
         Console.WriteLine("Hotspot statuses: to-review, safe, fixed, accepted-risk, wont-fix, suppress");
     }
@@ -79,7 +79,11 @@ internal static class AnalyzeHotspotsCommand {
             return 1;
         }
 
-        var resolvedStatePath = ResolveStatePath(workspace, options.StatePath ?? settings.Hotspots.StatePath);
+        if (!TryResolveStatePath(workspace, options.StatePath ?? settings.Hotspots.StatePath, options.AllowOutsideWorkspace,
+                out var resolvedStatePath, out var stateError)) {
+            Console.WriteLine(stateError);
+            return 1;
+        }
         var desiredDefaultStatus = AnalysisHotspots.NormalizeStatus(options.NewStatus ?? "to-review");
         if (string.IsNullOrWhiteSpace(desiredDefaultStatus)) {
             desiredDefaultStatus = "to-review";
@@ -89,7 +93,8 @@ internal static class AnalyzeHotspotsCommand {
         var reviewSettings = new ReviewSettings();
         reviewSettings.Analysis.Enabled = true;
         reviewSettings.Analysis.Results.Inputs = settings.Results.Inputs;
-        reviewSettings.Analysis.Results.MinSeverity = settings.Results.MinSeverity;
+        // Always load below warning/error so we can compute keys for info-level hotspots too.
+        reviewSettings.Analysis.Results.MinSeverity = "info";
         reviewSettings.Analysis.DisabledRules = settings.DisabledRules;
         reviewSettings.Analysis.SeverityOverrides = settings.SeverityOverrides;
 
@@ -178,7 +183,11 @@ internal static class AnalyzeHotspotsCommand {
             return 1;
         }
 
-        var resolvedStatePath = ResolveStatePath(workspace, options.StatePath ?? settings.Hotspots.StatePath);
+        if (!TryResolveStatePath(workspace, options.StatePath ?? settings.Hotspots.StatePath, options.AllowOutsideWorkspace,
+                out var resolvedStatePath, out var stateError)) {
+            Console.WriteLine(stateError);
+            return 1;
+        }
         var normalizedStatus = AnalysisHotspots.NormalizeStatus(options.Status);
         if (string.IsNullOrWhiteSpace(normalizedStatus)) {
             Console.WriteLine($"Invalid status '{options.Status}'.");
@@ -275,6 +284,7 @@ internal static class AnalyzeHotspotsCommand {
         public string? Workspace { get; set; }
         public string? ConfigPath { get; set; }
         public string? StatePath { get; set; }
+        public bool AllowOutsideWorkspace { get; set; }
         public string? NewStatus { get; set; }
         public bool PruneFixed { get; set; }
         public bool DryRun { get; set; }
@@ -300,6 +310,10 @@ internal static class AnalyzeHotspotsCommand {
             }
             if (arg.Equals("--state", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length) {
                 options.StatePath = args[++i];
+                continue;
+            }
+            if (arg.Equals("--allow-outside-workspace", StringComparison.OrdinalIgnoreCase)) {
+                options.AllowOutsideWorkspace = true;
                 continue;
             }
             if (arg.Equals("--new-status", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length) {
@@ -329,6 +343,7 @@ internal static class AnalyzeHotspotsCommand {
         public string? Workspace { get; set; }
         public string? ConfigPath { get; set; }
         public string? StatePath { get; set; }
+        public bool AllowOutsideWorkspace { get; set; }
         public List<string> Keys { get; } = new();
         public string Status { get; set; } = string.Empty;
         public string? Note { get; set; }
@@ -353,6 +368,10 @@ internal static class AnalyzeHotspotsCommand {
             }
             if (arg.Equals("--state", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length) {
                 options.StatePath = args[++i];
+                continue;
+            }
+            if (arg.Equals("--allow-outside-workspace", StringComparison.OrdinalIgnoreCase)) {
+                options.AllowOutsideWorkspace = true;
                 continue;
             }
             if (arg.Equals("--key", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length) {
@@ -381,5 +400,33 @@ internal static class AnalyzeHotspotsCommand {
             error = "Missing --status.";
         }
         return options;
+    }
+
+    private static bool TryResolveStatePath(string workspace, string configured, bool allowOutsideWorkspace, out string path,
+        out string error) {
+        error = string.Empty;
+        path = string.Empty;
+        var resolved = ResolveStatePath(workspace, configured);
+        if (allowOutsideWorkspace) {
+            path = resolved;
+            return true;
+        }
+        try {
+            var fullWorkspace = Path.GetFullPath(workspace)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var fullPath = Path.GetFullPath(resolved);
+            var workspacePrefix = fullWorkspace + Path.DirectorySeparatorChar;
+            var withinWorkspace = string.Equals(fullPath, fullWorkspace, StringComparison.OrdinalIgnoreCase) ||
+                                  fullPath.StartsWith(workspacePrefix, StringComparison.OrdinalIgnoreCase);
+            if (!withinWorkspace) {
+                error = $"State path must be within workspace (use --allow-outside-workspace to override): {resolved}";
+                return false;
+            }
+            path = fullPath;
+            return true;
+        } catch (Exception ex) {
+            error = $"Invalid state path '{resolved}': {ex.Message}";
+            return false;
+        }
     }
 }

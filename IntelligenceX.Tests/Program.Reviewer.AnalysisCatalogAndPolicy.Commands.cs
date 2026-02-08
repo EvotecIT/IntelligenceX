@@ -147,6 +147,159 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeHotspotsStatePathIsWorkspaceBound() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-hotspots-statepath-bound-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        var outsideRoot = Path.Combine(Path.GetTempPath(), "ix-outside-" + Guid.NewGuid().ToString("N"));
+        var outsideStatePath = Path.Combine(outsideRoot, "hotspots.json");
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            var artifactsDir = Path.Combine(temp, "artifacts");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+            Directory.CreateDirectory(artifactsDir);
+
+            File.WriteAllText(Path.Combine(rulesDir, "IXHOT001.json"), """
+{
+  "id": "IXHOT001",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "toolRuleId": "IXHOT001",
+  "type": "security-hotspot",
+  "title": "Security hotspot",
+  "description": "Requires review.",
+  "category": "Security",
+  "defaultSeverity": "info"
+}
+""");
+            File.WriteAllText(Path.Combine(packsDir, "all-50.json"), """
+{
+  "id": "all-50",
+  "label": "All Essentials (50)",
+  "rules": ["IXHOT001"]
+}
+""");
+            File.WriteAllText(Path.Combine(artifactsDir, "intelligencex.findings.json"), """
+{
+  "items": [
+    {
+      "path": "src/test.cs",
+      "line": 10,
+      "severity": "info",
+      "message": "Hotspot finding.",
+      "ruleId": "IXHOT001",
+      "tool": "IntelligenceX",
+      "fingerprint": "fp-xyz"
+    }
+  ]
+}
+""");
+
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            var configPath = Path.Combine(temp, ".intelligencex", "reviewer.json");
+            File.WriteAllText(configPath, """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["all-50"],
+    "hotspots": {
+      "show": true,
+      "statePath": ".intelligencex/hotspots.json"
+    },
+    "results": {
+      "inputs": ["artifacts/intelligencex.findings.json"],
+      "minSeverity": "warning",
+      "showPolicy": false,
+      "summary": false
+    }
+  }
+}
+""");
+
+            var (exitBlocked, outputBlocked) = RunAnalyzeAndCaptureOutput(new[] {
+                "hotspots",
+                "sync-state",
+                "--workspace",
+                temp,
+                "--config",
+                configPath,
+                "--state",
+                outsideStatePath,
+                "--dry-run"
+            });
+            AssertEqual(1, exitBlocked, "hotspots sync-state outside state path exit");
+            AssertContainsText(outputBlocked, "State path must be within workspace", "hotspots sync-state state path restriction message");
+            AssertEqual(false, File.Exists(outsideStatePath), "hotspots sync-state outside state path should not write state");
+
+            var (exitAllowed, _) = RunAnalyzeAndCaptureOutput(new[] {
+                "hotspots",
+                "sync-state",
+                "--workspace",
+                temp,
+                "--config",
+                configPath,
+                "--state",
+                outsideStatePath,
+                "--allow-outside-workspace",
+                "--dry-run"
+            });
+            AssertEqual(0, exitAllowed, "hotspots sync-state allow outside state path exit");
+            AssertEqual(false, File.Exists(outsideStatePath), "hotspots sync-state allow outside dry-run should not write state");
+
+            var (setBlocked, setBlockedOut) = RunAnalyzeAndCaptureOutput(new[] {
+                "hotspots",
+                "set",
+                "--workspace",
+                temp,
+                "--config",
+                configPath,
+                "--state",
+                outsideStatePath,
+                "--key",
+                "IXHOT001:fp-xyz",
+                "--status",
+                "safe"
+            });
+            AssertEqual(1, setBlocked, "hotspots set outside state path exit");
+            AssertContainsText(setBlockedOut, "State path must be within workspace", "hotspots set state path restriction message");
+            AssertEqual(false, File.Exists(outsideStatePath), "hotspots set outside state path should not write state");
+
+            var (setAllowed, _) = RunAnalyzeAndCaptureOutput(new[] {
+                "hotspots",
+                "set",
+                "--workspace",
+                temp,
+                "--config",
+                configPath,
+                "--state",
+                outsideStatePath,
+                "--allow-outside-workspace",
+                "--key",
+                "IXHOT001:fp-xyz",
+                "--status",
+                "safe"
+            });
+            AssertEqual(0, setAllowed, "hotspots set allow outside state path exit");
+            AssertEqual(true, File.Exists(outsideStatePath), "hotspots set allow outside should write state");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+            // Clean up any files written outside the workspace when allow-outside-workspace is set.
+            try {
+                if (Directory.Exists(outsideRoot)) {
+                    Directory.Delete(outsideRoot, true);
+                }
+            } catch {
+                // best-effort cleanup
+            }
+        }
+    }
+
     private static void TestAnalyzeValidateCatalogCommand() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-validate-command-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
