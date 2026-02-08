@@ -11,7 +11,13 @@ using IntelligenceX.Utils;
 namespace IntelligenceX.OpenAI.Native;
 
 internal sealed partial class OpenAINativeTransport {
-    private JsonObject BuildRequestBody(string model, IReadOnlyList<JsonObject> messages, string sessionId, ChatOptions options) {
+    private enum ToolSchemaKind {
+        Parameters,
+        InputSchema
+    }
+
+    private JsonObject BuildRequestBody(string model, IReadOnlyList<JsonObject> messages, string sessionId, ChatOptions options,
+        ToolSchemaKind toolSchemaKind = ToolSchemaKind.Parameters) {
         var input = new JsonArray();
         foreach (var message in messages) {
             input.Add(message);
@@ -62,7 +68,7 @@ internal sealed partial class OpenAINativeTransport {
         if (options.Tools is not null && options.Tools.Count > 0) {
             var tools = new JsonArray();
             foreach (var tool in options.Tools) {
-                tools.Add(SerializeToolDefinition(tool));
+                tools.Add(SerializeToolDefinition(tool, toolSchemaKind));
             }
             body.Add("tools", tools);
 
@@ -85,7 +91,7 @@ internal sealed partial class OpenAINativeTransport {
         return body;
     }
 
-    private static JsonObject SerializeToolDefinition(ToolDefinition tool) {
+    private static JsonObject SerializeToolDefinition(ToolDefinition tool, ToolSchemaKind toolSchemaKind) {
         var obj = new JsonObject()
             .Add("type", "custom")
             .Add("name", tool.Name);
@@ -93,8 +99,9 @@ internal sealed partial class OpenAINativeTransport {
             obj.Add("description", tool.Description);
         }
         if (tool.Parameters is not null) {
-            // OpenAI Responses API expects custom tools to use `input_schema` (not `parameters`).
-            obj.Add("input_schema", tool.Parameters);
+            // ChatGPT native API has historically accepted either `parameters` or `input_schema` for custom tools.
+            // We default to `parameters` and retry with `input_schema` if the server rejects it.
+            obj.Add(toolSchemaKind == ToolSchemaKind.InputSchema ? "input_schema" : "parameters", tool.Parameters);
         }
         return obj;
     }
@@ -181,4 +188,3 @@ internal sealed partial class OpenAINativeTransport {
         return items;
     }
 }
-

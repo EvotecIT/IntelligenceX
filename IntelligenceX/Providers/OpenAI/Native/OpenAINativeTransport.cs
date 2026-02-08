@@ -324,6 +324,22 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         try {
             return await ProcessResponseAsync(response, turnId, model, state, inputItems, trackMessages, cancellationToken)
                 .ConfigureAwait(false);
+        } catch (InvalidOperationException ex) when (IsToolSchemaNotSupported(ex)) {
+            // Server rejected our tool schema. Retry once with the alternate field name.
+            var requestMessages = trackMessages
+                ? new List<JsonObject>(state.Messages.Count + inputItems.Count)
+                : new List<JsonObject>(inputItems.Count);
+            if (trackMessages) {
+                requestMessages.AddRange(state.Messages);
+            }
+            requestMessages.AddRange(inputItems);
+
+            var retryKind = GetFallbackToolSchemaKind(ex);
+            var retryBody = BuildRequestBody(model, requestMessages, state.SessionId, options, retryKind);
+            var retry = await SendAsync(retryBody, accessToken, accountId, state.SessionId, cancellationToken)
+                .ConfigureAwait(false);
+            return await ProcessResponseAsync(retry, turnId, model, state, inputItems, trackMessages, cancellationToken)
+                .ConfigureAwait(false);
         } catch (InvalidOperationException ex) when (IsModelNotSupportedForChatGpt(ex)) {
             var requestMessages = trackMessages
                 ? new List<JsonObject>(state.Messages.Count + inputItems.Count)
@@ -348,6 +364,24 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
 
             throw;
         }
+    }
+
+    private static bool IsToolSchemaNotSupported(InvalidOperationException ex) {
+        // Observed server errors:
+        // - Unknown parameter: 'tools[0].parameters'.
+        // - Unknown parameter: 'tools[0].input_schema'.
+        var message = ex.Message ?? string.Empty;
+        return message.IndexOf("Unknown parameter", StringComparison.OrdinalIgnoreCase) >= 0 &&
+               (message.IndexOf("tools[0].parameters", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                message.IndexOf("tools[0].input_schema", StringComparison.OrdinalIgnoreCase) >= 0);
+    }
+
+    private static ToolSchemaKind GetFallbackToolSchemaKind(InvalidOperationException ex) {
+        var message = ex.Message ?? string.Empty;
+        if (message.IndexOf("tools[0].parameters", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return ToolSchemaKind.InputSchema;
+        }
+        return ToolSchemaKind.Parameters;
     }
 
     private void HandleStreamEvent(JsonObject evt, StringBuilder delta, ref string? status, ref JsonObject? completedResponse,
