@@ -68,6 +68,7 @@ function Test-IsTrustedModuleBase([string]$moduleBase) {
 
 function Test-IsTrustedAuthenticode([string]$path) {
     if ([string]::IsNullOrWhiteSpace($path)) { return $false }
+    if (-not $runningOnWindows) { return $false }
     try {
         $sig = Get-AuthenticodeSignature -FilePath $path
         if ($sig -and $sig.Status -eq 'Valid' -and $sig.SignerCertificate -and $sig.SignerCertificate.Subject -like '*Microsoft Corporation*') {
@@ -86,7 +87,7 @@ if ($module.ModuleBase) {
     $trustedBase = Test-IsTrustedModuleBase $module.ModuleBase
 }
 $trustedSig = $false
-if ($module.Path) {
+if ($runningOnWindows -and $module.Path) {
     $trustedSig = Test-IsTrustedAuthenticode $module.Path
 }
 if (-not ($trustedBase -or $trustedSig)) {
