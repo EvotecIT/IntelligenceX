@@ -50,6 +50,20 @@ public static class AnalysisConfigReader {
             settings.Hotspots.AlwaysRender = ReadBool(hotspots, "alwaysRender", settings.Hotspots.AlwaysRender);
         }
 
+        var gate = analysis.GetObject("gate");
+        if (gate is not null) {
+            settings.Gate.Enabled = ReadBool(gate, "enabled", settings.Gate.Enabled);
+            settings.Gate.MinSeverity = gate.GetString("minSeverity") ?? settings.Gate.MinSeverity;
+            var types = AnalysisJsonHelpers.ReadStringList(gate, "types");
+            if (types is not null) {
+                settings.Gate.Types = types;
+            }
+            settings.Gate.IncludeOutsidePackRules = ReadBool(gate, "includeOutsidePackRules", settings.Gate.IncludeOutsidePackRules);
+            settings.Gate.FailOnUnavailable = ReadBool(gate, "failOnUnavailable", settings.Gate.FailOnUnavailable);
+            settings.Gate.FailOnNoEnabledRules = ReadBool(gate, "failOnNoEnabledRules", settings.Gate.FailOnNoEnabledRules);
+            settings.Gate.FailOnHotspotsToReview = ReadBool(gate, "failOnHotspotsToReview", settings.Gate.FailOnHotspotsToReview);
+        }
+
         var results = analysis.GetObject("results");
         if (results is null) {
             return;

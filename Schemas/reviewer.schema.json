@@ -129,22 +129,35 @@
         "packs": { "type": "array", "items": { "type": "string" } },
         "disabledRules": { "type": "array", "items": { "type": "string" } },
         "severityOverrides": { "type": "object", "additionalProperties": { "type": "string" } },
-        "hotspots": {
-          "type": "object",
-          "additionalProperties": true,
-          "properties": {
-            "show": { "type": "boolean" },
-            "maxItems": { "type": "integer", "minimum": 0 },
-            "statePath": { "type": "string" },
-            "showStateSummary": { "type": "boolean" },
-            "alwaysRender": { "type": "boolean" }
-          }
-        },
-        "results": {
-          "type": "object",
-          "additionalProperties": true,
-          "properties": {
-            "inputs": { "type": "array", "items": { "type": "string" } },
+	        "hotspots": {
+	          "type": "object",
+	          "additionalProperties": true,
+	          "properties": {
+	            "show": { "type": "boolean" },
+	            "maxItems": { "type": "integer", "minimum": 0 },
+	            "statePath": { "type": "string" },
+	            "showStateSummary": { "type": "boolean" },
+	            "alwaysRender": { "type": "boolean" }
+	          }
+	        },
+	        "gate": {
+	          "type": "object",
+	          "additionalProperties": true,
+	          "properties": {
+	            "enabled": { "type": "boolean" },
+	            "minSeverity": { "type": "string" },
+	            "types": { "type": "array", "items": { "type": "string" } },
+	            "includeOutsidePackRules": { "type": "boolean" },
+	            "failOnUnavailable": { "type": "boolean" },
+	            "failOnNoEnabledRules": { "type": "boolean" },
+	            "failOnHotspotsToReview": { "type": "boolean" }
+	          }
+	        },
+	        "results": {
+	          "type": "object",
+	          "additionalProperties": true,
+	          "properties": {
+	            "inputs": { "type": "array", "items": { "type": "string" } },
             "minSeverity": { "type": "string" },
             "maxInline": { "type": "integer", "minimum": 0 },
             "summary": { "type": "boolean" },

@@ -47,3 +47,19 @@ intelligencex analyze list-packs
 ```bash
 intelligencex analyze list-rules
 ```
+
+## Gate (CI)
+
+```bash
+intelligencex analyze gate --config .intelligencex/reviewer.json --workspace .
+```
+
+This command:
+- Loads the analysis catalog + policy from `reviewer.json`.
+- Loads configured results inputs (SARIF and/or IntelligenceX findings JSON).
+- Fails with exit code `2` when policy violations are detected or when results are unavailable (by default).
+
+Optional flags:
+- `--config <path>`: explicit path to `.intelligencex/reviewer.json`.
+- `--workspace <path>`: repository root for catalog/config discovery.
+- `--changed-files <path>`: newline-delimited list of workspace-relative paths to gate on (typically PR changed files).

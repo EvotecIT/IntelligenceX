@@ -106,6 +106,10 @@ internal static partial class Program {
         failed += Run("Analyze list-rules help", TestAnalyzeListRulesHelp);
         failed += Run("Analyze list-rules json warnings to stderr", TestAnalyzeListRulesJsonWarningsToStderr);
         failed += Run("Analyze list-rules json empty outputs array", TestAnalyzeListRulesJsonEmptyOutputsArray);
+        failed += Run("Analyze gate disabled skips", TestAnalyzeGateDisabledSkips);
+        failed += Run("Analyze gate fails on violations", TestAnalyzeGateFailsOnViolations);
+        failed += Run("Analyze gate passes on clean", TestAnalyzeGatePassesOnClean);
+        failed += Run("Analyze gate fails on no enabled rules", TestAnalyzeGateFailsOnNoEnabledRules);
         failed += Run("Doctor help", TestDoctorHelp);
         failed += Run("Doctor missing auth store fails", TestDoctorMissingAuthStoreFails);
         failed += Run("Doctor multiple bundles warns", TestDoctorMultipleBundlesWarns);

@@ -65,6 +65,7 @@ internal static class Program {
         Console.WriteLine();
         Console.WriteLine("Analyze commands:");
         Console.WriteLine("  analyze run             Execute configured analysis packs and emit findings");
+        Console.WriteLine("  analyze gate            Fail CI on policy violations (when enabled in reviewer.json)");
         Console.WriteLine("  analyze export-config   Export analyzer configs from reviewer.json");
         Console.WriteLine("  analyze list-packs      List available rule packs");
         Console.WriteLine("  analyze list-rules      List available rules (text/markdown/json, optional pack filter)");
