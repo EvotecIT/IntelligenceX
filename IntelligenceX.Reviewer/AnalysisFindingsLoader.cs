@@ -514,24 +514,33 @@ internal static class AnalysisFindingsLoader {
         try {
             var fullWorkspace = Path.GetFullPath(workspace);
             var full = Path.GetFullPath(resolved);
-            var relative = Path.GetRelativePath(fullWorkspace, full);
-            if (string.IsNullOrWhiteSpace(relative)) {
-                // Defensive: empty relative paths are unexpected and can mask edge cases in boundary checks.
-                return null;
-            }
-            var normalized = relative.Replace('\\', '/');
-            if (normalized.Equals(".", StringComparison.Ordinal)) {
-                return full;
-            }
-            if (Path.IsPathRooted(relative) ||
-                normalized.Equals("..", StringComparison.Ordinal) ||
-                normalized.StartsWith("../", StringComparison.Ordinal)) {
-                return null;
-            }
-            return full;
+            return IsWithinWorkspace(fullWorkspace, full) ? full : null;
         } catch {
             return null;
         }
+    }
+
+    private static bool IsWithinWorkspace(string workspaceFullPath, string candidateFullPath) {
+        if (string.IsNullOrWhiteSpace(workspaceFullPath) || string.IsNullOrWhiteSpace(candidateFullPath)) {
+            return false;
+        }
+
+        var root = Path.TrimEndingDirectorySeparator(workspaceFullPath)
+            .Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+        var candidate = Path.TrimEndingDirectorySeparator(candidateFullPath)
+            .Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        if (string.Equals(candidate, root, comparison)) {
+            return true;
+        }
+
+        // Separator-aware prefix to avoid /repo2 matching /repo.
+        var prefix = root + Path.DirectorySeparatorChar;
+        return candidate.StartsWith(prefix, comparison);
     }
 
     private static IEnumerable<JsonObject> EnumerateObjects(JsonArray? array) {

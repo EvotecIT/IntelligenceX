@@ -86,6 +86,29 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalysisFindingsLoaderWorkspaceBoundRejectsSiblingPrefix() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-loader-prefix-root-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var sibling = temp + "2";
+        Directory.CreateDirectory(sibling);
+        try {
+            var flags = global::System.Reflection.BindingFlags.NonPublic | global::System.Reflection.BindingFlags.Static;
+            var method = typeof(IntelligenceX.Reviewer.AnalysisFindingsLoader).GetMethod("ResolveWorkspaceBoundAbsolutePath", flags);
+            AssertNotNull(method, "analysis loader resolve bound method exists");
+
+            var candidate = Path.Combine(sibling, "artifact.sarif");
+            var result = (string?)method!.Invoke(null, new object[] { temp, candidate });
+            AssertEqual(null, result, "analysis loader rejects sibling prefix path");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+            if (Directory.Exists(sibling)) {
+                Directory.Delete(sibling, true);
+            }
+        }
+    }
+
     private static void TestAnalyzeGateResolveWorkspaceBoundPathAcceptsWorkspaceRoot() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-workspace-root-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
