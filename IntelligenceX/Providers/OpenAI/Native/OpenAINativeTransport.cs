@@ -320,7 +320,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         NativeThreadState state, IReadOnlyList<JsonObject> inputItems, bool trackMessages, string model, string turnId,
         ChatOptions options, CancellationToken cancellationToken) {
         ToolSchemaKind retryKind;
-        var response = await SendAsync(body, accessToken, accountId, state.SessionId, cancellationToken)
+        using var response = await SendAsync(body, accessToken, accountId, state.SessionId, cancellationToken)
             .ConfigureAwait(false);
         try {
             return await ProcessResponseAsync(response, turnId, model, state, inputItems, trackMessages, cancellationToken)
@@ -337,7 +337,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             requestMessages.AddRange(inputItems);
 
             var retryBody = BuildRequestBody(model, requestMessages, state.SessionId, options, retryKind);
-            var retry = await SendAsync(retryBody, accessToken, accountId, state.SessionId, cancellationToken)
+            using var retry = await SendAsync(retryBody, accessToken, accountId, state.SessionId, cancellationToken)
                 .ConfigureAwait(false);
             return await ProcessResponseAsync(retry, turnId, model, state, inputItems, trackMessages, cancellationToken)
                 .ConfigureAwait(false);
@@ -353,7 +353,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             foreach (var fallback in GetChatGptFallbackModels(model)) {
                 state.Touch(fallback);
                 var retryBody = BuildRequestBody(fallback, requestMessages, state.SessionId, options);
-                var retry = await SendAsync(retryBody, accessToken, accountId, state.SessionId, cancellationToken)
+                using var retry = await SendAsync(retryBody, accessToken, accountId, state.SessionId, cancellationToken)
                     .ConfigureAwait(false);
                 try {
                     return await ProcessResponseAsync(retry, turnId, fallback, state, inputItems, trackMessages, cancellationToken)
