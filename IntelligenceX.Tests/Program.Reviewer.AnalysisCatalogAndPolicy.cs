@@ -320,9 +320,10 @@ internal static partial class Program {
         var packsRoot = Path.Combine(workspace, "Analysis", "Packs");
         var tempOverridesRoot = Path.Combine(Path.GetTempPath(), "ix-analysis-overrides-disabled-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempOverridesRoot);
-        Directory.CreateDirectory(Path.Combine(tempOverridesRoot, "powershell"));
+        var emptyOverridesRoot = Path.Combine(tempOverridesRoot, "powershell");
+        Directory.CreateDirectory(emptyOverridesRoot);
         try {
-            var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, tempOverridesRoot, packsRoot);
+            var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, emptyOverridesRoot, packsRoot);
 
             foreach (var overridePath in Directory.EnumerateFiles(overridesDir, "*.json")) {
                 var overrideText = File.ReadAllText(overridePath, System.Text.Encoding.UTF8);

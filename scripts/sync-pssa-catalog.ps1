@@ -234,15 +234,16 @@ $deleted = 0
 if (($staleRuleFiles.Count -gt 0) -or ($staleOverrideFiles.Count -gt 0)) {
     $totalStale = $staleRuleFiles.Count + $staleOverrideFiles.Count
     if (-not $PruneStale) {
-        throw ("Found {0} stale file(s). Re-run with -PruneStale to delete them." -f $totalStale)
-    }
-    foreach ($file in $staleRuleFiles) {
-        Remove-Item -LiteralPath $file.FullName -Force
-        $deleted++
-    }
-    foreach ($file in $staleOverrideFiles) {
-        Remove-Item -LiteralPath $file.FullName -Force
-        $deleted++
+        Write-Warning ("Found {0} stale file(s). Re-run with -PruneStale to delete them." -f $totalStale)
+    } else {
+        foreach ($file in $staleRuleFiles) {
+            Remove-Item -LiteralPath $file.FullName -Force
+            $deleted++
+        }
+        foreach ($file in $staleOverrideFiles) {
+            Remove-Item -LiteralPath $file.FullName -Force
+            $deleted++
+        }
     }
 }
 
