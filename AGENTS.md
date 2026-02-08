@@ -28,7 +28,7 @@ When an agent is assigned a PR to improve or unblock, it must iterate until merg
 1. Read the latest IntelligenceX bot review comment.
 2. Treat these sections as merge blockers: `Todo List ✅` and `Critical Issues ⚠️`.
 3. Treat `Other Issues 🧯` and `Next Steps 🚀` as non-blocking unless maintainers explicitly escalate them.
-4. Fix inline comments only when they map to merge blockers (todo/critical).
+4. Fix inline comments only when they map to merge blockers; ignore style-only nits from other bots unless they affect correctness, security, or maintainability.
 5. Apply fixes, then re-run checks and re-check bot output:
    Run: `gh pr checks <num> --repo EvotecIT/IntelligenceX`
    If the bot posts new todo/critical items, repeat.
