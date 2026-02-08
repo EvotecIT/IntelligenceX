@@ -460,6 +460,71 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalysisHotspotsMaxItemsSemantics() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-hotspots-maxitems-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var originalCwd = Environment.CurrentDirectory;
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+
+            File.WriteAllText(Path.Combine(rulesDir, "IXHOT001.json"), """
+{
+  "id": "IXHOT001",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "toolRuleId": "IXHOT001",
+  "type": "security-hotspot",
+  "title": "Security hotspot",
+  "description": "Requires review.",
+  "category": "Security",
+  "defaultSeverity": "info"
+}
+""");
+            File.WriteAllText(Path.Combine(packsDir, "all-50.json"), """
+{
+  "id": "all-50",
+  "label": "All Essentials (50)",
+  "rules": ["IXHOT001"]
+}
+""");
+
+            var findings = new List<AnalysisFinding>();
+            for (var i = 0; i < 11; i++) {
+                findings.Add(new AnalysisFinding($"src/test{i:D2}.cs", 10, "Review this usage.", "warning", "IXHOT001", "IntelligenceX", $"fp-{i}"));
+            }
+
+            Environment.CurrentDirectory = temp;
+
+            var baseSettings = new ReviewSettings();
+            baseSettings.Analysis.Enabled = true;
+            baseSettings.Analysis.Hotspots.Show = true;
+            baseSettings.Analysis.Hotspots.ShowStateSummary = false;
+
+            // MaxItems=0 hides items.
+            baseSettings.Analysis.Hotspots.MaxItems = 0;
+            var hidden = AnalysisHotspots.BuildBlock(baseSettings, findings);
+            AssertContainsText(hidden, "Items: hidden (maxItems=0)", "hotspots maxItems 0 hides items");
+
+            // MaxItems<0 uses default limit.
+            baseSettings.Analysis.Hotspots.MaxItems = -1;
+            var defaulted = AnalysisHotspots.BuildBlock(baseSettings, findings);
+            AssertContainsText(defaulted, "- Showing first 10 of 11 hotspot(s).", "hotspots maxItems -1 uses default");
+
+            // MaxItems>0 limits to that number.
+            baseSettings.Analysis.Hotspots.MaxItems = 2;
+            var limited = AnalysisHotspots.BuildBlock(baseSettings, findings);
+            AssertContainsText(limited, "- Showing first 2 of 11 hotspot(s).", "hotspots maxItems 2 limits items");
+        } finally {
+            Environment.CurrentDirectory = originalCwd;
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalysisLoaderIncludesHotspotsBelowMinSeverity() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-hotspots-minseverity-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

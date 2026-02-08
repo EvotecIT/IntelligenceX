@@ -30,9 +30,11 @@ internal static class AnalysisHotspots {
             return string.Empty;
         }
 
-        var maxItems = hotspotSettings.MaxItems < 0 ? 0 : hotspotSettings.MaxItems;
-        if (maxItems == 0) {
-            maxItems = 0;
+        var configuredMaxItems = hotspotSettings.MaxItems;
+        var itemsHidden = configuredMaxItems == 0;
+        var effectiveMaxItems = configuredMaxItems < 0 ? DefaultMaxItems : configuredMaxItems;
+        if (effectiveMaxItems < 0) {
+            effectiveMaxItems = DefaultMaxItems;
         }
 
         var statePath = ResolveStatePath(workspace, hotspotSettings.StatePath);
@@ -51,14 +53,6 @@ internal static class AnalysisHotspots {
                 entry = new HotspotStateEntry(key, "to-review", Note: null, CreatedAt: null);
             }
             rendered.Add((finding, key, NormalizeStatus(entry.Status), entry.Note));
-        }
-
-        // Don't show suppressed items in the list; still count them.
-        var suppressedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var item in rendered) {
-            if (IsSuppressedStatus(item.Status)) {
-                suppressedKeys.Add(item.Key);
-            }
         }
 
         var counts = rendered
@@ -91,12 +85,12 @@ internal static class AnalysisHotspots {
             return string.Join("\n", lines).TrimEnd();
         }
 
-        if (hotspotSettings.MaxItems == 0) {
+        if (itemsHidden) {
             lines.Add("- Items: hidden (maxItems=0)");
         } else {
             var visibleItems = rendered.Where(item => !IsSuppressedStatus(item.Status)).ToList();
             var ordered = OrderFindings(visibleItems);
-            var shown = ordered.Take(maxItems <= 0 ? DefaultMaxItems : maxItems).ToList();
+            var shown = ordered.Take(effectiveMaxItems <= 0 ? DefaultMaxItems : effectiveMaxItems).ToList();
             lines.Add("- Items:");
             foreach (var item in shown) {
                 var location = FormatLocation(item.Finding);
