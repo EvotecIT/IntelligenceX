@@ -165,6 +165,107 @@ internal sealed class AzureDevOpsClient : IDisposable {
     }
 
     /// <summary>
+    /// Creates a new pull request discussion thread attached to a file/line position.
+    /// </summary>
+    public async Task CreatePullRequestInlineThreadAsync(string project, string repositoryId, int pullRequestId,
+        string filePath, int lineNumber, string content, CancellationToken cancellationToken) {
+        if (string.IsNullOrWhiteSpace(filePath)) {
+            throw new ArgumentException("File path is required.", nameof(filePath));
+        }
+        if (lineNumber <= 0) {
+            throw new ArgumentOutOfRangeException(nameof(lineNumber), "Line number must be positive.");
+        }
+        if (string.IsNullOrWhiteSpace(content)) {
+            return;
+        }
+
+        var url = $"{Escape(project)}/_apis/git/repositories/{Escape(repositoryId)}/pullRequests/{pullRequestId}/threads?api-version={ApiVersion}";
+
+        // Azure DevOps expects a leading '/' in threadContext filePath.
+        var normalizedPath = filePath.Replace('\\', '/').Trim();
+        normalizedPath = normalizedPath.TrimStart('/');
+        if (string.IsNullOrWhiteSpace(normalizedPath)) {
+            throw new ArgumentException("File path is required.", nameof(filePath));
+        }
+        // Avoid surprising server-side path resolution behavior.
+        if (normalizedPath.Split('/').Any(segment => segment == "..")) {
+            throw new ArgumentException("File path must not contain '..' segments.", nameof(filePath));
+        }
+        normalizedPath = "/" + normalizedPath;
+        // ADO threadContext positions:
+        // - line starts at 1 (not 0)
+        // - offset starts at 0
+        // https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-threads/create?view=azure-devops-rest-7.2#commentposition
+        const int offset = 0;
+
+        var payload = new JsonObject()
+            .Add("comments", new JsonArray().Add(new JsonObject()
+                .Add("parentCommentId", RootCommentId)
+                .Add("content", content)
+                .Add("commentType", CommentTypeText)))
+            .Add("status", ThreadStatusActive)
+            .Add("threadContext", new JsonObject()
+                .Add("filePath", normalizedPath)
+                .Add("rightFileStart", new JsonObject()
+                    .Add("line", lineNumber)
+                    .Add("offset", offset))
+                .Add("rightFileEnd", new JsonObject()
+                    .Add("line", lineNumber)
+                    .Add("offset", offset)));
+
+        await PostJsonAsync(url, payload, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Lists pull request threads (discussion + inline).
+    /// </summary>
+    public async Task<IReadOnlyList<AzureDevOpsPullRequestThread>> ListPullRequestThreadsAsync(string project,
+        string repositoryId, int pullRequestId, CancellationToken cancellationToken) {
+        var url = $"{Escape(project)}/_apis/git/repositories/{Escape(repositoryId)}/pullRequests/{pullRequestId}/threads?api-version={ApiVersion}";
+        var json = await GetJsonAsync(url, cancellationToken).ConfigureAwait(false);
+        var array = json.AsObject()?.GetArray("value");
+        if (array is null || array.Count == 0) {
+            return Array.Empty<AzureDevOpsPullRequestThread>();
+        }
+
+        var threads = new List<AzureDevOpsPullRequestThread>(array.Count);
+        foreach (var entry in array) {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var obj = entry.AsObject();
+            if (obj is null) {
+                continue;
+            }
+
+            var context = obj.GetObject("threadContext");
+            var filePath = context?.GetString("filePath");
+            var rightStartLine = context?.GetObject("rightFileStart")?.GetInt64("line");
+            var line = rightStartLine.HasValue && rightStartLine.Value > 0 && rightStartLine.Value <= int.MaxValue
+                ? (int)rightStartLine.Value
+                : (int?)null;
+
+            var commentArray = obj.GetArray("comments");
+            IReadOnlyList<string> comments = Array.Empty<string>();
+            if (commentArray is not null && commentArray.Count > 0) {
+                var list = new List<string>(commentArray.Count);
+                foreach (var comment in commentArray) {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var body = comment.AsObject()?.GetString("content");
+                    if (!string.IsNullOrWhiteSpace(body)) {
+                        list.Add(body!);
+                    }
+                }
+                if (list.Count > 0) {
+                    comments = list;
+                }
+            }
+
+            threads.Add(new AzureDevOpsPullRequestThread(filePath, line, comments));
+        }
+        return threads;
+    }
+
+    /// <summary>
     /// Disposes of the underlying HTTP client.
     /// </summary>
     public void Dispose() => _http.Dispose();
@@ -278,6 +379,8 @@ internal sealed class AzureDevOpsClient : IDisposable {
         return true;
     }
 }
+
+internal sealed record AzureDevOpsPullRequestThread(string? FilePath, int? Line, IReadOnlyList<string> Comments);
 
 internal sealed record AzureDevOpsPullRequest(int PullRequestId, string Title, string? Description, bool IsDraft,
     string RepositoryId, string RepositoryName, string Project, string? SourceCommit, string? TargetCommit);
