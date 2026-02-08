@@ -27,8 +27,6 @@ internal static partial class Program {
     private static void TestNativeToolSchemaFallbackUsesStructuredErrorData() {
         var ix = typeof(IntelligenceXClient).Assembly;
         var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
-        var enumType = transportType.GetNestedType("ToolSchemaKey", BindingFlags.NonPublic);
-        AssertNotNull(enumType, "ToolSchemaKey enum");
 
         var methods = transportType.GetMethods(BindingFlags.NonPublic | BindingFlags.Static);
         MethodInfo? method = null;
@@ -41,21 +39,33 @@ internal static partial class Program {
                 ps[0].ParameterType == typeof(InvalidOperationException) &&
                 ps[1].IsOut &&
                 ps[1].ParameterType.IsByRef &&
-                ps[1].ParameterType.GetElementType() == enumType) {
+                (ps[1].ParameterType.GetElementType()?.IsEnum ?? false)) {
                 method = m;
                 break;
             }
         }
         AssertNotNull(method, "TryGetToolSchemaKeyFallback(InvalidOperationException, out ToolSchemaKey)");
 
-        var ex = new InvalidOperationException("Server rejected tool schema.");
-        ex.Data["openai:error_param"] = "tools[0].parameters";
-        ex.Data["openai:error_code"] = "unknown_parameter";
+        var errorExType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeErrorResponseException", throwOnError: true)!;
+        var errorEx = (Exception)Activator.CreateInstance(errorExType, new object?[] {
+            "Server rejected tool schema.",
+            "unknown_parameter",
+            "tools[0].parameters",
+            System.Net.HttpStatusCode.BadRequest
+        })!;
 
-        var args = new object?[] { ex, CreateOutSlot(method!) };
+        var args = new object?[] { errorEx, CreateOutSlot(method!) };
         var ok = (bool)method!.Invoke(null, args)!;
         AssertEqual(true, ok, "ok");
         AssertEqual("InputSchema", args[1]?.ToString() ?? string.Empty, "fallbackKind");
+
+        // Guard against false positives: arbitrary InvalidOperationException.Data should not trigger fallback.
+        var unrelated = new InvalidOperationException("Server rejected tool schema.");
+        unrelated.Data["openai:error_param"] = "tools[0].parameters";
+        unrelated.Data["openai:error_code"] = "unknown_parameter";
+        args = new object?[] { unrelated, CreateOutSlot(method!) };
+        ok = (bool)method!.Invoke(null, args)!;
+        AssertEqual(false, ok, "ok");
     }
 
     private static void TestNativeToolSchemaFallbackIgnoresUnrelated() {

@@ -35,7 +35,18 @@ internal sealed partial class OpenAINativeTransport {
             return false;
         }
 
-        var param = ex.Data?["openai:error_param"] as string;
+        if (ex is not OpenAINativeErrorResponseException native) {
+            return false;
+        }
+
+        // Only retry for response-derived validation failures. This prevents tool schema fallback from masking
+        // unrelated local errors that happen to throw InvalidOperationException.
+        if (native.StatusCode != System.Net.HttpStatusCode.BadRequest &&
+            (int)native.StatusCode != 422 /* Unprocessable Entity (not available in older TFMs) */) {
+            return false;
+        }
+
+        var param = native.ErrorParam;
         if (string.IsNullOrWhiteSpace(param)) {
             return false;
         }
@@ -44,7 +55,7 @@ internal sealed partial class OpenAINativeTransport {
         }
 
         // If the server provided a structured code, require it to match an unknown-parameter style error.
-        var code = ex.Data?["openai:error_code"] as string;
+        var code = native.ErrorCode;
         if (!string.IsNullOrWhiteSpace(code) &&
             code!.IndexOf("unknown_parameter", StringComparison.OrdinalIgnoreCase) < 0) {
             return false;
