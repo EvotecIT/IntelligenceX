@@ -41,7 +41,14 @@ internal static class OpenAINativeSseParser {
             if (string.IsNullOrWhiteSpace(data) || string.Equals(data, "[DONE]", StringComparison.Ordinal)) {
                 continue;
             }
-            var value = JsonLite.Parse(data);
+            JsonValue? value;
+            try {
+                value = JsonLite.Parse(data);
+            } catch (FormatException) {
+                // Some transports/proxies can emit malformed SSE payloads. Skip invalid events and continue parsing;
+                // callers can still fall back to accumulated deltas if the completed response isn't available.
+                continue;
+            }
             var obj = value?.AsObject();
             if (obj is null) {
                 continue;
@@ -59,9 +66,7 @@ internal static class OpenAINativeSseParser {
                 continue;
             }
             var value = line.Substring(5).Trim();
-            if (dataLines.Length > 0) {
-                dataLines.Append('\n');
-            }
+            // For JSON payloads, avoid injecting extra separators between multiple data lines.
             dataLines.Append(value);
         }
         return dataLines.ToString();
