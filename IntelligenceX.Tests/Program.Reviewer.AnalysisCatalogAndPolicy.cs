@@ -318,10 +318,12 @@ internal static partial class Program {
         // Load the catalog without overrides so we can compare base vs effective without needing per-override temp workspaces.
         var rulesRoot = Path.Combine(workspace, "Analysis", "Catalog", "rules");
         var packsRoot = Path.Combine(workspace, "Analysis", "Packs");
-        var disabledOverridesRoot = Path.Combine(workspace, "Analysis", "Catalog", "overrides", "__disabled__");
-        var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, disabledOverridesRoot, packsRoot);
+        var tempOverridesRoot = Path.Combine(Path.GetTempPath(), "ix-analysis-overrides-disabled-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempOverridesRoot);
+        try {
+            var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, tempOverridesRoot, packsRoot);
 
-        foreach (var overridePath in Directory.EnumerateFiles(overridesDir, "*.json")) {
+            foreach (var overridePath in Directory.EnumerateFiles(overridesDir, "*.json")) {
             using var overrideDoc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(overridePath));
             var overrideRoot = overrideDoc.RootElement;
             if (!overrideRoot.TryGetProperty("id", out var idElement) || idElement.ValueKind != System.Text.Json.JsonValueKind.String) {
@@ -428,6 +430,11 @@ internal static partial class Program {
             }
 
             AssertEqual(true, sawOverrideProperty, $"{id} override has at least one property besides id");
+        }
+        } finally {
+            if (Directory.Exists(tempOverridesRoot)) {
+                Directory.Delete(tempOverridesRoot, true);
+            }
         }
     }
 
