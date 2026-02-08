@@ -72,7 +72,7 @@ function Compress-Whitespace([string]$text) {
     ($text -replace '[\r\n]+', ' ' -replace '\s+', ' ').Trim()
 }
 
-function Update-MetadataText([string]$text) {
+function Format-MetadataText([string]$text) {
     if ([string]::IsNullOrWhiteSpace($text)) { return '' }
     $fixed = $text
     # Upstream typos we don't want to publish as-is.
@@ -139,8 +139,8 @@ foreach ($rule in $rules) {
     $description = Compress-Whitespace ([string]$rule.Description)
     if ([string]::IsNullOrWhiteSpace($description)) { $description = "PSScriptAnalyzer rule '$ruleName'. See docs for details." }
 
-    $title = Update-MetadataText $title
-    $description = Update-MetadataText $description
+    $title = Format-MetadataText $title
+    $description = Format-MetadataText $description
 
     switch ($ruleName) {
         'PSAvoidAssignmentToAutomaticVariable' {

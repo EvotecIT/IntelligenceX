@@ -324,113 +324,116 @@ internal static partial class Program {
             var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, tempOverridesRoot, packsRoot);
 
             foreach (var overridePath in Directory.EnumerateFiles(overridesDir, "*.json")) {
-            using var overrideDoc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(overridePath));
-            var overrideRoot = overrideDoc.RootElement;
-            if (!overrideRoot.TryGetProperty("id", out var idElement) || idElement.ValueKind != System.Text.Json.JsonValueKind.String) {
-                throw new InvalidOperationException($"Override '{Path.GetFileName(overridePath)}' is missing string 'id' property.");
-            }
-            var id = idElement.GetString();
-            AssertEqual(false, string.IsNullOrWhiteSpace(id), $"{Path.GetFileName(overridePath)} override has id");
-            if (string.IsNullOrWhiteSpace(id)) {
-                throw new Exception($"{Path.GetFileName(overridePath)} override has no id");
-            }
-            AssertEqual(id, Path.GetFileNameWithoutExtension(overridePath), $"{id} override filename matches id");
+                var overrideText = File.ReadAllText(overridePath, System.Text.Encoding.UTF8);
+                using var overrideDoc = System.Text.Json.JsonDocument.Parse(overrideText);
+                var overrideRoot = overrideDoc.RootElement;
 
-            var basePath = Path.Combine(rulesDir, id + ".json");
-            AssertEqual(true, File.Exists(basePath), $"{id} base rule exists for override");
-
-            AssertEqual(true, catalog.Rules.TryGetValue(id, out var effective), $"{id} exists in catalog");
-            if (effective is null) {
-                throw new Exception($"{id} exists in catalog but is null");
-            }
-
-            AssertEqual(true, baseCatalog.Rules.TryGetValue(id, out var resolvedBase), $"{id} exists in base catalog");
-            var baseRule = resolvedBase ?? throw new Exception($"{id} exists in base catalog but is null");
-
-            var sawOverrideProperty = false;
-            foreach (var prop in overrideRoot.EnumerateObject()) {
-                if (prop.NameEquals("id")) {
-                    continue;
+                if (!overrideRoot.TryGetProperty("id", out var idElement) || idElement.ValueKind != System.Text.Json.JsonValueKind.String) {
+                    throw new InvalidOperationException($"Override '{Path.GetFileName(overridePath)}' is missing string 'id' property.");
                 }
-                sawOverrideProperty = true;
 
-                switch (prop.Name) {
-                    case "title": {
-                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override title must be a string");
-                        AssertEqual(expected, effective.Title, $"{id} override title applied");
-                        break;
-                    }
-                    case "description": {
-                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override description must be a string");
-                        AssertEqual(expected, effective.Description, $"{id} override description applied");
-                        break;
-                    }
-                    case "type": {
-                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override type must be a string");
-                        AssertEqual(expected, effective.Type, $"{id} override type applied");
-                        break;
-                    }
-                    case "category": {
-                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override category must be a string");
-                        AssertEqual(expected, effective.Category, $"{id} override category applied");
-                        break;
-                    }
-                    case "defaultSeverity": {
-                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override defaultSeverity must be a string");
-                        AssertEqual(expected, effective.DefaultSeverity, $"{id} override defaultSeverity applied");
-                        break;
-                    }
-                    case "docs": {
-                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override docs must be a string");
-                        AssertEqual(expected, effective.Docs, $"{id} override docs applied");
-                        break;
-                    }
-                    case "tags": {
-                        static IReadOnlyList<string> MergeTags(IReadOnlyList<string> existing, IReadOnlyList<string> overrides) {
-                            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                            var merged = new List<string>();
-                            foreach (var tag in existing ?? Array.Empty<string>()) {
-                                if (string.IsNullOrWhiteSpace(tag)) {
-                                    continue;
-                                }
-                                var value = tag.Trim();
-                                if (set.Add(value)) {
-                                    merged.Add(value);
-                                }
-                            }
-                            foreach (var tag in overrides ?? Array.Empty<string>()) {
-                                if (string.IsNullOrWhiteSpace(tag)) {
-                                    continue;
-                                }
-                                var value = tag.Trim();
-                                if (set.Add(value)) {
-                                    merged.Add(value);
-                                }
-                            }
-                            return merged;
-                        }
-
-                        AssertEqual(System.Text.Json.JsonValueKind.Array, prop.Value.ValueKind, $"{id} override tags is array");
-                        var overrideTags = prop.Value.EnumerateArray()
-                            .Select(x => x.GetString() ?? throw new Exception($"{id} override tags must be strings"))
-                            .ToArray();
-
-                        var expectedMerged = MergeTags(baseRule.Tags, overrideTags);
-                        var expectedSet = new HashSet<string>(expectedMerged, StringComparer.OrdinalIgnoreCase);
-                        var actualSet = new HashSet<string>(effective.Tags ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
-                        AssertEqual(expectedSet.Count, actualSet.Count, $"{id} merged tag count matches");
-                        foreach (var tag in expectedSet) {
-                            AssertEqual(true, actualSet.Contains(tag), $"{id} merged tags contains '{tag}'");
-                        }
-                        break;
-                    }
-                    default:
-                        throw new Exception($"Unsupported PowerShell override property '{prop.Name}' in {Path.GetFileName(overridePath)}");
+                var id = idElement.GetString();
+                AssertEqual(false, string.IsNullOrWhiteSpace(id), $"{Path.GetFileName(overridePath)} override has id");
+                if (string.IsNullOrWhiteSpace(id)) {
+                    throw new Exception($"{Path.GetFileName(overridePath)} override has no id");
                 }
-            }
+                AssertEqual(id, Path.GetFileNameWithoutExtension(overridePath), $"{id} override filename matches id");
 
-            AssertEqual(true, sawOverrideProperty, $"{id} override has at least one property besides id");
-        }
+                var basePath = Path.Combine(rulesDir, id + ".json");
+                AssertEqual(true, File.Exists(basePath), $"{id} base rule exists for override");
+
+                AssertEqual(true, catalog.Rules.TryGetValue(id, out var effective), $"{id} exists in catalog");
+                if (effective is null) {
+                    throw new Exception($"{id} exists in catalog but is null");
+                }
+
+                AssertEqual(true, baseCatalog.Rules.TryGetValue(id, out var resolvedBase), $"{id} exists in base catalog");
+                var baseRule = resolvedBase ?? throw new Exception($"{id} exists in base catalog but is null");
+
+                var sawOverrideProperty = false;
+                foreach (var prop in overrideRoot.EnumerateObject()) {
+                    if (prop.NameEquals("id")) {
+                        continue;
+                    }
+                    sawOverrideProperty = true;
+
+                    switch (prop.Name) {
+                        case "title": {
+                            var expected = prop.Value.GetString() ?? throw new Exception($"{id} override title must be a string");
+                            AssertEqual(expected, effective.Title, $"{id} override title applied");
+                            break;
+                        }
+                        case "description": {
+                            var expected = prop.Value.GetString() ?? throw new Exception($"{id} override description must be a string");
+                            AssertEqual(expected, effective.Description, $"{id} override description applied");
+                            break;
+                        }
+                        case "type": {
+                            var expected = prop.Value.GetString() ?? throw new Exception($"{id} override type must be a string");
+                            AssertEqual(expected, effective.Type, $"{id} override type applied");
+                            break;
+                        }
+                        case "category": {
+                            var expected = prop.Value.GetString() ?? throw new Exception($"{id} override category must be a string");
+                            AssertEqual(expected, effective.Category, $"{id} override category applied");
+                            break;
+                        }
+                        case "defaultSeverity": {
+                            var expected = prop.Value.GetString() ?? throw new Exception($"{id} override defaultSeverity must be a string");
+                            AssertEqual(expected, effective.DefaultSeverity, $"{id} override defaultSeverity applied");
+                            break;
+                        }
+                        case "docs": {
+                            var expected = prop.Value.GetString() ?? throw new Exception($"{id} override docs must be a string");
+                            AssertEqual(expected, effective.Docs, $"{id} override docs applied");
+                            break;
+                        }
+                        case "tags": {
+                            static IReadOnlyList<string> MergeTags(IReadOnlyList<string> existing, IReadOnlyList<string> overrides) {
+                                var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                                var merged = new List<string>();
+                                foreach (var tag in existing ?? Array.Empty<string>()) {
+                                    if (string.IsNullOrWhiteSpace(tag)) {
+                                        continue;
+                                    }
+                                    var value = tag.Trim();
+                                    if (set.Add(value)) {
+                                        merged.Add(value);
+                                    }
+                                }
+                                foreach (var tag in overrides ?? Array.Empty<string>()) {
+                                    if (string.IsNullOrWhiteSpace(tag)) {
+                                        continue;
+                                    }
+                                    var value = tag.Trim();
+                                    if (set.Add(value)) {
+                                        merged.Add(value);
+                                    }
+                                }
+                                return merged;
+                            }
+
+                            AssertEqual(System.Text.Json.JsonValueKind.Array, prop.Value.ValueKind, $"{id} override tags is array");
+                            var overrideTags = prop.Value.EnumerateArray()
+                                .Select(x => x.GetString() ?? throw new Exception($"{id} override tags must be strings"))
+                                .ToArray();
+
+                            var expectedMerged = MergeTags(baseRule.Tags, overrideTags);
+                            var expectedSet = new HashSet<string>(expectedMerged, StringComparer.OrdinalIgnoreCase);
+                            var actualSet = new HashSet<string>(effective.Tags ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+                            AssertEqual(expectedSet.Count, actualSet.Count, $"{id} merged tag count matches");
+                            foreach (var tag in expectedSet) {
+                                AssertEqual(true, actualSet.Contains(tag), $"{id} merged tags contains '{tag}'");
+                            }
+                            break;
+                        }
+                        default:
+                            throw new Exception($"Unsupported PowerShell override property '{prop.Name}' in {Path.GetFileName(overridePath)}");
+                    }
+                }
+
+                AssertEqual(true, sawOverrideProperty, $"{id} override has at least one property besides id");
+            }
         } finally {
             if (Directory.Exists(tempOverridesRoot)) {
                 Directory.Delete(tempOverridesRoot, true);
