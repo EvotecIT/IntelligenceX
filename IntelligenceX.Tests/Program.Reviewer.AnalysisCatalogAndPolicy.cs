@@ -525,6 +525,91 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalysisHotspotsSuppressedCountSemantics() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-hotspots-suppressed-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var originalCwd = Environment.CurrentDirectory;
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+
+            File.WriteAllText(Path.Combine(rulesDir, "IXHOT001.json"), """
+{
+  "id": "IXHOT001",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "toolRuleId": "IXHOT001",
+  "type": "security-hotspot",
+  "title": "Security hotspot",
+  "description": "Requires review.",
+  "category": "Security",
+  "defaultSeverity": "info"
+}
+""");
+            File.WriteAllText(Path.Combine(packsDir, "all-50.json"), """
+{
+  "id": "all-50",
+  "label": "All Essentials (50)",
+  "rules": ["IXHOT001"]
+}
+""");
+
+            // One visible hotspot (to-review) and one suppressed hotspot.
+            var statePath = Path.Combine(temp, ".intelligencex", "hotspots.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(statePath)!);
+            File.WriteAllText(statePath, """
+{
+  "schema": "intelligencex.hotspots.v1",
+  "items": [
+    { "key": "IXHOT001:fp-visible", "status": "to-review" },
+    { "key": "IXHOT001:fp-suppressed", "status": "suppress" }
+  ]
+}
+""");
+
+            Environment.CurrentDirectory = temp;
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Hotspots.Show = true;
+            settings.Analysis.Hotspots.StatePath = ".intelligencex/hotspots.json";
+            settings.Analysis.Hotspots.ShowStateSummary = false;
+
+            var findings = new List<AnalysisFinding> {
+                new AnalysisFinding("src/visible.cs", 10, "Review this usage.", "warning", "IXHOT001", "IntelligenceX", "fp-visible"),
+                new AnalysisFinding("src/suppressed.cs", 10, "Review this usage.", "warning", "IXHOT001", "IntelligenceX", "fp-suppressed")
+            };
+
+            var block = AnalysisHotspots.BuildBlock(settings, findings);
+            AssertContainsText(block, "- Hotspots: 1", "hotspots headline excludes suppressed");
+            AssertContainsText(block, "(suppressed: 1)", "hotspots suppressed count is reported");
+            AssertContainsText(block, "IXHOT001:fp-visible", "hotspots list includes visible key");
+            AssertEqual(false, block.Contains("IXHOT001:fp-suppressed", StringComparison.OrdinalIgnoreCase),
+                "hotspots list excludes suppressed key");
+        } finally {
+            Environment.CurrentDirectory = originalCwd;
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalysisHotspotsKeyHashingUsesUtf8Bytes() {
+        // Non-ASCII inputs should hash deterministically based on UTF-8 bytes.
+        var finding = new AnalysisFinding(
+            "src/naïve.cs",
+            42,
+            "Use café secrets",
+            "warning",
+            "IXHOT002",
+            "IntelligenceX",
+            null);
+
+        var key = AnalysisHotspots.ComputeHotspotKey(finding);
+        AssertEqual("IXHOT002:e4ab3f06e3e88089", key, "hotspots key hashing uses UTF-8 bytes (FNV-1a 64)");
+    }
+
     private static void TestAnalysisLoaderIncludesHotspotsBelowMinSeverity() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-hotspots-minseverity-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

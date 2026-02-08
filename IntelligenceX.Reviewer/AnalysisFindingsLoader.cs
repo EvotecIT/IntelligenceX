@@ -124,20 +124,22 @@ internal static class AnalysisFindingsLoader {
     }
 
     private static bool IsSecurityHotspot(string? primaryRuleId, string? secondaryRuleId, AnalysisCatalog? catalog) {
+        // Prefer catalog metadata (when available) as source of truth.
+        if (catalog is not null) {
+            if (!string.IsNullOrWhiteSpace(primaryRuleId) && catalog.TryGetRule(primaryRuleId, out var rule)) {
+                return string.Equals(rule.Type, "security-hotspot", StringComparison.OrdinalIgnoreCase);
+            }
+            if (!string.IsNullOrWhiteSpace(secondaryRuleId) && catalog.TryGetRule(secondaryRuleId, out rule)) {
+                return string.Equals(rule.Type, "security-hotspot", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        // Fallback convention for when catalog isn't available or doesn't contain the rule.
         if (!string.IsNullOrWhiteSpace(primaryRuleId) && primaryRuleId.StartsWith("IXHOT", StringComparison.OrdinalIgnoreCase)) {
             return true;
         }
         if (!string.IsNullOrWhiteSpace(secondaryRuleId) && secondaryRuleId.StartsWith("IXHOT", StringComparison.OrdinalIgnoreCase)) {
             return true;
-        }
-        if (catalog is null) {
-            return false;
-        }
-        if (!string.IsNullOrWhiteSpace(primaryRuleId) && catalog.TryGetRule(primaryRuleId, out var rule)) {
-            return string.Equals(rule.Type, "security-hotspot", StringComparison.OrdinalIgnoreCase);
-        }
-        if (!string.IsNullOrWhiteSpace(secondaryRuleId) && catalog.TryGetRule(secondaryRuleId, out rule)) {
-            return string.Equals(rule.Type, "security-hotspot", StringComparison.OrdinalIgnoreCase);
         }
         return false;
     }

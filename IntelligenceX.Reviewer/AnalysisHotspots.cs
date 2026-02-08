@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using IntelligenceX.Analysis;
 
 namespace IntelligenceX.Reviewer;
@@ -55,7 +56,10 @@ internal static class AnalysisHotspots {
             rendered.Add((finding, key, NormalizeStatus(entry.Status), entry.Note));
         }
 
-        var counts = rendered
+        var suppressCount = rendered.Count(item => IsSuppressedStatus(item.Status));
+        var visibleRendered = rendered.Where(item => !IsSuppressedStatus(item.Status)).ToList();
+
+        var counts = visibleRendered
             .GroupBy(item => item.Status, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
         counts.TryGetValue("to-review", out var toReviewCount);
@@ -63,11 +67,11 @@ internal static class AnalysisHotspots {
         counts.TryGetValue("fixed", out var fixedCount);
         counts.TryGetValue("accepted-risk", out var acceptedRiskCount);
         counts.TryGetValue("wont-fix", out var wontFixCount);
-        counts.TryGetValue("suppress", out var suppressCount);
 
         var lines = new List<string> { HotspotHeader };
+        var suppressedSuffix = suppressCount > 0 ? $" (suppressed: {suppressCount})" : string.Empty;
         lines.Add(
-            $"- Hotspots: {rendered.Count} (to-review: {toReviewCount}, safe: {safeCount}, fixed: {fixedCount}, accepted-risk: {acceptedRiskCount}, wont-fix: {wontFixCount}, suppress: {suppressCount})");
+            $"- Hotspots: {visibleRendered.Count} (to-review: {toReviewCount}, safe: {safeCount}, fixed: {fixedCount}, accepted-risk: {acceptedRiskCount}, wont-fix: {wontFixCount}){suppressedSuffix}");
 
         if (hotspotSettings.ShowStateSummary) {
             var relStatePath = DescribeStatePathForOutput(workspace, hotspotSettings.StatePath, statePath);
@@ -88,8 +92,12 @@ internal static class AnalysisHotspots {
         if (itemsHidden) {
             lines.Add("- Items: hidden (maxItems=0)");
         } else {
-            var visibleItems = rendered.Where(item => !IsSuppressedStatus(item.Status)).ToList();
-            var ordered = OrderFindings(visibleItems);
+            if (visibleRendered.Count == 0) {
+                lines.Add("- Items: none");
+                return string.Join("\n", lines).TrimEnd();
+            }
+
+            var ordered = OrderFindings(visibleRendered);
             var shown = ordered.Take(maxItems).ToList();
             lines.Add("- Items:");
             foreach (var item in shown) {
@@ -100,8 +108,8 @@ internal static class AnalysisHotspots {
                 var note = string.IsNullOrWhiteSpace(item.Note) ? string.Empty : $" Note: {TrimMessage(item.Note)}";
                 lines.Add($"- [{status}] `{location}`{rule} {message} (key {item.Key}){note}");
             }
-            if (visibleItems.Count > shown.Count) {
-                lines.Add($"- Showing first {shown.Count} of {visibleItems.Count} hotspot(s).");
+            if (visibleRendered.Count > shown.Count) {
+                lines.Add($"- Showing first {shown.Count} of {visibleRendered.Count} hotspot(s).");
             }
         }
 
@@ -216,8 +224,11 @@ internal static class AnalysisHotspots {
         const ulong offset = 1469598103934665603UL;
         const ulong prime = 1099511628211UL;
         var hash = offset;
-        foreach (var ch in value ?? string.Empty) {
-            hash ^= ch;
+        // Hash bytes (UTF-8) rather than UTF-16 chars to avoid key churn across runtimes and
+        // to behave like a content hash rather than a .NET string internal representation.
+        var bytes = Encoding.UTF8.GetBytes(value ?? string.Empty);
+        foreach (var b in bytes) {
+            hash ^= b;
             hash *= prime;
         }
         return hash.ToString("x16", CultureInfo.InvariantCulture);
