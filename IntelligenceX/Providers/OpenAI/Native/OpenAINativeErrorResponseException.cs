@@ -10,6 +10,7 @@ internal sealed class OpenAINativeErrorResponseException : InvalidOperationExcep
         ErrorParam = string.IsNullOrWhiteSpace(param) ? null : param;
         StatusCode = statusCode;
 
+        Data["openai:native_transport"] = true;
         if (ErrorCode is not null) {
             Data["openai:error_code"] = ErrorCode;
         }
@@ -22,4 +23,3 @@ internal sealed class OpenAINativeErrorResponseException : InvalidOperationExcep
     internal string? ErrorParam { get; }
     internal HttpStatusCode StatusCode { get; }
 }
-

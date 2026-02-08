@@ -24,6 +24,37 @@ internal static partial class Program {
         AssertEqual("Parameters", fallback, "fallbackKind");
     }
 
+    private static void TestNativeToolChoiceSerializationMatchesWireFormat() {
+        var ix = typeof(IntelligenceXClient).Assembly;
+        var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
+
+        var enumType = transportType.GetNestedType("ToolWireFormat", BindingFlags.NonPublic);
+        AssertNotNull(enumType, "ToolWireFormat enum");
+
+        var method = transportType.GetMethod("SerializeToolChoice", BindingFlags.NonPublic | BindingFlags.Static);
+        AssertNotNull(method, "SerializeToolChoice method");
+
+        var customParameters = Enum.Parse(enumType!, "CustomParameters");
+        var functionFlatParameters = Enum.Parse(enumType!, "FunctionFlatParameters");
+
+        var forced = ToolChoice.Custom("test-tool");
+
+        var functionChoice = method!.Invoke(null, new object?[] { forced, functionFlatParameters });
+        var functionObj = functionChoice as JsonObject;
+        AssertNotNull(functionObj, "function tool_choice as JsonObject");
+        AssertEqual("function", functionObj!.GetString("type") ?? string.Empty, "type");
+        var function = functionObj.GetObject("function");
+        AssertNotNull(function, "function object");
+        AssertEqual("test-tool", function!.GetString("name") ?? string.Empty, "name");
+
+        var customChoice = (JsonObject)method!.Invoke(null, new object?[] { forced, customParameters })!;
+        AssertEqual("custom", customChoice.GetString("type") ?? string.Empty, "type");
+        AssertEqual("test-tool", customChoice.GetString("name") ?? string.Empty, "name");
+
+        var autoChoice = (string)method!.Invoke(null, new object?[] { ToolChoice.Auto, functionFlatParameters })!;
+        AssertEqual("auto", autoChoice, "tool_choice");
+    }
+
     private static void TestNativeToolSchemaFallbackUsesStructuredErrorData() {
         var ix = typeof(IntelligenceXClient).Assembly;
         var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
@@ -73,6 +104,12 @@ internal static partial class Program {
         args = new object?[] { unrelated, CreateOutSlot(method!) };
         ok = (bool)method!.Invoke(null, args)!;
         AssertEqual(false, ok, "ok");
+
+        // If a wrapper preserves native diagnostic data, fallback should still trigger.
+        unrelated.Data["openai:native_transport"] = true;
+        args = new object?[] { unrelated, CreateOutSlot(method!) };
+        ok = (bool)method!.Invoke(null, args)!;
+        AssertEqual(true, ok, "ok");
     }
 
     private static void TestNativeToolSchemaFallbackIgnoresUnrelated() {

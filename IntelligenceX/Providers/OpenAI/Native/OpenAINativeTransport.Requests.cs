@@ -80,16 +80,11 @@ internal sealed partial class OpenAINativeTransport {
             body.Add("tools", tools);
 
             var choice = options.ToolChoice ?? ToolChoice.Auto;
-            if (string.Equals(choice.Type, "custom", StringComparison.OrdinalIgnoreCase)) {
-                var wireType = toolWireFormat == ToolWireFormat.FunctionFlatParameters ||
-                               toolWireFormat == ToolWireFormat.FunctionFlatInputSchema
-                    ? "function"
-                    : "custom";
-                body.Add("tool_choice", new JsonObject()
-                    .Add("type", wireType)
-                    .Add("name", choice.Name ?? string.Empty));
+            var toolChoice = SerializeToolChoice(choice, toolWireFormat);
+            if (toolChoice is JsonObject obj) {
+                body.Add("tool_choice", obj);
             } else {
-                body.Add("tool_choice", choice.Type);
+                body.Add("tool_choice", (string)toolChoice);
             }
 
             if (options.ParallelToolCalls.HasValue) {
@@ -100,6 +95,27 @@ internal sealed partial class OpenAINativeTransport {
         }
 
         return body;
+    }
+
+    private static object SerializeToolChoice(ToolChoice choice, ToolWireFormat toolWireFormat) {
+        if (string.Equals(choice.Type, "custom", StringComparison.OrdinalIgnoreCase)) {
+            var name = choice.Name ?? string.Empty;
+            var isFunctionWireFormat = toolWireFormat == ToolWireFormat.FunctionFlatParameters ||
+                                       toolWireFormat == ToolWireFormat.FunctionFlatInputSchema;
+            if (isFunctionWireFormat) {
+                // When falling back to function-style tools, forced tool choice must also be expressed as function-style.
+                // Using the standard OpenAI schema: { type: "function", function: { name: "..." } }.
+                return new JsonObject()
+                    .Add("type", "function")
+                    .Add("function", new JsonObject().Add("name", name));
+            }
+
+            return new JsonObject()
+                .Add("type", "custom")
+                .Add("name", name);
+        }
+
+        return choice.Type;
     }
 
     private static JsonObject SerializeToolDefinition(ToolDefinition tool, ToolWireFormat toolWireFormat) {

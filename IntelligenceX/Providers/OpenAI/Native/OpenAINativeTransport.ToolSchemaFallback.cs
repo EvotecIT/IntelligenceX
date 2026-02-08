@@ -35,18 +35,30 @@ internal sealed partial class OpenAINativeTransport {
             return false;
         }
 
-        if (ex is not OpenAINativeErrorResponseException native) {
-            return false;
+        string? code;
+        string? param;
+
+        if (ex is OpenAINativeErrorResponseException native) {
+            // Only retry for response-derived validation failures. This prevents tool schema fallback from masking
+            // unrelated local errors that happen to throw InvalidOperationException.
+            if (native.StatusCode != System.Net.HttpStatusCode.BadRequest &&
+                (int)native.StatusCode != 422 /* Unprocessable Entity (not available in older TFMs) */) {
+                return false;
+            }
+
+            code = native.ErrorCode;
+            param = native.ErrorParam;
+        } else {
+            // Allow fallback when the original native exception type is lost (e.g., rewrapped) but diagnostic data is preserved.
+            // We require a transport marker to avoid false positives from arbitrary InvalidOperationException instances.
+            if (!(ex.Data?["openai:native_transport"] is bool marker && marker)) {
+                return false;
+            }
+
+            code = ex.Data?["openai:error_code"] as string;
+            param = ex.Data?["openai:error_param"] as string;
         }
 
-        // Only retry for response-derived validation failures. This prevents tool schema fallback from masking
-        // unrelated local errors that happen to throw InvalidOperationException.
-        if (native.StatusCode != System.Net.HttpStatusCode.BadRequest &&
-            (int)native.StatusCode != 422 /* Unprocessable Entity (not available in older TFMs) */) {
-            return false;
-        }
-
-        var param = native.ErrorParam;
         if (string.IsNullOrWhiteSpace(param)) {
             return false;
         }
@@ -55,7 +67,6 @@ internal sealed partial class OpenAINativeTransport {
         }
 
         // If the server provided a structured code, require it to match an unknown-parameter style error.
-        var code = native.ErrorCode;
         if (!string.IsNullOrWhiteSpace(code) &&
             code!.IndexOf("unknown_parameter", StringComparison.OrdinalIgnoreCase) < 0) {
             return false;
