@@ -5,7 +5,7 @@ namespace IntelligenceX.Cli.Setup.Wizard;
 
 internal static class WizardSummary {
     public static void Render(SetupPlan plan, IReadOnlyList<string> repos, string? workflowStatus = null, string? configSource = null,
-        string? authLabel = null, string? usageLabel = null) {
+        string? authLabel = null, string? usageLabel = null, string? secretLabel = null) {
         var table = new Table()
             .RoundedBorder()
             .AddColumn("Setting")
@@ -27,6 +27,14 @@ internal static class WizardSummary {
         table.AddRow("Skip secret", plan.SkipSecret ? "yes" : "no");
         table.AddRow("Manual secret", plan.ManualSecret ? "yes" : "no");
         table.AddRow("Explicit secrets", plan.ExplicitSecrets ? "yes" : "no");
+        if (!string.IsNullOrWhiteSpace(secretLabel)) {
+            table.AddRow("Secret target", secretLabel);
+        }
+        if (!plan.SkipSecret && !plan.ManualSecret) {
+            // Best-effort hint: in org-secret mode, wizard sets the secret once and passes --skip-secret to per-repo setup.
+            // In repo-secret mode, wizard passes --auth-b64 to avoid repeated logins.
+            table.AddRow("Secret strategy", "auto");
+        }
         if (plan.Cleanup) {
             table.AddRow("Keep secret", plan.KeepSecret ? "yes" : "no");
         }

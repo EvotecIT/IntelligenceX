@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
 using IntelligenceX.OpenAI.AppServer.Models;
+using IntelligenceX.Tools;
 
-namespace IntelligenceX.OpenAI.Tools;
+namespace IntelligenceX.OpenAI.ToolCalling;
 
 /// <summary>
 /// Helper for extracting tool calls from a turn response.

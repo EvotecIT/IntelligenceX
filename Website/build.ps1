@@ -5,8 +5,6 @@
 
 .PARAMETER Serve
     Build the full pipeline and start the development server.
-    When `-Serve` uses dev mode (default), it will also skip the heaviest steps (`optimize`,`audit`)
-    unless you explicitly pass `-Only` or `-Skip`.
 
 .PARAMETER Fast
     Run the pipeline with `--fast` (recommended for local iteration).
@@ -28,6 +26,10 @@
 .PARAMETER Skip
     Skip the specified pipeline tasks (comma/semicolon separated), for example: optimize,audit.
 
+.PARAMETER Watch
+    Run the pipeline in watch mode (rebuild on file changes).
+    When combined with `-Serve`, starts the static server and keeps rebuilding in the foreground.
+
 .PARAMETER Port
     Server port (default: 8080).
 
@@ -42,6 +44,7 @@
 
 param(
     [switch]$Serve,
+    [switch]$Watch,
     [switch]$Dev,
     [switch]$Fast,
     [switch]$NoDev,
@@ -134,32 +137,50 @@ try {
     $UseDev = ($Dev -or ($Serve -and -not $NoDev))
     $UseFast = ($Fast -or ($Serve -and -not $NoFast))
 
-    # Keep local serve iterations fast by default.
-    # Users can override this by explicitly passing -Only or -Skip, or by disabling dev mode (-NoDev).
-    if ($Serve -and $UseDev -and $Only.Count -eq 0 -and $Skip.Count -eq 0) {
-        $Skip = @('optimize', 'audit')
-    }
-
-    $pipelineArgs = @('pipeline', '--config', 'pipeline.json', '--profile')
+    $pipelineArgsBase = @('pipeline', '--config', 'pipeline.json', '--profile')
     if ($UseDev) {
-        $pipelineArgs += '--dev'
+        $pipelineArgsBase += '--dev'
     } elseif ($UseFast) {
-        $pipelineArgs += '--fast'
+        $pipelineArgsBase += '--fast'
     }
     if ($Only -and $Only.Count -gt 0) {
-        $pipelineArgs += @('--only', ($Only -join ','))
+        $pipelineArgsBase += @('--only', ($Only -join ','))
     }
     if ($Skip -and $Skip.Count -gt 0) {
-        $pipelineArgs += @('--skip', ($Skip -join ','))
+        $pipelineArgsBase += @('--skip', ($Skip -join ','))
+    }
+
+    $pipelineArgs = @($pipelineArgsBase)
+    if ($Watch) {
+        $pipelineArgs += '--watch'
     }
 
     if ($Serve) {
         Write-Host 'Building website...' -ForegroundColor Cyan
-        & $PowerForge @PowerForgeArgs @pipelineArgs
+        if ($Watch) {
+            # Ensure _site exists before we start the server.
+            & $PowerForge @PowerForgeArgs @pipelineArgsBase
+        } else {
+            & $PowerForge @PowerForgeArgs @pipelineArgs
+        }
         if ($LASTEXITCODE -ne 0) { throw "Build failed (exit code $LASTEXITCODE)" }
         Assert-SiteOutput -SiteRoot (Join-Path $PSScriptRoot '_site')
         Write-Host "Starting dev server on http://localhost:$Port ..." -ForegroundColor Cyan
-        & $PowerForge @PowerForgeArgs serve --path _site --port $Port
+
+        $serveArgs = @($PowerForgeArgs + @('serve', '--path', '_site', '--port', $Port))
+        $serveProcess = Start-Process -FilePath $PowerForge -ArgumentList $serveArgs -NoNewWindow -PassThru
+        try {
+            if ($Watch) {
+                Write-Host 'Watching for changes...' -ForegroundColor Cyan
+                & $PowerForge @PowerForgeArgs @pipelineArgs
+            } else {
+                Wait-Process -Id $serveProcess.Id
+            }
+        } finally {
+            if ($serveProcess -and -not $serveProcess.HasExited) {
+                Stop-Process -Id $serveProcess.Id -Force -ErrorAction SilentlyContinue
+            }
+        }
     } else {
         Write-Host 'Building website...' -ForegroundColor Cyan
         & $PowerForge @PowerForgeArgs @pipelineArgs

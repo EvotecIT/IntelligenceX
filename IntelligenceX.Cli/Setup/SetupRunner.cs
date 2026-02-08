@@ -5,6 +5,8 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using IntelligenceX.Cli;
+using IntelligenceX.Cli.GitHub;
 using IntelligenceX.OpenAI.Auth;
 
 namespace IntelligenceX.Cli.Setup;
@@ -173,20 +175,15 @@ internal static partial class SetupRunner {
     private static async Task ResolveGitHubAuthAsync(SetupState state) {
         var options = state.Options;
 
-        if (string.IsNullOrWhiteSpace(options.GitHubToken) && string.IsNullOrWhiteSpace(options.GitHubClientId)) {
-            options.GitHubClientId = Prompt("GitHub OAuth client id (or press Enter to use env INTELLIGENCEX_GITHUB_CLIENT_ID)");
-            if (string.IsNullOrWhiteSpace(options.GitHubClientId)) {
-                options.GitHubClientId = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_CLIENT_ID");
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(options.GitHubToken) && string.IsNullOrWhiteSpace(options.GitHubClientId)) {
-            Console.Error.WriteLine("GitHub auth required. Provide --github-token or --github-client-id.");
-            return;
-        }
-
         var token = options.GitHubToken;
         if (string.IsNullOrWhiteSpace(token)) {
+            token = await TryReadGhTokenAsync(options.GitHubAuthBaseUrl).ConfigureAwait(false);
+        }
+        if (string.IsNullOrWhiteSpace(token)) {
+            // Fall back to device flow using the built-in IntelligenceX OAuth app client id.
+            if (string.IsNullOrWhiteSpace(options.GitHubClientId)) {
+                options.GitHubClientId = IntelligenceXDefaults.GetEffectiveGitHubClientId();
+            }
             token = await GitHubDeviceFlow.LoginAsync(options.GitHubClientId!, options.GitHubAuthBaseUrl, options.GitHubScopes)
                 .ConfigureAwait(false);
         }
@@ -195,10 +192,35 @@ internal static partial class SetupRunner {
         state.GitHub.ClientId = options.GitHubClientId;
     }
 
+    private static async Task<string?> TryReadGhTokenAsync(string gitHubAuthBaseUrl) {
+        // Prefer reusing existing `gh auth login` state to keep setup to ~1-3 steps.
+        var host = "github.com";
+        try {
+            if (!string.IsNullOrWhiteSpace(gitHubAuthBaseUrl)) {
+                host = new Uri(gitHubAuthBaseUrl).Host;
+            }
+        } catch {
+            // ignore
+        }
+        var (code, stdout, _) = await GhCli.RunAsync(TimeSpan.FromSeconds(15),
+            "auth", "token", "--hostname", host).ConfigureAwait(false);
+        if (code != 0) {
+            return null;
+        }
+        var token = (stdout ?? string.Empty).Trim();
+        return string.IsNullOrWhiteSpace(token) ? null : token;
+    }
+
     private static async Task<string?> ResolveRepositoryAsync(SetupState state) {
         var options = state.Options;
         if (!string.IsNullOrWhiteSpace(options.RepoFullName)) {
             return options.RepoFullName;
+        }
+
+        var autoRepo = GitHubRepoDetector.TryDetectRepo(Environment.CurrentDirectory);
+        if (!string.IsNullOrWhiteSpace(autoRepo)) {
+            Console.WriteLine($"Auto-detected repository: {autoRepo}");
+            return autoRepo;
         }
 
         if (state.GitHub.Repositories.Count == 0) {
@@ -465,4 +487,6 @@ internal static partial class SetupRunner {
         Console.Write(label + ": ");
         return Console.ReadLine() ?? string.Empty;
     }
+
+    // Repo autodetection is implemented in GitHubRepoDetector to keep behavior consistent across commands.
 }

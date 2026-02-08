@@ -28,11 +28,12 @@ When an agent is assigned a PR to improve or unblock, it must iterate until merg
 1. Read the latest IntelligenceX bot review comment.
 2. Treat these sections as merge blockers: `Todo List ✅` and `Critical Issues ⚠️`.
 3. Treat `Other Issues 🧯` and `Next Steps 🚀` as non-blocking unless maintainers explicitly escalate them.
-4. Fix inline comments only when they map to merge blockers; ignore style-only nits from other bots unless they affect correctness, security, or maintainability.
-5. Apply fixes, then re-run checks and re-check bot output:
+4. Triage other automated reviews (for example the “Claude Code Review” sticky comment) and fix anything that impacts correctness, security, or reliability.
+5. Fix inline comments only when they map to merge blockers or correctness/security/reliability issues; ignore style-only nits from other bots unless maintainers explicitly escalate them.
+6. Apply fixes, then re-run checks and re-check bot output:
    Run: `gh pr checks <num> --repo EvotecIT/IntelligenceX`
    If the bot posts new todo/critical items, repeat.
-6. Only move on to the next PR when the current PR has no remaining todo/critical blockers (or maintainers explicitly decide to accept the risk).
+7. Only move on to the next PR when the current PR has no remaining todo/critical blockers (or maintainers explicitly decide to accept the risk).
 
 **Review Feedback Backlog**
 1. Aggregate bot review feedback using `gh api graphql`.

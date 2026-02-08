@@ -4,6 +4,25 @@
 * text=auto
 
 ###############################################################################
+# Repository line endings
+#
+# Keep cross-platform content as LF to avoid CRLF-only diffs and tooling drift.
+# Keep PowerShell scripts as CRLF for Windows-native editing.
+###############################################################################
+*.md    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.json  text eol=lf
+*.css   text eol=lf
+*.js    text eol=lf
+*.ts    text eol=lf
+*.html  text eol=lf
+*.cs    text eol=lf
+*.csproj text eol=lf
+*.sln   text eol=lf
+*.ps1   text eol=crlf
+
+###############################################################################
 # Set default behavior for command prompt diff.
 #
 # This is need for earlier builds of msysgit that does not have it on by

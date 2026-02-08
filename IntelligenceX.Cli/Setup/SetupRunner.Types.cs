@@ -18,6 +18,8 @@ internal static partial class SetupRunner {
         public string? Provider { get; set; } = "openai";
         public string? OpenAIModel { get; set; } = "gpt-5.3-codex";
         public string? OpenAITransport { get; set; } = "native";
+        public string? OpenAIAccountId { get; set; }
+        public bool OpenAIAccountIdSet { get; set; }
         public string? ReviewerSource { get; set; } = "release";
         public string? ReviewerReleaseRepo { get; set; } = "EvotecIT/github-actions";
         public string? ReviewerReleaseTag { get; set; } = "latest";
@@ -87,8 +89,12 @@ internal static partial class SetupRunner {
 
         public static SetupOptions Parse(string[] args) {
             var options = new SetupOptions {
-                GitHubClientId = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_CLIENT_ID"),
-                GitHubToken = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN"),
+                // Prefer non-interactive tokens when available; otherwise fall back to device flow via default Client ID.
+                GitHubClientId = IntelligenceXDefaults.GetEffectiveGitHubClientId(),
+                GitHubToken = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN")
+                    ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN")
+                    ?? Environment.GetEnvironmentVariable("GH_TOKEN"),
+                OpenAIAccountId = Environment.GetEnvironmentVariable("INTELLIGENCEX_OPENAI_ACCOUNT_ID"),
                 GitHubApiBaseUrl = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_API_BASE_URL") ?? "https://api.github.com",
                 GitHubAuthBaseUrl = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_AUTH_BASE_URL") ?? "https://github.com"
             };
@@ -142,6 +148,10 @@ internal static partial class SetupRunner {
                     case "openai-transport":
                         options.OpenAITransport = value;
                         options.OpenAITransportSet = true;
+                        break;
+                    case "openai-account-id":
+                        options.OpenAIAccountId = value;
+                        options.OpenAIAccountIdSet = true;
                         break;
                     case "reviewer-source":
                         options.ReviewerSource = value;
@@ -367,6 +377,7 @@ internal static partial class SetupRunner {
         public string Provider { get; set; } = "openai";
         public string OpenAITransport { get; set; } = "native";
         public string OpenAIModel { get; set; } = "gpt-5.3-codex";
+        public string? OpenAIAccountId { get; set; }
         public string Profile { get; set; } = "balanced";
         public string Mode { get; set; } = "hybrid";
         public string CommentMode { get; set; } = "sticky";
@@ -383,6 +394,7 @@ internal static partial class SetupRunner {
                 Provider = options.Provider ?? "openai",
                 OpenAITransport = options.OpenAITransport ?? "native",
                 OpenAIModel = options.OpenAIModel ?? "gpt-5.3-codex",
+                OpenAIAccountId = string.IsNullOrWhiteSpace(options.OpenAIAccountId) ? null : options.OpenAIAccountId!.Trim(),
                 Profile = options.ReviewProfile ?? "balanced",
                 Mode = options.ReviewMode ?? "hybrid",
                 CommentMode = options.ReviewCommentMode ?? "sticky",
@@ -456,6 +468,7 @@ internal static partial class SetupRunner {
         public string? Provider { get; set; }
         public string? OpenAITransport { get; set; }
         public string? OpenAIModel { get; set; }
+        public string? OpenAIAccountId { get; set; }
         public string? Profile { get; set; }
         public string? Mode { get; set; }
         public string? CommentMode { get; set; }
@@ -471,6 +484,7 @@ internal static partial class SetupRunner {
             Provider is not null ||
             OpenAITransport is not null ||
             OpenAIModel is not null ||
+            OpenAIAccountId is not null ||
             Profile is not null ||
             Mode is not null ||
             CommentMode is not null ||
@@ -527,9 +541,5 @@ internal static partial class SetupRunner {
     }
 
 }
-
-
-
-
 
 
