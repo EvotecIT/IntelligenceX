@@ -99,7 +99,8 @@ internal sealed class OpenAINativeAuthManager {
                 if (string.Equals(value, "cancel", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(value, "exit", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(value, "quit", StringComparison.OrdinalIgnoreCase)) {
-                    throw new OperationCanceledException("Login canceled by user.", cancellationToken);
+                    // User-driven cancel should not attach a non-canceled token.
+                    throw new OperationCanceledException("Login canceled by user.");
                 }
                 return Task.FromResult(value);
             }
