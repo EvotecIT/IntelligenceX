@@ -30,6 +30,68 @@ if ($module.ModuleBase) {
     }
 }
 
+function Test-IsUnderPath([string]$path, [string]$root) {
+    if ([string]::IsNullOrWhiteSpace($path) -or [string]::IsNullOrWhiteSpace($root)) { return $false }
+    $fullPath = [System.IO.Path]::GetFullPath($path)
+    $fullRoot = [System.IO.Path]::GetFullPath($root)
+    $trimRoot = $fullRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    $prefix = $trimRoot + [System.IO.Path]::DirectorySeparatorChar
+    return $fullPath.Equals($trimRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $fullPath.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Test-IsTrustedModuleBase([string]$moduleBase) {
+    if ([string]::IsNullOrWhiteSpace($moduleBase)) { return $false }
+    $trustedRoots = @()
+
+    # PSHOME modules are considered trusted.
+    if ($PSHOME) { $trustedRoots += (Join-Path -Path $PSHOME -ChildPath 'Modules') }
+
+    # Common system-wide module locations.
+    if ($IsWindows) {
+        if ($env:ProgramFiles) {
+            $trustedRoots += (Join-Path -Path $env:ProgramFiles -ChildPath (Join-Path -Path 'WindowsPowerShell' -ChildPath 'Modules'))
+            $trustedRoots += (Join-Path -Path $env:ProgramFiles -ChildPath (Join-Path -Path 'PowerShell' -ChildPath 'Modules'))
+        }
+    } else {
+        $trustedRoots += '/usr/local/share/powershell/Modules'
+        $trustedRoots += '/usr/share/powershell/Modules'
+    }
+
+    foreach ($root in $trustedRoots) {
+        if (Test-IsUnderPath $moduleBase $root) { return $true }
+    }
+    return $false
+}
+
+function Test-IsTrustedAuthenticode([string]$path) {
+    if ([string]::IsNullOrWhiteSpace($path)) { return $false }
+    try {
+        $sig = Get-AuthenticodeSignature -FilePath $path
+        if ($sig -and $sig.Status -eq 'Valid' -and $sig.SignerCertificate -and $sig.SignerCertificate.Subject -like '*Microsoft Corporation*') {
+            return $true
+        }
+    } catch {
+        # Ignore Authenticode lookup failures (not all platforms support it consistently).
+    }
+    return $false
+}
+
+# Refuse to import PSScriptAnalyzer from arbitrary PSModulePath locations. Prefer PSHOME/system paths.
+$trustedBase = $false
+if ($module.ModuleBase) {
+    $trustedBase = Test-IsTrustedModuleBase $module.ModuleBase
+}
+$trustedSig = $false
+if ($module.Path) {
+    $trustedSig = Test-IsTrustedAuthenticode $module.Path
+}
+if (-not ($trustedBase -or $trustedSig)) {
+    $baseMsg = $module.ModuleBase
+    $pathMsg = $module.Path
+    throw ("Refusing to import PSScriptAnalyzer from an untrusted location. ModuleBase='{0}', Path='{1}'. Install PSScriptAnalyzer system-wide (AllUsers) or use a trusted distribution." -f $baseMsg, $pathMsg)
+}
+
 if ($module.Path) {
     Import-Module -Name $module.Path -RequiredVersion $module.Version -ErrorAction Stop
 } else {
