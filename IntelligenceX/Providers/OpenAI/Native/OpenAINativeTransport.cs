@@ -180,7 +180,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         RpcCallStarted?.Invoke(this, new RpcCallStartedEventArgs("responses.create", rpcParameters));
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try {
-            var turn = await SendWithModelFallbackAsync(body, bundle.AccessToken, accountId!, state, inputItems, trackMessages,
+            var turn = await SendWithModelFallbackAsync(body, requestMessages, bundle.AccessToken, accountId!, state, inputItems, trackMessages,
                     resolvedModel, turnId, options, cancellationToken)
                 .ConfigureAwait(false);
             RpcCallCompleted?.Invoke(this, new RpcCallCompletedEventArgs("responses.create", sw.Elapsed, true));
@@ -316,47 +316,20 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         return TurnInfo.FromJson(rawTurn);
     }
 
-    private async Task<TurnInfo> SendWithModelFallbackAsync(JsonObject body, string accessToken, string accountId,
-        NativeThreadState state, IReadOnlyList<JsonObject> inputItems, bool trackMessages, string model, string turnId,
-        ChatOptions options, CancellationToken cancellationToken) {
-        ToolSchemaKind retryKind;
+    private async Task<TurnInfo> SendWithModelFallbackAsync(JsonObject body, IReadOnlyList<JsonObject> requestMessages,
+        string accessToken, string accountId, NativeThreadState state, IReadOnlyList<JsonObject> inputItems, bool trackMessages,
+        string model, string turnId, ChatOptions options, CancellationToken cancellationToken) {
         try {
-            using var response = await SendAsync(body, accessToken, accountId, state.SessionId, cancellationToken)
-                .ConfigureAwait(false);
-            return await ProcessResponseAsync(response, turnId, model, state, inputItems, trackMessages, cancellationToken)
-                .ConfigureAwait(false);
-        } catch (InvalidOperationException ex) when (options.Tools is not null && options.Tools.Count > 0 &&
-                                                     TryGetToolSchemaFallbackKind(ex.Message, out retryKind)) {
-            // Server rejected our tool schema. Retry once with the alternate field name.
-            var requestMessages = trackMessages
-                ? new List<JsonObject>(state.Messages.Count + inputItems.Count)
-                : new List<JsonObject>(inputItems.Count);
-            if (trackMessages) {
-                requestMessages.AddRange(state.Messages);
-            }
-            requestMessages.AddRange(inputItems);
-
-            var retryBody = BuildRequestBody(model, requestMessages, state.SessionId, options, retryKind);
-            using var retry = await SendAsync(retryBody, accessToken, accountId, state.SessionId, cancellationToken)
-                .ConfigureAwait(false);
-            return await ProcessResponseAsync(retry, turnId, model, state, inputItems, trackMessages, cancellationToken)
+            return await SendWithToolSchemaFallbackAsync(body, requestMessages, accessToken, accountId, state, inputItems, trackMessages,
+                    model, turnId, options, cancellationToken)
                 .ConfigureAwait(false);
         } catch (InvalidOperationException ex) when (IsModelNotSupportedForChatGpt(ex)) {
-            var requestMessages = trackMessages
-                ? new List<JsonObject>(state.Messages.Count + inputItems.Count)
-                : new List<JsonObject>(inputItems.Count);
-            if (trackMessages) {
-                requestMessages.AddRange(state.Messages);
-            }
-            requestMessages.AddRange(inputItems);
-
             foreach (var fallback in GetChatGptFallbackModels(model)) {
                 state.Touch(fallback);
                 var retryBody = BuildRequestBody(fallback, requestMessages, state.SessionId, options);
                 try {
-                    using var retry = await SendAsync(retryBody, accessToken, accountId, state.SessionId, cancellationToken)
-                        .ConfigureAwait(false);
-                    return await ProcessResponseAsync(retry, turnId, fallback, state, inputItems, trackMessages, cancellationToken)
+                    return await SendWithToolSchemaFallbackAsync(retryBody, requestMessages, accessToken, accountId, state, inputItems, trackMessages,
+                            fallback, turnId, options, cancellationToken)
                         .ConfigureAwait(false);
                 } catch (InvalidOperationException retryEx) when (IsModelNotSupportedForChatGpt(retryEx)) {
                     continue;
@@ -367,116 +340,24 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         }
     }
 
-    private static bool TryGetToolSchemaFallbackKind(string? message, out ToolSchemaKind fallbackKind) {
-        // Server error messages vary; the stable signal is the field path that was rejected:
-        // - tools[<n>].parameters
-        // - tools[<n>].input_schema
-        // - tools.<n>.parameters (seen in some variants)
-        // - tools.<n>.input_schema
-        fallbackKind = ToolSchemaKind.Parameters;
-        if (string.IsNullOrWhiteSpace(message)) {
-            return false;
+    private async Task<TurnInfo> SendWithToolSchemaFallbackAsync(JsonObject body, IReadOnlyList<JsonObject> requestMessages,
+        string accessToken, string accountId, NativeThreadState state, IReadOnlyList<JsonObject> inputItems, bool trackMessages,
+        string model, string turnId, ChatOptions options, CancellationToken cancellationToken) {
+        ToolSchemaKind retryKind;
+        try {
+            using var response = await SendAsync(body, accessToken, accountId, state.SessionId, cancellationToken)
+                .ConfigureAwait(false);
+            return await ProcessResponseAsync(response, turnId, model, state, inputItems, trackMessages, cancellationToken)
+                .ConfigureAwait(false);
+        } catch (Exception ex) when (options.Tools is not null && options.Tools.Count > 0 &&
+                                     TryGetToolSchemaFallbackKind(ex.Message, out retryKind)) {
+            // Server rejected our tool schema. Retry once with the alternate field name.
+            var retryBody = BuildRequestBody(model, requestMessages, state.SessionId, options, retryKind);
+            using var retry = await SendAsync(retryBody, accessToken, accountId, state.SessionId, cancellationToken)
+                .ConfigureAwait(false);
+            return await ProcessResponseAsync(retry, turnId, model, state, inputItems, trackMessages, cancellationToken)
+                .ConfigureAwait(false);
         }
-
-        var text = message!;
-        var idx = 0;
-        while (idx < text.Length) {
-            // Bracket form: tools[12].parameters
-            var start = text.IndexOf("tools[", idx, StringComparison.OrdinalIgnoreCase);
-            if (start < 0) {
-                break;
-            }
-
-            var i = start + "tools[".Length;
-            if (i >= text.Length || !char.IsDigit(text[i])) {
-                idx = i;
-                continue;
-            }
-            while (i < text.Length && char.IsDigit(text[i])) {
-                i++;
-            }
-            if (i >= text.Length || text[i] != ']') {
-                idx = i;
-                continue;
-            }
-            i++;
-            if (i >= text.Length || text[i] != '.') {
-                idx = i;
-                continue;
-            }
-            i++;
-
-            if (TryReadIdentifier(text, i, out var identifier)) {
-                if (string.Equals(identifier, "parameters", StringComparison.OrdinalIgnoreCase)) {
-                    fallbackKind = ToolSchemaKind.InputSchema;
-                    return true;
-                }
-                if (string.Equals(identifier, "input_schema", StringComparison.OrdinalIgnoreCase)) {
-                    fallbackKind = ToolSchemaKind.Parameters;
-                    return true;
-                }
-            }
-
-            idx = i;
-        }
-
-        idx = 0;
-        while (idx < text.Length) {
-            // Dot form: tools.12.parameters
-            var start = text.IndexOf("tools.", idx, StringComparison.OrdinalIgnoreCase);
-            if (start < 0) {
-                break;
-            }
-
-            var i = start + "tools.".Length;
-            if (i >= text.Length || !char.IsDigit(text[i])) {
-                idx = i;
-                continue;
-            }
-            while (i < text.Length && char.IsDigit(text[i])) {
-                i++;
-            }
-            if (i >= text.Length || text[i] != '.') {
-                idx = i;
-                continue;
-            }
-            i++;
-
-            if (TryReadIdentifier(text, i, out var identifier)) {
-                if (string.Equals(identifier, "parameters", StringComparison.OrdinalIgnoreCase)) {
-                    fallbackKind = ToolSchemaKind.InputSchema;
-                    return true;
-                }
-                if (string.Equals(identifier, "input_schema", StringComparison.OrdinalIgnoreCase)) {
-                    fallbackKind = ToolSchemaKind.Parameters;
-                    return true;
-                }
-            }
-
-            idx = i;
-        }
-
-        return false;
-    }
-
-    private static bool TryReadIdentifier(string text, int startIndex, out string identifier) {
-        identifier = string.Empty;
-        if (startIndex < 0 || startIndex >= text.Length) {
-            return false;
-        }
-        var i = startIndex;
-        while (i < text.Length) {
-            var c = text[i];
-            if (!(char.IsLetterOrDigit(c) || c == '_')) {
-                break;
-            }
-            i++;
-        }
-        if (i == startIndex) {
-            return false;
-        }
-        identifier = text.Substring(startIndex, i - startIndex);
-        return true;
     }
 
     private void HandleStreamEvent(JsonObject evt, StringBuilder delta, ref string? status, ref JsonObject? completedResponse,
@@ -689,75 +570,6 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             "tif" or "tiff" => "image/tiff",
             _ => "application/octet-stream"
         };
-    }
-
-    private static async Task<string> ParseErrorResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken) {
-        var text = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(text)) {
-            return $"ChatGPT request failed ({(int)response.StatusCode}).";
-        }
-        try {
-            var value = JsonLite.Parse(text);
-            var obj = value?.AsObject();
-            var error = obj?.GetObject("error");
-            var message = error?.GetString("message") ?? obj?.GetString("message");
-            var code = error?.GetString("code") ?? error?.GetString("type");
-            if (response.StatusCode == (HttpStatusCode)429) {
-                var resetsAt = error?.GetInt64("resets_at");
-                if (resetsAt.HasValue) {
-                    var mins = Math.Max(0, (int)Math.Round((resetsAt.Value * 1000 - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) / 60000d));
-                    return $"ChatGPT usage limit reached. Try again in about {mins} minute(s).";
-                }
-                return "ChatGPT usage limit reached (HTTP 429).";
-            }
-            if (!string.IsNullOrWhiteSpace(message)) {
-                return message!;
-            }
-            if (!string.IsNullOrWhiteSpace(code)) {
-                return $"ChatGPT error: {code}";
-            }
-        } catch {
-            // Fall back to raw text.
-        }
-        return text;
-    }
-
-    private static void TryDumpRequest(HttpRequestMessage request, string json) {
-        if (!IsTraceEnabled()) {
-            return;
-        }
-        try {
-            var dir = Path.Combine(Path.GetTempPath(), "IntelligenceX");
-            Directory.CreateDirectory(dir);
-            var file = Path.Combine(dir, $"openai-native-request-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmssfff}.txt");
-            var sb = new StringBuilder();
-            sb.AppendLine($"{request.Method} {request.RequestUri}");
-            sb.AppendLine("Headers:");
-            foreach (var header in request.Headers) {
-                var value = string.Join(",", header.Value);
-                if (string.Equals(header.Key, "Authorization", StringComparison.OrdinalIgnoreCase)) {
-                    value = "Bearer ***";
-                }
-                sb.AppendLine($"{header.Key}: {value}");
-            }
-            if (request.Content?.Headers is not null) {
-                foreach (var header in request.Content.Headers) {
-                    sb.AppendLine($"{header.Key}: {string.Join(",", header.Value)}");
-                }
-            }
-            sb.AppendLine();
-            sb.AppendLine(json);
-            File.WriteAllText(file, sb.ToString());
-            Console.Error.WriteLine($"[IntelligenceX] Wrote native request dump: {file}");
-        } catch {
-            // Ignore dump failures.
-        }
-    }
-
-    private static bool IsTraceEnabled() {
-        var value = Environment.GetEnvironmentVariable("INTELLIGENCEX_NATIVE_TRACE");
-        return string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
     }
 
     public void Dispose() {
