@@ -349,8 +349,8 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
                 .ConfigureAwait(false);
             return await ProcessResponseAsync(response, turnId, model, state, inputItems, trackMessages, cancellationToken)
                 .ConfigureAwait(false);
-        } catch (Exception ex) when (options.Tools is not null && options.Tools.Count > 0 &&
-                                     TryGetToolSchemaFallbackKind(ex.Message, out retryKind)) {
+        } catch (InvalidOperationException ex) when (options.Tools is not null && options.Tools.Count > 0 &&
+                                                    TryGetToolSchemaFallbackKind(ex.Message, out retryKind)) {
             // Server rejected our tool schema. Retry once with the alternate field name.
             var retryBody = BuildRequestBody(model, requestMessages, state.SessionId, options, retryKind);
             using var retry = await SendAsync(retryBody, accessToken, accountId, state.SessionId, cancellationToken)
