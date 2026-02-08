@@ -24,13 +24,13 @@ replacement text
 Only use suggestions when you are confident the replacement is correct and limited to the referenced lines.
 Only include inline comments for merge-blocking items from Todo List and Critical Issues. Do not add inline comments for style-only nits.
 
-{{SummaryStabilityBlock}}Return your review in markdown with these sections (use the emoji shown):
-- Summary 📝
-- Todo List ✅
-- Critical Issues ⚠️ (if any)
-- Other Issues 🧯
-- Other Reviews 🧩 (if provided)
-- Tests / Coverage 🧪
+{{SummaryStabilityBlock}}Return your review in markdown using H2 headings exactly as shown (use the emoji):
+- ## Summary 📝
+- ## Todo List ✅
+- ## Critical Issues ⚠️ (if any)
+- ## Other Issues 🧯
+- ## Other Reviews 🧩 (if provided)
+- ## Tests / Coverage 🧪
 {{NextStepsSection}}
 In Todo List, include only merge-blocking items as markdown checkboxes. If there are no merge-blocking items, write "None.".
 Critical Issues are merge-blocking. Other Issues are non-blocking suggestions.

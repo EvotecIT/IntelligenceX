@@ -2,6 +2,8 @@
 
 The IntelligenceX reviewer posts a structured Markdown comment on each PR. The sections are intentionally split into merge blockers vs suggestions.
 
+The reviewer uses H2 headings (`## ...`) for each required section to keep the output easy to scan and tooling-friendly.
+
 ## Merge blockers vs suggestions
 
 Merge blockers:
