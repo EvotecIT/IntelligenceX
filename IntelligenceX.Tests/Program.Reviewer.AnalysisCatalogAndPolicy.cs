@@ -320,6 +320,8 @@ internal static partial class Program {
         var packsRoot = Path.Combine(workspace, "Analysis", "Packs");
         var tempOverridesRoot = Path.Combine(Path.GetTempPath(), "ix-analysis-overrides-disabled-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempOverridesRoot);
+
+        Exception? testFailure = null;
         try {
             var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, tempOverridesRoot, packsRoot);
 
@@ -460,15 +462,29 @@ internal static partial class Program {
 
                 AssertEqual(true, sawOverrideProperty, $"{id} override has at least one property besides id");
             }
+        } catch (Exception ex) {
+            testFailure = ex;
+            throw;
         } finally {
-            try {
-                if (Directory.Exists(tempOverridesRoot)) {
-                    Directory.Delete(tempOverridesRoot, true);
+            Exception? cleanupFailure = null;
+            for (var attempt = 0; attempt < 5; attempt++) {
+                try {
+                    if (Directory.Exists(tempOverridesRoot)) {
+                        Directory.Delete(tempOverridesRoot, true);
+                    }
+                    cleanupFailure = null;
+                    break;
+                } catch (Exception ex) {
+                    cleanupFailure = ex;
+                    System.Threading.Thread.Sleep(50);
                 }
-            } catch (Exception ex) {
-                // Best-effort cleanup: do not fail tests if the directory can't be deleted (e.g., AV/FS locks),
-                // but also don't silently ignore leaks.
-                Console.Error.WriteLine($"WARN: failed to delete temp overrides dir '{tempOverridesRoot}': {ex.Message}");
+            }
+
+            if (cleanupFailure is not null && Directory.Exists(tempOverridesRoot)) {
+                if (testFailure is null) {
+                    throw new Exception($"Failed to delete temp overrides dir '{tempOverridesRoot}'.", cleanupFailure);
+                }
+                Console.Error.WriteLine($"WARN: failed to delete temp overrides dir '{tempOverridesRoot}': {cleanupFailure.Message}");
             }
         }
     }
@@ -495,11 +511,20 @@ internal static partial class Program {
             }
             AssertEqual("https", uri.Scheme, $"{rule.Id} docs uses https");
 
-            // Prefer Learn, but don't make CI brittle if docs URLs change shape in the future.
-            if (uri.Host.Equals("learn.microsoft.com", StringComparison.OrdinalIgnoreCase)) {
-                var path = uri.AbsolutePath.ToLowerInvariant();
-                AssertEqual(true, path.Contains("/psscriptanalyzer/") && path.Contains("/rules/"), $"{rule.Id} docs looks like PSScriptAnalyzer Learn url");
+            AssertEqual("learn.microsoft.com", uri.Host, $"{rule.Id} docs host is Learn");
+
+            var path = uri.AbsolutePath;
+            const string learnPrefix = "/powershell/utility-modules/psscriptanalyzer/rules/";
+            AssertEqual(true, path.StartsWith(learnPrefix, StringComparison.OrdinalIgnoreCase), $"{rule.Id} docs uses PSScriptAnalyzer Learn rules path");
+
+            var expectedSlug = rule.ToolRuleId;
+            if (expectedSlug.StartsWith("PS", StringComparison.OrdinalIgnoreCase)) {
+                expectedSlug = expectedSlug.Substring(2);
             }
+            expectedSlug = expectedSlug.ToLowerInvariant();
+
+            var actualSlug = path.Substring(learnPrefix.Length).Trim('/').ToLowerInvariant();
+            AssertEqual(expectedSlug, actualSlug, $"{rule.Id} docs slug matches rule id");
         }
     }
 
