@@ -13,8 +13,18 @@ if (-not $module) {
 
 # Avoid importing a module that is (accidentally or maliciously) located under the repo workspace.
 $workspaceRoot = (Resolve-Path (Join-Path -Path $PSScriptRoot -ChildPath '..')).Path
-if ($module.ModuleBase -and $module.ModuleBase.StartsWith($workspaceRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw ("Refusing to import PSScriptAnalyzer from workspace path: {0}" -f $module.ModuleBase)
+if ($module.ModuleBase) {
+    $root = [System.IO.Path]::GetFullPath($workspaceRoot)
+    $base = [System.IO.Path]::GetFullPath($module.ModuleBase)
+    $rootTrim = $root.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    $rootPrefix = $rootTrim + [System.IO.Path]::DirectorySeparatorChar
+
+    $isInWorkspace =
+        $base.Equals($rootTrim, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $base.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+    if ($isInWorkspace) {
+        throw ("Refusing to import PSScriptAnalyzer from workspace path: {0}" -f $base)
+    }
 }
 
 if ($module.Path) {

@@ -315,6 +315,12 @@ internal static partial class Program {
         var overridesDir = Path.Combine(workspace, "Analysis", "Catalog", "overrides", "powershell");
         AssertEqual(true, Directory.Exists(overridesDir), "powershell overrides dir exists");
 
+        // Load the catalog without overrides so we can compare base vs effective without needing per-override temp workspaces.
+        var rulesRoot = Path.Combine(workspace, "Analysis", "Catalog", "rules");
+        var packsRoot = Path.Combine(workspace, "Analysis", "Packs");
+        var disabledOverridesRoot = Path.Combine(workspace, "Analysis", "Catalog", "overrides", "__disabled__");
+        var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, disabledOverridesRoot, packsRoot);
+
         foreach (var overridePath in Directory.EnumerateFiles(overridesDir, "*.json")) {
             using var overrideDoc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(overridePath));
             var overrideRoot = overrideDoc.RootElement;
@@ -332,26 +338,8 @@ internal static partial class Program {
                 throw new Exception($"{id} exists in catalog but is null");
             }
 
-            // Load the base rule via the catalog loader as well, so comparisons are resilient to any loader
-            // normalization/canonicalization (and we don't depend on raw JSON formatting).
-            var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-powershell-base-" + Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(temp);
-            AnalysisRule baseRule;
-            try {
-                var tempRulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "powershell");
-                var tempPacksDir = Path.Combine(temp, "Analysis", "Packs");
-                Directory.CreateDirectory(tempRulesDir);
-                Directory.CreateDirectory(tempPacksDir);
-                File.Copy(basePath, Path.Combine(tempRulesDir, id + ".json"), true);
-
-                var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(temp);
-                AssertEqual(true, baseCatalog.Rules.TryGetValue(id, out var resolvedBase), $"{id} exists in base-only catalog");
-                baseRule = resolvedBase ?? throw new Exception($"{id} exists in base-only catalog but is null");
-            } finally {
-                if (Directory.Exists(temp)) {
-                    Directory.Delete(temp, true);
-                }
-            }
+            AssertEqual(true, baseCatalog.Rules.TryGetValue(id, out var resolvedBase), $"{id} exists in base catalog");
+            var baseRule = resolvedBase ?? throw new Exception($"{id} exists in base catalog but is null");
 
             var changesBase = false;
             foreach (var prop in overrideRoot.EnumerateObject()) {
