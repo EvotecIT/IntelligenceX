@@ -16,6 +16,15 @@ internal static class AnalysisFindingsLoader {
     }
 
     public static AnalysisLoadResult LoadWithReport(ReviewSettings settings, IReadOnlyList<PullRequestFile> files) {
+        return LoadWithReportInternal(settings, files, workspaceRootOverride: null);
+    }
+
+    public static AnalysisLoadResult LoadWithReport(ReviewSettings settings, IReadOnlyList<PullRequestFile> files, string workspaceRoot) {
+        return LoadWithReportInternal(settings, files, workspaceRootOverride: workspaceRoot);
+    }
+
+    private static AnalysisLoadResult LoadWithReportInternal(ReviewSettings settings, IReadOnlyList<PullRequestFile> files,
+        string? workspaceRootOverride) {
         if (settings?.Analysis?.Enabled != true) {
             return new AnalysisLoadResult(Array.Empty<AnalysisFinding>(), new AnalysisLoadReport(0, 0, 0, 0));
         }
@@ -27,7 +36,7 @@ internal static class AnalysisFindingsLoader {
                 new AnalysisLoadReport(configuredInputs, 0, 0, 0));
         }
 
-        var workspace = ResolveWorkspaceRoot();
+        var workspace = ResolveWorkspaceRoot(workspaceRootOverride);
         var catalog = TryLoadCatalog(workspace);
         var toolRuleIndex = BuildToolRuleIndex(catalog);
         var minRank = AnalysisSeverity.Rank(results?.MinSeverity);
@@ -474,7 +483,10 @@ internal static class AnalysisFindingsLoader {
         return $"{finding.Path}:{finding.Line}:{rule}:{message}";
     }
 
-    private static string ResolveWorkspaceRoot() {
+    private static string ResolveWorkspaceRoot(string? workspaceRootOverride) {
+        if (!string.IsNullOrWhiteSpace(workspaceRootOverride)) {
+            return workspaceRootOverride!;
+        }
         var workspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
         if (!string.IsNullOrWhiteSpace(workspace)) {
             return workspace;

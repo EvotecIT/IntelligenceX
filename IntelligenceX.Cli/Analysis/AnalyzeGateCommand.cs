@@ -84,7 +84,11 @@ internal static class AnalyzeGateCommand {
             : analysisSettings.Gate.MinSeverity;
         var minRank = AnalysisSeverity.Rank(minSeverity);
 
-        var prFiles = LoadChangedFiles(options.ChangedFilesPath, workspace);
+        var prFiles = LoadChangedFiles(options.ChangedFilesPath, workspace, out var changedFilesError);
+        if (changedFilesError is not null) {
+            Console.WriteLine(changedFilesError);
+            return Task.FromResult(ExitError);
+        }
         var reviewSettings = new ReviewSettings();
         reviewSettings.Analysis.Enabled = true;
         reviewSettings.Analysis.Results.Inputs = analysisSettings.Results.Inputs;
@@ -92,11 +96,9 @@ internal static class AnalyzeGateCommand {
         reviewSettings.Analysis.DisabledRules = analysisSettings.DisabledRules;
         reviewSettings.Analysis.SeverityOverrides = analysisSettings.SeverityOverrides;
 
-        var previousCwd = Environment.CurrentDirectory;
         AnalysisLoadResult load;
         try {
-            Environment.CurrentDirectory = workspace;
-            load = AnalysisFindingsLoader.LoadWithReport(reviewSettings, prFiles);
+            load = AnalysisFindingsLoader.LoadWithReport(reviewSettings, prFiles, workspace);
         } catch (Exception ex) {
             var msg = (ex.Message ?? string.Empty).Replace("\r", " ").Replace("\n", " ").Trim();
             if (string.IsNullOrWhiteSpace(msg)) {
@@ -106,8 +108,6 @@ internal static class AnalyzeGateCommand {
             }
             Console.WriteLine($"Static analysis gate: unavailable ({msg}).");
             return Task.FromResult(analysisSettings.Gate.FailOnUnavailable ? ExitGateFailed : ExitSuccess);
-        } finally {
-            Environment.CurrentDirectory = previousCwd;
         }
 
         if (load.Report.ResolvedInputFiles == 0) {
@@ -264,7 +264,8 @@ internal static class AnalyzeGateCommand {
         return set;
     }
 
-    private static IReadOnlyList<PullRequestFile> LoadChangedFiles(string? path, string workspace) {
+    private static IReadOnlyList<PullRequestFile> LoadChangedFiles(string? path, string workspace, out string? error) {
+        error = null;
         if (string.IsNullOrWhiteSpace(path)) {
             return Array.Empty<PullRequestFile>();
         }
@@ -274,8 +275,35 @@ internal static class AnalyzeGateCommand {
             return Array.Empty<PullRequestFile>();
         }
         var list = new List<PullRequestFile>();
+        var fullWorkspace = Path.GetFullPath(workspace);
         foreach (var line in File.ReadAllLines(resolved)) {
             var file = (line ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(file) || file.StartsWith("#", StringComparison.Ordinal)) {
+                continue;
+            }
+            if (Path.IsPathRooted(file)) {
+                string relative;
+                try {
+                    var full = Path.GetFullPath(file);
+                    relative = Path.GetRelativePath(fullWorkspace, full);
+                } catch (Exception ex) {
+                    error = $"Invalid changed file entry '{file}': {ex.Message}";
+                    return Array.Empty<PullRequestFile>();
+                }
+                var normalizedRel = relative.Replace('\\', '/');
+                if (Path.IsPathRooted(relative) ||
+                    normalizedRel.Equals("..", StringComparison.Ordinal) ||
+                    normalizedRel.StartsWith("../", StringComparison.Ordinal)) {
+                    error = $"Invalid changed file entry outside workspace: {file}";
+                    return Array.Empty<PullRequestFile>();
+                }
+                file = normalizedRel;
+            } else {
+                file = file.Replace('\\', '/');
+            }
+            if (file.StartsWith("./", StringComparison.Ordinal)) {
+                file = file.Substring(2);
+            }
             if (string.IsNullOrWhiteSpace(file)) {
                 continue;
             }

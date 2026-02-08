@@ -2,6 +2,188 @@ namespace IntelligenceX.Tests;
 
 #if INTELLIGENCEX_REVIEWER
 internal static partial class Program {
+    private static void TestAnalyzeGateChangedFilesAcceptsAbsoluteInWorkspace() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-changed-abs-in-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            var artifactsDir = Path.Combine(temp, "artifacts");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+            Directory.CreateDirectory(artifactsDir);
+
+            File.WriteAllText(Path.Combine(rulesDir, "IX001.json"), """
+{
+  "id": "IX001",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "toolRuleId": "IX001",
+  "type": "bug",
+  "title": "Test rule",
+  "description": "Test rule.",
+  "category": "Reliability",
+  "defaultSeverity": "warning"
+}
+""");
+            File.WriteAllText(Path.Combine(packsDir, "all-50.json"), """
+{
+  "id": "all-50",
+  "label": "All Essentials (50)",
+  "rules": ["IX001"]
+}
+""");
+            File.WriteAllText(Path.Combine(artifactsDir, "intelligencex.findings.json"), """
+{
+  "items": [
+    {
+      "path": "src/test.cs",
+      "line": 10,
+      "severity": "warning",
+      "message": "Broken.",
+      "ruleId": "IX001",
+      "tool": "IntelligenceX"
+    }
+  ]
+}
+""");
+
+            var srcDir = Path.Combine(temp, "src");
+            Directory.CreateDirectory(srcDir);
+            var absoluteChangedFile = Path.Combine(srcDir, "test.cs");
+            File.WriteAllText(absoluteChangedFile, "// test\n");
+            File.WriteAllText(Path.Combine(artifactsDir, "changed-files.txt"), absoluteChangedFile + "\n");
+
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            var configPath = Path.Combine(temp, ".intelligencex", "reviewer.json");
+            File.WriteAllText(configPath, """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["all-50"],
+    "gate": {
+      "enabled": true,
+      "minSeverity": "warning",
+      "types": ["bug"]
+    },
+    "results": { "inputs": ["artifacts/intelligencex.findings.json"] }
+  }
+}
+""");
+
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunner.RunAsync(new[] {
+                "gate",
+                "--workspace",
+                temp,
+                "--config",
+                configPath,
+                "--changed-files",
+                Path.Combine(artifactsDir, "changed-files.txt")
+            }).GetAwaiter().GetResult();
+            AssertEqual(2, exit, "analyze gate exit (absolute changed file normalized)");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalyzeGateChangedFilesRejectsAbsoluteOutsideWorkspace() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-changed-abs-out-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        var outsideRoot = temp + "2";
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            var artifactsDir = Path.Combine(temp, "artifacts");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+            Directory.CreateDirectory(artifactsDir);
+            Directory.CreateDirectory(outsideRoot);
+
+            File.WriteAllText(Path.Combine(rulesDir, "IX001.json"), """
+{
+  "id": "IX001",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "toolRuleId": "IX001",
+  "type": "bug",
+  "title": "Test rule",
+  "description": "Test rule.",
+  "category": "Reliability",
+  "defaultSeverity": "warning"
+}
+""");
+            File.WriteAllText(Path.Combine(packsDir, "all-50.json"), """
+{
+  "id": "all-50",
+  "label": "All Essentials (50)",
+  "rules": ["IX001"]
+}
+""");
+            File.WriteAllText(Path.Combine(artifactsDir, "intelligencex.findings.json"), """
+{
+  "items": [
+    {
+      "path": "src/test.cs",
+      "line": 10,
+      "severity": "warning",
+      "message": "Broken.",
+      "ruleId": "IX001",
+      "tool": "IntelligenceX"
+    }
+  ]
+}
+""");
+
+            var outsideChangedFile = Path.Combine(outsideRoot, "src", "test.cs");
+            Directory.CreateDirectory(Path.GetDirectoryName(outsideChangedFile)!);
+            File.WriteAllText(outsideChangedFile, "// test\n");
+            File.WriteAllText(Path.Combine(artifactsDir, "changed-files.txt"), outsideChangedFile + "\n");
+
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            var configPath = Path.Combine(temp, ".intelligencex", "reviewer.json");
+            File.WriteAllText(configPath, """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["all-50"],
+    "gate": {
+      "enabled": true,
+      "minSeverity": "warning",
+      "types": ["bug"]
+    },
+    "results": { "inputs": ["artifacts/intelligencex.findings.json"] }
+  }
+}
+""");
+
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunner.RunAsync(new[] {
+                "gate",
+                "--workspace",
+                temp,
+                "--config",
+                configPath,
+                "--changed-files",
+                Path.Combine(artifactsDir, "changed-files.txt")
+            }).GetAwaiter().GetResult();
+            AssertEqual(1, exit, "analyze gate exit (absolute changed file outside workspace)");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+            if (Directory.Exists(outsideRoot)) {
+                Directory.Delete(outsideRoot, true);
+            }
+        }
+    }
+
     private static void TestAnalyzeGateHotspotsToReviewBlocksWhenAboveThreshold() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-hotspots-block-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
@@ -200,4 +382,3 @@ internal static partial class Program {
     }
 }
 #endif
-
