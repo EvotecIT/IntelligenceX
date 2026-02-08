@@ -75,6 +75,11 @@ internal sealed partial class OpenAINativeTransport {
             return false;
         }
 
+        // Only proceed if the rejected field is one of the schema keys we know how to swap.
+        if (!TryGetToolSchemaKeyFallback(param, out fallbackKey)) {
+            return false;
+        }
+
         // Tool schema fallback is only valid for unknown-parameter errors (schema key mismatch).
         if (!string.IsNullOrWhiteSpace(code)) {
             if (code!.IndexOf("unknown_parameter", StringComparison.OrdinalIgnoreCase) < 0) {
@@ -92,7 +97,7 @@ internal sealed partial class OpenAINativeTransport {
             }
         }
 
-        return TryGetToolSchemaKeyFallback(param, out fallbackKey);
+        return true;
     }
 
     private static bool TryGetToolSchemaKeyFallback(string? message, out ToolSchemaKey fallbackKey) {

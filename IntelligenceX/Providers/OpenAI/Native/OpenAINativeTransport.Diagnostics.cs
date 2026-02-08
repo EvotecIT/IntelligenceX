@@ -68,7 +68,7 @@ internal sealed partial class OpenAINativeTransport {
     }
 
     private static void TryDumpRequest(HttpRequestMessage request, string json) {
-        if (!IsTraceEnabled()) {
+        if (!OpenAINativeTrace.IsEnabled()) {
             return;
         }
         try {
@@ -97,11 +97,5 @@ internal sealed partial class OpenAINativeTransport {
         } catch {
             // Ignore dump failures.
         }
-    }
-
-    private static bool IsTraceEnabled() {
-        var value = Environment.GetEnvironmentVariable("INTELLIGENCEX_NATIVE_TRACE");
-        return string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
     }
 }

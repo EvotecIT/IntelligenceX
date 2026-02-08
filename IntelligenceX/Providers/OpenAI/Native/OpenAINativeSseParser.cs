@@ -49,6 +49,7 @@ internal static class OpenAINativeSseParser {
                 // reconstruction that avoids inserting separators between data lines.
                 var alt = ExtractData(chunk, alternate: true);
                 if (string.IsNullOrWhiteSpace(alt) || string.Equals(alt, data, StringComparison.Ordinal)) {
+                    TraceMalformedEvent(data);
                     continue;
                 }
                 try {
@@ -56,6 +57,7 @@ internal static class OpenAINativeSseParser {
                 } catch (FormatException) {
                     // Skip invalid events and continue parsing; callers can still fall back to accumulated deltas
                     // if the completed response isn't available.
+                    TraceMalformedEvent(alt);
                     continue;
                 }
             }
@@ -91,5 +93,14 @@ internal static class OpenAINativeSseParser {
 
     private static void NormalizeNewLines(StringBuilder buffer) {
         buffer.Replace("\r\n", "\n");
+    }
+
+    private static void TraceMalformedEvent(string data) {
+        try {
+            var sample = data.Length <= 200 ? data : data.Substring(0, 200) + "...(truncated)";
+            OpenAINativeTrace.TryWriteLine($"[IntelligenceX] Skipping malformed native SSE event: {sample}");
+        } catch {
+            // Ignore trace failures.
+        }
     }
 }
