@@ -45,9 +45,19 @@ internal static class OpenAINativeSseParser {
             try {
                 value = JsonLite.Parse(data);
             } catch (FormatException) {
-                // Some transports/proxies can emit malformed SSE payloads. Skip invalid events and continue parsing;
-                // callers can still fall back to accumulated deltas if the completed response isn't available.
-                continue;
+                // Some transports/proxies can emit multiline `data:` values for JSON payloads. Try an alternate
+                // reconstruction that avoids inserting separators between data lines.
+                var alt = ExtractData(chunk, alternate: true);
+                if (string.IsNullOrWhiteSpace(alt) || string.Equals(alt, data, StringComparison.Ordinal)) {
+                    continue;
+                }
+                try {
+                    value = JsonLite.Parse(alt);
+                } catch (FormatException) {
+                    // Skip invalid events and continue parsing; callers can still fall back to accumulated deltas
+                    // if the completed response isn't available.
+                    continue;
+                }
             }
             var obj = value?.AsObject();
             if (obj is null) {
@@ -59,6 +69,10 @@ internal static class OpenAINativeSseParser {
     }
 
     private static string ExtractData(string chunk) {
+        return ExtractData(chunk, alternate: false);
+    }
+
+    private static string ExtractData(string chunk, bool alternate) {
         var lines = chunk.Split('\n');
         var dataLines = new StringBuilder();
         foreach (var line in lines) {
@@ -66,7 +80,10 @@ internal static class OpenAINativeSseParser {
                 continue;
             }
             var value = line.Substring(5).Trim();
-            // For JSON payloads, avoid injecting extra separators between multiple data lines.
+            if (!alternate && dataLines.Length > 0) {
+                // SSE multiline data is joined with newlines by spec.
+                dataLines.Append('\n');
+            }
             dataLines.Append(value);
         }
         return dataLines.ToString();
