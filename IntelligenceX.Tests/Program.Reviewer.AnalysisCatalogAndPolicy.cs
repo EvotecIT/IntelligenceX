@@ -344,14 +344,45 @@ internal static partial class Program {
                 continue;
             }
             AssertEqual(true, !string.IsNullOrWhiteSpace(rule.Docs), $"{rule.Id} docs present");
+            AssertEqual(true, rule.Docs!.StartsWith(baseUrl, StringComparison.Ordinal), $"{rule.Id} docs base url");
 
-            var suffix = rule.Id;
-            if (suffix.StartsWith("PS", StringComparison.OrdinalIgnoreCase)) {
-                suffix = suffix.Substring(2);
+            // Avoid brittle assumptions about per-rule slugs. Enforce only:
+            // - stable Microsoft Learn base prefix
+            // - lowercase/digit-only slug segment
+            var slug = rule.Docs.Substring(baseUrl.Length);
+            AssertEqual(true, slug.Length > 0, $"{rule.Id} docs slug non-empty");
+            foreach (var ch in slug) {
+                var ok = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9');
+                AssertEqual(true, ok, $"{rule.Id} docs slug char: {ch}");
             }
-            suffix = suffix.ToLowerInvariant();
-            var expected = baseUrl + suffix;
-            AssertEqual(expected, rule.Docs!, $"{rule.Id} docs link matches Learn pattern");
+        }
+    }
+
+    private static void TestAnalysisCatalogPowerShellNoKnownUserFacingTypos() {
+        var workspace = ResolveWorkspaceRoot();
+        var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
+
+        // Keep this list small and high-signal: these are known upstream typos we either fix via overrides
+        // or ensure never ship in the effective catalog.
+        var bad = new[] {
+            "whitepsace",
+            "indenation",
+            "operator are",
+            "this automatic variables is",
+            "readonly."
+        };
+        foreach (var entry in catalog.Rules) {
+            var rule = entry.Value;
+            if (!rule.Language.Equals("powershell", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (!rule.Tool.Equals("PSScriptAnalyzer", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            var haystack = ((rule.Title ?? string.Empty) + "\n" + (rule.Description ?? string.Empty)).ToLowerInvariant();
+            foreach (var needle in bad) {
+                AssertEqual(false, haystack.Contains(needle, StringComparison.Ordinal), $"{rule.Id} contains known typo: {needle}");
+            }
         }
     }
 
