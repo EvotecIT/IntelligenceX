@@ -357,7 +357,6 @@ internal static class AzureDevOpsReviewRunner {
             if (line.StartsWith(" ", StringComparison.Ordinal)) {
                 oldLine++;
                 newLine++;
-                allowed.Add(newLine);
             }
         }
         return allowed;

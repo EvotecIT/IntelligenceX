@@ -349,8 +349,8 @@ internal static partial class Program {
 
         var result = AzureDevOpsReviewRunner.ParsePatchLines(patch);
         AssertEqual(true, result.Contains(1), "ado patch contains line 1");
-        AssertEqual(true, result.Contains(2), "ado patch contains line 2");
-        AssertEqual(true, result.Contains(3), "ado patch contains line 3");
+        AssertEqual(false, result.Contains(2), "ado patch does not include context line 2");
+        AssertEqual(false, result.Contains(3), "ado patch does not include context line 3");
     }
 
     private static void TestAzureDevOpsInlineThreadContextUsesOneBasedLineAndZeroBasedOffset() {
