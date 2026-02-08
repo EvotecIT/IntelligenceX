@@ -318,12 +318,20 @@ internal static partial class Program {
         // Load the catalog without overrides so we can compare base vs effective without needing per-override temp workspaces.
         var rulesRoot = Path.Combine(workspace, "Analysis", "Catalog", "rules");
         var packsRoot = Path.Combine(workspace, "Analysis", "Packs");
-        var tempOverridesRoot = Path.Combine(Path.GetTempPath(), "ix-analysis-overrides-disabled-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempOverridesRoot);
-        var emptyOverridesRoot = Path.Combine(tempOverridesRoot, "powershell");
-        Directory.CreateDirectory(emptyOverridesRoot);
+        string? tempOverridesRoot = null;
+        for (var attempt = 0; attempt < 10; attempt++) {
+            var candidate = Path.Combine(Path.GetTempPath(), "ix-analysis-overrides-disabled-" + Path.GetRandomFileName());
+            Directory.CreateDirectory(candidate);
+            if (!Directory.EnumerateFileSystemEntries(candidate).Any()) {
+                tempOverridesRoot = candidate;
+                break;
+            }
+        }
+        if (string.IsNullOrWhiteSpace(tempOverridesRoot)) {
+            throw new Exception("Failed to create an empty temp overrides directory.");
+        }
         try {
-            var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, emptyOverridesRoot, packsRoot);
+            var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, tempOverridesRoot, packsRoot);
 
             foreach (var overridePath in Directory.EnumerateFiles(overridesDir, "*.json")) {
                 var overrideText = File.ReadAllText(overridePath, System.Text.Encoding.UTF8);
@@ -351,6 +359,14 @@ internal static partial class Program {
 
                 AssertEqual(true, baseCatalog.Rules.TryGetValue(id, out var resolvedBase), $"{id} exists in base catalog");
                 var baseRule = resolvedBase ?? throw new Exception($"{id} exists in base catalog but is null");
+
+                // Ensure our "base catalog" truly reflects the rule JSON without applying any overrides.
+                var baseText = File.ReadAllText(basePath, System.Text.Encoding.UTF8);
+                using (var baseDoc = System.Text.Json.JsonDocument.Parse(baseText)) {
+                    var baseRoot = baseDoc.RootElement;
+                    AssertEqual(baseRoot.GetProperty("title").GetString(), baseRule.Title, $"{id} base title matches rule json");
+                    AssertEqual(baseRoot.GetProperty("description").GetString(), baseRule.Description, $"{id} base description matches rule json");
+                }
 
                 var sawOverrideProperty = false;
                 foreach (var prop in overrideRoot.EnumerateObject()) {
@@ -482,6 +498,8 @@ internal static partial class Program {
             AssertEqual(false, string.IsNullOrWhiteSpace(rule.Docs), $"{rule.Id} docs is populated");
 
             var docs = rule.Docs!.Trim();
+            AssertEqual(false, docs.Any(char.IsWhiteSpace), $"{rule.Id} docs has no whitespace");
+            AssertEqual(true, Uri.IsWellFormedUriString(docs, UriKind.Absolute), $"{rule.Id} docs is well-formed");
             if (!Uri.TryCreate(docs, UriKind.Absolute, out var uri) || uri is null) {
                 throw new InvalidOperationException($"Expected {rule.Id} docs to be a valid absolute url, got '{docs}'.");
             }
