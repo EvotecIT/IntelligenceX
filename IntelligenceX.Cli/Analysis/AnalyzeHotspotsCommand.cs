@@ -11,27 +11,28 @@ namespace IntelligenceX.Cli.Analysis;
 
 internal static class AnalyzeHotspotsCommand {
     public static Task<int> RunAsync(string[] args) {
-        if (args.Length == 0 || IsHelp(args[0])) {
+        if (args.Length == 0) {
             PrintHelp();
             return Task.FromResult(0);
         }
 
-        var command = args[0].ToLowerInvariant();
-        var rest = args.Skip(1).ToArray();
-
-        // `--help` must short-circuit reliably (no filesystem reads/writes).
-        if (rest.Any(IsHelp)) {
+        // `--help` must short-circuit reliably (no filesystem reads/writes), regardless of flag position.
+        if (args.Any(IsHelp)) {
+            var command = args[0].ToLowerInvariant();
             if (command == "sync-state") {
                 PrintSyncHelp();
-                return Task.FromResult(0);
-            }
-            if (command == "set") {
+            } else if (command == "set") {
                 PrintSetHelp();
-                return Task.FromResult(0);
+            } else {
+                PrintHelp();
             }
+            return Task.FromResult(0);
         }
 
-        return command switch {
+        var commandName = args[0].ToLowerInvariant();
+        var rest = args.Skip(1).ToArray();
+
+        return commandName switch {
             "sync-state" => Task.FromResult(SyncState(rest)),
             "set" => Task.FromResult(SetStatus(rest)),
             _ => Task.FromResult(PrintHelpReturn())

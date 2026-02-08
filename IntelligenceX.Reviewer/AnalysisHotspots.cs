@@ -43,6 +43,9 @@ internal static class AnalysisHotspots {
         var missingKeys = new List<string>();
         foreach (var finding in hotspotFindings) {
             var key = ComputeHotspotKey(finding);
+            if (string.IsNullOrWhiteSpace(key)) {
+                continue;
+            }
             if (!state.TryGetValue(key, out var entry)) {
                 missingKeys.Add(key);
                 entry = new HotspotStateEntry(key, "to-review", Note: null, CreatedAt: null);
