@@ -43,10 +43,7 @@ Outcome: a required check that can block merges without AI.
 - [ ] Add gate configuration in `.intelligencex/reviewer.json` (thresholds by severity/type, allowlists, hotspots handling).
 - [ ] Add GitHub Actions step that runs the gate and produces clear failure output.
 - [ ] Decide default gate policy for the repo.
-    - Policy options:
-        - Block on `vulnerability` at `warning+`.
-        - Block on `bug` at `error+`.
-        - Block on `security-hotspot` when `to-review` exists.
+    Policy options (not tasks): block on `vulnerability` at `warning+`; block on `bug` at `error+`; block on `security-hotspot` when `to-review` exists.
 
 Definition of done:
 
