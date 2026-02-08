@@ -12,7 +12,8 @@ using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Auth;
 using IntelligenceX.OpenAI.Chat;
-using IntelligenceX.OpenAI.Tools;
+using IntelligenceX.OpenAI.ToolCalling;
+using IntelligenceX.Tools;
 using IntelligenceX.OpenAI.Transport;
 using IntelligenceX.Telemetry;
 using IntelligenceX.Utils;
@@ -438,7 +439,7 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
         if (options.Tools is not null && options.Tools.Count > 0) {
             var tools = new JsonArray();
             foreach (var tool in options.Tools) {
-                tools.Add(tool.ToJson());
+                tools.Add(SerializeToolDefinition(tool));
             }
             body.Add("tools", tools);
 
@@ -459,6 +460,19 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
         }
 
         return body;
+    }
+
+    private static JsonObject SerializeToolDefinition(ToolDefinition tool) {
+        var obj = new JsonObject()
+            .Add("type", "custom")
+            .Add("name", tool.Name);
+        if (!string.IsNullOrWhiteSpace(tool.Description)) {
+            obj.Add("description", tool.Description);
+        }
+        if (tool.Parameters is not null) {
+            obj.Add("parameters", tool.Parameters);
+        }
+        return obj;
     }
 
     private IEnumerable<KeyValuePair<string, string>> BuildHeaders(string accessToken, string accountId, string sessionId) {

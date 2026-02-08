@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace IntelligenceX.OpenAI.Tools;
+namespace IntelligenceX.Tools;
 
 /// <summary>
 /// Registry for tools available to the model.

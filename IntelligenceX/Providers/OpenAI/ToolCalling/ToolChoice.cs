@@ -1,6 +1,6 @@
 using System;
 
-namespace IntelligenceX.OpenAI.Tools;
+namespace IntelligenceX.OpenAI.ToolCalling;
 
 /// <summary>
 /// Represents the tool selection strategy for a request.

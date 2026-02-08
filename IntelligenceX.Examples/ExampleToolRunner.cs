@@ -3,14 +3,14 @@ using System.Threading.Tasks;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.Chat;
-using IntelligenceX.OpenAI.Tools;
-using IntelligenceX.Tools.System;
+using IntelligenceX.OpenAI.ToolCalling;
+using IntelligenceX.Tools;
 
 namespace IntelligenceX.Examples;
 
 internal sealed class ExampleToolRunner : IExample {
     public string Name => "Tool Runner (Native)";
-    public string Description => "Calls a local WSL status tool via native tool calling.";
+    public string Description => "Calls a local tool via native tool calling.";
 
     public async Task RunAsync() {
         var options = new IntelligenceXClientOptions {
@@ -21,9 +21,9 @@ internal sealed class ExampleToolRunner : IExample {
         await ExampleHelpers.EnsureChatGptLoginAsync(client).ConfigureAwait(false);
 
         var registry = new ToolRegistry();
-        registry.Register(new WslStatusTool());
+        registry.Register(new EchoTool());
 
-        var input = ChatInput.FromText("Is WSL running? Summarize the distribution status.");
+        var input = ChatInput.FromText("Call the echo tool with text 'hello'.");
         var chatOptions = new ChatOptions {
             Model = "gpt-5.3-codex",
             ParallelToolCalls = true
