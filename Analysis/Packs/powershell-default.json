@@ -2,21 +2,15 @@
   "id": "powershell-default",
   "label": "PowerShell Default",
   "description": "High-signal security and correctness rules for PowerShell scripts (PSScriptAnalyzer).",
+  "includes": ["powershell-security-default"],
   "rules": [
     "PSAvoidOverwritingBuiltInCmdlets",
-    "PSAvoidUsingAllowUnencryptedAuthentication",
-    "PSAvoidUsingBrokenHashAlgorithms",
     "PSAvoidUsingCmdletAliases",
-    "PSAvoidUsingConvertToSecureStringWithPlainText",
     "PSAvoidUsingEmptyCatchBlock",
-    "PSAvoidUsingInvokeExpression",
-    "PSAvoidUsingPlainTextForPassword",
-    "PSAvoidUsingUsernameAndPasswordParams",
     "PSAvoidUsingWriteHost",
     "PSPossibleIncorrectComparisonWithNull",
     "PSPossibleIncorrectUsageOfAssignmentOperator",
     "PSPossibleIncorrectUsageOfRedirectionOperator",
-    "PSReviewUnusedParameter",
-    "PSUsePSCredentialType"
+    "PSReviewUnusedParameter"
   ]
 }

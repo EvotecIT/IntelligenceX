@@ -367,6 +367,7 @@ internal static partial class Program {
                 }
 
                 var sawOverrideProperty = false;
+                var changesBase = false;
                 foreach (var prop in overrideRoot.EnumerateObject()) {
                     if (prop.NameEquals("id")) {
                         continue;
@@ -380,6 +381,9 @@ internal static partial class Program {
                             }
                             var expected = prop.Value.GetString() ?? throw new Exception($"{id} override title must be a string");
                             AssertEqual(expected, effective.Title, $"{id} override title applied");
+                            if (!string.Equals(expected, baseRule.Title, StringComparison.Ordinal)) {
+                                changesBase = true;
+                            }
                             break;
                         }
                         case "description": {
@@ -388,6 +392,9 @@ internal static partial class Program {
                             }
                             var expected = prop.Value.GetString() ?? throw new Exception($"{id} override description must be a string");
                             AssertEqual(expected, effective.Description, $"{id} override description applied");
+                            if (!string.Equals(expected, baseRule.Description, StringComparison.Ordinal)) {
+                                changesBase = true;
+                            }
                             break;
                         }
                         case "type": {
@@ -396,6 +403,9 @@ internal static partial class Program {
                             }
                             var expected = prop.Value.GetString() ?? throw new Exception($"{id} override type must be a string");
                             AssertEqual(expected, effective.Type, $"{id} override type applied");
+                            if (!string.Equals(expected, baseRule.Type, StringComparison.Ordinal)) {
+                                changesBase = true;
+                            }
                             break;
                         }
                         case "category": {
@@ -404,6 +414,9 @@ internal static partial class Program {
                             }
                             var expected = prop.Value.GetString() ?? throw new Exception($"{id} override category must be a string");
                             AssertEqual(expected, effective.Category, $"{id} override category applied");
+                            if (!string.Equals(expected, baseRule.Category, StringComparison.Ordinal)) {
+                                changesBase = true;
+                            }
                             break;
                         }
                         case "defaultSeverity": {
@@ -412,6 +425,9 @@ internal static partial class Program {
                             }
                             var expected = prop.Value.GetString() ?? throw new Exception($"{id} override defaultSeverity must be a string");
                             AssertEqual(expected, effective.DefaultSeverity, $"{id} override defaultSeverity applied");
+                            if (!string.Equals(expected, baseRule.DefaultSeverity, StringComparison.Ordinal)) {
+                                changesBase = true;
+                            }
                             break;
                         }
                         case "docs": {
@@ -420,6 +436,9 @@ internal static partial class Program {
                             }
                             var expected = prop.Value.GetString() ?? throw new Exception($"{id} override docs must be a string");
                             AssertEqual(expected, effective.Docs, $"{id} override docs applied");
+                            if (!string.Equals(expected, baseRule.Docs, StringComparison.Ordinal)) {
+                                changesBase = true;
+                            }
                             break;
                         }
                         case "tags": {
@@ -452,12 +471,16 @@ internal static partial class Program {
                                 .Select(x => x.GetString() ?? throw new Exception($"{id} override tags must be strings"))
                                 .ToArray();
 
-                            var expectedMerged = MergeTags(baseRule.Tags, overrideTags);
+                            var expectedMerged = MergeTags(baseRule.Tags ?? Array.Empty<string>(), overrideTags);
                             var expectedSet = new HashSet<string>(expectedMerged, StringComparer.OrdinalIgnoreCase);
                             var actualSet = new HashSet<string>(effective.Tags ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
                             AssertEqual(expectedSet.Count, actualSet.Count, $"{id} merged tag count matches");
                             foreach (var tag in expectedSet) {
                                 AssertEqual(true, actualSet.Contains(tag), $"{id} merged tags contains '{tag}'");
+                            }
+                            var baseSet = new HashSet<string>(baseRule.Tags ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+                            if (!baseSet.SetEquals(actualSet)) {
+                                changesBase = true;
                             }
                             break;
                         }
@@ -467,6 +490,7 @@ internal static partial class Program {
                 }
 
                 AssertEqual(true, sawOverrideProperty, $"{id} override has at least one property besides id");
+                AssertEqual(true, changesBase, $"{id} override must change the effective rule vs base (otherwise delete the override)");
             }
         } catch (Exception ex) {
             testFailure = ex;
