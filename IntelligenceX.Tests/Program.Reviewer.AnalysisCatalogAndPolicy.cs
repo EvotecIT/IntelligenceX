@@ -310,7 +310,7 @@ internal static partial class Program {
     private static void TestAnalysisCatalogPowerShellOverridesApply() {
         // This test ensures our checked-in PowerShell overrides actually change the effective catalog,
         // so we can keep upstream-generated rule JSON pristine and still ship clean user-facing metadata.
-        var workspace = ResolveBuiltInWorkspaceRoot();
+        var workspace = ResolveWorkspaceRoot();
         var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
 
         AssertEqual(true, catalog.Rules.TryGetValue("PSMisleadingBacktick", out var misleading), "PSMisleadingBacktick exists");
@@ -328,22 +328,6 @@ internal static partial class Program {
         AssertEqual(true, catalog.Rules.TryGetValue("PSAlignAssignmentStatement", out var align), "PSAlignAssignmentStatement exists");
         AssertEqual(false, align!.Description.Contains("operator are", StringComparison.OrdinalIgnoreCase), "PSAlignAssignmentStatement grammar fixed via override");
         AssertEqual(true, align.Title.Contains("Statements", StringComparison.OrdinalIgnoreCase), "PSAlignAssignmentStatement title override applied");
-    }
-
-    private static string ResolveBuiltInWorkspaceRoot() {
-        var current = Environment.CurrentDirectory;
-        for (var i = 0; i < 12; i++) {
-            var marker = Path.Combine(current, "Analysis", "Catalog", "rules", "powershell", "PSMisleadingBacktick.json");
-            if (File.Exists(marker)) {
-                return current;
-            }
-            var parent = Directory.GetParent(current);
-            if (parent is null) {
-                break;
-            }
-            current = parent.FullName;
-        }
-        return Environment.CurrentDirectory;
     }
 
     private static void TestAnalysisCatalogOverrideInvalidTypeFallsBack() {

@@ -70,6 +70,14 @@ function Get-RuleTitleFromRuleName([string]$ruleName) {
     $name.Trim()
 }
 
+function Write-FileUtf8NoBomLf([string]$path, [string]$content) {
+    # Avoid BOM differences across PowerShell versions and normalize newlines for stable diffs.
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    $normalized = ($content -replace "`r`n", "`n" -replace "`r", "`n")
+    if (-not $normalized.EndsWith("`n")) { $normalized += "`n" }
+    [System.IO.File]::WriteAllText($path, $normalized, $utf8NoBom)
+}
+
 $rules = Get-ScriptAnalyzerRule | Sort-Object RuleName
 
 foreach ($rule in $rules) {
@@ -112,7 +120,7 @@ foreach ($rule in $rules) {
 
     $json = $obj | ConvertTo-Json -Depth 6
     $path = Join-Path $OutDir ($ruleName + '.json')
-    $json | Set-Content -LiteralPath $path -Encoding UTF8
+    Write-FileUtf8NoBomLf $path $json
 }
 
 Write-Output ("Wrote {0} rule file(s) to {1}" -f $rules.Count, $OutDir)
