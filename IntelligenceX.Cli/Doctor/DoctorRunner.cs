@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Threading.Tasks;
+using IntelligenceX.Cli;
 using IntelligenceX.Cli.Auth;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Auth;
@@ -43,6 +44,10 @@ internal static class DoctorRunner {
         if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace)) {
             Console.Error.WriteLine("[FAIL] Workspace not found.");
             return 1;
+        }
+
+        if (string.IsNullOrWhiteSpace(options.Repo)) {
+            options.Repo = GitHubRepoDetector.TryDetectRepo(workspace);
         }
 
         var configPath = ResolveConfigPath(options, workspace);
@@ -421,4 +426,6 @@ internal static class DoctorRunner {
         Console.WriteLine("  --skip-openai          Skip OpenAI auth store checks");
         Console.WriteLine("  --skip-github          Skip GitHub token/API checks");
     }
+
+    // Repo autodetection is implemented in GitHubRepoDetector to keep behavior consistent across commands.
 }

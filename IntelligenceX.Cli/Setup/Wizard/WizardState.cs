@@ -44,6 +44,11 @@ internal enum WizardOperation {
     Cleanup
 }
 
+internal enum SecretTarget {
+    Repo,
+    Org
+}
+
 internal enum ConfigPreset {
     Balanced,
     Strict,
@@ -71,6 +76,11 @@ internal sealed class WizardState {
     public bool DryRun { get; set; }
     public string? BranchName { get; set; }
     public string Provider { get; set; } = "openai";
+    public SecretTarget SecretTarget { get; set; } = SecretTarget.Repo;
+    public string? SecretOrg { get; set; }
+    public string SecretVisibility { get; set; } = "all";
+    public bool DeleteRepoSecretsAfterOrgSecret { get; set; } = true;
+    public string? OpenAiAuthB64 { get; set; }
     public GitHubAuthMode AuthMode { get; set; } = GitHubAuthMode.DefaultDeviceFlow;
     public SetupScope Scope { get; set; } = SetupScope.SingleRepo;
     public ConfigMode ConfigMode { get; set; } = ConfigMode.Preset;

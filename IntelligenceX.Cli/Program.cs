@@ -584,7 +584,7 @@ internal static class Program {
         }
 
         if (string.IsNullOrWhiteSpace(options.Repo) && string.IsNullOrWhiteSpace(options.Org)) {
-            var repo = TryResolveRepoFromGit();
+            var repo = GitHubRepoDetector.TryDetectRepo(Environment.CurrentDirectory);
             if (!string.IsNullOrWhiteSpace(repo)) {
                 options.Repo = repo;
             }
@@ -596,111 +596,6 @@ internal static class Program {
         }
 
         return true;
-    }
-
-    private static string? TryResolveRepoFromGit() {
-        var root = TryFindGitRoot(Directory.GetCurrentDirectory());
-        if (string.IsNullOrWhiteSpace(root)) {
-            return null;
-        }
-        var configPath = Path.Combine(root, ".git", "config");
-        if (!File.Exists(configPath)) {
-            return null;
-        }
-        var url = TryReadGitRemoteUrl(configPath, "origin") ?? TryReadFirstRemoteUrl(configPath);
-        if (string.IsNullOrWhiteSpace(url)) {
-            return null;
-        }
-        return ParseGitHubRepoFromUrl(url);
-    }
-
-    private static string? TryFindGitRoot(string start) {
-        var current = new DirectoryInfo(start);
-        while (current is not null) {
-            var gitDir = Path.Combine(current.FullName, ".git");
-            if (Directory.Exists(gitDir)) {
-                return current.FullName;
-            }
-            current = current.Parent;
-        }
-        return null;
-    }
-
-    private static string? TryReadGitRemoteUrl(string configPath, string remoteName) {
-        var lines = File.ReadAllLines(configPath);
-        var inRemote = false;
-        foreach (var raw in lines) {
-            var line = raw.Trim();
-            if (line.StartsWith("[") && line.EndsWith("]")) {
-                inRemote = line.Equals($"[remote \"{remoteName}\"]", StringComparison.OrdinalIgnoreCase);
-                continue;
-            }
-            if (!inRemote) {
-                continue;
-            }
-            if (line.StartsWith("url", StringComparison.OrdinalIgnoreCase)) {
-                var idx = line.IndexOf('=');
-                if (idx >= 0) {
-                    return line[(idx + 1)..].Trim();
-                }
-            }
-        }
-        return null;
-    }
-
-    private static string? TryReadFirstRemoteUrl(string configPath) {
-        var lines = File.ReadAllLines(configPath);
-        var inRemote = false;
-        foreach (var raw in lines) {
-            var line = raw.Trim();
-            if (line.StartsWith("[") && line.EndsWith("]")) {
-                inRemote = line.StartsWith("[remote ", StringComparison.OrdinalIgnoreCase);
-                continue;
-            }
-            if (!inRemote) {
-                continue;
-            }
-            if (line.StartsWith("url", StringComparison.OrdinalIgnoreCase)) {
-                var idx = line.IndexOf('=');
-                if (idx >= 0) {
-                    return line[(idx + 1)..].Trim();
-                }
-            }
-        }
-        return null;
-    }
-
-    private static string? ParseGitHubRepoFromUrl(string url) {
-        if (string.IsNullOrWhiteSpace(url)) {
-            return null;
-        }
-        var trimmed = url.Trim();
-        if (trimmed.StartsWith("git@github.com:", StringComparison.OrdinalIgnoreCase)) {
-            var path = trimmed.Substring("git@github.com:".Length);
-            return NormalizeRepoPath(path);
-        }
-        if (trimmed.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.StartsWith("http://github.com/", StringComparison.OrdinalIgnoreCase)) {
-            var uri = new Uri(trimmed);
-            var path = uri.AbsolutePath.Trim('/');
-            return NormalizeRepoPath(path);
-        }
-        return null;
-    }
-
-    private static string? NormalizeRepoPath(string path) {
-        if (string.IsNullOrWhiteSpace(path)) {
-            return null;
-        }
-        var cleaned = path.Trim().TrimEnd('/');
-        if (cleaned.EndsWith(".git", StringComparison.OrdinalIgnoreCase)) {
-            cleaned = cleaned.Substring(0, cleaned.Length - 4);
-        }
-        var parts = cleaned.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 2) {
-            return null;
-        }
-        return $"{parts[0]}/{parts[1]}";
     }
 
     private static string? TryReadGhToken() {
