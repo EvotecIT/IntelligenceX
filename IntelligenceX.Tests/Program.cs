@@ -187,6 +187,7 @@ internal static partial class Program {
         failed += Run("Azure DevOps changes pagination", TestAzureDevOpsChangesPagination);
         failed += Run("Azure DevOps diff note zero iterations", TestAzureDevOpsDiffNoteZeroIterations);
         failed += Run("Azure DevOps inline patch line map parses added lines", TestAzureDevOpsInlinePatchLineMapParsesAddedLines);
+        failed += Run("Azure DevOps inline patch line map handles CRLF and deletions", TestAzureDevOpsInlinePatchLineMapHandlesCrlfAndDeletions);
         failed += Run("Azure DevOps error sanitization", TestAzureDevOpsErrorSanitization);
         failed += Run("Context deny invalid regex", TestContextDenyInvalidRegex);
         failed += Run("Context deny timeout", TestContextDenyTimeout);

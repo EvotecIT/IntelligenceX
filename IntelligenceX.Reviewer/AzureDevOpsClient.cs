@@ -20,7 +20,6 @@ internal sealed class AzureDevOpsClient : IDisposable {
     private const int RootCommentId = 0;
     private const int CommentTypeText = 1;
     private const int ThreadStatusActive = 1;
-    private const int ThreadStatusFixed = 2;
     private static readonly SocketsHttpHandler SharedHandler = new() {
         PooledConnectionLifetime = TimeSpan.FromMinutes(10),
         PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2)
@@ -176,6 +175,9 @@ internal sealed class AzureDevOpsClient : IDisposable {
         if (lineNumber <= 0) {
             throw new ArgumentOutOfRangeException(nameof(lineNumber), "Line number must be positive.");
         }
+        if (string.IsNullOrWhiteSpace(content)) {
+            return;
+        }
 
         var url = $"{Escape(project)}/_apis/git/repositories/{Escape(repositoryId)}/pullRequests/{pullRequestId}/threads?api-version={ApiVersion}";
 
@@ -199,6 +201,49 @@ internal sealed class AzureDevOpsClient : IDisposable {
                     .Add("offset", 1)));
 
         await PostJsonAsync(url, payload, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Lists pull request threads (discussion + inline).
+    /// </summary>
+    public async Task<IReadOnlyList<AzureDevOpsPullRequestThread>> ListPullRequestThreadsAsync(string project,
+        string repositoryId, int pullRequestId, CancellationToken cancellationToken) {
+        var url = $"{Escape(project)}/_apis/git/repositories/{Escape(repositoryId)}/pullRequests/{pullRequestId}/threads?api-version={ApiVersion}";
+        var json = await GetJsonAsync(url, cancellationToken).ConfigureAwait(false);
+        var array = json.AsObject()?.GetArray("value");
+        if (array is null || array.Count == 0) {
+            return Array.Empty<AzureDevOpsPullRequestThread>();
+        }
+
+        var threads = new List<AzureDevOpsPullRequestThread>();
+        foreach (var entry in array) {
+            var obj = entry.AsObject();
+            if (obj is null) {
+                continue;
+            }
+
+            var context = obj.GetObject("threadContext");
+            var filePath = context?.GetString("filePath");
+            var rightStartLine = context?.GetObject("rightFileStart")?.GetInt64("line");
+            var line = rightStartLine.HasValue && rightStartLine.Value > 0 && rightStartLine.Value <= int.MaxValue
+                ? (int)rightStartLine.Value
+                : (int?)null;
+
+            var comments = new List<string>();
+            var commentArray = obj.GetArray("comments");
+            if (commentArray is not null && commentArray.Count > 0) {
+                foreach (var comment in commentArray) {
+                    var body = comment.AsObject()?.GetString("content");
+                    if (!string.IsNullOrWhiteSpace(body)) {
+                        comments.Add(body);
+                    }
+                }
+            }
+
+            threads.Add(new AzureDevOpsPullRequestThread(filePath, line, comments));
+        }
+
+        return threads;
     }
 
     /// <summary>
@@ -315,6 +360,8 @@ internal sealed class AzureDevOpsClient : IDisposable {
         return true;
     }
 }
+
+internal sealed record AzureDevOpsPullRequestThread(string? FilePath, int? Line, IReadOnlyList<string> Comments);
 
 internal sealed record AzureDevOpsPullRequest(int PullRequestId, string Title, string? Description, bool IsDraft,
     string RepositoryId, string RepositoryName, string Project, string? SourceCommit, string? TargetCommit);
