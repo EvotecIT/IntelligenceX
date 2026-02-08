@@ -115,7 +115,15 @@ internal sealed partial class OpenAINativeTransport {
                 .Add("name", name);
         }
 
-        return choice.Type;
+        if (string.Equals(choice.Type, "auto", StringComparison.OrdinalIgnoreCase)) {
+            return "auto";
+        }
+        if (string.Equals(choice.Type, "none", StringComparison.OrdinalIgnoreCase)) {
+            return "none";
+        }
+
+        // Defensive: ToolChoice has a private constructor but keep wire output constrained.
+        return "auto";
     }
 
     private static JsonObject SerializeToolDefinition(ToolDefinition tool, ToolWireFormat toolWireFormat) {

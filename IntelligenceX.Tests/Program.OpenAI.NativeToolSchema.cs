@@ -81,12 +81,13 @@ internal static partial class Program {
         var ctor = errorExType.GetConstructor(
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
             binder: null,
-            types: new[] { typeof(string), typeof(string), typeof(string), typeof(System.Net.HttpStatusCode) },
+            types: new[] { typeof(string), typeof(string), typeof(string), typeof(string), typeof(System.Net.HttpStatusCode) },
             modifiers: null);
         AssertNotNull(ctor, "OpenAINativeErrorResponseException ctor");
 
         var errorEx = (Exception)ctor!.Invoke(new object?[] {
             "Server rejected tool schema.",
+            "raw payload",
             "unknown_parameter",
             "tools[0].parameters",
             System.Net.HttpStatusCode.BadRequest
@@ -125,12 +126,13 @@ internal static partial class Program {
         var ctor = errorExType.GetConstructor(
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
             binder: null,
-            types: new[] { typeof(string), typeof(string), typeof(string), typeof(System.Net.HttpStatusCode) },
+            types: new[] { typeof(string), typeof(string), typeof(string), typeof(string), typeof(System.Net.HttpStatusCode) },
             modifiers: null);
         AssertNotNull(ctor, "OpenAINativeErrorResponseException ctor");
 
         var errorEx = (Exception)ctor!.Invoke(new object?[] {
             "Server rejected tool schema.",
+            "raw payload",
             "unknown_parameter",
             "tools[0].parameters",
             System.Net.HttpStatusCode.BadRequest

@@ -11,13 +11,15 @@ namespace IntelligenceX.OpenAI.Native;
 
 internal sealed partial class OpenAINativeTransport {
     private readonly struct NativeErrorDetails {
-        public NativeErrorDetails(string message, string? code, string? param) {
+        public NativeErrorDetails(string message, string rawText, string? code, string? param) {
             Message = message;
+            RawText = rawText;
             Code = code;
             Param = param;
         }
 
         public string Message { get; }
+        public string RawText { get; }
         public string? Code { get; }
         public string? Param { get; }
     }
@@ -30,7 +32,7 @@ internal sealed partial class OpenAINativeTransport {
         cancellationToken.ThrowIfCancellationRequested();
 #endif
         if (string.IsNullOrWhiteSpace(text)) {
-            return new NativeErrorDetails($"ChatGPT request failed ({(int)response.StatusCode}).", null, null);
+            return new NativeErrorDetails($"ChatGPT request failed ({(int)response.StatusCode}).", string.Empty, null, null);
         }
         try {
             var value = JsonLite.Parse(text);
@@ -53,16 +55,16 @@ internal sealed partial class OpenAINativeTransport {
                 var resetsAt = error?.GetInt64("resets_at");
                 if (resetsAt.HasValue) {
                     var mins = Math.Max(0, (int)Math.Round((resetsAt.Value * 1000 - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) / 60000d));
-                    return new NativeErrorDetails($"ChatGPT usage limit reached. Try again in about {mins} minute(s).", code, param);
+                    return new NativeErrorDetails($"ChatGPT usage limit reached. Try again in about {mins} minute(s).", text, code, param);
                 }
-                return new NativeErrorDetails("ChatGPT usage limit reached (HTTP 429).", code, param);
+                return new NativeErrorDetails("ChatGPT usage limit reached (HTTP 429).", text, code, param);
             }
 
-            return new NativeErrorDetails(message, code, param);
+            return new NativeErrorDetails(message, text, code, param);
         } catch {
             // Fall back to raw text.
         }
-        return new NativeErrorDetails(text, null, null);
+        return new NativeErrorDetails(text, text, null, null);
     }
 
     private static void TryDumpRequest(HttpRequestMessage request, string json) {
