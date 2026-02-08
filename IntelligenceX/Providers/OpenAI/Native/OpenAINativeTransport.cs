@@ -264,7 +264,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
                     : error.Message;
                 throw new OpenAIAuthenticationRequiredException(message);
             }
-            throw new OpenAINativeErrorResponseException(error.Message, error.RawText, error.Code, error.Param, response.StatusCode, IsTraceEnabled());
+            throw new OpenAINativeErrorResponseException(error.Message, error.RawText, error.Code, error.Param, response.StatusCode, OpenAINativeTrace.IsEnabled());
         }
 
         var delta = new StringBuilder();
