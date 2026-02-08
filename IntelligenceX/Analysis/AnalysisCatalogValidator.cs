@@ -16,6 +16,12 @@ public static class AnalysisCatalogValidator {
         "info", "information", "low", "suggestion",
         "none"
     };
+    private static readonly HashSet<string> SupportedRuleTypes = new(StringComparer.OrdinalIgnoreCase) {
+        "bug",
+        "vulnerability",
+        "code-smell",
+        "security-hotspot"
+    };
 
     /// <summary>
     /// Validates catalog content under the workspace.
@@ -26,14 +32,24 @@ public static class AnalysisCatalogValidator {
             : Path.GetFullPath(workspace);
         var analysisRoot = Path.Combine(resolvedWorkspace, "Analysis");
         var rulesRoot = Path.Combine(Path.Combine(analysisRoot, "Catalog"), "rules");
+        var overridesRoot = Path.Combine(Path.Combine(analysisRoot, "Catalog"), "overrides");
         var packsRoot = Path.Combine(analysisRoot, "Packs");
-        return ValidatePaths(rulesRoot, packsRoot);
+        return ValidatePaths(rulesRoot, overridesRoot, packsRoot);
     }
 
     /// <summary>
     /// Validates catalog content under explicit rules and packs roots.
     /// </summary>
     public static AnalysisCatalogValidationResult ValidatePaths(string rulesRoot, string packsRoot) {
+        var catalogRoot = Path.GetDirectoryName(Path.GetFullPath(rulesRoot)) ?? string.Empty;
+        var overridesRoot = string.IsNullOrWhiteSpace(catalogRoot) ? string.Empty : Path.Combine(catalogRoot, "overrides");
+        return ValidatePaths(rulesRoot, overridesRoot, packsRoot);
+    }
+
+    /// <summary>
+    /// Validates catalog content under explicit rules, overrides, and packs roots.
+    /// </summary>
+    public static AnalysisCatalogValidationResult ValidatePaths(string rulesRoot, string overridesRoot, string packsRoot) {
         var errors = new List<string>();
         var warnings = new List<string>();
 
@@ -48,6 +64,7 @@ public static class AnalysisCatalogValidator {
         }
 
         var ruleEntries = LoadRuleEntries(rulesRoot, errors);
+        var overrideEntries = LoadOverrideEntries(overridesRoot, errors);
         var packEntries = LoadPackEntries(packsRoot, errors);
         if (errors.Count > 0) {
             return new AnalysisCatalogValidationResult(errors, warnings).Normalize();
@@ -56,6 +73,7 @@ public static class AnalysisCatalogValidator {
         var rulesById = BuildDistinctRules(ruleEntries, errors);
         var packsById = BuildDistinctPacks(packEntries, errors);
 
+        ValidateOverridesReferenceExistingRules(overrideEntries, rulesById, errors);
         ValidatePackRuleReferences(packsById, rulesById, errors);
         ValidatePackIncludesExist(packsById, errors);
         ValidatePackOverrideSeverities(packsById, errors);
@@ -96,10 +114,58 @@ public static class AnalysisCatalogValidator {
             if (!hasRequiredFields) {
                 continue;
             }
+            ValidateRuleType(obj, normalizedId, path, errors);
 
             entries.Add(new RuleEntry(normalizedId, path));
         }
         return entries;
+    }
+
+    private static IReadOnlyList<OverrideEntry> LoadOverrideEntries(string overridesRoot, ICollection<string> errors) {
+        var entries = new List<OverrideEntry>();
+        if (string.IsNullOrWhiteSpace(overridesRoot) || !Directory.Exists(overridesRoot)) {
+            return entries;
+        }
+
+        foreach (var path in EnumerateJsonFiles(overridesRoot, SearchOption.AllDirectories)) {
+            JsonObject? obj;
+            try {
+                var parsed = JsonLite.Parse(File.ReadAllText(path));
+                obj = parsed?.AsObject();
+            } catch (Exception ex) when (!IsFatalException(ex)) {
+                errors.Add($"Invalid rule override JSON '{path}': {ex.Message}");
+                continue;
+            }
+
+            if (obj is null) {
+                errors.Add($"Invalid rule override object in '{path}'.");
+                continue;
+            }
+
+            var id = obj.GetString("id");
+            if (string.IsNullOrWhiteSpace(id)) {
+                errors.Add($"Rule override file missing non-empty id: '{path}'.");
+                continue;
+            }
+
+            var normalizedId = (id ?? string.Empty).Trim();
+            ValidateRuleType(obj, normalizedId, path, errors);
+            entries.Add(new OverrideEntry(normalizedId, path));
+        }
+
+        return entries;
+    }
+
+    private static void ValidateOverridesReferenceExistingRules(IReadOnlyList<OverrideEntry> overrides,
+        IReadOnlyDictionary<string, RuleEntry> rulesById, ICollection<string> errors) {
+        if (overrides is null || overrides.Count == 0) {
+            return;
+        }
+        foreach (var entry in overrides) {
+            if (!rulesById.ContainsKey(entry.Id)) {
+                errors.Add($"Rule override '{entry.Id}' does not match any base rule ({entry.Path}).");
+            }
+        }
     }
 
     private static IReadOnlyList<PackEntry> LoadPackEntries(string packsRoot, ICollection<string> errors) {
@@ -298,6 +364,21 @@ public static class AnalysisCatalogValidator {
         return false;
     }
 
+    private static void ValidateRuleType(JsonObject obj, string ruleId, string path, ICollection<string> errors) {
+        if (obj is null) {
+            return;
+        }
+        var type = obj.GetString("type");
+        if (string.IsNullOrWhiteSpace(type)) {
+            return;
+        }
+        // string.IsNullOrWhiteSpace is not annotated for netstandard2.0 flow analysis; force non-null.
+        if (SupportedRuleTypes.Contains(type!.Trim())) {
+            return;
+        }
+        errors.Add($"Rule '{ruleId}' has unsupported type '{type}' ({path}).");
+    }
+
     private static bool IsFatalException(Exception ex) {
         return ex is OutOfMemoryException
                || ex is StackOverflowException
@@ -320,6 +401,16 @@ public static class AnalysisCatalogValidator {
 
     private sealed class RuleEntry {
         public RuleEntry(string id, string path) {
+            Id = id;
+            Path = path;
+        }
+
+        public string Id { get; }
+        public string Path { get; }
+    }
+
+    private sealed class OverrideEntry {
+        public OverrideEntry(string id, string path) {
             Id = id;
             Path = path;
         }

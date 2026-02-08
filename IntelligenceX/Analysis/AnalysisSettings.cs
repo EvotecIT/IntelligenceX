@@ -74,6 +74,33 @@ public sealed class AnalysisResultsSettings {
 }
 
 /// <summary>
+/// Settings that control how security hotspots are rendered and tracked.
+/// </summary>
+public sealed class AnalysisHotspotsSettings {
+    /// <summary>
+    /// Whether to render the security hotspots block.
+    /// </summary>
+    public bool Show { get; set; } = true;
+    /// <summary>
+    /// Maximum number of hotspots shown in the summary block. Set to 0 to hide item lists while keeping counts.
+    /// </summary>
+    public int MaxItems { get; set; } = 10;
+    /// <summary>
+    /// Relative or absolute path to the persisted hotspots state file.
+    /// Defaults to a repo-local file under .intelligencex.
+    /// </summary>
+    public string StatePath { get; set; } = ".intelligencex/hotspots.json";
+    /// <summary>
+    /// Whether to include state breakdown and missing-state hints in output.
+    /// </summary>
+    public bool ShowStateSummary { get; set; } = true;
+    /// <summary>
+    /// Render the hotspots block even when there are no hotspots in the current PR.
+    /// </summary>
+    public bool AlwaysRender { get; set; }
+}
+
+/// <summary>
 /// Analysis configuration derived from reviewer.json.
 /// </summary>
 public sealed class AnalysisSettings {
@@ -102,6 +129,10 @@ public sealed class AnalysisSettings {
     /// Rendering and ingestion settings for analysis findings.
     /// </summary>
     public AnalysisResultsSettings Results { get; } = new AnalysisResultsSettings();
+    /// <summary>
+    /// Security hotspot rendering and state settings.
+    /// </summary>
+    public AnalysisHotspotsSettings Hotspots { get; } = new AnalysisHotspotsSettings();
 
     /// <summary>
     /// Parses a config mode value with a fallback.

@@ -1,0 +1,11 @@
+{
+  "id": "CA2100",
+  "type": "security-hotspot",
+  "tags": [
+    "security-hotspot",
+    "sql",
+    "cwe:89",
+    "owasp-a03:2021"
+  ]
+}
+

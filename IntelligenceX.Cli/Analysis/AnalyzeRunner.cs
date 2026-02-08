@@ -22,6 +22,7 @@ internal static class AnalyzeRunner {
             "export-config" => ExportConfigAsync(rest),
             "list-packs" => ListPacksAsync(rest),
             "list-rules" => ListRulesAsync(rest),
+            "hotspots" => AnalyzeHotspotsCommand.RunAsync(rest),
             "validate-catalog" => ValidateCatalogAsync(rest),
             _ => Task.FromResult(PrintHelpReturn())
         };
@@ -283,14 +284,14 @@ internal static class AnalyzeRunner {
     }
 
     private static void PrintRulesMarkdown(IReadOnlyList<AnalysisRule> rules) {
-        Console.WriteLine("| ID | Language | Tool | Tool Rule ID | Default Severity | Category | Title | Docs |");
-        Console.WriteLine("| --- | --- | --- | --- | --- | --- | --- | --- |");
+        Console.WriteLine("| ID | Language | Type | Tool | Tool Rule ID | Default Severity | Category | Title | Docs |");
+        Console.WriteLine("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
         foreach (var rule in rules) {
             var docs = string.IsNullOrWhiteSpace(rule.Docs)
                 ? string.Empty
                 : $"[link]({rule.Docs})";
             Console.WriteLine(
-                $"| {EscapeMarkdown(rule.Id)} | {EscapeMarkdown(rule.Language)} | {EscapeMarkdown(rule.Tool)} | {EscapeMarkdown(rule.ToolRuleId)} | {EscapeMarkdown(rule.DefaultSeverity)} | {EscapeMarkdown(rule.Category)} | {EscapeMarkdown(rule.Title)} | {EscapeMarkdown(docs)} |");
+                $"| {EscapeMarkdown(rule.Id)} | {EscapeMarkdown(rule.Language)} | {EscapeMarkdown(rule.Type)} | {EscapeMarkdown(rule.Tool)} | {EscapeMarkdown(rule.ToolRuleId)} | {EscapeMarkdown(rule.DefaultSeverity)} | {EscapeMarkdown(rule.Category)} | {EscapeMarkdown(rule.Title)} | {EscapeMarkdown(docs)} |");
         }
     }
 
@@ -298,12 +299,14 @@ internal static class AnalyzeRunner {
         var items = rules.Select(rule => new Dictionary<string, object?> {
             ["id"] = rule.Id,
             ["language"] = rule.Language,
+            ["type"] = rule.Type,
             ["tool"] = rule.Tool,
             ["toolRuleId"] = rule.ToolRuleId,
             ["title"] = rule.Title,
             ["description"] = rule.Description,
             ["category"] = rule.Category,
             ["defaultSeverity"] = rule.DefaultSeverity,
+            ["tags"] = rule.Tags,
             ["docs"] = rule.Docs
         }).ToList();
         Console.WriteLine(JsonLite.Serialize(items));
@@ -349,6 +352,7 @@ internal static class AnalyzeRunner {
         Console.WriteLine("  intelligencex analyze export-config --out <dir> [--config <path>] [--workspace <path>]");
         Console.WriteLine("  intelligencex analyze list-packs [--workspace <path>]");
         Console.WriteLine("  intelligencex analyze list-rules [--workspace <path>] [--format text|markdown|json] [--pack <id>] [--packs <id1,id2>]");
+        Console.WriteLine("  intelligencex analyze hotspots <command> [options]");
         Console.WriteLine("  intelligencex analyze validate-catalog [--workspace <path>]");
     }
 

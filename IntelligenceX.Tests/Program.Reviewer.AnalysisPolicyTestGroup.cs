@@ -4,6 +4,7 @@ namespace IntelligenceX.Tests;
 internal static partial class Program {
     private static readonly (string Name, Action Test)[] AnalysisPolicyBehaviorTests = {
         ("Analysis policy reports outcomes", TestAnalysisPolicyReportsRuleOutcomes),
+        ("Analysis policy resolves pack includes", TestAnalysisPolicyPackIncludesEnableRules),
         ("Analysis policy unavailable summary", TestAnalysisPolicyBuildUnavailablePolicy),
         ("Analysis policy catalog load unavailable fallback", TestAnalysisPolicyBuildsUnavailableWhenCatalogLoadFails),
         ("Analysis unavailable policy catalog fallback", TestAnalysisPolicyUnavailableUsesCatalogFallbackWhenCatalogLoadFails),

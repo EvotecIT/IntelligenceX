@@ -15,6 +15,9 @@ Packs are curated rule sets built from rule IDs and optional includes/overrides.
   - `csharp-default`
   - `powershell-default`
   - `intelligencex-maintainability-default`
+- Security defaults:
+  - `csharp-security-default`
+  - `all-security-default`
 - Language tiers:
   - `csharp-50`, `csharp-100`, `csharp-500`
   - `powershell-50`, `powershell-100`, `powershell-500`

@@ -40,6 +40,16 @@ public static class AnalysisConfigReader {
             settings.SeverityOverrides = normalizedOverrides;
         }
 
+        var hotspots = analysis.GetObject("hotspots");
+        if (hotspots is not null) {
+            settings.Hotspots.Show = ReadBool(hotspots, "show", settings.Hotspots.Show);
+            settings.Hotspots.MaxItems = ReadNonNegativeInt(hotspots, "maxItems", settings.Hotspots.MaxItems);
+            settings.Hotspots.StatePath = hotspots.GetString("statePath") ?? settings.Hotspots.StatePath;
+            settings.Hotspots.ShowStateSummary =
+                ReadBool(hotspots, "showStateSummary", settings.Hotspots.ShowStateSummary);
+            settings.Hotspots.AlwaysRender = ReadBool(hotspots, "alwaysRender", settings.Hotspots.AlwaysRender);
+        }
+
         var results = analysis.GetObject("results");
         if (results is null) {
             return;

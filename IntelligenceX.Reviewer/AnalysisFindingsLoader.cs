@@ -101,7 +101,10 @@ internal static class AnalysisFindingsLoader {
                     normalizedSeverity = AnalysisSeverity.Normalize(secondaryOverride);
                 }
                 if (AnalysisSeverity.Rank(normalizedSeverity) < minRank) {
-                    continue;
+                    // Hotspots should still be surfaced even when minSeverity filters out info/suggestion.
+                    if (!IsSecurityHotspot(primaryRuleId, secondaryRuleId, catalog)) {
+                        continue;
+                    }
                 }
                 var normalizedFinding = finding with {
                     Path = normalizedPath,
@@ -118,6 +121,27 @@ internal static class AnalysisFindingsLoader {
 
         return new AnalysisLoadResult(findings,
             new AnalysisLoadReport(configuredInputs, uniqueResolvedFiles.Count, parsedInputFiles, failedInputFiles));
+    }
+
+    private static bool IsSecurityHotspot(string? primaryRuleId, string? secondaryRuleId, AnalysisCatalog? catalog) {
+        // Prefer catalog metadata (when available) as source of truth.
+        if (catalog is not null) {
+            if (!string.IsNullOrWhiteSpace(primaryRuleId) && catalog.TryGetRule(primaryRuleId, out var rule)) {
+                return string.Equals(rule.Type, "security-hotspot", StringComparison.OrdinalIgnoreCase);
+            }
+            if (!string.IsNullOrWhiteSpace(secondaryRuleId) && catalog.TryGetRule(secondaryRuleId, out rule)) {
+                return string.Equals(rule.Type, "security-hotspot", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        // Fallback convention for when catalog isn't available or doesn't contain the rule.
+        if (!string.IsNullOrWhiteSpace(primaryRuleId) && primaryRuleId.StartsWith("IXHOT", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+        if (!string.IsNullOrWhiteSpace(secondaryRuleId) && secondaryRuleId.StartsWith("IXHOT", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+        return false;
     }
 
     private static IReadOnlyList<AnalysisFinding> ParseFindings(string text, string workspace) {
@@ -174,6 +198,7 @@ internal static class AnalysisFindingsLoader {
                 }
                 var level = result.GetString("level") ?? "unknown";
                 var ruleId = result.GetString("ruleId") ?? result.GetObject("rule")?.GetString("id");
+                var fingerprint = ReadSarifFingerprint(result);
                 var locations = result.GetArray("locations");
                 if (locations is null || locations.Count == 0) {
                     continue;
@@ -193,10 +218,64 @@ internal static class AnalysisFindingsLoader {
                 if (string.IsNullOrWhiteSpace(path)) {
                     continue;
                 }
-                findings.Add(new AnalysisFinding(path, line, message, level, ruleId, toolName));
+                findings.Add(new AnalysisFinding(path, line, message, level, ruleId, toolName, fingerprint));
             }
         }
         return findings;
+    }
+
+    private static string? ReadSarifFingerprint(JsonObject result) {
+        if (result is null) {
+            return null;
+        }
+
+        // Prefer SARIF fingerprints produced by the analyzer if present.
+        var partial = result.GetObject("partialFingerprints");
+        var resolved = ReadFingerprintObject(partial);
+        if (!string.IsNullOrWhiteSpace(resolved)) {
+            return resolved;
+        }
+        var full = result.GetObject("fingerprints");
+        resolved = ReadFingerprintObject(full);
+        if (!string.IsNullOrWhiteSpace(resolved)) {
+            return resolved;
+        }
+
+        // Some emitters use a single string.
+        resolved = result.GetString("fingerprint");
+        if (!string.IsNullOrWhiteSpace(resolved)) {
+            return resolved!.Trim();
+        }
+
+        return null;
+    }
+
+    private static string? ReadFingerprintObject(JsonObject? obj) {
+        if (obj is null || obj.Count == 0) {
+            return null;
+        }
+        // Prefer common SARIF keys when available; otherwise take the first stable key.
+        var knownKeys = new[] {
+            "primaryLocationLineHash",
+            "primaryLocationStartColumnFingerprint",
+            "primaryLocationFingerprint",
+            "contextRegionHash",
+            "locationFingerprint"
+        };
+        foreach (var key in knownKeys) {
+            var value = obj.GetString(key);
+            if (!string.IsNullOrWhiteSpace(value)) {
+                return $"{key}:{value!.Trim()}";
+            }
+        }
+
+        foreach (var entry in obj.OrderBy(e => e.Key, StringComparer.Ordinal)) {
+            var value = entry.Value?.AsString();
+            if (!string.IsNullOrWhiteSpace(value)) {
+                return $"{entry.Key}:{value!.Trim()}";
+            }
+        }
+        return null;
     }
 
     private static string ReadSarifMessage(JsonObject result) {
