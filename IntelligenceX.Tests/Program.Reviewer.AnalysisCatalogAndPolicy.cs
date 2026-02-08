@@ -377,7 +377,7 @@ internal static partial class Program {
                     }
 
                     switch (prop.Name) {
-                    case "title": {
+                        case "title": {
                         if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
                             throw new Exception($"{id} override title must be a string");
                         }
@@ -388,7 +388,7 @@ internal static partial class Program {
                         }
                         break;
                     }
-                    case "description": {
+                        case "description": {
                         if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
                             throw new Exception($"{id} override description must be a string");
                         }
@@ -399,7 +399,7 @@ internal static partial class Program {
                         }
                         break;
                     }
-                    case "type": {
+                        case "type": {
                         if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
                             throw new Exception($"{id} override type must be a string");
                         }
@@ -410,7 +410,7 @@ internal static partial class Program {
                         }
                         break;
                     }
-                    case "category": {
+                        case "category": {
                         if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
                             throw new Exception($"{id} override category must be a string");
                         }
@@ -421,7 +421,7 @@ internal static partial class Program {
                         }
                         break;
                     }
-                    case "defaultSeverity": {
+                        case "defaultSeverity": {
                         if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
                             throw new Exception($"{id} override defaultSeverity must be a string");
                         }
@@ -432,7 +432,7 @@ internal static partial class Program {
                         }
                         break;
                     }
-                    case "docs": {
+                        case "docs": {
                         if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
                             throw new Exception($"{id} override docs must be a string");
                         }
@@ -443,7 +443,7 @@ internal static partial class Program {
                         }
                         break;
                     }
-                    case "tags": {
+                        case "tags": {
                         static IReadOnlyList<string> MergeTags(IReadOnlyList<string> existing, IReadOnlyList<string> overrides) {
                             var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                             var merged = new List<string>();
@@ -486,10 +486,10 @@ internal static partial class Program {
                         }
                         break;
                     }
-                    default:
-                        throw new Exception($"Unsupported PowerShell override property '{prop.Name}' in {Path.GetFileName(overridePath)}");
+                        default:
+                            throw new Exception($"Unsupported PowerShell override property '{prop.Name}' in {Path.GetFileName(overridePath)}");
+                    }
                 }
-            }
 
                 AssertEqual(true, sawOverrideProperty, $"{id} override has at least one property besides id");
                 if (sawNonTagsOverrideProperty) {
