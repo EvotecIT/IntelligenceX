@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSUseDeclaredVarsMoreThanAssignments",
-  "title": "Use Declared Vars More Than Assignments",
-  "description": "PSScriptAnalyzer rule 'PSUseDeclaredVarsMoreThanAssignments'. See docs for details.",
+  "title": "Extra Variables",
+  "description": "Ensure declared variables are used elsewhere in the script and not just during assignment.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

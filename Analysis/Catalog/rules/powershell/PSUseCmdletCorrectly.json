@@ -4,7 +4,7 @@
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSUseCmdletCorrectly",
   "title": "Use Cmdlet Correctly",
-  "description": "PSScriptAnalyzer rule 'PSUseCmdletCorrectly'. See docs for details.",
+  "description": "Cmdlet should be called with the mandatory parameters.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

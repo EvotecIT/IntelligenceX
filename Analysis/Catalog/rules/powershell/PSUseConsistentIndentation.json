@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSUseConsistentIndentation",
-  "title": "Use Consistent Indentation",
-  "description": "PSScriptAnalyzer rule 'PSUseConsistentIndentation'. See docs for details.",
+  "title": "Use consistent indentation",
+  "description": "Each statement block should have a consistent indenation.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

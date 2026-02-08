@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSAvoidAssignmentToAutomaticVariable",
-  "title": "Avoid Assignment To Automatic Variable",
-  "description": "PSScriptAnalyzer rule 'PSAvoidAssignmentToAutomaticVariable'. See docs for details.",
+  "title": "Changing automatic variables might have undesired side effects",
+  "description": "This automatic variables is built into PowerShell and readonly.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

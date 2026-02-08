@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSDSCUseIdenticalMandatoryParametersForDSC",
-  "title": "DSC Use Identical Mandatory Parameters For DSC",
-  "description": "PSScriptAnalyzer rule 'PSDSCUseIdenticalMandatoryParametersForDSC'. See docs for details.",
+  "title": "Use identical mandatory parameters for DSC Get/Test/Set TargetResource functions",
+  "description": "The Get/Test/Set TargetResource functions of DSC resource must have the same mandatory parameters.",
   "category": "BestPractices",
   "defaultSeverity": "error",
   "tags": [

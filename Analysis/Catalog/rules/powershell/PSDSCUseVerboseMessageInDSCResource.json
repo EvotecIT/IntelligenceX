@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSDSCUseVerboseMessageInDSCResource",
-  "title": "DSC Use Verbose Message In DSC Resource",
-  "description": "PSScriptAnalyzer rule 'PSDSCUseVerboseMessageInDSCResource'. See docs for details.",
+  "title": "Use verbose message in DSC resource",
+  "description": "It is a best practice to emit informative, verbose messages in DSC resource functions. This helps in debugging issues when a DSC configuration is executed.",
   "category": "BestPractices",
   "defaultSeverity": "info",
   "tags": [

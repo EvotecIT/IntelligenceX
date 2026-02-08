@@ -4,7 +4,7 @@
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSAvoidUsingDeprecatedManifestFields",
   "title": "Avoid Using Deprecated Manifest Fields",
-  "description": "PSScriptAnalyzer rule 'PSAvoidUsingDeprecatedManifestFields'. See docs for details.",
+  "description": "\"ModuleToProcess\" is obsolete in the latest PowerShell version. Please update with the latest field \"RootModule\" in manifest files to avoid PowerShell version inconsistency.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSUseShouldProcessForStateChangingFunctions",
-  "title": "Use Should Process For State Changing Functions",
-  "description": "PSScriptAnalyzer rule 'PSUseShouldProcessForStateChangingFunctions'. See docs for details.",
+  "title": "Use ShouldProcess For State Changing Functions",
+  "description": "Functions that have verbs like New, Start, Stop, Set, Reset, Restart that change system state should support 'ShouldProcess'.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

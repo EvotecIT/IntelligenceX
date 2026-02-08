@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSReviewUnusedParameter",
-  "title": "Review Unused Parameter",
-  "description": "PSScriptAnalyzer rule 'PSReviewUnusedParameter'. See docs for details.",
+  "title": "ReviewUnusedParameter",
+  "description": "Ensure all parameters are used within the same script, scriptblock, or function where they are declared.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSUseLiteralInitializerForHashtable",
-  "title": "Use Literal Initializer For Hashtable",
-  "description": "PSScriptAnalyzer rule 'PSUseLiteralInitializerForHashtable'. See docs for details.",
+  "title": "Create hashtables with literal initializers",
+  "description": "Use literal initializer, @{}, for creating a hashtable as they are case-insensitive by default",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

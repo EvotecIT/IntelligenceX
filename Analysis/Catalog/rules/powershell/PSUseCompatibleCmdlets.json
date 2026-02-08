@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSUseCompatibleCmdlets",
-  "title": "Use Compatible Cmdlets",
-  "description": "PSScriptAnalyzer rule 'PSUseCompatibleCmdlets'. See docs for details.",
+  "title": "Use compatible cmdlets",
+  "description": "Use cmdlets compatible with the given PowerShell version and edition and operating system",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

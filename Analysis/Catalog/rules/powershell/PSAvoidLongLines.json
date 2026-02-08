@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSAvoidLongLines",
-  "title": "Avoid Long Lines",
-  "description": "PSScriptAnalyzer rule 'PSAvoidLongLines'. See docs for details.",
+  "title": "Avoid long lines",
+  "description": "Line lengths should be less than the configured maximum",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

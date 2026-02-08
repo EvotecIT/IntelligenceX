@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSUseToExportFieldsInManifest",
-  "title": "Use To Export Fields In Manifest",
-  "description": "PSScriptAnalyzer rule 'PSUseToExportFieldsInManifest'. See docs for details.",
+  "title": "Use the *ToExport module manifest fields.",
+  "description": "In a module manifest, AliasesToExport, CmdletsToExport, FunctionsToExport and VariablesToExport fields should not use wildcards or $null in their entries. During module auto-discovery, if any of these entries are missing or $null or wildcard, PowerShell does some potentially expensive work to analyze the rest of the module.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

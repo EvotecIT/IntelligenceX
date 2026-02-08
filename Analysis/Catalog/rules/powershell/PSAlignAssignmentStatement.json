@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSAlignAssignmentStatement",
-  "title": "Align Assignment Statement",
-  "description": "PSScriptAnalyzer rule 'PSAlignAssignmentStatement'. See docs for details.",
+  "title": "Align assignment statement",
+  "description": "Line up assignment statements such that the assignment operator are aligned.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

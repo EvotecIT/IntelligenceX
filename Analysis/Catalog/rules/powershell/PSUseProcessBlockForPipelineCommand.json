@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSUseProcessBlockForPipelineCommand",
-  "title": "Use Process Block For Pipeline Command",
-  "description": "PSScriptAnalyzer rule 'PSUseProcessBlockForPipelineCommand'. See docs for details.",
+  "title": "Use process block for command that accepts input from pipeline.",
+  "description": "If a command parameter takes its value from the pipeline, the command must use a process block to bind the input objects from the pipeline to that parameter.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

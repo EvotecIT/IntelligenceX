@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSAvoidGlobalAliases",
-  "title": "Avoid Global Aliases",
-  "description": "PSScriptAnalyzer rule 'PSAvoidGlobalAliases'. See docs for details.",
+  "title": "Avoid global aliases.",
+  "description": "Checks that global aliases are not used. Global aliases are strongly discouraged as they overwrite desired aliases with name conflicts.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

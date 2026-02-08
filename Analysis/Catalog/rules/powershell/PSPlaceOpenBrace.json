@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSPlaceOpenBrace",
-  "title": "Place Open Brace",
-  "description": "PSScriptAnalyzer rule 'PSPlaceOpenBrace'. See docs for details.",
+  "title": "Place open braces consistently",
+  "description": "Place open braces either on the same line as the preceding expression or on a new line.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

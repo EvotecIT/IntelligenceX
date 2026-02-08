@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSAvoidSemicolonsAsLineTerminators",
-  "title": "Avoid Semicolons As Line Terminators",
-  "description": "PSScriptAnalyzer rule 'PSAvoidSemicolonsAsLineTerminators'. See docs for details.",
+  "title": "Avoid semicolons as line terminators",
+  "description": "Line should not end with a semicolon",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSAvoidTrailingWhitespace",
-  "title": "Avoid Trailing Whitespace",
-  "description": "PSScriptAnalyzer rule 'PSAvoidTrailingWhitespace'. See docs for details.",
+  "title": "Avoid trailing whitespace",
+  "description": "Each line should have no trailing whitespace.",
   "category": "BestPractices",
   "defaultSeverity": "info",
   "tags": [

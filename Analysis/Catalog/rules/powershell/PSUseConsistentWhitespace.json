@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSUseConsistentWhitespace",
-  "title": "Use Consistent Whitespace",
-  "description": "PSScriptAnalyzer rule 'PSUseConsistentWhitespace'. See docs for details.",
+  "title": "Use whitespaces",
+  "description": "Check for whitespace between keyword and open paren/curly, around assignment operator ('='), around arithmetic operators and after separators (',' and ';')",
   "category": "BestPractices",
   "defaultSeverity": "warning",
   "tags": [

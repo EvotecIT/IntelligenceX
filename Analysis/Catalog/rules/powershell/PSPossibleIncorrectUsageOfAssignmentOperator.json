@@ -3,8 +3,8 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSPossibleIncorrectUsageOfAssignmentOperator",
-  "title": "Possible Incorrect Usage Of Assignment Operator",
-  "description": "PSScriptAnalyzer rule 'PSPossibleIncorrectUsageOfAssignmentOperator'. See docs for details.",
+  "title": "'=' is not an assignment operator. Did you mean the equality operator '-eq'?",
+  "description": "'=' or '==' are not comparison operators in the PowerShell language and rarely needed inside conditional statements.",
   "category": "Reliability",
   "defaultSeverity": "info",
   "tags": [

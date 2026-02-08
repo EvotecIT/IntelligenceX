@@ -4,7 +4,7 @@
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSAvoidUsingBrokenHashAlgorithms",
   "title": "Avoid Using Broken Hash Algorithms",
-  "description": "PSScriptAnalyzer rule 'PSAvoidUsingBrokenHashAlgorithms'. See docs for details.",
+  "description": "Avoid using the broken algorithms MD5 or SHA-1.",
   "category": "Security",
   "defaultSeverity": "warning",
   "tags": [
