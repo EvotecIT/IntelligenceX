@@ -97,6 +97,15 @@ internal static class AnalyzeGateCommand {
         try {
             Environment.CurrentDirectory = workspace;
             load = AnalysisFindingsLoader.LoadWithReport(reviewSettings, prFiles);
+        } catch (Exception ex) {
+            var msg = (ex.Message ?? string.Empty).Replace("\r", " ").Replace("\n", " ").Trim();
+            if (string.IsNullOrWhiteSpace(msg)) {
+                msg = ex.GetType().Name;
+            } else {
+                msg = $"{ex.GetType().Name}: {msg}";
+            }
+            Console.WriteLine($"Static analysis gate: unavailable ({msg}).");
+            return Task.FromResult(analysisSettings.Gate.FailOnUnavailable ? ExitGateFailed : ExitSuccess);
         } finally {
             Environment.CurrentDirectory = previousCwd;
         }
@@ -360,8 +369,7 @@ internal static class AnalyzeGateCommand {
             ? configuredPath
             : Path.Combine(workspace, configuredPath);
         try {
-            var fullWorkspace = Path.GetFullPath(workspace)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var fullWorkspace = Path.GetFullPath(workspace);
             var full = Path.GetFullPath(resolved);
 
             // Use relative path computation to avoid prefix-matching bypasses (e.g. /ws2 matching /ws).
@@ -370,6 +378,9 @@ internal static class AnalyzeGateCommand {
                 return null;
             }
             var normalized = relative.Replace('\\', '/');
+            if (normalized.Equals(".", StringComparison.Ordinal)) {
+                return full;
+            }
             if (normalized.Equals("..", StringComparison.Ordinal) || normalized.StartsWith("../", StringComparison.Ordinal)) {
                 return null;
             }

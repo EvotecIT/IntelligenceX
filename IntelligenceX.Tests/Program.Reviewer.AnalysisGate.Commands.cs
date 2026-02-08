@@ -283,6 +283,76 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeGateFailOnUnavailableHandlesLoaderException() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-unavailable-throws-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            var artifactsDir = Path.Combine(temp, "artifacts");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+            Directory.CreateDirectory(artifactsDir);
+
+            File.WriteAllText(Path.Combine(rulesDir, "IX001.json"), """
+{
+  "id": "IX001",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "toolRuleId": "IX001",
+  "type": "bug",
+  "title": "Test rule",
+  "description": "Test rule.",
+  "category": "Reliability",
+  "defaultSeverity": "warning"
+}
+""");
+            File.WriteAllText(Path.Combine(packsDir, "all-50.json"), """
+{
+  "id": "all-50",
+  "label": "All Essentials (50)",
+  "rules": ["IX001"]
+}
+""");
+
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            var configPath = Path.Combine(temp, ".intelligencex", "reviewer.json");
+
+            var tempNormalized = temp.Replace("\\", "/");
+            var badInputPattern = tempNormalized + "/artifacts/**/\\u0000*.sarif";
+            File.WriteAllText(configPath, $$"""
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["all-50"],
+    "gate": {
+      "enabled": true,
+      "failOnUnavailable": true,
+      "failOnNoEnabledRules": true
+    },
+    "results": { "inputs": ["{{badInputPattern}}"] }
+  }
+}
+""");
+
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunner.RunAsync(new[] {
+                "gate",
+                "--workspace",
+                temp,
+                "--config",
+                configPath
+            }).GetAwaiter().GetResult();
+            AssertEqual(2, exit, "analyze gate exit (loader exception -> unavailable)");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalyzeGateMinSeverityFilters() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-min-sev-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
