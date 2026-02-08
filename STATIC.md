@@ -36,6 +36,7 @@ Last updated: 2026-02-08 (update when milestones/defaults change)
 - [x] Hotspot state path is workspace-bounded in both CLI and reviewer (no arbitrary file reads in CI).
 - [x] Workflow integration.
 - [x] `.github/workflows/review-intelligencex.yml` runs analysis, uploads artifacts, runs reviewer.
+- [x] CI gate: `intelligencex analyze gate` evaluates policy + findings and fails CI deterministically (no AI required).
 - [x] GitHub App token is supported via `actions/create-github-app-token@v1` when secrets are present.
 - [x] Static Analysis Policy block shows enabled rules, pack selection, and load/parse status.
 
@@ -45,10 +46,10 @@ Last updated: 2026-02-08 (update when milestones/defaults change)
 
 Outcome: a required check that can block merges without AI.
 
-- [ ] Add `intelligencex analyze gate` to evaluate outcomes and exit non-zero on violations.
-- [ ] Add gate configuration in `.intelligencex/reviewer.json` (thresholds by severity/type, allowlists, hotspots handling).
-- [ ] Add GitHub Actions step that runs the gate and produces clear failure output.
-- [ ] Decide default gate policy for the repo. Options: block on `vulnerability` at `warning+`; block on `bug` at `error+`; block on `security-hotspot` when `to-review` exists.
+- [x] Add `intelligencex analyze gate` to evaluate outcomes and exit non-zero on violations.
+- [x] Add gate configuration in `.intelligencex/reviewer.json` (thresholds by severity/type, hotspots handling).
+- [x] Add GitHub Actions step that runs the gate and produces clear failure output.
+- [x] Decide default gate policy for this repo (current: block on `vulnerability` and `bug` at `warning+`; do not gate on hotspots-to-review).
 
 Definition of done:
 
@@ -129,3 +130,20 @@ Optional:
 - What should block merges by default. Options: `vulnerability` only; `vulnerability + bug`; all enabled rules at `warning+`.
 - How should hotspots affect gating. Options: gate on `to-review` hotspots; gate only on explicit `accepted-risk` policy violations; do not gate, only report.
 - Issue grouping strategy. Options: rule; rule+path; hotspot key.
+
+## Ruleset Gaps (Proposals)
+
+- PowerShell: expand the catalog beyond the single PSScriptAnalyzer rule and grow `powershell-50` into a real tier (for example include `PSAvoidUsingConvertToSecureStringWithPlainText`, `PSAvoidUsingPlainTextForPassword`, `PSAvoidUsingInvokeExpression`, `PSUseApprovedVerbs`, `PSAvoidUsingCmdletAliases`).
+- JS/TS: add a first-party JS/TS catalog + packs (metadata only) and document the recommended SARIF producer (ESLint SARIF formatter). Keep enablement in `reviewer.json` and let users choose the underlying toolchain.
+- Python: add a first-party Python catalog + packs (metadata only) and document Ruff as the default SARIF producer. Same “repo-clean” config story.
+- Internal: add a small set of deterministic “repo hygiene” rules (for example: prohibit oversized generated diffs, enforce file headers, enforce known patterns for secrets-as-code) as first-party findings JSON.
+
+## AI CodeFix (Proposed)
+
+Goal: mirror Sonar-like “AI CodeFix” without making gates depend on AI.
+
+- Add optional rule metadata for fixability (for example `fixKind: deterministic|ai`, `risk: low|medium|high`, `requiresTests: true`).
+- Add an opt-in workflow that consumes static findings and produces suggested patches:
+  - deterministic fixes first (formatters/codemods),
+  - AI patching second (bounded scope, changed files only, tests required),
+  - open a PR under GitHub App identity with a small, reviewable diff.
