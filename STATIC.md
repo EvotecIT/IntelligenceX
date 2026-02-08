@@ -42,7 +42,11 @@ Outcome: a required check that can block merges without AI.
 - [ ] Add `intelligencex analyze gate` to evaluate outcomes and exit non-zero on violations.
 - [ ] Add gate configuration in `.intelligencex/reviewer.json` (thresholds by severity/type, allowlists, hotspots handling).
 - [ ] Add GitHub Actions step that runs the gate and produces clear failure output.
-- [ ] Decide default gate policy for the repo. Policy options: block on `vulnerability` at `warning+`; block on `bug` at `error+`; block on `security-hotspot` when `to-review` exists.
+- [ ] Decide default gate policy for the repo.
+    - Policy options:
+        - Block on `vulnerability` at `warning+`.
+        - Block on `bug` at `error+`.
+        - Block on `security-hotspot` when `to-review` exists.
 
 Definition of done:
 
@@ -68,7 +72,11 @@ Definition of done:
 Outcome: policy outcomes are trackable beyond a single PR.
 
 - [ ] Add `intelligencex analyze issues sync` (creates/updates/closes issues).
-- [ ] Define grouping key strategy. Grouping options: one issue per rule; one issue per rule + path group; one issue per hotspot key.
+- [ ] Define grouping key strategy.
+    - Grouping options:
+        - One issue per rule.
+        - One issue per rule + path group.
+        - One issue per hotspot key.
 - [ ] Add a scheduled workflow on the default branch to sync issues (recommended).
 - [ ] Add labels and templates (for example `static-analysis`, `security-hotspot`, `accepted-risk`).
 
@@ -98,7 +106,10 @@ Outcome: safe automation that proposes fixes via PRs under GitHub App identity.
 - [ ] Add `intelligencex autofix` runner.
 - [ ] Define “autofixable rules” pack (small initial set).
 - [ ] Implement deterministic fixes first (formatters/codemods), AI patching second.
-- [ ] Add workflow triggers restricted to trusted contexts. Trigger options: `workflow_dispatch` only; same-repo PRs only (no forks).
+- [ ] Add workflow triggers restricted to trusted contexts.
+    - Trigger options:
+        - `workflow_dispatch` only.
+        - Same-repo PRs only (no forks).
 
 Definition of done:
 
@@ -120,6 +131,14 @@ Optional:
 
 ## Open Questions (Need Decisions)
 
-- What should block merges by default. Options: `vulnerability` only; `vulnerability + bug`; all enabled rules at `warning+`.
-- How should hotspots affect gating. Options: gate on `to-review` hotspots; gate only on explicit `accepted-risk` policy violations; do not gate, only report.
+- What should block merges by default.
+    - Options:
+        - `vulnerability` only.
+        - `vulnerability + bug`.
+        - All enabled rules at `warning+`.
+- How should hotspots affect gating.
+    - Options:
+        - Gate on `to-review` hotspots.
+        - Gate only on explicit `accepted-risk` policy violations.
+        - Do not gate, only report.
 - Issue grouping strategy (rule vs rule+path vs hotspot key).
