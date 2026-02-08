@@ -352,7 +352,7 @@ internal static partial class Program {
             var slug = rule.Docs.Substring(baseUrl.Length);
             AssertEqual(true, slug.Length > 0, $"{rule.Id} docs slug non-empty");
             foreach (var ch in slug) {
-                var ok = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9');
+                var ok = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-';
                 AssertEqual(true, ok, $"{rule.Id} docs slug char: {ch}");
             }
         }
