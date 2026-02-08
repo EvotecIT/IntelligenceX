@@ -315,24 +315,25 @@ internal static partial class Program {
         var overridesDir = Path.Combine(workspace, "Analysis", "Catalog", "overrides", "powershell");
         AssertEqual(true, Directory.Exists(overridesDir), "powershell overrides dir exists");
 
-        // Load the catalog without overrides so we can compare base vs effective without needing per-override temp workspaces.
-        var rulesRoot = Path.Combine(workspace, "Analysis", "Catalog", "rules");
-        var packsRoot = Path.Combine(workspace, "Analysis", "Packs");
-        // Use a GUID-based unique temp directory to avoid collisions and avoid temp-file quotas on busy CI agents.
-        var emptyOverridesRoot = Path.Combine(
-            Path.GetTempPath(),
-            "ix-analysis-empty-overrides-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(emptyOverridesRoot);
-        try {
-            var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, emptyOverridesRoot, packsRoot);
-
-            if (!Directory.Exists(overridesDir)) {
-                throw new InvalidOperationException("Expected PowerShell overrides directory to exist, but it does not: " + overridesDir);
-            }
-            foreach (var overridePath in Directory.EnumerateFiles(overridesDir, "*.json")) {
-                var overrideText = File.ReadAllText(overridePath, System.Text.Encoding.UTF8);
-                using var overrideDoc = System.Text.Json.JsonDocument.Parse(overrideText);
-                var overrideRoot = overrideDoc.RootElement;
+	        // Load the catalog without overrides so we can compare base vs effective without needing per-override temp workspaces.
+	        var rulesRoot = Path.Combine(workspace, "Analysis", "Catalog", "rules");
+	        var packsRoot = Path.Combine(workspace, "Analysis", "Packs");
+	        // Pass a non-existent overrides directory so the loader skips overrides without needing temp dir creation/cleanup.
+	        var emptyOverridesRoot = Path.Combine(
+	            Path.GetTempPath(),
+	            "ix-analysis-empty-overrides-nonexistent-" + Guid.NewGuid().ToString("N"));
+	        if (Directory.Exists(emptyOverridesRoot)) {
+	            throw new InvalidOperationException("Unexpected temp overrides path already exists: " + emptyOverridesRoot);
+	        }
+	        var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, emptyOverridesRoot, packsRoot);
+	
+	        if (!Directory.Exists(overridesDir)) {
+	            throw new InvalidOperationException("Expected PowerShell overrides directory to exist, but it does not: " + overridesDir);
+	        }
+	        foreach (var overridePath in Directory.EnumerateFiles(overridesDir, "*.json")) {
+	            var overrideText = File.ReadAllText(overridePath, System.Text.Encoding.UTF8);
+	            using var overrideDoc = System.Text.Json.JsonDocument.Parse(overrideText);
+	            var overrideRoot = overrideDoc.RootElement;
 
                 if (!overrideRoot.TryGetProperty("id", out var idElement) || idElement.ValueKind != System.Text.Json.JsonValueKind.String) {
                     throw new InvalidOperationException($"Override '{Path.GetFileName(overridePath)}' is missing string 'id' property.");
@@ -508,26 +509,13 @@ internal static partial class Program {
                 }
 
                 AssertEqual(true, sawSupportedOverrideProperty, $"{id} override has at least one supported property besides id");
-                if (sawNonTagsOverrideProperty) {
-                    AssertEqual(true, changesBase, $"{id} override must change the effective rule vs base (otherwise delete the override)");
-                } else {
-                    AssertEqual(true, changesBase, $"{id} tags-only override must change effective tags vs base (otherwise delete the override)");
-                }
-            }
-        } finally {
-            if (Directory.Exists(emptyOverridesRoot)) {
-                for (var attempt = 1; attempt <= 3; attempt++) {
-                    try {
-                        Directory.Delete(emptyOverridesRoot, recursive: true);
-                        break;
-                    } catch (Exception ex) {
-                        // Best-effort cleanup: temp dirs may be locked by external processes on some CI agents.
-                        System.Diagnostics.Debug.WriteLine($"Failed to delete temp overrides root '{emptyOverridesRoot}' (attempt {attempt}): {ex.Message}");
-                    }
-                }
-            }
-        }
-    }
+	                if (sawNonTagsOverrideProperty) {
+	                    AssertEqual(true, changesBase, $"{id} override must change the effective rule vs base (otherwise delete the override)");
+	                } else {
+	                    AssertEqual(true, changesBase, $"{id} tags-only override must change effective tags vs base (otherwise delete the override)");
+	                }
+	            }
+	    }
 
     private static void TestAnalysisCatalogPowerShellDocsLinksMatchLearnPattern() {
         var workspace = ResolveWorkspaceRoot();

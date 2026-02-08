@@ -8,6 +8,13 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $runningOnWindows = ($env:OS -eq 'Windows_NT')
+$pathComparison = if ($runningOnWindows) { [System.StringComparison]::OrdinalIgnoreCase } else { [System.StringComparison]::Ordinal }
+
+function Resolve-FullPath([string]$path) {
+    if ([string]::IsNullOrWhiteSpace($path)) { return '' }
+    $resolved = (Resolve-Path -LiteralPath $path -ErrorAction Stop).Path
+    return [System.IO.Path]::GetFullPath($resolved)
+}
 
 $module = Get-Module -ListAvailable -Name PSScriptAnalyzer |
     Sort-Object Version -Descending |
@@ -19,14 +26,14 @@ if (-not $module) {
 # Avoid importing a module that is (accidentally or maliciously) located under the repo workspace.
 $workspaceRoot = (Resolve-Path (Join-Path -Path $PSScriptRoot -ChildPath '..')).Path
 if ($module.ModuleBase) {
-    $root = [System.IO.Path]::GetFullPath($workspaceRoot)
-    $base = [System.IO.Path]::GetFullPath($module.ModuleBase)
+    $root = Resolve-FullPath $workspaceRoot
+    $base = Resolve-FullPath $module.ModuleBase
     $rootTrim = $root.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
     $rootPrefix = $rootTrim + [System.IO.Path]::DirectorySeparatorChar
 
     $isInWorkspace =
-        $base.Equals($rootTrim, [System.StringComparison]::OrdinalIgnoreCase) -or
-        $base.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+        $base.Equals($rootTrim, $pathComparison) -or
+        $base.StartsWith($rootPrefix, $pathComparison)
     if ($isInWorkspace) {
         throw ("Refusing to import PSScriptAnalyzer from workspace path: {0}" -f $base)
     }
@@ -34,12 +41,16 @@ if ($module.ModuleBase) {
 
 function Test-IsUnderPath([string]$path, [string]$root) {
     if ([string]::IsNullOrWhiteSpace($path) -or [string]::IsNullOrWhiteSpace($root)) { return $false }
-    $fullPath = [System.IO.Path]::GetFullPath($path)
-    $fullRoot = [System.IO.Path]::GetFullPath($root)
+    try {
+        $fullPath = Resolve-FullPath $path
+        $fullRoot = Resolve-FullPath $root
+    } catch {
+        return $false
+    }
     $trimRoot = $fullRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
     $prefix = $trimRoot + [System.IO.Path]::DirectorySeparatorChar
-    return $fullPath.Equals($trimRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
-        $fullPath.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)
+    return $fullPath.Equals($trimRoot, $pathComparison) -or
+        $fullPath.StartsWith($prefix, $pathComparison)
 }
 
 function Test-IsTrustedModuleBase([string]$moduleBase) {
@@ -61,6 +72,7 @@ function Test-IsTrustedModuleBase([string]$moduleBase) {
     }
 
     foreach ($root in $trustedRoots) {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
         if (Test-IsUnderPath $moduleBase $root) { return $true }
     }
     return $false
@@ -105,25 +117,29 @@ if ($module.Path) {
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 
 $intendedOutDir = [System.IO.Path]::GetFullPath((Join-Path -Path $workspaceRoot -ChildPath (Join-Path -Path 'Analysis' -ChildPath (Join-Path -Path 'Catalog' -ChildPath (Join-Path -Path 'rules' -ChildPath 'powershell')))))
-$resolvedOutDir = [System.IO.Path]::GetFullPath((Resolve-Path -LiteralPath $OutDir).Path)
+$resolvedOutDir = Resolve-FullPath $OutDir
+$resolvedIntendedOutDir = $intendedOutDir
+if (Test-Path -LiteralPath $intendedOutDir) {
+    $resolvedIntendedOutDir = Resolve-FullPath $intendedOutDir
+}
 
 # Even with -ForcePrune, never allow pruning outside the repo workspace.
-$workspaceFull = [System.IO.Path]::GetFullPath($workspaceRoot)
+$workspaceFull = Resolve-FullPath $workspaceRoot
 $workspaceTrim = $workspaceFull.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
 $workspacePrefix = $workspaceTrim + [System.IO.Path]::DirectorySeparatorChar
 $isUnderWorkspace =
-    $resolvedOutDir.Equals($workspaceTrim, [System.StringComparison]::OrdinalIgnoreCase) -or
-    $resolvedOutDir.StartsWith($workspacePrefix, [System.StringComparison]::OrdinalIgnoreCase)
+    $resolvedOutDir.Equals($workspaceTrim, $pathComparison) -or
+    $resolvedOutDir.StartsWith($workspacePrefix, $pathComparison)
 if ($PruneStale -and (-not $isUnderWorkspace)) {
     throw ("Refusing to prune outside workspace. OutDir='{0}', workspace='{1}'." -f $resolvedOutDir, $workspaceTrim)
 }
 
-if ($PruneStale -and (-not $resolvedOutDir.Equals($intendedOutDir, [System.StringComparison]::OrdinalIgnoreCase))) {
+if ($PruneStale -and (-not $resolvedOutDir.Equals($resolvedIntendedOutDir, $pathComparison))) {
     if (-not $ForcePrune) {
-        throw ("Refusing to prune outside intended catalog directory. OutDir='{0}', intended='{1}'. Pass -ForcePrune to prune." -f $resolvedOutDir, $intendedOutDir)
+        throw ("Refusing to prune outside intended catalog directory. OutDir='{0}', intended='{1}'. Pass -ForcePrune to prune." -f $resolvedOutDir, $resolvedIntendedOutDir)
     }
     if (-not $AllowNonIntendedOutDir) {
-        throw ("Refusing to prune outside intended catalog directory. OutDir='{0}', intended='{1}'. Pass -AllowNonIntendedOutDir to explicitly allow pruning a non-standard directory." -f $resolvedOutDir, $intendedOutDir)
+        throw ("Refusing to prune outside intended catalog directory. OutDir='{0}', intended='{1}'. Pass -AllowNonIntendedOutDir to explicitly allow pruning a non-standard directory." -f $resolvedOutDir, $resolvedIntendedOutDir)
     }
 }
 
