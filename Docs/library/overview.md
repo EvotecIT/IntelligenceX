@@ -38,7 +38,7 @@ var options = new IntelligenceXClientOptions {
 options.NativeOptions.UserAgent = "IntelligenceX/0.1.0";
 await using var client = await IntelligenceXClient.ConnectAsync(options);
 
-await client.LoginChatGptAndWaitAsync(url => Console.WriteLine(url));
+await client.EnsureChatGptLoginAsync(onUrl: url => Console.WriteLine(url));
 var turn = await client.ChatAsync("Summarize the latest PR");
 Console.WriteLine(turn.Outputs.Count);
 ```

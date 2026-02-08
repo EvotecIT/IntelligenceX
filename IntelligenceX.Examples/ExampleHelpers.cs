@@ -34,12 +34,10 @@ internal static class ExampleHelpers {
     }
 
     public static async Task EnsureChatGptLoginAsync(IntelligenceXClient client) {
-        try {
-            await client.GetAccountAsync().ConfigureAwait(false);
-            return;
-        } catch (InvalidOperationException ex) when (IsAuthMissing(ex)) {
-            await LoginChatGptAsync(client).ConfigureAwait(false);
-        }
+        await client.EnsureChatGptLoginAsync(onUrl: url => {
+            Console.WriteLine($"Open this URL to login: {url}");
+            TryOpenUrl(url);
+        }).ConfigureAwait(false);
     }
 
     public static async Task LoginApiKeyAsync(IntelligenceXClient client) {
@@ -77,9 +75,5 @@ internal static class ExampleHelpers {
         }
     }
 
-    private static bool IsAuthMissing(InvalidOperationException ex) {
-        var message = ex.Message ?? string.Empty;
-        return message.IndexOf("not logged in", StringComparison.OrdinalIgnoreCase) >= 0 ||
-               message.IndexOf("login", StringComparison.OrdinalIgnoreCase) >= 0;
-    }
+    // Auth-missing detection lives in the main library (IntelligenceXClient.EnsureChatGptLoginAsync).
 }

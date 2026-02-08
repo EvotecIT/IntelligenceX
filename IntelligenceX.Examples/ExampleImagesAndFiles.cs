@@ -12,7 +12,7 @@ internal sealed class ExampleImagesAndFiles : IExample {
 
     public async Task RunAsync() {
         await using var ix = await IntelligenceXClient.ConnectAsync().ConfigureAwait(false);
-        await ix.LoginChatGptAndWaitAsync(url => Console.WriteLine($"Open: {url}")).ConfigureAwait(false);
+        await ix.EnsureChatGptLoginAsync(onUrl: url => Console.WriteLine($"Open: {url}")).ConfigureAwait(false);
         using var sub = ix.SubscribeDelta(Console.Write);
 
         var imagePath = Path.Combine(Environment.CurrentDirectory, "example.png");

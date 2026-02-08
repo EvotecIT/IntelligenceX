@@ -9,7 +9,7 @@ await using var client = await IntelligenceXClient.ConnectAsync(new Intelligence
     TransportKind = OpenAITransportKind.Native
 });
 
-await client.LoginChatGptAndWaitAsync(url => Console.WriteLine(url));
+await client.EnsureChatGptLoginAsync(onUrl: url => Console.WriteLine(url));
 var turn = await client.ChatAsync("Summarize this PR.");
 Console.WriteLine(turn.Outputs.Count);
 ```
