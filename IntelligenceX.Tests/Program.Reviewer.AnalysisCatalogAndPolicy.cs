@@ -329,6 +329,7 @@ internal static partial class Program {
             if (string.IsNullOrWhiteSpace(id)) {
                 throw new Exception($"{Path.GetFileName(overridePath)} override has no id");
             }
+            AssertEqual(id, Path.GetFileNameWithoutExtension(overridePath), $"{id} override filename matches id");
 
             var basePath = Path.Combine(rulesDir, id + ".json");
             AssertEqual(true, File.Exists(basePath), $"{id} base rule exists for override");
@@ -454,7 +455,7 @@ internal static partial class Program {
 
         // Allow query/fragment because Learn commonly appends `?view=` and `#...`.
         var learnRulePattern = new System.Text.RegularExpressions.Regex(
-            @"^https://learn\.microsoft\.com(?:/[a-z]{2}(?:-[a-z]{2})?)?/powershell/utility-modules/psscriptanalyzer/rules/[^/?#]+/?(?:[?#].*)?$",
+            @"^https://learn\.microsoft\.com(?:/[a-z]{2}(?:-[a-z]{2})?)?/powershell/utility-modules/psscriptanalyzer/rules/[^/?#]+(?:/)?(?:[?#].*)?$",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
         foreach (var entry in catalog.Rules) {
