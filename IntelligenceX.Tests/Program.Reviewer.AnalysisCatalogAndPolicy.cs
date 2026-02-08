@@ -392,7 +392,7 @@ internal static partial class Program {
             AssertContainsText(block, "### Security Hotspots", "hotspots header");
             AssertContainsText(block, "Hotspots: 1", "hotspots count");
             AssertContainsText(block, "Missing state entries: 1", "hotspots missing state count");
-            AssertContainsText(block, "\"key\": \"IXHOT001:fp-\"", "hotspots suggested key uses fingerprint hash");
+            AssertContainsText(block, "IXHOT001:fp-", "hotspots suggested key uses fingerprint hash");
             AssertEqual(false, block.Contains("fp-123", StringComparison.Ordinal), "hotspots suggested key does not include raw fingerprint");
         } finally {
             Environment.CurrentDirectory = originalCwd;

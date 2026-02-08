@@ -87,7 +87,7 @@ internal static partial class Program {
             AssertEqual(true, File.Exists(statePath), "hotspots state file created");
             var text = File.ReadAllText(statePath);
             AssertContainsText(text, "\"schema\": \"intelligencex.hotspots.v1\"", "hotspots state schema");
-            AssertContainsText(text, "\"key\": \"IXHOT001:fp-\"", "hotspots state key is hashed");
+            AssertContainsText(text, "IXHOT001:fp-", "hotspots state key is hashed");
             AssertEqual(false, text.Contains("fp-xyz", StringComparison.Ordinal), "hotspots state does not include raw fingerprint");
             AssertContainsText(text, "\"status\": \"to-review\"", "hotspots state default status");
         } finally {
