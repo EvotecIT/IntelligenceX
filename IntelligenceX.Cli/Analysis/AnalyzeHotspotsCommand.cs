@@ -18,6 +18,19 @@ internal static class AnalyzeHotspotsCommand {
 
         var command = args[0].ToLowerInvariant();
         var rest = args.Skip(1).ToArray();
+
+        // `--help` must short-circuit reliably (no filesystem reads/writes).
+        if (rest.Any(IsHelp)) {
+            if (command == "sync-state") {
+                PrintSyncHelp();
+                return Task.FromResult(0);
+            }
+            if (command == "set") {
+                PrintSetHelp();
+                return Task.FromResult(0);
+            }
+        }
+
         return command switch {
             "sync-state" => Task.FromResult(SyncState(rest)),
             "set" => Task.FromResult(SetStatus(rest)),
