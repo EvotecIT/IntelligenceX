@@ -350,60 +350,60 @@ internal static partial class Program {
                 }
 
                 switch (prop.Name) {
-	                    case "title": {
-	                        hasNonTagOverride = true;
-	                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override title must be a string");
-	                        AssertEqual(expected, effective.Title, $"{id} override title applied");
-	                        if (!string.Equals(baseRule.Title, effective.Title, StringComparison.Ordinal)) {
-	                            changesBase = true;
-	                        }
-	                        break;
-	                    }
-	                    case "description": {
-	                        hasNonTagOverride = true;
-	                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override description must be a string");
-	                        AssertEqual(expected, effective.Description, $"{id} override description applied");
-	                        if (!string.Equals(baseRule.Description, effective.Description, StringComparison.Ordinal)) {
-	                            changesBase = true;
-	                        }
-	                        break;
-	                    }
-	                    case "type": {
-	                        hasNonTagOverride = true;
-	                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override type must be a string");
-	                        AssertEqual(expected, effective.Type, $"{id} override type applied");
-	                        if (!string.Equals(baseRule.Type, effective.Type, StringComparison.Ordinal)) {
-	                            changesBase = true;
-	                        }
-	                        break;
-	                    }
-	                    case "category": {
-	                        hasNonTagOverride = true;
-	                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override category must be a string");
-	                        AssertEqual(expected, effective.Category, $"{id} override category applied");
-	                        if (!string.Equals(baseRule.Category, effective.Category, StringComparison.Ordinal)) {
-	                            changesBase = true;
-	                        }
-	                        break;
-	                    }
-	                    case "defaultSeverity": {
-	                        hasNonTagOverride = true;
-	                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override defaultSeverity must be a string");
-	                        AssertEqual(expected, effective.DefaultSeverity, $"{id} override defaultSeverity applied");
-	                        if (!string.Equals(baseRule.DefaultSeverity, effective.DefaultSeverity, StringComparison.Ordinal)) {
-	                            changesBase = true;
-	                        }
-	                        break;
-	                    }
-	                    case "docs": {
-	                        hasNonTagOverride = true;
-	                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override docs must be a string");
-	                        AssertEqual(expected, effective.Docs, $"{id} override docs applied");
-	                        if (!string.Equals(baseRule.Docs, effective.Docs, StringComparison.Ordinal)) {
-	                            changesBase = true;
-	                        }
-	                        break;
-	                    }
+                    case "title": {
+                        hasNonTagOverride = true;
+                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override title must be a string");
+                        AssertEqual(expected, effective.Title, $"{id} override title applied");
+                        if (!string.Equals(baseRule.Title, effective.Title, StringComparison.Ordinal)) {
+                            changesBase = true;
+                        }
+                        break;
+                    }
+                    case "description": {
+                        hasNonTagOverride = true;
+                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override description must be a string");
+                        AssertEqual(expected, effective.Description, $"{id} override description applied");
+                        if (!string.Equals(baseRule.Description, effective.Description, StringComparison.Ordinal)) {
+                            changesBase = true;
+                        }
+                        break;
+                    }
+                    case "type": {
+                        hasNonTagOverride = true;
+                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override type must be a string");
+                        AssertEqual(expected, effective.Type, $"{id} override type applied");
+                        if (!string.Equals(baseRule.Type, effective.Type, StringComparison.Ordinal)) {
+                            changesBase = true;
+                        }
+                        break;
+                    }
+                    case "category": {
+                        hasNonTagOverride = true;
+                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override category must be a string");
+                        AssertEqual(expected, effective.Category, $"{id} override category applied");
+                        if (!string.Equals(baseRule.Category, effective.Category, StringComparison.Ordinal)) {
+                            changesBase = true;
+                        }
+                        break;
+                    }
+                    case "defaultSeverity": {
+                        hasNonTagOverride = true;
+                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override defaultSeverity must be a string");
+                        AssertEqual(expected, effective.DefaultSeverity, $"{id} override defaultSeverity applied");
+                        if (!string.Equals(baseRule.DefaultSeverity, effective.DefaultSeverity, StringComparison.Ordinal)) {
+                            changesBase = true;
+                        }
+                        break;
+                    }
+                    case "docs": {
+                        hasNonTagOverride = true;
+                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override docs must be a string");
+                        AssertEqual(expected, effective.Docs, $"{id} override docs applied");
+                        if (!string.Equals(baseRule.Docs, effective.Docs, StringComparison.Ordinal)) {
+                            changesBase = true;
+                        }
+                        break;
+                    }
                     case "tags": {
                         static IReadOnlyList<string> MergeTags(IReadOnlyList<string> existing, IReadOnlyList<string> overrides) {
                             var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -442,15 +442,15 @@ internal static partial class Program {
                             AssertEqual(true, actualSet.Contains(tag), $"{id} merged tags contains '{tag}'");
                         }
 
-	                        // "tags" overrides are merged (union), but if the merged set is identical to base,
-	                        // the override is redundant and should be removed.
-	                        var normalizedBase = MergeTags(baseRule.Tags, Array.Empty<string>());
-	                        var baseSet = new HashSet<string>(normalizedBase, StringComparer.OrdinalIgnoreCase);
-	                        if (!baseSet.SetEquals(actualSet)) {
-	                            changesBase = true;
-	                        }
-	                        break;
-	                    }
+                        // "tags" overrides are merged (union), but if the merged set is identical to base,
+                        // the override is redundant and should be removed.
+                        var normalizedBase = MergeTags(baseRule.Tags, Array.Empty<string>());
+                        var baseSet = new HashSet<string>(normalizedBase, StringComparer.OrdinalIgnoreCase);
+                        if (!baseSet.SetEquals(actualSet)) {
+                            changesBase = true;
+                        }
+                        break;
+                    }
                     default:
                         throw new Exception($"Unsupported PowerShell override property '{prop.Name}' in {Path.GetFileName(overridePath)}");
                 }

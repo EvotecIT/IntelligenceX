@@ -164,7 +164,7 @@ foreach ($rule in $rules) {
     $docs = $null
     if (Test-Path -LiteralPath $path) {
         try {
-            $existing = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+            $existing = Get-Content -LiteralPath $path -Raw -ErrorAction Stop | ConvertFrom-Json
             $docs = [string]$existing.docs
             if ([string]::IsNullOrWhiteSpace($docs)) { $docs = $null }
         } catch {
