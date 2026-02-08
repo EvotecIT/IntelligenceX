@@ -330,6 +330,31 @@ internal static partial class Program {
         AssertEqual(true, align.Title.Contains("Statements", StringComparison.OrdinalIgnoreCase), "PSAlignAssignmentStatement title override applied");
     }
 
+    private static void TestAnalysisCatalogPowerShellDocsLinksMatchLearnPattern() {
+        var workspace = ResolveWorkspaceRoot();
+        var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
+
+        const string baseUrl = "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/";
+        foreach (var entry in catalog.Rules) {
+            var rule = entry.Value;
+            if (!rule.Language.Equals("powershell", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (!rule.Tool.Equals("PSScriptAnalyzer", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            AssertEqual(true, !string.IsNullOrWhiteSpace(rule.Docs), $"{rule.Id} docs present");
+
+            var suffix = rule.Id;
+            if (suffix.StartsWith("PS", StringComparison.OrdinalIgnoreCase)) {
+                suffix = suffix.Substring(2);
+            }
+            suffix = suffix.ToLowerInvariant();
+            var expected = baseUrl + suffix;
+            AssertEqual(expected, rule.Docs!, $"{rule.Id} docs link matches Learn pattern");
+        }
+    }
+
     private static void TestAnalysisCatalogOverrideInvalidTypeFallsBack() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-overrides-invalid-type-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
