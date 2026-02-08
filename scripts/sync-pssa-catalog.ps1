@@ -54,6 +54,17 @@ function Get-RuleTitleFromRuleName([string]$ruleName) {
     $name.Trim()
 }
 
+function Get-LearnRuleSlug([string]$ruleName) {
+    # Microsoft Learn PSScriptAnalyzer rule pages use:
+    #   rules/<rule-name-without-leading-PS, lowercased>
+    if ([string]::IsNullOrWhiteSpace($ruleName)) { return '' }
+    $name = $ruleName.Trim()
+    if ($name.StartsWith('PS', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $name = $name.Substring(2)
+    }
+    $name.ToLowerInvariant()
+}
+
 function Write-FileUtf8NoBomLf([string]$path, [string]$content) {
     # Avoid BOM differences across PowerShell versions and normalize newlines for stable diffs.
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -68,11 +79,7 @@ foreach ($rule in $rules) {
     $ruleName = [string]$rule.RuleName
     if ([string]::IsNullOrWhiteSpace($ruleName)) { continue }
 
-    $slug = $ruleName
-    if ($slug.StartsWith('PS', [System.StringComparison]::OrdinalIgnoreCase)) {
-        $slug = $slug.Substring(2)
-    }
-    $slug = $slug.ToLowerInvariant()
+    $slug = Get-LearnRuleSlug $ruleName
 
     $title = Compress-Whitespace ([string]$rule.CommonName)
     if ([string]::IsNullOrWhiteSpace($title)) { $title = Get-RuleTitleFromRuleName $ruleName }

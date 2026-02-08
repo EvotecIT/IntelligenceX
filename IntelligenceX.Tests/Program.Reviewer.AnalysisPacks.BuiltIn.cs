@@ -1,3 +1,6 @@
+using System;
+using System.Linq;
+
 namespace IntelligenceX.Tests;
 
 #if INTELLIGENCEX_REVIEWER
@@ -23,4 +26,3 @@ internal static partial class Program {
     }
 }
 #endif
-
