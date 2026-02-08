@@ -13,6 +13,7 @@ It can use:
 Related docs:
 - [Onboarding Wizard](/docs/reviewer/onboarding-wizard/)
 - [Web Setup UI](/docs/reviewer/setup-web/)
+- [Understanding Reviewer Output](/docs/reviewer/review-output/)
 - [Configuration](/docs/reviewer/configuration/)
 - [Security and Trust](/docs/reviewer/security-trust/)
 
@@ -99,6 +100,12 @@ intelligencex setup wizard
 - Auto-resolve/triage behavior for bot threads
 - Triage-only mode (skip full review, only triage threads)
 - Usage summary line (optional)
+
+## How to interpret the review comment
+
+By default:
+- `Todo List ✅` and `Critical Issues ⚠️` are treated as merge blockers.
+- `Other Issues 🧯` are suggestions and should not block merges by default.
 
 ## Usage and credits line
 

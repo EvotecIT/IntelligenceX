@@ -22,12 +22,25 @@ This file defines how automated agents should operate in this repo. Follow it fo
 6. Merge only when all required checks pass and the PR is mergeable.
 7. Merge with squash + delete branch: `gh pr merge <num> --repo EvotecIT/IntelligenceX --squash --delete-branch`.
 
+**PR Handling Loop (Required)**
+When an agent is assigned a PR to improve or unblock, it must iterate until merge blockers are clean.
+
+1. Read the latest IntelligenceX bot review comment.
+2. Treat these sections as merge blockers: `Todo List ✅` and `Critical Issues ⚠️`.
+3. Treat `Other Issues 🧯` and `Next Steps 🚀` as non-blocking unless maintainers explicitly escalate them.
+4. Fix inline comments only when they map to merge blockers (todo/critical).
+5. Apply fixes, then re-run checks and re-check bot output:
+   Run: `gh pr checks <num> --repo EvotecIT/IntelligenceX`
+   If the bot posts new todo/critical items, repeat.
+6. Only move on to the next PR when the current PR has no remaining todo/critical blockers (or maintainers explicitly decide to accept the risk).
+
 **Review Feedback Backlog**
 1. Aggregate bot review feedback using `gh api graphql`.
-1. Preferred: run `intelligencex todo sync-bot-feedback` (or `dotnet run ... -- todo sync-bot-feedback`) to sync explicit checklist items into `TODO.md` and optionally create issues.
-2. Track only explicit checklist items in `TODO.md`.
-3. Group backlog by PR in `TODO.md` and keep it collapsed.
-4. Avoid nested bullets in `TODO.md`.
+2. Preferred: run `intelligencex todo sync-bot-feedback` (or `dotnet run ... -- todo sync-bot-feedback`) to sync explicit checklist items into `TODO.md` and optionally create issues.
+3. Legacy fallback: `python3 scripts/sync_bot_feedback_todo.py` (deprecated; planned removal).
+4. Track only explicit checklist items in `TODO.md`.
+5. Group backlog by PR in `TODO.md` and keep it collapsed.
+6. Avoid nested bullets in `TODO.md`.
 
 **Documentation Hygiene**
 - Keep TODO entries accurate: mark items done only when verified in code.
