@@ -2,7 +2,7 @@
 
 This document tracks our end-to-end plan for first-party static policy analysis in IntelligenceX: catalog + packs, CI gates, triage workflows, issue tracking, AI assessment, and (optionally) auto-fix PRs.
 
-Last updated: 2026-02-08
+Last updated: 2026-02-08 (manual)
 
 ## Goals
 
@@ -21,7 +21,7 @@ Last updated: 2026-02-08
 ## Current State (What We Have)
 
 - [x] Catalog + packs (rules described as metadata files; packs enable sets of rules).
-- [x] Pack includes resolution (packs can include packs; policy enablement reflects includes).
+- [x] Pack include resolution (packs can include other packs; policy enablement reflects included packs).
 - [x] Rule typing: `bug`, `vulnerability`, `code-smell`, `security-hotspot`.
 - [x] Overrides layer: `Analysis/Catalog/overrides/**` can adjust generated metadata without editing base rules.
 - [x] Security hotspots.
@@ -43,9 +43,7 @@ Outcome: a required check that can block merges without AI.
 - [ ] Add gate configuration in `.intelligencex/reviewer.json` (thresholds by severity/type, allowlists, hotspots handling).
 - [ ] Add GitHub Actions step that runs the gate and produces clear failure output.
 - [ ] Decide default gate policy for the repo.
-- [ ] Gate policy option: block on `vulnerability` at `warning+`.
-- [ ] Gate policy option: block on `bug` at `error+`.
-- [ ] Gate policy option: block on `security-hotspot` when `to-review` exists.
+Policy options: block on `vulnerability` at `warning+`; block on `bug` at `error+`; block on `security-hotspot` when `to-review` exists.
 
 Definition of done:
 
@@ -72,9 +70,7 @@ Outcome: policy outcomes are trackable beyond a single PR.
 
 - [ ] Add `intelligencex analyze issues sync` (creates/updates/closes issues).
 - [ ] Define grouping key strategy.
-- [ ] Grouping option: one issue per rule.
-- [ ] Grouping option: one issue per rule + path group.
-- [ ] Grouping option: one issue per hotspot key.
+Grouping options: one issue per rule; one issue per rule + path group; one issue per hotspot key.
 - [ ] Add a scheduled workflow on the default branch to sync issues (recommended).
 - [ ] Add labels and templates (for example `static-analysis`, `security-hotspot`, `accepted-risk`).
 
@@ -105,8 +101,7 @@ Outcome: safe automation that proposes fixes via PRs under GitHub App identity.
 - [ ] Define “autofixable rules” pack (small initial set).
 - [ ] Implement deterministic fixes first (formatters/codemods), AI patching second.
 - [ ] Add workflow triggers restricted to trusted contexts.
-- [ ] Trigger option: `workflow_dispatch` only.
-- [ ] Trigger option: same-repo PRs only (no forks).
+Trigger options: `workflow_dispatch` only; same-repo PRs only (no forks).
 
 Definition of done:
 
@@ -129,11 +124,7 @@ Optional:
 ## Open Questions (Need Decisions)
 
 - What should block merges by default.
-- Option: `vulnerability` only.
-- Option: `vulnerability + bug`.
-- Option: all enabled rules at `warning+`.
+Options: `vulnerability` only; `vulnerability + bug`; all enabled rules at `warning+`.
 - How should hotspots affect gating.
-- Option: gate on `to-review` hotspots.
-- Option: gate only on explicit `accepted-risk` policy violations.
-- Option: do not gate, only report.
+Options: gate on `to-review` hotspots; gate only on explicit `accepted-risk` policy violations; do not gate, only report.
 - Issue grouping strategy (rule vs rule+path vs hotspot key).
