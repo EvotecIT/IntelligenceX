@@ -383,6 +383,12 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
                     var functionRetryFormat = functionKey == ToolSchemaKey.InputSchema
                         ? ToolWireFormat.FunctionFlatInputSchema
                         : ToolWireFormat.FunctionFlatParameters;
+                    if (functionRetryFormat == initialFunctionFormat) {
+                        // Defensive: if the error payload doesn't reflect the actual rejected key, ensure we actually swap.
+                        functionRetryFormat = functionRetryFormat == ToolWireFormat.FunctionFlatInputSchema
+                            ? ToolWireFormat.FunctionFlatParameters
+                            : ToolWireFormat.FunctionFlatInputSchema;
+                    }
                     var retryFunctionBody = BuildRequestBody(model, requestMessages, state.SessionId, options, functionRetryFormat);
                     using var retryFunction2 = await SendAsync(retryFunctionBody, accessToken, accountId, state.SessionId, cancellationToken)
                         .ConfigureAwait(false);
