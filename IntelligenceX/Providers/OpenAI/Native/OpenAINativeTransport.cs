@@ -470,7 +470,8 @@ internal sealed class OpenAINativeTransport : IOpenAITransport {
             obj.Add("description", tool.Description);
         }
         if (tool.Parameters is not null) {
-            obj.Add("parameters", tool.Parameters);
+            // OpenAI Responses API expects custom tools to use `input_schema` (not `parameters`).
+            obj.Add("input_schema", tool.Parameters);
         }
         return obj;
     }
