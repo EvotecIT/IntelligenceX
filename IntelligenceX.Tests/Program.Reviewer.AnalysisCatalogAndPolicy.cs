@@ -308,31 +308,134 @@ internal static partial class Program {
     }
 
     private static void TestAnalysisCatalogPowerShellOverridesApply() {
-        // This test ensures our checked-in PowerShell overrides actually change the effective catalog,
-        // so we can keep upstream-generated rule JSON pristine and still ship clean user-facing metadata.
         var workspace = ResolveWorkspaceRoot();
         var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
 
-        AssertEqual(true, catalog.Rules.TryGetValue("PSMisleadingBacktick", out var misleading), "PSMisleadingBacktick exists");
-        AssertEqual(false, misleading!.Description.Contains("whitepsace", StringComparison.OrdinalIgnoreCase), "PSMisleadingBacktick typo fixed via override");
-        AssertEqual(true, misleading.Description.Contains("whitespace", StringComparison.OrdinalIgnoreCase), "PSMisleadingBacktick contains corrected text");
+        var rulesDir = Path.Combine(workspace, "Analysis", "Catalog", "rules", "powershell");
+        var overridesDir = Path.Combine(workspace, "Analysis", "Catalog", "overrides", "powershell");
+        AssertEqual(true, Directory.Exists(overridesDir), "powershell overrides dir exists");
 
-        AssertEqual(true, catalog.Rules.TryGetValue("PSUseConsistentIndentation", out var indentation), "PSUseConsistentIndentation exists");
-        AssertEqual(false, indentation!.Description.Contains("indenation", StringComparison.OrdinalIgnoreCase), "PSUseConsistentIndentation typo fixed via override");
-        AssertEqual(true, indentation.Description.Contains("indentation", StringComparison.OrdinalIgnoreCase), "PSUseConsistentIndentation contains corrected text");
+        foreach (var overridePath in Directory.EnumerateFiles(overridesDir, "*.json")) {
+            using var overrideDoc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(overridePath));
+            var overrideRoot = overrideDoc.RootElement;
+            var id = overrideRoot.GetProperty("id").GetString();
+            AssertEqual(false, string.IsNullOrWhiteSpace(id), $"{Path.GetFileName(overridePath)} override has id");
+            if (string.IsNullOrWhiteSpace(id)) {
+                throw new Exception($"{Path.GetFileName(overridePath)} override has no id");
+            }
 
-        AssertEqual(true, catalog.Rules.TryGetValue("PSAvoidAssignmentToAutomaticVariable", out var automatic), "PSAvoidAssignmentToAutomaticVariable exists");
-        AssertEqual(false, automatic!.Description.Contains("This automatic variables is", StringComparison.OrdinalIgnoreCase), "PSAvoidAssignmentToAutomaticVariable grammar fixed via override");
-        AssertEqual(true, automatic.Description.Contains("read-only", StringComparison.OrdinalIgnoreCase), "PSAvoidAssignmentToAutomaticVariable uses read-only wording");
+            var basePath = Path.Combine(rulesDir, id + ".json");
+            AssertEqual(true, File.Exists(basePath), $"{id} base rule exists for override");
 
-        AssertEqual(true, catalog.Rules.TryGetValue("PSAlignAssignmentStatement", out var align), "PSAlignAssignmentStatement exists");
-        AssertEqual(false, align!.Description.Contains("operator are", StringComparison.OrdinalIgnoreCase), "PSAlignAssignmentStatement grammar fixed via override");
-        AssertEqual(true, align.Title.Contains("Statements", StringComparison.OrdinalIgnoreCase), "PSAlignAssignmentStatement title override applied");
+            using var baseDoc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(basePath));
+            var baseRoot = baseDoc.RootElement;
+
+            AssertEqual(true, catalog.Rules.TryGetValue(id, out var effective), $"{id} exists in catalog");
+            if (effective is null) {
+                throw new Exception($"{id} exists in catalog but is null");
+            }
+
+            var changesBase = false;
+            foreach (var prop in overrideRoot.EnumerateObject()) {
+                if (prop.NameEquals("id")) {
+                    continue;
+                }
+
+                static string? GetBaseString(System.Text.Json.JsonElement root, string name) =>
+                    root.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() : null;
+
+                switch (prop.Name) {
+                    case "title": {
+                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override title must be a string");
+                        var baseValue = GetBaseString(baseRoot, "title");
+                        AssertEqual(expected, effective.Title, $"{id} override title applied");
+                        if (!string.Equals(baseValue, expected, StringComparison.Ordinal)) {
+                            changesBase = true;
+                        }
+                        break;
+                    }
+                    case "description": {
+                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override description must be a string");
+                        var baseValue = GetBaseString(baseRoot, "description");
+                        AssertEqual(expected, effective.Description, $"{id} override description applied");
+                        if (!string.Equals(baseValue, expected, StringComparison.Ordinal)) {
+                            changesBase = true;
+                        }
+                        break;
+                    }
+                    case "type": {
+                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override type must be a string");
+                        var baseValue = GetBaseString(baseRoot, "type");
+                        AssertEqual(expected, effective.Type, $"{id} override type applied");
+                        if (!string.Equals(baseValue, expected, StringComparison.Ordinal)) {
+                            changesBase = true;
+                        }
+                        break;
+                    }
+                    case "category": {
+                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override category must be a string");
+                        var baseValue = GetBaseString(baseRoot, "category");
+                        AssertEqual(expected, effective.Category, $"{id} override category applied");
+                        if (!string.Equals(baseValue, expected, StringComparison.Ordinal)) {
+                            changesBase = true;
+                        }
+                        break;
+                    }
+                    case "defaultSeverity": {
+                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override defaultSeverity must be a string");
+                        var baseValue = GetBaseString(baseRoot, "defaultSeverity");
+                        AssertEqual(expected, effective.DefaultSeverity, $"{id} override defaultSeverity applied");
+                        if (!string.Equals(baseValue, expected, StringComparison.Ordinal)) {
+                            changesBase = true;
+                        }
+                        break;
+                    }
+                    case "docs": {
+                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override docs must be a string");
+                        var baseValue = GetBaseString(baseRoot, "docs");
+                        AssertEqual(expected, effective.Docs, $"{id} override docs applied");
+                        if (!string.Equals(baseValue, expected, StringComparison.Ordinal)) {
+                            changesBase = true;
+                        }
+                        break;
+                    }
+                    case "tags": {
+                        var expected = prop.Value.EnumerateArray()
+                            .Select(x => x.GetString() ?? throw new Exception($"{id} override tags must be strings"))
+                            .ToArray();
+                        var effectiveTags = effective.Tags.ToArray();
+                        AssertEqual(true, expected.All(t => effectiveTags.Contains(t, StringComparer.OrdinalIgnoreCase)), $"{id} override tags applied");
+
+                        if (baseRoot.TryGetProperty("tags", out var baseTagsEl) && baseTagsEl.ValueKind == System.Text.Json.JsonValueKind.Array) {
+                            var baseTags = baseTagsEl.EnumerateArray()
+                                .Select(x => x.GetString() ?? throw new Exception($"{id} base tags must be strings"))
+                                .ToArray();
+                            var baseSet = new HashSet<string>(baseTags, StringComparer.OrdinalIgnoreCase);
+                            var overrideSet = new HashSet<string>(expected, StringComparer.OrdinalIgnoreCase);
+                            if (!baseSet.SetEquals(overrideSet)) {
+                                changesBase = true;
+                            }
+                        } else {
+                            changesBase = true;
+                        }
+                        break;
+                    }
+                    default:
+                        throw new Exception($"Unsupported PowerShell override property '{prop.Name}' in {Path.GetFileName(overridePath)}");
+                }
+            }
+
+            AssertEqual(true, changesBase, $"{id} override must change at least one base value (otherwise delete the override)");
+        }
     }
 
     private static void TestAnalysisCatalogPowerShellDocsLinksMatchLearnPattern() {
         var workspace = ResolveWorkspaceRoot();
         var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
+
+        var prefix = new[] { "powershell", "utility-modules", "psscriptanalyzer", "rules" };
+        var slugPattern = new System.Text.RegularExpressions.Regex("^[a-z0-9-]+$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var localePattern = new System.Text.RegularExpressions.Regex("^[a-z]{2}(-[a-z]{2})?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
         foreach (var entry in catalog.Rules) {
             var rule = entry.Value;
@@ -345,7 +448,23 @@ internal static partial class Program {
             if (string.IsNullOrWhiteSpace(rule.Docs)) {
                 continue;
             }
-            AssertEqual(true, rule.Docs!.StartsWith("https://", StringComparison.OrdinalIgnoreCase), $"{rule.Id} docs is https url");
+
+            AssertEqual(true, Uri.TryCreate(rule.Docs, UriKind.Absolute, out var uri), $"{rule.Id} docs is absolute url");
+            AssertEqual("https", uri!.Scheme, $"{rule.Id} docs uses https");
+            AssertEqual("learn.microsoft.com", uri.Host, $"{rule.Id} docs uses learn.microsoft.com");
+
+            var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var i = 0;
+            if (segments.Length > 0 && localePattern.IsMatch(segments[0])) {
+                i = 1;
+            }
+
+            AssertEqual(i + prefix.Length + 1, segments.Length, $"{rule.Id} docs path shape matches Learn rule pattern");
+            for (var p = 0; p < prefix.Length; p++) {
+                AssertEqual(prefix[p], segments[i + p], $"{rule.Id} docs path segment {p} matches Learn rule pattern");
+            }
+            var slug = segments[i + prefix.Length];
+            AssertEqual(true, slugPattern.IsMatch(slug), $"{rule.Id} docs slug matches Learn rule pattern");
         }
     }
 
