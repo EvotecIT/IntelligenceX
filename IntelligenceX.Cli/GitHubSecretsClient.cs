@@ -55,6 +55,32 @@ internal sealed class GitHubSecretsClient : IDisposable {
         await PutJsonAsync($"/orgs/{org}/actions/secrets/{name}", payload).ConfigureAwait(false);
     }
 
+    public async Task DeleteRepoSecretAsync(string owner, string repo, string name) {
+        ValidateRepoInputs(owner, repo, name);
+        using var response = await _http.DeleteAsync($"/repos/{owner}/{repo}/actions/secrets/{name}").ConfigureAwait(false);
+        if (response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.NotFound) {
+            return;
+        }
+        var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {content}");
+    }
+
+    public async Task<long> GetRepoIdAsync(string owner, string repo) {
+        ValidateIdentifier(owner, "owner");
+        ValidateIdentifier(repo, "repo");
+        using var response = await _http.GetAsync($"/repos/{owner}/{repo}").ConfigureAwait(false);
+        var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode) {
+            throw new InvalidOperationException($"GitHub API request failed ({(int)response.StatusCode}): {content}");
+        }
+        using var doc = JsonDocument.Parse(content);
+        var root = doc.RootElement;
+        if (!root.TryGetProperty("id", out var idProp) || idProp.ValueKind != JsonValueKind.Number || !idProp.TryGetInt64(out var id) || id <= 0) {
+            throw new InvalidOperationException("GitHub API response did not include repository id.");
+        }
+        return id;
+    }
+
     private static string NormalizeVisibility(string visibility) {
         if (string.IsNullOrWhiteSpace(visibility)) {
             return "all";
@@ -154,4 +180,3 @@ internal sealed class GitHubSecretsClient : IDisposable {
 
     private readonly record struct PublicKeyInfo(string PublicKey, string KeyId);
 }
-

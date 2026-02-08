@@ -235,6 +235,47 @@ internal static class WizardPrompts {
         return AnsiConsole.Confirm("Use explicit secrets block in workflow?", current);
     }
 
+    public static SecretTarget PromptSecretTarget(int selectedRepoCount, bool ownersMatch) {
+        if (selectedRepoCount <= 1 || !ownersMatch) {
+            return SecretTarget.Repo;
+        }
+        return AnsiConsole.Prompt(
+            new SelectionPrompt<SecretTarget>()
+                .Title("Store OpenAI secret as:")
+                .AddChoices(SecretTarget.Org, SecretTarget.Repo)
+                .UseConverter(target => target switch {
+                    SecretTarget.Org => "Organization secret (recommended for multi-repo)",
+                    _ => "Per-repository secrets"
+                }));
+    }
+
+    public static string PromptOrg(string? suggested) {
+        var prompt = new TextPrompt<string>("Organization login (for org secret):")
+            .Validate(value => !string.IsNullOrWhiteSpace(value)
+                ? ValidationResult.Success()
+                : ValidationResult.Error("Organization login is required."));
+        if (!string.IsNullOrWhiteSpace(suggested)) {
+            prompt.DefaultValue(suggested);
+        }
+        return AnsiConsole.Prompt(prompt);
+    }
+
+    public static string PromptOrgSecretVisibility() {
+        return AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("Org secret visibility:")
+                .AddChoices("selected", "private", "all")
+                .UseConverter(value => value switch {
+                    "selected" => "Selected repositories only (recommended)",
+                    "private" => "All private repositories",
+                    _ => "All repositories"
+                }));
+    }
+
+    public static bool PromptDeleteRepoSecrets(bool current) {
+        return AnsiConsole.Confirm("Delete existing repo secrets after creating org secret? (prevents repo secret overriding org secret)", current);
+    }
+
     public static string PromptProvider(string current) {
         var prompt = new SelectionPrompt<string>()
             .Title("Review provider:")
