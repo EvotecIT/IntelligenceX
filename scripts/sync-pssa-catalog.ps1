@@ -42,22 +42,6 @@ function Compress-Whitespace([string]$text) {
     ($text -replace '[\r\n]+', ' ' -replace '\s+', ' ').Trim()
 }
 
-function Get-KnownTypoFixedText([string]$text) {
-    if ([string]::IsNullOrWhiteSpace($text)) { return '' }
-    $t = $text
-
-    # Common upstream misspellings observed in PSScriptAnalyzer rule metadata.
-    $t = $t -ireplace '\bautomtic\b', 'automatic'
-    $t = $t -ireplace '\bfunctiosn\b', 'functions'
-    $t = $t -ireplace '\bprameter\b', 'parameter'
-    $t = $t -ireplace '\bequaltiy\b', 'equality'
-    $t = $t -ireplace '\bcomaprision\b', 'comparison'
-    $t = $t -ireplace '\bcomaprision(s)?\b', 'comparison$1'
-    $t = $t -ireplace '\bassigment\b', 'assignment'
-
-    $t
-}
-
 function Get-RuleTitleFromRuleName([string]$ruleName) {
     if ([string]::IsNullOrWhiteSpace($ruleName)) { return '' }
     $name = $ruleName.Trim()
@@ -90,11 +74,11 @@ foreach ($rule in $rules) {
     }
     $slug = $slug.ToLowerInvariant()
 
-    $title = Get-KnownTypoFixedText (Compress-Whitespace ([string]$rule.CommonName))
+    $title = Compress-Whitespace ([string]$rule.CommonName)
     if ([string]::IsNullOrWhiteSpace($title)) { $title = Get-RuleTitleFromRuleName $ruleName }
     if ([string]::IsNullOrWhiteSpace($title)) { $title = $ruleName }
 
-    $description = Get-KnownTypoFixedText (Compress-Whitespace ([string]$rule.Description))
+    $description = Compress-Whitespace ([string]$rule.Description)
     if ([string]::IsNullOrWhiteSpace($description)) { $description = "PSScriptAnalyzer rule '$ruleName'. See docs for details." }
 
     $category = Get-Category $ruleName
