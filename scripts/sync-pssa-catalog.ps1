@@ -68,6 +68,9 @@ function Fix-MetadataText([string]$text) {
     $fixed = $fixed -replace '\bindenation\b', 'indentation'
     $fixed = $fixed -replace '\bassigment\b', 'assignment'
     $fixed = $fixed -replace '\bIN\b', 'in'
+    # Clean up accidental double periods that occasionally show up upstream (e.g. "ignored.. To").
+    $fixed = $fixed -replace '\.\.\s+', '. '
+    $fixed = $fixed -replace '\.\.$', '.'
     $fixed
 }
 
