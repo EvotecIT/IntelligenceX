@@ -1,0 +1,15 @@
+{
+  "id": "PSReservedParams",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSReservedParams",
+  "title": "Reserved Parameters",
+  "description": "Checks for reserved parameters in function definitions. If these parameters are defined by the user, an error generally occurs.",
+  "category": "BestPractices",
+  "defaultSeverity": "error",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/reservedparams"
+}

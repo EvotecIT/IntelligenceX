@@ -1,0 +1,15 @@
+{
+  "id": "PSDSCReturnCorrectTypesForDSCFunctions",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSDSCReturnCorrectTypesForDSCFunctions",
+  "title": "Return Correct Types For DSC Functions",
+  "description": "Set function in DSC class and Set-TargetResource in DSC resource must not return anything. Get function in DSC class must return an instance of the DSC class and Get-TargetResource function in DSC resource must return a hashtable. Test function in DSC class and Get-TargetResource function in DSC resource must return a boolean.",
+  "category": "BestPractices",
+  "defaultSeverity": "info",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/dscreturncorrecttypesfordscfunctions"
+}

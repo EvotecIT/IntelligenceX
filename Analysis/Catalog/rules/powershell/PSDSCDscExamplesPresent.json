@@ -1,0 +1,15 @@
+{
+  "id": "PSDSCDscExamplesPresent",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSDSCDscExamplesPresent",
+  "title": "DSC examples are present",
+  "description": "Every DSC resource module should contain folder \"Examples\" with sample configurations for every resource. Sample configurations should have resource name they are demonstrating in the title.",
+  "category": "BestPractices",
+  "defaultSeverity": "info",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/dscdscexamplespresent"
+}

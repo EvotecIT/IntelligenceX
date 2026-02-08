@@ -1,0 +1,15 @@
+{
+  "id": "PSUseApprovedVerbs",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSUseApprovedVerbs",
+  "title": "Cmdlet Verbs",
+  "description": "Checks that all defined cmdlets use approved verbs. This is in line with PowerShell's best practices.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/useapprovedverbs"
+}

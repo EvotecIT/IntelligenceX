@@ -1,0 +1,15 @@
+{
+  "id": "PSUseConsistentWhitespace",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSUseConsistentWhitespace",
+  "title": "Use whitespaces",
+  "description": "Check for whitespace between keyword and open paren/curly, around assigment operator ('='), around arithmetic operators and after separators (',' and ';')",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/useconsistentwhitespace"
+}

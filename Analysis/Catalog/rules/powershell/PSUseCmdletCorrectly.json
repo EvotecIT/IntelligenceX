@@ -1,0 +1,15 @@
+{
+  "id": "PSUseCmdletCorrectly",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSUseCmdletCorrectly",
+  "title": "Use Cmdlet Correctly",
+  "description": "Cmdlet should be called with the mandatory parameters.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/usecmdletcorrectly"
+}

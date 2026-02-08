@@ -1,0 +1,15 @@
+{
+  "id": "PSShouldProcess",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSShouldProcess",
+  "title": "Should Process",
+  "description": "Checks that if the SupportsShouldProcess is present, the function calls ShouldProcess/ShouldContinue and vice versa. Scripts with one or the other but not both will generally run into an error or unexpected behavior.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/shouldprocess"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "PSAvoidDefaultValueSwitchParameter",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSAvoidDefaultValueSwitchParameter",
+  "title": "Switch Parameters Should Not Default To True",
+  "description": "Switch parameter should not default to true.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/avoiddefaultvalueswitchparameter"
+}

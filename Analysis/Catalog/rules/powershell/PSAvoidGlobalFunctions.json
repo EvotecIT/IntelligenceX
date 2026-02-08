@@ -1,0 +1,15 @@
+{
+  "id": "PSAvoidGlobalFunctions",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSAvoidGlobalFunctions",
+  "title": "Avoid global functiosn and aliases",
+  "description": "Checks that global functions and aliases are not used. Global functions are strongly discouraged as they can cause errors across different systems.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/avoidglobalfunctions"
+}

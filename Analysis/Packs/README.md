@@ -17,6 +17,7 @@ Packs are curated rule sets built from rule IDs and optional includes/overrides.
   - `intelligencex-maintainability-default`
 - Security defaults:
   - `csharp-security-default`
+  - `powershell-security-default`
   - `all-security-default`
 - Language tiers:
   - `csharp-50`, `csharp-100`, `csharp-500`
@@ -43,3 +44,9 @@ For C#, tiers are generated from built-in NetAnalyzers metadata:
 Regenerate C# catalog + C# tiers with:
 
 `./scripts/update_analysis_catalog.py --repo-root .`
+
+## PowerShell catalog
+
+PowerShell rules are sourced from `PSScriptAnalyzer` rule metadata. To (re)generate the built-in PowerShell rule catalog:
+
+`pwsh -NoProfile -File ./scripts/sync-pssa-catalog.ps1`

@@ -1,0 +1,15 @@
+{
+  "id": "PSMissingModuleManifestField",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSMissingModuleManifestField",
+  "title": "Module Manifest Fields",
+  "description": "Some fields of the module manifest (such as ModuleVersion) are required.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/missingmodulemanifestfield"
+}

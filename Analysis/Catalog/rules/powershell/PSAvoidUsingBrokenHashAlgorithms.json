@@ -1,0 +1,16 @@
+{
+  "id": "PSAvoidUsingBrokenHashAlgorithms",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSAvoidUsingBrokenHashAlgorithms",
+  "title": "Avoid Using Broken Hash Algorithms",
+  "description": "Avoid using the broken algorithms MD5 or SHA-1.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "security"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/avoidusingbrokenhashalgorithms"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "PSAvoidNullOrEmptyHelpMessageAttribute",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSAvoidNullOrEmptyHelpMessageAttribute",
+  "title": "Avoid using null or empty HelpMessage parameter attribute.",
+  "description": "Setting the HelpMessage attribute to an empty string or null value causes PowerShell interpreter to throw an error while executing the corresponding function.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/avoidnulloremptyhelpmessageattribute"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "PSAvoidGlobalVars",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSAvoidGlobalVars",
+  "title": "No Global Variables",
+  "description": "Checks that global variables are not used. Global variables are strongly discouraged as they can cause errors across different systems.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/avoidglobalvars"
+}

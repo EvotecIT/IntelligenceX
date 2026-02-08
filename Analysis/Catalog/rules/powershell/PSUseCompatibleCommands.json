@@ -1,0 +1,15 @@
+{
+  "id": "PSUseCompatibleCommands",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSUseCompatibleCommands",
+  "title": "Use compatible commands",
+  "description": "Use commands compatible with the given PowerShell version and operating system",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/usecompatiblecommands"
+}

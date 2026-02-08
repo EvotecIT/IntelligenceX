@@ -1,8 +1,7 @@
 {
   "id": "all-security-default",
   "label": "All Security (Default)",
-  "description": "Cross-language security-focused pack. Currently includes C# security rules.",
-  "includes": ["csharp-security-default"],
+  "description": "Cross-language security-focused pack.",
+  "includes": ["csharp-security-default", "powershell-security-default"],
   "rules": []
 }
-

@@ -1,0 +1,15 @@
+{
+  "id": "PSDSCDscTestsPresent",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSDSCDscTestsPresent",
+  "title": "Dsc tests are present",
+  "description": "Every DSC resource module should contain folder \"Tests\" with tests for every resource. Test scripts should have resource name they are testing in the file name.",
+  "category": "BestPractices",
+  "defaultSeverity": "info",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/dscdsctestspresent"
+}

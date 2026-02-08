@@ -1,0 +1,15 @@
+{
+  "id": "PSReviewUnusedParameter",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSReviewUnusedParameter",
+  "title": "ReviewUnusedParameter",
+  "description": "Ensure all parameters are used within the same script, scriptblock, or function where they are declared.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/reviewunusedparameter"
+}

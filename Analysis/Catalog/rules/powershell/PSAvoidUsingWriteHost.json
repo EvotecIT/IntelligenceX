@@ -3,10 +3,13 @@
   "language": "powershell",
   "tool": "PSScriptAnalyzer",
   "toolRuleId": "PSAvoidUsingWriteHost",
-  "title": "Avoid using Write-Host",
-  "description": "Encourages using Write-Output or Write-Verbose instead of Write-Host for testability and piping.",
+  "title": "Avoid Using Write-Host",
+  "description": "Avoid using the Write-Host cmdlet. Instead, use Write-Output, Write-Verbose, or Write-Information. Because Write-Host is host-specific, its implementation might vary unpredictably. Also, prior to PowerShell 5.0, Write-Host did not write to a stream, so users cannot suppress it, capture its value, or redirect it.",
   "category": "BestPractices",
   "defaultSeverity": "warning",
-  "tags": ["powershell", "best-practices"],
+  "tags": [
+    "powershell",
+    "psscriptanalyzer"
+  ],
   "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/avoidusingwritehost"
 }

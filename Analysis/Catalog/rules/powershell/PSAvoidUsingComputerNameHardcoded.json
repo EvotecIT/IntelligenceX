@@ -1,0 +1,15 @@
+{
+  "id": "PSAvoidUsingComputerNameHardcoded",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSAvoidUsingComputerNameHardcoded",
+  "title": "Avoid Using ComputerName Hardcoded",
+  "description": "The ComputerName parameter of a cmdlet should not be hardcoded as this will expose sensitive information about the system.",
+  "category": "BestPractices",
+  "defaultSeverity": "error",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/avoidusingcomputernamehardcoded"
+}

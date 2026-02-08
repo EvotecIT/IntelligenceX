@@ -1,0 +1,15 @@
+{
+  "id": "PSUseCompatibleSyntax",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSUseCompatibleSyntax",
+  "title": "Use compatible syntax",
+  "description": "Use script syntax compatible with the given PowerShell versions",
+  "category": "BestPractices",
+  "defaultSeverity": "error",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/usecompatiblesyntax"
+}
