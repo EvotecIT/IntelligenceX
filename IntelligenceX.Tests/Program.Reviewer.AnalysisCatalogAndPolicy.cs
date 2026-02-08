@@ -356,8 +356,14 @@ internal static partial class Program {
                 var baseText = File.ReadAllText(basePath, System.Text.Encoding.UTF8);
                 using (var baseDoc = System.Text.Json.JsonDocument.Parse(baseText)) {
                     var baseRoot = baseDoc.RootElement;
-                    AssertEqual(baseRoot.GetProperty("title").GetString(), baseRule.Title, $"{id} base title matches rule json");
-                    AssertEqual(baseRoot.GetProperty("description").GetString(), baseRule.Description, $"{id} base description matches rule json");
+                    if (!baseRoot.TryGetProperty("title", out var baseTitle) || baseTitle.ValueKind != System.Text.Json.JsonValueKind.String) {
+                        throw new Exception($"{id} base rule json missing string 'title' property");
+                    }
+                    if (!baseRoot.TryGetProperty("description", out var baseDescription) || baseDescription.ValueKind != System.Text.Json.JsonValueKind.String) {
+                        throw new Exception($"{id} base rule json missing string 'description' property");
+                    }
+                    AssertEqual(baseTitle.GetString(), baseRule.Title, $"{id} base title matches rule json");
+                    AssertEqual(baseDescription.GetString(), baseRule.Description, $"{id} base description matches rule json");
                 }
 
                 var sawOverrideProperty = false;
