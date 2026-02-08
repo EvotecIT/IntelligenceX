@@ -400,22 +400,51 @@ internal static partial class Program {
                         break;
                     }
                     case "tags": {
-                        var expected = prop.Value.EnumerateArray()
+                        static IReadOnlyList<string> MergeTags(IReadOnlyList<string> existing, IReadOnlyList<string> overrides) {
+                            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                            var merged = new List<string>();
+                            foreach (var tag in existing ?? Array.Empty<string>()) {
+                                if (string.IsNullOrWhiteSpace(tag)) {
+                                    continue;
+                                }
+                                var value = tag.Trim();
+                                if (set.Add(value)) {
+                                    merged.Add(value);
+                                }
+                            }
+                            foreach (var tag in overrides ?? Array.Empty<string>()) {
+                                if (string.IsNullOrWhiteSpace(tag)) {
+                                    continue;
+                                }
+                                var value = tag.Trim();
+                                if (set.Add(value)) {
+                                    merged.Add(value);
+                                }
+                            }
+                            return merged;
+                        }
+
+                        var overrideTags = prop.Value.EnumerateArray()
                             .Select(x => x.GetString() ?? throw new Exception($"{id} override tags must be strings"))
                             .ToArray();
-                        var effectiveTags = effective.Tags.ToArray();
-                        AssertEqual(true, expected.All(t => effectiveTags.Contains(t, StringComparer.OrdinalIgnoreCase)), $"{id} override tags applied");
 
+                        var baseTags = Array.Empty<string>();
                         if (baseRoot.TryGetProperty("tags", out var baseTagsEl) && baseTagsEl.ValueKind == System.Text.Json.JsonValueKind.Array) {
-                            var baseTags = baseTagsEl.EnumerateArray()
+                            baseTags = baseTagsEl.EnumerateArray()
                                 .Select(x => x.GetString() ?? throw new Exception($"{id} base tags must be strings"))
                                 .ToArray();
-                            var baseSet = new HashSet<string>(baseTags, StringComparer.OrdinalIgnoreCase);
-                            var overrideSet = new HashSet<string>(expected, StringComparer.OrdinalIgnoreCase);
-                            if (!baseSet.SetEquals(overrideSet)) {
-                                changesBase = true;
-                            }
-                        } else {
+                        }
+
+                        var expectedMerged = MergeTags(baseTags, overrideTags);
+                        AssertEqual(expectedMerged.Count, effective.Tags.Count, $"{id} merged tag count matches");
+                        for (var i = 0; i < expectedMerged.Count; i++) {
+                            AssertEqual(expectedMerged[i], effective.Tags[i], $"{id} merged tag {i} matches");
+                        }
+
+                        // "tags" overrides are merged (union), but if the merged set is identical to base,
+                        // the override is redundant and should be removed.
+                        var normalizedBase = MergeTags(baseTags, Array.Empty<string>());
+                        if (!normalizedBase.SequenceEqual(expectedMerged, StringComparer.OrdinalIgnoreCase)) {
                             changesBase = true;
                         }
                         break;
