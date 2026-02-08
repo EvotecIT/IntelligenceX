@@ -4,6 +4,7 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -258,12 +259,14 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         if (!response.IsSuccessStatusCode) {
             var error = await ParseErrorResponseAsync(response, cancellationToken).ConfigureAwait(false);
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) {
-                var message = string.IsNullOrWhiteSpace(error)
+                var message = string.IsNullOrWhiteSpace(error.Message)
                     ? OpenAIAuthenticationRequiredException.DefaultMessage
-                    : error;
+                    : error.Message;
                 throw new OpenAIAuthenticationRequiredException(message);
             }
-            throw new InvalidOperationException(error);
+            var httpFailure = new HttpRequestException($"ChatGPT request failed ({(int)response.StatusCode}).");
+            throw new OpenAINativeErrorResponseException(error.Message, error.RawText, error.Code, error.Param, response.StatusCode,
+                OpenAINativeTrace.IsEnabled(), httpFailure);
         }
 
         var delta = new StringBuilder();
@@ -343,20 +346,97 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
     private async Task<TurnInfo> SendWithToolSchemaFallbackAsync(JsonObject body, IReadOnlyList<JsonObject> requestMessages,
         string accessToken, string accountId, NativeThreadState state, IReadOnlyList<JsonObject> inputItems, bool trackMessages,
         string model, string turnId, ChatOptions options, CancellationToken cancellationToken) {
-        ToolSchemaKind retryKind;
-        try {
+        if (!_options.EnableToolSchemaFallback || options.Tools is null || options.Tools.Count == 0) {
             using var response = await SendAsync(body, accessToken, accountId, state.SessionId, cancellationToken)
                 .ConfigureAwait(false);
             return await ProcessResponseAsync(response, turnId, model, state, inputItems, trackMessages, cancellationToken)
                 .ConfigureAwait(false);
-        } catch (InvalidOperationException ex) when (options.Tools is not null && options.Tools.Count > 0 &&
-                                                    TryGetToolSchemaFallbackKind(ex.Message, out retryKind)) {
-            // Server rejected our tool schema. Retry once with the alternate field name.
-            var retryBody = BuildRequestBody(model, requestMessages, state.SessionId, options, retryKind);
-            using var retry = await SendAsync(retryBody, accessToken, accountId, state.SessionId, cancellationToken)
+        }
+
+        var attempted = new HashSet<ToolWireFormat>();
+        ExceptionDispatchInfo? lastError = null;
+
+        async Task<TurnInfo> SendWithWireFormatAsync(ToolWireFormat toolWireFormat, JsonObject? prebuiltBody = null) {
+            cancellationToken.ThrowIfCancellationRequested();
+            var requestBody = prebuiltBody ?? BuildRequestBody(model, requestMessages, state.SessionId, options, toolWireFormat);
+            using var response = await SendAsync(requestBody, accessToken, accountId, state.SessionId, cancellationToken)
                 .ConfigureAwait(false);
-            return await ProcessResponseAsync(retry, turnId, model, state, inputItems, trackMessages, cancellationToken)
+            return await ProcessResponseAsync(response, turnId, model, state, inputItems, trackMessages, cancellationToken)
                 .ConfigureAwait(false);
+        }
+
+        ToolSchemaKey retryKey;
+        attempted.Add(ToolWireFormat.CustomParameters);
+        try {
+            return await SendWithWireFormatAsync(ToolWireFormat.CustomParameters, body).ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            throw;
+        } catch (Exception ex) {
+            lastError = ExceptionDispatchInfo.Capture(ex);
+            if (!TryGetToolSchemaKeyFallback(ex, out retryKey)) {
+                throw;
+            }
+        }
+
+        // Retry with the alternate custom-tool schema key first.
+        var retryFormat = retryKey == ToolSchemaKey.InputSchema ? ToolWireFormat.CustomInputSchema : ToolWireFormat.CustomParameters;
+        if (!attempted.Add(retryFormat)) {
+            lastError!.Throw();
+        }
+
+        ToolSchemaKey retryKey2;
+        try {
+            return await SendWithWireFormatAsync(retryFormat).ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            throw;
+        } catch (Exception ex) {
+            lastError = ExceptionDispatchInfo.Capture(ex);
+            if (!TryGetToolSchemaKeyFallback(ex, out retryKey2)) {
+                throw;
+            }
+        }
+
+        // Some ChatGPT native variants don't accept custom tool schema fields at all. Fall back to function-style tools.
+        var initialFunctionFormat = retryKey2 == ToolSchemaKey.InputSchema
+            ? ToolWireFormat.FunctionFlatInputSchema
+            : ToolWireFormat.FunctionFlatParameters;
+        if (!attempted.Add(initialFunctionFormat)) {
+            lastError!.Throw();
+        }
+
+        ToolSchemaKey functionRetryKey;
+        try {
+            return await SendWithWireFormatAsync(initialFunctionFormat).ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            throw;
+        } catch (Exception ex) {
+            lastError = ExceptionDispatchInfo.Capture(ex);
+            if (!TryGetToolSchemaKeyFallback(ex, out functionRetryKey)) {
+                throw;
+            }
+        }
+
+        // Retry function-style request with the alternate key, ensuring we don't resend the same format.
+        var functionRetryFormat = functionRetryKey == ToolSchemaKey.InputSchema
+            ? ToolWireFormat.FunctionFlatInputSchema
+            : ToolWireFormat.FunctionFlatParameters;
+        if (functionRetryFormat == initialFunctionFormat) {
+            functionRetryFormat = functionRetryFormat == ToolWireFormat.FunctionFlatInputSchema
+                ? ToolWireFormat.FunctionFlatParameters
+                : ToolWireFormat.FunctionFlatInputSchema;
+        }
+
+        if (!attempted.Add(functionRetryFormat)) {
+            lastError!.Throw();
+        }
+
+        try {
+            return await SendWithWireFormatAsync(functionRetryFormat).ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            throw;
+        } catch (Exception ex) {
+            lastError = ExceptionDispatchInfo.Capture(ex);
+            throw;
         }
     }
 

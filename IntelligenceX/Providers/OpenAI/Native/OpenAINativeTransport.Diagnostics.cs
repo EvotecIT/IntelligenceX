@@ -10,39 +10,65 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.Native;
 
 internal sealed partial class OpenAINativeTransport {
-    private static async Task<string> ParseErrorResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken) {
+    private readonly struct NativeErrorDetails {
+        public NativeErrorDetails(string message, string rawText, string? code, string? param) {
+            Message = message;
+            RawText = rawText;
+            Code = code;
+            Param = param;
+        }
+
+        public string Message { get; }
+        public string RawText { get; }
+        public string? Code { get; }
+        public string? Param { get; }
+    }
+
+    private static async Task<NativeErrorDetails> ParseErrorResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken) {
+#if NET8_0_OR_GREATER
+        var text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+#else
         var text = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+#endif
         if (string.IsNullOrWhiteSpace(text)) {
-            return $"ChatGPT request failed ({(int)response.StatusCode}).";
+            return new NativeErrorDetails($"ChatGPT request failed ({(int)response.StatusCode}).", string.Empty, null, null);
         }
         try {
             var value = JsonLite.Parse(text);
             var obj = value?.AsObject();
             var error = obj?.GetObject("error");
-            var message = error?.GetString("message") ?? obj?.GetString("message");
-            var code = error?.GetString("code") ?? error?.GetString("type");
+            // Prefer the structured { error: { ... } } shape. If it's absent, keep the raw payload text rather than
+            // an unrelated top-level "message" field (which can be generic/proxy HTML wrappers).
+            var message = error?.GetString("message");
+            if (string.IsNullOrWhiteSpace(message)) {
+                message = error is not null
+                    ? (obj?.GetString("message") ?? text)
+                    : text;
+            }
+            message ??= text;
+
+            var code = error?.GetString("code") ?? error?.GetString("type") ?? obj?.GetString("code") ?? obj?.GetString("type");
+            var param = error?.GetString("param") ?? error?.GetString("parameter") ?? obj?.GetString("param") ?? obj?.GetString("parameter");
+
             if (response.StatusCode == (HttpStatusCode)429) {
                 var resetsAt = error?.GetInt64("resets_at");
                 if (resetsAt.HasValue) {
                     var mins = Math.Max(0, (int)Math.Round((resetsAt.Value * 1000 - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) / 60000d));
-                    return $"ChatGPT usage limit reached. Try again in about {mins} minute(s).";
+                    return new NativeErrorDetails($"ChatGPT usage limit reached. Try again in about {mins} minute(s).", text, code, param);
                 }
-                return "ChatGPT usage limit reached (HTTP 429).";
+                return new NativeErrorDetails("ChatGPT usage limit reached (HTTP 429).", text, code, param);
             }
-            if (!string.IsNullOrWhiteSpace(message)) {
-                return message!;
-            }
-            if (!string.IsNullOrWhiteSpace(code)) {
-                return $"ChatGPT error: {code}";
-            }
+
+            return new NativeErrorDetails(message, text, code, param);
         } catch {
             // Fall back to raw text.
         }
-        return text;
+        return new NativeErrorDetails(text, text, null, null);
     }
 
     private static void TryDumpRequest(HttpRequestMessage request, string json) {
-        if (!IsTraceEnabled()) {
+        if (!OpenAINativeTrace.IsEnabled()) {
             return;
         }
         try {
@@ -72,11 +98,4 @@ internal sealed partial class OpenAINativeTransport {
             // Ignore dump failures.
         }
     }
-
-    private static bool IsTraceEnabled() {
-        var value = Environment.GetEnvironmentVariable("INTELLIGENCEX_NATIVE_TRACE");
-        return string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
-    }
 }
-

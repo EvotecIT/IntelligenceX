@@ -41,7 +41,26 @@ internal static class OpenAINativeSseParser {
             if (string.IsNullOrWhiteSpace(data) || string.Equals(data, "[DONE]", StringComparison.Ordinal)) {
                 continue;
             }
-            var value = JsonLite.Parse(data);
+            JsonValue? value;
+            try {
+                value = JsonLite.Parse(data);
+            } catch (FormatException) {
+                // Some transports/proxies can emit multiline `data:` values for JSON payloads. Try an alternate
+                // reconstruction that avoids inserting separators between data lines.
+                var alt = ExtractData(chunk, alternate: true);
+                if (string.IsNullOrWhiteSpace(alt) || string.Equals(alt, data, StringComparison.Ordinal)) {
+                    TraceMalformedEvent(data);
+                    continue;
+                }
+                try {
+                    value = JsonLite.Parse(alt);
+                } catch (FormatException) {
+                    // Skip invalid events and continue parsing; callers can still fall back to accumulated deltas
+                    // if the completed response isn't available.
+                    TraceMalformedEvent(alt);
+                    continue;
+                }
+            }
             var obj = value?.AsObject();
             if (obj is null) {
                 continue;
@@ -52,6 +71,10 @@ internal static class OpenAINativeSseParser {
     }
 
     private static string ExtractData(string chunk) {
+        return ExtractData(chunk, alternate: false);
+    }
+
+    private static string ExtractData(string chunk, bool alternate) {
         var lines = chunk.Split('\n');
         var dataLines = new StringBuilder();
         foreach (var line in lines) {
@@ -59,7 +82,8 @@ internal static class OpenAINativeSseParser {
                 continue;
             }
             var value = line.Substring(5).Trim();
-            if (dataLines.Length > 0) {
+            if (!alternate && dataLines.Length > 0) {
+                // SSE multiline data is joined with newlines by spec.
                 dataLines.Append('\n');
             }
             dataLines.Append(value);
@@ -69,5 +93,14 @@ internal static class OpenAINativeSseParser {
 
     private static void NormalizeNewLines(StringBuilder buffer) {
         buffer.Replace("\r\n", "\n");
+    }
+
+    private static void TraceMalformedEvent(string data) {
+        try {
+            var sample = data.Length <= 200 ? data : data.Substring(0, 200) + "...(truncated)";
+            OpenAINativeTrace.TryWriteLine($"[IntelligenceX] Skipping malformed native SSE event: {sample}");
+        } catch {
+            // Ignore trace failures.
+        }
     }
 }

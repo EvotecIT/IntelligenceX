@@ -1,15 +1,112 @@
 using System;
+using System.Collections.Generic;
 
 namespace IntelligenceX.OpenAI.Native;
 
 internal sealed partial class OpenAINativeTransport {
-    private static bool TryGetToolSchemaFallbackKind(string? message, out ToolSchemaKind fallbackKind) {
+    private static bool TryGetToolSchemaKeyFallback(Exception? ex, out ToolSchemaKey fallbackKey) {
+        fallbackKey = ToolSchemaKey.Parameters;
+        if (ex is null) {
+            return false;
+        }
+
+        // The transport typically throws InvalidOperationException for server validation errors,
+        // but callers can wrap it (including AggregateException). Unwrap defensively.
+        var pending = new Stack<Exception>();
+        pending.Push(ex);
+        while (pending.Count > 0) {
+            var current = pending.Pop();
+
+            if (current is InvalidOperationException ioe &&
+                TryGetToolSchemaKeyFallback(ioe, out fallbackKey)) {
+                return true;
+            }
+
+            if (current is AggregateException agg) {
+                foreach (var inner in agg.InnerExceptions) {
+                    if (inner is not null) {
+                        pending.Push(inner);
+                    }
+                }
+            }
+
+            if (current.InnerException is not null) {
+                pending.Push(current.InnerException);
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryGetToolSchemaKeyFallback(InvalidOperationException? ex, out ToolSchemaKey fallbackKey) {
+        fallbackKey = ToolSchemaKey.Parameters;
+        if (ex is null) {
+            return false;
+        }
+
+        string? code;
+        string? param;
+
+        if (ex is OpenAINativeErrorResponseException native) {
+            // Only retry for response-derived validation failures. This prevents tool schema fallback from masking
+            // unrelated local errors that happen to throw InvalidOperationException.
+            if (native.StatusCode != System.Net.HttpStatusCode.BadRequest &&
+                (int)native.StatusCode != 422 /* Unprocessable Entity (not available in older TFMs) */) {
+                return false;
+            }
+
+            code = native.ErrorCode;
+            param = native.ErrorParam;
+        } else {
+            // Allow fallback when the original native exception type is lost (e.g., rewrapped) but diagnostic data is preserved.
+            // We require a transport marker to avoid false positives from arbitrary InvalidOperationException instances.
+            if (!(ex.Data?["openai:native_transport"] is bool marker && marker)) {
+                return false;
+            }
+
+            code = ex.Data?["openai:error_code"] as string;
+            param = ex.Data?["openai:error_param"] as string;
+        }
+
+        if (string.IsNullOrWhiteSpace(param)) {
+            return false;
+        }
+        if (!param!.TrimStart().StartsWith("tools", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        // Only proceed if the rejected field is one of the schema keys we know how to swap.
+        if (!TryGetToolSchemaKeyFallback(param, out fallbackKey)) {
+            return false;
+        }
+
+        // Tool schema fallback is only valid for unknown-parameter errors (schema key mismatch).
+        if (!string.IsNullOrWhiteSpace(code)) {
+            if (code!.IndexOf("unknown_parameter", StringComparison.OrdinalIgnoreCase) < 0) {
+                return false;
+            }
+        } else {
+            var msg = ex.Message;
+            if (string.IsNullOrWhiteSpace(msg)) {
+                return false;
+            }
+            if (msg!.IndexOf("unknown parameter", StringComparison.OrdinalIgnoreCase) < 0 &&
+                msg.IndexOf("unknown field", StringComparison.OrdinalIgnoreCase) < 0 &&
+                msg.IndexOf("unrecognized request argument", StringComparison.OrdinalIgnoreCase) < 0) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryGetToolSchemaKeyFallback(string? message, out ToolSchemaKey fallbackKey) {
         // Server error messages vary; the stable signal is the field path that was rejected:
         // - tools[<n>].parameters
         // - tools[<n>].input_schema
         // - tools.<n>.parameters (seen in some variants)
         // - tools.<n>.input_schema
-        fallbackKind = ToolSchemaKind.Parameters;
+        fallbackKey = ToolSchemaKey.Parameters;
         if (string.IsNullOrWhiteSpace(message)) {
             return false;
         }
@@ -44,11 +141,11 @@ internal sealed partial class OpenAINativeTransport {
 
             if (TryReadIdentifier(text, i, out var identifier)) {
                 if (string.Equals(identifier, "parameters", StringComparison.OrdinalIgnoreCase)) {
-                    fallbackKind = ToolSchemaKind.InputSchema;
+                    fallbackKey = ToolSchemaKey.InputSchema;
                     return true;
                 }
                 if (string.Equals(identifier, "input_schema", StringComparison.OrdinalIgnoreCase)) {
-                    fallbackKind = ToolSchemaKind.Parameters;
+                    fallbackKey = ToolSchemaKey.Parameters;
                     return true;
                 }
             }
@@ -80,11 +177,11 @@ internal sealed partial class OpenAINativeTransport {
 
             if (TryReadIdentifier(text, i, out var identifier)) {
                 if (string.Equals(identifier, "parameters", StringComparison.OrdinalIgnoreCase)) {
-                    fallbackKind = ToolSchemaKind.InputSchema;
+                    fallbackKey = ToolSchemaKey.InputSchema;
                     return true;
                 }
                 if (string.Equals(identifier, "input_schema", StringComparison.OrdinalIgnoreCase)) {
-                    fallbackKind = ToolSchemaKind.Parameters;
+                    fallbackKey = ToolSchemaKey.Parameters;
                     return true;
                 }
             }
@@ -115,4 +212,3 @@ internal sealed partial class OpenAINativeTransport {
         return true;
     }
 }
-
