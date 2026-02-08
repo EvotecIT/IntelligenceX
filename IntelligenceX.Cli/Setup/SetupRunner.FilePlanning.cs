@@ -189,7 +189,10 @@ internal static partial class SetupRunner {
         if (!options.OpenAIModelSet && !string.IsNullOrWhiteSpace(snapshot.OpenAIModel)) {
             settings.OpenAIModel = snapshot.OpenAIModel!;
         }
-        if (string.IsNullOrWhiteSpace(settings.OpenAIAccountId) && !string.IsNullOrWhiteSpace(snapshot.OpenAIAccountId)) {
+        // Precedence: CLI arg (--openai-account-id) > existing config snapshot > environment default.
+        if (options.OpenAIAccountIdSet && !string.IsNullOrWhiteSpace(options.OpenAIAccountId)) {
+            settings.OpenAIAccountId = options.OpenAIAccountId;
+        } else if (!string.IsNullOrWhiteSpace(snapshot.OpenAIAccountId)) {
             settings.OpenAIAccountId = snapshot.OpenAIAccountId;
         }
         if (!options.ReviewProfileSet && !string.IsNullOrWhiteSpace(snapshot.Profile)) {

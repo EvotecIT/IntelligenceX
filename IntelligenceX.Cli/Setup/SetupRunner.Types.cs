@@ -19,6 +19,7 @@ internal static partial class SetupRunner {
         public string? OpenAIModel { get; set; } = "gpt-5.3-codex";
         public string? OpenAITransport { get; set; } = "native";
         public string? OpenAIAccountId { get; set; }
+        public bool OpenAIAccountIdSet { get; set; }
         public string? ReviewerSource { get; set; } = "release";
         public string? ReviewerReleaseRepo { get; set; } = "EvotecIT/github-actions";
         public string? ReviewerReleaseTag { get; set; } = "latest";
@@ -150,6 +151,7 @@ internal static partial class SetupRunner {
                         break;
                     case "openai-account-id":
                         options.OpenAIAccountId = value;
+                        options.OpenAIAccountIdSet = true;
                         break;
                     case "reviewer-source":
                         options.ReviewerSource = value;
@@ -539,6 +541,5 @@ internal static partial class SetupRunner {
     }
 
 }
-
 
 

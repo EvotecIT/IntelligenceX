@@ -26,6 +26,8 @@ internal static partial class Program {
         failed += Run("Tool runner parallel execution", TestToolRunnerParallelExecution);
 #if !NET472
         failed += Run("Setup args reject skip+update", TestSetupArgsRejectSkipUpdate);
+        failed += Run("GitHub repo detector parses remote urls", TestGitHubRepoDetectorParsesRemoteUrls);
+        failed += Run("GitHub repo detector parses git config sections", TestGitHubRepoDetectorParsesGitConfigRemoteSection);
         failed += Run("GitHub secrets reject empty value", TestGitHubSecretsRejectEmptyValue);
         failed += Run("Release reviewer env token", TestReleaseReviewerEnvToken);
 #endif
