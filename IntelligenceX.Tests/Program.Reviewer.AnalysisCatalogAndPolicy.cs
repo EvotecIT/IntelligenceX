@@ -424,6 +424,7 @@ internal static partial class Program {
                             return merged;
                         }
 
+                        AssertEqual(System.Text.Json.JsonValueKind.Array, prop.Value.ValueKind, $"{id} override tags is array");
                         var overrideTags = prop.Value.EnumerateArray()
                             .Select(x => x.GetString() ?? throw new Exception($"{id} override tags must be strings"))
                             .ToArray();
@@ -462,9 +463,10 @@ internal static partial class Program {
         var workspace = ResolveWorkspaceRoot();
         var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
 
-        var prefix = new[] { "powershell", "utility-modules", "psscriptanalyzer", "rules" };
-        var slugPattern = new System.Text.RegularExpressions.Regex("^[a-z0-9-]+$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        var localePattern = new System.Text.RegularExpressions.Regex("^[a-z]{2}(-[a-z]{2})?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        // Allow query/fragment because Learn commonly appends `?view=` and `#...`.
+        var learnRulePattern = new System.Text.RegularExpressions.Regex(
+            @"^https://learn\.microsoft\.com(?:/[a-z]{2}(?:-[a-z]{2})?)?/powershell/utility-modules/psscriptanalyzer/rules/[a-z0-9-]+/?(?:[?#].*)?$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
         foreach (var entry in catalog.Rules) {
             var rule = entry.Value;
@@ -478,22 +480,11 @@ internal static partial class Program {
                 continue;
             }
 
-            AssertEqual(true, Uri.TryCreate(rule.Docs, UriKind.Absolute, out var uri), $"{rule.Id} docs is absolute url");
+            var docs = rule.Docs!.Trim();
+            AssertEqual(true, Uri.TryCreate(docs, UriKind.Absolute, out var uri), $"{rule.Id} docs is absolute url");
             AssertEqual("https", uri!.Scheme, $"{rule.Id} docs uses https");
             AssertEqual("learn.microsoft.com", uri.Host, $"{rule.Id} docs uses learn.microsoft.com");
-
-            var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            var i = 0;
-            if (segments.Length > 0 && localePattern.IsMatch(segments[0])) {
-                i = 1;
-            }
-
-            AssertEqual(i + prefix.Length + 1, segments.Length, $"{rule.Id} docs path shape matches Learn rule pattern");
-            for (var p = 0; p < prefix.Length; p++) {
-                AssertEqual(prefix[p], segments[i + p], $"{rule.Id} docs path segment {p} matches Learn rule pattern");
-            }
-            var slug = segments[i + prefix.Length];
-            AssertEqual(true, slugPattern.IsMatch(slug), $"{rule.Id} docs slug matches Learn rule pattern");
+            AssertEqual(true, learnRulePattern.IsMatch(docs), $"{rule.Id} docs matches Learn PSScriptAnalyzer rule pattern");
         }
     }
 
