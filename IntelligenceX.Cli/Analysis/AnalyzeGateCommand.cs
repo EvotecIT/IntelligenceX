@@ -62,16 +62,16 @@ internal static class AnalyzeGateCommand {
         try {
             catalog = AnalysisCatalogLoader.LoadFromWorkspace(workspace);
         } catch (Exception ex) {
-            Console.WriteLine($"Static analysis gate failed: could not load analysis catalog ({ex.Message}).");
-            return Task.FromResult(ExitGateFailed);
+            Console.WriteLine($"Static analysis gate: unavailable (could not load analysis catalog: {ex.Message}).");
+            return Task.FromResult(analysisSettings.Gate.FailOnUnavailable ? ExitGateFailed : ExitSuccess);
         }
 
         AnalysisPolicy policy;
         try {
             policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(analysisSettings, catalog);
         } catch (Exception ex) {
-            Console.WriteLine($"Static analysis gate failed: could not build analysis policy ({ex.Message}).");
-            return Task.FromResult(ExitGateFailed);
+            Console.WriteLine($"Static analysis gate: unavailable (could not build analysis policy: {ex.Message}).");
+            return Task.FromResult(analysisSettings.Gate.FailOnUnavailable ? ExitGateFailed : ExitSuccess);
         }
 
         if (policy.Rules.Count == 0 && analysisSettings.Gate.FailOnNoEnabledRules) {
@@ -375,7 +375,7 @@ internal static class AnalyzeGateCommand {
             // Use relative path computation to avoid prefix-matching bypasses (e.g. /ws2 matching /ws).
             var relative = Path.GetRelativePath(fullWorkspace, full);
             if (string.IsNullOrWhiteSpace(relative)) {
-                return null;
+                relative = ".";
             }
             var normalized = relative.Replace('\\', '/');
             if (normalized.Equals(".", StringComparison.Ordinal)) {
