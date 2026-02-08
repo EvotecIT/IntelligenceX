@@ -13,6 +13,9 @@ internal sealed partial class OpenAINativeTransport {
         if (string.IsNullOrWhiteSpace(param)) {
             return false;
         }
+        if (!param!.TrimStart().StartsWith("tools", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
 
         // If the server provided a structured code, require it to match an unknown-parameter style error.
         var code = ex.Data?["openai:error_code"] as string;

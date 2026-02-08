@@ -359,9 +359,11 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         } catch (InvalidOperationException ex) when (options.Tools is not null && options.Tools.Count > 0 &&
                                                     TryGetToolSchemaKeyFallback(ex, out retryKey)) {
             // Server rejected our tool schema. Retry with the alternate custom-tool schema key first.
+            cancellationToken.ThrowIfCancellationRequested();
             var retryFormat = retryKey == ToolSchemaKey.InputSchema ? ToolWireFormat.CustomInputSchema : ToolWireFormat.CustomParameters;
             var retryBody = BuildRequestBody(model, requestMessages, state.SessionId, options, retryFormat);
             try {
+                cancellationToken.ThrowIfCancellationRequested();
                 using var retry = await SendAsync(retryBody, accessToken, accountId, state.SessionId, cancellationToken)
                     .ConfigureAwait(false);
                 return await ProcessResponseAsync(retry, turnId, model, state, inputItems, trackMessages, cancellationToken)
@@ -369,11 +371,13 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             } catch (InvalidOperationException retryEx) when (options.Tools is not null && options.Tools.Count > 0 &&
                                                              TryGetToolSchemaKeyFallback(retryEx, out var retryKey2)) {
                 // Some ChatGPT native variants don't accept custom tool schema fields at all. Fall back to function-style tools.
+                cancellationToken.ThrowIfCancellationRequested();
                 var initialFunctionFormat = retryKey2 == ToolSchemaKey.InputSchema
                     ? ToolWireFormat.FunctionFlatInputSchema
                     : ToolWireFormat.FunctionFlatParameters;
                 var functionBody = BuildRequestBody(model, requestMessages, state.SessionId, options, initialFunctionFormat);
                 try {
+                    cancellationToken.ThrowIfCancellationRequested();
                     using var retryFunction = await SendAsync(functionBody, accessToken, accountId, state.SessionId, cancellationToken)
                         .ConfigureAwait(false);
                     return await ProcessResponseAsync(retryFunction, turnId, model, state, inputItems, trackMessages, cancellationToken)
@@ -390,6 +394,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
                             : ToolWireFormat.FunctionFlatInputSchema;
                     }
                     var retryFunctionBody = BuildRequestBody(model, requestMessages, state.SessionId, options, functionRetryFormat);
+                    cancellationToken.ThrowIfCancellationRequested();
                     using var retryFunction2 = await SendAsync(retryFunctionBody, accessToken, accountId, state.SessionId, cancellationToken)
                         .ConfigureAwait(false);
                     return await ProcessResponseAsync(retryFunction2, turnId, model, state, inputItems, trackMessages, cancellationToken)
