@@ -253,11 +253,11 @@ if (($staleRuleFiles.Count -gt 0) -or ($staleOverrideFiles.Count -gt 0)) {
         Write-Warning ("Found {0} stale file(s). Re-run with -PruneStale to delete them." -f $totalStale)
     } else {
         foreach ($file in $staleRuleFiles) {
-            Remove-Item -LiteralPath $file.FullName -Force
+            Remove-Item -LiteralPath $file.FullName -Force -ErrorAction Stop
             $deleted++
         }
         foreach ($file in $staleOverrideFiles) {
-            Remove-Item -LiteralPath $file.FullName -Force
+            Remove-Item -LiteralPath $file.FullName -Force -ErrorAction Stop
             $deleted++
         }
     }
