@@ -42,12 +42,17 @@ public sealed class ToolCall {
     internal static ToolCall? FromJson(JsonObject obj) {
         var type = obj.GetString("type");
         if (!string.Equals(type, "custom_tool_call", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(type, "tool_call", StringComparison.OrdinalIgnoreCase)) {
+            !string.Equals(type, "tool_call", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(type, "function_call", StringComparison.OrdinalIgnoreCase)) {
             return null;
         }
 
         var callId = obj.GetString("call_id") ?? obj.GetString("tool_call_id") ?? obj.GetString("id");
         var name = obj.GetString("name");
+        if (string.IsNullOrWhiteSpace(name)) {
+            name = obj.GetObject("function")?.GetString("name") ??
+                   obj.GetObject("tool")?.GetString("name");
+        }
         if (string.IsNullOrWhiteSpace(callId) || string.IsNullOrWhiteSpace(name)) {
             return null;
         }

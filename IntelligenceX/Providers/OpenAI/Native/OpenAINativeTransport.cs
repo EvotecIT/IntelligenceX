@@ -304,7 +304,8 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
                     var type = item.GetString("type");
                     if (string.Equals(type, "message", StringComparison.Ordinal) ||
                         string.Equals(type, "custom_tool_call", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(type, "tool_call", StringComparison.OrdinalIgnoreCase)) {
+                        string.Equals(type, "tool_call", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(type, "function_call", StringComparison.OrdinalIgnoreCase)) {
                         state.Messages.Add(item);
                     }
                 }
@@ -559,7 +560,8 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
                 continue;
             }
             if (string.Equals(type, "custom_tool_call", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(type, "tool_call", StringComparison.OrdinalIgnoreCase)) {
+                string.Equals(type, "tool_call", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(type, "function_call", StringComparison.OrdinalIgnoreCase)) {
                 outputs.Add(item);
                 continue;
             }

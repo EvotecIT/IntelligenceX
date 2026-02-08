@@ -16,6 +16,21 @@ internal static partial class Program {
         AssertEqual("call_1", calls[0].CallId, "tool call id");
         AssertEqual("wsl_status", calls[0].Name, "tool call name");
         AssertEqual("Ubuntu", calls[0].Arguments?.GetString("name"), "tool call arg");
+
+        var functionCall = new JsonObject()
+            .Add("type", "function_call")
+            .Add("call_id", "call_2")
+            .Add("function", new JsonObject().Add("name", "ad_whoami"))
+            .Add("arguments", "{\"x\":1}");
+        var turn2 = TurnInfo.FromJson(new JsonObject()
+            .Add("id", "turn2")
+            .Add("output", new JsonArray().Add(functionCall)));
+
+        var calls2 = ToolCallParser.Extract(turn2);
+        AssertEqual(1, calls2.Count, "function call count");
+        AssertEqual("call_2", calls2[0].CallId, "function call id");
+        AssertEqual("ad_whoami", calls2[0].Name, "function call name");
+        AssertEqual(1, (int)(calls2[0].Arguments?.GetInt64("x") ?? 0), "function call arg");
     }
 
     private static void TestToolCallParsingInvalidJson() {
