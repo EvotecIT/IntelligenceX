@@ -484,10 +484,12 @@ internal static partial class Program {
                             return merged;
                         }
 
-                        AssertEqual(System.Text.Json.JsonValueKind.Array, prop.Value.ValueKind, $"{id} override tags is array");
-                        var overrideTags = prop.Value.EnumerateArray()
-                            .Select(x => x.GetString() ?? throw new Exception($"{id} override tags must be strings"))
-                            .ToArray();
+	                            AssertEqual(System.Text.Json.JsonValueKind.Array, prop.Value.ValueKind, $"{id} override tags is array");
+	                            var overrideTags = prop.Value.EnumerateArray()
+	                                .Select(x => x.ValueKind == System.Text.Json.JsonValueKind.String
+	                                    ? x.GetString()!
+	                                    : throw new Exception($"{id} override tags entries must be strings"))
+	                                .ToArray();
 
                         var expectedMerged = MergeTags(baseRule.Tags ?? Array.Empty<string>(), overrideTags);
                         var expectedSet = new HashSet<string>(expectedMerged, StringComparer.OrdinalIgnoreCase);

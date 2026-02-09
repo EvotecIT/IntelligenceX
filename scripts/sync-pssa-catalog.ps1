@@ -2,7 +2,8 @@ param(
     [Parameter()][string]$OutDir = (Join-Path -Path $PSScriptRoot -ChildPath (Join-Path -Path '..' -ChildPath (Join-Path -Path 'Analysis' -ChildPath (Join-Path -Path 'Catalog' -ChildPath (Join-Path -Path 'rules' -ChildPath 'powershell'))))),
     [Parameter()][switch]$PruneStale,
     [Parameter()][switch]$ForcePrune,
-    [Parameter()][switch]$AllowNonIntendedOutDir
+    [Parameter()][switch]$AllowNonIntendedOutDir,
+    [Parameter()][switch]$AllowUntrustedModuleBase
 )
 
 $ErrorActionPreference = 'Stop'
@@ -10,13 +11,13 @@ $ErrorActionPreference = 'Stop'
 $runningOnWindows = ($env:OS -eq 'Windows_NT')
 $pathComparison = if ($runningOnWindows) { [System.StringComparison]::OrdinalIgnoreCase } else { [System.StringComparison]::Ordinal }
 
-function Resolve-FullPath([string]$path) {
+function Get-NormalizedPath([string]$path) {
     if ([string]::IsNullOrWhiteSpace($path)) { return '' }
     $resolved = (Resolve-Path -LiteralPath $path -ErrorAction Stop).Path
     return [System.IO.Path]::GetFullPath($resolved)
 }
 
-function Escape-JsonString([string]$value) {
+function ConvertTo-JsonEscapedString([string]$value) {
     if ($null -eq $value) { return '' }
     $sb = New-Object System.Text.StringBuilder
     foreach ($ch in $value.ToCharArray()) {
@@ -39,7 +40,7 @@ function Escape-JsonString([string]$value) {
     return $sb.ToString()
 }
 
-function Convert-OrderedToDeterministicJson([System.Collections.IDictionary]$obj) {
+function ConvertTo-DeterministicJson([System.Collections.IDictionary]$obj) {
     if ($null -eq $obj) { throw 'JSON object cannot be null' }
 
     $keys = @($obj.Keys)
@@ -51,12 +52,12 @@ function Convert-OrderedToDeterministicJson([System.Collections.IDictionary]$obj
         $comma = if ($i -lt ($keys.Count - 1)) { ',' } else { '' }
 
         if ($value -is [System.Array]) {
-            [void]$lines.Add(('  "{0}": [' -f (Escape-JsonString $key)))
+            [void]$lines.Add(('  "{0}": [' -f (ConvertTo-JsonEscapedString $key)))
             $arr = @($value)
             for ($j = 0; $j -lt $arr.Count; $j++) {
                 $itemComma = if ($j -lt ($arr.Count - 1)) { ',' } else { '' }
                 $item = [string]$arr[$j]
-                [void]$lines.Add(('    "{0}"{1}' -f (Escape-JsonString $item), $itemComma))
+                [void]$lines.Add(('    "{0}"{1}' -f (ConvertTo-JsonEscapedString $item), $itemComma))
             }
             [void]$lines.Add(('  ]{0}' -f $comma))
             continue
@@ -71,7 +72,7 @@ function Convert-OrderedToDeterministicJson([System.Collections.IDictionary]$obj
             throw ("Unsupported JSON value type for key '{0}': {1}" -f $key, $value.GetType().FullName)
         }
 
-        [void]$lines.Add(('  "{0}": "{1}"{2}' -f (Escape-JsonString $key), (Escape-JsonString $value), $comma))
+        [void]$lines.Add(('  "{0}": "{1}"{2}' -f (ConvertTo-JsonEscapedString $key), (ConvertTo-JsonEscapedString $value), $comma))
     }
     [void]$lines.Add('}')
     return ($lines -join "`n")
@@ -87,8 +88,8 @@ if (-not $module) {
 # Avoid importing a module that is (accidentally or maliciously) located under the repo workspace.
 $workspaceRoot = (Resolve-Path (Join-Path -Path $PSScriptRoot -ChildPath '..')).Path
 if ($module.ModuleBase) {
-    $root = Resolve-FullPath $workspaceRoot
-    $base = Resolve-FullPath $module.ModuleBase
+    $root = Get-NormalizedPath $workspaceRoot
+    $base = Get-NormalizedPath $module.ModuleBase
     $rootTrim = $root.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
     $rootPrefix = $rootTrim + [System.IO.Path]::DirectorySeparatorChar
 
@@ -103,8 +104,8 @@ if ($module.ModuleBase) {
 function Test-IsUnderPath([string]$path, [string]$root) {
     if ([string]::IsNullOrWhiteSpace($path) -or [string]::IsNullOrWhiteSpace($root)) { return $false }
     try {
-        $fullPath = Resolve-FullPath $path
-        $fullRoot = Resolve-FullPath $root
+        $fullPath = Get-NormalizedPath $path
+        $fullRoot = Get-NormalizedPath $root
     } catch {
         return $false
     }
@@ -127,9 +128,18 @@ function Test-IsTrustedModuleBase([string]$moduleBase) {
             $trustedRoots += (Join-Path -Path $env:ProgramFiles -ChildPath (Join-Path -Path 'WindowsPowerShell' -ChildPath 'Modules'))
             $trustedRoots += (Join-Path -Path $env:ProgramFiles -ChildPath (Join-Path -Path 'PowerShell' -ChildPath 'Modules'))
         }
+        # Common user-scoped module locations (PowerShellGet -Scope CurrentUser).
+        if ($HOME) {
+            $trustedRoots += (Join-Path -Path $HOME -ChildPath (Join-Path -Path 'Documents' -ChildPath (Join-Path -Path 'PowerShell' -ChildPath 'Modules')))
+            $trustedRoots += (Join-Path -Path $HOME -ChildPath (Join-Path -Path 'Documents' -ChildPath (Join-Path -Path 'WindowsPowerShell' -ChildPath 'Modules')))
+        }
     } else {
         $trustedRoots += '/usr/local/share/powershell/Modules'
         $trustedRoots += '/usr/share/powershell/Modules'
+        # Common user-scoped module location on Linux/macOS.
+        if ($HOME) {
+            $trustedRoots += (Join-Path -Path $HOME -ChildPath (Join-Path -Path '.local' -ChildPath (Join-Path -Path 'share' -ChildPath (Join-Path -Path 'powershell' -ChildPath 'Modules'))))
+        }
     }
 
     foreach ($root in $trustedRoots) {
@@ -160,13 +170,28 @@ if ($module.ModuleBase) {
     $trustedBase = Test-IsTrustedModuleBase $module.ModuleBase
 }
 $trustedSig = $false
-if ($runningOnWindows -and $module.Path) {
-    $trustedSig = Test-IsTrustedAuthenticode $module.Path
+if ($runningOnWindows) {
+    $verifyPaths = @()
+    if ($module.Path) { $verifyPaths += $module.Path }
+    if ($module.ModuleBase -and $module.RootModule) {
+        $rootCandidate = Join-Path -Path $module.ModuleBase -ChildPath $module.RootModule
+        if (Test-Path -LiteralPath $rootCandidate) { $verifyPaths += $rootCandidate }
+    }
+    foreach ($verifyPath in $verifyPaths) {
+        if (Test-IsTrustedAuthenticode $verifyPath) {
+            $trustedSig = $true
+            break
+        }
+    }
 }
 if (-not ($trustedBase -or $trustedSig)) {
+    if ($AllowUntrustedModuleBase) {
+        Write-Warning ("Importing PSScriptAnalyzer from an untrusted location because -AllowUntrustedModuleBase was set. ModuleBase='{0}', Path='{1}'." -f $module.ModuleBase, $module.Path)
+    } else {
     $baseMsg = $module.ModuleBase
     $pathMsg = $module.Path
-    throw ("Refusing to import PSScriptAnalyzer from an untrusted location. ModuleBase='{0}', Path='{1}'. Install PSScriptAnalyzer system-wide (AllUsers) or use a trusted distribution." -f $baseMsg, $pathMsg)
+        throw ("Refusing to import PSScriptAnalyzer from an untrusted location. ModuleBase='{0}', Path='{1}'. Install with -Scope AllUsers, or pass -AllowUntrustedModuleBase to proceed anyway." -f $baseMsg, $pathMsg)
+    }
 }
 
 if ($module.Path) {
@@ -179,14 +204,14 @@ New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 
 $intendedOutDir = [System.IO.Path]::GetFullPath((Join-Path -Path $workspaceRoot -ChildPath (Join-Path -Path 'Analysis' -ChildPath (Join-Path -Path 'Catalog' -ChildPath (Join-Path -Path 'rules' -ChildPath 'powershell')))))
 try {
-    $resolvedOutDir = Resolve-FullPath $OutDir
+    $resolvedOutDir = Get-NormalizedPath $OutDir
 } catch {
     throw ("Failed to resolve OutDir '{0}': {1}" -f $OutDir, $_.Exception.Message)
 }
 $resolvedIntendedOutDir = $intendedOutDir
 if (Test-Path -LiteralPath $intendedOutDir) {
     try {
-        $resolvedIntendedOutDir = Resolve-FullPath $intendedOutDir
+        $resolvedIntendedOutDir = Get-NormalizedPath $intendedOutDir
     } catch {
         throw ("Failed to resolve intended OutDir '{0}': {1}" -f $intendedOutDir, $_.Exception.Message)
     }
@@ -194,7 +219,7 @@ if (Test-Path -LiteralPath $intendedOutDir) {
 
 # Even with -ForcePrune, never allow pruning outside the repo workspace.
 try {
-    $workspaceFull = Resolve-FullPath $workspaceRoot
+    $workspaceFull = Get-NormalizedPath $workspaceRoot
 } catch {
     throw ("Failed to resolve workspace root '{0}': {1}" -f $workspaceRoot, $_.Exception.Message)
 }
@@ -394,7 +419,7 @@ foreach ($rule in $rules) {
     }
     if ($docs) { $obj.docs = $docs }
 
-    $json = Convert-OrderedToDeterministicJson $obj
+    $json = ConvertTo-DeterministicJson $obj
     Write-FileUtf8NoBomLf $path $json
 }
 
