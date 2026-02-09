@@ -42,8 +42,8 @@ internal static class CiChangedFilesCommand {
             Console.Error.WriteLine($"Output directory is not safe: {ensureError}");
             return 1;
         }
-        if (!CiPathSafety.IsUnderRootPhysical(outputPath, workspaceRoot)) {
-            Console.Error.WriteLine($"Output path must be within the workspace and not traverse symlinks/junctions. out={outputPath} workspace={workspaceRoot}");
+        if (!CiPathSafety.IsUnderRootPhysical(outputDir!, workspaceRoot)) {
+            Console.Error.WriteLine($"Output directory must be within the workspace and not traverse symlinks/junctions. out={outputDir} workspace={workspaceRoot}");
             return 1;
         }
 

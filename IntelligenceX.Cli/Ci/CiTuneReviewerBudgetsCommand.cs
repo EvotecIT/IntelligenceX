@@ -125,9 +125,19 @@ internal static class CiTuneReviewerBudgetsCommand {
                     matchesGitHubEnv = false;
                 }
             }
-            if (!matchesGitHubEnv && !CiPathSafety.IsUnderRootPhysical(resolvedCandidate, workspaceRoot)) {
-                error = $"Env-file output path must be within the workspace (and not traverse symlinks/junctions), or equal to $GITHUB_ENV. out-env={resolvedCandidate} workspace={workspaceRoot}";
-                return false;
+            if (!matchesGitHubEnv) {
+                var dir = Path.GetDirectoryName(resolvedCandidate);
+                if (string.IsNullOrWhiteSpace(dir)) {
+                    dir = workspaceRoot;
+                }
+                if (!CiPathSafety.TryEnsureSafeDirectory(dir!, workspaceRoot, out var ensureError)) {
+                    error = $"Failed to prepare env-file output path: {ensureError}";
+                    return false;
+                }
+                if (!CiPathSafety.IsUnderRootPhysical(resolvedCandidate, workspaceRoot)) {
+                    error = $"Env-file output path must be within the workspace (and not traverse symlinks/junctions), or equal to $GITHUB_ENV. out-env={resolvedCandidate} workspace={workspaceRoot}";
+                    return false;
+                }
             }
         } else if (!usingExplicitOutEnv && !isGitHubActions && !File.Exists(resolvedCandidate)) {
             // Avoid writing to arbitrary paths during local runs just because GITHUB_ENV is set.
@@ -137,15 +147,8 @@ internal static class CiTuneReviewerBudgetsCommand {
 
         try {
             var dir = Path.GetDirectoryName(resolvedCandidate);
-            if (!string.IsNullOrWhiteSpace(dir)) {
-                if (usingExplicitOutEnv && !matchesGitHubEnv) {
-                    if (!CiPathSafety.TryEnsureSafeDirectory(dir, workspaceRoot, out var ensureError)) {
-                        error = $"Failed to prepare env-file output path: {ensureError}";
-                        return false;
-                    }
-                } else {
-                    Directory.CreateDirectory(dir);
-                }
+            if (!string.IsNullOrWhiteSpace(dir) && (matchesGitHubEnv || !usingExplicitOutEnv)) {
+                Directory.CreateDirectory(dir);
             }
         } catch (Exception ex) {
             error = $"Failed to prepare env-file output path: {ex.Message}";
