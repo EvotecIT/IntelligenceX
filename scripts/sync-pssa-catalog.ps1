@@ -408,8 +408,10 @@ foreach ($rule in $rules) {
     # Prefer a stable Learn URL. Only preserve existing docs if it matches the expected Learn URL exactly
     # (no query/fragment and correct slug), to avoid carrying forward bad/unstable URLs forever.
     $docs = Get-LearnDocsUrl $ruleName
-    if ([string]::IsNullOrWhiteSpace($docs)) { $docs = $null }
-    if ($docs -and $existingDocsByRule.ContainsKey($ruleName)) {
+    if ([string]::IsNullOrWhiteSpace($docs)) {
+        throw ("Failed to compute Learn docs URL for rule '{0}'." -f $ruleName)
+    }
+    if ($existingDocsByRule.ContainsKey($ruleName)) {
         $existingDocs = [string]$existingDocsByRule[$ruleName]
         if (-not [string]::IsNullOrWhiteSpace($existingDocs)) {
             try {
@@ -447,8 +449,8 @@ foreach ($rule in $rules) {
         category = $category
         defaultSeverity = $defaultSeverity
         tags = $tags
+        docs = $docs
     }
-    if ($docs) { $obj.docs = $docs }
 
     $json = ConvertTo-DeterministicJson $obj
     Write-FileUtf8NoBomLf $path $json
