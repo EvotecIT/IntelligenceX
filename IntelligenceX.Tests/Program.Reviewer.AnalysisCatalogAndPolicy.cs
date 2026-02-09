@@ -562,6 +562,13 @@ internal static partial class Program {
         var workspace = ResolveWorkspaceRoot();
         var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
 
+        // Learn slugs generally match the PSScriptAnalyzer rule name with the leading "PS" removed and lowercased.
+        // Keep an explicit override map for any upstream exceptions so this test stays robust over time.
+        var learnSlugOverrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+            ["PSDSCDscExamplesPresent"] = "dscdscexamplespresent",
+            ["PSDSCDscTestsPresent"] = "dscdsctestspresent"
+        };
+
         foreach (var entry in catalog.Rules) {
             var rule = entry.Value;
             if (!string.Equals(rule.Language, "powershell", StringComparison.OrdinalIgnoreCase)) {
@@ -590,14 +597,17 @@ internal static partial class Program {
             AssertEqual(false, string.IsNullOrWhiteSpace(actualSlug), $"{rule.Id} docs slug is present");
             AssertEqual(false, actualSlug.Any(char.IsWhiteSpace), $"{rule.Id} docs slug has no whitespace");
 
-            // Learn rule pages use a lowercased slug derived from the PSScriptAnalyzer rule name,
-            // with the leading "PS" prefix removed (e.g. PSAvoidLongLines -> avoidlonglines).
-            var expectedName = (rule.ToolRuleId ?? rule.Id).Trim();
-            if (expectedName.StartsWith("PS", StringComparison.OrdinalIgnoreCase)) {
-                expectedName = expectedName.Substring(2);
+            var toolRuleId = (rule.ToolRuleId ?? rule.Id).Trim();
+            AssertEqual(false, string.IsNullOrWhiteSpace(toolRuleId), $"{rule.Id} toolRuleId is populated");
+
+            if (!learnSlugOverrides.TryGetValue(toolRuleId, out var expectedSlug)) {
+                expectedSlug = toolRuleId;
+                if (expectedSlug.StartsWith("PS", StringComparison.OrdinalIgnoreCase)) {
+                    expectedSlug = expectedSlug.Substring(2);
+                }
+                expectedSlug = expectedSlug.ToLowerInvariant();
             }
-            var expectedSlug = expectedName.ToLowerInvariant();
-            AssertEqual(expectedSlug, actualSlug, $"{rule.Id} docs slug matches Learn convention");
+            AssertEqual(expectedSlug, actualSlug, $"{rule.Id} docs slug matches expected Learn slug");
         }
     }
 
