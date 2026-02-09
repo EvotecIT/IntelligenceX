@@ -25,7 +25,7 @@ internal static class CiTuneReviewerBudgetsCommand {
         var workspaceRoot = ResolveWorkspaceRoot();
         var changedFilesPath = ResolvePathWithinWorkspace(workspaceRoot, options.ChangedFilesPath!);
         if (!File.Exists(changedFilesPath)) {
-            Console.WriteLine($"No changed-files file found at {changedFilesPath}; leaving budgets unchanged.");
+            Console.Error.WriteLine($"No changed-files file found at {changedFilesPath}; leaving budgets unchanged.");
             return Task.FromResult(0);
         }
 
@@ -45,7 +45,7 @@ internal static class CiTuneReviewerBudgetsCommand {
 
         var large = changed > options.ChangedThreshold || catalog > options.CatalogThreshold;
         if (!large) {
-            Console.WriteLine($"Diff size within default limits (changed={changed}, catalog={catalog}); leaving budgets unchanged.");
+            Console.Error.WriteLine($"Diff size within default limits (changed={changed}, catalog={catalog}); leaving budgets unchanged.");
             return Task.FromResult(0);
         }
 
@@ -54,7 +54,7 @@ internal static class CiTuneReviewerBudgetsCommand {
             return Task.FromResult(1);
         }
         if (string.IsNullOrWhiteSpace(envTarget)) {
-            Console.WriteLine("Detected large diff but no environment file available (GITHUB_ENV not set and --out-env not provided).");
+            Console.Error.WriteLine("Detected large diff but no environment file available (GITHUB_ENV not set and --out-env not provided).");
             return Task.FromResult(0);
         }
 
@@ -64,7 +64,7 @@ internal static class CiTuneReviewerBudgetsCommand {
             return Task.FromResult(1);
         }
 
-        Console.WriteLine($"Detected large diff (changed={changed}, catalog={catalog}); set INPUT_MAX_FILES={options.MaxFiles}, INPUT_MAX_PATCH_CHARS={options.MaxPatchChars}.");
+        Console.Error.WriteLine($"Detected large diff (changed={changed}, catalog={catalog}); set INPUT_MAX_FILES={options.MaxFiles}, INPUT_MAX_PATCH_CHARS={options.MaxPatchChars}.");
         return Task.FromResult(0);
     }
 
