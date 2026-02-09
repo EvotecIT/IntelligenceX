@@ -87,7 +87,14 @@ function ConvertTo-DeterministicJson([System.Collections.IDictionary]$obj) {
             $arr = @($value)
             for ($j = 0; $j -lt $arr.Count; $j++) {
                 $itemComma = if ($j -lt ($arr.Count - 1)) { ',' } else { '' }
-                $item = [string]$arr[$j]
+                $rawItem = $arr[$j]
+                if ($null -eq $rawItem) {
+                    throw ("Unsupported JSON array item for key '{0}': null" -f $key)
+                }
+                if ($rawItem -isnot [string]) {
+                    throw ("Unsupported JSON array item type for key '{0}': {1}" -f $key, $rawItem.GetType().FullName)
+                }
+                $item = [string]$rawItem
                 [void]$lines.Add(('    "{0}"{1}' -f (ConvertTo-JsonEscapedString $item), $itemComma))
             }
             [void]$lines.Add(('  ]{0}' -f $comma))
