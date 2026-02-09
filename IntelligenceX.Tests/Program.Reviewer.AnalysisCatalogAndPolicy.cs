@@ -315,228 +315,230 @@ internal static partial class Program {
         var overridesDir = Path.Combine(workspace, "Analysis", "Catalog", "overrides", "powershell");
         AssertEqual(true, Directory.Exists(overridesDir), "powershell overrides dir exists");
 
-            // Load the catalog without overrides so we can compare base vs effective without needing per-override temp workspaces.
-            var rulesRoot = Path.Combine(workspace, "Analysis", "Catalog", "rules");
-            var packsRoot = Path.Combine(workspace, "Analysis", "Packs");
-            var emptyOverridesRoot = Path.Combine(
-                Path.GetTempPath(),
-                "ix-analysis-empty-overrides-empty-dir-" + Guid.NewGuid().ToString("N"));
-            if (Directory.Exists(emptyOverridesRoot)) {
-                throw new InvalidOperationException("Unexpected temp overrides path already exists: " + emptyOverridesRoot);
-            }
-            Directory.CreateDirectory(emptyOverridesRoot);
-            try {
-                var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, emptyOverridesRoot, packsRoot);
+        // Load the catalog without overrides so we can compare base vs effective without needing per-override temp workspaces.
+        var rulesRoot = Path.Combine(workspace, "Analysis", "Catalog", "rules");
+        var packsRoot = Path.Combine(workspace, "Analysis", "Packs");
+        var emptyOverridesRoot = Path.Combine(
+            Path.GetTempPath(),
+            "ix-analysis-empty-overrides-empty-dir-" + Guid.NewGuid().ToString("N"));
+        if (Directory.Exists(emptyOverridesRoot)) {
+            throw new InvalidOperationException("Unexpected temp overrides path already exists: " + emptyOverridesRoot);
+        }
+        Directory.CreateDirectory(emptyOverridesRoot);
 
-                foreach (var overridePath in Directory.EnumerateFiles(overridesDir, "*.json")) {
-                    var overrideText = File.ReadAllText(overridePath, System.Text.Encoding.UTF8);
-                    using var overrideDoc = System.Text.Json.JsonDocument.Parse(overrideText);
-                    var overrideRoot = overrideDoc.RootElement;
+        try {
+            var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, emptyOverridesRoot, packsRoot);
 
-                    if (!overrideRoot.TryGetProperty("id", out var idElement) || idElement.ValueKind != System.Text.Json.JsonValueKind.String) {
-                        throw new InvalidOperationException($"Override '{Path.GetFileName(overridePath)}' is missing string 'id' property.");
+            foreach (var overridePath in Directory.EnumerateFiles(overridesDir, "*.json")) {
+                var overrideText = File.ReadAllText(overridePath, System.Text.Encoding.UTF8);
+                using var overrideDoc = System.Text.Json.JsonDocument.Parse(overrideText);
+                var overrideRoot = overrideDoc.RootElement;
+
+                if (!overrideRoot.TryGetProperty("id", out var idElement) || idElement.ValueKind != System.Text.Json.JsonValueKind.String) {
+                    throw new InvalidOperationException($"Override '{Path.GetFileName(overridePath)}' is missing string 'id' property.");
+                }
+
+                var id = idElement.GetString();
+                AssertEqual(false, string.IsNullOrWhiteSpace(id), $"{Path.GetFileName(overridePath)} override has id");
+                if (string.IsNullOrWhiteSpace(id)) {
+                    throw new Exception($"{Path.GetFileName(overridePath)} override has no id");
+                }
+                AssertEqual(id, Path.GetFileNameWithoutExtension(overridePath), $"{id} override filename matches id");
+
+                var basePath = Path.Combine(rulesDir, id + ".json");
+                AssertEqual(true, File.Exists(basePath), $"{id} base rule exists for override");
+
+                AssertEqual(true, catalog.Rules.TryGetValue(id, out var effective), $"{id} exists in catalog");
+                if (effective is null) {
+                    throw new Exception($"{id} exists in catalog but is null");
+                }
+
+                AssertEqual(true, baseCatalog.Rules.TryGetValue(id, out var resolvedBase), $"{id} exists in base catalog");
+                var baseRule = resolvedBase ?? throw new Exception($"{id} exists in base catalog but is null");
+
+                // Ensure our "base catalog" truly reflects the rule JSON without applying any overrides.
+                var baseText = File.ReadAllText(basePath, System.Text.Encoding.UTF8);
+                using (var baseDoc = System.Text.Json.JsonDocument.Parse(baseText)) {
+                    var baseRoot = baseDoc.RootElement;
+
+                    AssertEqual(true, baseRoot.TryGetProperty("title", out var baseTitle), $"{id} base rule json has 'title'");
+                    AssertEqual(System.Text.Json.JsonValueKind.String, baseTitle.ValueKind, $"{id} base rule json title is string");
+
+                    AssertEqual(true, baseRoot.TryGetProperty("description", out var baseDescription), $"{id} base rule json has 'description'");
+                    AssertEqual(System.Text.Json.JsonValueKind.String, baseDescription.ValueKind, $"{id} base rule json description is string");
+
+                    AssertEqual(baseTitle.GetString(), baseRule.Title, $"{id} base title matches rule json");
+                    AssertEqual(baseDescription.GetString(), baseRule.Description, $"{id} base description matches rule json");
+                }
+
+                var sawSupportedOverrideProperty = false;
+                var sawNonTagsOverrideProperty = false;
+                var changesBase = false;
+                foreach (var prop in overrideRoot.EnumerateObject()) {
+                    if (prop.NameEquals("id")) {
+                        continue;
                     }
 
-                    var id = idElement.GetString();
-                    AssertEqual(false, string.IsNullOrWhiteSpace(id), $"{Path.GetFileName(overridePath)} override has id");
-                    if (string.IsNullOrWhiteSpace(id)) {
-                        throw new Exception($"{Path.GetFileName(overridePath)} override has no id");
-                    }
-                    AssertEqual(id, Path.GetFileNameWithoutExtension(overridePath), $"{id} override filename matches id");
-
-                    var basePath = Path.Combine(rulesDir, id + ".json");
-                    AssertEqual(true, File.Exists(basePath), $"{id} base rule exists for override");
-
-                    AssertEqual(true, catalog.Rules.TryGetValue(id, out var effective), $"{id} exists in catalog");
-                    if (effective is null) {
-                        throw new Exception($"{id} exists in catalog but is null");
-                    }
-
-                    AssertEqual(true, baseCatalog.Rules.TryGetValue(id, out var resolvedBase), $"{id} exists in base catalog");
-                    var baseRule = resolvedBase ?? throw new Exception($"{id} exists in base catalog but is null");
-
-                    // Ensure our "base catalog" truly reflects the rule JSON without applying any overrides.
-                    var baseText = File.ReadAllText(basePath, System.Text.Encoding.UTF8);
-                    using (var baseDoc = System.Text.Json.JsonDocument.Parse(baseText)) {
-                        var baseRoot = baseDoc.RootElement;
-
-                        AssertEqual(true, baseRoot.TryGetProperty("title", out var baseTitle), $"{id} base rule json has 'title'");
-                        AssertEqual(System.Text.Json.JsonValueKind.String, baseTitle.ValueKind, $"{id} base rule json title is string");
-
-                        AssertEqual(true, baseRoot.TryGetProperty("description", out var baseDescription), $"{id} base rule json has 'description'");
-                        AssertEqual(System.Text.Json.JsonValueKind.String, baseDescription.ValueKind, $"{id} base rule json description is string");
-
-                        AssertEqual(baseTitle.GetString(), baseRule.Title, $"{id} base title matches rule json");
-                        AssertEqual(baseDescription.GetString(), baseRule.Description, $"{id} base description matches rule json");
-                    }
-
-                    var sawSupportedOverrideProperty = false;
-                    var sawNonTagsOverrideProperty = false;
-                    var changesBase = false;
-                    foreach (var prop in overrideRoot.EnumerateObject()) {
-                        if (prop.NameEquals("id")) {
-                            continue;
-                        }
-
-                        switch (prop.Name) {
+                    switch (prop.Name) {
                         case "title": {
                             sawSupportedOverrideProperty = true;
                             sawNonTagsOverrideProperty = true;
-                        if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
-                            throw new Exception($"{id} override title must be a string");
-                        }
-                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override title must be a string");
-                        AssertEqual(expected, effective.Title, $"{id} override title applied");
-                        if (!string.Equals(expected, baseRule.Title, StringComparison.Ordinal)) {
-                            changesBase = true;
-                        }
-                        break;
-                    }
-                    case "description": {
-                        sawSupportedOverrideProperty = true;
-                        sawNonTagsOverrideProperty = true;
-                        if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
-                            throw new Exception($"{id} override description must be a string");
-                        }
-                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override description must be a string");
-                        AssertEqual(expected, effective.Description, $"{id} override description applied");
-                        if (!string.Equals(expected, baseRule.Description, StringComparison.Ordinal)) {
-                            changesBase = true;
-                        }
-                        break;
-                    }
-                    case "type": {
-                        sawSupportedOverrideProperty = true;
-                        sawNonTagsOverrideProperty = true;
-                        if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
-                            throw new Exception($"{id} override type must be a string");
-                        }
-                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override type must be a string");
-                        AssertEqual(expected, effective.Type, $"{id} override type applied");
-                        if (!string.Equals(expected, baseRule.Type, StringComparison.Ordinal)) {
-                            changesBase = true;
-                        }
-                        break;
-                    }
-                    case "category": {
-                        sawSupportedOverrideProperty = true;
-                        sawNonTagsOverrideProperty = true;
-                        if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
-                            throw new Exception($"{id} override category must be a string");
-                        }
-                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override category must be a string");
-                        AssertEqual(expected, effective.Category, $"{id} override category applied");
-                        if (!string.Equals(expected, baseRule.Category, StringComparison.Ordinal)) {
-                            changesBase = true;
-                        }
-                        break;
-                    }
-                    case "defaultSeverity": {
-                        sawSupportedOverrideProperty = true;
-                        sawNonTagsOverrideProperty = true;
-                        if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
-                            throw new Exception($"{id} override defaultSeverity must be a string");
-                        }
-                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override defaultSeverity must be a string");
-                        AssertEqual(expected, effective.DefaultSeverity, $"{id} override defaultSeverity applied");
-                        if (!string.Equals(expected, baseRule.DefaultSeverity, StringComparison.Ordinal)) {
-                            changesBase = true;
-                        }
-                        break;
-                    }
-                    case "docs": {
-                        sawSupportedOverrideProperty = true;
-                        sawNonTagsOverrideProperty = true;
-                        if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
-                            throw new Exception($"{id} override docs must be a string");
-                        }
-                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override docs must be a string");
-                        AssertEqual(expected, effective.Docs, $"{id} override docs applied");
-                        if (!string.Equals(expected, baseRule.Docs, StringComparison.Ordinal)) {
-                            changesBase = true;
-                        }
-                        break;
-                    }
-                    case "tags": {
-                        sawSupportedOverrideProperty = true;
-                        static IReadOnlyList<string> MergeTags(IReadOnlyList<string> existing, IReadOnlyList<string> overrides) {
-                            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                            var merged = new List<string>();
-                            foreach (var tag in existing ?? Array.Empty<string>()) {
-                                if (string.IsNullOrWhiteSpace(tag)) {
-                                    continue;
-                                }
-                                var value = tag.Trim();
-                                if (set.Add(value)) {
-                                    merged.Add(value);
-                                }
+                            if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
+                                throw new Exception($"{id} override title must be a string");
                             }
-                            foreach (var tag in overrides ?? Array.Empty<string>()) {
-                                if (string.IsNullOrWhiteSpace(tag)) {
-                                    continue;
-                                }
-                                var value = tag.Trim();
-                                if (set.Add(value)) {
-                                    merged.Add(value);
-                                }
+                            var expected = prop.Value.GetString() ?? throw new Exception($"{id} override title must be a string");
+                            AssertEqual(expected, effective.Title, $"{id} override title applied");
+                            if (!string.Equals(expected, baseRule.Title, StringComparison.Ordinal)) {
+                                changesBase = true;
                             }
-                            return merged;
+                            break;
                         }
+                        case "description": {
+                            sawSupportedOverrideProperty = true;
+                            sawNonTagsOverrideProperty = true;
+                            if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
+                                throw new Exception($"{id} override description must be a string");
+                            }
+                            var expected = prop.Value.GetString() ?? throw new Exception($"{id} override description must be a string");
+                            AssertEqual(expected, effective.Description, $"{id} override description applied");
+                            if (!string.Equals(expected, baseRule.Description, StringComparison.Ordinal)) {
+                                changesBase = true;
+                            }
+                            break;
+                        }
+                        case "type": {
+                            sawSupportedOverrideProperty = true;
+                            sawNonTagsOverrideProperty = true;
+                            if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
+                                throw new Exception($"{id} override type must be a string");
+                            }
+                            var expected = prop.Value.GetString() ?? throw new Exception($"{id} override type must be a string");
+                            AssertEqual(expected, effective.Type, $"{id} override type applied");
+                            if (!string.Equals(expected, baseRule.Type, StringComparison.Ordinal)) {
+                                changesBase = true;
+                            }
+                            break;
+                        }
+                        case "category": {
+                            sawSupportedOverrideProperty = true;
+                            sawNonTagsOverrideProperty = true;
+                            if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
+                                throw new Exception($"{id} override category must be a string");
+                            }
+                            var expected = prop.Value.GetString() ?? throw new Exception($"{id} override category must be a string");
+                            AssertEqual(expected, effective.Category, $"{id} override category applied");
+                            if (!string.Equals(expected, baseRule.Category, StringComparison.Ordinal)) {
+                                changesBase = true;
+                            }
+                            break;
+                        }
+                        case "defaultSeverity": {
+                            sawSupportedOverrideProperty = true;
+                            sawNonTagsOverrideProperty = true;
+                            if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
+                                throw new Exception($"{id} override defaultSeverity must be a string");
+                            }
+                            var expected = prop.Value.GetString() ?? throw new Exception($"{id} override defaultSeverity must be a string");
+                            AssertEqual(expected, effective.DefaultSeverity, $"{id} override defaultSeverity applied");
+                            if (!string.Equals(expected, baseRule.DefaultSeverity, StringComparison.Ordinal)) {
+                                changesBase = true;
+                            }
+                            break;
+                        }
+                        case "docs": {
+                            sawSupportedOverrideProperty = true;
+                            sawNonTagsOverrideProperty = true;
+                            if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
+                                throw new Exception($"{id} override docs must be a string");
+                            }
+                            var expected = prop.Value.GetString() ?? throw new Exception($"{id} override docs must be a string");
+                            AssertEqual(expected, effective.Docs, $"{id} override docs applied");
+                            if (!string.Equals(expected, baseRule.Docs, StringComparison.Ordinal)) {
+                                changesBase = true;
+                            }
+                            break;
+                        }
+                        case "tags": {
+                            sawSupportedOverrideProperty = true;
 
-                        AssertEqual(System.Text.Json.JsonValueKind.Array, prop.Value.ValueKind, $"{id} override tags is array");
-                        var overrideTags = prop.Value.EnumerateArray()
-                            .Select(x => x.ValueKind == System.Text.Json.JsonValueKind.String
-                                ? x.GetString()!
-                                : throw new Exception($"{id} override tags entries must be strings"))
-                            .ToArray();
+                            static IReadOnlyList<string> MergeTags(IReadOnlyList<string> existing, IReadOnlyList<string> overrides) {
+                                var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                                var merged = new List<string>();
+                                foreach (var tag in existing ?? Array.Empty<string>()) {
+                                    if (string.IsNullOrWhiteSpace(tag)) {
+                                        continue;
+                                    }
+                                    var value = tag.Trim();
+                                    if (set.Add(value)) {
+                                        merged.Add(value);
+                                    }
+                                }
+                                foreach (var tag in overrides ?? Array.Empty<string>()) {
+                                    if (string.IsNullOrWhiteSpace(tag)) {
+                                        continue;
+                                    }
+                                    var value = tag.Trim();
+                                    if (set.Add(value)) {
+                                        merged.Add(value);
+                                    }
+                                }
+                                return merged;
+                            }
 
-                        var expectedMerged = MergeTags(baseRule.Tags ?? Array.Empty<string>(), overrideTags);
-                        var expectedSet = new HashSet<string>(expectedMerged, StringComparer.OrdinalIgnoreCase);
-                        var actualSet = new HashSet<string>(effective.Tags ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
-                        AssertEqual(expectedSet.Count, actualSet.Count, $"{id} merged tag count matches");
-                        foreach (var tag in expectedSet) {
-                            AssertEqual(true, actualSet.Contains(tag), $"{id} merged tags contains '{tag}'");
+                            AssertEqual(System.Text.Json.JsonValueKind.Array, prop.Value.ValueKind, $"{id} override tags is array");
+                            var overrideTags = prop.Value.EnumerateArray()
+                                .Select(x => x.ValueKind == System.Text.Json.JsonValueKind.String
+                                    ? x.GetString()!
+                                    : throw new Exception($"{id} override tags entries must be strings"))
+                                .ToArray();
+
+                            var expectedMerged = MergeTags(baseRule.Tags ?? Array.Empty<string>(), overrideTags);
+                            var expectedSet = new HashSet<string>(expectedMerged, StringComparer.OrdinalIgnoreCase);
+                            var actualSet = new HashSet<string>(effective.Tags ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+                            AssertEqual(expectedSet.Count, actualSet.Count, $"{id} merged tag count matches");
+                            foreach (var tag in expectedSet) {
+                                AssertEqual(true, actualSet.Contains(tag), $"{id} merged tags contains '{tag}'");
+                            }
+                            var baseSet = new HashSet<string>(baseRule.Tags ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+                            if (!baseSet.SetEquals(actualSet)) {
+                                changesBase = true;
+                            }
+                            break;
                         }
-                        var baseSet = new HashSet<string>(baseRule.Tags ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
-                        if (!baseSet.SetEquals(actualSet)) {
-                            changesBase = true;
-                        }
-                        break;
-                    }
                         default:
                             // Production currently ignores unknown override properties; fail fast in tests so typos
                             // (e.g., "defualtSeverity") don't silently make overrides ineffective.
                             throw new Exception($"{id} override has unsupported property '{prop.Name}'.");
                     }
-                    }
-
-                    AssertEqual(true, sawSupportedOverrideProperty, $"{id} override has at least one supported property besides id");
-                    if (sawNonTagsOverrideProperty) {
-                        AssertEqual(true, changesBase, $"{id} override must change the effective rule vs base (otherwise delete the override)");
-                    } else {
-                        AssertEqual(true, changesBase, $"{id} tags-only override must change effective tags vs base (otherwise delete the override)");
-                    }
                 }
-            } finally {
-                // Best-effort cleanup: this can be flaky on Windows CI due to transient file locks.
-                for (var attempt = 0; attempt < 3; attempt++) {
-                    try {
-                        if (!Directory.Exists(emptyOverridesRoot)) {
-                            break;
-                        }
-                        Directory.Delete(emptyOverridesRoot, true);
+
+                AssertEqual(true, sawSupportedOverrideProperty, $"{id} override has at least one supported property besides id");
+                if (sawNonTagsOverrideProperty) {
+                    AssertEqual(true, changesBase, $"{id} override must change the effective rule vs base (otherwise delete the override)");
+                } else {
+                    AssertEqual(true, changesBase, $"{id} tags-only override must change effective tags vs base (otherwise delete the override)");
+                }
+            }
+        } finally {
+            // Best-effort cleanup: this can be flaky on Windows CI due to transient file locks.
+            for (var attempt = 0; attempt < 3; attempt++) {
+                try {
+                    if (!Directory.Exists(emptyOverridesRoot)) {
                         break;
-                    } catch {
-                        if (attempt == 2) {
-                            break;
-                        }
-                        System.Threading.Thread.Sleep(50);
                     }
+                    Directory.Delete(emptyOverridesRoot, true);
+                    break;
+                } catch {
+                    if (attempt == 2) {
+                        break;
+                    }
+                    System.Threading.Thread.Sleep(50);
                 }
             }
         }
+    }
 
-    private static void TestAnalysisCatalogPowerShellDocsLinksMatchLearnPattern() {
+private static void TestAnalysisCatalogPowerShellDocsLinksMatchLearnPattern() {
         var workspace = ResolveWorkspaceRoot();
         var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
 
