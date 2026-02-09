@@ -49,8 +49,20 @@ internal static class GitCli {
             } catch {
                 // ignore
             }
-            var message = $"git command timed out after {effectiveTimeout.TotalSeconds:0}s.";
-            return (124, string.Empty, message);
+            return (124, string.Empty, $"git command timed out after {effectiveTimeout.TotalSeconds:0}s.");
+        } catch (Exception ex) {
+            try {
+                proc.Kill(entireProcessTree: true);
+            } catch {
+                // ignore
+            }
+            return (125, string.Empty, ex.Message);
+        } finally {
+            try {
+                await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+            } catch {
+                // ignore
+            }
         }
 
         return (proc.ExitCode, SafeTaskResult(stdoutTask), SafeTaskResult(stderrTask));

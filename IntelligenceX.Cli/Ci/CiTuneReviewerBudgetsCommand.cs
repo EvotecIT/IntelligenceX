@@ -115,6 +115,9 @@ internal static class CiTuneReviewerBudgetsCommand {
             }
             delimiter = $"IX_{Guid.NewGuid():N}";
         }
+        if (value.Contains(delimiter, StringComparison.Ordinal)) {
+            throw new InvalidOperationException("Failed to find a safe GitHub env-file delimiter.");
+        }
         writer.Write(key);
         writer.Write("<<");
         writer.WriteLine(delimiter);
