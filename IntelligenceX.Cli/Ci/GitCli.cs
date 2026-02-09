@@ -46,6 +46,7 @@ internal static class GitCli {
         using var cts = new CancellationTokenSource(effectiveTimeout);
         try {
             await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
+            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
         } catch (OperationCanceledException) {
             try {
                 proc.Kill(entireProcessTree: true);

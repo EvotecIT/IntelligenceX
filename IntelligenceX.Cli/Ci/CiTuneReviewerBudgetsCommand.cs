@@ -22,12 +22,15 @@ internal static class CiTuneReviewerBudgetsCommand {
             return Task.FromResult(1);
         }
 
-        if (!File.Exists(options.ChangedFilesPath!)) {
-            Console.WriteLine($"No changed-files file found at {options.ChangedFilesPath}; leaving budgets unchanged.");
+        var changedFilesPath = Path.IsPathRooted(options.ChangedFilesPath!)
+            ? options.ChangedFilesPath!
+            : Path.GetFullPath(options.ChangedFilesPath!);
+        if (!File.Exists(changedFilesPath)) {
+            Console.WriteLine($"No changed-files file found at {changedFilesPath}; leaving budgets unchanged.");
             return Task.FromResult(0);
         }
 
-        var lines = File.ReadAllLines(options.ChangedFilesPath!)
+        var lines = File.ReadAllLines(changedFilesPath)
             .Select(value => (value ?? string.Empty).Trim())
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .ToArray();
