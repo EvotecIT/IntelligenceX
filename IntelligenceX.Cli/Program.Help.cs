@@ -15,6 +15,7 @@ internal static partial class Program {
         Console.WriteLine("  intelligencex auth <command>");
         Console.WriteLine("  intelligencex reviewer run [options]");
         Console.WriteLine("  intelligencex analyze <command>");
+        Console.WriteLine("  intelligencex ci <command>");
         Console.WriteLine("  intelligencex setup [options]");
         Console.WriteLine("  intelligencex setup wizard [options]");
         Console.WriteLine("  intelligencex setup web [url]");
@@ -31,6 +32,9 @@ internal static partial class Program {
         // Keep analyze subcommand help in a single place: `intelligencex analyze --help`.
         Console.WriteLine("Analyze:");
         Console.WriteLine("  analyze  Static analysis commands (run `intelligencex analyze --help` for subcommands)");
+        Console.WriteLine();
+        Console.WriteLine("CI:");
+        Console.WriteLine("  ci       Workflow helper commands (run `intelligencex ci --help` for subcommands)");
         Console.WriteLine();
         Console.WriteLine("Reviewer commands:");
         Console.WriteLine("  reviewer run     Run reviewer using GitHub event payload or inputs");
