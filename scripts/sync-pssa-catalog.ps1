@@ -16,6 +16,67 @@ function Resolve-FullPath([string]$path) {
     return [System.IO.Path]::GetFullPath($resolved)
 }
 
+function Escape-JsonString([string]$value) {
+    if ($null -eq $value) { return '' }
+    $sb = New-Object System.Text.StringBuilder
+    foreach ($ch in $value.ToCharArray()) {
+        $code = [int][char]$ch
+        switch ($ch) {
+            '"' { [void]$sb.Append('\\"'); continue }
+            '\' { [void]$sb.Append('\\\\'); continue }
+            "`b" { [void]$sb.Append('\\b'); continue }
+            "`f" { [void]$sb.Append('\\f'); continue }
+            "`n" { [void]$sb.Append('\\n'); continue }
+            "`r" { [void]$sb.Append('\\r'); continue }
+            "`t" { [void]$sb.Append('\\t'); continue }
+        }
+        if ($code -lt 0x20) {
+            [void]$sb.Append(("\\u{0:x4}" -f $code))
+            continue
+        }
+        [void]$sb.Append($ch)
+    }
+    return $sb.ToString()
+}
+
+function Convert-OrderedToDeterministicJson([System.Collections.IDictionary]$obj) {
+    if ($null -eq $obj) { throw 'JSON object cannot be null' }
+
+    $keys = @($obj.Keys)
+    $lines = New-Object System.Collections.Generic.List[string]
+    [void]$lines.Add('{')
+    for ($i = 0; $i -lt $keys.Count; $i++) {
+        $key = [string]$keys[$i]
+        $value = $obj[$key]
+        $comma = if ($i -lt ($keys.Count - 1)) { ',' } else { '' }
+
+        if ($value -is [System.Array]) {
+            [void]$lines.Add(('  "{0}": [' -f (Escape-JsonString $key)))
+            $arr = @($value)
+            for ($j = 0; $j -lt $arr.Count; $j++) {
+                $itemComma = if ($j -lt ($arr.Count - 1)) { ',' } else { '' }
+                $item = [string]$arr[$j]
+                [void]$lines.Add(('    "{0}"{1}' -f (Escape-JsonString $item), $itemComma))
+            }
+            [void]$lines.Add(('  ]{0}' -f $comma))
+            continue
+        }
+
+        if ($null -eq $value) {
+            [void]$lines.Add(('  "{0}": null{1}' -f (Escape-JsonString $key), $comma))
+            continue
+        }
+
+        if ($value -isnot [string]) {
+            throw ("Unsupported JSON value type for key '{0}': {1}" -f $key, $value.GetType().FullName)
+        }
+
+        [void]$lines.Add(('  "{0}": "{1}"{2}' -f (Escape-JsonString $key), (Escape-JsonString $value), $comma))
+    }
+    [void]$lines.Add('}')
+    return ($lines -join "`n")
+}
+
 $module = Get-Module -ListAvailable -Name PSScriptAnalyzer |
     Sort-Object Version -Descending |
     Select-Object -First 1
@@ -117,14 +178,26 @@ if ($module.Path) {
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 
 $intendedOutDir = [System.IO.Path]::GetFullPath((Join-Path -Path $workspaceRoot -ChildPath (Join-Path -Path 'Analysis' -ChildPath (Join-Path -Path 'Catalog' -ChildPath (Join-Path -Path 'rules' -ChildPath 'powershell')))))
-$resolvedOutDir = Resolve-FullPath $OutDir
+try {
+    $resolvedOutDir = Resolve-FullPath $OutDir
+} catch {
+    throw ("Failed to resolve OutDir '{0}': {1}" -f $OutDir, $_.Exception.Message)
+}
 $resolvedIntendedOutDir = $intendedOutDir
 if (Test-Path -LiteralPath $intendedOutDir) {
-    $resolvedIntendedOutDir = Resolve-FullPath $intendedOutDir
+    try {
+        $resolvedIntendedOutDir = Resolve-FullPath $intendedOutDir
+    } catch {
+        throw ("Failed to resolve intended OutDir '{0}': {1}" -f $intendedOutDir, $_.Exception.Message)
+    }
 }
 
 # Even with -ForcePrune, never allow pruning outside the repo workspace.
-$workspaceFull = Resolve-FullPath $workspaceRoot
+try {
+    $workspaceFull = Resolve-FullPath $workspaceRoot
+} catch {
+    throw ("Failed to resolve workspace root '{0}': {1}" -f $workspaceRoot, $_.Exception.Message)
+}
 $workspaceTrim = $workspaceFull.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
 $workspacePrefix = $workspaceTrim + [System.IO.Path]::DirectorySeparatorChar
 $isUnderWorkspace =
@@ -321,12 +394,17 @@ foreach ($rule in $rules) {
     }
     if ($docs) { $obj.docs = $docs }
 
-    $json = $obj | ConvertTo-Json -Depth 6
+    $json = Convert-OrderedToDeterministicJson $obj
     Write-FileUtf8NoBomLf $path $json
 }
 
 # Delete stale rule files so the repo doesn't accumulate orphaned rules over time.
-$existingRuleFiles = @(Get-ChildItem -LiteralPath $OutDir -Filter '*.json' -File -ErrorAction SilentlyContinue)
+$existingRuleFiles = @()
+try {
+    $existingRuleFiles = @(Get-ChildItem -LiteralPath $OutDir -Filter '*.json' -File -ErrorAction Stop)
+} catch {
+    throw ("Failed to enumerate existing rule JSON files in OutDir '{0}': {1}" -f $OutDir, $_.Exception.Message)
+}
 $staleRuleFiles = @()
 foreach ($file in $existingRuleFiles) {
     $id = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
@@ -342,9 +420,13 @@ if ($resolvedOutDir.Equals($resolvedIntendedOutDir, $pathComparison)) {
     $catalogRoot = Split-Path -Parent $rulesRoot
     $overridesDir = Join-Path -Path $catalogRoot -ChildPath (Join-Path -Path 'overrides' -ChildPath 'powershell')
     if (Test-Path -LiteralPath $overridesDir) {
-        foreach ($file in @(Get-ChildItem -LiteralPath $overridesDir -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
-            $id = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
-            if ($id -and -not $ruleIdSet.Contains($id)) { $staleOverrideFiles += $file }
+        try {
+            foreach ($file in @(Get-ChildItem -LiteralPath $overridesDir -Filter '*.json' -File -ErrorAction Stop)) {
+                $id = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
+                if ($id -and -not $ruleIdSet.Contains($id)) { $staleOverrideFiles += $file }
+            }
+        } catch {
+            throw ("Failed to enumerate override JSON files in '{0}': {1}" -f $overridesDir, $_.Exception.Message)
         }
     }
 } elseif ($PruneStale) {
