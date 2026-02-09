@@ -216,11 +216,21 @@ if (-not ($trustedBase -or $trustedSig)) {
     }
 }
 
-# Import by module name + pinned version, then verify the imported module matches the one we inspected above.
-# This avoids path-based imports while still defending against module shadowing.
-Import-Module -Name PSScriptAnalyzer -RequiredVersion $module.Version -ErrorAction Stop
+# Import by explicit manifest/module path after trust checks to avoid module shadowing via PSModulePath.
+# (Importing by name/version can still resolve to a different module first, executing attacker code on import.)
+if (-not $module.Path) {
+    throw ("PSScriptAnalyzer module path is missing for version {0}. Cannot import safely." -f $module.Version)
+}
+try {
+    # If the module is already loaded, remove it so we import the inspected instance.
+    Remove-Module -Name PSScriptAnalyzer -Force -ErrorAction SilentlyContinue
+} catch {
+    # Ignore removal errors; Import-Module by explicit path will still fail if the session can't load it.
+}
+Import-Module -Name $module.Path -ErrorAction Stop
+$expectedPathNorm = Get-NormalizedPath $module.Path
 $imported = Get-Module -Name PSScriptAnalyzer -ErrorAction Stop |
-    Where-Object { $_.Version -eq $module.Version } |
+    Where-Object { $_.Version -eq $module.Version -and $_.Path -and (Get-NormalizedPath $_.Path).Equals($expectedPathNorm, $pathComparison) } |
     Select-Object -First 1
 if (-not $imported) {
     throw ("Failed to import PSScriptAnalyzer {0}." -f $module.Version)
