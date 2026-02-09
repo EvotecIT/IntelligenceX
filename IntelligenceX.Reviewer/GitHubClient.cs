@@ -503,8 +503,7 @@ internal sealed partial class GitHubClient : IDisposable {
                 }
                 return JsonLite.Parse(content) ?? JsonValue.Null;
             }
-            // Unreachable.
-            return JsonValue.Null;
+            throw new InvalidOperationException($"GitHub API request failed (GET {url}) after {DefaultRetryAttempts} attempts.");
         }, cancellationToken).ConfigureAwait(false);
     }
 
