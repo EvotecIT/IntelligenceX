@@ -96,9 +96,11 @@ internal static class CiChangedFilesCommand {
         if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(root)) {
             return false;
         }
-        var normalizedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var fullPath = Path.GetFullPath(path);
+        var fullRoot = Path.GetFullPath(root);
+        var normalizedRoot = fullRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        return path.StartsWith(normalizedRoot, comparison);
+        return fullPath.StartsWith(normalizedRoot, comparison);
     }
 
     private static async Task<(bool Success, List<string> Lines, string Message)> TryComputeChangedFilesAsync(string workspace, string? baseRev, string? headRev) {

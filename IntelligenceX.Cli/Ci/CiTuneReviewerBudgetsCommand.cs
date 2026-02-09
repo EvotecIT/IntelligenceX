@@ -22,9 +22,8 @@ internal static class CiTuneReviewerBudgetsCommand {
             return Task.FromResult(1);
         }
 
-        var changedFilesPath = Path.IsPathRooted(options.ChangedFilesPath!)
-            ? options.ChangedFilesPath!
-            : Path.GetFullPath(options.ChangedFilesPath!);
+        var workspaceRoot = ResolveWorkspaceRoot();
+        var changedFilesPath = ResolvePathWithinWorkspace(workspaceRoot, options.ChangedFilesPath!);
         if (!File.Exists(changedFilesPath)) {
             Console.WriteLine($"No changed-files file found at {changedFilesPath}; leaving budgets unchanged.");
             return Task.FromResult(0);
@@ -50,7 +49,10 @@ internal static class CiTuneReviewerBudgetsCommand {
             return Task.FromResult(0);
         }
 
-        var envTarget = ResolveEnvTarget(options.OutEnv);
+        if (!TryResolveEnvTarget(workspaceRoot, options.OutEnv, out var envTarget, out var envError)) {
+            Console.Error.WriteLine(envError);
+            return Task.FromResult(1);
+        }
         if (string.IsNullOrWhiteSpace(envTarget)) {
             Console.WriteLine("Detected large diff but no environment file available (GITHUB_ENV not set and --out-env not provided).");
             return Task.FromResult(0);
@@ -66,25 +68,87 @@ internal static class CiTuneReviewerBudgetsCommand {
         return Task.FromResult(0);
     }
 
-    private static string? ResolveEnvTarget(string? outEnv) {
-        var candidate = !string.IsNullOrWhiteSpace(outEnv)
-            ? outEnv
-            : Environment.GetEnvironmentVariable("GITHUB_ENV");
+    private static bool TryResolveEnvTarget(string workspaceRoot, string? outEnv, out string? envPath, out string error) {
+        envPath = null;
+        error = string.Empty;
+
+        var defaultEnv = Environment.GetEnvironmentVariable("GITHUB_ENV");
+        var candidate = !string.IsNullOrWhiteSpace(outEnv) ? outEnv : defaultEnv;
         if (string.IsNullOrWhiteSpace(candidate)) {
-            return null;
+            return true;
         }
-        if (candidate.Contains('\n') || candidate.Contains('\r')) {
-            return null;
+        if (candidate.Contains('\n') || candidate.Contains('\r') || candidate.Contains('\0')) {
+            error = "Invalid env-file path.";
+            return false;
         }
+
+        var resolvedCandidate = ResolvePathWithinWorkspace(workspaceRoot, candidate);
+
+        // If the workflow explicitly provides --out-env, treat it as a sharp edge and restrict where it can write.
+        // Allow exactly $GITHUB_ENV (even if outside workspace), otherwise require it to be under the workspace root.
+        if (!string.IsNullOrWhiteSpace(outEnv)) {
+            var matchesGitHubEnv = false;
+            if (!string.IsNullOrWhiteSpace(defaultEnv) && !defaultEnv.Contains('\n') && !defaultEnv.Contains('\r') && !defaultEnv.Contains('\0')) {
+                try {
+                    var fullDefault = Path.GetFullPath(defaultEnv);
+                    matchesGitHubEnv = PathsEqual(resolvedCandidate, fullDefault);
+                } catch {
+                    matchesGitHubEnv = false;
+                }
+            }
+            if (!matchesGitHubEnv && !IsUnderRoot(resolvedCandidate, workspaceRoot)) {
+                error = $"Env-file output path must be within the workspace (or equal to $GITHUB_ENV). out-env={resolvedCandidate} workspace={workspaceRoot}";
+                return false;
+            }
+        }
+
         try {
-            var dir = Path.GetDirectoryName(candidate);
+            var dir = Path.GetDirectoryName(resolvedCandidate);
             if (!string.IsNullOrWhiteSpace(dir)) {
                 Directory.CreateDirectory(dir);
             }
-        } catch {
-            return null;
+        } catch (Exception ex) {
+            error = $"Failed to prepare env-file output path: {ex.Message}";
+            return false;
         }
-        return candidate;
+
+        envPath = resolvedCandidate;
+        return true;
+    }
+
+    private static string ResolveWorkspaceRoot() {
+        var workspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        var candidate = string.IsNullOrWhiteSpace(workspace) ? Environment.CurrentDirectory : workspace!;
+        try {
+            return Path.GetFullPath(candidate);
+        } catch {
+            return Path.GetFullPath(Environment.CurrentDirectory);
+        }
+    }
+
+    private static string ResolvePathWithinWorkspace(string workspaceRoot, string path) {
+        if (Path.IsPathRooted(path)) {
+            return Path.GetFullPath(path);
+        }
+        return Path.GetFullPath(Path.Combine(workspaceRoot, path));
+    }
+
+    private static bool IsUnderRoot(string path, string root) {
+        if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(root)) {
+            return false;
+        }
+        var fullPath = Path.GetFullPath(path);
+        var fullRoot = Path.GetFullPath(root);
+        var normalizedRoot = fullRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        return fullPath.StartsWith(normalizedRoot, comparison);
+    }
+
+    private static bool PathsEqual(string left, string right) {
+        var normalizedLeft = Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var normalizedRight = Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        return string.Equals(normalizedLeft, normalizedRight, comparison);
     }
 
     private static bool TryWriteEnvLines(string path, (string Key, string Value) first, (string Key, string Value) second, out string error) {
