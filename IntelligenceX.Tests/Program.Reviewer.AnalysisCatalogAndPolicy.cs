@@ -309,6 +309,7 @@ internal static partial class Program {
 
     private static void TestAnalysisCatalogPowerShellOverridesApply() {
         var workspace = ResolveWorkspaceRoot();
+        // Hermetic: validates checked-in catalog JSON/overrides only (does not invoke PSScriptAnalyzer or the sync script).
         var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
 
         var rulesDir = Path.Combine(workspace, "Analysis", "Catalog", "rules", "powershell");
@@ -461,7 +462,9 @@ internal static partial class Program {
                         case "tags": {
                             sawSupportedOverrideProperty = true;
 
-                            static IReadOnlyList<string> MergeTags(IReadOnlyList<string> existing, IReadOnlyList<string> overrides) {
+                            static System.Collections.Generic.IReadOnlyList<string> MergeTags(
+                                System.Collections.Generic.IReadOnlyList<string> existing,
+                                System.Collections.Generic.IReadOnlyList<string> overrides) {
                                 var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                                 var merged = new List<string>();
                                 foreach (var tag in existing ?? Array.Empty<string>()) {
@@ -529,11 +532,14 @@ internal static partial class Program {
                     Directory.Delete(emptyOverridesRoot, true);
                     break;
                 } catch {
-                    if (attempt == 2) {
-                        break;
+                    if (attempt < 2) {
+                        System.Threading.Thread.Sleep(50);
+                        continue;
                     }
-                    System.Threading.Thread.Sleep(50);
                 }
+            }
+            if (Directory.Exists(emptyOverridesRoot)) {
+                System.Console.Error.WriteLine("Warning: failed to delete temp overrides directory: " + emptyOverridesRoot);
             }
         }
     }
