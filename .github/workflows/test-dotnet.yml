@@ -23,7 +23,7 @@ jobs:
         name: 'Windows'
         # While the repo is private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
         # When public, use GitHub-hosted runners by default.
-        runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","windows"]' || '["windows-latest"]') }}
+        runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","Windows"]' || '["windows-latest"]') }}
         timeout-minutes: 20
         steps:
             - name: Checkout code
@@ -122,7 +122,7 @@ jobs:
         name: 'macOS'
         # While the repo is private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
         # When public, use GitHub-hosted runners by default.
-        runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","macos"]' || '["macos-latest"]') }}
+        runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","macOS"]' || '["macos-latest"]') }}
         timeout-minutes: 20
         steps:
             - name: Checkout code
