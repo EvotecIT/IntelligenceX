@@ -185,23 +185,18 @@ internal static class CiTuneReviewerBudgetsCommand {
         }
 
         try {
-            // Write to $GITHUB_ENV in a way that's robust to:
-            // - missing trailing newlines in the file
-            // - concurrent writers (interprocess)
-            using var stream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-            if (stream.Length > 0) {
-                stream.Seek(-1, SeekOrigin.End);
-                var lastByte = stream.ReadByte();
-                if (lastByte != '\n') {
-                    stream.Seek(0, SeekOrigin.End);
-                    stream.WriteByte((byte)'\n');
-                }
-            }
-            stream.Seek(0, SeekOrigin.End);
-            using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), bufferSize: 1024, leaveOpen: true);
-            WriteGitHubEnvEntry(writer, first.Key, first.Value);
-            WriteGitHubEnvEntry(writer, second.Key, second.Value);
-            writer.Flush();
+            // Best-effort robustness:
+            // - Always start with a newline boundary (safe even if the file already ends with one).
+            // - Append in a single write to reduce interleaving risk with other writers.
+            var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+            using var buffer = new StringWriter(System.Globalization.CultureInfo.InvariantCulture) { NewLine = "\n" };
+            buffer.WriteLine();
+            WriteGitHubEnvEntry(buffer, first.Key, first.Value);
+            WriteGitHubEnvEntry(buffer, second.Key, second.Value);
+            var bytes = encoding.GetBytes(buffer.ToString());
+
+            using var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+            stream.Write(bytes, 0, bytes.Length);
             stream.Flush();
             return true;
         } catch (Exception ex) {

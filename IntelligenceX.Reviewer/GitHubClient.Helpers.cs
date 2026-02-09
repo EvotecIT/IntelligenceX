@@ -39,11 +39,12 @@ internal sealed partial class GitHubClient {
         if (!uri.Host.EndsWith("github.com", StringComparison.OrdinalIgnoreCase)) {
             return string.Empty;
         }
-        if (segments.Length < 2) {
+        // Only accept the canonical repo URL shape: https://github.com/{owner}/{repo}
+        if (segments.Length != 2) {
             return string.Empty;
         }
-        var fallbackOwner = segments[^2].Trim();
-        var fallbackRepo = segments[^1].Trim();
+        var fallbackOwner = segments[0].Trim();
+        var fallbackRepo = segments[1].Trim();
         if (fallbackRepo.EndsWith(".git", StringComparison.OrdinalIgnoreCase)) {
             fallbackRepo = fallbackRepo[..^4];
         }
