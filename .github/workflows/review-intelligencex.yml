@@ -16,18 +16,14 @@ on:
 
 jobs:
   # INTELLIGENCEX:BEGIN
-  review:
+  analysis:
+    name: Static Analysis Gate
     # While the repo is private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
     # When public, use GitHub-hosted runners by default.
     runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
     permissions:
+      actions: write
       contents: read
-      pull-requests: write
-      issues: write
-      id-token: write
-    env:
-      INTELLIGENCEX_APP_ID: ${{ secrets.INTELLIGENCEX_GITHUB_APP_ID }}
-      INTELLIGENCEX_APP_KEY: ${{ secrets.INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,14 +34,6 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-
-      - name: Create GitHub App token
-        id: app_token
-        if: ${{ env.INTELLIGENCEX_APP_ID != '' && env.INTELLIGENCEX_APP_KEY != '' }}
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ env.INTELLIGENCEX_APP_ID }}
-          private-key: ${{ env.INTELLIGENCEX_APP_KEY }}
 
       - name: Validate analysis catalog
         run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze validate-catalog --workspace .
@@ -76,9 +64,61 @@ jobs:
           fi
           echo "Changed files: $(wc -l < artifacts/changed-files.txt)"
 
+      - name: Static analysis gate
+        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze gate --config .intelligencex/reviewer.json --workspace . --changed-files artifacts/changed-files.txt
+
+      - name: Check security hotspot state
+        if: always()
+        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze hotspots sync-state --config .intelligencex/reviewer.json --workspace . --check
+
+      - name: Upload analysis artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: ix-analysis
+          path: artifacts
+
+  review:
+    name: AI Review (Fail-Open)
+    needs: [analysis]
+    if: always()
+    # While the repo is private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
+    # When public, use GitHub-hosted runners by default.
+    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    env:
+      INTELLIGENCEX_APP_ID: ${{ secrets.INTELLIGENCEX_GITHUB_APP_ID }}
+      INTELLIGENCEX_APP_KEY: ${{ secrets.INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Download analysis artifacts
+        uses: actions/download-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: ix-analysis
+          path: artifacts
+
       - name: Tune reviewer budgets for large PRs
         if: ${{ github.event_name == 'pull_request' }}
         run: |
+          if [ ! -f artifacts/changed-files.txt ]; then
+            echo "No changed-files artifact found; using default reviewer budgets."
+            exit 0
+          fi
           changed="$(wc -l < artifacts/changed-files.txt | tr -d ' ')"
           catalog="$(grep -cE '^Analysis/Catalog/(rules|overrides)/' artifacts/changed-files.txt || true)"
           if [ "${changed:-0}" -gt 30 ] || [ "${catalog:-0}" -gt 10 ]; then
@@ -89,19 +129,13 @@ jobs:
             echo "Diff size within default limits (changed=${changed}, catalog=${catalog}); using defaults."
           fi
 
-      - name: Static analysis gate
-        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze gate --config .intelligencex/reviewer.json --workspace . --changed-files artifacts/changed-files.txt
-
-      - name: Check security hotspot state
-        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze hotspots sync-state --config .intelligencex/reviewer.json --workspace . --check
-
-      - name: Upload analysis artifacts
-        uses: actions/upload-artifact@v4
-        if: always()
-        continue-on-error: true
+      - name: Create GitHub App token
+        id: app_token
+        if: ${{ env.INTELLIGENCEX_APP_ID != '' && env.INTELLIGENCEX_APP_KEY != '' }}
+        uses: actions/create-github-app-token@v1
         with:
-          name: ix-analysis
-          path: artifacts/**
+          app-id: ${{ env.INTELLIGENCEX_APP_ID }}
+          private-key: ${{ env.INTELLIGENCEX_APP_KEY }}
 
       - name: Run reviewer
         env:
