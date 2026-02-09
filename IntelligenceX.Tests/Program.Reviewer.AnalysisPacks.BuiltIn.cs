@@ -43,5 +43,17 @@ internal static partial class Program {
             AssertEqual(true, catalog.TryGetRule(ruleId, out _), $"powershell-default rule exists: {ruleId}");
         }
     }
+
+    private static void TestAnalysisPacksPowerShell50ResolvesTo50Rules() {
+        var workspace = ResolveWorkspaceRoot();
+        var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
+
+        AssertEqual(true, catalog.Packs.ContainsKey("powershell-50"), "pack powershell-50 exists");
+
+        var settings = new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "powershell-50" } };
+        var policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(settings, catalog);
+        AssertEqual(50, policy.Rules.Count, "powershell-50 resolves to 50 rules");
+        AssertEqual(50, policy.SelectByLanguage("powershell").Count, "powershell-50 contains only PowerShell rules");
+    }
 }
 #endif
