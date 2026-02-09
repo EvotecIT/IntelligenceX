@@ -12,6 +12,8 @@ namespace IntelligenceX.OpenAI.Native;
 
 internal sealed partial class OpenAINativeTransport {
     private enum ToolWireFormat {
+        FunctionNestedParameters,
+        FunctionNestedInputSchema,
         CustomParameters,
         CustomInputSchema,
         FunctionFlatParameters,
@@ -24,7 +26,7 @@ internal sealed partial class OpenAINativeTransport {
     }
 
     private JsonObject BuildRequestBody(string model, IReadOnlyList<JsonObject> messages, string sessionId, ChatOptions options,
-        ToolWireFormat toolWireFormat = ToolWireFormat.CustomParameters) {
+        ToolWireFormat toolWireFormat = ToolWireFormat.FunctionNestedParameters) {
         var input = new JsonArray();
         foreach (var message in messages) {
             input.Add(message);
@@ -99,11 +101,19 @@ internal sealed partial class OpenAINativeTransport {
     private static object SerializeToolChoice(ToolChoice choice, ToolWireFormat toolWireFormat) {
         if (string.Equals(choice.Type, "custom", StringComparison.OrdinalIgnoreCase)) {
             var name = choice.Name ?? string.Empty;
-            var isFunctionWireFormat = toolWireFormat == ToolWireFormat.FunctionFlatParameters ||
+            var isFunctionWireFormat = toolWireFormat == ToolWireFormat.FunctionNestedParameters ||
+                                       toolWireFormat == ToolWireFormat.FunctionNestedInputSchema ||
+                                       toolWireFormat == ToolWireFormat.FunctionFlatParameters ||
                                        toolWireFormat == ToolWireFormat.FunctionFlatInputSchema;
             if (isFunctionWireFormat) {
-                // When falling back to function-style tools, forced tool choice must also be expressed as function-style.
-                // Using the standard OpenAI schema: { type: "function", function: { name: "..." } }.
+                // Forced tool choice must match the wire format used for tool definitions.
+                if (toolWireFormat == ToolWireFormat.FunctionFlatParameters ||
+                    toolWireFormat == ToolWireFormat.FunctionFlatInputSchema) {
+                    return new JsonObject()
+                        .Add("type", "function")
+                        .Add("name", name);
+                }
+
                 return new JsonObject()
                     .Add("type", "function")
                     .Add("function", new JsonObject().Add("name", name));
@@ -126,6 +136,21 @@ internal sealed partial class OpenAINativeTransport {
 
     private static JsonObject SerializeToolDefinition(ToolDefinition tool, ToolWireFormat toolWireFormat) {
         switch (toolWireFormat) {
+            case ToolWireFormat.FunctionNestedInputSchema:
+            case ToolWireFormat.FunctionNestedParameters: {
+                var function = new JsonObject()
+                    .Add("name", tool.Name);
+                if (!string.IsNullOrWhiteSpace(tool.Description)) {
+                    function.Add("description", tool.Description);
+                }
+                if (tool.Parameters is not null) {
+                    function.Add(toolWireFormat == ToolWireFormat.FunctionNestedInputSchema ? "input_schema" : "parameters", tool.Parameters);
+                }
+
+                return new JsonObject()
+                    .Add("type", "function")
+                    .Add("function", function);
+            }
             case ToolWireFormat.CustomInputSchema:
             case ToolWireFormat.CustomParameters: {
                 var obj = new JsonObject()
