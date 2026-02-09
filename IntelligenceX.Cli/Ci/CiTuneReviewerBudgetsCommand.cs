@@ -45,8 +45,9 @@ internal static class CiTuneReviewerBudgetsCommand {
                 continue;
             }
             changed++;
-            if (value.StartsWith("Analysis/Catalog/rules/", StringComparison.OrdinalIgnoreCase) ||
-                value.StartsWith("Analysis/Catalog/overrides/", StringComparison.OrdinalIgnoreCase)) {
+            var normalized = value.Replace('\\', '/');
+            if (normalized.StartsWith("Analysis/Catalog/rules/", StringComparison.OrdinalIgnoreCase) ||
+                normalized.StartsWith("Analysis/Catalog/overrides/", StringComparison.OrdinalIgnoreCase)) {
                 catalog++;
             }
         }
