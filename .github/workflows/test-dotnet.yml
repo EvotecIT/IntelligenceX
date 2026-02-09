@@ -76,7 +76,7 @@ jobs:
         name: 'Ubuntu'
         # While the repo is private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
         # When public, use GitHub-hosted runners by default.
-        runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux"]' || '["ubuntu-latest"]') }}
+        runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
         timeout-minutes: 20
         steps:
             - name: Checkout code
