@@ -109,6 +109,12 @@ internal static class CiTuneReviewerBudgetsCommand {
         // Use the documented env-file heredoc format to be robust to special characters and multiline values.
         // https://docs.github.com/actions/using-workflows/workflow-commands-for-github-actions#environment-files
         var delimiter = $"IX_{Guid.NewGuid():N}";
+        for (var i = 0; i < 5; i++) {
+            if (!value.Contains(delimiter, StringComparison.Ordinal)) {
+                break;
+            }
+            delimiter = $"IX_{Guid.NewGuid():N}";
+        }
         writer.Write(key);
         writer.Write("<<");
         writer.WriteLine(delimiter);
@@ -122,7 +128,7 @@ internal static class CiTuneReviewerBudgetsCommand {
             error = "Invalid env key.";
             return false;
         }
-        if (value is null || value.Contains('\n') || value.Contains('\r')) {
+        if (value is null || value.Contains('\0')) {
             error = "Invalid env value.";
             return false;
         }

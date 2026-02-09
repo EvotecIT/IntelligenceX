@@ -53,9 +53,10 @@ internal static class CiChangedFilesCommand {
         }
 
         // The downstream consumers of changed-files.txt are line-based; fail if the repo contains unsafe filenames.
+        // Note: git paths cannot contain NUL; `-z` uses NUL as the record separator.
         foreach (var value in lines) {
-            if (value.Contains('\n') || value.Contains('\r') || value.Contains('\0')) {
-                Console.Error.WriteLine("Changed-files contains a path with newline/CR/NUL characters, which is not representable in a line-delimited file.");
+            if (value.Contains('\n') || value.Contains('\r')) {
+                Console.Error.WriteLine("Changed-files contains a path with newline/CR characters, which is not representable in a line-delimited file.");
                 return 1;
             }
         }
