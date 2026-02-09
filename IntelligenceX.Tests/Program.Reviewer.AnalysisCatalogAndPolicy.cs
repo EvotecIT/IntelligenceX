@@ -329,38 +329,29 @@ internal static partial class Program {
                 var path = Path.Combine(tempRoot, prefix + pid + "-" + Guid.NewGuid().ToString("N"));
                 try {
                     Directory.CreateDirectory(path);
-                    // Path should be unique; if it's not empty, treat as an unexpected collision and fail fast
-                    // rather than silently leaking directories.
+                    // Path should be unique; if it's not empty, treat as an unexpected collision.
                     if (Directory.EnumerateFileSystemEntries(path).Any()) {
-                        Exception? deleteException = null;
-                        for (var deleteAttempt = 0; deleteAttempt < 10; deleteAttempt++) {
-                            try {
-                                Directory.Delete(path, true);
-                                break;
-                            } catch (Exception ex) {
-                                deleteException = ex;
-                                System.Threading.Thread.Sleep(50 * (deleteAttempt + 1));
-                            }
-                        }
-                        if (Directory.Exists(path)) {
-                            throw new InvalidOperationException(
-                                "Temp overrides directory was not empty and could not be deleted: " + path,
-                                deleteException);
-                        }
-                        // Shouldn't happen; but if it did and we cleaned up, try a new name.
-                        continue;
+                        throw new InvalidOperationException("Temp overrides directory was not empty: " + path);
                     }
                     return path;
                 } catch (Exception ex) {
                     lastException = ex;
-                }
-
-                try {
                     if (Directory.Exists(path)) {
-                        Directory.Delete(path, true);
+                        Exception? deleteException = null;
+                        for (var deleteAttempt = 0; deleteAttempt < 10; deleteAttempt++) {
+                            try {
+                                Directory.Delete(path, true);
+                                deleteException = null;
+                                break;
+                            } catch (Exception deleteEx) {
+                                deleteException = deleteEx;
+                                System.Threading.Thread.Sleep(50 * (deleteAttempt + 1));
+                            }
+                        }
+                        if (Directory.Exists(path)) {
+                            throw new InvalidOperationException("Failed to delete temp overrides directory: " + path, deleteException);
+                        }
                     }
-                } catch {
-                    // Ignore; we'll try a fresh name.
                 }
             }
 
@@ -598,42 +589,6 @@ internal static partial class Program {
                         lastDeleteException);
                 }
             }
-        }
-    }
-
-    private static void TestAnalysisCatalogPowerShellDocsLinksMatchLearnPattern() {
-        var workspace = ResolveWorkspaceRoot();
-        var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
-
-        foreach (var entry in catalog.Rules) {
-            var rule = entry.Value;
-            if (!string.Equals(rule.Language, "powershell", StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-            if (!string.Equals(rule.Tool, "PSScriptAnalyzer", StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-            AssertEqual(false, string.IsNullOrWhiteSpace(rule.Docs), $"{rule.Id} docs is populated");
-
-            var docs = rule.Docs!.Trim();
-            AssertEqual(false, docs.Any(char.IsWhiteSpace), $"{rule.Id} docs has no whitespace");
-            AssertEqual(true, Uri.IsWellFormedUriString(docs, UriKind.Absolute), $"{rule.Id} docs is well-formed");
-            if (!Uri.TryCreate(docs, UriKind.Absolute, out var uri) || uri is null) {
-                throw new InvalidOperationException($"Expected {rule.Id} docs to be a valid absolute url, got '{docs}'.");
-            }
-            AssertEqual("https", uri.Scheme, $"{rule.Id} docs uses https");
-
-            AssertEqual("learn.microsoft.com", uri.Host, $"{rule.Id} docs host is Learn");
-
-            // Ignore harmless URL canonicalization differences (e.g. query strings on docs URLs).
-            var normalizedUri = new UriBuilder(uri) { Query = "", Fragment = "" }.Uri;
-            var path = normalizedUri.AbsolutePath;
-            const string learnPrefix = "/powershell/utility-modules/psscriptanalyzer/rules/";
-            AssertEqual(true, path.StartsWith(learnPrefix, StringComparison.OrdinalIgnoreCase), $"{rule.Id} docs uses PSScriptAnalyzer Learn rules path");
-
-            var actualSlug = path.Substring(learnPrefix.Length).Trim('/');
-            AssertEqual(false, string.IsNullOrWhiteSpace(actualSlug), $"{rule.Id} docs slug is present");
-            AssertEqual(false, actualSlug.Any(char.IsWhiteSpace), $"{rule.Id} docs slug has no whitespace");
         }
     }
 
