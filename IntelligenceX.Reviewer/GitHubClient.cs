@@ -537,7 +537,7 @@ internal sealed partial class GitHubClient : IDisposable {
                     using (var content = new StringContent(json, Encoding.UTF8, "application/json"))
                     using (var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false)) {
                         var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                        if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, isGraphQl: true, out var delay)) {
+                        if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
                             if (TryScheduleRetry(retryBudgetStart, ref delay)) {
                                 await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                                 continue;
@@ -586,7 +586,7 @@ internal sealed partial class GitHubClient : IDisposable {
                     using (var content = new StringContent(json, Encoding.UTF8, "application/json"))
                     using (var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false)) {
                         var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                        if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
+                        if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, isGraphQl: true, out var delay)) {
                             if (TryScheduleRetry(retryBudgetStart, ref delay)) {
                                 await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                                 continue;
