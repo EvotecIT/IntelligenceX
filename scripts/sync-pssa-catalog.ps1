@@ -117,7 +117,7 @@ if (-not $module) {
 }
 
 # Avoid importing a module that is (accidentally or maliciously) located under the repo workspace.
-$workspaceRoot = (Resolve-Path (Join-Path -Path $PSScriptRoot -ChildPath '..')).Path
+$workspaceRoot = Get-NormalizedPath (Join-Path -Path $PSScriptRoot -ChildPath '..')
 if ($module.ModuleBase) {
     $root = Get-NormalizedPath $workspaceRoot
     $base = Get-NormalizedPath $module.ModuleBase

@@ -361,6 +361,11 @@ internal static partial class Program {
         string? emptyOverridesRoot = null;
         try {
             emptyOverridesRoot = CreateEmptyTempDirectory("ix-analysis-empty-overrides-");
+            var explicitOverridesRoot = Path.Combine(workspace, "Analysis", "Catalog", "overrides");
+            var effectiveCatalogFromPaths = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(
+                rulesRoot,
+                explicitOverridesRoot,
+                packsRoot);
             var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(
                 rulesRoot,
                 emptyOverridesRoot,
@@ -389,6 +394,13 @@ internal static partial class Program {
                 if (effective is null) {
                     throw new Exception($"{id} exists in catalog but is null");
                 }
+
+                AssertEqual(true, effectiveCatalogFromPaths.Rules.TryGetValue(id, out var effectiveFromPaths), $"{id} exists in explicit-overrides catalog");
+                if (effectiveFromPaths is null) {
+                    throw new Exception($"{id} exists in explicit-overrides catalog but is null");
+                }
+                AssertEqual(effective.Title, effectiveFromPaths.Title, $"{id} explicit-overrides title matches workspace loader");
+                AssertEqual(effective.Description, effectiveFromPaths.Description, $"{id} explicit-overrides description matches workspace loader");
 
                 AssertEqual(true, baseCatalog.Rules.TryGetValue(id, out var resolvedBase), $"{id} exists in base catalog");
                 var baseRule = resolvedBase ?? throw new Exception($"{id} exists in base catalog but is null");
