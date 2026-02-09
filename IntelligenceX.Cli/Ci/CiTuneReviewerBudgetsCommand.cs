@@ -115,8 +115,8 @@ internal static class CiTuneReviewerBudgetsCommand {
 
         // If the workflow explicitly provides --out-env, treat it as a sharp edge and restrict where it can write.
         // Allow exactly $GITHUB_ENV (even if outside workspace), otherwise require it to be under the workspace root.
+        var matchesGitHubEnv = false;
         if (usingExplicitOutEnv) {
-            var matchesGitHubEnv = false;
             if (!string.IsNullOrWhiteSpace(defaultEnv) && !defaultEnv.Contains('\n') && !defaultEnv.Contains('\r') && !defaultEnv.Contains('\0')) {
                 try {
                     var fullDefault = Path.GetFullPath(defaultEnv);
@@ -138,7 +138,14 @@ internal static class CiTuneReviewerBudgetsCommand {
         try {
             var dir = Path.GetDirectoryName(resolvedCandidate);
             if (!string.IsNullOrWhiteSpace(dir)) {
-                Directory.CreateDirectory(dir);
+                if (usingExplicitOutEnv && !matchesGitHubEnv) {
+                    if (!CiPathSafety.TryEnsureSafeDirectory(dir, workspaceRoot, out var ensureError)) {
+                        error = $"Failed to prepare env-file output path: {ensureError}";
+                        return false;
+                    }
+                } else {
+                    Directory.CreateDirectory(dir);
+                }
             }
         } catch (Exception ex) {
             error = $"Failed to prepare env-file output path: {ex.Message}";

@@ -34,17 +34,16 @@ internal static class CiChangedFilesCommand {
         var outputPath = Path.GetFullPath(Path.IsPathRooted(options.OutputPath!)
             ? options.OutputPath!
             : Path.Combine(workspaceRoot, options.OutputPath!));
-        if (!CiPathSafety.IsUnderRootPhysical(outputPath, workspaceRoot)) {
-            Console.Error.WriteLine($"Output path must be within the workspace. out={outputPath} workspace={workspaceRoot}");
+        var outputDir = Path.GetDirectoryName(outputPath);
+        if (string.IsNullOrWhiteSpace(outputDir)) {
+            outputDir = workspaceRoot;
+        }
+        if (!CiPathSafety.TryEnsureSafeDirectory(outputDir!, workspaceRoot, out var ensureError)) {
+            Console.Error.WriteLine($"Output directory is not safe: {ensureError}");
             return 1;
         }
-        try {
-            var outputDir = Path.GetDirectoryName(outputPath);
-            if (!string.IsNullOrWhiteSpace(outputDir)) {
-                Directory.CreateDirectory(outputDir);
-            }
-        } catch (Exception ex) {
-            Console.Error.WriteLine($"Failed to create output directory: {ex.Message}");
+        if (!CiPathSafety.IsUnderRootPhysical(outputPath, workspaceRoot)) {
+            Console.Error.WriteLine($"Output path must be within the workspace and not traverse symlinks/junctions. out={outputPath} workspace={workspaceRoot}");
             return 1;
         }
 

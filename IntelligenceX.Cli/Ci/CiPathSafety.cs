@@ -51,9 +51,12 @@ internal static class CiPathSafety {
             var current = trimmedRoot;
             foreach (var segment in relative.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries)) {
                 current = Path.Combine(current, segment);
+                if (File.Exists(current)) {
+                    return false;
+                }
                 if (!Directory.Exists(current)) {
-                    // Non-existent segments will be created under root; existing segments are what can be symlink attacks.
-                    continue;
+                    // Physical containment requires all directory segments to exist (so we can evaluate reparse points).
+                    return false;
                 }
                 var attrs = File.GetAttributes(current);
                 if ((attrs & FileAttributes.ReparsePoint) != 0) {
@@ -71,6 +74,59 @@ internal static class CiPathSafety {
 
             return true;
         } catch {
+            return false;
+        }
+    }
+
+    internal static bool TryEnsureSafeDirectory(string directoryPath, string root, out string error) {
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(directoryPath) || string.IsNullOrWhiteSpace(root)) {
+            error = "Invalid directory path.";
+            return false;
+        }
+        try {
+            var fullDir = Path.GetFullPath(directoryPath);
+            var fullRoot = Path.GetFullPath(root);
+            if (!IsUnderRoot(fullDir, fullRoot)) {
+                error = $"Directory must be within the workspace. dir={fullDir} workspace={fullRoot}";
+                return false;
+            }
+
+            var trimmedRoot = Path.TrimEndingDirectorySeparator(fullRoot);
+            if (Directory.Exists(trimmedRoot)) {
+                var rootAttrs = File.GetAttributes(trimmedRoot);
+                if ((rootAttrs & FileAttributes.ReparsePoint) != 0) {
+                    error = "Workspace root is a symlink/junction (reparse point).";
+                    return false;
+                }
+            }
+
+            var relative = Path.GetRelativePath(trimmedRoot, fullDir);
+            if (relative.StartsWith("..", OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)) {
+                error = $"Directory must be within the workspace. dir={fullDir} workspace={trimmedRoot}";
+                return false;
+            }
+
+            var current = trimmedRoot;
+            foreach (var segment in relative.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries)) {
+                current = Path.Combine(current, segment);
+                if (File.Exists(current)) {
+                    error = $"Path segment is a file, not a directory: {current}";
+                    return false;
+                }
+                if (!Directory.Exists(current)) {
+                    Directory.CreateDirectory(current);
+                }
+                var attrs = File.GetAttributes(current);
+                if ((attrs & FileAttributes.ReparsePoint) != 0) {
+                    error = $"Path contains a symlink/junction component: {current}";
+                    return false;
+                }
+            }
+
+            return true;
+        } catch (Exception ex) {
+            error = ex.Message;
             return false;
         }
     }
