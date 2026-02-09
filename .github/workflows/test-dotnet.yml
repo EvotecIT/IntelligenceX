@@ -18,16 +18,16 @@ env:
         10.0.x
     BUILD_CONFIGURATION: 'Release'
 
-	jobs:
-	    test-windows:
-	        name: 'Windows'
-	        # While private, only run Windows tests if you have a self-hosted Windows runner configured.
-	        if: ${{ !github.event.repository.private || vars.IX_ENABLE_WINDOWS_SELF_HOSTED == 'true' }}
-	        # While the repo is private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
-	        # When public, use GitHub-hosted runners by default.
-	        runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_ENABLE_WINDOWS_SELF_HOSTED == 'true') && '["self-hosted","windows"]' || '["windows-latest"]') }}
-	        timeout-minutes: 20
-	        steps:
+    jobs:
+        test-windows:
+            name: 'Windows'
+            # While private, only run Windows tests if you have a self-hosted Windows runner configured.
+            if: ${{ !github.event.repository.private || vars.IX_ENABLE_WINDOWS_SELF_HOSTED == 'true' }}
+            # While the repo is private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
+            # When public, use GitHub-hosted runners by default.
+            runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_ENABLE_WINDOWS_SELF_HOSTED == 'true') && '["self-hosted","windows"]' || '["windows-latest"]') }}
+            timeout-minutes: 20
+            steps:
             - name: Checkout code
               uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -122,15 +122,15 @@ env:
                   fail_ci_if_error: false
                   verbose: true
 
-	    test-macos:
-	        name: 'macOS'
-	        # While private, only run macOS tests if you have a self-hosted macOS runner configured.
-	        if: ${{ !github.event.repository.private || vars.IX_ENABLE_MACOS_SELF_HOSTED == 'true' }}
-	        # While the repo is private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
-	        # When public, use GitHub-hosted runners by default.
-	        runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_ENABLE_MACOS_SELF_HOSTED == 'true') && '["self-hosted","macos"]' || '["macos-latest"]') }}
-	        timeout-minutes: 20
-	        steps:
+        test-macos:
+            name: 'macOS'
+            # While private, only run macOS tests if you have a self-hosted macOS runner configured.
+            if: ${{ !github.event.repository.private || vars.IX_ENABLE_MACOS_SELF_HOSTED == 'true' }}
+            # While the repo is private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
+            # When public, use GitHub-hosted runners by default.
+            runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_ENABLE_MACOS_SELF_HOSTED == 'true') && '["self-hosted","macos"]' || '["macos-latest"]') }}
+            timeout-minutes: 20
+            steps:
             - name: Checkout code
               uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
