@@ -61,6 +61,14 @@ internal static class CiPathSafety {
                 }
             }
 
+            // If the leaf exists (file or directory), ensure it isn't itself a reparse point.
+            if (File.Exists(fullPath) || Directory.Exists(fullPath)) {
+                var leafAttrs = File.GetAttributes(fullPath);
+                if ((leafAttrs & FileAttributes.ReparsePoint) != 0) {
+                    return false;
+                }
+            }
+
             return true;
         } catch {
             return false;

@@ -479,6 +479,7 @@ internal sealed partial class GitHubClient : IDisposable {
     private async Task<JsonValue> GetJsonAsync(string url, CancellationToken cancellationToken) {
         return await WithGateAsync(async () => {
             var retryBudgetStart = DateTimeOffset.UtcNow;
+            Exception? lastError = null;
             for (var attempt = 1; attempt <= DefaultRetryAttempts; attempt++) {
                 cancellationToken.ThrowIfCancellationRequested();
                 try {
@@ -486,6 +487,7 @@ internal sealed partial class GitHubClient : IDisposable {
                         var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                         if (attempt < DefaultRetryAttempts && TryGetRetryDelay(response, content, attempt, out var delay)) {
                             if (TryScheduleRetry(retryBudgetStart, ref delay)) {
+                                lastError = new InvalidOperationException(FormatApiError("GET", url, response, content));
                                 await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                                 continue;
                             }
@@ -497,16 +499,18 @@ internal sealed partial class GitHubClient : IDisposable {
                         }
                         return JsonLite.Parse(content) ?? JsonValue.Null;
                     }
-                } catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested && attempt < DefaultRetryAttempts) {
+                } catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested && attempt < DefaultRetryAttempts) {
                     // Timeout / transport cancellation (not user cancellation): retry with backoff.
+                    lastError = ex;
                     var delay = ComputeBackoff(attempt, maxSeconds: 8);
                     if (TryScheduleRetry(retryBudgetStart, ref delay)) {
                         await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                         continue;
                     }
                     throw;
-                } catch (HttpRequestException) when (attempt < DefaultRetryAttempts) {
+                } catch (HttpRequestException ex) when (attempt < DefaultRetryAttempts) {
                     // Transient transport failure: retry with backoff.
+                    lastError = ex;
                     var delay = ComputeBackoff(attempt, maxSeconds: 8);
                     if (TryScheduleRetry(retryBudgetStart, ref delay)) {
                         await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
@@ -514,6 +518,9 @@ internal sealed partial class GitHubClient : IDisposable {
                     }
                     throw;
                 }
+            }
+            if (lastError is not null) {
+                throw new InvalidOperationException($"GitHub API request failed (GET {url}) after {DefaultRetryAttempts} attempts.", lastError);
             }
             throw new InvalidOperationException($"GitHub API request failed (GET {url}) after {DefaultRetryAttempts} attempts.");
         }, cancellationToken).ConfigureAwait(false);
@@ -573,7 +580,7 @@ internal sealed partial class GitHubClient : IDisposable {
             return false;
         }
         const string MutationKeyword = "mutation";
-        var trimmed = queryText.TrimStart();
+        var trimmed = TrimGraphQlLeadingTrivia(queryText);
         if (!trimmed.StartsWith(MutationKeyword, StringComparison.OrdinalIgnoreCase)) {
             return false;
         }
@@ -582,6 +589,34 @@ internal sealed partial class GitHubClient : IDisposable {
         }
         var next = trimmed[MutationKeyword.Length];
         return char.IsWhiteSpace(next) || next == '(';
+    }
+
+    private static string TrimGraphQlLeadingTrivia(string queryText) {
+        if (string.IsNullOrEmpty(queryText)) {
+            return string.Empty;
+        }
+        var i = 0;
+        while (i < queryText.Length) {
+            var ch = queryText[i];
+            // BOM (can sneak into interpolated or generated strings).
+            if (ch == '\uFEFF') {
+                i++;
+                continue;
+            }
+            if (char.IsWhiteSpace(ch)) {
+                i++;
+                continue;
+            }
+            // GraphQL comments start with '#'.
+            if (ch == '#') {
+                while (i < queryText.Length && queryText[i] != '\n') {
+                    i++;
+                }
+                continue;
+            }
+            break;
+        }
+        return i == 0 ? queryText : queryText[i..];
     }
 
     private Task<JsonValue> PostGraphQlQueryAsync(JsonObject payload, CancellationToken cancellationToken, bool allowRetries) {
