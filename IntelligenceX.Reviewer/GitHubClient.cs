@@ -566,8 +566,7 @@ internal sealed partial class GitHubClient : IDisposable {
                     throw;
                 }
             }
-            // Unreachable.
-            return JsonValue.Null;
+            throw new InvalidOperationException($"GitHub API request failed (POST {url}) after {attempts} attempts.");
         }, cancellationToken).ConfigureAwait(false);
     }
 
@@ -621,8 +620,7 @@ internal sealed partial class GitHubClient : IDisposable {
                     throw;
                 }
             }
-            // Unreachable.
-            return JsonValue.Null;
+            throw new InvalidOperationException($"GitHub API request failed (POST {url}) after {attempts} attempts.");
         }, cancellationToken).ConfigureAwait(false);
     }
 
@@ -637,22 +635,38 @@ internal sealed partial class GitHubClient : IDisposable {
             var retryBudgetStart = DateTimeOffset.UtcNow;
             for (var attempt = 1; attempt <= attempts; attempt++) {
                 cancellationToken.ThrowIfCancellationRequested();
-                using (var content = new StringContent(json, Encoding.UTF8, "application/json"))
-                using (var request = new HttpRequestMessage(new HttpMethod("PATCH"), url) { Content = content })
-                using (var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false)) {
-                    var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                    if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
-                        if (TryScheduleRetry(retryBudgetStart, ref delay)) {
-                            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                            continue;
+                try {
+                    using (var content = new StringContent(json, Encoding.UTF8, "application/json"))
+                    using (var request = new HttpRequestMessage(new HttpMethod("PATCH"), url) { Content = content })
+                    using (var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false)) {
+                        var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                        if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
+                            if (TryScheduleRetry(retryBudgetStart, ref delay)) {
+                                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                                continue;
+                            }
+                            // No retry budget left: surface the current response as an error.
                         }
-                        // No retry budget left: surface the current response as an error.
+                        if (!response.IsSuccessStatusCode) {
+                            throw new InvalidOperationException(
+                                FormatApiError("PATCH", url, response, responseText));
+                        }
+                        break;
                     }
-                    if (!response.IsSuccessStatusCode) {
-                        throw new InvalidOperationException(
-                            FormatApiError("PATCH", url, response, responseText));
+                } catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested && attempt < attempts) {
+                    var delay = ComputeBackoff(attempt, maxSeconds: 8);
+                    if (TryScheduleRetry(retryBudgetStart, ref delay)) {
+                        await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                        continue;
                     }
-                    break;
+                    throw;
+                } catch (HttpRequestException) when (attempt < attempts) {
+                    var delay = ComputeBackoff(attempt, maxSeconds: 8);
+                    if (TryScheduleRetry(retryBudgetStart, ref delay)) {
+                        await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                        continue;
+                    }
+                    throw;
                 }
             }
             return 0;
