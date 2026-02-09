@@ -1,0 +1,16 @@
+{
+  "id": "PSUseCompatibleTypes",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSUseCompatibleTypes",
+  "title": "Use compatible types",
+  "description": "Use types compatible with the given PowerShell version and operating system.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "best-practices"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/usecompatibletypes"
+}

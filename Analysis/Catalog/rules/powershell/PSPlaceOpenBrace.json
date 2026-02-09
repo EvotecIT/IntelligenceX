@@ -1,0 +1,16 @@
+{
+  "id": "PSPlaceOpenBrace",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSPlaceOpenBrace",
+  "title": "Place open braces consistently",
+  "description": "Place open braces either on the same line as the preceding expression or on a new line.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "best-practices"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/placeopenbrace"
+}

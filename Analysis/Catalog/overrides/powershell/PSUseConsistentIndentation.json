@@ -1,0 +1,5 @@
+{
+  "id": "PSUseConsistentIndentation",
+  "title": "Use Consistent Indentation",
+  "description": "Each statement block should have consistent indentation."
+}

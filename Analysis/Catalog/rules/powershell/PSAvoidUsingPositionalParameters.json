@@ -1,0 +1,16 @@
+{
+  "id": "PSAvoidUsingPositionalParameters",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSAvoidUsingPositionalParameters",
+  "title": "Avoid Using Positional Parameters",
+  "description": "Readability and clarity should be the goal of any script we expect to maintain over time. When calling a command that takes parameters, where possible consider using name parameters as opposed to positional parameters. To fix a violation of this rule, please use named parameters instead of positional parameters when calling a command.",
+  "category": "BestPractices",
+  "defaultSeverity": "info",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "best-practices"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/avoidusingpositionalparameters"
+}

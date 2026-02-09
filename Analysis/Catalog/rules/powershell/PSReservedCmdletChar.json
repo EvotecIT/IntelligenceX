@@ -1,0 +1,16 @@
+{
+  "id": "PSReservedCmdletChar",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSReservedCmdletChar",
+  "title": "Reserved Cmdlet Chars",
+  "description": "Checks for reserved characters in cmdlet names. These characters usually cause a parsing error. Otherwise they will generally cause runtime errors.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "best-practices"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/reservedcmdletchar"
+}

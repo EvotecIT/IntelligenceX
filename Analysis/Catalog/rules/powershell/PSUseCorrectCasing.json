@@ -1,0 +1,16 @@
+{
+  "id": "PSUseCorrectCasing",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSUseCorrectCasing",
+  "title": "Use exact casing of cmdlet/function/parameter name.",
+  "description": "For better readability and consistency, use consistent casing.",
+  "category": "BestPractices",
+  "defaultSeverity": "info",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "best-practices"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/usecorrectcasing"
+}

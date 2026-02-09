@@ -1,0 +1,4 @@
+{
+  "id": "PSAvoidDefaultValueForMandatoryParameter",
+  "description": "Mandatory parameters should not be initialized with a default value in the param block because this value will be ignored. To fix a violation of this rule, avoid initializing a value for mandatory parameters in the param block."
+}

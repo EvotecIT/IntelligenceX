@@ -76,6 +76,19 @@ jobs:
           fi
           echo "Changed files: $(wc -l < artifacts/changed-files.txt)"
 
+      - name: Tune reviewer budgets for large PRs
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          changed="$(wc -l < artifacts/changed-files.txt | tr -d ' ')"
+          catalog="$(grep -cE '^Analysis/Catalog/(rules|overrides)/' artifacts/changed-files.txt || true)"
+          if [ "${changed:-0}" -gt 30 ] || [ "${catalog:-0}" -gt 10 ]; then
+            echo "Detected large diff (changed=${changed}, catalog=${catalog}); expanding reviewer context limits."
+            echo "INPUT_MAX_FILES=200" >> "$GITHUB_ENV"
+            echo "INPUT_MAX_PATCH_CHARS=120000" >> "$GITHUB_ENV"
+          else
+            echo "Diff size within default limits (changed=${changed}, catalog=${catalog}); using defaults."
+          fi
+
       - name: Static analysis gate
         run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze gate --config .intelligencex/reviewer.json --workspace . --changed-files artifacts/changed-files.txt
 

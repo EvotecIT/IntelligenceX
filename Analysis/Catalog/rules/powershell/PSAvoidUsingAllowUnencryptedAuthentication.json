@@ -1,0 +1,16 @@
+{
+  "id": "PSAvoidUsingAllowUnencryptedAuthentication",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSAvoidUsingAllowUnencryptedAuthentication",
+  "title": "Avoid AllowUnencryptedAuthentication Switch",
+  "description": "Avoid sending credentials and secrets over unencrypted connections.",
+  "category": "Security",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "security"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/avoidusingallowunencryptedauthentication"
+}

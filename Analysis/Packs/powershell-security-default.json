@@ -1,0 +1,15 @@
+{
+  "id": "powershell-security-default",
+  "label": "PowerShell Security (Default)",
+  "description": "PowerShell security-focused pack (PSScriptAnalyzer).",
+  "includes": [],
+  "rules": [
+    "PSAvoidUsingAllowUnencryptedAuthentication",
+    "PSAvoidUsingBrokenHashAlgorithms",
+    "PSAvoidUsingConvertToSecureStringWithPlainText",
+    "PSAvoidUsingInvokeExpression",
+    "PSAvoidUsingPlainTextForPassword",
+    "PSAvoidUsingUsernameAndPasswordParams",
+    "PSUsePSCredentialType"
+  ]
+}

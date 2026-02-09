@@ -1,6 +1,16 @@
 {
   "id": "powershell-default",
   "label": "PowerShell Default",
-  "description": "Core best-practice rules for PowerShell scripts.",
-  "rules": ["PSAvoidUsingWriteHost"]
+  "description": "High-signal security and correctness rules for PowerShell scripts (PSScriptAnalyzer).",
+  "includes": ["powershell-security-default"],
+  "rules": [
+    "PSAvoidOverwritingBuiltInCmdlets",
+    "PSAvoidUsingCmdletAliases",
+    "PSAvoidUsingEmptyCatchBlock",
+    "PSAvoidUsingWriteHost",
+    "PSPossibleIncorrectComparisonWithNull",
+    "PSPossibleIncorrectUsageOfAssignmentOperator",
+    "PSPossibleIncorrectUsageOfRedirectionOperator",
+    "PSReviewUnusedParameter"
+  ]
 }

@@ -1,0 +1,16 @@
+{
+  "id": "PSAvoidInvokingEmptyMembers",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSAvoidInvokingEmptyMembers",
+  "title": "Avoid Invoking Empty Members",
+  "description": "Invoking non-constant members would cause potential bugs. Please double check the syntax to make sure members invoked are non-constant.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "best-practices"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/avoidinvokingemptymembers"
+}

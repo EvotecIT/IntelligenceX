@@ -1,0 +1,16 @@
+{
+  "id": "PSMisleadingBacktick",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSMisleadingBacktick",
+  "title": "Misleading Backtick",
+  "description": "Ending a line with an escaped whitespace character is misleading. A trailing backtick is usually used for line continuation. Users typically don't intend to end a line with escaped whitespace.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "best-practices"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/misleadingbacktick"
+}

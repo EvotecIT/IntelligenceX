@@ -1,0 +1,16 @@
+{
+  "id": "PSUseOutputTypeCorrectly",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSUseOutputTypeCorrectly",
+  "title": "Use OutputType Correctly",
+  "description": "The return types of a cmdlet should be declared using the OutputType attribute.",
+  "category": "BestPractices",
+  "defaultSeverity": "info",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "best-practices"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/useoutputtypecorrectly"
+}

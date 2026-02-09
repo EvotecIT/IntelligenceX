@@ -1,0 +1,16 @@
+{
+  "id": "PSAvoidUsingConvertToSecureStringWithPlainText",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSAvoidUsingConvertToSecureStringWithPlainText",
+  "title": "Avoid Using SecureString With Plain Text",
+  "description": "Using ConvertTo-SecureString with plain text will expose secure information.",
+  "category": "Security",
+  "defaultSeverity": "error",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "security"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/avoidusingconverttosecurestringwithplaintext"
+}

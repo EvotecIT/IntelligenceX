@@ -1,0 +1,16 @@
+{
+  "id": "PSAvoidTrailingWhitespace",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSAvoidTrailingWhitespace",
+  "title": "Avoid trailing whitespace",
+  "description": "Each line should have no trailing whitespace.",
+  "category": "BestPractices",
+  "defaultSeverity": "info",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "best-practices"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/avoidtrailingwhitespace"
+}

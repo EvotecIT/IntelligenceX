@@ -1,0 +1,16 @@
+{
+  "id": "PSAvoidLongLines",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSAvoidLongLines",
+  "title": "Avoid long lines",
+  "description": "Line lengths should be less than the configured maximum.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "best-practices"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/avoidlonglines"
+}

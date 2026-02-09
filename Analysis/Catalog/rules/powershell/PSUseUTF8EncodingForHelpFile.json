@@ -1,0 +1,16 @@
+{
+  "id": "PSUseUTF8EncodingForHelpFile",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSUseUTF8EncodingForHelpFile",
+  "title": "Use UTF8 Encoding For Help File",
+  "description": "PowerShell help file needs to use UTF8 Encoding.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "best-practices"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/useutf8encodingforhelpfile"
+}

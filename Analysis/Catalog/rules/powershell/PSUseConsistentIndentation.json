@@ -1,0 +1,16 @@
+{
+  "id": "PSUseConsistentIndentation",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSUseConsistentIndentation",
+  "title": "Use consistent indentation",
+  "description": "Each statement block should have a consistent indentation.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "best-practices"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/useconsistentindentation"
+}

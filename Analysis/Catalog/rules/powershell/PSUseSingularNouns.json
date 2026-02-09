@@ -1,0 +1,16 @@
+{
+  "id": "PSUseSingularNouns",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSUseSingularNouns",
+  "title": "Cmdlet Singular Noun",
+  "description": "Cmdlet should use singular instead of plural nouns.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "best-practices"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/usesingularnouns"
+}

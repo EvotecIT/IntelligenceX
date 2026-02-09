@@ -1,0 +1,16 @@
+{
+  "id": "PSUseCompatibleCmdlets",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSUseCompatibleCmdlets",
+  "title": "Use compatible cmdlets",
+  "description": "Use cmdlets compatible with the given PowerShell version and edition and operating system.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "best-practices"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/usecompatiblecmdlets"
+}

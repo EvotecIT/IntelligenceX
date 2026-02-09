@@ -1,0 +1,4 @@
+{
+  "id": "PSAvoidMultipleTypeAttributes",
+  "description": "Parameters should not have more than one type specifier."
+}

@@ -1,0 +1,16 @@
+{
+  "id": "PSAlignAssignmentStatement",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSAlignAssignmentStatement",
+  "title": "Align Assignment Statements",
+  "description": "Line up assignment statements so that the assignment operators are aligned.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "best-practices"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/alignassignmentstatement"
+}

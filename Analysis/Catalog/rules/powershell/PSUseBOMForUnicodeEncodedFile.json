@@ -1,0 +1,16 @@
+{
+  "id": "PSUseBOMForUnicodeEncodedFile",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSUseBOMForUnicodeEncodedFile",
+  "title": "Use BOM encoding for non-ASCII files",
+  "description": "For a file encoded with a format other than ASCII, ensure BOM is present to ensure that any application consuming this file can interpret it correctly.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "best-practices"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/usebomforunicodeencodedfile"
+}

@@ -1,0 +1,16 @@
+{
+  "id": "PSAvoidUsingDoubleQuotesForConstantString",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSAvoidUsingDoubleQuotesForConstantString",
+  "title": "Avoid using double quotes if the string is constant.",
+  "description": "Use single quotes if the string is constant.",
+  "category": "BestPractices",
+  "defaultSeverity": "info",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "best-practices"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/avoidusingdoublequotesforconstantstring"
+}

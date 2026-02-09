@@ -1,0 +1,16 @@
+{
+  "id": "PSAvoidUsingWMICmdlet",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSAvoidUsingWMICmdlet",
+  "title": "Avoid Using Get-WMIObject, Remove-WMIObject, Invoke-WmiMethod, Register-WmiEvent, Set-WmiInstance",
+  "description": "Deprecated. Starting in Windows PowerShell 3.0, these cmdlets have been superseded by CIM cmdlets.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "best-practices"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/avoidusingwmicmdlet"
+}

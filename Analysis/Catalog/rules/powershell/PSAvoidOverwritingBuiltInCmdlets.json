@@ -1,0 +1,16 @@
+{
+  "id": "PSAvoidOverwritingBuiltInCmdlets",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSAvoidOverwritingBuiltInCmdlets",
+  "title": "Avoid overwriting built in cmdlets",
+  "description": "Do not overwrite the definition of a cmdlet that is included with PowerShell.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "best-practices"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/avoidoverwritingbuiltincmdlets"
+}

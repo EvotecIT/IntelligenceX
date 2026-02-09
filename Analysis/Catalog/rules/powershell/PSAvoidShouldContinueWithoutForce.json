@@ -1,0 +1,16 @@
+{
+  "id": "PSAvoidShouldContinueWithoutForce",
+  "language": "powershell",
+  "tool": "PSScriptAnalyzer",
+  "toolRuleId": "PSAvoidShouldContinueWithoutForce",
+  "title": "Avoid Using ShouldContinue Without Boolean Force Parameter",
+  "description": "Functions that use ShouldContinue should have a boolean force parameter to allow user to bypass it.",
+  "category": "BestPractices",
+  "defaultSeverity": "warning",
+  "tags": [
+    "powershell",
+    "psscriptanalyzer",
+    "best-practices"
+  ],
+  "docs": "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/avoidshouldcontinuewithoutforce"
+}

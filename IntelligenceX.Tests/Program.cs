@@ -43,6 +43,9 @@ internal static partial class Program {
         failed += Run("GitHub secrets reject empty value", TestGitHubSecretsRejectEmptyValue);
         failed += Run("Release reviewer env token", TestReleaseReviewerEnvToken);
 #endif
+
+        // Reviewer tests are excluded from NET472 builds (no reviewer references there), and enforced for non-NET472
+        // builds via `IntelligenceX.Tests/ReviewerSymbolGuard.cs` + `IntelligenceX.Tests/IntelligenceX.Tests.csproj`.
 #if INTELLIGENCEX_REVIEWER
         failed += Run("Cleanup normalize allowed edits", TestCleanupNormalizeAllowedEdits);
         failed += Run("Cleanup clamp confidence", TestCleanupClampConfidence);
@@ -96,7 +99,11 @@ internal static partial class Program {
         failed += Run("Analysis catalog validator passes built-in catalog", TestAnalysisCatalogValidatorPassesBuiltInCatalog);
         failed += Run("Analysis catalog validator detects invalid catalog", TestAnalysisCatalogValidatorDetectsInvalidCatalog);
         failed += Run("Analysis catalog validator detects missing rule metadata", TestAnalysisCatalogValidatorDetectsMissingRuleMetadata);
+        failed += Run("Analysis packs: all-security includes PowerShell", TestAnalysisPacksAllSecurityIncludesPowerShell);
+        failed += Run("Analysis packs: powershell-default resolves", TestAnalysisPacksPowerShellDefaultResolves);
         failed += Run("Analysis catalog rule overrides apply", TestAnalysisCatalogRuleOverridesApply);
+        failed += Run("Analysis catalog PowerShell overrides apply", () => TestAnalysisCatalogPowerShellOverridesApply());
+        failed += Run("Analysis catalog PowerShell docs links", TestAnalysisCatalogPowerShellDocsLinksMatchLearnPattern);
         failed += Run("Analysis catalog override invalid type falls back", TestAnalysisCatalogOverrideInvalidTypeFallsBack);
         failed += Run("Analysis catalog validator rejects dangling override", TestAnalysisCatalogValidatorRejectsDanglingOverride);
         failed += Run("Analysis hotspots render and state snippet", TestAnalysisHotspotsRenderAndStateSnippet);
