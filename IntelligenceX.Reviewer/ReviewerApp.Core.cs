@@ -500,6 +500,7 @@ public static partial class ReviewerApp {
             return 130;
         } catch (Exception ex) {
             Console.Error.WriteLine(ex.Message);
+            var failOpen = settings is not null && ReviewRunner.ShouldFailOpen(settings, ex);
             if (!summaryPosted &&
                 commentId.HasValue &&
                 allowWrites &&
@@ -516,7 +517,7 @@ public static partial class ReviewerApp {
                     Console.Error.WriteLine($"Failed to update review comment after error: {updateEx.Message}");
                 }
             }
-            return 1;
+            return failOpen ? 0 : 1;
         } finally {
             secretsAudit?.WriteSummary();
             secretsAudit?.Dispose();
