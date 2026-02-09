@@ -488,14 +488,14 @@ internal sealed partial class GitHubClient : IDisposable {
                 var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 if (attempt < DefaultRetryAttempts && TryGetRetryDelay(response, content, attempt, out var delay)) {
                     var remaining = TimeSpan.FromSeconds(15) - (DateTimeOffset.UtcNow - retryBudgetStart);
-                    if (remaining <= TimeSpan.Zero) {
-                        break;
+                    if (remaining > TimeSpan.Zero) {
+                        if (delay > remaining) {
+                            delay = remaining;
+                        }
+                        await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                        continue;
                     }
-                    if (delay > remaining) {
-                        delay = remaining;
-                    }
-                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                    continue;
+                    // No retry budget left: surface the current response as an error.
                 }
                 if (!response.IsSuccessStatusCode) {
                     throw new InvalidOperationException(
@@ -520,14 +520,14 @@ internal sealed partial class GitHubClient : IDisposable {
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
                     var remaining = TimeSpan.FromSeconds(15) - (DateTimeOffset.UtcNow - retryBudgetStart);
-                    if (remaining <= TimeSpan.Zero) {
-                        break;
+                    if (remaining > TimeSpan.Zero) {
+                        if (delay > remaining) {
+                            delay = remaining;
+                        }
+                        await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                        continue;
                     }
-                    if (delay > remaining) {
-                        delay = remaining;
-                    }
-                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                    continue;
+                    // No retry budget left: surface the current response as an error.
                 }
                 if (!response.IsSuccessStatusCode) {
                     throw new InvalidOperationException(
@@ -553,14 +553,14 @@ internal sealed partial class GitHubClient : IDisposable {
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
                     var remaining = TimeSpan.FromSeconds(15) - (DateTimeOffset.UtcNow - retryBudgetStart);
-                    if (remaining <= TimeSpan.Zero) {
-                        break;
+                    if (remaining > TimeSpan.Zero) {
+                        if (delay > remaining) {
+                            delay = remaining;
+                        }
+                        await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                        continue;
                     }
-                    if (delay > remaining) {
-                        delay = remaining;
-                    }
-                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                    continue;
+                    // No retry budget left: surface the current response as an error.
                 }
                 if (!response.IsSuccessStatusCode) {
                     throw new InvalidOperationException(
@@ -591,14 +591,14 @@ internal sealed partial class GitHubClient : IDisposable {
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
                     var remaining = TimeSpan.FromSeconds(15) - (DateTimeOffset.UtcNow - retryBudgetStart);
-                    if (remaining <= TimeSpan.Zero) {
-                        break;
+                    if (remaining > TimeSpan.Zero) {
+                        if (delay > remaining) {
+                            delay = remaining;
+                        }
+                        await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                        continue;
                     }
-                    if (delay > remaining) {
-                        delay = remaining;
-                    }
-                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                    continue;
+                    // No retry budget left: surface the current response as an error.
                 }
                 if (!response.IsSuccessStatusCode) {
                     throw new InvalidOperationException(
