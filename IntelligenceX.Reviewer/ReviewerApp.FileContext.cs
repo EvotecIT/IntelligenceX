@@ -114,9 +114,14 @@ public static partial class ReviewerApp {
         PullRequestContext context, ReviewSettings settings, CancellationToken cancellationToken, bool forceReviewThreads) {
         var extras = new ReviewContextExtras();
         if (settings.IncludeIssueComments) {
-            var comments = await codeHostReader.ListIssueCommentsAsync(context, settings.MaxComments, cancellationToken)
-                .ConfigureAwait(false);
-            extras.IssueCommentsSection = BuildIssueCommentsSection(comments, settings);
+            try {
+                var comments = await codeHostReader.ListIssueCommentsAsync(context, settings.MaxComments, cancellationToken)
+                    .ConfigureAwait(false);
+                extras.IssueCommentsSection = BuildIssueCommentsSection(comments, settings);
+            } catch (Exception ex) {
+                // Issue comments are supplemental context; avoid failing the whole review on GitHub rate limits.
+                Console.Error.WriteLine($"Failed to load issue comments: {ex.Message}");
+            }
         }
         var loadThreads = forceReviewThreads || settings.IncludeReviewThreads || settings.ReviewThreadsAutoResolveAI;
         if (loadThreads) {
@@ -138,9 +143,14 @@ public static partial class ReviewerApp {
             }
         }
         if (settings.IncludeReviewComments && string.IsNullOrEmpty(extras.ReviewThreadsSection)) {
-            var comments = await codeHostReader.ListPullRequestReviewCommentsAsync(context, settings.MaxComments, cancellationToken)
-                .ConfigureAwait(false);
-            extras.ReviewCommentsSection = BuildReviewCommentsSection(comments, settings);
+            try {
+                var comments = await codeHostReader.ListPullRequestReviewCommentsAsync(context, settings.MaxComments, cancellationToken)
+                    .ConfigureAwait(false);
+                extras.ReviewCommentsSection = BuildReviewCommentsSection(comments, settings);
+            } catch (Exception ex) {
+                // Review comments are supplemental context; avoid failing the whole review on GitHub rate limits.
+                Console.Error.WriteLine($"Failed to load review comments: {ex.Message}");
+            }
         }
         if (settings.IncludeRelatedPrs) {
             var query = ResolveRelatedPrsQuery(context, settings);

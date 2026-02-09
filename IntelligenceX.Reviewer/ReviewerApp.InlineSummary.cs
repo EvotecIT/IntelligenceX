@@ -459,12 +459,17 @@ public static partial class ReviewerApp {
     private static async Task<IssueComment?> FindExistingSummaryAsync(IReviewCodeHostReader codeHostReader, PullRequestContext context,
         ReviewSettings settings, CancellationToken cancellationToken) {
         var limit = Math.Max(0, settings.CommentSearchLimit);
-        var comments = await codeHostReader.ListIssueCommentsAsync(context, limit, cancellationToken)
-            .ConfigureAwait(false);
-        foreach (var comment in comments) {
-            if (comment.Body.Contains(ReviewFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase)) {
-                return comment;
+        try {
+            var comments = await codeHostReader.ListIssueCommentsAsync(context, limit, cancellationToken)
+                .ConfigureAwait(false);
+            foreach (var comment in comments) {
+                if (comment.Body.Contains(ReviewFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase)) {
+                    return comment;
+                }
             }
+        } catch (Exception ex) {
+            // Best-effort: failing to locate an existing sticky summary should not block posting a new one.
+            Console.Error.WriteLine($"Failed to search for existing summary comment: {ex.Message}");
         }
         return null;
     }
