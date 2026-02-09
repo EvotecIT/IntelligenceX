@@ -337,7 +337,7 @@ foreach ($file in $existingRuleFiles) {
 
 # Also delete stale overrides for rules that no longer exist.
 $staleOverrideFiles = @()
-if ($resolvedOutDir.Equals($intendedOutDir, [System.StringComparison]::OrdinalIgnoreCase)) {
+if ($resolvedOutDir.Equals($resolvedIntendedOutDir, $pathComparison)) {
     $rulesRoot = Split-Path -Parent $OutDir
     $catalogRoot = Split-Path -Parent $rulesRoot
     $overridesDir = Join-Path -Path $catalogRoot -ChildPath (Join-Path -Path 'overrides' -ChildPath 'powershell')
@@ -348,7 +348,7 @@ if ($resolvedOutDir.Equals($intendedOutDir, [System.StringComparison]::OrdinalIg
         }
     }
 } elseif ($PruneStale) {
-    Write-Warning ("Skipping overrides pruning because OutDir does not match intended catalog directory. OutDir='{0}', intended='{1}'." -f $resolvedOutDir, $intendedOutDir)
+    Write-Warning ("Skipping overrides pruning because OutDir does not match intended catalog directory. OutDir='{0}', intended='{1}'." -f $resolvedOutDir, $resolvedIntendedOutDir)
 }
 
 $deleted = 0
