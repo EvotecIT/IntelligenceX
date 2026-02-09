@@ -76,26 +76,26 @@ internal static class CiTuneReviewerBudgetsCommand {
         return Task.FromResult(0);
     }
 
-    private static bool TryResolveEnvTarget(string workspaceRoot, string? outEnv, out string? envPath, out string error) {
-        envPath = null;
-        error = string.Empty;
+	    private static bool TryResolveEnvTarget(string workspaceRoot, string? outEnv, out string? envPath, out string error) {
+	        envPath = null;
+	        error = string.Empty;
 
-        var defaultEnv = Environment.GetEnvironmentVariable("GITHUB_ENV");
-        var isGitHubActions = string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"), "true", StringComparison.OrdinalIgnoreCase);
+	        var defaultEnv = Environment.GetEnvironmentVariable("GITHUB_ENV");
+	        var isGitHubActions = string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"), "true", StringComparison.OrdinalIgnoreCase);
 
-        string? candidate = null;
-        if (!string.IsNullOrWhiteSpace(outEnv)) {
-            candidate = outEnv;
-        } else if (isGitHubActions) {
-            candidate = defaultEnv;
-        }
-        if (string.IsNullOrWhiteSpace(candidate)) {
-            // Avoid writing to arbitrary paths during local runs just because GITHUB_ENV is set.
-            return true;
-        }
-        if (candidate.Contains('\n') || candidate.Contains('\r') || candidate.Contains('\0')) {
-            error = "Invalid env-file path.";
-            return false;
+	        string? candidate = null;
+	        if (!string.IsNullOrWhiteSpace(outEnv)) {
+	            candidate = outEnv;
+	        } else {
+	            candidate = defaultEnv;
+	        }
+	        if (string.IsNullOrWhiteSpace(candidate)) {
+	            // No env-file available (or explicitly provided).
+	            return true;
+	        }
+	        if (candidate.Contains('\n') || candidate.Contains('\r') || candidate.Contains('\0')) {
+	            error = "Invalid env-file path.";
+	            return false;
         }
 
         string resolvedCandidate;
@@ -111,21 +111,25 @@ internal static class CiTuneReviewerBudgetsCommand {
 
         // If the workflow explicitly provides --out-env, treat it as a sharp edge and restrict where it can write.
         // Allow exactly $GITHUB_ENV (even if outside workspace), otherwise require it to be under the workspace root.
-        if (!string.IsNullOrWhiteSpace(outEnv)) {
-            var matchesGitHubEnv = false;
-            if (!string.IsNullOrWhiteSpace(defaultEnv) && !defaultEnv.Contains('\n') && !defaultEnv.Contains('\r') && !defaultEnv.Contains('\0')) {
-                try {
+	        if (!string.IsNullOrWhiteSpace(outEnv)) {
+	            var matchesGitHubEnv = false;
+	            if (!string.IsNullOrWhiteSpace(defaultEnv) && !defaultEnv.Contains('\n') && !defaultEnv.Contains('\r') && !defaultEnv.Contains('\0')) {
+	                try {
                     var fullDefault = Path.GetFullPath(defaultEnv);
                     matchesGitHubEnv = PathsEqual(resolvedCandidate, fullDefault);
                 } catch {
                     matchesGitHubEnv = false;
                 }
             }
-            if (!matchesGitHubEnv && !IsUnderRoot(resolvedCandidate, workspaceRoot)) {
-                error = $"Env-file output path must be within the workspace (or equal to $GITHUB_ENV). out-env={resolvedCandidate} workspace={workspaceRoot}";
-                return false;
-            }
-        }
+	            if (!matchesGitHubEnv && !IsUnderRoot(resolvedCandidate, workspaceRoot)) {
+	                error = $"Env-file output path must be within the workspace (or equal to $GITHUB_ENV). out-env={resolvedCandidate} workspace={workspaceRoot}";
+	                return false;
+	            }
+	        } else if (!isGitHubActions && !File.Exists(resolvedCandidate)) {
+	            // Avoid writing to arbitrary paths during local runs just because GITHUB_ENV is set.
+	            // In GitHub Actions the env file exists and should be used.
+	            return true;
+	        }
 
         try {
             var dir = Path.GetDirectoryName(resolvedCandidate);
