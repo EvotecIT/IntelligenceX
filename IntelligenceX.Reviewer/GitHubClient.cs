@@ -28,7 +28,9 @@ internal sealed class GitHubClient : IDisposable {
         };
         _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("IntelligenceX.Reviewer", "1.0"));
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        // GitHub REST/GraphQL APIs accept "token" auth for PATs and installation tokens.
+        // Using "Bearer" here can behave inconsistently across token types.
+        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("token", token);
         _http.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
     }
 
