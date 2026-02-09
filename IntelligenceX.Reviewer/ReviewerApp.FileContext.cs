@@ -120,15 +120,21 @@ public static partial class ReviewerApp {
         }
         var loadThreads = forceReviewThreads || settings.IncludeReviewThreads || settings.ReviewThreadsAutoResolveAI;
         if (loadThreads) {
-            var threads = await codeHostReader.ListPullRequestReviewThreadsAsync(context, settings.ReviewThreadsMax,
-                    settings.ReviewThreadsMaxComments, cancellationToken)
-                .ConfigureAwait(false);
-            extras.ReviewThreads = threads;
-            if (settings.ReviewThreadsAutoResolveStale) {
-                await AutoResolveStaleThreadsAsync(github, fallbackGithub, threads, settings, cancellationToken).ConfigureAwait(false);
-            }
-            if (settings.IncludeReviewThreads) {
-                extras.ReviewThreadsSection = BuildReviewThreadsSection(threads, settings);
+            try {
+                var threads = await codeHostReader.ListPullRequestReviewThreadsAsync(context, settings.ReviewThreadsMax,
+                        settings.ReviewThreadsMaxComments, cancellationToken)
+                    .ConfigureAwait(false);
+                extras.ReviewThreads = threads;
+                if (settings.ReviewThreadsAutoResolveStale) {
+                    await AutoResolveStaleThreadsAsync(github, fallbackGithub, threads, settings, cancellationToken).ConfigureAwait(false);
+                }
+                if (settings.IncludeReviewThreads) {
+                    extras.ReviewThreadsSection = BuildReviewThreadsSection(threads, settings);
+                }
+            } catch (Exception ex) {
+                // Review threads are supplemental context; avoid failing the whole review on GitHub GraphQL rate limits.
+                Console.Error.WriteLine($"Failed to load review threads: {ex.Message}");
+                extras.ReviewThreads = Array.Empty<PullRequestReviewThread>();
             }
         }
         if (settings.IncludeReviewComments && string.IsNullOrEmpty(extras.ReviewThreadsSection)) {
