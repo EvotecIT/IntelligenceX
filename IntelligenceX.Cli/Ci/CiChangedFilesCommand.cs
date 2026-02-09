@@ -81,11 +81,10 @@ internal static class CiChangedFilesCommand {
         var baseProvided = !string.IsNullOrWhiteSpace(baseRev);
         var headProvided = !string.IsNullOrWhiteSpace(headRev);
         if (baseProvided || headProvided) {
-            if (!baseProvided && headProvided) {
-                return (false, new List<string>(), "Warning: --head requires --base (ref range is ambiguous).");
+            var resolvedBase = (baseRev ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(resolvedBase)) {
+                return (false, new List<string>(), "Missing base revision for diff range.");
             }
-
-            var resolvedBase = baseRev!.Trim();
             var resolvedHead = headProvided ? headRev!.Trim() : "HEAD";
             var range = $"{resolvedBase}...{resolvedHead}";
             var (exit, stdout, stderr) = await GitCli.RunAsync(workspace, "diff", "--name-only", range).ConfigureAwait(false);

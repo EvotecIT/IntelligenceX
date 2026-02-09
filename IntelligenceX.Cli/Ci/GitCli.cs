@@ -16,7 +16,6 @@ internal static class GitCli {
     public static async Task<(int ExitCode, string StdOut, string StdErr)> RunAsync(string? workingDirectory, TimeSpan? timeout, params string[] args) {
         var psi = new ProcessStartInfo {
             FileName = "git",
-            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false
@@ -50,15 +49,8 @@ internal static class GitCli {
             } catch {
                 // ignore
             }
-            try {
-                await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
-            } catch {
-                // ignore
-            }
             var message = $"git command timed out after {effectiveTimeout.TotalSeconds:0}s.";
-            var timedOutStdout = SafeTaskResult(stdoutTask);
-            var timedOutStderr = SafeTaskResult(stderrTask);
-            return (124, timedOutStdout, (timedOutStderr + "\n" + message).Trim());
+            return (124, string.Empty, message);
         }
 
         return (proc.ExitCode, SafeTaskResult(stdoutTask), SafeTaskResult(stderrTask));
