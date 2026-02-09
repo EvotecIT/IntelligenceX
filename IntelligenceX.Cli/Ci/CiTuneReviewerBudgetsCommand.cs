@@ -158,7 +158,7 @@ internal static class CiTuneReviewerBudgetsCommand {
         }
 
         var normalizedRoot = trimmedRoot + Path.DirectorySeparatorChar;
-        return fullPath.StartsWith(normalizedRoot, comparison);
+        return trimmedPath.StartsWith(normalizedRoot, comparison);
     }
 
     private static bool PathsEqual(string left, string right) {
@@ -241,7 +241,12 @@ internal static class CiTuneReviewerBudgetsCommand {
                     options.Error = "Missing value for --changed-files.";
                     return options;
                 }
-                options.ChangedFilesPath = args[++i];
+                var value = args[++i];
+                if (value.Contains('\0') || value.Contains('\n') || value.Contains('\r')) {
+                    options.Error = "Invalid value for --changed-files.";
+                    return options;
+                }
+                options.ChangedFilesPath = value;
                 continue;
             }
             if (arg.Equals("--changed-threshold", StringComparison.OrdinalIgnoreCase)) {
@@ -297,7 +302,12 @@ internal static class CiTuneReviewerBudgetsCommand {
                     options.Error = "Missing value for --out-env.";
                     return options;
                 }
-                options.OutEnv = args[++i];
+                var value = args[++i];
+                if (value.Contains('\0') || value.Contains('\n') || value.Contains('\r')) {
+                    options.Error = "Invalid value for --out-env.";
+                    return options;
+                }
+                options.OutEnv = value;
                 continue;
             }
             options.Error = $"Unknown option '{arg}' for tune-reviewer-budgets.";

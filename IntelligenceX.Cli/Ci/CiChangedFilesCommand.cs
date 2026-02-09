@@ -48,10 +48,10 @@ internal static class CiChangedFilesCommand {
             return 1;
         }
 
-        var (success, lines, message) = await TryComputeChangedFilesAsync(workspace, options.Base, options.Head).ConfigureAwait(false);
+        var (success, lines, message) = await TryComputeChangedFilesAsync(workspaceRoot, options.Base, options.Head).ConfigureAwait(false);
         if (!success) {
             // Don't silently produce an empty list on git failures; fall back to a conservative file list.
-            var (listed, fallbackLines, fallbackMessage) = await TryListAllFilesAsync(workspace).ConfigureAwait(false);
+            var (listed, fallbackLines, fallbackMessage) = await TryListAllFilesAsync(workspaceRoot).ConfigureAwait(false);
             if (listed && fallbackLines.Count > 0) {
                 lines = fallbackLines;
                 message = string.IsNullOrWhiteSpace(message)
@@ -110,7 +110,7 @@ internal static class CiChangedFilesCommand {
         }
 
         var normalizedRoot = trimmedRoot + Path.DirectorySeparatorChar;
-        return fullPath.StartsWith(normalizedRoot, comparison);
+        return trimmedPath.StartsWith(normalizedRoot, comparison);
     }
 
     private static async Task<(bool Success, List<string> Lines, string Message)> TryComputeChangedFilesAsync(string workspace, string? baseRev, string? headRev) {
