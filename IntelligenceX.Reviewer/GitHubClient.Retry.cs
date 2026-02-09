@@ -44,14 +44,18 @@ internal sealed partial class GitHubClient {
     }
 
     private static bool TryScheduleRetry(DateTimeOffset retryBudgetStart, ref TimeSpan delay) {
-        var remaining = DefaultRetryBudgetWindow - (DateTimeOffset.UtcNow - retryBudgetStart);
-        if (remaining <= RetryBudgetReserve) {
+        var now = DateTimeOffset.UtcNow;
+        var remaining = DefaultRetryBudgetWindow - (now - retryBudgetStart);
+        if (remaining <= TimeSpan.Zero) {
             return false;
         }
         if (delay <= TimeSpan.Zero) {
             return false;
         }
-        if (delay + RetryBudgetReserve >= remaining) {
+
+        // Only schedule retries when we can wait the full delay and still keep a small reserve in the budget window.
+        var remainingAfterDelay = remaining - delay;
+        if (remainingAfterDelay <= RetryBudgetReserve) {
             return false;
         }
         return true;
