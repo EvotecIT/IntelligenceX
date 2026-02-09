@@ -1,4 +1,5 @@
 {
+  "$schema": "https://raw.githubusercontent.com/EvotecIT/PSPublishModule/main/schemas/powerforge.web.pipelinespec.schema.json",
   "cache": true,
   "cachePath": "./_temp/pipeline-cache.json",
   "profile": true,
@@ -24,6 +25,19 @@
       "id": "verify-site",
       "dependsOn": "build-site",
       "config": "./site.json"
+    },
+    {
+      "task": "verify",
+      "id": "verify-ci",
+      "dependsOn": "build-site",
+      "modes": ["ci"],
+      "config": "./site.json",
+      "baseline": "./.powerforge/verify-baseline.json",
+      "failOnNewWarnings": true,
+      "failOnNavLint": true,
+      "failOnThemeContract": true,
+      "warningPreviewCount": 10,
+      "errorPreviewCount": 10
     },
     {
       "task": "apidocs",
@@ -112,6 +126,9 @@
       "siteRoot": "./_site",
       "noBuild": true,
       "noVerify": true,
+      "baseline": "./.powerforge/audit-baseline.json",
+      "failOnNewIssues": true,
+      "maxTotalFiles": 800,
       "ignoreNav": "sitemap/**",
       "noDefaultIgnoreNav": true,
       "navSelector": "header nav.ix-nav",
@@ -121,7 +138,7 @@
       "navRequiredLinks": "/,/docs/,/api/",
       "minNavCoveragePercent": 99,
       "requiredRoutes": "/,/docs/,/404.html,/api/",
-      "failOnCategories": "nav,link,asset,rendered-console-error,rendered-request-failure",
+      "failOnCategories": "budget,nav,link,asset,rendered-console-error,rendered-request-failure",
       "rendered": true,
       "renderedEnsureInstalled": false,
       "renderedMaxPages": 8,

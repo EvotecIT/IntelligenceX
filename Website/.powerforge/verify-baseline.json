@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "generatedAtUtc": "2026-02-09T08:40:14.8337457+00:00",
+  "warningCount": 4,
+  "warningKeys": [
+    "Best practice: \u0027intelligencex\u0027 does not declare \u0027schemaVersion\u0027. Set \u0027schemaVersion\u0027: 2 for portable reusable themes.",
+    "Best practice: \u0027intelligencex\u0027 uses legacy manifest file \u0027theme.json\u0027. Prefer \u0027theme.manifest.json\u0027.",
+    "Data file \u0027data/faq.json\u0027 missing required array \u0027sections\u0027.",
+    "TOC for collection \u0027docs\u0027 is missing 2 page(s): /docs/apps/windows-tray-chat/, /docs/library/tool-packs/"
+  ]
+}
