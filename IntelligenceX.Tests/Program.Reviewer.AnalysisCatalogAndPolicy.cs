@@ -319,106 +319,69 @@ internal static partial class Program {
         // Load the catalog without overrides so we can compare base vs effective without needing per-override temp workspaces.
         var rulesRoot = Path.Combine(workspace, "Analysis", "Catalog", "rules");
         var packsRoot = Path.Combine(workspace, "Analysis", "Packs");
+        var explicitOverridesRoot = Path.Combine(workspace, "Analysis", "Catalog", "overrides");
+        var effectiveCatalogFromPaths = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(
+            rulesRoot,
+            explicitOverridesRoot,
+            packsRoot);
 
-        static string CreateEmptyTempDirectory(string prefix) {
-            var tempRoot = Path.GetTempPath();
-            var pid = Environment.ProcessId;
-            Exception? lastException = null;
+        // Avoid creating/deleting temp directories (flake risk on Windows). Passing a non-existent overrides root
+        // is sufficient to ensure no overrides are applied.
+        var missingOverridesRoot = Path.Combine(Path.GetTempPath(), "ix-analysis-missing-overrides-" + Guid.NewGuid().ToString("N"));
+        AssertEqual(false, Directory.Exists(missingOverridesRoot), "missing overrides root does not exist");
+        var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(
+            rulesRoot,
+            missingOverridesRoot,
+            packsRoot);
 
-            for (var attempt = 0; attempt < 50; attempt++) {
-                var path = Path.Combine(tempRoot, prefix + pid + "-" + Guid.NewGuid().ToString("N"));
-                try {
-                    Directory.CreateDirectory(path);
-                    // Path should be unique; if it's not empty, treat as an unexpected collision.
-                    if (Directory.EnumerateFileSystemEntries(path).Any()) {
-                        throw new InvalidOperationException("Temp overrides directory was not empty: " + path);
-                    }
-                    return path;
-                } catch (Exception ex) {
-                    lastException = ex;
-                    if (Directory.Exists(path)) {
-                        Exception? deleteException = null;
-                        for (var deleteAttempt = 0; deleteAttempt < 10; deleteAttempt++) {
-                            try {
-                                Directory.Delete(path, true);
-                                deleteException = null;
-                                break;
-                            } catch (Exception deleteEx) {
-                                deleteException = deleteEx;
-                                System.Threading.Thread.Sleep(50 * (deleteAttempt + 1));
-                            }
-                        }
-                        if (Directory.Exists(path)) {
-                            throw new InvalidOperationException("Failed to delete temp overrides directory: " + path, deleteException);
-                        }
-                    }
-                }
+        foreach (var overridePath in Directory.EnumerateFiles(overridesDir, "*.json")) {
+            var overrideText = File.ReadAllText(overridePath, System.Text.Encoding.UTF8);
+            using var overrideDoc = System.Text.Json.JsonDocument.Parse(overrideText);
+            var overrideRoot = overrideDoc.RootElement;
+
+            if (!overrideRoot.TryGetProperty("id", out var idElement) || idElement.ValueKind != System.Text.Json.JsonValueKind.String) {
+                throw new InvalidOperationException($"Override '{Path.GetFileName(overridePath)}' is missing string 'id' property.");
             }
 
-            throw new InvalidOperationException("Failed to create a unique empty temp directory for the empty overrides root.", lastException);
-        }
+            var id = idElement.GetString();
+            AssertEqual(false, string.IsNullOrWhiteSpace(id), $"{Path.GetFileName(overridePath)} override has id");
+            if (string.IsNullOrWhiteSpace(id)) {
+                throw new Exception($"{Path.GetFileName(overridePath)} override has no id");
+            }
+            AssertEqual(id, Path.GetFileNameWithoutExtension(overridePath), $"{id} override filename matches id");
 
-        string? emptyOverridesRoot = null;
-        try {
-            emptyOverridesRoot = CreateEmptyTempDirectory("ix-analysis-empty-overrides-");
-            var explicitOverridesRoot = Path.Combine(workspace, "Analysis", "Catalog", "overrides");
-            var effectiveCatalogFromPaths = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(
-                rulesRoot,
-                explicitOverridesRoot,
-                packsRoot);
-            var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(
-                rulesRoot,
-                emptyOverridesRoot,
-                packsRoot);
+            var basePath = Path.Combine(rulesDir, id + ".json");
+            AssertEqual(true, File.Exists(basePath), $"{id} base rule exists for override");
 
-            foreach (var overridePath in Directory.EnumerateFiles(overridesDir, "*.json")) {
-                var overrideText = File.ReadAllText(overridePath, System.Text.Encoding.UTF8);
-                using var overrideDoc = System.Text.Json.JsonDocument.Parse(overrideText);
-                var overrideRoot = overrideDoc.RootElement;
+            AssertEqual(true, catalog.Rules.TryGetValue(id, out var effective), $"{id} exists in catalog");
+            if (effective is null) {
+                throw new Exception($"{id} exists in catalog but is null");
+            }
 
-                if (!overrideRoot.TryGetProperty("id", out var idElement) || idElement.ValueKind != System.Text.Json.JsonValueKind.String) {
-                    throw new InvalidOperationException($"Override '{Path.GetFileName(overridePath)}' is missing string 'id' property.");
-                }
+            AssertEqual(true, effectiveCatalogFromPaths.Rules.TryGetValue(id, out var effectiveFromPaths), $"{id} exists in explicit-overrides catalog");
+            if (effectiveFromPaths is null) {
+                throw new Exception($"{id} exists in explicit-overrides catalog but is null");
+            }
+            AssertEqual(effective.Title, effectiveFromPaths.Title, $"{id} explicit-overrides title matches workspace loader");
+            AssertEqual(effective.Description, effectiveFromPaths.Description, $"{id} explicit-overrides description matches workspace loader");
 
-                var id = idElement.GetString();
-                AssertEqual(false, string.IsNullOrWhiteSpace(id), $"{Path.GetFileName(overridePath)} override has id");
-                if (string.IsNullOrWhiteSpace(id)) {
-                    throw new Exception($"{Path.GetFileName(overridePath)} override has no id");
-                }
-                AssertEqual(id, Path.GetFileNameWithoutExtension(overridePath), $"{id} override filename matches id");
+            AssertEqual(true, baseCatalog.Rules.TryGetValue(id, out var resolvedBase), $"{id} exists in base catalog");
+            var baseRule = resolvedBase ?? throw new Exception($"{id} exists in base catalog but is null");
 
-                var basePath = Path.Combine(rulesDir, id + ".json");
-                AssertEqual(true, File.Exists(basePath), $"{id} base rule exists for override");
+            // Ensure our "base catalog" truly reflects the rule JSON without applying any overrides.
+            var baseText = File.ReadAllText(basePath, System.Text.Encoding.UTF8);
+            using (var baseDoc = System.Text.Json.JsonDocument.Parse(baseText)) {
+                var baseRoot = baseDoc.RootElement;
 
-                AssertEqual(true, catalog.Rules.TryGetValue(id, out var effective), $"{id} exists in catalog");
-                if (effective is null) {
-                    throw new Exception($"{id} exists in catalog but is null");
-                }
+                AssertEqual(true, baseRoot.TryGetProperty("title", out var baseTitle), $"{id} base rule json has 'title'");
+                AssertEqual(System.Text.Json.JsonValueKind.String, baseTitle.ValueKind, $"{id} base rule json title is string");
 
-                AssertEqual(true, effectiveCatalogFromPaths.Rules.TryGetValue(id, out var effectiveFromPaths), $"{id} exists in explicit-overrides catalog");
-                if (effectiveFromPaths is null) {
-                    throw new Exception($"{id} exists in explicit-overrides catalog but is null");
-                }
-                AssertEqual(effective.Title, effectiveFromPaths.Title, $"{id} explicit-overrides title matches workspace loader");
-                AssertEqual(effective.Description, effectiveFromPaths.Description, $"{id} explicit-overrides description matches workspace loader");
+                AssertEqual(true, baseRoot.TryGetProperty("description", out var baseDescription), $"{id} base rule json has 'description'");
+                AssertEqual(System.Text.Json.JsonValueKind.String, baseDescription.ValueKind, $"{id} base rule json description is string");
 
-                AssertEqual(true, baseCatalog.Rules.TryGetValue(id, out var resolvedBase), $"{id} exists in base catalog");
-                var baseRule = resolvedBase ?? throw new Exception($"{id} exists in base catalog but is null");
-
-                // Ensure our "base catalog" truly reflects the rule JSON without applying any overrides.
-                var baseText = File.ReadAllText(basePath, System.Text.Encoding.UTF8);
-                using (var baseDoc = System.Text.Json.JsonDocument.Parse(baseText)) {
-                    var baseRoot = baseDoc.RootElement;
-
-                    AssertEqual(true, baseRoot.TryGetProperty("title", out var baseTitle), $"{id} base rule json has 'title'");
-                    AssertEqual(System.Text.Json.JsonValueKind.String, baseTitle.ValueKind, $"{id} base rule json title is string");
-
-                    AssertEqual(true, baseRoot.TryGetProperty("description", out var baseDescription), $"{id} base rule json has 'description'");
-                    AssertEqual(System.Text.Json.JsonValueKind.String, baseDescription.ValueKind, $"{id} base rule json description is string");
-
-                    AssertEqual(baseTitle.GetString(), baseRule.Title, $"{id} base title matches rule json");
-                    AssertEqual(baseDescription.GetString(), baseRule.Description, $"{id} base description matches rule json");
-                }
+                AssertEqual(baseTitle.GetString(), baseRule.Title, $"{id} base title matches rule json");
+                AssertEqual(baseDescription.GetString(), baseRule.Description, $"{id} base description matches rule json");
+            }
 
                 var sawSupportedOverrideProperty = false;
                 var sawNonTagsOverrideProperty = false;
@@ -569,45 +532,6 @@ internal static partial class Program {
                 } else {
                     AssertEqual(true, changesBase, $"{id} tags-only override must change effective tags vs base (otherwise delete the override)");
                 }
-            }
-        } finally {
-            if (emptyOverridesRoot is null) {
-                // Temp dir wasn't created; nothing to clean up.
-            } else {
-                // Cleanup: this can be flaky on Windows CI due to transient file locks, but we still enforce
-                // hermetic behavior (no leaked temp dirs) to avoid cross-run pollution.
-                Exception? lastDeleteException = null;
-                for (var attempt = 0; attempt < 10; attempt++) {
-                    try {
-                        if (!Directory.Exists(emptyOverridesRoot)) {
-                            break;
-                        }
-                        Directory.Delete(emptyOverridesRoot, true);
-                        break;
-                    } catch (Exception ex) {
-                        lastDeleteException = ex;
-                        if (attempt < 9) {
-                            System.Threading.Thread.Sleep(50 * (attempt + 1));
-                        }
-                    }
-                }
-                if (Directory.Exists(emptyOverridesRoot)) {
-                    // Try to mark the directory for cleanup on subsequent runs, so it doesn't accumulate silently.
-                    string? pendingPath = null;
-                    try {
-                        pendingPath = emptyOverridesRoot + ".delete-pending-" + Guid.NewGuid().ToString("N");
-                        Directory.Move(emptyOverridesRoot, pendingPath);
-                        Directory.Delete(pendingPath, true);
-                    } catch (Exception ex) {
-                        lastDeleteException = ex;
-                    }
-                    if (Directory.Exists(emptyOverridesRoot) || (pendingPath is not null && Directory.Exists(pendingPath))) {
-                        throw new InvalidOperationException(
-                            "Failed to delete temp overrides directory: " + emptyOverridesRoot,
-                            lastDeleteException);
-                    }
-                }
-            }
         }
     }
 
