@@ -481,23 +481,45 @@ internal sealed partial class GitHubClient : IDisposable {
 
     private async Task<JsonValue> GetJsonAsync(string url, CancellationToken cancellationToken) {
 	        return await WithGateAsync(async () => {
-	            var retryBudgetStart = DateTimeOffset.UtcNow;
-	            for (var attempt = 1; attempt <= DefaultRetryAttempts; attempt++) {
+            var retryBudgetStart = DateTimeOffset.UtcNow;
+            for (var attempt = 1; attempt <= DefaultRetryAttempts; attempt++) {
                 cancellationToken.ThrowIfCancellationRequested();
-                using var response = await _http.GetAsync(url, cancellationToken).ConfigureAwait(false);
-                var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                if (attempt < DefaultRetryAttempts && TryGetRetryDelay(response, content, attempt, out var delay)) {
+                HttpResponseMessage response;
+                string content;
+                try {
+                    response = await _http.GetAsync(url, cancellationToken).ConfigureAwait(false);
+                    content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                } catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested && attempt < DefaultRetryAttempts) {
+                    // Timeout / transport cancellation (not user cancellation): retry with backoff.
+                    var delay = ComputeBackoff(attempt, maxSeconds: 8);
                     if (TryScheduleRetry(retryBudgetStart, ref delay)) {
                         await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                         continue;
                     }
-                    // No retry budget left: surface the current response as an error.
+                    throw;
+                } catch (HttpRequestException) when (attempt < DefaultRetryAttempts) {
+                    // Transient transport failure: retry with backoff.
+                    var delay = ComputeBackoff(attempt, maxSeconds: 8);
+                    if (TryScheduleRetry(retryBudgetStart, ref delay)) {
+                        await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                        continue;
+                    }
+                    throw;
                 }
-	                if (!response.IsSuccessStatusCode) {
-	                    throw new InvalidOperationException(
-	                        FormatApiError("GET", url, response, content));
+                using (response) {
+                    if (attempt < DefaultRetryAttempts && TryGetRetryDelay(response, content, attempt, out var delay)) {
+                        if (TryScheduleRetry(retryBudgetStart, ref delay)) {
+                            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                            continue;
+                        }
+                        // No retry budget left: surface the current response as an error.
+                    }
+                    if (!response.IsSuccessStatusCode) {
+                        throw new InvalidOperationException(
+                            FormatApiError("GET", url, response, content));
+                    }
+                    return JsonLite.Parse(content) ?? JsonValue.Null;
                 }
-                return JsonLite.Parse(content) ?? JsonValue.Null;
             }
             throw new InvalidOperationException($"GitHub API request failed (GET {url}) after {DefaultRetryAttempts} attempts.");
         }, cancellationToken).ConfigureAwait(false);
