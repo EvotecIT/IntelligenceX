@@ -55,12 +55,15 @@ internal static class CiChangedFilesCommand {
 
     private static async Task<(bool Success, List<string> Lines, string Message)> TryComputeChangedFilesAsync(string workspace, string? baseRev, string? headRev) {
         // Preferred: explicit refs (e.g., GitHub PR base/head SHAs).
-        if (!string.IsNullOrWhiteSpace(baseRev) || !string.IsNullOrWhiteSpace(headRev)) {
-            var resolvedBase = (baseRev ?? string.Empty).Trim();
-            var resolvedHead = string.IsNullOrWhiteSpace(headRev) ? "HEAD" : headRev!.Trim();
-            if (string.IsNullOrWhiteSpace(resolvedBase)) {
-                resolvedBase = "HEAD";
+        var baseProvided = !string.IsNullOrWhiteSpace(baseRev);
+        var headProvided = !string.IsNullOrWhiteSpace(headRev);
+        if (baseProvided || headProvided) {
+            if (!baseProvided && headProvided) {
+                return (false, new List<string>(), "Warning: --head requires --base (ref range is ambiguous).");
             }
+
+            var resolvedBase = baseRev!.Trim();
+            var resolvedHead = headProvided ? headRev!.Trim() : "HEAD";
             var (exit, stdout, stderr) = await GitCli.RunAsync(workspace, "diff", "--name-only", resolvedBase, resolvedHead).ConfigureAwait(false);
             if (exit == 0) {
                 return (true, SplitLines(stdout), string.Empty);
@@ -200,4 +203,3 @@ internal static class CiChangedFilesCommand {
         public bool Strict { get; set; }
     }
 }
-

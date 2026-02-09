@@ -29,46 +29,47 @@ internal static class GitCli {
         }
 
         using var proc = new Process { StartInfo = psi };
-        var stdout = new StringBuilder();
-        var stderr = new StringBuilder();
-        proc.OutputDataReceived += (_, e) => {
-            if (e.Data is not null) {
-                stdout.AppendLine(e.Data);
-            }
-        };
-        proc.ErrorDataReceived += (_, e) => {
-            if (e.Data is not null) {
-                stderr.AppendLine(e.Data);
-            }
-        };
-
         try {
             proc.Start();
         } catch (Exception ex) {
             return (127, string.Empty, ex.Message);
         }
-        try {
-            proc.StandardInput.Close();
-        } catch {
-            // ignore
-        }
-        proc.BeginOutputReadLine();
-        proc.BeginErrorReadLine();
+
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+        var stderrTask = proc.StandardError.ReadToEndAsync();
 
         var effectiveTimeout = ResolveTimeout(timeout);
         using var cts = new CancellationTokenSource(effectiveTimeout);
         try {
             await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
+            // Ensure we drain stdout/stderr after process exit; otherwise we can return truncated output.
+            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
         } catch (OperationCanceledException) {
             try {
                 proc.Kill(entireProcessTree: true);
             } catch {
                 // ignore
             }
+            try {
+                await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+            } catch {
+                // ignore
+            }
             var message = $"git command timed out after {effectiveTimeout.TotalSeconds:0}s.";
-            return (124, stdout.ToString(), (stderr.ToString() + "\n" + message).Trim());
+            var timedOutStdout = SafeTaskResult(stdoutTask);
+            var timedOutStderr = SafeTaskResult(stderrTask);
+            return (124, timedOutStdout, (timedOutStderr + "\n" + message).Trim());
         }
-        return (proc.ExitCode, stdout.ToString(), stderr.ToString());
+
+        return (proc.ExitCode, SafeTaskResult(stdoutTask), SafeTaskResult(stderrTask));
+    }
+
+    private static string SafeTaskResult(Task<string> task) {
+        try {
+            return task.GetAwaiter().GetResult();
+        } catch {
+            return string.Empty;
+        }
     }
 
     private static TimeSpan ResolveTimeout(TimeSpan? timeout) {
@@ -82,4 +83,3 @@ internal static class GitCli {
         return DefaultTimeout;
     }
 }
-
