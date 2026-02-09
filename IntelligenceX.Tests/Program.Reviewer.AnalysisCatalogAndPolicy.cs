@@ -327,13 +327,10 @@ internal static partial class Program {
         }
         var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, emptyOverridesRoot, packsRoot);
 
-        if (!Directory.Exists(overridesDir)) {
-            throw new InvalidOperationException("Expected PowerShell overrides directory to exist, but it does not: " + overridesDir);
-        }
-        foreach (var overridePath in Directory.EnumerateFiles(overridesDir, "*.json")) {
-            var overrideText = File.ReadAllText(overridePath, System.Text.Encoding.UTF8);
-            using var overrideDoc = System.Text.Json.JsonDocument.Parse(overrideText);
-            var overrideRoot = overrideDoc.RootElement;
+            foreach (var overridePath in Directory.EnumerateFiles(overridesDir, "*.json")) {
+                var overrideText = File.ReadAllText(overridePath, System.Text.Encoding.UTF8);
+                using var overrideDoc = System.Text.Json.JsonDocument.Parse(overrideText);
+                var overrideRoot = overrideDoc.RootElement;
 
             if (!overrideRoot.TryGetProperty("id", out var idElement) || idElement.ValueKind != System.Text.Json.JsonValueKind.String) {
                 throw new InvalidOperationException($"Override '{Path.GetFileName(overridePath)}' is missing string 'id' property.");

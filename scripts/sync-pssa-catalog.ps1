@@ -23,13 +23,13 @@ function ConvertTo-JsonEscapedString([string]$value) {
     foreach ($ch in $value.ToCharArray()) {
         $code = [int][char]$ch
         switch ($ch) {
-            '"' { [void]$sb.Append('\\"'); continue }
-            '\' { [void]$sb.Append('\\\\'); continue }
-            "`b" { [void]$sb.Append('\\b'); continue }
-            "`f" { [void]$sb.Append('\\f'); continue }
-            "`n" { [void]$sb.Append('\\n'); continue }
-            "`r" { [void]$sb.Append('\\r'); continue }
-            "`t" { [void]$sb.Append('\\t'); continue }
+            '"' { [void]$sb.Append('\"'); continue }
+            '\' { [void]$sb.Append('\\'); continue }
+            "`b" { [void]$sb.Append('\b'); continue }
+            "`f" { [void]$sb.Append('\f'); continue }
+            "`n" { [void]$sb.Append('\n'); continue }
+            "`r" { [void]$sb.Append('\r'); continue }
+            "`t" { [void]$sb.Append('\t'); continue }
         }
         if ($code -lt 0x20) {
             [void]$sb.Append(("\\u{0:x4}" -f $code))
