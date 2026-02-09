@@ -319,9 +319,27 @@ internal static partial class Program {
         // Load the catalog without overrides so we can compare base vs effective without needing per-override temp workspaces.
         var rulesRoot = Path.Combine(workspace, "Analysis", "Catalog", "rules");
         var packsRoot = Path.Combine(workspace, "Analysis", "Packs");
+
+        // Best-effort cleanup of stale temp dirs from previous runs (Windows file locks can occasionally prevent deletion).
+        const string emptyOverridesPrefix = "ix-analysis-empty-overrides-empty-dir-";
+        try {
+            foreach (var dir in Directory.EnumerateDirectories(Path.GetTempPath(), emptyOverridesPrefix + "*")) {
+                try {
+                    var age = DateTime.UtcNow - Directory.GetLastWriteTimeUtc(dir);
+                    if (age > TimeSpan.FromDays(1)) {
+                        Directory.Delete(dir, true);
+                    }
+                } catch {
+                    // Ignore cleanup failures; a later run may succeed.
+                }
+            }
+        } catch {
+            // Ignore temp enumeration failures.
+        }
+
         var emptyOverridesRoot = Path.Combine(
             Path.GetTempPath(),
-            "ix-analysis-empty-overrides-empty-dir-" + Guid.NewGuid().ToString("N"));
+            emptyOverridesPrefix + Guid.NewGuid().ToString("N"));
         if (Directory.Exists(emptyOverridesRoot)) {
             throw new InvalidOperationException("Unexpected temp overrides path already exists: " + emptyOverridesRoot);
         }
@@ -524,7 +542,7 @@ internal static partial class Program {
             }
         } finally {
             // Best-effort cleanup: this can be flaky on Windows CI due to transient file locks.
-            for (var attempt = 0; attempt < 3; attempt++) {
+            for (var attempt = 0; attempt < 10; attempt++) {
                 try {
                     if (!Directory.Exists(emptyOverridesRoot)) {
                         break;
@@ -532,14 +550,24 @@ internal static partial class Program {
                     Directory.Delete(emptyOverridesRoot, true);
                     break;
                 } catch {
-                    if (attempt < 2) {
-                        System.Threading.Thread.Sleep(50);
-                        continue;
+                    if (attempt < 9) {
+                        System.Threading.Thread.Sleep(50 * (attempt + 1));
                     }
                 }
             }
             if (Directory.Exists(emptyOverridesRoot)) {
-                System.Console.Error.WriteLine("Warning: failed to delete temp overrides directory: " + emptyOverridesRoot);
+                // Try to mark the directory for cleanup on subsequent runs, so it doesn't accumulate silently.
+                try {
+                    var pending = emptyOverridesRoot + ".delete-pending-" + Guid.NewGuid().ToString("N");
+                    Directory.Move(emptyOverridesRoot, pending);
+                    emptyOverridesRoot = pending;
+                    Directory.Delete(emptyOverridesRoot, true);
+                } catch {
+                    // Ignore; we still report below.
+                }
+                if (Directory.Exists(emptyOverridesRoot)) {
+                    System.Console.Error.WriteLine("Warning: failed to delete temp overrides directory: " + emptyOverridesRoot);
+                }
             }
         }
     }

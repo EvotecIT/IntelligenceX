@@ -349,6 +349,15 @@ $rules = Get-ScriptAnalyzerRule | Sort-Object RuleName
 $ruleIds = @($rules | ForEach-Object { [string]$_.RuleName } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 $ruleIdSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 foreach ($id in $ruleIds) { [void]$ruleIdSet.Add($id) }
+if ($ruleIdSet.Count -ne $ruleIds.Count) {
+    $counts = @{}
+    foreach ($id in $ruleIds) {
+        $key = $id.ToLowerInvariant()
+        if ($counts.ContainsKey($key)) { $counts[$key]++ } else { $counts[$key] = 1 }
+    }
+    $duplicates = @($counts.GetEnumerator() | Where-Object { $_.Value -gt 1 } | ForEach-Object { $_.Key } | Sort-Object)
+    throw ("Duplicate PSScriptAnalyzer rule names detected ({0}): {1}" -f $duplicates.Count, ($duplicates -join ', '))
+}
 
 function Get-LearnDocsUrl([string]$ruleName) {
     if ([string]::IsNullOrWhiteSpace($ruleName)) { return $null }
@@ -386,6 +395,9 @@ try {
 foreach ($rule in $rules) {
     $ruleName = [string]$rule.RuleName
     if ([string]::IsNullOrWhiteSpace($ruleName)) { continue }
+    if ($ruleName.IndexOfAny([System.IO.Path]::GetInvalidFileNameChars()) -ge 0) {
+        throw ("RuleName contains invalid filename characters: '{0}'." -f $ruleName)
+    }
 
     $title = Compress-Whitespace ([string]$rule.CommonName)
     if ([string]::IsNullOrWhiteSpace($title)) { $title = Get-RuleTitleFromRuleName $ruleName }
