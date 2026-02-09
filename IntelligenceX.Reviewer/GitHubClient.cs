@@ -291,7 +291,7 @@ internal sealed partial class GitHubClient : IDisposable {
                     .Add("cursor", cursor)
                     .Add("commentLimit", commentLimit));
 
-            var response = await PostGraphQlAsync(payload, cancellationToken, allowRetries: true).ConfigureAwait(false);
+            var response = await PostGraphQlAsync(payload, cancellationToken, allowRetries: true, throwOnErrors: false).ConfigureAwait(false);
             var root = response.AsObject();
             var data = root?.GetObject("data");
             var repoObj = data?.GetObject("repository");
@@ -574,10 +574,14 @@ internal sealed partial class GitHubClient : IDisposable {
     private Task<JsonValue> PostGraphQlAsync(JsonObject payload, CancellationToken cancellationToken) {
         // Default to no retries for GraphQL: mutations are non-idempotent unless explicitly proven otherwise.
         // Read-only queries can opt into retries by calling the overload with allowRetries: true.
-        return PostGraphQlAsync(payload, cancellationToken, allowRetries: false);
+        return PostGraphQlAsync(payload, cancellationToken, allowRetries: false, throwOnErrors: true);
     }
 
     private async Task<JsonValue> PostGraphQlAsync(JsonObject payload, CancellationToken cancellationToken, bool allowRetries) {
+        return await PostGraphQlAsync(payload, cancellationToken, allowRetries, throwOnErrors: true).ConfigureAwait(false);
+    }
+
+    private async Task<JsonValue> PostGraphQlAsync(JsonObject payload, CancellationToken cancellationToken, bool allowRetries, bool throwOnErrors) {
         return await WithGateAsync(async () => {
             var json = JsonLite.Serialize(JsonValue.From(payload));
             const string url = "/graphql";
@@ -602,7 +606,7 @@ internal sealed partial class GitHubClient : IDisposable {
                         }
                         var parsed = JsonLite.Parse(responseText) ?? JsonValue.Null;
                         var errors = parsed.AsObject()?.GetArray("errors");
-                        if (errors is not null && errors.Count > 0) {
+                        if (throwOnErrors && errors is not null && errors.Count > 0) {
                             throw new InvalidOperationException($"GitHub GraphQL request returned errors: {Truncate(responseText)}");
                         }
                         return parsed;
