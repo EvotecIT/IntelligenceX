@@ -47,6 +47,13 @@ internal static class CiChangedFilesCommand {
                 message = string.IsNullOrWhiteSpace(message) ? fallbackMessage : (message + "\n" + fallbackMessage);
             }
         }
+
+        lines = lines
+            .Select(value => (value ?? string.Empty).Trim())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToList();
         try {
             File.WriteAllLines(outputPath, lines);
         } catch (Exception ex) {
@@ -195,6 +202,10 @@ internal static class CiChangedFilesCommand {
             }
             options.Error = $"Unknown option '{arg}' for changed-files.";
             return options;
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.Head) && string.IsNullOrWhiteSpace(options.Base)) {
+            options.Error = "Option --head requires --base.";
         }
         return options;
     }
