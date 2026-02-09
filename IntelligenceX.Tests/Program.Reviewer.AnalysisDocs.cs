@@ -6,6 +6,18 @@ internal static partial class Program {
         var workspace = ResolveWorkspaceRoot();
         var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
 
+        static bool LooksLikeLearnLocaleSegment(string? value) {
+            // Example: en-us, de-de. We keep this permissive (just shape) so the test doesn't need a locale allowlist.
+            if (string.IsNullOrWhiteSpace(value) || value!.Length != 5) {
+                return false;
+            }
+            return char.IsLetter(value[0]) &&
+                   char.IsLetter(value[1]) &&
+                   value[2] == '-' &&
+                   char.IsLetter(value[3]) &&
+                   char.IsLetter(value[4]);
+        }
+
         foreach (var entry in catalog.Rules) {
             var rule = entry.Value;
             if (!string.Equals(rule.Language, "powershell", StringComparison.OrdinalIgnoreCase)) {
@@ -39,12 +51,9 @@ internal static partial class Program {
             var path = normalizedUri.AbsolutePath;
             var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
             var offset = 0;
-            if (segments.Length >= 6) {
-                // Learn sometimes includes a locale segment, e.g. /en-us/powershell/...
-                var maybeLocale = segments[0];
-                if (maybeLocale.Length == 5 && maybeLocale[2] == '-') {
-                    offset = 1;
-                }
+            // Learn sometimes includes a locale segment, e.g. /en-us/powershell/...
+            if (segments.Length > 0 && LooksLikeLearnLocaleSegment(segments[0])) {
+                offset = 1;
             }
             AssertEqual(true, segments.Length >= (5 + offset), $"{rule.Id} docs path has enough segments");
             if (segments.Length < (5 + offset)) {

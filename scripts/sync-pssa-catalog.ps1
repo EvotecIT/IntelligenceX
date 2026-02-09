@@ -1,5 +1,6 @@
 param(
     [Parameter()][string]$OutDir,
+    [Parameter()][string]$PSScriptAnalyzerVersion,
     [Parameter()][switch]$PruneStale,
     [Parameter()][switch]$ForcePrune,
     [Parameter()][switch]$AllowNonIntendedOutDir,
@@ -116,12 +117,36 @@ function ConvertTo-DeterministicJson([System.Collections.IDictionary]$obj) {
     return ($lines -join "`n")
 }
 
+$versionFromArg = if ([string]::IsNullOrWhiteSpace($PSScriptAnalyzerVersion)) { '' } else { $PSScriptAnalyzerVersion.Trim() }
+$pinnedVersionPath = Join-Path -Path $PSScriptRoot -ChildPath 'psscriptanalyzer.version.txt'
+$versionFromFile = ''
+if ([string]::IsNullOrWhiteSpace($versionFromArg) -and (Test-Path -LiteralPath $pinnedVersionPath)) {
+    $versionFromFile = (Get-Content -LiteralPath $pinnedVersionPath -Raw).Trim()
+}
+$resolvedVersionText = if (-not [string]::IsNullOrWhiteSpace($versionFromArg)) { $versionFromArg } else { $versionFromFile }
+if ([string]::IsNullOrWhiteSpace($resolvedVersionText)) {
+    throw ("PSScriptAnalyzer version is not pinned. Specify -PSScriptAnalyzerVersion, or create '{0}' containing the intended version (e.g. 1.24.0)." -f $pinnedVersionPath)
+}
+
+try {
+    $resolvedVersion = [version]$resolvedVersionText
+} catch {
+    throw ("Invalid PSScriptAnalyzer version '{0}'. Expected a semantic version like 1.24.0." -f $resolvedVersionText)
+}
+
 $module = Get-Module -ListAvailable -Name PSScriptAnalyzer |
-    Sort-Object Version -Descending |
+    Where-Object { $_.Version -eq $resolvedVersion } |
+    Sort-Object Path, ModuleBase |
     Select-Object -First 1
 if (-not $module) {
-    throw 'PSScriptAnalyzer module not found. Install with: Install-Module PSScriptAnalyzer -Scope CurrentUser'
+    $installed = Get-Module -ListAvailable -Name PSScriptAnalyzer |
+        Sort-Object Version -Descending |
+        Select-Object -ExpandProperty Version -Unique |
+        ForEach-Object { $_.ToString() }
+    $installedMsg = if ($installed -and $installed.Count -gt 0) { ($installed -join ', ') } else { 'none' }
+    throw ("PSScriptAnalyzer {0} module not found. Installed versions: {1}. Install with: Install-Module PSScriptAnalyzer -RequiredVersion {0} -Scope CurrentUser" -f $resolvedVersion, $installedMsg)
 }
+Write-Output ("Using PSScriptAnalyzer {0} from '{1}'." -f $module.Version, $module.ModuleBase)
 
 # Avoid importing a module that is (accidentally or maliciously) located under the repo workspace.
 $workspaceRoot = Get-NormalizedPath (Join-Path -Path $PSScriptRoot -ChildPath '..')
