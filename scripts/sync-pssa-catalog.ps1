@@ -170,7 +170,7 @@ function Test-IsTrustedAuthenticode([string]$path) {
     if (-not $runningOnWindows) { return $false }
     try {
         $sig = Get-AuthenticodeSignature -FilePath $path
-        if ($sig -and $sig.Status -eq 'Valid' -and $sig.SignerCertificate -and $sig.SignerCertificate.Subject -like '*Microsoft Corporation*') {
+        if ($sig -and $sig.Status -eq 'Valid' -and $sig.SignerCertificate) {
             return $true
         }
     } catch {

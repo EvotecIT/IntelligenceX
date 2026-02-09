@@ -320,23 +320,7 @@ internal static partial class Program {
         var rulesRoot = Path.Combine(workspace, "Analysis", "Catalog", "rules");
         var packsRoot = Path.Combine(workspace, "Analysis", "Packs");
 
-        // Best-effort cleanup of stale temp dirs from previous runs (Windows file locks can occasionally prevent deletion).
         const string emptyOverridesPrefix = "ix-analysis-empty-overrides-empty-dir-";
-        try {
-            foreach (var dir in Directory.EnumerateDirectories(Path.GetTempPath(), emptyOverridesPrefix + "*")) {
-                try {
-                    var age = DateTime.UtcNow - Directory.GetLastWriteTimeUtc(dir);
-                    if (age > TimeSpan.FromDays(1)) {
-                        Directory.Delete(dir, true);
-                    }
-                } catch {
-                    // Ignore cleanup failures; a later run may succeed.
-                }
-            }
-        } catch {
-            // Ignore temp enumeration failures.
-        }
-
         var emptyOverridesRoot = Path.Combine(
             Path.GetTempPath(),
             emptyOverridesPrefix + Guid.NewGuid().ToString("N"));
