@@ -378,79 +378,42 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
                 .ConfigureAwait(false);
         }
 
-        ToolSchemaKey retryKey;
-        attempted.Add(ToolWireFormat.CustomParameters);
-        try {
-            return await SendWithWireFormatAsync(ToolWireFormat.CustomParameters, body).ConfigureAwait(false);
-        } catch (OperationCanceledException) {
-            throw;
-        } catch (Exception ex) {
-            lastError = ExceptionDispatchInfo.Capture(ex);
-            if (!TryGetToolSchemaKeyFallback(ex, out retryKey)) {
+        var candidates = new[] {
+            // Standard OpenAI schema for Responses API: tools[].function.{name,parameters}
+            ToolWireFormat.FunctionNestedParameters,
+            ToolWireFormat.FunctionNestedInputSchema,
+
+            // Observed legacy variants: tools[].name at top-level
+            ToolWireFormat.FunctionFlatParameters,
+            ToolWireFormat.FunctionFlatInputSchema,
+
+            // Observed ChatGPT-native custom tool schema
+            ToolWireFormat.CustomParameters,
+            ToolWireFormat.CustomInputSchema
+        };
+
+        for (var i = 0; i < candidates.Length; i++) {
+            var candidate = candidates[i];
+            if (!attempted.Add(candidate)) {
+                continue;
+            }
+
+            try {
+                // The initial request body is already built by the caller using the default wire format.
+                var usePrebuilt = candidate == ToolWireFormat.FunctionNestedParameters;
+                return await SendWithWireFormatAsync(candidate, usePrebuilt ? body : null).ConfigureAwait(false);
+            } catch (OperationCanceledException) {
                 throw;
+            } catch (Exception ex) {
+                lastError = ExceptionDispatchInfo.Capture(ex);
+                if (!IsToolSchemaUnknownParameter(ex)) {
+                    throw;
+                }
             }
         }
 
-        // Retry with the alternate custom-tool schema key first.
-        var retryFormat = retryKey == ToolSchemaKey.InputSchema ? ToolWireFormat.CustomInputSchema : ToolWireFormat.CustomParameters;
-        if (!attempted.Add(retryFormat)) {
-            lastError!.Throw();
-        }
-
-        ToolSchemaKey retryKey2;
-        try {
-            return await SendWithWireFormatAsync(retryFormat).ConfigureAwait(false);
-        } catch (OperationCanceledException) {
-            throw;
-        } catch (Exception ex) {
-            lastError = ExceptionDispatchInfo.Capture(ex);
-            if (!TryGetToolSchemaKeyFallback(ex, out retryKey2)) {
-                throw;
-            }
-        }
-
-        // Some ChatGPT native variants don't accept custom tool schema fields at all. Fall back to function-style tools.
-        var initialFunctionFormat = retryKey2 == ToolSchemaKey.InputSchema
-            ? ToolWireFormat.FunctionFlatInputSchema
-            : ToolWireFormat.FunctionFlatParameters;
-        if (!attempted.Add(initialFunctionFormat)) {
-            lastError!.Throw();
-        }
-
-        ToolSchemaKey functionRetryKey;
-        try {
-            return await SendWithWireFormatAsync(initialFunctionFormat).ConfigureAwait(false);
-        } catch (OperationCanceledException) {
-            throw;
-        } catch (Exception ex) {
-            lastError = ExceptionDispatchInfo.Capture(ex);
-            if (!TryGetToolSchemaKeyFallback(ex, out functionRetryKey)) {
-                throw;
-            }
-        }
-
-        // Retry function-style request with the alternate key, ensuring we don't resend the same format.
-        var functionRetryFormat = functionRetryKey == ToolSchemaKey.InputSchema
-            ? ToolWireFormat.FunctionFlatInputSchema
-            : ToolWireFormat.FunctionFlatParameters;
-        if (functionRetryFormat == initialFunctionFormat) {
-            functionRetryFormat = functionRetryFormat == ToolWireFormat.FunctionFlatInputSchema
-                ? ToolWireFormat.FunctionFlatParameters
-                : ToolWireFormat.FunctionFlatInputSchema;
-        }
-
-        if (!attempted.Add(functionRetryFormat)) {
-            lastError!.Throw();
-        }
-
-        try {
-            return await SendWithWireFormatAsync(functionRetryFormat).ConfigureAwait(false);
-        } catch (OperationCanceledException) {
-            throw;
-        } catch (Exception ex) {
-            lastError = ExceptionDispatchInfo.Capture(ex);
-            throw;
-        }
+        lastError?.Throw();
+        throw new InvalidOperationException("Tool schema fallback exhausted without capturing an exception.");
     }
 
     private void HandleStreamEvent(JsonObject evt, StringBuilder delta, ref string? status, ref JsonObject? completedResponse,

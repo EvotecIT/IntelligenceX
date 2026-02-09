@@ -4,6 +4,72 @@ using System.Collections.Generic;
 namespace IntelligenceX.OpenAI.Native;
 
 internal sealed partial class OpenAINativeTransport {
+    private static bool IsToolSchemaUnknownParameter(Exception? ex) {
+        if (ex is null) {
+            return false;
+        }
+
+        // The transport typically throws InvalidOperationException for server validation errors,
+        // but callers can wrap it (including AggregateException). Unwrap defensively.
+        var pending = new Stack<Exception>();
+        pending.Push(ex);
+        while (pending.Count > 0) {
+            var current = pending.Pop();
+
+            if (current is OpenAINativeErrorResponseException native) {
+                if (native.StatusCode == System.Net.HttpStatusCode.BadRequest ||
+                    (int)native.StatusCode == 422 /* Unprocessable Entity (not available in older TFMs) */) {
+                    if (!string.IsNullOrWhiteSpace(native.ErrorCode) &&
+                        native.ErrorCode!.IndexOf("unknown_parameter", StringComparison.OrdinalIgnoreCase) >= 0) {
+                        var param = native.ErrorParam;
+                        if (!string.IsNullOrWhiteSpace(param) &&
+                            param!.TrimStart().StartsWith("tools", StringComparison.OrdinalIgnoreCase)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            if (current is InvalidOperationException ioe) {
+                // Prefer structured diagnostic fields when available (so behavior doesn't depend on localized strings).
+                if (ioe.Data?["openai:native_transport"] is bool marker && marker) {
+                    var code = ioe.Data?["openai:error_code"] as string;
+                    var param = ioe.Data?["openai:error_param"] as string;
+                    if (!string.IsNullOrWhiteSpace(code) &&
+                        code!.IndexOf("unknown_parameter", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                        !string.IsNullOrWhiteSpace(param) &&
+                        param!.TrimStart().StartsWith("tools", StringComparison.OrdinalIgnoreCase)) {
+                        return true;
+                    }
+                }
+
+                // Fallback for cases where we only have a message string.
+                var msg = ioe.Message;
+                if (!string.IsNullOrWhiteSpace(msg) &&
+                    (msg!.IndexOf("unknown parameter", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                     msg.IndexOf("unknown field", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                     msg.IndexOf("unrecognized request argument", StringComparison.OrdinalIgnoreCase) >= 0) &&
+                    msg.IndexOf("tools", StringComparison.OrdinalIgnoreCase) >= 0) {
+                    return true;
+                }
+            }
+
+            if (current is AggregateException agg) {
+                foreach (var inner in agg.InnerExceptions) {
+                    if (inner is not null) {
+                        pending.Push(inner);
+                    }
+                }
+            }
+
+            if (current.InnerException is not null) {
+                pending.Push(current.InnerException);
+            }
+        }
+
+        return false;
+    }
+
     private static bool TryGetToolSchemaKeyFallback(Exception? ex, out ToolSchemaKey fallbackKey) {
         fallbackKey = ToolSchemaKey.Parameters;
         if (ex is null) {
@@ -104,8 +170,12 @@ internal sealed partial class OpenAINativeTransport {
         // Server error messages vary; the stable signal is the field path that was rejected:
         // - tools[<n>].parameters
         // - tools[<n>].input_schema
+        // - tools[<n>].function.parameters
+        // - tools[<n>].function.input_schema
         // - tools.<n>.parameters (seen in some variants)
         // - tools.<n>.input_schema
+        // - tools.<n>.function.parameters
+        // - tools.<n>.function.input_schema
         fallbackKey = ToolSchemaKey.Parameters;
         if (string.IsNullOrWhiteSpace(message)) {
             return false;
@@ -140,11 +210,22 @@ internal sealed partial class OpenAINativeTransport {
             i++;
 
             if (TryReadIdentifier(text, i, out var identifier)) {
-                if (string.Equals(identifier, "parameters", StringComparison.OrdinalIgnoreCase)) {
+                if (string.Equals(identifier, "function", StringComparison.OrdinalIgnoreCase)) {
+                    var j = i + identifier.Length;
+                    if (j < text.Length && text[j] == '.' && TryReadIdentifier(text, j + 1, out var inner)) {
+                        if (string.Equals(inner, "parameters", StringComparison.OrdinalIgnoreCase)) {
+                            fallbackKey = ToolSchemaKey.InputSchema;
+                            return true;
+                        }
+                        if (string.Equals(inner, "input_schema", StringComparison.OrdinalIgnoreCase)) {
+                            fallbackKey = ToolSchemaKey.Parameters;
+                            return true;
+                        }
+                    }
+                } else if (string.Equals(identifier, "parameters", StringComparison.OrdinalIgnoreCase)) {
                     fallbackKey = ToolSchemaKey.InputSchema;
                     return true;
-                }
-                if (string.Equals(identifier, "input_schema", StringComparison.OrdinalIgnoreCase)) {
+                } else if (string.Equals(identifier, "input_schema", StringComparison.OrdinalIgnoreCase)) {
                     fallbackKey = ToolSchemaKey.Parameters;
                     return true;
                 }
@@ -176,11 +257,22 @@ internal sealed partial class OpenAINativeTransport {
             i++;
 
             if (TryReadIdentifier(text, i, out var identifier)) {
-                if (string.Equals(identifier, "parameters", StringComparison.OrdinalIgnoreCase)) {
+                if (string.Equals(identifier, "function", StringComparison.OrdinalIgnoreCase)) {
+                    var j = i + identifier.Length;
+                    if (j < text.Length && text[j] == '.' && TryReadIdentifier(text, j + 1, out var inner)) {
+                        if (string.Equals(inner, "parameters", StringComparison.OrdinalIgnoreCase)) {
+                            fallbackKey = ToolSchemaKey.InputSchema;
+                            return true;
+                        }
+                        if (string.Equals(inner, "input_schema", StringComparison.OrdinalIgnoreCase)) {
+                            fallbackKey = ToolSchemaKey.Parameters;
+                            return true;
+                        }
+                    }
+                } else if (string.Equals(identifier, "parameters", StringComparison.OrdinalIgnoreCase)) {
                     fallbackKey = ToolSchemaKey.InputSchema;
                     return true;
-                }
-                if (string.Equals(identifier, "input_schema", StringComparison.OrdinalIgnoreCase)) {
+                } else if (string.Equals(identifier, "input_schema", StringComparison.OrdinalIgnoreCase)) {
                     fallbackKey = ToolSchemaKey.Parameters;
                     return true;
                 }
