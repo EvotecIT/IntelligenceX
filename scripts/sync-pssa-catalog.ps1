@@ -362,7 +362,15 @@ function Write-FileUtf8NoBomLf([string]$path, [string]$content) {
     [System.IO.File]::WriteAllText($path, $normalized, $utf8NoBom)
 }
 
-$rules = Get-ScriptAnalyzerRule | Sort-Object RuleName
+$rules = @()
+try {
+    $rules = @(Get-ScriptAnalyzerRule | Sort-Object RuleName)
+} catch {
+    throw ("Get-ScriptAnalyzerRule failed: {0}" -f $_.Exception.Message)
+}
+if (-not $rules -or $rules.Count -eq 0) {
+    throw "Get-ScriptAnalyzerRule returned 0 rules. Ensure PSScriptAnalyzer imported correctly and is functional in this session."
+}
 $ruleIds = @($rules | ForEach-Object { [string]$_.RuleName } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 $ruleIdSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 foreach ($id in $ruleIds) { [void]$ruleIdSet.Add($id) }

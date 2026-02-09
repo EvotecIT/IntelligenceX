@@ -28,15 +28,34 @@ internal static partial class Program {
             }
             AssertEqual("https", uri.Scheme, $"{rule.Id} docs uses https");
 
-            AssertEqual("learn.microsoft.com", uri.Host, $"{rule.Id} docs host is Learn");
+            // Prefer Learn; tolerate harmless canonicalization differences like subdomains.
+            var hostOk =
+                uri.Host.Equals("learn.microsoft.com", StringComparison.OrdinalIgnoreCase) ||
+                uri.Host.EndsWith(".learn.microsoft.com", StringComparison.OrdinalIgnoreCase);
+            AssertEqual(true, hostOk, $"{rule.Id} docs host is Learn");
 
             // Ignore harmless URL canonicalization differences (e.g. query strings on docs URLs).
             var normalizedUri = new UriBuilder(uri) { Query = "", Fragment = "" }.Uri;
             var path = normalizedUri.AbsolutePath;
-            const string learnPrefix = "/powershell/utility-modules/psscriptanalyzer/rules/";
-            AssertEqual(true, path.StartsWith(learnPrefix, StringComparison.OrdinalIgnoreCase), $"{rule.Id} docs uses PSScriptAnalyzer Learn rules path");
+            var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var offset = 0;
+            if (segments.Length >= 6) {
+                // Learn sometimes includes a locale segment, e.g. /en-us/powershell/...
+                var maybeLocale = segments[0];
+                if (maybeLocale.Length == 5 && maybeLocale[2] == '-') {
+                    offset = 1;
+                }
+            }
+            AssertEqual(true, segments.Length >= (5 + offset), $"{rule.Id} docs path has enough segments");
+            if (segments.Length < (5 + offset)) {
+                throw new InvalidOperationException($"Expected {rule.Id} docs path to include '/powershell/utility-modules/psscriptanalyzer/rules/<slug>', got '{path}'.");
+            }
+            AssertEqual("powershell", segments[offset + 0], $"{rule.Id} docs uses Learn powershell path");
+            AssertEqual("utility-modules", segments[offset + 1], $"{rule.Id} docs uses Learn utility-modules path");
+            AssertEqual("psscriptanalyzer", segments[offset + 2], $"{rule.Id} docs uses Learn PSScriptAnalyzer path");
+            AssertEqual("rules", segments[offset + 3], $"{rule.Id} docs uses Learn rules path");
 
-            var actualSlug = path.Substring(learnPrefix.Length).Trim('/');
+            var actualSlug = segments[offset + 4].Trim('/');
             AssertEqual(false, string.IsNullOrWhiteSpace(actualSlug), $"{rule.Id} docs slug is present");
             AssertEqual(false, actualSlug.Any(char.IsWhiteSpace), $"{rule.Id} docs slug has no whitespace");
         }
