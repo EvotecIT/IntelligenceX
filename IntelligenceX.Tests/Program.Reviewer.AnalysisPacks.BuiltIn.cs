@@ -43,5 +43,45 @@ internal static partial class Program {
             AssertEqual(true, catalog.TryGetRule(ruleId, out _), $"powershell-default rule exists: {ruleId}");
         }
     }
+
+    private static void TestAnalysisPacksPowerShell50ResolvesTo50Rules() {
+        var workspace = ResolveWorkspaceRoot();
+        var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
+
+        AssertEqual(true, catalog.Packs.ContainsKey("powershell-50"), "pack powershell-50 exists");
+
+        var pack = catalog.Packs["powershell-50"];
+        AssertEqual(50, pack.Rules.Count, "powershell-50 declares 50 rules");
+        var declaredRuleIds = pack.Rules.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        AssertEqual(50, declaredRuleIds.Length, "powershell-50 declares no duplicate rules");
+
+        var baselineSettings = new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "powershell-default" } };
+        var baselinePolicy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(baselineSettings, catalog);
+        foreach (var ruleId in baselinePolicy.Rules.Keys) {
+            AssertEqual(true, declaredRuleIds.Contains(ruleId, StringComparer.OrdinalIgnoreCase),
+                $"powershell-50 includes powershell-default baseline rule: {ruleId}");
+        }
+
+        var settings = new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "powershell-50" } };
+        var policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(settings, catalog);
+
+        var allRuleIds = policy.Rules.Keys.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        AssertEqual(50, allRuleIds.Length, "powershell-50 resolves to 50 distinct rules");
+
+        foreach (var ruleId in declaredRuleIds) {
+            AssertEqual(true, policy.Rules.ContainsKey(ruleId), $"powershell-50 resolves declared rule: {ruleId}");
+        }
+        foreach (var ruleId in allRuleIds) {
+            AssertEqual(true, declaredRuleIds.Contains(ruleId, StringComparer.OrdinalIgnoreCase),
+                $"powershell-50 does not resolve any unexpected rules: {ruleId}");
+        }
+
+        var psRuleIds = policy.SelectByLanguage("powershell").Select(r => r.Rule.Id).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        AssertEqual(allRuleIds.Length, psRuleIds.Length, "powershell-50 contains only PowerShell rules");
+
+        foreach (var ruleId in allRuleIds) {
+            AssertEqual(true, catalog.TryGetRule(ruleId, out _), $"powershell-50 rule exists: {ruleId}");
+        }
+    }
 }
 #endif
