@@ -31,6 +31,12 @@ internal static class CiPathSafety {
             var fullPath = Path.GetFullPath(path);
             var fullRoot = Path.GetFullPath(root);
             var trimmedRoot = Path.TrimEndingDirectorySeparator(fullRoot);
+            if (Directory.Exists(trimmedRoot)) {
+                var rootAttrs = File.GetAttributes(trimmedRoot);
+                if ((rootAttrs & FileAttributes.ReparsePoint) != 0) {
+                    return false;
+                }
+            }
 
             // Check each existing directory segment under the root for symlinks/junctions.
             // This is best-effort and reduces the risk of writing outside the workspace via reparse points.

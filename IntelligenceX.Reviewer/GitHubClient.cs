@@ -624,8 +624,15 @@ internal sealed partial class GitHubClient : IDisposable {
                         }
                         var parsed = JsonLite.Parse(responseText) ?? JsonValue.Null;
                         var errors = parsed.AsObject()?.GetArray("errors");
-                        if (throwOnErrors && errors is not null && errors.Count > 0) {
-                            throw new InvalidOperationException($"GitHub GraphQL request returned errors: {Truncate(responseText)}");
+                        if (errors is not null && errors.Count > 0) {
+                            if (throwOnErrors) {
+                                throw new InvalidOperationException($"GitHub GraphQL request returned errors: {Truncate(responseText)}");
+                            }
+                            // Allow partial data for read-only queries, but fail fast when the response has no usable data.
+                            var dataObj = parsed.AsObject()?.GetObject("data");
+                            if (dataObj is null) {
+                                throw new InvalidOperationException($"GitHub GraphQL request returned errors and no data: {Truncate(responseText)}");
+                            }
                         }
                         return parsed;
                     }

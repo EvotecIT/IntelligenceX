@@ -126,7 +126,7 @@ internal static class CiTuneReviewerBudgetsCommand {
                 }
             }
             if (!matchesGitHubEnv && !IsUnderRoot(resolvedCandidate, workspaceRoot)) {
-                error = $"Env-file output path must be within the workspace (or equal to $GITHUB_ENV). out-env={resolvedCandidate} workspace={workspaceRoot}";
+                error = $"Env-file output path must be within the workspace (and not traverse symlinks/junctions), or equal to $GITHUB_ENV. out-env={resolvedCandidate} workspace={workspaceRoot}";
                 return false;
             }
         } else if (!usingExplicitOutEnv && !isGitHubActions && !File.Exists(resolvedCandidate)) {
