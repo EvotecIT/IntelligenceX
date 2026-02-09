@@ -17,8 +17,9 @@ on:
 jobs:
   # INTELLIGENCEX:BEGIN
   review:
-    # Prefer GitHub-hosted runners for PR checks to avoid blocking when self-hosted runners are unavailable.
-    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["self-hosted","ubuntu"]') }}
+    # While the repo is private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
+    # When public, use GitHub-hosted runners by default.
+    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
     permissions:
       contents: read
       pull-requests: write
