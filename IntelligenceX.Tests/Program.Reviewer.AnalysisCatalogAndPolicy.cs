@@ -502,12 +502,12 @@ internal static partial class Program {
                         }
                         break;
                     }
-	                        default:
-	                            // Production currently ignores unknown override properties; fail fast in tests so typos
-	                            // (e.g., "defualtSeverity") don't silently make overrides ineffective.
-	                            throw new Exception($"{id} override has unsupported property '{prop.Name}'.");
-	                    }
-	                }
+                        default:
+                            // Production currently ignores unknown override properties; fail fast in tests so typos
+                            // (e.g., "defualtSeverity") don't silently make overrides ineffective.
+                            throw new Exception($"{id} override has unsupported property '{prop.Name}'.");
+                    }
+                }
 
             AssertEqual(true, sawSupportedOverrideProperty, $"{id} override has at least one supported property besides id");
             if (sawNonTagsOverrideProperty) {
