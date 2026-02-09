@@ -149,8 +149,15 @@ internal static class CiTuneReviewerBudgetsCommand {
         }
         var fullPath = Path.GetFullPath(path);
         var fullRoot = Path.GetFullPath(root);
-        var normalizedRoot = fullRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+        var trimmedPath = Path.TrimEndingDirectorySeparator(fullPath);
+        var trimmedRoot = Path.TrimEndingDirectorySeparator(fullRoot);
+        if (string.Equals(trimmedPath, trimmedRoot, comparison)) {
+            return true;
+        }
+
+        var normalizedRoot = trimmedRoot + Path.DirectorySeparatorChar;
         return fullPath.StartsWith(normalizedRoot, comparison);
     }
 

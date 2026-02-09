@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 namespace IntelligenceX.Cli.Ci;
 
 internal static class CiChangedFilesCommand {
+    private static readonly Encoding Utf8Tolerant = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: false);
+
     public static async Task<int> RunAsync(string[] args) {
         var options = ParseArgs(args);
         if (options.ShowHelp) {
@@ -98,8 +100,16 @@ internal static class CiChangedFilesCommand {
         }
         var fullPath = Path.GetFullPath(path);
         var fullRoot = Path.GetFullPath(root);
-        var normalizedRoot = fullRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var trimmedPath = Path.TrimEndingDirectorySeparator(fullPath);
+        var trimmedRoot = Path.TrimEndingDirectorySeparator(fullRoot);
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+        // Consider the root directory itself as "under root" for containment checks; callers may normalize away trailing separators.
+        if (string.Equals(trimmedPath, trimmedRoot, comparison)) {
+            return true;
+        }
+
+        var normalizedRoot = trimmedRoot + Path.DirectorySeparatorChar;
         return fullPath.StartsWith(normalizedRoot, comparison);
     }
 
@@ -179,12 +189,12 @@ internal static class CiChangedFilesCommand {
                 continue;
             }
             if (i > start) {
-                results.Add(Encoding.UTF8.GetString(stdout, start, i - start));
+                results.Add(Utf8Tolerant.GetString(stdout, start, i - start));
             }
             start = i + 1;
         }
         if (start < stdout.Length) {
-            results.Add(Encoding.UTF8.GetString(stdout, start, stdout.Length - start));
+            results.Add(Utf8Tolerant.GetString(stdout, start, stdout.Length - start));
         }
         return results;
     }
@@ -202,7 +212,7 @@ internal static class CiChangedFilesCommand {
         if (bytes is null || bytes.Length == 0) {
             return string.Empty;
         }
-        return Encoding.UTF8.GetString(bytes);
+        return Utf8Tolerant.GetString(bytes);
     }
 
     private static Options ParseArgs(string[] args) {
