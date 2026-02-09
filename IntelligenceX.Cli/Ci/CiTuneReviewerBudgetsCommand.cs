@@ -21,9 +21,17 @@ internal static class CiTuneReviewerBudgetsCommand {
             Console.Error.WriteLine("Missing --changed-files <path>.");
             return Task.FromResult(1);
         }
+        if (options.ChangedFilesPath!.Contains('\n') || options.ChangedFilesPath!.Contains('\r') || options.ChangedFilesPath!.Contains('\0')) {
+            Console.Error.WriteLine("Invalid --changed-files path.");
+            return Task.FromResult(1);
+        }
 
         var workspaceRoot = ResolveWorkspaceRoot();
         var changedFilesPath = ResolvePathWithinWorkspace(workspaceRoot, options.ChangedFilesPath!);
+        if (!CiPathSafety.IsUnderRoot(changedFilesPath, workspaceRoot)) {
+            Console.Error.WriteLine($"changed-files path must be within the workspace. changed-files={changedFilesPath} workspace={workspaceRoot}");
+            return Task.FromResult(1);
+        }
         if (!File.Exists(changedFilesPath)) {
             Console.Error.WriteLine($"No changed-files file found at {changedFilesPath}; leaving budgets unchanged.");
             return Task.FromResult(0);
@@ -75,16 +83,14 @@ internal static class CiTuneReviewerBudgetsCommand {
         var defaultEnv = Environment.GetEnvironmentVariable("GITHUB_ENV");
         var isGitHubActions = string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"), "true", StringComparison.OrdinalIgnoreCase);
 
-        string? candidate;
+        string? candidate = null;
         if (!string.IsNullOrWhiteSpace(outEnv)) {
             candidate = outEnv;
         } else if (isGitHubActions) {
             candidate = defaultEnv;
-        } else {
-            // Avoid writing to arbitrary paths during local runs just because GITHUB_ENV is set.
-            candidate = null;
         }
         if (string.IsNullOrWhiteSpace(candidate)) {
+            // Avoid writing to arbitrary paths during local runs just because GITHUB_ENV is set.
             return true;
         }
         if (candidate.Contains('\n') || candidate.Contains('\r') || candidate.Contains('\0')) {
@@ -92,7 +98,16 @@ internal static class CiTuneReviewerBudgetsCommand {
             return false;
         }
 
-        var resolvedCandidate = ResolvePathWithinWorkspace(workspaceRoot, candidate);
+        string resolvedCandidate;
+        try {
+            // Important: $GITHUB_ENV is often an absolute path outside the workspace; do not force it under workspace root.
+            resolvedCandidate = Path.IsPathRooted(candidate)
+                ? Path.GetFullPath(candidate)
+                : Path.GetFullPath(Path.Combine(workspaceRoot, candidate));
+        } catch (Exception ex) {
+            error = $"Invalid env-file path: {ex.Message}";
+            return false;
+        }
 
         // If the workflow explicitly provides --out-env, treat it as a sharp edge and restrict where it can write.
         // Allow exactly $GITHUB_ENV (even if outside workspace), otherwise require it to be under the workspace root.
