@@ -54,7 +54,8 @@ jobs:
 
       - name: Run Claude Code Review
         id: claude-review
-        if: steps.changes.outputs.claude_workflows != 'true'
+        if: steps.changes.outputs.claude_workflows != 'true' && secrets.CLAUDE_CODE_OAUTH_TOKEN != ''
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -89,6 +90,10 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
           claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
+
+      - name: Skip Claude Code Review (not configured)
+        if: steps.changes.outputs.claude_workflows != 'true' && secrets.CLAUDE_CODE_OAUTH_TOKEN == ''
+        run: echo "Skipping Claude Code Review because CLAUDE_CODE_OAUTH_TOKEN is not configured."
 
       - name: Skip Claude Code Review (workflow modified in PR)
         if: steps.changes.outputs.claude_workflows == 'true'
