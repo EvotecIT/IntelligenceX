@@ -483,23 +483,16 @@ internal sealed partial class GitHubClient : IDisposable {
 	        return await WithGateAsync(async () => {
 	            var retryBudgetStart = DateTimeOffset.UtcNow;
 	            for (var attempt = 1; attempt <= DefaultRetryAttempts; attempt++) {
-	                cancellationToken.ThrowIfCancellationRequested();
-	                using var response = await _http.GetAsync(url, cancellationToken).ConfigureAwait(false);
-	                var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-	                if (attempt < DefaultRetryAttempts && TryGetRetryDelay(response, content, attempt, out var delay)) {
-	                    var remaining = DefaultRetryBudgetWindow - (DateTimeOffset.UtcNow - retryBudgetStart);
-	                    // Keep some budget for the subsequent request + parsing, otherwise we'd exceed the intended window.
-	                    var reserve = TimeSpan.FromMilliseconds(250);
-	                    if (remaining > reserve && delay + reserve < remaining) {
-	                        var maxDelay = remaining - reserve;
-	                        if (delay > maxDelay) {
-	                            delay = maxDelay;
-	                        }
-	                        await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-	                        continue;
-	                    }
-	                    // No retry budget left: surface the current response as an error.
-	                }
+                cancellationToken.ThrowIfCancellationRequested();
+                using var response = await _http.GetAsync(url, cancellationToken).ConfigureAwait(false);
+                var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                if (attempt < DefaultRetryAttempts && TryGetRetryDelay(response, content, attempt, out var delay)) {
+                    if (TryScheduleRetry(retryBudgetStart, ref delay)) {
+                        await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                        continue;
+                    }
+                    // No retry budget left: surface the current response as an error.
+                }
 	                if (!response.IsSuccessStatusCode) {
 	                    throw new InvalidOperationException(
 	                        FormatApiError("GET", url, response, content));
@@ -525,11 +518,7 @@ internal sealed partial class GitHubClient : IDisposable {
                 using var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
-                    var remaining = DefaultRetryBudgetWindow - (DateTimeOffset.UtcNow - retryBudgetStart);
-                    if (remaining > TimeSpan.Zero) {
-                        if (delay > remaining) {
-                            delay = remaining;
-                        }
+                    if (TryScheduleRetry(retryBudgetStart, ref delay)) {
                         await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                         continue;
                     }
@@ -562,11 +551,7 @@ internal sealed partial class GitHubClient : IDisposable {
                 using var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
-                    var remaining = DefaultRetryBudgetWindow - (DateTimeOffset.UtcNow - retryBudgetStart);
-                    if (remaining > TimeSpan.Zero) {
-                        if (delay > remaining) {
-                            delay = remaining;
-                        }
+                    if (TryScheduleRetry(retryBudgetStart, ref delay)) {
                         await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                         continue;
                     }
@@ -604,11 +589,7 @@ internal sealed partial class GitHubClient : IDisposable {
                 using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
-                    var remaining = DefaultRetryBudgetWindow - (DateTimeOffset.UtcNow - retryBudgetStart);
-                    if (remaining > TimeSpan.Zero) {
-                        if (delay > remaining) {
-                            delay = remaining;
-                        }
+                    if (TryScheduleRetry(retryBudgetStart, ref delay)) {
                         await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                         continue;
                     }

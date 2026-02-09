@@ -6,6 +6,7 @@ namespace IntelligenceX.Reviewer;
 
 internal sealed partial class GitHubClient {
     private const int MaxRetryDelaySeconds = 15;
+    private static readonly TimeSpan RetryBudgetReserve = TimeSpan.FromMilliseconds(250);
 
     private static bool TryGetRetryDelay(HttpResponseMessage response, string responseText, int attempt, out TimeSpan delay) {
         delay = TimeSpan.Zero;
@@ -34,6 +35,20 @@ internal sealed partial class GitHubClient {
         }
 
         return false;
+    }
+
+    private static bool TryScheduleRetry(DateTimeOffset retryBudgetStart, ref TimeSpan delay) {
+        var remaining = DefaultRetryBudgetWindow - (DateTimeOffset.UtcNow - retryBudgetStart);
+        if (remaining <= RetryBudgetReserve) {
+            return false;
+        }
+        if (delay <= TimeSpan.Zero) {
+            return false;
+        }
+        if (delay + RetryBudgetReserve >= remaining) {
+            return false;
+        }
+        return true;
     }
 
     private static bool LooksLikeRateLimit(HttpResponseMessage response, string responseText) {
