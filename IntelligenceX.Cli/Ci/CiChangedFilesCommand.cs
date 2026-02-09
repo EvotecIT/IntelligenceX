@@ -34,7 +34,7 @@ internal static class CiChangedFilesCommand {
         var outputPath = Path.GetFullPath(Path.IsPathRooted(options.OutputPath!)
             ? options.OutputPath!
             : Path.Combine(workspaceRoot, options.OutputPath!));
-        if (!IsUnderRoot(outputPath, workspaceRoot)) {
+        if (!CiPathSafety.IsUnderRoot(outputPath, workspaceRoot)) {
             Console.Error.WriteLine($"Output path must be within the workspace. out={outputPath} workspace={workspaceRoot}");
             return 1;
         }
@@ -92,25 +92,6 @@ internal static class CiChangedFilesCommand {
             return 1;
         }
         return 0;
-    }
-
-    private static bool IsUnderRoot(string path, string root) {
-        if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(root)) {
-            return false;
-        }
-        var fullPath = Path.GetFullPath(path);
-        var fullRoot = Path.GetFullPath(root);
-        var trimmedPath = Path.TrimEndingDirectorySeparator(fullPath);
-        var trimmedRoot = Path.TrimEndingDirectorySeparator(fullRoot);
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-
-        // Consider the root directory itself as "under root" for containment checks; callers may normalize away trailing separators.
-        if (string.Equals(trimmedPath, trimmedRoot, comparison)) {
-            return true;
-        }
-
-        var normalizedRoot = trimmedRoot + Path.DirectorySeparatorChar;
-        return trimmedPath.StartsWith(normalizedRoot, comparison);
     }
 
     private static async Task<(bool Success, List<string> Lines, string Message)> TryComputeChangedFilesAsync(string workspace, string? baseRev, string? headRev) {

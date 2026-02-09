@@ -26,6 +26,12 @@ internal sealed partial class GitHubClient {
             delay = ComputeRateLimitDelay(response, responseText, attempt);
             return true;
         }
+        // GitHub GraphQL can return HTTP 200 with an `errors` payload for secondary rate limits / abuse detection.
+        // In those cases, we still want to apply backoff retries.
+        if (statusCode == 200 && LooksLikeRateLimit(response, responseText)) {
+            delay = ComputeRateLimitDelay(response, responseText, attempt);
+            return true;
+        }
 
         return false;
     }

@@ -143,23 +143,7 @@ internal static class CiTuneReviewerBudgetsCommand {
         return Path.GetFullPath(Path.Combine(workspaceRoot, path));
     }
 
-    private static bool IsUnderRoot(string path, string root) {
-        if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(root)) {
-            return false;
-        }
-        var fullPath = Path.GetFullPath(path);
-        var fullRoot = Path.GetFullPath(root);
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-
-        var trimmedPath = Path.TrimEndingDirectorySeparator(fullPath);
-        var trimmedRoot = Path.TrimEndingDirectorySeparator(fullRoot);
-        if (string.Equals(trimmedPath, trimmedRoot, comparison)) {
-            return true;
-        }
-
-        var normalizedRoot = trimmedRoot + Path.DirectorySeparatorChar;
-        return trimmedPath.StartsWith(normalizedRoot, comparison);
-    }
+    private static bool IsUnderRoot(string path, string root) => CiPathSafety.IsUnderRoot(path, root);
 
     private static bool PathsEqual(string left, string right) {
         var normalizedLeft = Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
