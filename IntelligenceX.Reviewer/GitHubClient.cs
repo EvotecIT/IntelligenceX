@@ -572,14 +572,15 @@ internal sealed partial class GitHubClient : IDisposable {
         if (string.IsNullOrWhiteSpace(queryText)) {
             return false;
         }
+        const string MutationKeyword = "mutation";
         var trimmed = queryText.TrimStart();
-        if (!trimmed.StartsWith("mutation", StringComparison.OrdinalIgnoreCase)) {
+        if (!trimmed.StartsWith(MutationKeyword, StringComparison.OrdinalIgnoreCase)) {
             return false;
         }
-        if (trimmed.Length == "mutation".Length) {
+        if (trimmed.Length == MutationKeyword.Length) {
             return true;
         }
-        var next = trimmed["mutation".Length];
+        var next = trimmed[MutationKeyword.Length];
         return char.IsWhiteSpace(next) || next == '(';
     }
 

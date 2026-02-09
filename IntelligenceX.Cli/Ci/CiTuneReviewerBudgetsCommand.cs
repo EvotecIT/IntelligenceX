@@ -125,7 +125,7 @@ internal static class CiTuneReviewerBudgetsCommand {
                     matchesGitHubEnv = false;
                 }
             }
-            if (!matchesGitHubEnv && !IsUnderRoot(resolvedCandidate, workspaceRoot)) {
+            if (!matchesGitHubEnv && !CiPathSafety.IsUnderRootPhysical(resolvedCandidate, workspaceRoot)) {
                 error = $"Env-file output path must be within the workspace (and not traverse symlinks/junctions), or equal to $GITHUB_ENV. out-env={resolvedCandidate} workspace={workspaceRoot}";
                 return false;
             }
@@ -165,8 +165,6 @@ internal static class CiTuneReviewerBudgetsCommand {
         }
         return Path.GetFullPath(Path.Combine(workspaceRoot, path));
     }
-
-    private static bool IsUnderRoot(string path, string root) => CiPathSafety.IsUnderRootPhysical(path, root);
 
     private static bool PathsEqual(string left, string right) {
         var normalizedLeft = Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
