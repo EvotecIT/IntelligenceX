@@ -509,6 +509,10 @@ internal sealed partial class GitHubClient : IDisposable {
         }, cancellationToken).ConfigureAwait(false);
     }
 
+    private Task<JsonValue> PostJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken) {
+        return PostJsonAsync(url, payload, cancellationToken, allowRetries: true);
+    }
+
     private async Task<JsonValue> PostJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken, bool allowRetries) {
         return await WithGateAsync(async () => {
             var json = JsonLite.Serialize(JsonValue.From(payload));
@@ -539,6 +543,10 @@ internal sealed partial class GitHubClient : IDisposable {
             // Unreachable.
             return JsonValue.Null;
         }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private Task<JsonValue> PostGraphQlAsync(JsonObject payload, CancellationToken cancellationToken) {
+        return PostGraphQlAsync(payload, cancellationToken, allowRetries: true);
     }
 
     private async Task<JsonValue> PostGraphQlAsync(JsonObject payload, CancellationToken cancellationToken, bool allowRetries) {
@@ -577,6 +585,10 @@ internal sealed partial class GitHubClient : IDisposable {
             // Unreachable.
             return JsonValue.Null;
         }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private Task PatchJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken) {
+        return PatchJsonAsync(url, payload, cancellationToken, allowRetries: true);
     }
 
     private async Task PatchJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken, bool allowRetries) {
