@@ -34,6 +34,25 @@
   border-radius: var(--pf-radius);
   box-shadow: var(--pf-shadow-card);
 }
+
+/* ===== Scrollbar Styling ===== */
+.docs-sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+.docs-sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.docs-sidebar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 3px;
+}
+.docs-sidebar::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.35);
+}
+.docs-sidebar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.2) transparent;
+}
 .docs-nav-top + .docs-nav-group { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--pf-border); }
 .docs-nav-group { margin-bottom: 1.5rem; }
 .docs-nav-heading { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--pf-ink); margin-bottom: 0.5rem; padding: 0 0.75rem; font-weight: 600; }
