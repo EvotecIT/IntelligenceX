@@ -432,16 +432,16 @@ internal sealed partial class GitHubClient : IDisposable {
         var payload = new JsonObject()
             .Add("title", title)
             .Add("body", body);
-        // Idempotent write (set title/body to specific values): safe to retry.
-        await PatchJsonAsync($"/repos/{owner}/{repo}/pulls/{number}", payload, cancellationToken, allowRetries: true)
+        // Even if the patch is conceptually idempotent, retrying PATCH under transport uncertainty can duplicate effects.
+        await PatchJsonAsync($"/repos/{owner}/{repo}/pulls/{number}", payload, cancellationToken, allowRetries: false)
             .ConfigureAwait(false);
     }
 
     public async Task UpdateIssueCommentAsync(string owner, string repo, long commentId, string body,
         CancellationToken cancellationToken) {
         var payload = new JsonObject().Add("body", body);
-        // Idempotent write (set body to specific value): safe to retry.
-        await PatchJsonAsync($"/repos/{owner}/{repo}/issues/comments/{commentId}", payload, cancellationToken, allowRetries: true)
+        // Even if the patch is conceptually idempotent, retrying PATCH under transport uncertainty can duplicate effects.
+        await PatchJsonAsync($"/repos/{owner}/{repo}/issues/comments/{commentId}", payload, cancellationToken, allowRetries: false)
             .ConfigureAwait(false);
     }
 
@@ -587,7 +587,7 @@ internal sealed partial class GitHubClient : IDisposable {
     }
 
     private Task PatchJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken) {
-        return PatchJsonAsync(url, payload, cancellationToken, allowRetries: true);
+        return PatchJsonAsync(url, payload, cancellationToken, allowRetries: false);
     }
 
     private async Task PatchJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken, bool allowRetries) {
