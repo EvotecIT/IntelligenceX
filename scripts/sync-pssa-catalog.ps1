@@ -43,7 +43,25 @@ function ConvertTo-JsonEscapedString([string]$value) {
 function ConvertTo-DeterministicJson([System.Collections.IDictionary]$obj) {
     if ($null -eq $obj) { throw 'JSON object cannot be null' }
 
-    $keys = @($obj.Keys)
+    # Keep a stable, intentional order for our known schema keys, and sort any extras for determinism.
+    $preferredOrder = @(
+        'id',
+        'language',
+        'tool',
+        'toolRuleId',
+        'title',
+        'description',
+        'category',
+        'defaultSeverity',
+        'tags',
+        'docs'
+    )
+    $ordered = @()
+    foreach ($k in $preferredOrder) {
+        if ($obj.Contains($k)) { $ordered += $k }
+    }
+    $extras = @($obj.Keys | Where-Object { $preferredOrder -notcontains $_ } | Sort-Object)
+    $keys = @($ordered + $extras)
     $lines = New-Object System.Collections.Generic.List[string]
     [void]$lines.Add('{')
     for ($i = 0; $i -lt $keys.Count; $i++) {
