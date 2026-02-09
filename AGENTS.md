@@ -18,9 +18,12 @@ This file defines how automated agents should operate in this repo. Follow it fo
 2. Inspect details: `gh pr view <num> --repo EvotecIT/IntelligenceX`.
 3. Check CI: `gh pr checks <num> --repo EvotecIT/IntelligenceX`.
 4. If CI fails, inspect logs: `gh run view <run-id> --repo EvotecIT/IntelligenceX --log --job <job-id>`.
-5. Rebase onto `origin/master` before merge if needed.
-6. Merge only when all required checks pass and the PR is mergeable.
-7. Merge with squash + delete branch: `gh pr merge <num> --repo EvotecIT/IntelligenceX --squash --delete-branch`.
+5. Classify CI failures before making code changes:
+   - Actionable: compilation/test failures, lints, static analysis findings, reviewer bot blockers. Fix in code and re-run checks.
+   - Infra-blocked: GitHub billing/spend-limit, runner capacity/unavailable, third-party premium/auth gating (Copilot/Claude/etc), or GitHub outage. Do not churn on code changes. Record the blocker and proceed per the PR Handling Loop infra rule.
+6. Rebase onto `origin/master` before merge if needed.
+7. Merge only when all required checks pass and the PR is mergeable.
+8. Merge with squash + delete branch: `gh pr merge <num> --repo EvotecIT/IntelligenceX --squash --delete-branch`.
 
 **PR Handling Loop (Required)**
 When an agent is assigned a PR to improve or unblock, it must iterate until merge blockers are clean.
@@ -33,7 +36,14 @@ When an agent is assigned a PR to improve or unblock, it must iterate until merg
 6. Apply fixes, then re-run checks and re-check bot output:
    Run: `gh pr checks <num> --repo EvotecIT/IntelligenceX`
    If the bot posts new todo/critical items, repeat.
-7. Only move on to the next PR when the current PR has no remaining todo/critical blockers (or maintainers explicitly decide to accept the risk).
+7. Infra-blocked escape hatch:
+   - If required checks cannot run due to infra-blocked reasons (billing/spend limit, runner outage/capacity, third-party premium/auth gating), stop iterating.
+   - Create a single tracking item (preferred: sync explicit bot checklist items into `TODO.md`, otherwise create a GitHub issue) with a link to the failed run/check.
+   - Move on to the next PR only after the infra blocker is recorded, or maintainers explicitly decide to accept the risk.
+8. Timebox rule (to prevent endless bot-chasing):
+   - Default limit: 2 full iterations of the bot loop or 60 minutes per PR (whichever comes first).
+   - If still blocked after the timebox, post a short status summary (what’s fixed, what’s left, why it’s hard) and wait for maintainer direction to continue.
+9. Only move on to the next PR when the current PR has no remaining todo/critical blockers (or maintainers explicitly decide to accept the risk, or the PR is infra-blocked and recorded per step 7).
 
 **Review Feedback Backlog**
 1. Aggregate bot review feedback using `gh api graphql`.
