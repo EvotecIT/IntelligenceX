@@ -185,12 +185,24 @@ internal static class CiTuneReviewerBudgetsCommand {
         }
 
         try {
-            using var stream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read);
+            // Write to $GITHUB_ENV in a way that's robust to:
+            // - missing trailing newlines in the file
+            // - concurrent writers (interprocess)
+            using var stream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            if (stream.Length > 0) {
+                stream.Seek(-1, SeekOrigin.End);
+                var lastByte = stream.ReadByte();
+                if (lastByte != '\n') {
+                    stream.Seek(0, SeekOrigin.End);
+                    stream.WriteByte((byte)'\n');
+                }
+            }
             stream.Seek(0, SeekOrigin.End);
-            using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), bufferSize: 1024, leaveOpen: true);
             WriteGitHubEnvEntry(writer, first.Key, first.Value);
             WriteGitHubEnvEntry(writer, second.Key, second.Value);
             writer.Flush();
+            stream.Flush();
             return true;
         } catch (Exception ex) {
             error = $"Failed to write budgets to {path}: {ex.Message}";
