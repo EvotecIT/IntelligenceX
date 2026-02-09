@@ -165,11 +165,15 @@ public static partial class ReviewerApp {
             }
 
             using var github = new GitHubClient(token, maxConcurrency: settings.GitHubMaxConcurrency);
-            // Lightweight adapter over github; it does not own additional resources.
-            IReviewCodeHostReader codeHostReader = new GitHubCodeHostReader(github);
             using var fallbackGithub = string.IsNullOrWhiteSpace(fallbackToken)
                 ? null
                 : new GitHubClient(fallbackToken, maxConcurrency: settings.GitHubMaxConcurrency);
+
+            // Prefer the standard GITHUB_TOKEN for read operations when available; some GitHub App tokens are
+            // intentionally scoped for writes/comments and may not have full PR read access in all environments.
+            var readGithub = fallbackGithub ?? github;
+            // Lightweight adapter over github; it does not own additional resources.
+            IReviewCodeHostReader codeHostReader = new GitHubCodeHostReader(readGithub);
             var eventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
             if (!string.IsNullOrWhiteSpace(eventPath) && File.Exists(eventPath)) {
                 var json = await File.ReadAllTextAsync(eventPath).ConfigureAwait(false);
