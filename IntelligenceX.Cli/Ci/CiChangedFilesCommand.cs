@@ -23,6 +23,10 @@ internal static class CiChangedFilesCommand {
         }
 
         var workspace = string.IsNullOrWhiteSpace(options.Workspace) ? Environment.CurrentDirectory : options.Workspace!;
+        if (!Directory.Exists(workspace)) {
+            Console.Error.WriteLine($"Workspace directory not found: {workspace}");
+            return 1;
+        }
         var outputPath = options.OutputPath!;
         try {
             var outputDir = Path.GetDirectoryName(outputPath);
@@ -51,8 +55,8 @@ internal static class CiChangedFilesCommand {
         lines = lines
             .Select(value => (value ?? string.Empty).Trim())
             .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(value => value, StringComparer.Ordinal)
             .ToList();
         try {
             File.WriteAllLines(outputPath, lines);
@@ -83,11 +87,12 @@ internal static class CiChangedFilesCommand {
 
             var resolvedBase = baseRev!.Trim();
             var resolvedHead = headProvided ? headRev!.Trim() : "HEAD";
-            var (exit, stdout, stderr) = await GitCli.RunAsync(workspace, "diff", "--name-only", resolvedBase, resolvedHead).ConfigureAwait(false);
+            var range = $"{resolvedBase}...{resolvedHead}";
+            var (exit, stdout, stderr) = await GitCli.RunAsync(workspace, "diff", "--name-only", range).ConfigureAwait(false);
             if (exit == 0) {
                 return (true, SplitLines(stdout), string.Empty);
             }
-            return (false, new List<string>(), $"Warning: git diff --name-only {resolvedBase} {resolvedHead} failed (exit {exit}). {TrimOneLine(stderr)}");
+            return (false, new List<string>(), $"Warning: git diff --name-only {range} failed (exit {exit}). {TrimOneLine(stderr)}");
         }
 
         // Fallback: if this is a merge commit (common for PR workflows), diff the merge parents.
@@ -96,11 +101,12 @@ internal static class CiChangedFilesCommand {
             var baseParent = await RevParseAsync(workspace, "HEAD^1").ConfigureAwait(false);
             var headParent = await RevParseAsync(workspace, "HEAD^2").ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(baseParent) && !string.IsNullOrWhiteSpace(headParent)) {
-                var (exit, stdout, stderr) = await GitCli.RunAsync(workspace, "diff", "--name-only", baseParent!, headParent!).ConfigureAwait(false);
+                var range = $"{baseParent}...{headParent}";
+                var (exit, stdout, stderr) = await GitCli.RunAsync(workspace, "diff", "--name-only", range).ConfigureAwait(false);
                 if (exit == 0) {
                     return (true, SplitLines(stdout), string.Empty);
                 }
-                return (false, new List<string>(), $"Warning: git diff --name-only {baseParent} {headParent} failed (exit {exit}). {TrimOneLine(stderr)}");
+                return (false, new List<string>(), $"Warning: git diff --name-only {range} failed (exit {exit}). {TrimOneLine(stderr)}");
             }
         }
 

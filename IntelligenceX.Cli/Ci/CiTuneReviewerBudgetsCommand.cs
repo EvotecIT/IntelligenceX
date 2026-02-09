@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace IntelligenceX.Cli.Ci;
@@ -91,8 +92,16 @@ internal static class CiTuneReviewerBudgetsCommand {
         }
 
         try {
-            File.AppendAllText(path,
-                $"{first.Key}={first.Value}{Environment.NewLine}{second.Key}={second.Value}{Environment.NewLine}");
+            using var stream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read);
+            stream.Seek(0, SeekOrigin.End);
+            using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            writer.Write(first.Key);
+            writer.Write('=');
+            writer.WriteLine(first.Value);
+            writer.Write(second.Key);
+            writer.Write('=');
+            writer.WriteLine(second.Value);
+            writer.Flush();
             return true;
         } catch (Exception ex) {
             error = $"Failed to write budgets to {path}: {ex.Message}";
