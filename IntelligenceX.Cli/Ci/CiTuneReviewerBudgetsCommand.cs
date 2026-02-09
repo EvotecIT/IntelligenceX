@@ -30,15 +30,19 @@ internal static class CiTuneReviewerBudgetsCommand {
             return Task.FromResult(0);
         }
 
-        var lines = File.ReadAllLines(changedFilesPath)
-            .Select(value => (value ?? string.Empty).Trim())
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .ToArray();
-
-        var changed = lines.Length;
-        var catalog = lines.Count(value =>
-            value.StartsWith("Analysis/Catalog/rules/", StringComparison.OrdinalIgnoreCase) ||
-            value.StartsWith("Analysis/Catalog/overrides/", StringComparison.OrdinalIgnoreCase));
+        var changed = 0;
+        var catalog = 0;
+        foreach (var raw in File.ReadLines(changedFilesPath)) {
+            var value = (raw ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(value)) {
+                continue;
+            }
+            changed++;
+            if (value.StartsWith("Analysis/Catalog/rules/", StringComparison.OrdinalIgnoreCase) ||
+                value.StartsWith("Analysis/Catalog/overrides/", StringComparison.OrdinalIgnoreCase)) {
+                catalog++;
+            }
+        }
 
         var large = changed > options.ChangedThreshold || catalog > options.CatalogThreshold;
         if (!large) {

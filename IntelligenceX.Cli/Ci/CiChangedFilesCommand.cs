@@ -28,9 +28,14 @@ internal static class CiChangedFilesCommand {
             Console.Error.WriteLine($"Workspace directory not found: {workspace}");
             return 1;
         }
-        var outputPath = Path.IsPathRooted(options.OutputPath!)
+        var workspaceRoot = Path.GetFullPath(workspace);
+        var outputPath = Path.GetFullPath(Path.IsPathRooted(options.OutputPath!)
             ? options.OutputPath!
-            : Path.GetFullPath(Path.Combine(workspace, options.OutputPath!));
+            : Path.Combine(workspaceRoot, options.OutputPath!));
+        if (!IsUnderRoot(outputPath, workspaceRoot)) {
+            Console.Error.WriteLine($"Output path must be within the workspace. out={outputPath} workspace={workspaceRoot}");
+            return 1;
+        }
         try {
             var outputDir = Path.GetDirectoryName(outputPath);
             if (!string.IsNullOrWhiteSpace(outputDir)) {
@@ -85,6 +90,15 @@ internal static class CiChangedFilesCommand {
             return 1;
         }
         return 0;
+    }
+
+    private static bool IsUnderRoot(string path, string root) {
+        if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(root)) {
+            return false;
+        }
+        var normalizedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        return path.StartsWith(normalizedRoot, comparison);
     }
 
     private static async Task<(bool Success, List<string> Lines, string Message)> TryComputeChangedFilesAsync(string workspace, string? baseRev, string? headRev) {
@@ -240,7 +254,28 @@ internal static class CiChangedFilesCommand {
         if (!string.IsNullOrWhiteSpace(options.Head) && string.IsNullOrWhiteSpace(options.Base)) {
             options.Error = "Option --head requires --base.";
         }
+        if (options.Error is null) {
+            if (!string.IsNullOrWhiteSpace(options.Base) && !IsSafeRevision(options.Base!)) {
+                options.Error = "Invalid --base revision (must not start with '-' and must not contain whitespace/newlines).";
+            } else if (!string.IsNullOrWhiteSpace(options.Head) && !IsSafeRevision(options.Head!)) {
+                options.Error = "Invalid --head revision (must not start with '-' and must not contain whitespace/newlines).";
+            }
+        }
         return options;
+    }
+
+    private static bool IsSafeRevision(string value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return false;
+        }
+        var trimmed = value.Trim();
+        if (trimmed.StartsWith("-", StringComparison.Ordinal)) {
+            return false;
+        }
+        if (trimmed.IndexOfAny(new[] { '\n', '\r', '\0' }) >= 0) {
+            return false;
+        }
+        return !trimmed.Any(char.IsWhiteSpace);
     }
 
     private static bool IsHelp(string value) {
