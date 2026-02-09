@@ -525,7 +525,9 @@ internal static partial class Program {
                 }
             }
         } finally {
-            // Best-effort cleanup: this can be flaky on Windows CI due to transient file locks.
+            // Cleanup: this can be flaky on Windows CI due to transient file locks, but we still enforce
+            // hermetic behavior (no leaked temp dirs) to avoid cross-run pollution.
+            Exception? lastDeleteException = null;
             for (var attempt = 0; attempt < 10; attempt++) {
                 try {
                     if (!Directory.Exists(emptyOverridesRoot)) {
@@ -533,7 +535,8 @@ internal static partial class Program {
                     }
                     Directory.Delete(emptyOverridesRoot, true);
                     break;
-                } catch {
+                } catch (Exception ex) {
+                    lastDeleteException = ex;
                     if (attempt < 9) {
                         System.Threading.Thread.Sleep(50 * (attempt + 1));
                     }
@@ -546,13 +549,13 @@ internal static partial class Program {
                     pendingPath = emptyOverridesRoot + ".delete-pending-" + Guid.NewGuid().ToString("N");
                     Directory.Move(emptyOverridesRoot, pendingPath);
                     Directory.Delete(pendingPath, true);
-                } catch {
-                    // Ignore; we still report below.
+                } catch (Exception ex) {
+                    lastDeleteException = ex;
                 }
-                if (Directory.Exists(emptyOverridesRoot)) {
-                    System.Console.Error.WriteLine("Warning: failed to delete temp overrides directory: " + emptyOverridesRoot);
-                } else if (pendingPath is not null && Directory.Exists(pendingPath)) {
-                    System.Console.Error.WriteLine("Warning: failed to delete temp overrides directory (moved): " + pendingPath);
+                if (Directory.Exists(emptyOverridesRoot) || (pendingPath is not null && Directory.Exists(pendingPath))) {
+                    throw new InvalidOperationException(
+                        "Failed to delete temp overrides directory: " + emptyOverridesRoot,
+                        lastDeleteException);
                 }
             }
         }
