@@ -9,6 +9,10 @@ internal sealed partial class GitHubClient {
     private static readonly TimeSpan RetryBudgetReserve = TimeSpan.FromMilliseconds(250);
 
     private static bool TryGetRetryDelay(HttpResponseMessage response, string responseText, int attempt, out TimeSpan delay) {
+        return TryGetRetryDelay(response, responseText, attempt, isGraphQl: false, out delay);
+    }
+
+    private static bool TryGetRetryDelay(HttpResponseMessage response, string responseText, int attempt, bool isGraphQl, out TimeSpan delay) {
         delay = TimeSpan.Zero;
         var statusCode = (int)response.StatusCode;
 
@@ -27,9 +31,11 @@ internal sealed partial class GitHubClient {
             delay = ComputeRateLimitDelay(response, responseText, attempt);
             return true;
         }
+
         // GitHub GraphQL can return HTTP 200 with an `errors` payload for secondary rate limits / abuse detection.
-        // In those cases, we still want to apply backoff retries.
-        if (statusCode == 200 && LooksLikeRateLimit(response, responseText)) {
+        // Only treat this as retryable when we have high-confidence rate-limit indicators (headers or structured fields),
+        // not by scanning arbitrary error text.
+        if (isGraphQl && statusCode == 200 && LooksLikeGraphQlRateLimit(response, responseText)) {
             delay = ComputeRateLimitDelay(response, responseText, attempt);
             return true;
         }
@@ -68,6 +74,49 @@ internal sealed partial class GitHubClient {
         return responseText.Contains("rate limit", StringComparison.OrdinalIgnoreCase) ||
                responseText.Contains("secondary rate", StringComparison.OrdinalIgnoreCase) ||
                responseText.Contains("abuse detection", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool LooksLikeGraphQlRateLimit(HttpResponseMessage response, string responseText) {
+        // Headers are high-confidence signals for retry (abuse detection / secondary rate limits).
+        if (TryParseRetryAfter(response, out _)) {
+            return true;
+        }
+        if (response.Headers.TryGetValues("X-RateLimit-Remaining", out var values)) {
+            foreach (var item in values) {
+                if (string.Equals(item?.Trim(), "0", StringComparison.Ordinal)) {
+                    return true;
+                }
+            }
+        }
+
+        // Fallback to structured error markers. Avoid scanning arbitrary text for "rate limit".
+        try {
+            var parsed = JsonLite.Parse(responseText);
+            var errors = parsed?.AsObject()?.GetArray("errors");
+            if (errors is null || errors.Count == 0) {
+                return false;
+            }
+            foreach (var e in errors) {
+                var obj = e.AsObject();
+                if (obj is null) {
+                    continue;
+                }
+                var type = obj.GetString("type") ?? string.Empty;
+                if (string.Equals(type, "RATE_LIMITED", StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+                var message = obj.GetString("message") ?? string.Empty;
+                if (message.Contains("secondary rate", StringComparison.OrdinalIgnoreCase) ||
+                    message.Contains("abuse detection", StringComparison.OrdinalIgnoreCase) ||
+                    message.Contains("API rate limit exceeded", StringComparison.OrdinalIgnoreCase) ||
+                    message.Contains("You have exceeded a secondary rate limit", StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+        } catch {
+            // If the response isn't valid JSON, don't retry based on content heuristics.
+        }
+        return false;
     }
 
     private static TimeSpan ComputeRateLimitDelay(HttpResponseMessage response, string responseText, int attempt) {
