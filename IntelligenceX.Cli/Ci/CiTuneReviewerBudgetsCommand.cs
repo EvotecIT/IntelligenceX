@@ -73,7 +73,17 @@ internal static class CiTuneReviewerBudgetsCommand {
         error = string.Empty;
 
         var defaultEnv = Environment.GetEnvironmentVariable("GITHUB_ENV");
-        var candidate = !string.IsNullOrWhiteSpace(outEnv) ? outEnv : defaultEnv;
+        var isGitHubActions = string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"), "true", StringComparison.OrdinalIgnoreCase);
+
+        string? candidate;
+        if (!string.IsNullOrWhiteSpace(outEnv)) {
+            candidate = outEnv;
+        } else if (isGitHubActions) {
+            candidate = defaultEnv;
+        } else {
+            // Avoid writing to arbitrary paths during local runs just because GITHUB_ENV is set.
+            candidate = null;
+        }
         if (string.IsNullOrWhiteSpace(candidate)) {
             return true;
         }
@@ -194,6 +204,8 @@ internal static class CiTuneReviewerBudgetsCommand {
         writer.WriteLine(delimiter);
         writer.WriteLine(value);
         writer.WriteLine(delimiter);
+        // Ensure there's always a newline boundary between consecutive entries.
+        writer.WriteLine();
     }
 
     private static bool TryValidateEnvPair(string key, string value, out string error) {
