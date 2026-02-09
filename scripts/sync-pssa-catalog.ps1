@@ -204,8 +204,8 @@ if (-not ($trustedBase -or $trustedSig)) {
     if ($AllowUntrustedModuleBase) {
         Write-Warning ("Importing PSScriptAnalyzer from an untrusted location because -AllowUntrustedModuleBase was set. ModuleBase='{0}', Path='{1}'." -f $module.ModuleBase, $module.Path)
     } else {
-    $baseMsg = $module.ModuleBase
-    $pathMsg = $module.Path
+        $baseMsg = $module.ModuleBase
+        $pathMsg = $module.Path
         throw ("Refusing to import PSScriptAnalyzer from an untrusted location. ModuleBase='{0}', Path='{1}'. Install with -Scope AllUsers, or pass -AllowUntrustedModuleBase to proceed anyway." -f $baseMsg, $pathMsg)
     }
 }
