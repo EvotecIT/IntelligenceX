@@ -291,7 +291,7 @@ internal sealed partial class GitHubClient : IDisposable {
                     .Add("cursor", cursor)
                     .Add("commentLimit", commentLimit));
 
-            var response = await PostGraphQlAsync(payload, cancellationToken, allowRetries: true, throwOnErrors: false).ConfigureAwait(false);
+            var response = await PostGraphQlQueryAsync(payload, cancellationToken, allowRetries: true).ConfigureAwait(false);
             var root = response.AsObject();
             var data = root?.GetObject("data");
             var repoObj = data?.GetObject("repository");
@@ -370,8 +370,7 @@ internal sealed partial class GitHubClient : IDisposable {
   }
 }")
             .Add("variables", new JsonObject().Add("id", threadId));
-        // Mutations have side effects; do not retry under transport uncertainty.
-        await PostGraphQlAsync(payload, cancellationToken, allowRetries: false).ConfigureAwait(false);
+        await PostGraphQlMutationAsync(payload, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<RelatedPullRequest>> SearchPullRequestsAsync(string query, int maxResults,
@@ -432,16 +431,14 @@ internal sealed partial class GitHubClient : IDisposable {
         var payload = new JsonObject()
             .Add("title", title)
             .Add("body", body);
-        // Even if the patch is conceptually idempotent, retrying PATCH under transport uncertainty can duplicate effects.
-        await PatchJsonAsync($"/repos/{owner}/{repo}/pulls/{number}", payload, cancellationToken, allowRetries: false)
+        await PatchJsonAsync($"/repos/{owner}/{repo}/pulls/{number}", payload, cancellationToken)
             .ConfigureAwait(false);
     }
 
     public async Task UpdateIssueCommentAsync(string owner, string repo, long commentId, string body,
         CancellationToken cancellationToken) {
         var payload = new JsonObject().Add("body", body);
-        // Even if the patch is conceptually idempotent, retrying PATCH under transport uncertainty can duplicate effects.
-        await PatchJsonAsync($"/repos/{owner}/{repo}/issues/comments/{commentId}", payload, cancellationToken, allowRetries: false)
+        await PatchJsonAsync($"/repos/{owner}/{repo}/issues/comments/{commentId}", payload, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -571,26 +568,39 @@ internal sealed partial class GitHubClient : IDisposable {
         }, cancellationToken).ConfigureAwait(false);
     }
 
-    private Task<JsonValue> PostGraphQlAsync(JsonObject payload, CancellationToken cancellationToken) {
-        // Default to no retries for GraphQL: mutations are non-idempotent unless explicitly proven otherwise.
-        // Read-only queries can opt into retries by calling the overload with allowRetries: true.
-        return PostGraphQlAsync(payload, cancellationToken, allowRetries: false, throwOnErrors: true);
+    private static bool LooksLikeGraphQlMutation(string queryText) {
+        if (string.IsNullOrWhiteSpace(queryText)) {
+            return false;
+        }
+        var trimmed = queryText.TrimStart();
+        if (!trimmed.StartsWith("mutation", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+        if (trimmed.Length == "mutation".Length) {
+            return true;
+        }
+        var next = trimmed["mutation".Length];
+        return char.IsWhiteSpace(next) || next == '(';
     }
 
-    private async Task<JsonValue> PostGraphQlAsync(JsonObject payload, CancellationToken cancellationToken, bool allowRetries) {
-        return await PostGraphQlAsync(payload, cancellationToken, allowRetries, throwOnErrors: true).ConfigureAwait(false);
+    private Task<JsonValue> PostGraphQlQueryAsync(JsonObject payload, CancellationToken cancellationToken, bool allowRetries) {
+        var queryText = payload.GetString("query") ?? string.Empty;
+        if (LooksLikeGraphQlMutation(queryText)) {
+            throw new InvalidOperationException("GraphQL mutation detected in query helper. Use PostGraphQlMutationAsync instead.");
+        }
+        return PostGraphQlCoreAsync(payload, cancellationToken, allowRetries: allowRetries, throwOnErrors: false);
     }
 
-    private async Task<JsonValue> PostGraphQlAsync(JsonObject payload, CancellationToken cancellationToken, bool allowRetries, bool throwOnErrors) {
+    private Task<JsonValue> PostGraphQlMutationAsync(JsonObject payload, CancellationToken cancellationToken) {
+        var queryText = payload.GetString("query") ?? string.Empty;
+        if (!LooksLikeGraphQlMutation(queryText)) {
+            throw new InvalidOperationException("GraphQL query detected in mutation helper. Use PostGraphQlQueryAsync instead.");
+        }
+        return PostGraphQlCoreAsync(payload, cancellationToken, allowRetries: false, throwOnErrors: true);
+    }
+
+    private async Task<JsonValue> PostGraphQlCoreAsync(JsonObject payload, CancellationToken cancellationToken, bool allowRetries, bool throwOnErrors) {
         return await WithGateAsync(async () => {
-            var queryText = payload.GetString("query") ?? string.Empty;
-            var isMutation = queryText.TrimStart().StartsWith("mutation", StringComparison.OrdinalIgnoreCase);
-            if (isMutation) {
-                // Enforce mutation safety: never retry mutations under transport uncertainty.
-                allowRetries = false;
-                throwOnErrors = true;
-            }
-
             var json = JsonLite.Serialize(JsonValue.From(payload));
             const string url = "/graphql";
             var attempts = allowRetries ? DefaultRetryAttempts : 1;
@@ -639,49 +649,17 @@ internal sealed partial class GitHubClient : IDisposable {
         }, cancellationToken).ConfigureAwait(false);
     }
 
-    private Task PatchJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken) {
-        return PatchJsonAsync(url, payload, cancellationToken, allowRetries: false);
-    }
-
-    private async Task PatchJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken, bool allowRetries) {
+    private async Task PatchJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken) {
         await WithGateAsync(async () => {
             var json = JsonLite.Serialize(JsonValue.From(payload));
-            var attempts = allowRetries ? DefaultRetryAttempts : 1;
-            var retryBudgetStart = DateTimeOffset.UtcNow;
-            for (var attempt = 1; attempt <= attempts; attempt++) {
-                cancellationToken.ThrowIfCancellationRequested();
-                try {
-                    using (var content = new StringContent(json, Encoding.UTF8, "application/json"))
-                    using (var request = new HttpRequestMessage(new HttpMethod("PATCH"), url) { Content = content })
-                    using (var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false)) {
-                        var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                        if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
-                            if (TryScheduleRetry(retryBudgetStart, ref delay)) {
-                                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                                continue;
-                            }
-                            // No retry budget left: surface the current response as an error.
-                        }
-                        if (!response.IsSuccessStatusCode) {
-                            throw new InvalidOperationException(
-                                FormatApiError("PATCH", url, response, responseText));
-                        }
-                        break;
-                    }
-                } catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested && attempt < attempts) {
-                    var delay = ComputeBackoff(attempt, maxSeconds: 8);
-                    if (TryScheduleRetry(retryBudgetStart, ref delay)) {
-                        await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                        continue;
-                    }
-                    throw;
-                } catch (HttpRequestException) when (attempt < attempts) {
-                    var delay = ComputeBackoff(attempt, maxSeconds: 8);
-                    if (TryScheduleRetry(retryBudgetStart, ref delay)) {
-                        await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                        continue;
-                    }
-                    throw;
+            cancellationToken.ThrowIfCancellationRequested();
+            using (var content = new StringContent(json, Encoding.UTF8, "application/json"))
+            using (var request = new HttpRequestMessage(new HttpMethod("PATCH"), url) { Content = content })
+            using (var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false)) {
+                var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode) {
+                    throw new InvalidOperationException(
+                        FormatApiError("PATCH", url, response, responseText));
                 }
             }
             return 0;
