@@ -13,8 +13,15 @@ $pathComparison = if ($runningOnWindows) { [System.StringComparison]::OrdinalIgn
 
 function Get-NormalizedPath([string]$path) {
     if ([string]::IsNullOrWhiteSpace($path)) { return '' }
-    $resolved = (Resolve-Path -LiteralPath $path -ErrorAction Stop).Path
-    return [System.IO.Path]::GetFullPath($resolved)
+
+    # Expand ~ and resolve relative paths without requiring the target to exist.
+    $unresolved = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($path)
+    try {
+        $resolved = (Resolve-Path -LiteralPath $unresolved -ErrorAction Stop).Path
+        return [System.IO.Path]::GetFullPath($resolved)
+    } catch {
+        return [System.IO.Path]::GetFullPath($unresolved)
+    }
 }
 
 function ConvertTo-JsonEscapedString([string]$value) {

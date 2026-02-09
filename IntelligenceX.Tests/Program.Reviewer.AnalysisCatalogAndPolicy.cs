@@ -327,10 +327,10 @@ internal static partial class Program {
         }
         var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, emptyOverridesRoot, packsRoot);
 
-            foreach (var overridePath in Directory.EnumerateFiles(overridesDir, "*.json")) {
-                var overrideText = File.ReadAllText(overridePath, System.Text.Encoding.UTF8);
-                using var overrideDoc = System.Text.Json.JsonDocument.Parse(overrideText);
-                var overrideRoot = overrideDoc.RootElement;
+        foreach (var overridePath in Directory.EnumerateFiles(overridesDir, "*.json")) {
+            var overrideText = File.ReadAllText(overridePath, System.Text.Encoding.UTF8);
+            using var overrideDoc = System.Text.Json.JsonDocument.Parse(overrideText);
+            var overrideRoot = overrideDoc.RootElement;
 
             if (!overrideRoot.TryGetProperty("id", out var idElement) || idElement.ValueKind != System.Text.Json.JsonValueKind.String) {
                 throw new InvalidOperationException($"Override '{Path.GetFileName(overridePath)}' is missing string 'id' property.");
@@ -505,8 +505,8 @@ internal static partial class Program {
                         // Production currently ignores unknown override properties; fail fast in tests so typos
                         // (e.g., "defualtSeverity") don't silently make overrides ineffective.
                         throw new Exception($"{id} override has unsupported property '{prop.Name}'.");
-                    }
                 }
+            }
 
             AssertEqual(true, sawSupportedOverrideProperty, $"{id} override has at least one supported property besides id");
             if (sawNonTagsOverrideProperty) {
