@@ -25,9 +25,9 @@ internal static partial class Program {
         }
     }
 
-	    private static void TestAnalysisPacksPowerShellDefaultResolves() {
-	        var workspace = ResolveWorkspaceRoot();
-	        var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
+    private static void TestAnalysisPacksPowerShellDefaultResolves() {
+        var workspace = ResolveWorkspaceRoot();
+        var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
 
         AssertEqual(true, catalog.Packs.ContainsKey("powershell-default"), "pack powershell-default exists");
         AssertEqual(true, catalog.Packs.ContainsKey("powershell-security-default"), "pack powershell-security-default exists");
@@ -39,16 +39,20 @@ internal static partial class Program {
         foreach (var include in psDefault.Includes) {
             AssertEqual(true, catalog.Packs.ContainsKey(include), $"powershell-default include exists: {include}");
         }
-	        foreach (var ruleId in psDefault.Rules) {
-	            AssertEqual(true, catalog.TryGetRule(ruleId, out _), $"powershell-default rule exists: {ruleId}");
-	        }
-	    }
+        foreach (var ruleId in psDefault.Rules) {
+            AssertEqual(true, catalog.TryGetRule(ruleId, out _), $"powershell-default rule exists: {ruleId}");
+        }
+    }
 
-	    private static void TestAnalysisPacksPowerShell50ResolvesTo50Rules() {
-	        var workspace = ResolveWorkspaceRoot();
-	        var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
+    private static void TestAnalysisPacksPowerShell50ResolvesTo50Rules() {
+        var workspace = ResolveWorkspaceRoot();
+        var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
 
         AssertEqual(true, catalog.Packs.ContainsKey("powershell-50"), "pack powershell-50 exists");
+
+        var pack = catalog.Packs["powershell-50"];
+        AssertEqual(50, pack.Rules.Count, "powershell-50 declares 50 rules");
+        AssertEqual(50, pack.Rules.Distinct(StringComparer.OrdinalIgnoreCase).Count(), "powershell-50 declares no duplicate rules");
 
         var settings = new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "powershell-50" } };
         var policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(settings, catalog);
@@ -56,13 +60,13 @@ internal static partial class Program {
         var allRuleIds = policy.Rules.Keys.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         AssertEqual(50, allRuleIds.Length, "powershell-50 resolves to 50 distinct rules");
 
-	        var psRuleIds = policy.SelectByLanguage("powershell").Select(r => r.Rule.Id).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-	        AssertEqual(50, psRuleIds.Length, "powershell-50 resolves to 50 distinct PowerShell rules");
-	        AssertEqual(allRuleIds.Length, psRuleIds.Length, "powershell-50 contains only PowerShell rules");
+        var psRuleIds = policy.SelectByLanguage("powershell").Select(r => r.Rule.Id).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        AssertEqual(50, psRuleIds.Length, "powershell-50 resolves to 50 distinct PowerShell rules");
+        AssertEqual(allRuleIds.Length, psRuleIds.Length, "powershell-50 contains only PowerShell rules");
 
-	        foreach (var ruleId in allRuleIds) {
-	            AssertEqual(true, catalog.TryGetRule(ruleId, out _), $"powershell-50 rule exists: {ruleId}");
-	        }
-	    }
+        foreach (var ruleId in allRuleIds) {
+            AssertEqual(true, catalog.TryGetRule(ruleId, out _), $"powershell-50 rule exists: {ruleId}");
+        }
+    }
 }
 #endif
