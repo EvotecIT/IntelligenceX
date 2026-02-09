@@ -82,9 +82,10 @@ internal static class CiTuneReviewerBudgetsCommand {
 
         var defaultEnv = Environment.GetEnvironmentVariable("GITHUB_ENV");
         var isGitHubActions = string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"), "true", StringComparison.OrdinalIgnoreCase);
+        var usingExplicitOutEnv = !string.IsNullOrWhiteSpace(outEnv);
 
         string? candidate = null;
-        if (!string.IsNullOrWhiteSpace(outEnv)) {
+        if (usingExplicitOutEnv) {
             candidate = outEnv;
         } else {
             candidate = defaultEnv;
@@ -113,7 +114,7 @@ internal static class CiTuneReviewerBudgetsCommand {
 
         // If the workflow explicitly provides --out-env, treat it as a sharp edge and restrict where it can write.
         // Allow exactly $GITHUB_ENV (even if outside workspace), otherwise require it to be under the workspace root.
-        if (!string.IsNullOrWhiteSpace(outEnv)) {
+        if (usingExplicitOutEnv) {
             var matchesGitHubEnv = false;
             if (!string.IsNullOrWhiteSpace(defaultEnv) && !defaultEnv.Contains('\n') && !defaultEnv.Contains('\r') && !defaultEnv.Contains('\0')) {
                 try {
@@ -127,7 +128,7 @@ internal static class CiTuneReviewerBudgetsCommand {
                 error = $"Env-file output path must be within the workspace (or equal to $GITHUB_ENV). out-env={resolvedCandidate} workspace={workspaceRoot}";
                 return false;
             }
-        } else if (!isGitHubActions && !File.Exists(resolvedCandidate)) {
+        } else if (!usingExplicitOutEnv && !isGitHubActions && !File.Exists(resolvedCandidate)) {
             // Avoid writing to arbitrary paths during local runs just because GITHUB_ENV is set.
             // In GitHub Actions the env file exists and should be used.
             return true;
