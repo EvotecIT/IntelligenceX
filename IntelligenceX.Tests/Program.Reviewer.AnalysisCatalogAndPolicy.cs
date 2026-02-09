@@ -329,10 +329,28 @@ internal static partial class Program {
                 var path = Path.Combine(tempRoot, prefix + pid + "-" + Guid.NewGuid().ToString("N"));
                 try {
                     Directory.CreateDirectory(path);
-                    // If we ever hit an existing dir (extremely unlikely with pid+guid), ensure it's empty.
-                    if (!Directory.EnumerateFileSystemEntries(path).Any()) {
-                        return path;
+                    // Path should be unique; if it's not empty, treat as an unexpected collision and fail fast
+                    // rather than silently leaking directories.
+                    if (Directory.EnumerateFileSystemEntries(path).Any()) {
+                        Exception? deleteException = null;
+                        for (var deleteAttempt = 0; deleteAttempt < 10; deleteAttempt++) {
+                            try {
+                                Directory.Delete(path, true);
+                                break;
+                            } catch (Exception ex) {
+                                deleteException = ex;
+                                System.Threading.Thread.Sleep(50 * (deleteAttempt + 1));
+                            }
+                        }
+                        if (Directory.Exists(path)) {
+                            throw new InvalidOperationException(
+                                "Temp overrides directory was not empty and could not be deleted: " + path,
+                                deleteException);
+                        }
+                        // Shouldn't happen; but if it did and we cleaned up, try a new name.
+                        continue;
                     }
+                    return path;
                 } catch (Exception ex) {
                     lastException = ex;
                 }

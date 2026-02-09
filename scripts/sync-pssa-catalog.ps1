@@ -1,5 +1,5 @@
 param(
-    [Parameter()][string]$OutDir = (Join-Path -Path $PSScriptRoot -ChildPath (Join-Path -Path '..' -ChildPath (Join-Path -Path 'Analysis' -ChildPath (Join-Path -Path 'Catalog' -ChildPath (Join-Path -Path 'rules' -ChildPath 'powershell'))))),
+    [Parameter()][string]$OutDir,
     [Parameter()][switch]$PruneStale,
     [Parameter()][switch]$ForcePrune,
     [Parameter()][switch]$AllowNonIntendedOutDir,
@@ -10,6 +10,11 @@ $ErrorActionPreference = 'Stop'
 
 $runningOnWindows = ($env:OS -eq 'Windows_NT')
 $pathComparison = if ($runningOnWindows) { [System.StringComparison]::OrdinalIgnoreCase } else { [System.StringComparison]::Ordinal }
+
+if ([string]::IsNullOrWhiteSpace($OutDir)) {
+    $OutDir = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine(
+        $PSScriptRoot, '..', 'Analysis', 'Catalog', 'rules', 'powershell'))
+}
 
 function Get-NormalizedPath([string]$path) {
     if ([string]::IsNullOrWhiteSpace($path)) { return '' }
