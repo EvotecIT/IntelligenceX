@@ -484,25 +484,25 @@ internal sealed partial class GitHubClient : IDisposable {
 	            var retryBudgetStart = DateTimeOffset.UtcNow;
 	            for (var attempt = 1; attempt <= DefaultRetryAttempts; attempt++) {
 	                cancellationToken.ThrowIfCancellationRequested();
-	                if (attempt > 1 && (DateTimeOffset.UtcNow - retryBudgetStart) >= DefaultRetryBudgetWindow) {
-	                    throw new InvalidOperationException($"GitHub API request failed (GET {url}) due to retry budget exhaustion.");
-	                }
 	                using var response = await _http.GetAsync(url, cancellationToken).ConfigureAwait(false);
 	                var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 	                if (attempt < DefaultRetryAttempts && TryGetRetryDelay(response, content, attempt, out var delay)) {
 	                    var remaining = DefaultRetryBudgetWindow - (DateTimeOffset.UtcNow - retryBudgetStart);
-	                    if (remaining > TimeSpan.Zero) {
-                        if (delay > remaining) {
-                            delay = remaining;
-                        }
-                        await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                        continue;
-                    }
-                    // No retry budget left: surface the current response as an error.
-                }
-                if (!response.IsSuccessStatusCode) {
-                    throw new InvalidOperationException(
-                        FormatApiError("GET", url, response, content));
+	                    // Keep some budget for the subsequent request + parsing, otherwise we'd exceed the intended window.
+	                    var reserve = TimeSpan.FromMilliseconds(250);
+	                    if (remaining > reserve && delay + reserve < remaining) {
+	                        var maxDelay = remaining - reserve;
+	                        if (delay > maxDelay) {
+	                            delay = maxDelay;
+	                        }
+	                        await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+	                        continue;
+	                    }
+	                    // No retry budget left: surface the current response as an error.
+	                }
+	                if (!response.IsSuccessStatusCode) {
+	                    throw new InvalidOperationException(
+	                        FormatApiError("GET", url, response, content));
                 }
                 return JsonLite.Parse(content) ?? JsonValue.Null;
             }
