@@ -1,9 +1,8 @@
 name: CodeQL
 
 on:
-  push:
-    branches: [master]
-  pull_request:
+  # Disabled by default while private (to avoid noise + runner pressure).
+  # Re-enable when public / when Code Security is enabled.
   workflow_dispatch:
 
 permissions:
@@ -12,7 +11,7 @@ permissions:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    # While the repo is private, Code Security may be disabled; skip CodeQL to avoid noisy failing checks.
+    # Safety: even if someone manually dispatches while private, skip.
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     permissions:
