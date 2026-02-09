@@ -44,8 +44,10 @@ internal static class GitCli {
         var effectiveTimeout = ResolveTimeout(timeout);
         using var cts = new CancellationTokenSource(effectiveTimeout);
         var maxBytes = ResolveMaxOutputBytes();
-        var stdoutTask = ReadAllBytesAsync(proc.StandardOutput.BaseStream, maxBytes, cts.Token);
-        var stderrTask = ReadAllBytesAsync(proc.StandardError.BaseStream, maxBytes, cts.Token);
+        // IMPORTANT: stdout/stderr draining must not be coupled to the timeout token; otherwise we can treat
+        // large-but-valid output as a timeout even when the process exited successfully.
+        var stdoutTask = ReadAllBytesAsync(proc.StandardOutput.BaseStream, maxBytes, CancellationToken.None);
+        var stderrTask = ReadAllBytesAsync(proc.StandardError.BaseStream, maxBytes, CancellationToken.None);
         try {
             await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
             await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
