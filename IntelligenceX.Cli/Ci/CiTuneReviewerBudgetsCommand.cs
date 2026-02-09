@@ -186,11 +186,25 @@ internal static class CiTuneReviewerBudgetsCommand {
 
         try {
             // Best-effort robustness:
-            // - Always start with a newline boundary (safe even if the file already ends with one).
+            // - Ensure a newline boundary when appending (only when needed).
             // - Append in a single write to reduce interleaving risk with other writers.
             var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
             using var buffer = new StringWriter(System.Globalization.CultureInfo.InvariantCulture) { NewLine = "\n" };
-            buffer.WriteLine();
+            try {
+                if (File.Exists(path)) {
+                    using var read = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                    if (read.Length > 0) {
+                        read.Seek(-1, SeekOrigin.End);
+                        var lastByte = read.ReadByte();
+                        if (lastByte != '\n') {
+                            buffer.Write("\n");
+                        }
+                    }
+                }
+            } catch {
+                // If we can't inspect the current file contents, prefer to keep entries separated.
+                buffer.Write("\n");
+            }
             WriteGitHubEnvEntry(buffer, first.Key, first.Value);
             WriteGitHubEnvEntry(buffer, second.Key, second.Value);
             var bytes = encoding.GetBytes(buffer.ToString());

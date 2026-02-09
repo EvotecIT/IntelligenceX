@@ -523,7 +523,8 @@ internal sealed partial class GitHubClient : IDisposable {
     }
 
     private Task<JsonValue> PostJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken) {
-        return PostJsonAsync(url, payload, cancellationToken, allowRetries: true);
+        // Default to no retries for POST: many endpoints are non-idempotent and can create duplicate side effects.
+        return PostJsonAsync(url, payload, cancellationToken, allowRetries: false);
     }
 
     private async Task<JsonValue> PostJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken, bool allowRetries) {
@@ -571,7 +572,9 @@ internal sealed partial class GitHubClient : IDisposable {
     }
 
     private Task<JsonValue> PostGraphQlAsync(JsonObject payload, CancellationToken cancellationToken) {
-        return PostGraphQlAsync(payload, cancellationToken, allowRetries: true);
+        // Default to no retries for GraphQL: mutations are non-idempotent unless explicitly proven otherwise.
+        // Read-only queries can opt into retries by calling the overload with allowRetries: true.
+        return PostGraphQlAsync(payload, cancellationToken, allowRetries: false);
     }
 
     private async Task<JsonValue> PostGraphQlAsync(JsonObject payload, CancellationToken cancellationToken, bool allowRetries) {
