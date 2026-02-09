@@ -28,7 +28,7 @@ internal static class CiTuneReviewerBudgetsCommand {
 
         var workspaceRoot = ResolveWorkspaceRoot();
         var changedFilesPath = ResolvePathWithinWorkspace(workspaceRoot, options.ChangedFilesPath!);
-        if (!CiPathSafety.IsUnderRoot(changedFilesPath, workspaceRoot)) {
+        if (!CiPathSafety.IsUnderRootPhysical(changedFilesPath, workspaceRoot)) {
             Console.Error.WriteLine($"changed-files path must be within the workspace. changed-files={changedFilesPath} workspace={workspaceRoot}");
             return Task.FromResult(1);
         }
@@ -166,7 +166,7 @@ internal static class CiTuneReviewerBudgetsCommand {
         return Path.GetFullPath(Path.Combine(workspaceRoot, path));
     }
 
-    private static bool IsUnderRoot(string path, string root) => CiPathSafety.IsUnderRoot(path, root);
+    private static bool IsUnderRoot(string path, string root) => CiPathSafety.IsUnderRootPhysical(path, root);
 
     private static bool PathsEqual(string left, string right) {
         var normalizedLeft = Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);

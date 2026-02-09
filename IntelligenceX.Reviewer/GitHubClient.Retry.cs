@@ -27,7 +27,7 @@ internal sealed partial class GitHubClient {
             delay = ComputeRateLimitDelay(response, responseText, attempt);
             return true;
         }
-        if (statusCode == 403 && LooksLikeRateLimit(response, responseText)) {
+        if (statusCode == 403 && LooksLikeRateLimitHeadersOnly(response)) {
             delay = ComputeRateLimitDelay(response, responseText, attempt);
             return true;
         }
@@ -78,6 +78,20 @@ internal sealed partial class GitHubClient {
         return responseText.Contains("rate limit", StringComparison.OrdinalIgnoreCase) ||
                responseText.Contains("secondary rate", StringComparison.OrdinalIgnoreCase) ||
                responseText.Contains("abuse detection", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool LooksLikeRateLimitHeadersOnly(HttpResponseMessage response) {
+        if (TryParseRetryAfter(response, out _)) {
+            return true;
+        }
+        if (response.Headers.TryGetValues("X-RateLimit-Remaining", out var values)) {
+            foreach (var item in values) {
+                if (string.Equals(item?.Trim(), "0", StringComparison.Ordinal)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static bool LooksLikeGraphQlRateLimit(HttpResponseMessage response, string responseText) {

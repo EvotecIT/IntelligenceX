@@ -34,7 +34,7 @@ internal static class CiChangedFilesCommand {
         var outputPath = Path.GetFullPath(Path.IsPathRooted(options.OutputPath!)
             ? options.OutputPath!
             : Path.Combine(workspaceRoot, options.OutputPath!));
-        if (!CiPathSafety.IsUnderRoot(outputPath, workspaceRoot)) {
+        if (!CiPathSafety.IsUnderRootPhysical(outputPath, workspaceRoot)) {
             Console.Error.WriteLine($"Output path must be within the workspace. out={outputPath} workspace={workspaceRoot}");
             return 1;
         }
