@@ -480,15 +480,18 @@ internal sealed partial class GitHubClient : IDisposable {
     }
 
     private async Task<JsonValue> GetJsonAsync(string url, CancellationToken cancellationToken) {
-        return await WithGateAsync(async () => {
-            var retryBudgetStart = DateTimeOffset.UtcNow;
-            for (var attempt = 1; attempt <= DefaultRetryAttempts; attempt++) {
-                cancellationToken.ThrowIfCancellationRequested();
-                using var response = await _http.GetAsync(url, cancellationToken).ConfigureAwait(false);
-                var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                if (attempt < DefaultRetryAttempts && TryGetRetryDelay(response, content, attempt, out var delay)) {
-                    var remaining = DefaultRetryBudgetWindow - (DateTimeOffset.UtcNow - retryBudgetStart);
-                    if (remaining > TimeSpan.Zero) {
+	        return await WithGateAsync(async () => {
+	            var retryBudgetStart = DateTimeOffset.UtcNow;
+	            for (var attempt = 1; attempt <= DefaultRetryAttempts; attempt++) {
+	                cancellationToken.ThrowIfCancellationRequested();
+	                if (attempt > 1 && (DateTimeOffset.UtcNow - retryBudgetStart) >= DefaultRetryBudgetWindow) {
+	                    throw new InvalidOperationException($"GitHub API request failed (GET {url}) due to retry budget exhaustion.");
+	                }
+	                using var response = await _http.GetAsync(url, cancellationToken).ConfigureAwait(false);
+	                var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+	                if (attempt < DefaultRetryAttempts && TryGetRetryDelay(response, content, attempt, out var delay)) {
+	                    var remaining = DefaultRetryBudgetWindow - (DateTimeOffset.UtcNow - retryBudgetStart);
+	                    if (remaining > TimeSpan.Zero) {
                         if (delay > remaining) {
                             delay = remaining;
                         }
