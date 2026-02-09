@@ -52,8 +52,18 @@ internal static partial class Program {
 
         var settings = new IntelligenceX.Analysis.AnalysisSettings { Packs = new[] { "powershell-50" } };
         var policy = IntelligenceX.Analysis.AnalysisPolicyBuilder.Build(settings, catalog);
-        AssertEqual(50, policy.Rules.Count, "powershell-50 resolves to 50 rules");
-        AssertEqual(50, policy.SelectByLanguage("powershell").Count, "powershell-50 contains only PowerShell rules");
+
+        var allRuleIds = policy.Rules.Keys.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        AssertEqual(50, allRuleIds.Length, "powershell-50 resolves to 50 distinct rules");
+
+        var psRuleIds = policy.SelectByLanguage("powershell").Select(r => r.Rule.Id).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        AssertEqual(50, psRuleIds.Length, "powershell-50 resolves to 50 distinct PowerShell rules");
+        AssertEqual(50, allRuleIds.Intersect(psRuleIds, StringComparer.OrdinalIgnoreCase).Count(),
+            "powershell-50 contains only PowerShell rules");
+
+        foreach (var ruleId in allRuleIds) {
+            AssertEqual(true, catalog.TryGetRule(ruleId, out _), $"powershell-50 rule exists: {ruleId}");
+        }
     }
 }
 #endif
