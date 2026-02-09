@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 
@@ -27,6 +28,32 @@ public sealed class JsonArray : IEnumerable<JsonValue> {
     /// </summary>
     public JsonArray Add(JsonValue value) {
         _values.Add(value);
+        return this;
+    }
+
+    /// <summary>
+    /// Adds multiple JSON values to the array.
+    /// </summary>
+    /// <param name="values">Values to append.</param>
+    public JsonArray AddRange(IEnumerable<JsonValue> values) {
+        if (values is null) {
+            throw new ArgumentNullException(nameof(values));
+        }
+        _values.AddRange(values);
+        return this;
+    }
+
+    /// <summary>
+    /// Adds multiple CLR values to the array by mapping them to JSON values.
+    /// </summary>
+    /// <param name="values">Values to append.</param>
+    public JsonArray AddRange(IEnumerable<object?> values) {
+        if (values is null) {
+            throw new ArgumentNullException(nameof(values));
+        }
+        foreach (var value in values) {
+            _values.Add(JsonMapper.FromObject(value));
+        }
         return this;
     }
 
