@@ -291,7 +291,7 @@ internal sealed partial class GitHubClient : IDisposable {
                     .Add("cursor", cursor)
                     .Add("commentLimit", commentLimit));
 
-            var response = await PostGraphQlAsync(payload, cancellationToken).ConfigureAwait(false);
+            var response = await PostGraphQlAsync(payload, cancellationToken, allowRetries: true).ConfigureAwait(false);
             var root = response.AsObject();
             var data = root?.GetObject("data");
             var repoObj = data?.GetObject("repository");
@@ -370,7 +370,8 @@ internal sealed partial class GitHubClient : IDisposable {
   }
 }")
             .Add("variables", new JsonObject().Add("id", threadId));
-        await PostGraphQlAsync(payload, cancellationToken).ConfigureAwait(false);
+        // This is logically idempotent: resolving an already-resolved thread is safe.
+        await PostGraphQlAsync(payload, cancellationToken, allowRetries: true).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<RelatedPullRequest>> SearchPullRequestsAsync(string query, int maxResults,
@@ -417,7 +418,9 @@ internal sealed partial class GitHubClient : IDisposable {
     public async Task<IssueComment> CreateIssueCommentAsync(string owner, string repo, int number, string body,
         CancellationToken cancellationToken) {
         var payload = new JsonObject().Add("body", body);
-        var response = await PostJsonAsync($"/repos/{owner}/{repo}/issues/{number}/comments", payload, cancellationToken)
+        // Non-idempotent write: do not retry (avoid duplicate comments).
+        var response = await PostJsonAsync($"/repos/{owner}/{repo}/issues/{number}/comments", payload, cancellationToken,
+                allowRetries: false)
             .ConfigureAwait(false);
         var obj = response.AsObject();
         var id = obj?.GetInt64("id") ?? 0;
@@ -429,14 +432,16 @@ internal sealed partial class GitHubClient : IDisposable {
         var payload = new JsonObject()
             .Add("title", title)
             .Add("body", body);
-        await PatchJsonAsync($"/repos/{owner}/{repo}/pulls/{number}", payload, cancellationToken)
+        // Idempotent write (set title/body to specific values): safe to retry.
+        await PatchJsonAsync($"/repos/{owner}/{repo}/pulls/{number}", payload, cancellationToken, allowRetries: true)
             .ConfigureAwait(false);
     }
 
     public async Task UpdateIssueCommentAsync(string owner, string repo, long commentId, string body,
         CancellationToken cancellationToken) {
         var payload = new JsonObject().Add("body", body);
-        await PatchJsonAsync($"/repos/{owner}/{repo}/issues/comments/{commentId}", payload, cancellationToken)
+        // Idempotent write (set body to specific value): safe to retry.
+        await PatchJsonAsync($"/repos/{owner}/{repo}/issues/comments/{commentId}", payload, cancellationToken, allowRetries: true)
             .ConfigureAwait(false);
     }
 
@@ -448,7 +453,9 @@ internal sealed partial class GitHubClient : IDisposable {
             .Add("path", path)
             .Add("line", line)
             .Add("side", "RIGHT");
-        var response = await PostJsonAsync($"/repos/{owner}/{repo}/pulls/{number}/comments", payload, cancellationToken)
+        // Non-idempotent write: do not retry (avoid duplicate comments).
+        var response = await PostJsonAsync($"/repos/{owner}/{repo}/pulls/{number}/comments", payload, cancellationToken,
+                allowRetries: false)
             .ConfigureAwait(false);
         var obj = response.AsObject();
         var author = obj?.GetObject("user")?.GetString("login");
@@ -462,7 +469,8 @@ internal sealed partial class GitHubClient : IDisposable {
         var payload = new JsonObject()
             .Add("body", body)
             .Add("in_reply_to", inReplyTo);
-        await PostJsonAsync($"/repos/{owner}/{repo}/pulls/{number}/comments", payload, cancellationToken)
+        // Non-idempotent write: do not retry (avoid duplicate comments).
+        await PostJsonAsync($"/repos/{owner}/{repo}/pulls/{number}/comments", payload, cancellationToken, allowRetries: false)
             .ConfigureAwait(false);
     }
 
@@ -491,14 +499,15 @@ internal sealed partial class GitHubClient : IDisposable {
         }, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<JsonValue> PostJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken) {
+    private async Task<JsonValue> PostJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken, bool allowRetries) {
         return await WithGateAsync(async () => {
             var json = JsonLite.Serialize(JsonValue.From(payload));
-            for (var attempt = 1; attempt <= DefaultRetryAttempts; attempt++) {
+            var attempts = allowRetries ? DefaultRetryAttempts : 1;
+            for (var attempt = 1; attempt <= attempts; attempt++) {
                 using var content = new StringContent(json, Encoding.UTF8, "application/json");
                 using var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                if (attempt < DefaultRetryAttempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
+                if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
                     await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
@@ -513,15 +522,16 @@ internal sealed partial class GitHubClient : IDisposable {
         }, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<JsonValue> PostGraphQlAsync(JsonObject payload, CancellationToken cancellationToken) {
+    private async Task<JsonValue> PostGraphQlAsync(JsonObject payload, CancellationToken cancellationToken, bool allowRetries) {
         return await WithGateAsync(async () => {
             var json = JsonLite.Serialize(JsonValue.From(payload));
             const string url = "/graphql";
-            for (var attempt = 1; attempt <= DefaultRetryAttempts; attempt++) {
+            var attempts = allowRetries ? DefaultRetryAttempts : 1;
+            for (var attempt = 1; attempt <= attempts; attempt++) {
                 using var content = new StringContent(json, Encoding.UTF8, "application/json");
                 using var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                if (attempt < DefaultRetryAttempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
+                if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
                     await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
@@ -541,15 +551,16 @@ internal sealed partial class GitHubClient : IDisposable {
         }, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task PatchJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken) {
+    private async Task PatchJsonAsync(string url, JsonObject payload, CancellationToken cancellationToken, bool allowRetries) {
         await WithGateAsync(async () => {
             var json = JsonLite.Serialize(JsonValue.From(payload));
-            for (var attempt = 1; attempt <= DefaultRetryAttempts; attempt++) {
+            var attempts = allowRetries ? DefaultRetryAttempts : 1;
+            for (var attempt = 1; attempt <= attempts; attempt++) {
                 using var content = new StringContent(json, Encoding.UTF8, "application/json");
                 using var request = new HttpRequestMessage(new HttpMethod("PATCH"), url) { Content = content };
                 using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                if (attempt < DefaultRetryAttempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
+                if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
                     await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                     continue;
                 }

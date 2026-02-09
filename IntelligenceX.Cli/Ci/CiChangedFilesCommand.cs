@@ -124,7 +124,7 @@ internal static class CiChangedFilesCommand {
             }
             var resolvedHead = headProvided ? headRev!.Trim() : "HEAD";
             var range = $"{resolvedBase}...{resolvedHead}";
-            var (exit, stdout, stderr) = await GitCli.RunBytesAsync(workspace, "diff", "--name-only", "-z", range).ConfigureAwait(false);
+            var (exit, stdout, stderr) = await GitCli.RunBytesAsync(workspace, "diff", "--name-only", "-z", range, "--").ConfigureAwait(false);
             if (exit == 0) {
                 return (true, SplitGitPaths(stdout), string.Empty);
             }
@@ -138,7 +138,7 @@ internal static class CiChangedFilesCommand {
             var headParent = await RevParseAsync(workspace, "HEAD^2").ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(baseParent) && !string.IsNullOrWhiteSpace(headParent)) {
                 var range = $"{baseParent}...{headParent}";
-                var (exit, stdout, stderr) = await GitCli.RunBytesAsync(workspace, "diff", "--name-only", "-z", range).ConfigureAwait(false);
+                var (exit, stdout, stderr) = await GitCli.RunBytesAsync(workspace, "diff", "--name-only", "-z", range, "--").ConfigureAwait(false);
                 if (exit == 0) {
                     return (true, SplitGitPaths(stdout), string.Empty);
                 }
@@ -148,7 +148,7 @@ internal static class CiChangedFilesCommand {
 
         // Last resort: plain diff (may be empty in CI, but should not fail the pipeline).
         {
-            var (exit, stdout, stderr) = await GitCli.RunBytesAsync(workspace, "diff", "--name-only", "-z").ConfigureAwait(false);
+            var (exit, stdout, stderr) = await GitCli.RunBytesAsync(workspace, "diff", "--name-only", "-z", "--").ConfigureAwait(false);
             if (exit == 0) {
                 return (true, SplitGitPaths(stdout), string.Empty);
             }
