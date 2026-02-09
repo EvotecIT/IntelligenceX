@@ -589,7 +589,9 @@ internal static partial class Program {
 
             AssertEqual("learn.microsoft.com", uri.Host, $"{rule.Id} docs host is Learn");
 
-            var path = uri.AbsolutePath;
+            // Ignore harmless URL canonicalization differences (e.g. query strings on docs URLs).
+            var normalizedUri = new UriBuilder(uri) { Query = "", Fragment = "" }.Uri;
+            var path = normalizedUri.AbsolutePath;
             const string learnPrefix = "/powershell/utility-modules/psscriptanalyzer/rules/";
             AssertEqual(true, path.StartsWith(learnPrefix, StringComparison.OrdinalIgnoreCase), $"{rule.Id} docs uses PSScriptAnalyzer Learn rules path");
 

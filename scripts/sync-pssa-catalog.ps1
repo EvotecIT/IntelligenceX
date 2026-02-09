@@ -29,14 +29,15 @@ function ConvertTo-JsonEscapedString([string]$value) {
     $sb = New-Object System.Text.StringBuilder
     foreach ($ch in $value.ToCharArray()) {
         $code = [int][char]$ch
-        switch ($ch) {
-            '"' { [void]$sb.Append('\"'); continue }
-            '\' { [void]$sb.Append('\\'); continue }
-            "`b" { [void]$sb.Append('\b'); continue }
-            "`f" { [void]$sb.Append('\f'); continue }
-            "`n" { [void]$sb.Append('\n'); continue }
-            "`r" { [void]$sb.Append('\r'); continue }
-            "`t" { [void]$sb.Append('\t'); continue }
+        # Switch on codepoints to avoid PowerShell's wildcard matching quirks with `switch` patterns.
+        switch ($code) {
+            0x22 { [void]$sb.Append('\"'); continue }  # "
+            0x5C { [void]$sb.Append('\\'); continue }  # \
+            0x08 { [void]$sb.Append('\b'); continue }
+            0x0C { [void]$sb.Append('\f'); continue }
+            0x0A { [void]$sb.Append('\n'); continue }
+            0x0D { [void]$sb.Append('\r'); continue }
+            0x09 { [void]$sb.Append('\t'); continue }
         }
         if ($code -lt 0x20) {
             [void]$sb.Append(("\\u{0:x4}" -f $code))
