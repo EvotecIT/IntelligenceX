@@ -538,7 +538,7 @@ internal static partial class Program {
         }
     }
 
-private static void TestAnalysisCatalogPowerShellDocsLinksMatchLearnPattern() {
+    private static void TestAnalysisCatalogPowerShellDocsLinksMatchLearnPattern() {
         var workspace = ResolveWorkspaceRoot();
         var catalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromWorkspace(workspace);
 

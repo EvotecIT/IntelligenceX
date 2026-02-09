@@ -210,10 +210,28 @@ if (-not ($trustedBase -or $trustedSig)) {
     }
 }
 
-if ($module.Path) {
-    Import-Module -Name $module.Path -RequiredVersion $module.Version -ErrorAction Stop
-} else {
-    Import-Module -Name PSScriptAnalyzer -RequiredVersion $module.Version -ErrorAction Stop
+# Import by module name + pinned version, then verify the imported module matches the one we inspected above.
+# This avoids path-based imports while still defending against module shadowing.
+Import-Module -Name PSScriptAnalyzer -RequiredVersion $module.Version -ErrorAction Stop
+$imported = Get-Module -Name PSScriptAnalyzer -ErrorAction Stop |
+    Where-Object { $_.Version -eq $module.Version } |
+    Select-Object -First 1
+if (-not $imported) {
+    throw ("Failed to import PSScriptAnalyzer {0}." -f $module.Version)
+}
+if ($module.ModuleBase -and $imported.ModuleBase) {
+    $expectedBase = Get-NormalizedPath $module.ModuleBase
+    $actualBase = Get-NormalizedPath $imported.ModuleBase
+    if (-not $actualBase.Equals($expectedBase, $pathComparison)) {
+        throw ("Imported PSScriptAnalyzer ModuleBase does not match expected ModuleBase. Expected='{0}', actual='{1}'." -f $expectedBase, $actualBase)
+    }
+}
+if ($module.Path -and $imported.Path) {
+    $expectedPath = Get-NormalizedPath $module.Path
+    $actualPath = Get-NormalizedPath $imported.Path
+    if (-not $actualPath.Equals($expectedPath, $pathComparison)) {
+        throw ("Imported PSScriptAnalyzer Path does not match expected Path. Expected='{0}', actual='{1}'." -f $expectedPath, $actualPath)
+    }
 }
 
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
