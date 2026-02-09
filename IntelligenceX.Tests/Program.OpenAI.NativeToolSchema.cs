@@ -14,6 +14,12 @@ internal static partial class Program {
 
         fallback = DetectFallbackKind("Unrecognized request argument: tools[12].input_schema");
         AssertEqual("Parameters", fallback, "fallbackKind");
+
+        fallback = DetectFallbackKind("Unknown parameter: 'tools[0].function.parameters'.");
+        AssertEqual("InputSchema", fallback, "fallbackKind");
+
+        fallback = DetectFallbackKind("Unknown field tools[9].function.input_schema");
+        AssertEqual("Parameters", fallback, "fallbackKind");
     }
 
     private static void TestNativeToolSchemaFallbackDetectsDotIndex() {
@@ -21,6 +27,12 @@ internal static partial class Program {
         AssertEqual("InputSchema", fallback, "fallbackKind");
 
         fallback = DetectFallbackKind("Unknown parameter tools.0.input_schema");
+        AssertEqual("Parameters", fallback, "fallbackKind");
+
+        fallback = DetectFallbackKind("Unknown field tools.3.function.parameters");
+        AssertEqual("InputSchema", fallback, "fallbackKind");
+
+        fallback = DetectFallbackKind("Unknown parameter tools.1.function.input_schema");
         AssertEqual("Parameters", fallback, "fallbackKind");
     }
 
@@ -35,6 +47,7 @@ internal static partial class Program {
         AssertNotNull(method, "SerializeToolChoice method");
 
         var customParameters = Enum.Parse(enumType!, "CustomParameters");
+        var functionNestedParameters = Enum.Parse(enumType!, "FunctionNestedParameters");
         var functionFlatParameters = Enum.Parse(enumType!, "FunctionFlatParameters");
 
         var forced = ToolChoice.Custom("test-tool");
@@ -43,9 +56,15 @@ internal static partial class Program {
         var functionObj = functionChoice as JsonObject;
         AssertNotNull(functionObj, "function tool_choice as JsonObject");
         AssertEqual("function", functionObj!.GetString("type") ?? string.Empty, "type");
-        var function = functionObj.GetObject("function");
-        AssertNotNull(function, "function object");
-        AssertEqual("test-tool", function!.GetString("name") ?? string.Empty, "name");
+        AssertEqual("test-tool", functionObj.GetString("name") ?? string.Empty, "name");
+
+        var nestedChoice = method!.Invoke(null, new object?[] { forced, functionNestedParameters });
+        var nestedObj = nestedChoice as JsonObject;
+        AssertNotNull(nestedObj, "nested function tool_choice as JsonObject");
+        AssertEqual("function", nestedObj!.GetString("type") ?? string.Empty, "type");
+        var nestedFunction = nestedObj.GetObject("function");
+        AssertNotNull(nestedFunction, "nested function object");
+        AssertEqual("test-tool", nestedFunction!.GetString("name") ?? string.Empty, "name");
 
         var customChoice = (JsonObject)method!.Invoke(null, new object?[] { forced, customParameters })!;
         AssertEqual("custom", customChoice.GetString("type") ?? string.Empty, "type");
@@ -192,6 +211,8 @@ internal static partial class Program {
 
         var customParameters = Enum.Parse(enumType!, "CustomParameters");
         var customInputSchema = Enum.Parse(enumType!, "CustomInputSchema");
+        var functionNestedParameters = Enum.Parse(enumType!, "FunctionNestedParameters");
+        var functionNestedInputSchema = Enum.Parse(enumType!, "FunctionNestedInputSchema");
         var functionFlatParameters = Enum.Parse(enumType!, "FunctionFlatParameters");
         var functionFlatInputSchema = Enum.Parse(enumType!, "FunctionFlatInputSchema");
 
@@ -216,6 +237,22 @@ internal static partial class Program {
         AssertEqual(true, withFunctionFlatInputSchema.TryGetValue("name", out _), "name present");
         AssertEqual(false, withFunctionFlatInputSchema.TryGetValue("parameters", out _), "parameters absent");
         AssertEqual(true, withFunctionFlatInputSchema.TryGetValue("input_schema", out _), "input_schema present");
+
+        var withFunctionNestedParameters = (JsonObject)serialize!.Invoke(null, new object?[] { tool, functionNestedParameters })!;
+        AssertEqual("function", withFunctionNestedParameters.GetString("type") ?? string.Empty, "type");
+        var nestedFunctionParams = withFunctionNestedParameters.GetObject("function");
+        AssertNotNull(nestedFunctionParams, "function nested object");
+        AssertEqual("test-tool", nestedFunctionParams!.GetString("name") ?? string.Empty, "name");
+        AssertEqual(true, nestedFunctionParams.TryGetValue("parameters", out _), "parameters present");
+        AssertEqual(false, nestedFunctionParams.TryGetValue("input_schema", out _), "input_schema absent");
+
+        var withFunctionNestedInputSchema = (JsonObject)serialize!.Invoke(null, new object?[] { tool, functionNestedInputSchema })!;
+        AssertEqual("function", withFunctionNestedInputSchema.GetString("type") ?? string.Empty, "type");
+        var nestedFunctionSchema = withFunctionNestedInputSchema.GetObject("function");
+        AssertNotNull(nestedFunctionSchema, "function nested object");
+        AssertEqual("test-tool", nestedFunctionSchema!.GetString("name") ?? string.Empty, "name");
+        AssertEqual(false, nestedFunctionSchema.TryGetValue("parameters", out _), "parameters absent");
+        AssertEqual(true, nestedFunctionSchema.TryGetValue("input_schema", out _), "input_schema present");
     }
 
     private static string DetectFallbackKind(string message) {
