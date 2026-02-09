@@ -35,6 +35,18 @@ internal static class CiChangedFilesCommand {
         }
 
         var (success, lines, message) = await TryComputeChangedFilesAsync(workspace, options.Base, options.Head).ConfigureAwait(false);
+        if (!success) {
+            // Don't silently produce an empty list on git failures; fall back to a conservative file list.
+            var (listed, fallbackLines, fallbackMessage) = await TryListAllFilesAsync(workspace).ConfigureAwait(false);
+            if (listed && fallbackLines.Count > 0) {
+                lines = fallbackLines;
+                message = string.IsNullOrWhiteSpace(message)
+                    ? "Warning: failed to compute diff changed files; fell back to `git ls-files`."
+                    : (message + "\nWarning: fell back to `git ls-files`.");
+            } else if (!string.IsNullOrWhiteSpace(fallbackMessage)) {
+                message = string.IsNullOrWhiteSpace(message) ? fallbackMessage : (message + "\n" + fallbackMessage);
+            }
+        }
         try {
             File.WriteAllLines(outputPath, lines);
         } catch (Exception ex) {
@@ -93,6 +105,14 @@ internal static class CiChangedFilesCommand {
             }
             return (false, new List<string>(), $"Warning: git diff --name-only failed (exit {exit}). {TrimOneLine(stderr)}");
         }
+    }
+
+    private static async Task<(bool Success, List<string> Lines, string Message)> TryListAllFilesAsync(string workspace) {
+        var (exit, stdout, stderr) = await GitCli.RunAsync(workspace, "ls-files").ConfigureAwait(false);
+        if (exit == 0) {
+            return (true, SplitLines(stdout), string.Empty);
+        }
+        return (false, new List<string>(), $"Warning: git ls-files failed (exit {exit}). {TrimOneLine(stderr)}");
     }
 
     private static async Task<bool> HasRevisionAsync(string workspace, string rev) {

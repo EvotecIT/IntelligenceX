@@ -48,11 +48,9 @@ internal static class CiTuneReviewerBudgetsCommand {
             return Task.FromResult(0);
         }
 
-        try {
-            File.AppendAllText(envTarget!, $"INPUT_MAX_FILES={options.MaxFiles}{Environment.NewLine}");
-            File.AppendAllText(envTarget!, $"INPUT_MAX_PATCH_CHARS={options.MaxPatchChars}{Environment.NewLine}");
-        } catch (Exception ex) {
-            Console.Error.WriteLine($"Failed to write budgets to {envTarget}: {ex.Message}");
+        if (!TryWriteEnvLines(envTarget!, ("INPUT_MAX_FILES", options.MaxFiles.ToString()), ("INPUT_MAX_PATCH_CHARS", options.MaxPatchChars.ToString()),
+                out var error)) {
+            Console.Error.WriteLine(error);
             return Task.FromResult(1);
         }
 
@@ -61,15 +59,58 @@ internal static class CiTuneReviewerBudgetsCommand {
     }
 
     private static string? ResolveEnvTarget(string? outEnv) {
-        if (!string.IsNullOrWhiteSpace(outEnv)) {
-            var dir = Path.GetDirectoryName(outEnv);
+        var candidate = !string.IsNullOrWhiteSpace(outEnv)
+            ? outEnv
+            : Environment.GetEnvironmentVariable("GITHUB_ENV");
+        if (string.IsNullOrWhiteSpace(candidate)) {
+            return null;
+        }
+        if (candidate.Contains('\n') || candidate.Contains('\r')) {
+            return null;
+        }
+        try {
+            var dir = Path.GetDirectoryName(candidate);
             if (!string.IsNullOrWhiteSpace(dir)) {
                 Directory.CreateDirectory(dir);
             }
-            return outEnv;
+        } catch {
+            return null;
         }
-        var env = Environment.GetEnvironmentVariable("GITHUB_ENV");
-        return string.IsNullOrWhiteSpace(env) ? null : env;
+        return candidate;
+    }
+
+    private static bool TryWriteEnvLines(string path, (string Key, string Value) first, (string Key, string Value) second, out string error) {
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(path)) {
+            error = "Missing env-file path.";
+            return false;
+        }
+
+        if (!TryValidateEnvPair(first.Key, first.Value, out error) || !TryValidateEnvPair(second.Key, second.Value, out error)) {
+            return false;
+        }
+
+        try {
+            File.AppendAllText(path,
+                $"{first.Key}={first.Value}{Environment.NewLine}{second.Key}={second.Value}{Environment.NewLine}");
+            return true;
+        } catch (Exception ex) {
+            error = $"Failed to write budgets to {path}: {ex.Message}";
+            return false;
+        }
+    }
+
+    private static bool TryValidateEnvPair(string key, string value, out string error) {
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(key) || key.Contains('\n') || key.Contains('\r') || key.Contains('=')) {
+            error = "Invalid env key.";
+            return false;
+        }
+        if (value is null || value.Contains('\n') || value.Contains('\r')) {
+            error = "Invalid env value.";
+            return false;
+        }
+        return true;
     }
 
     private static Options ParseArgs(string[] args) {
@@ -181,4 +222,3 @@ internal static class CiTuneReviewerBudgetsCommand {
         public string? OutEnv { get; set; }
     }
 }
-
