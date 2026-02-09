@@ -77,7 +77,7 @@ internal static class CiChangedFilesCommand {
             .OrderBy(value => value, StringComparer.Ordinal)
             .ToList();
         try {
-            File.WriteAllLines(outputPath, lines);
+            File.WriteAllLines(outputPath, lines, Utf8Tolerant);
         } catch (Exception ex) {
             Console.Error.WriteLine($"Failed to write {outputPath}: {ex.Message}");
             return 1;

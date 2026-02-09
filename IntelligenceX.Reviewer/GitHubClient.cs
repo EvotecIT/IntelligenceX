@@ -13,6 +13,7 @@ namespace IntelligenceX.Reviewer;
 internal sealed partial class GitHubClient : IDisposable {
     private const int DefaultMaxConcurrency = 4;
     private const int DefaultRetryAttempts = 3;
+    private static readonly TimeSpan DefaultRetryBudgetWindow = TimeSpan.FromSeconds(15);
     private readonly HttpClient _http;
     private readonly Dictionary<string, PullRequestContext> _pullRequestCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IReadOnlyList<PullRequestFile>> _pullRequestFilesCache = new(StringComparer.OrdinalIgnoreCase);
@@ -487,7 +488,7 @@ internal sealed partial class GitHubClient : IDisposable {
                 using var response = await _http.GetAsync(url, cancellationToken).ConfigureAwait(false);
                 var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 if (attempt < DefaultRetryAttempts && TryGetRetryDelay(response, content, attempt, out var delay)) {
-                    var remaining = TimeSpan.FromSeconds(15) - (DateTimeOffset.UtcNow - retryBudgetStart);
+                    var remaining = DefaultRetryBudgetWindow - (DateTimeOffset.UtcNow - retryBudgetStart);
                     if (remaining > TimeSpan.Zero) {
                         if (delay > remaining) {
                             delay = remaining;
@@ -519,7 +520,7 @@ internal sealed partial class GitHubClient : IDisposable {
                 using var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
-                    var remaining = TimeSpan.FromSeconds(15) - (DateTimeOffset.UtcNow - retryBudgetStart);
+                    var remaining = DefaultRetryBudgetWindow - (DateTimeOffset.UtcNow - retryBudgetStart);
                     if (remaining > TimeSpan.Zero) {
                         if (delay > remaining) {
                             delay = remaining;
@@ -552,7 +553,7 @@ internal sealed partial class GitHubClient : IDisposable {
                 using var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
-                    var remaining = TimeSpan.FromSeconds(15) - (DateTimeOffset.UtcNow - retryBudgetStart);
+                    var remaining = DefaultRetryBudgetWindow - (DateTimeOffset.UtcNow - retryBudgetStart);
                     if (remaining > TimeSpan.Zero) {
                         if (delay > remaining) {
                             delay = remaining;
@@ -590,7 +591,7 @@ internal sealed partial class GitHubClient : IDisposable {
                 using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
-                    var remaining = TimeSpan.FromSeconds(15) - (DateTimeOffset.UtcNow - retryBudgetStart);
+                    var remaining = DefaultRetryBudgetWindow - (DateTimeOffset.UtcNow - retryBudgetStart);
                     if (remaining > TimeSpan.Zero) {
                         if (delay > remaining) {
                             delay = remaining;
