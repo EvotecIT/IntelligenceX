@@ -74,8 +74,9 @@ jobs:
 
     test-ubuntu:
         name: 'Ubuntu'
-        # Prefer GitHub-hosted runners for PR checks to avoid blocking when self-hosted runners are unavailable.
-        runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || (github.event.repository.private && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]')) }}
+        # While the repo is private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
+        # When public, use GitHub-hosted runners by default.
+        runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
         timeout-minutes: 20
         steps:
             - name: Checkout code
