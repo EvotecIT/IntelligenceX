@@ -481,10 +481,19 @@ internal sealed partial class GitHubClient : IDisposable {
 
     private async Task<JsonValue> GetJsonAsync(string url, CancellationToken cancellationToken) {
         return await WithGateAsync(async () => {
+            var retryBudgetStart = DateTimeOffset.UtcNow;
             for (var attempt = 1; attempt <= DefaultRetryAttempts; attempt++) {
+                cancellationToken.ThrowIfCancellationRequested();
                 using var response = await _http.GetAsync(url, cancellationToken).ConfigureAwait(false);
                 var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 if (attempt < DefaultRetryAttempts && TryGetRetryDelay(response, content, attempt, out var delay)) {
+                    var remaining = TimeSpan.FromSeconds(15) - (DateTimeOffset.UtcNow - retryBudgetStart);
+                    if (remaining <= TimeSpan.Zero) {
+                        break;
+                    }
+                    if (delay > remaining) {
+                        delay = remaining;
+                    }
                     await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
@@ -503,11 +512,20 @@ internal sealed partial class GitHubClient : IDisposable {
         return await WithGateAsync(async () => {
             var json = JsonLite.Serialize(JsonValue.From(payload));
             var attempts = allowRetries ? DefaultRetryAttempts : 1;
+            var retryBudgetStart = DateTimeOffset.UtcNow;
             for (var attempt = 1; attempt <= attempts; attempt++) {
+                cancellationToken.ThrowIfCancellationRequested();
                 using var content = new StringContent(json, Encoding.UTF8, "application/json");
                 using var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
+                    var remaining = TimeSpan.FromSeconds(15) - (DateTimeOffset.UtcNow - retryBudgetStart);
+                    if (remaining <= TimeSpan.Zero) {
+                        break;
+                    }
+                    if (delay > remaining) {
+                        delay = remaining;
+                    }
                     await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
@@ -527,11 +545,20 @@ internal sealed partial class GitHubClient : IDisposable {
             var json = JsonLite.Serialize(JsonValue.From(payload));
             const string url = "/graphql";
             var attempts = allowRetries ? DefaultRetryAttempts : 1;
+            var retryBudgetStart = DateTimeOffset.UtcNow;
             for (var attempt = 1; attempt <= attempts; attempt++) {
+                cancellationToken.ThrowIfCancellationRequested();
                 using var content = new StringContent(json, Encoding.UTF8, "application/json");
                 using var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
+                    var remaining = TimeSpan.FromSeconds(15) - (DateTimeOffset.UtcNow - retryBudgetStart);
+                    if (remaining <= TimeSpan.Zero) {
+                        break;
+                    }
+                    if (delay > remaining) {
+                        delay = remaining;
+                    }
                     await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
@@ -555,12 +582,21 @@ internal sealed partial class GitHubClient : IDisposable {
         await WithGateAsync(async () => {
             var json = JsonLite.Serialize(JsonValue.From(payload));
             var attempts = allowRetries ? DefaultRetryAttempts : 1;
+            var retryBudgetStart = DateTimeOffset.UtcNow;
             for (var attempt = 1; attempt <= attempts; attempt++) {
+                cancellationToken.ThrowIfCancellationRequested();
                 using var content = new StringContent(json, Encoding.UTF8, "application/json");
                 using var request = new HttpRequestMessage(new HttpMethod("PATCH"), url) { Content = content };
                 using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
+                    var remaining = TimeSpan.FromSeconds(15) - (DateTimeOffset.UtcNow - retryBudgetStart);
+                    if (remaining <= TimeSpan.Zero) {
+                        break;
+                    }
+                    if (delay > remaining) {
+                        delay = remaining;
+                    }
                     await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                     continue;
                 }

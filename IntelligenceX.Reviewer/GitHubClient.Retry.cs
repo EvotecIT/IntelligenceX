@@ -5,6 +5,8 @@ using System.Net.Http;
 namespace IntelligenceX.Reviewer;
 
 internal sealed partial class GitHubClient {
+    private const int MaxRetryDelaySeconds = 15;
+
     private static bool TryGetRetryDelay(HttpResponseMessage response, string responseText, int attempt, out TimeSpan delay) {
         delay = TimeSpan.Zero;
         var statusCode = (int)response.StatusCode;
@@ -50,7 +52,7 @@ internal sealed partial class GitHubClient {
     private static TimeSpan ComputeRateLimitDelay(HttpResponseMessage response, string responseText, int attempt) {
         if (TryParseRetryAfter(response, out var retryAfter)) {
             // Keep a small floor so back-to-back retries don't hammer.
-            return Clamp(retryAfter, minSeconds: 1, maxSeconds: 60);
+            return Clamp(retryAfter, minSeconds: 1, maxSeconds: MaxRetryDelaySeconds);
         }
 
         // If we have a reset time, wait until then (capped).
@@ -60,7 +62,7 @@ internal sealed partial class GitHubClient {
                     var resetAt = DateTimeOffset.FromUnixTimeSeconds(seconds);
                     var delta = resetAt - DateTimeOffset.UtcNow;
                     if (delta > TimeSpan.Zero) {
-                        return Clamp(delta, minSeconds: 1, maxSeconds: 60);
+                        return Clamp(delta, minSeconds: 1, maxSeconds: MaxRetryDelaySeconds);
                     }
                 }
             }
@@ -71,7 +73,7 @@ internal sealed partial class GitHubClient {
         if (responseText.Contains("secondary rate", StringComparison.OrdinalIgnoreCase) ||
             responseText.Contains("abuse detection", StringComparison.OrdinalIgnoreCase)) {
             // Secondary rate limits tend to want slightly longer delays.
-            backoff = TimeSpan.FromSeconds(Math.Min(60, Math.Max(5, backoff.TotalSeconds)));
+            backoff = TimeSpan.FromSeconds(Math.Min(MaxRetryDelaySeconds, Math.Max(5, backoff.TotalSeconds)));
         }
         return backoff;
     }
@@ -140,4 +142,3 @@ internal sealed partial class GitHubClient {
         return trimmed.Length <= Max ? trimmed : (trimmed[..Max] + "...(truncated)");
     }
 }
-
