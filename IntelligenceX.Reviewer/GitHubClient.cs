@@ -583,6 +583,14 @@ internal sealed partial class GitHubClient : IDisposable {
 
     private async Task<JsonValue> PostGraphQlAsync(JsonObject payload, CancellationToken cancellationToken, bool allowRetries, bool throwOnErrors) {
         return await WithGateAsync(async () => {
+            var queryText = payload.GetString("query") ?? string.Empty;
+            var isMutation = queryText.TrimStart().StartsWith("mutation", StringComparison.OrdinalIgnoreCase);
+            if (isMutation) {
+                // Enforce mutation safety: never retry mutations under transport uncertainty.
+                allowRetries = false;
+                throwOnErrors = true;
+            }
+
             var json = JsonLite.Serialize(JsonValue.From(payload));
             const string url = "/graphql";
             var attempts = allowRetries ? DefaultRetryAttempts : 1;
