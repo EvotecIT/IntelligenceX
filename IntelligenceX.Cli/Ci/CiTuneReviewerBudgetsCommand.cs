@@ -95,18 +95,25 @@ internal static class CiTuneReviewerBudgetsCommand {
             using var stream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read);
             stream.Seek(0, SeekOrigin.End);
             using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-            writer.Write(first.Key);
-            writer.Write('=');
-            writer.WriteLine(first.Value);
-            writer.Write(second.Key);
-            writer.Write('=');
-            writer.WriteLine(second.Value);
+            WriteGitHubEnvEntry(writer, first.Key, first.Value);
+            WriteGitHubEnvEntry(writer, second.Key, second.Value);
             writer.Flush();
             return true;
         } catch (Exception ex) {
             error = $"Failed to write budgets to {path}: {ex.Message}";
             return false;
         }
+    }
+
+    private static void WriteGitHubEnvEntry(TextWriter writer, string key, string value) {
+        // Use the documented env-file heredoc format to be robust to special characters and multiline values.
+        // https://docs.github.com/actions/using-workflows/workflow-commands-for-github-actions#environment-files
+        var delimiter = $"IX_{Guid.NewGuid():N}";
+        writer.Write(key);
+        writer.Write("<<");
+        writer.WriteLine(delimiter);
+        writer.WriteLine(value);
+        writer.WriteLine(delimiter);
     }
 
     private static bool TryValidateEnvPair(string key, string value, out string error) {
@@ -217,7 +224,7 @@ internal static class CiTuneReviewerBudgetsCommand {
         Console.WriteLine("  --catalog-threshold <n>    Default: 10");
         Console.WriteLine("  --max-files <n>            Default: 200");
         Console.WriteLine("  --max-patch-chars <n>      Default: 120000");
-        Console.WriteLine("  --out-env <path>           Write KEY=VALUE lines to this env file (defaults to $GITHUB_ENV)");
+        Console.WriteLine("  --out-env <path>           Write GitHub env-file entries to this file (defaults to $GITHUB_ENV)");
     }
 
     private sealed class Options {

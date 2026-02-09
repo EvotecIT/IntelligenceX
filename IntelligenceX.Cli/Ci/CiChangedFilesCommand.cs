@@ -52,9 +52,16 @@ internal static class CiChangedFilesCommand {
             }
         }
 
+        // The downstream consumers of changed-files.txt are line-based; fail if the repo contains unsafe filenames.
+        foreach (var value in lines) {
+            if (value.Contains('\n') || value.Contains('\r') || value.Contains('\0')) {
+                Console.Error.WriteLine("Changed-files contains a path with newline/CR/NUL characters, which is not representable in a line-delimited file.");
+                return 1;
+            }
+        }
+
         lines = lines
-            .Select(value => (value ?? string.Empty).Trim())
-            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Where(value => !string.IsNullOrEmpty(value))
             .Distinct(StringComparer.Ordinal)
             .OrderBy(value => value, StringComparer.Ordinal)
             .ToList();
@@ -87,9 +94,9 @@ internal static class CiChangedFilesCommand {
             }
             var resolvedHead = headProvided ? headRev!.Trim() : "HEAD";
             var range = $"{resolvedBase}...{resolvedHead}";
-            var (exit, stdout, stderr) = await GitCli.RunAsync(workspace, "diff", "--name-only", range).ConfigureAwait(false);
+            var (exit, stdout, stderr) = await GitCli.RunAsync(workspace, "diff", "--name-only", "-z", range).ConfigureAwait(false);
             if (exit == 0) {
-                return (true, SplitLines(stdout), string.Empty);
+                return (true, SplitGitPaths(stdout, nullDelimited: true), string.Empty);
             }
             return (false, new List<string>(), $"Warning: git diff --name-only {range} failed (exit {exit}). {TrimOneLine(stderr)}");
         }
@@ -101,9 +108,9 @@ internal static class CiChangedFilesCommand {
             var headParent = await RevParseAsync(workspace, "HEAD^2").ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(baseParent) && !string.IsNullOrWhiteSpace(headParent)) {
                 var range = $"{baseParent}...{headParent}";
-                var (exit, stdout, stderr) = await GitCli.RunAsync(workspace, "diff", "--name-only", range).ConfigureAwait(false);
+                var (exit, stdout, stderr) = await GitCli.RunAsync(workspace, "diff", "--name-only", "-z", range).ConfigureAwait(false);
                 if (exit == 0) {
-                    return (true, SplitLines(stdout), string.Empty);
+                    return (true, SplitGitPaths(stdout, nullDelimited: true), string.Empty);
                 }
                 return (false, new List<string>(), $"Warning: git diff --name-only {range} failed (exit {exit}). {TrimOneLine(stderr)}");
             }
@@ -111,18 +118,18 @@ internal static class CiChangedFilesCommand {
 
         // Last resort: plain diff (may be empty in CI, but should not fail the pipeline).
         {
-            var (exit, stdout, stderr) = await GitCli.RunAsync(workspace, "diff", "--name-only").ConfigureAwait(false);
+            var (exit, stdout, stderr) = await GitCli.RunAsync(workspace, "diff", "--name-only", "-z").ConfigureAwait(false);
             if (exit == 0) {
-                return (true, SplitLines(stdout), string.Empty);
+                return (true, SplitGitPaths(stdout, nullDelimited: true), string.Empty);
             }
             return (false, new List<string>(), $"Warning: git diff --name-only failed (exit {exit}). {TrimOneLine(stderr)}");
         }
     }
 
     private static async Task<(bool Success, List<string> Lines, string Message)> TryListAllFilesAsync(string workspace) {
-        var (exit, stdout, stderr) = await GitCli.RunAsync(workspace, "ls-files").ConfigureAwait(false);
+        var (exit, stdout, stderr) = await GitCli.RunAsync(workspace, "ls-files", "-z").ConfigureAwait(false);
         if (exit == 0) {
-            return (true, SplitLines(stdout), string.Empty);
+            return (true, SplitGitPaths(stdout, nullDelimited: true), string.Empty);
         }
         return (false, new List<string>(), $"Warning: git ls-files failed (exit {exit}). {TrimOneLine(stderr)}");
     }
@@ -141,14 +148,17 @@ internal static class CiChangedFilesCommand {
         return string.IsNullOrWhiteSpace(resolved) ? null : resolved;
     }
 
-    private static List<string> SplitLines(string? stdout) {
+    private static List<string> SplitGitPaths(string? stdout, bool nullDelimited) {
         if (string.IsNullOrWhiteSpace(stdout)) {
             return new List<string>();
         }
+        if (nullDelimited) {
+            return stdout
+                .Split('\0', StringSplitOptions.RemoveEmptyEntries)
+                .ToList();
+        }
         return stdout
             .Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries)
-            .Select(value => value.Trim())
-            .Where(value => !string.IsNullOrWhiteSpace(value))
             .ToList();
     }
 
@@ -226,7 +236,7 @@ internal static class CiChangedFilesCommand {
         Console.WriteLine("  intelligencex ci changed-files --out <path> [--workspace <path>] [--base <rev>] [--head <rev>] [--strict]");
         Console.WriteLine();
         Console.WriteLine("Notes:");
-        Console.WriteLine("  If --base/--head are not provided, this command will attempt to detect a PR merge commit and diff HEAD^1..HEAD^2.");
+        Console.WriteLine("  If --base/--head are not provided, this command will attempt to detect a PR merge commit and diff HEAD^1...HEAD^2.");
     }
 
     private sealed class Options {
