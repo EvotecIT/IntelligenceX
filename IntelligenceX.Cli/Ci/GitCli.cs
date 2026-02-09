@@ -9,6 +9,8 @@ namespace IntelligenceX.Cli.Ci;
 
 internal static class GitCli {
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
+    private const int DefaultMaxOutputBytes = 25 * 1024 * 1024;
+    private static readonly Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
     public static Task<(int ExitCode, string StdOut, string StdErr)> RunAsync(string? workingDirectory, params string[] args) {
         return RunAsync(workingDirectory, timeout: null, args);
@@ -39,11 +41,11 @@ internal static class GitCli {
             return (127, Array.Empty<byte>(), Array.Empty<byte>());
         }
 
-        var stdoutTask = ReadAllBytesAsync(proc.StandardOutput.BaseStream);
-        var stderrTask = ReadAllBytesAsync(proc.StandardError.BaseStream);
-
         var effectiveTimeout = ResolveTimeout(timeout);
         using var cts = new CancellationTokenSource(effectiveTimeout);
+        var maxBytes = ResolveMaxOutputBytes();
+        var stdoutTask = ReadAllBytesAsync(proc.StandardOutput.BaseStream, maxBytes, cts.Token);
+        var stderrTask = ReadAllBytesAsync(proc.StandardError.BaseStream, maxBytes, cts.Token);
         try {
             await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
             await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
@@ -69,7 +71,13 @@ internal static class GitCli {
             }
         }
 
-        return (proc.ExitCode, SafeTaskResult(stdoutTask), SafeTaskResult(stderrTask));
+        var (stdout, stdoutTruncated) = SafeTaskResult(stdoutTask);
+        var (stderr, stderrTruncated) = SafeTaskResult(stderrTask);
+        if (stdoutTruncated || stderrTruncated) {
+            return (126, Array.Empty<byte>(), Utf8NoBom.GetBytes($"git output exceeded {maxBytes} bytes and was truncated."));
+        }
+
+        return (proc.ExitCode, stdout, stderr);
     }
 
     public static async Task<(int ExitCode, string StdOut, string StdErr)> RunAsync(string? workingDirectory, TimeSpan? timeout, params string[] args) {
@@ -135,19 +143,38 @@ internal static class GitCli {
         }
     }
 
-    private static byte[] SafeTaskResult(Task<byte[]> task) {
+    private static (byte[] Data, bool Truncated) SafeTaskResult(Task<(byte[] Data, bool Truncated)> task) {
         try {
             return task.GetAwaiter().GetResult();
         } catch {
-            return Array.Empty<byte>();
+            return (Array.Empty<byte>(), false);
         }
     }
 
-    private static async Task<byte[]> ReadAllBytesAsync(Stream stream) {
+    private static async Task<(byte[] Data, bool Truncated)> ReadAllBytesAsync(Stream stream, int maxBytes, CancellationToken cancellationToken) {
         // Stream.ReadAllBytesAsync isn't available on all TFMs we target.
-        using var ms = new MemoryStream();
-        await stream.CopyToAsync(ms).ConfigureAwait(false);
-        return ms.ToArray();
+        var truncated = false;
+        using var ms = new MemoryStream(capacity: Math.Min(maxBytes, 64 * 1024));
+        var buffer = new byte[16 * 1024];
+        var total = 0;
+        while (true) {
+            var read = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false);
+            if (read <= 0) {
+                break;
+            }
+            if (!truncated) {
+                var take = Math.Min(read, Math.Max(0, maxBytes - total));
+                if (take > 0) {
+                    ms.Write(buffer, 0, take);
+                    total += take;
+                }
+                if (total >= maxBytes) {
+                    truncated = true;
+                }
+            }
+            // If truncated, keep draining without buffering to avoid deadlocks from full pipes.
+        }
+        return (ms.ToArray(), truncated);
     }
 
     private static TimeSpan ResolveTimeout(TimeSpan? timeout) {
@@ -159,5 +186,13 @@ internal static class GitCli {
             return TimeSpan.FromSeconds(seconds);
         }
         return DefaultTimeout;
+    }
+
+    private static int ResolveMaxOutputBytes() {
+        var fromEnv = Environment.GetEnvironmentVariable("INTELLIGENCEX_GIT_MAX_OUTPUT_BYTES");
+        if (!string.IsNullOrWhiteSpace(fromEnv) && int.TryParse(fromEnv, out var bytes) && bytes > 0) {
+            return bytes;
+        }
+        return DefaultMaxOutputBytes;
     }
 }

@@ -189,30 +189,29 @@ internal static class CiTuneReviewerBudgetsCommand {
         try {
             // Best-effort robustness:
             // - Ensure a newline boundary when appending (only when needed).
-            // - Append in a single write to reduce interleaving risk with other writers.
             var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
-            using var buffer = new StringWriter(System.Globalization.CultureInfo.InvariantCulture) { NewLine = "\n" };
+            var needsLeadingNewline = false;
             try {
                 if (File.Exists(path)) {
                     using var read = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                     if (read.Length > 0) {
                         read.Seek(-1, SeekOrigin.End);
                         var lastByte = read.ReadByte();
-                        if (lastByte != '\n') {
-                            buffer.Write("\n");
-                        }
+                        needsLeadingNewline = lastByte != '\n';
                     }
                 }
             } catch {
                 // If we can't inspect the current file contents, prefer to keep entries separated.
-                buffer.Write("\n");
+                needsLeadingNewline = true;
             }
-            WriteGitHubEnvEntry(buffer, first.Key, first.Value);
-            WriteGitHubEnvEntry(buffer, second.Key, second.Value);
-            var bytes = encoding.GetBytes(buffer.ToString());
-
             using var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
-            stream.Write(bytes, 0, bytes.Length);
+            using var writer = new StreamWriter(stream, encoding, bufferSize: 1024, leaveOpen: true) { NewLine = "\n" };
+            if (needsLeadingNewline) {
+                writer.WriteLine();
+            }
+            WriteGitHubEnvEntry(writer, first.Key, first.Value);
+            WriteGitHubEnvEntry(writer, second.Key, second.Value);
+            writer.Flush();
             stream.Flush();
             return true;
         } catch (Exception ex) {
