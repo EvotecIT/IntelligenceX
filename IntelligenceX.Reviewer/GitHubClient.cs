@@ -476,8 +476,8 @@ internal sealed class GitHubClient : IDisposable {
             for (var attempt = 1; attempt <= DefaultRetryAttempts; attempt++) {
                 using var response = await _http.GetAsync(url, cancellationToken).ConfigureAwait(false);
                 var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                if (ShouldRetry(response.StatusCode) && attempt < DefaultRetryAttempts) {
-                    await Task.Delay(ComputeRetryDelay(attempt), cancellationToken).ConfigureAwait(false);
+                if (attempt < DefaultRetryAttempts && TryGetRetryDelay(response, content, attempt, out var delay)) {
+                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
                 if (!response.IsSuccessStatusCode) {
@@ -498,8 +498,8 @@ internal sealed class GitHubClient : IDisposable {
                 using var content = new StringContent(json, Encoding.UTF8, "application/json");
                 using var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                if (ShouldRetry(response.StatusCode) && attempt < DefaultRetryAttempts) {
-                    await Task.Delay(ComputeRetryDelay(attempt), cancellationToken).ConfigureAwait(false);
+                if (attempt < DefaultRetryAttempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
+                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
                 if (!response.IsSuccessStatusCode) {
@@ -521,8 +521,8 @@ internal sealed class GitHubClient : IDisposable {
                 using var content = new StringContent(json, Encoding.UTF8, "application/json");
                 using var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                if (ShouldRetry(response.StatusCode) && attempt < DefaultRetryAttempts) {
-                    await Task.Delay(ComputeRetryDelay(attempt), cancellationToken).ConfigureAwait(false);
+                if (attempt < DefaultRetryAttempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
+                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
                 if (!response.IsSuccessStatusCode) {
@@ -549,8 +549,8 @@ internal sealed class GitHubClient : IDisposable {
                 using var request = new HttpRequestMessage(new HttpMethod("PATCH"), url) { Content = content };
                 using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                if (ShouldRetry(response.StatusCode) && attempt < DefaultRetryAttempts) {
-                    await Task.Delay(ComputeRetryDelay(attempt), cancellationToken).ConfigureAwait(false);
+                if (attempt < DefaultRetryAttempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
+                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
                 if (!response.IsSuccessStatusCode) {
@@ -563,19 +563,115 @@ internal sealed class GitHubClient : IDisposable {
         }, cancellationToken).ConfigureAwait(false);
     }
 
-    private static bool ShouldRetry(System.Net.HttpStatusCode statusCode) {
-        var value = (int)statusCode;
-        return value is 500 or 502 or 503 or 504;
+    private static bool TryGetRetryDelay(HttpResponseMessage response, string responseText, int attempt, out TimeSpan delay) {
+        delay = TimeSpan.Zero;
+        var statusCode = (int)response.StatusCode;
+
+        // Transient server errors.
+        if (statusCode is 500 or 502 or 503 or 504) {
+            delay = ComputeBackoff(attempt, maxSeconds: 8);
+            return true;
+        }
+
+        // Rate limiting.
+        if (statusCode == 429) {
+            delay = ComputeRateLimitDelay(response, responseText, attempt);
+            return true;
+        }
+        if (statusCode == 403 && LooksLikeRateLimit(response, responseText)) {
+            delay = ComputeRateLimitDelay(response, responseText, attempt);
+            return true;
+        }
+
+        return false;
     }
 
-    private static TimeSpan ComputeRetryDelay(int attempt) {
-        // Small, deterministic exponential backoff to tolerate transient GitHub API 5xx.
+    private static bool LooksLikeRateLimit(HttpResponseMessage response, string responseText) {
+        // Retry-After generally means "wait then retry" (abuse detection / secondary rate limits).
+        if (TryParseRetryAfter(response, out _)) {
+            return true;
+        }
+
+        if (response.Headers.TryGetValues("X-RateLimit-Remaining", out var values)) {
+            foreach (var item in values) {
+                if (string.Equals(item?.Trim(), "0", StringComparison.Ordinal)) {
+                    return true;
+                }
+            }
+        }
+
+        return responseText.Contains("rate limit", StringComparison.OrdinalIgnoreCase) ||
+               responseText.Contains("secondary rate", StringComparison.OrdinalIgnoreCase) ||
+               responseText.Contains("abuse detection", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static TimeSpan ComputeRateLimitDelay(HttpResponseMessage response, string responseText, int attempt) {
+        if (TryParseRetryAfter(response, out var retryAfter)) {
+            // Keep a small floor so back-to-back retries don't hammer.
+            return Clamp(retryAfter, minSeconds: 1, maxSeconds: 60);
+        }
+
+        // If we have a reset time, wait until then (capped).
+        if (response.Headers.TryGetValues("X-RateLimit-Reset", out var values)) {
+            foreach (var item in values) {
+                if (long.TryParse(item?.Trim(), out var seconds) && seconds > 0) {
+                    var resetAt = DateTimeOffset.FromUnixTimeSeconds(seconds);
+                    var delta = resetAt - DateTimeOffset.UtcNow;
+                    if (delta > TimeSpan.Zero) {
+                        return Clamp(delta, minSeconds: 1, maxSeconds: 60);
+                    }
+                }
+            }
+        }
+
+        // Fall back to exponential backoff.
+        var backoff = ComputeBackoff(attempt, maxSeconds: 30);
+        if (responseText.Contains("secondary rate", StringComparison.OrdinalIgnoreCase) ||
+            responseText.Contains("abuse detection", StringComparison.OrdinalIgnoreCase)) {
+            // Secondary rate limits tend to want slightly longer delays.
+            backoff = TimeSpan.FromSeconds(Math.Min(60, Math.Max(5, backoff.TotalSeconds)));
+        }
+        return backoff;
+    }
+
+    private static bool TryParseRetryAfter(HttpResponseMessage response, out TimeSpan delay) {
+        delay = TimeSpan.Zero;
+        if (!response.Headers.TryGetValues("Retry-After", out var values)) {
+            return false;
+        }
+        foreach (var item in values) {
+            var raw = (item ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(raw)) {
+                continue;
+            }
+            if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var seconds) && seconds >= 0) {
+                delay = TimeSpan.FromSeconds(seconds);
+                return true;
+            }
+            if (DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                    out var date)) {
+                var delta = date - DateTimeOffset.UtcNow;
+                delay = delta > TimeSpan.Zero ? delta : TimeSpan.Zero;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static TimeSpan ComputeBackoff(int attempt, int maxSeconds) {
         // attempt is 1-based.
-        return attempt switch {
-            <= 1 => TimeSpan.FromSeconds(1),
-            2 => TimeSpan.FromSeconds(2),
-            _ => TimeSpan.FromSeconds(4)
+        var seconds = attempt switch {
+            <= 1 => 1,
+            2 => 2,
+            3 => 4,
+            _ => 8
         };
+        return TimeSpan.FromSeconds(Math.Min(maxSeconds, seconds));
+    }
+
+    private static TimeSpan Clamp(TimeSpan value, int minSeconds, int maxSeconds) {
+        var seconds = Math.Max(minSeconds, Math.Min(maxSeconds, value.TotalSeconds));
+        return TimeSpan.FromSeconds(seconds);
     }
 
     private static string FormatApiError(string method, string url, HttpResponseMessage response, string responseText) {
