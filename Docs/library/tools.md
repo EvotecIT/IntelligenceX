@@ -7,6 +7,8 @@ Notes:
 - The tool **contract** is provider-agnostic (`IntelligenceX.Tools` namespace).
 - Tool-calling orchestration is provider-specific (for example `IntelligenceX.OpenAI.ToolCalling`).
 - Tool implementations should live in separate tool-pack packages. See: `Docs/library/tool-packs.md`.
+- For machine-readable outputs, prefer returning a standard JSON envelope (`ToolOutputEnvelope`) so the host/UI can
+  reliably display tool traces (including optional markdown summaries).
 
 ## Example tool
 
