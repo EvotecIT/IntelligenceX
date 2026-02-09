@@ -24,6 +24,18 @@ function Get-NormalizedPath([string]$path) {
     }
 }
 
+function Get-ExistingNormalizedPath([string]$path, [string]$label) {
+    if ([string]::IsNullOrWhiteSpace($path)) {
+        throw ("{0} path is empty." -f $label)
+    }
+    $unresolved = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($path)
+    if (-not (Test-Path -LiteralPath $unresolved)) {
+        throw ("{0} path does not exist: {1}" -f $label, $unresolved)
+    }
+    $resolved = (Resolve-Path -LiteralPath $unresolved -ErrorAction Stop).Path
+    return [System.IO.Path]::GetFullPath($resolved)
+}
+
 function ConvertTo-JsonEscapedString([string]$value) {
     if ($null -eq $value) { return '' }
     $sb = New-Object System.Text.StringBuilder
@@ -220,7 +232,9 @@ New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 
 $intendedOutDir = [System.IO.Path]::GetFullPath((Join-Path -Path $workspaceRoot -ChildPath (Join-Path -Path 'Analysis' -ChildPath (Join-Path -Path 'Catalog' -ChildPath (Join-Path -Path 'rules' -ChildPath 'powershell')))))
 try {
-    $resolvedOutDir = Get-NormalizedPath $OutDir
+    # For pruning decisions, only use fully resolved existing paths (avoid authorizing deletes based on
+    # prefix checks on non-existent paths).
+    $resolvedOutDir = if ($PruneStale) { Get-ExistingNormalizedPath $OutDir 'OutDir' } else { Get-NormalizedPath $OutDir }
 } catch {
     throw ("Failed to resolve OutDir '{0}': {1}" -f $OutDir, $_.Exception.Message)
 }
@@ -235,7 +249,7 @@ if (Test-Path -LiteralPath $intendedOutDir) {
 
 # Even with -ForcePrune, never allow pruning outside the repo workspace.
 try {
-    $workspaceFull = Get-NormalizedPath $workspaceRoot
+    $workspaceFull = Get-ExistingNormalizedPath $workspaceRoot 'workspace root'
 } catch {
     throw ("Failed to resolve workspace root '{0}': {1}" -f $workspaceRoot, $_.Exception.Message)
 }
