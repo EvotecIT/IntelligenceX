@@ -14,9 +14,13 @@ internal static partial class Program {
             if (!string.Equals(rule.Tool, "PSScriptAnalyzer", StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
-            AssertEqual(false, string.IsNullOrWhiteSpace(rule.Docs), $"{rule.Id} docs is populated");
+            var docsRaw = rule.Docs;
+            AssertEqual(false, string.IsNullOrWhiteSpace(docsRaw), $"{rule.Id} docs is populated");
+            if (string.IsNullOrWhiteSpace(docsRaw)) {
+                throw new InvalidOperationException($"{rule.Id} docs is populated");
+            }
 
-            var docs = rule.Docs!.Trim();
+            var docs = docsRaw.Trim();
             AssertEqual(false, docs.Any(char.IsWhiteSpace), $"{rule.Id} docs has no whitespace");
             AssertEqual(true, Uri.IsWellFormedUriString(docs, UriKind.Absolute), $"{rule.Id} docs is well-formed");
             if (!Uri.TryCreate(docs, UriKind.Absolute, out var uri) || uri is null) {
@@ -39,4 +43,3 @@ internal static partial class Program {
     }
 }
 #endif
-

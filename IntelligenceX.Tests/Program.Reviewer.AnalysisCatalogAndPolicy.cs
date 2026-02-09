@@ -358,10 +358,13 @@ internal static partial class Program {
             throw new InvalidOperationException("Failed to create a unique empty temp directory for the empty overrides root.", lastException);
         }
 
-        var emptyOverridesRoot = CreateEmptyTempDirectory("ix-analysis-empty-overrides-");
-
+        string? emptyOverridesRoot = null;
         try {
-            var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, emptyOverridesRoot, packsRoot);
+            emptyOverridesRoot = CreateEmptyTempDirectory("ix-analysis-empty-overrides-");
+            var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(
+                rulesRoot,
+                emptyOverridesRoot,
+                packsRoot);
 
             foreach (var overridePath in Directory.EnumerateFiles(overridesDir, "*.json")) {
                 var overrideText = File.ReadAllText(overridePath, System.Text.Encoding.UTF8);
@@ -556,37 +559,41 @@ internal static partial class Program {
                 }
             }
         } finally {
-            // Cleanup: this can be flaky on Windows CI due to transient file locks, but we still enforce
-            // hermetic behavior (no leaked temp dirs) to avoid cross-run pollution.
-            Exception? lastDeleteException = null;
-            for (var attempt = 0; attempt < 10; attempt++) {
-                try {
-                    if (!Directory.Exists(emptyOverridesRoot)) {
+            if (emptyOverridesRoot is null) {
+                // Temp dir wasn't created; nothing to clean up.
+            } else {
+                // Cleanup: this can be flaky on Windows CI due to transient file locks, but we still enforce
+                // hermetic behavior (no leaked temp dirs) to avoid cross-run pollution.
+                Exception? lastDeleteException = null;
+                for (var attempt = 0; attempt < 10; attempt++) {
+                    try {
+                        if (!Directory.Exists(emptyOverridesRoot)) {
+                            break;
+                        }
+                        Directory.Delete(emptyOverridesRoot, true);
                         break;
-                    }
-                    Directory.Delete(emptyOverridesRoot, true);
-                    break;
-                } catch (Exception ex) {
-                    lastDeleteException = ex;
-                    if (attempt < 9) {
-                        System.Threading.Thread.Sleep(50 * (attempt + 1));
+                    } catch (Exception ex) {
+                        lastDeleteException = ex;
+                        if (attempt < 9) {
+                            System.Threading.Thread.Sleep(50 * (attempt + 1));
+                        }
                     }
                 }
-            }
-            if (Directory.Exists(emptyOverridesRoot)) {
-                // Try to mark the directory for cleanup on subsequent runs, so it doesn't accumulate silently.
-                string? pendingPath = null;
-                try {
-                    pendingPath = emptyOverridesRoot + ".delete-pending-" + Guid.NewGuid().ToString("N");
-                    Directory.Move(emptyOverridesRoot, pendingPath);
-                    Directory.Delete(pendingPath, true);
-                } catch (Exception ex) {
-                    lastDeleteException = ex;
-                }
-                if (Directory.Exists(emptyOverridesRoot) || (pendingPath is not null && Directory.Exists(pendingPath))) {
-                    throw new InvalidOperationException(
-                        "Failed to delete temp overrides directory: " + emptyOverridesRoot,
-                        lastDeleteException);
+                if (Directory.Exists(emptyOverridesRoot)) {
+                    // Try to mark the directory for cleanup on subsequent runs, so it doesn't accumulate silently.
+                    string? pendingPath = null;
+                    try {
+                        pendingPath = emptyOverridesRoot + ".delete-pending-" + Guid.NewGuid().ToString("N");
+                        Directory.Move(emptyOverridesRoot, pendingPath);
+                        Directory.Delete(pendingPath, true);
+                    } catch (Exception ex) {
+                        lastDeleteException = ex;
+                    }
+                    if (Directory.Exists(emptyOverridesRoot) || (pendingPath is not null && Directory.Exists(pendingPath))) {
+                        throw new InvalidOperationException(
+                            "Failed to delete temp overrides directory: " + emptyOverridesRoot,
+                            lastDeleteException);
+                    }
                 }
             }
         }
