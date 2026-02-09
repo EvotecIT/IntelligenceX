@@ -370,8 +370,8 @@ internal sealed partial class GitHubClient : IDisposable {
   }
 }")
             .Add("variables", new JsonObject().Add("id", threadId));
-        // This is logically idempotent: resolving an already-resolved thread is safe.
-        await PostGraphQlAsync(payload, cancellationToken, allowRetries: true).ConfigureAwait(false);
+        // Mutations have side effects; do not retry under transport uncertainty.
+        await PostGraphQlAsync(payload, cancellationToken, allowRetries: false).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<RelatedPullRequest>> SearchPullRequestsAsync(string query, int maxResults,
@@ -659,47 +659,4 @@ internal sealed partial class GitHubClient : IDisposable {
         }, cancellationToken).ConfigureAwait(false);
     }
 
-    private static string ParseRepoFullName(string url) {
-        if (string.IsNullOrWhiteSpace(url)) {
-            return string.Empty;
-        }
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) {
-            return string.Empty;
-        }
-        var segments = uri.AbsolutePath.Trim('/').Split('/');
-        if (segments.Length < 2) {
-            return string.Empty;
-        }
-        return $"{segments[^2]}/{segments[^1]}";
-    }
-
-    private static string BuildPullRequestKey(string owner, string repo, int number) {
-        return $"{owner}/{repo}#{number}";
-    }
-
-    private static string BuildCompareKey(string owner, string repo, string baseSha, string headSha) {
-        return $"{owner}/{repo}@{baseSha}..{headSha}";
-    }
-
-    /// <summary>
-    /// Represents compare API results along with truncation metadata.
-    /// </summary>
-    internal readonly struct CompareFilesResult {
-        public CompareFilesResult(IReadOnlyList<PullRequestFile> files, bool isTruncated) {
-            Files = files;
-            IsTruncated = isTruncated;
-        }
-
-        public IReadOnlyList<PullRequestFile> Files { get; }
-        public bool IsTruncated { get; }
-    }
-
-    private async Task<T> WithGateAsync<T>(Func<Task<T>> action, CancellationToken cancellationToken) {
-        await _requestGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try {
-            return await action().ConfigureAwait(false);
-        } finally {
-            _requestGate.Release();
-        }
-    }
 }
