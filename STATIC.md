@@ -1,149 +1,87 @@
-# Static Policy Analysis Roadmap
+# Static Analysis Policy (Roadmap)
 
-This document tracks our end-to-end plan for first-party static policy analysis in IntelligenceX: catalog + packs, CI gates, triage workflows, issue tracking, AI assessment, and (optionally) auto-fix PRs.
+This repo aims to provide a first-party static policy experience similar to Sonar (rule packs, quality gates, security hotspots),
+but expressed in IntelligenceX terms and enforced via our own GitHub App + GitHub Actions.
 
-Last updated: 2026-02-08 (update when milestones/defaults change)
+For the deep-dive design notes (catalog schema, packs, config modes), see:
+- `Docs/reviewer/static-analysis.md`
+
+## Current State (Already Implemented)
+- Policy + rule catalog:
+  - Rules: `Analysis/Catalog/rules/**.json`
+  - Overrides (our wording/tags layer): `Analysis/Catalog/overrides/**.json`
+  - Packs (tiers): `Analysis/Packs/*.json` (example: `all-50` = “All Essentials (50)”)
+- Repo config:
+  - `.intelligencex/reviewer.json` is the source-of-truth for enabled packs, disabled rules, and severity overrides.
+- CLI plumbing:
+  - `intelligencex analyze validate-catalog`
+  - `intelligencex analyze list-rules`
+  - `intelligencex analyze run` (produces SARIF and/or IntelligenceX findings artifacts)
+  - `intelligencex analyze gate` (turn findings into CI pass/fail, optionally scoped to changed files)
+  - `intelligencex analyze hotspots sync-state --check` (stateful “security hotspots” review)
+- CI integration:
+  - `.github/workflows/review-intelligencex.yml` runs catalog validation + analysis + gate before running the reviewer.
 
 ## Goals
+- First-party feel:
+  - One configuration file (`.intelligencex/reviewer.json`) drives behavior.
+  - Consistent, curated defaults (packs) with stable IDs.
+  - Deterministic output and reproducible catalog updates.
+- CI that can actually gate:
+  - A small, stable “Essentials” pack that stays on.
+  - Optional stricter tiers that teams can adopt as they mature.
+  - Clear “what failed and why” (policy block + findings + rule outcomes).
+- Sonar-like structure without Sonar UI:
+  - Rule types: `bug`, `vulnerability`, `code-smell`, `security-hotspot`.
+  - Security hotspots tracked over time (state file in repo, reviewable diffs).
+- Self-hosted by default while private:
+  - Jobs should run on org runners and not consume GitHub-hosted minutes.
 
-- Provide Sonar-like static analysis policy, but in IntelligenceX style: repo-clean, config-driven, and GitHub-native.
-- Make static outcomes first-class: clear gating rules, stable identifiers, and deterministic outputs.
-- Run as our GitHub App identity (BYO App supported) with least privilege and an auditable action trail.
-- Keep AI additive: AI helps triage and suggest fixes, but static policy remains deterministic and enforceable.
-
-## Non-goals
-
-- Replacing GitHub CodeQL or other first-party security tooling.
-- Auto-fixing by default (autofix is opt-in and gated to trusted contexts).
-- Making merge gates depend on AI availability.
-
-## Principles
-
-- Single source of truth: `.intelligencex/reviewer.json`.
-- Determinism first: static gates should not depend on AI availability.
-- Security boundaries: never allow untrusted inputs to write/escape; do not run write tokens on untrusted PRs.
-- Minimal repo footprint: generate analyzer configs at runtime unless explicitly exported.
-
-## Current State (What We Have)
-
-- [x] Catalog + packs (rules described as metadata files; packs enable sets of rules).
-- [x] Pack include resolution (packs can include other packs; policy enablement reflects included packs).
-- [x] Rule typing: `bug`, `vulnerability`, `code-smell`, `security-hotspot`.
-- [x] Overrides layer: `Analysis/Catalog/overrides/**` can adjust generated metadata without editing base rules.
-- [x] Security hotspots.
-- [x] Reviewer renders `### Security Hotspots 🔥` with persisted triage state in `.intelligencex/hotspots.json`.
-- [x] Hotspot keys are bounded and safe (hashed fingerprints) and reviewer output is sanitized.
-- [x] Hotspot state path is workspace-bounded in both CLI and reviewer (no arbitrary file reads in CI).
-- [x] Workflow integration.
-- [x] `.github/workflows/review-intelligencex.yml` runs analysis, uploads artifacts, runs reviewer.
-- [x] CI gate: `intelligencex analyze gate` evaluates policy + findings and fails CI deterministically (no AI required).
-- [x] GitHub App token is supported via `actions/create-github-app-token@v1` when secrets are present.
-- [x] Static Analysis Policy block shows enabled rules, pack selection, and load/parse status.
+## Non-Goals (For Now)
+- Recreating SonarQube’s web UI or project dashboards.
+- Full IDE experience (committed analyzer configs) by default.
+  - We can support this later via an explicit export command and opt-in commits.
 
 ## Roadmap
 
-### Milestone 1: Static Gate (CI-blocking)
+### Phase 0: Baseline Policy (Keep It Boring)
+- Keep `all-50` stable and quiet enough to run on every PR.
+- Ensure the policy block is always present and shows enabled rules, packs, and outcomes.
 
-Outcome: a required check that can block merges without AI.
+### Phase 1: Catalog Quality + Expansion
+- Expand PowerShell rules beyond `powershell-default` toward an actual `powershell-50` list.
+- Expand internal maintainability rules beyond `IXLOC001`.
+- Add consistent metadata:
+  - `docs`, `tags`, `category`, default severity, and (where applicable) CWE/OWASP mappings.
+- Provide “our style” overrides for titles/descriptions when upstream wording is weak.
 
-- [x] Add `intelligencex analyze gate` to evaluate outcomes and exit non-zero on violations.
-- [x] Add gate configuration in `.intelligencex/reviewer.json` (thresholds by severity/type, hotspots handling).
-- [x] Add GitHub Actions step that runs the gate and produces clear failure output.
-- [x] Decide default gate policy for this repo (current: block on `vulnerability` and `bug` at `warning+`; do not gate on hotspots-to-review).
+### Phase 2: Quality Gates That Teams Can Live With
+- Make `analyze gate` configurable per repo:
+  - changed-files scoping (default on for PRs)
+  - severity thresholds per pack/rule
+  - “new issues only” baselining mode (for adopting strict packs gradually)
 
-Definition of done:
+### Phase 3: Security Hotspots (Stateful Review)
+- Define “hotspot” rule list (IDs/tags) and state file format.
+- Workflow:
+  - New hotspots fail or warn (configurable).
+  - Existing acknowledged hotspots don’t block, but remain visible.
 
-- Gate produces stable output (counts + top offenders + deterministic ordering).
-- Gate is deterministic from artifacts and config, no network calls required.
-- Gate is safe on fork PRs (read-only tokens, no secrets used).
+### Phase 4: AI Assist (No Code Changes Yet)
+- Add an optional “AI assessment” stage that:
+  - explains findings (context + risk)
+  - proposes fixes
+  - links to rule docs and repository conventions
+- Output is a report artifact + optional PR comment (no patching).
 
-### Milestone 2: GitHub-native Surfacing (Annotations)
+### Phase 5: AI Codefix (Opt-In Auto PR)
+- Add an explicit opt-in (label or config flag) to generate patches for a small allowlist of rules.
+- Must run using the IntelligenceX GitHub App token (first-party identity).
+- Guardrails:
+  - only “safe” rule fixes by default
+  - run tests after patch
+  - open a separate PR per fix batch with clear provenance
 
-Outcome: “first-party feel” in PR UI.
-
-- [ ] Option A: upload SARIF to GitHub Code Scanning (best UI).
-- [ ] Option B: emit GitHub Actions annotations (lighter).
-- [ ] Ensure findings are limited to changed files by default, with an opt-in for full repo scans.
-
-Definition of done:
-
-- PR shows annotations at the right lines for supported tools.
-- No duplicate noise across multiple result sources.
-
-### Milestone 3: Issue Targeting + Sync
-
-Outcome: policy outcomes are trackable beyond a single PR.
-
-- [ ] Add `intelligencex analyze issues sync` (creates/updates/closes issues).
-- [ ] Define grouping key strategy. Options: one issue per rule; one issue per rule + path group; one issue per hotspot key.
-- [ ] Add a scheduled workflow on the default branch to sync issues (recommended).
-- [ ] Add labels and templates (for example `static-analysis`, `security-hotspot`, `accepted-risk`).
-
-Definition of done:
-
-- Issue keys are stable across runs.
-- Sync is idempotent and safe to re-run.
-- Sync runs as GitHub App identity.
-
-### Milestone 4: AI Assessment Stage (Advisory)
-
-Outcome: AI operates on the deterministic static outputs and adds triage value.
-
-- [ ] Add an “AI Assessment” stage that consumes policy + findings + hotspots.
-- [ ] Produce consistent output structure (triage summary, false-positive suspicion, suggested remediation).
-- [ ] Keep this non-blocking initially.
-
-Definition of done:
-
-- AI stage never changes gate outcomes.
-- AI stage is bounded (max items, max tokens) and reproducible enough for audit.
-
-### Milestone 5: Auto-fix PRs (Opt-in)
-
-Outcome: safe automation that proposes fixes via PRs under GitHub App identity.
-
-- [ ] Add `intelligencex autofix` runner.
-- [ ] Define “autofixable rules” pack (small initial set).
-- [ ] Implement deterministic fixes first (formatters/codemods), AI patching second.
-- [ ] Add workflow triggers restricted to trusted contexts. Options: `workflow_dispatch` only; same-repo PRs only (no forks).
-
-Definition of done:
-
-- Creates PRs with clear scope, runs tests, links back to issues/findings.
-- Never runs with write permissions on untrusted PRs.
-
-## GitHub App Scope (Recommended)
-
-Required:
-
-- Pull requests: read/write
-- Issues: read/write
-- Contents: read (write only for auto-PR/autofix)
-
-Optional:
-
-- Checks: read/write (if we publish check-runs directly)
-- Code scanning: write (if uploading SARIF)
-
-## Open Questions (Need Decisions)
-
-- What should block merges by default. Options: `vulnerability` only; `vulnerability + bug`; all enabled rules at `warning+`.
-- How should hotspots affect gating. Options: gate on `to-review` hotspots; gate only on explicit `accepted-risk` policy violations; do not gate, only report.
-- Issue grouping strategy. Options: rule; rule+path; hotspot key.
-
-## Ruleset Gaps (Proposals)
-
-- PowerShell: expand the catalog beyond the single PSScriptAnalyzer rule and grow `powershell-50` into a real tier (for example include `PSAvoidUsingConvertToSecureStringWithPlainText`, `PSAvoidUsingPlainTextForPassword`, `PSAvoidUsingInvokeExpression`, `PSUseApprovedVerbs`, `PSAvoidUsingCmdletAliases`).
-- JS/TS: add a first-party JS/TS catalog + packs (metadata only) and document the recommended SARIF producer (ESLint SARIF formatter). Keep enablement in `reviewer.json` and let users choose the underlying toolchain.
-- Python: add a first-party Python catalog + packs (metadata only) and document Ruff as the default SARIF producer. Same “repo-clean” config story.
-- Internal: add a small set of deterministic “repo hygiene” rules (for example: prohibit oversized generated diffs, enforce file headers, enforce known patterns for secrets-as-code) as first-party findings JSON.
-
-## AI CodeFix (Proposed)
-
-Goal: mirror Sonar-like “AI CodeFix” without making gates depend on AI.
-
-- Add optional rule metadata for fixability (for example `fixKind: deterministic|ai`, `risk: low|medium|high`, `requiresTests: true`).
-- Add an opt-in workflow that consumes static findings and produces suggested patches:
-  - deterministic fixes first (formatters/codemods),
-  - AI patching second (bounded scope, changed files only, tests required),
-  - open a PR under GitHub App identity with a small, reviewable diff.
+## Open Issues / Hygiene
+- If CodeQL “default setup” is enabled while “Code security” is disabled, CodeQL check runs can fail noisily.
+  - Recommendation: either enable Code Security or fully disable CodeQL default setup until public.
