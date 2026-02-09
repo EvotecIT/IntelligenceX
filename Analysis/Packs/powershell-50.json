@@ -1,7 +1,7 @@
 {
   "id": "powershell-50",
   "label": "PowerShell Essentials (50)",
-  "description": "Curated baseline pack for small-to-medium PowerShell repositories (PSScriptAnalyzer). Intentionally pinned to exactly 50 rules.",
+  "description": "Curated baseline pack for small-to-medium PowerShell repositories (PSScriptAnalyzer). Intentionally pinned to exactly 50 rules, including the powershell-default baseline (encoded).",
   "includes": [],
   "rules": [
     "PSAvoidOverwritingBuiltInCmdlets",
