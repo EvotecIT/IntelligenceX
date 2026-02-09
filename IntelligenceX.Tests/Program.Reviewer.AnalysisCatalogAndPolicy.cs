@@ -398,7 +398,13 @@ internal static partial class Program {
                         if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
                             throw new Exception($"{id} override title must be a string");
                         }
-                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override title must be a string");
+                        var expectedRaw = prop.Value.GetString();
+                        if (string.IsNullOrWhiteSpace(expectedRaw)) {
+                            // ApplyOverride treats whitespace as "no override".
+                            AssertEqual(baseRule.Title, effective.Title, $"{id} override title blank/no-op");
+                            break;
+                        }
+                        var expected = expectedRaw;
                         AssertEqual(expected, effective.Title, $"{id} override title applied");
                         if (!string.Equals(expected, baseRule.Title, StringComparison.Ordinal)) {
                             changesBase = true;
@@ -410,7 +416,13 @@ internal static partial class Program {
                         if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
                             throw new Exception($"{id} override description must be a string");
                         }
-                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override description must be a string");
+                        var expectedRaw = prop.Value.GetString();
+                        if (string.IsNullOrWhiteSpace(expectedRaw)) {
+                            // ApplyOverride treats whitespace as "no override".
+                            AssertEqual(baseRule.Description, effective.Description, $"{id} override description blank/no-op");
+                            break;
+                        }
+                        var expected = expectedRaw;
                         AssertEqual(expected, effective.Description, $"{id} override description applied");
                         if (!string.Equals(expected, baseRule.Description, StringComparison.Ordinal)) {
                             changesBase = true;
@@ -422,7 +434,13 @@ internal static partial class Program {
                         if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
                             throw new Exception($"{id} override type must be a string");
                         }
-                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override type must be a string");
+                        var expectedRaw = prop.Value.GetString();
+                        if (string.IsNullOrWhiteSpace(expectedRaw)) {
+                            // ApplyOverride treats whitespace as "no override".
+                            AssertEqual(baseRule.Type, effective.Type, $"{id} override type blank/no-op");
+                            break;
+                        }
+                        var expected = expectedRaw;
                         AssertEqual(expected, effective.Type, $"{id} override type applied");
                         if (!string.Equals(expected, baseRule.Type, StringComparison.Ordinal)) {
                             changesBase = true;
@@ -434,7 +452,13 @@ internal static partial class Program {
                         if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
                             throw new Exception($"{id} override category must be a string");
                         }
-                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override category must be a string");
+                        var expectedRaw = prop.Value.GetString();
+                        if (string.IsNullOrWhiteSpace(expectedRaw)) {
+                            // ApplyOverride treats whitespace as "no override".
+                            AssertEqual(baseRule.Category, effective.Category, $"{id} override category blank/no-op");
+                            break;
+                        }
+                        var expected = expectedRaw;
                         AssertEqual(expected, effective.Category, $"{id} override category applied");
                         if (!string.Equals(expected, baseRule.Category, StringComparison.Ordinal)) {
                             changesBase = true;
@@ -446,7 +470,13 @@ internal static partial class Program {
                         if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
                             throw new Exception($"{id} override defaultSeverity must be a string");
                         }
-                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override defaultSeverity must be a string");
+                        var expectedRaw = prop.Value.GetString();
+                        if (string.IsNullOrWhiteSpace(expectedRaw)) {
+                            // ApplyOverride treats whitespace as "no override".
+                            AssertEqual(baseRule.DefaultSeverity, effective.DefaultSeverity, $"{id} override defaultSeverity blank/no-op");
+                            break;
+                        }
+                        var expected = expectedRaw;
                         AssertEqual(expected, effective.DefaultSeverity, $"{id} override defaultSeverity applied");
                         if (!string.Equals(expected, baseRule.DefaultSeverity, StringComparison.Ordinal)) {
                             changesBase = true;
@@ -458,7 +488,13 @@ internal static partial class Program {
                         if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) {
                             throw new Exception($"{id} override docs must be a string");
                         }
-                        var expected = prop.Value.GetString() ?? throw new Exception($"{id} override docs must be a string");
+                        var expectedRaw = prop.Value.GetString();
+                        if (string.IsNullOrWhiteSpace(expectedRaw)) {
+                            // ApplyOverride treats whitespace as "no override".
+                            AssertEqual(baseRule.Docs, effective.Docs, $"{id} override docs blank/no-op");
+                            break;
+                        }
+                        var expected = expectedRaw;
                         AssertEqual(expected, effective.Docs, $"{id} override docs applied");
                         if (!string.Equals(expected, baseRule.Docs, StringComparison.Ordinal)) {
                             changesBase = true;
@@ -504,10 +540,7 @@ internal static partial class Program {
                         var expectedMerged = MergeTags(baseRule.Tags ?? Array.Empty<string>(), overrideTags);
                         var expectedSet = new HashSet<string>(expectedMerged, StringComparer.OrdinalIgnoreCase);
                         var actualSet = new HashSet<string>(effective.Tags ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
-                        AssertEqual(expectedSet.Count, actualSet.Count, $"{id} merged tag count matches");
-                        foreach (var tag in expectedSet) {
-                            AssertEqual(true, actualSet.Contains(tag), $"{id} merged tags contains '{tag}'");
-                        }
+                        AssertEqual(true, expectedSet.SetEquals(actualSet), $"{id} merged tags set equals");
                         var baseSet = new HashSet<string>(baseRule.Tags ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
                         if (!baseSet.SetEquals(actualSet)) {
                             changesBase = true;

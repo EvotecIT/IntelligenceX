@@ -226,6 +226,7 @@ try {
     Remove-Module -Name PSScriptAnalyzer -Force -ErrorAction SilentlyContinue
 } catch {
     # Ignore removal errors; Import-Module by explicit path will still fail if the session can't load it.
+    Write-Verbose ("Remove-Module PSScriptAnalyzer failed (ignored): {0}" -f $_.Exception.Message)
 }
 Import-Module -Name $module.Path -ErrorAction Stop
 $expectedPathNorm = Get-NormalizedPath $module.Path
