@@ -42,6 +42,14 @@ For the deep-dive design notes (catalog schema, packs, config modes), see:
 - Full IDE experience (committed analyzer configs) by default.
   - We can support this later via an explicit export command and opt-in commits.
 
+## Principles
+- One source of truth: `.intelligencex/reviewer.json`.
+- Determinism first: gates must not depend on AI availability.
+- Safe-by-default automation:
+  - no write tokens for untrusted PRs/forks
+  - no silent config writes into user repos
+- Minimal repo footprint: generate analyzer configs at runtime unless explicitly exported.
+
 ## Roadmap
 
 ### Phase 0: Baseline Policy (Keep It Boring)
@@ -81,6 +89,22 @@ For the deep-dive design notes (catalog schema, packs, config modes), see:
   - only “safe” rule fixes by default
   - run tests after patch
   - open a separate PR per fix batch with clear provenance
+
+## Decisions (Need Defaults)
+- What blocks merges by default:
+  - `vulnerability` only, or also `bug`, or all enabled rules at `warning+`.
+- How hotspots affect gating:
+  - block on “to review”, or warn only, or block only on explicit “accepted risk” policy violations.
+- Baselines for adoption:
+  - “new issues only” mode vs “pay down the debt” mode.
+
+## GitHub App Permissions (Recommended)
+- Read-only baseline:
+  - `contents:read`, `pull_requests:write`, `issues:write`
+- Needed for SARIF upload:
+  - `security_events:write` (GitHub Code Scanning)
+- Needed for auto-PR/codefix:
+  - `contents:write`, `workflows:read`
 
 ## Open Issues / Hygiene
 - If CodeQL “default setup” is enabled while “Code security” is disabled, CodeQL check runs can fail noisily.
