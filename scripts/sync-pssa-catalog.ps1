@@ -64,7 +64,7 @@ function ConvertTo-DeterministicJson([System.Collections.IDictionary]$obj) {
         }
 
         if ($null -eq $value) {
-            [void]$lines.Add(('  "{0}": null{1}' -f (Escape-JsonString $key), $comma))
+            [void]$lines.Add(('  "{0}": null{1}' -f (ConvertTo-JsonEscapedString $key), $comma))
             continue
         }
 
