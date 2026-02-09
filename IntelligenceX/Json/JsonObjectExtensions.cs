@@ -33,4 +33,21 @@ public static class JsonObjectExtensions {
         }
         return additional.Count == 0 ? null : additional;
     }
+
+    /// <summary>
+    /// Adds the array property only when the value is not null and contains at least one element.
+    /// </summary>
+    /// <param name="obj">Target JSON object.</param>
+    /// <param name="key">Property name.</param>
+    /// <param name="value">Array to add when non-empty.</param>
+    /// <returns>The same instance for fluent chaining.</returns>
+    public static JsonObject AddIfNotEmpty(this JsonObject obj, string key, JsonArray? value) {
+        if (obj is null) {
+            throw new ArgumentNullException(nameof(obj));
+        }
+        if (value is not null && value.Count > 0) {
+            obj.Add(key, value);
+        }
+        return obj;
+    }
 }
