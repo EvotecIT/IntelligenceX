@@ -12,9 +12,9 @@ permissions:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    # While the repo is private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
-    # When public, use GitHub-hosted runners by default.
-    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
+    # While the repo is private, Code Security may be disabled; skip CodeQL to avoid noisy failing checks.
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: read
