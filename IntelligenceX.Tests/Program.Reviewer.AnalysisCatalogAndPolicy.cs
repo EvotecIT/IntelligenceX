@@ -320,14 +320,36 @@ internal static partial class Program {
         var rulesRoot = Path.Combine(workspace, "Analysis", "Catalog", "rules");
         var packsRoot = Path.Combine(workspace, "Analysis", "Packs");
 
-        const string emptyOverridesPrefix = "ix-analysis-empty-overrides-empty-dir-";
-        var emptyOverridesRoot = Path.Combine(
-            Path.GetTempPath(),
-            emptyOverridesPrefix + Guid.NewGuid().ToString("N"));
-        if (Directory.Exists(emptyOverridesRoot)) {
-            throw new InvalidOperationException("Unexpected temp overrides path already exists: " + emptyOverridesRoot);
+        static string CreateEmptyTempDirectory(string prefix) {
+            var tempRoot = Path.GetTempPath();
+            var pid = Environment.ProcessId;
+            Exception? lastException = null;
+
+            for (var attempt = 0; attempt < 50; attempt++) {
+                var path = Path.Combine(tempRoot, prefix + pid + "-" + Guid.NewGuid().ToString("N"));
+                try {
+                    Directory.CreateDirectory(path);
+                    // If we ever hit an existing dir (extremely unlikely with pid+guid), ensure it's empty.
+                    if (!Directory.EnumerateFileSystemEntries(path).Any()) {
+                        return path;
+                    }
+                } catch (Exception ex) {
+                    lastException = ex;
+                }
+
+                try {
+                    if (Directory.Exists(path)) {
+                        Directory.Delete(path, true);
+                    }
+                } catch {
+                    // Ignore; we'll try a fresh name.
+                }
+            }
+
+            throw new InvalidOperationException("Failed to create a unique empty temp directory for the empty overrides root.", lastException);
         }
-        Directory.CreateDirectory(emptyOverridesRoot);
+
+        var emptyOverridesRoot = CreateEmptyTempDirectory("ix-analysis-empty-overrides-");
 
         try {
             var baseCatalog = IntelligenceX.Analysis.AnalysisCatalogLoader.LoadFromPaths(rulesRoot, emptyOverridesRoot, packsRoot);
