@@ -557,16 +557,18 @@ internal static partial class Program {
             }
             if (Directory.Exists(emptyOverridesRoot)) {
                 // Try to mark the directory for cleanup on subsequent runs, so it doesn't accumulate silently.
+                string? pendingPath = null;
                 try {
-                    var pending = emptyOverridesRoot + ".delete-pending-" + Guid.NewGuid().ToString("N");
-                    Directory.Move(emptyOverridesRoot, pending);
-                    emptyOverridesRoot = pending;
-                    Directory.Delete(emptyOverridesRoot, true);
+                    pendingPath = emptyOverridesRoot + ".delete-pending-" + Guid.NewGuid().ToString("N");
+                    Directory.Move(emptyOverridesRoot, pendingPath);
+                    Directory.Delete(pendingPath, true);
                 } catch {
                     // Ignore; we still report below.
                 }
                 if (Directory.Exists(emptyOverridesRoot)) {
                     System.Console.Error.WriteLine("Warning: failed to delete temp overrides directory: " + emptyOverridesRoot);
+                } else if (pendingPath is not null && Directory.Exists(pendingPath)) {
+                    System.Console.Error.WriteLine("Warning: failed to delete temp overrides directory (moved): " + pendingPath);
                 }
             }
         }
