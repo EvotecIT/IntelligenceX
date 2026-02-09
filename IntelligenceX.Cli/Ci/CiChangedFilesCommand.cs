@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace IntelligenceX.Cli.Ci;
@@ -27,7 +28,9 @@ internal static class CiChangedFilesCommand {
             Console.Error.WriteLine($"Workspace directory not found: {workspace}");
             return 1;
         }
-        var outputPath = options.OutputPath!;
+        var outputPath = Path.IsPathRooted(options.OutputPath!)
+            ? options.OutputPath!
+            : Path.GetFullPath(Path.Combine(workspace, options.OutputPath!));
         try {
             var outputDir = Path.GetDirectoryName(outputPath);
             if (!string.IsNullOrWhiteSpace(outputDir)) {
@@ -95,11 +98,11 @@ internal static class CiChangedFilesCommand {
             }
             var resolvedHead = headProvided ? headRev!.Trim() : "HEAD";
             var range = $"{resolvedBase}...{resolvedHead}";
-            var (exit, stdout, stderr) = await GitCli.RunAsync(workspace, "diff", "--name-only", "-z", range).ConfigureAwait(false);
+            var (exit, stdout, stderr) = await GitCli.RunBytesAsync(workspace, "diff", "--name-only", "-z", range).ConfigureAwait(false);
             if (exit == 0) {
-                return (true, SplitGitPaths(stdout, nullDelimited: true), string.Empty);
+                return (true, SplitGitPaths(stdout), string.Empty);
             }
-            return (false, new List<string>(), $"Warning: git diff --name-only {range} failed (exit {exit}). {TrimOneLine(stderr)}");
+            return (false, new List<string>(), $"Warning: git diff --name-only {range} failed (exit {exit}). {TrimOneLine(DecodeText(stderr))}");
         }
 
         // Fallback: if this is a merge commit (common for PR workflows), diff the merge parents.
@@ -109,30 +112,30 @@ internal static class CiChangedFilesCommand {
             var headParent = await RevParseAsync(workspace, "HEAD^2").ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(baseParent) && !string.IsNullOrWhiteSpace(headParent)) {
                 var range = $"{baseParent}...{headParent}";
-                var (exit, stdout, stderr) = await GitCli.RunAsync(workspace, "diff", "--name-only", "-z", range).ConfigureAwait(false);
+                var (exit, stdout, stderr) = await GitCli.RunBytesAsync(workspace, "diff", "--name-only", "-z", range).ConfigureAwait(false);
                 if (exit == 0) {
-                    return (true, SplitGitPaths(stdout, nullDelimited: true), string.Empty);
+                    return (true, SplitGitPaths(stdout), string.Empty);
                 }
-                return (false, new List<string>(), $"Warning: git diff --name-only {range} failed (exit {exit}). {TrimOneLine(stderr)}");
+                return (false, new List<string>(), $"Warning: git diff --name-only {range} failed (exit {exit}). {TrimOneLine(DecodeText(stderr))}");
             }
         }
 
         // Last resort: plain diff (may be empty in CI, but should not fail the pipeline).
         {
-            var (exit, stdout, stderr) = await GitCli.RunAsync(workspace, "diff", "--name-only", "-z").ConfigureAwait(false);
+            var (exit, stdout, stderr) = await GitCli.RunBytesAsync(workspace, "diff", "--name-only", "-z").ConfigureAwait(false);
             if (exit == 0) {
-                return (true, SplitGitPaths(stdout, nullDelimited: true), string.Empty);
+                return (true, SplitGitPaths(stdout), string.Empty);
             }
-            return (false, new List<string>(), $"Warning: git diff --name-only failed (exit {exit}). {TrimOneLine(stderr)}");
+            return (false, new List<string>(), $"Warning: git diff --name-only failed (exit {exit}). {TrimOneLine(DecodeText(stderr))}");
         }
     }
 
     private static async Task<(bool Success, List<string> Lines, string Message)> TryListAllFilesAsync(string workspace) {
-        var (exit, stdout, stderr) = await GitCli.RunAsync(workspace, "ls-files", "-z").ConfigureAwait(false);
+        var (exit, stdout, stderr) = await GitCli.RunBytesAsync(workspace, "ls-files", "-z").ConfigureAwait(false);
         if (exit == 0) {
-            return (true, SplitGitPaths(stdout, nullDelimited: true), string.Empty);
+            return (true, SplitGitPaths(stdout), string.Empty);
         }
-        return (false, new List<string>(), $"Warning: git ls-files failed (exit {exit}). {TrimOneLine(stderr)}");
+        return (false, new List<string>(), $"Warning: git ls-files failed (exit {exit}). {TrimOneLine(DecodeText(stderr))}");
     }
 
     private static async Task<bool> HasRevisionAsync(string workspace, string rev) {
@@ -149,18 +152,25 @@ internal static class CiChangedFilesCommand {
         return string.IsNullOrWhiteSpace(resolved) ? null : resolved;
     }
 
-    private static List<string> SplitGitPaths(string? stdout, bool nullDelimited) {
-        if (string.IsNullOrWhiteSpace(stdout)) {
+    private static List<string> SplitGitPaths(byte[] stdout) {
+        if (stdout is null || stdout.Length == 0) {
             return new List<string>();
         }
-        if (nullDelimited) {
-            return stdout
-                .Split('\0', StringSplitOptions.RemoveEmptyEntries)
-                .ToList();
+        var results = new List<string>();
+        var start = 0;
+        for (var i = 0; i < stdout.Length; i++) {
+            if (stdout[i] != 0) {
+                continue;
+            }
+            if (i > start) {
+                results.Add(Encoding.UTF8.GetString(stdout, start, i - start));
+            }
+            start = i + 1;
         }
-        return stdout
-            .Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries)
-            .ToList();
+        if (start < stdout.Length) {
+            results.Add(Encoding.UTF8.GetString(stdout, start, stdout.Length - start));
+        }
+        return results;
     }
 
     private static string TrimOneLine(string? text) {
@@ -170,6 +180,13 @@ internal static class CiChangedFilesCommand {
         var trimmed = text.Trim();
         var nl = trimmed.IndexOfAny(new[] { '\r', '\n' });
         return nl >= 0 ? trimmed[..nl].Trim() : trimmed;
+    }
+
+    private static string DecodeText(byte[] bytes) {
+        if (bytes is null || bytes.Length == 0) {
+            return string.Empty;
+        }
+        return Encoding.UTF8.GetString(bytes);
     }
 
     private static Options ParseArgs(string[] args) {
