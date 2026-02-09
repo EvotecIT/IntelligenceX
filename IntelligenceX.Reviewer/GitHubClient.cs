@@ -536,21 +536,22 @@ internal sealed partial class GitHubClient : IDisposable {
             var retryBudgetStart = DateTimeOffset.UtcNow;
             for (var attempt = 1; attempt <= attempts; attempt++) {
                 cancellationToken.ThrowIfCancellationRequested();
-                using var content = new StringContent(json, Encoding.UTF8, "application/json");
-                using var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
-                var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
-                    if (TryScheduleRetry(retryBudgetStart, ref delay)) {
-                        await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                        continue;
+                using (var content = new StringContent(json, Encoding.UTF8, "application/json"))
+                using (var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false)) {
+                    var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                    if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
+                        if (TryScheduleRetry(retryBudgetStart, ref delay)) {
+                            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                            continue;
+                        }
+                        // No retry budget left: surface the current response as an error.
                     }
-                    // No retry budget left: surface the current response as an error.
+                    if (!response.IsSuccessStatusCode) {
+                        throw new InvalidOperationException(
+                            FormatApiError("POST", url, response, responseText));
+                    }
+                    return JsonLite.Parse(responseText) ?? JsonValue.Null;
                 }
-                if (!response.IsSuccessStatusCode) {
-                    throw new InvalidOperationException(
-                        FormatApiError("POST", url, response, responseText));
-                }
-                return JsonLite.Parse(responseText) ?? JsonValue.Null;
             }
             // Unreachable.
             return JsonValue.Null;
@@ -569,26 +570,27 @@ internal sealed partial class GitHubClient : IDisposable {
             var retryBudgetStart = DateTimeOffset.UtcNow;
             for (var attempt = 1; attempt <= attempts; attempt++) {
                 cancellationToken.ThrowIfCancellationRequested();
-                using var content = new StringContent(json, Encoding.UTF8, "application/json");
-                using var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
-                var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
-                    if (TryScheduleRetry(retryBudgetStart, ref delay)) {
-                        await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                        continue;
+                using (var content = new StringContent(json, Encoding.UTF8, "application/json"))
+                using (var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false)) {
+                    var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                    if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
+                        if (TryScheduleRetry(retryBudgetStart, ref delay)) {
+                            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                            continue;
+                        }
+                        // No retry budget left: surface the current response as an error.
                     }
-                    // No retry budget left: surface the current response as an error.
+                    if (!response.IsSuccessStatusCode) {
+                        throw new InvalidOperationException(
+                            FormatApiError("POST", url, response, responseText));
+                    }
+                    var parsed = JsonLite.Parse(responseText) ?? JsonValue.Null;
+                    var errors = parsed.AsObject()?.GetArray("errors");
+                    if (errors is not null && errors.Count > 0) {
+                        throw new InvalidOperationException($"GitHub GraphQL request returned errors: {Truncate(responseText)}");
+                    }
+                    return parsed;
                 }
-                if (!response.IsSuccessStatusCode) {
-                    throw new InvalidOperationException(
-                        FormatApiError("POST", url, response, responseText));
-                }
-                var parsed = JsonLite.Parse(responseText) ?? JsonValue.Null;
-                var errors = parsed.AsObject()?.GetArray("errors");
-                if (errors is not null && errors.Count > 0) {
-                    throw new InvalidOperationException($"GitHub GraphQL request returned errors: {Truncate(responseText)}");
-                }
-                return parsed;
             }
             // Unreachable.
             return JsonValue.Null;
@@ -606,22 +608,23 @@ internal sealed partial class GitHubClient : IDisposable {
             var retryBudgetStart = DateTimeOffset.UtcNow;
             for (var attempt = 1; attempt <= attempts; attempt++) {
                 cancellationToken.ThrowIfCancellationRequested();
-                using var content = new StringContent(json, Encoding.UTF8, "application/json");
-                using var request = new HttpRequestMessage(new HttpMethod("PATCH"), url) { Content = content };
-                using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
-                var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
-                    if (TryScheduleRetry(retryBudgetStart, ref delay)) {
-                        await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                        continue;
+                using (var content = new StringContent(json, Encoding.UTF8, "application/json"))
+                using (var request = new HttpRequestMessage(new HttpMethod("PATCH"), url) { Content = content })
+                using (var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false)) {
+                    var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                    if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
+                        if (TryScheduleRetry(retryBudgetStart, ref delay)) {
+                            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                            continue;
+                        }
+                        // No retry budget left: surface the current response as an error.
                     }
-                    // No retry budget left: surface the current response as an error.
+                    if (!response.IsSuccessStatusCode) {
+                        throw new InvalidOperationException(
+                            FormatApiError("PATCH", url, response, responseText));
+                    }
+                    break;
                 }
-                if (!response.IsSuccessStatusCode) {
-                    throw new InvalidOperationException(
-                        FormatApiError("PATCH", url, response, responseText));
-                }
-                break;
             }
             return 0;
         }, cancellationToken).ConfigureAwait(false);
