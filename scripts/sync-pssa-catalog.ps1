@@ -153,18 +153,9 @@ function Test-IsTrustedModuleBase([string]$moduleBase) {
             $trustedRoots += (Join-Path -Path $env:ProgramFiles -ChildPath (Join-Path -Path 'WindowsPowerShell' -ChildPath 'Modules'))
             $trustedRoots += (Join-Path -Path $env:ProgramFiles -ChildPath (Join-Path -Path 'PowerShell' -ChildPath 'Modules'))
         }
-        # Common user-scoped module locations (PowerShellGet -Scope CurrentUser).
-        if ($HOME) {
-            $trustedRoots += (Join-Path -Path $HOME -ChildPath (Join-Path -Path 'Documents' -ChildPath (Join-Path -Path 'PowerShell' -ChildPath 'Modules')))
-            $trustedRoots += (Join-Path -Path $HOME -ChildPath (Join-Path -Path 'Documents' -ChildPath (Join-Path -Path 'WindowsPowerShell' -ChildPath 'Modules')))
-        }
     } else {
         $trustedRoots += '/usr/local/share/powershell/Modules'
         $trustedRoots += '/usr/share/powershell/Modules'
-        # Common user-scoped module location on Linux/macOS.
-        if ($HOME) {
-            $trustedRoots += (Join-Path -Path $HOME -ChildPath (Join-Path -Path '.local' -ChildPath (Join-Path -Path 'share' -ChildPath (Join-Path -Path 'powershell' -ChildPath 'Modules'))))
-        }
     }
 
     foreach ($root in $trustedRoots) {
@@ -351,6 +342,28 @@ function Get-LearnDocsUrl([string]$ruleName) {
     return ('https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/{0}' -f $slug)
 }
 
+$existingDocsByRule = @{}
+try {
+    if (Test-Path -LiteralPath $OutDir) {
+        foreach ($file in [System.IO.Directory]::EnumerateFiles($OutDir, '*.json')) {
+            $id = [System.IO.Path]::GetFileNameWithoutExtension($file)
+            if ([string]::IsNullOrWhiteSpace($id)) { continue }
+            try {
+                $existing = Get-Content -LiteralPath $file -Raw -ErrorAction Stop | ConvertFrom-Json
+                $existingDocs = [string]$existing.docs
+                if (-not [string]::IsNullOrWhiteSpace($existingDocs)) {
+                    $existingDocsByRule[$id] = $existingDocs.Trim()
+                }
+            } catch {
+                # Ignore read/parse errors; we can still generate stable docs from Learn.
+                continue
+            }
+        }
+    }
+} catch {
+    throw ("Failed to preload existing docs from OutDir '{0}': {1}" -f $OutDir, $_.Exception.Message)
+}
+
 foreach ($rule in $rules) {
     $ruleName = [string]$rule.RuleName
     if ([string]::IsNullOrWhiteSpace($ruleName)) { continue }
@@ -396,30 +409,23 @@ foreach ($rule in $rules) {
     # (no query/fragment and correct slug), to avoid carrying forward bad/unstable URLs forever.
     $docs = Get-LearnDocsUrl $ruleName
     if ([string]::IsNullOrWhiteSpace($docs)) { $docs = $null }
-    if ($docs -and (Test-Path -LiteralPath $path)) {
-        try {
-            $existing = Get-Content -LiteralPath $path -Raw -ErrorAction Stop | ConvertFrom-Json
-            $existingDocs = [string]$existing.docs
-            if (-not [string]::IsNullOrWhiteSpace($existingDocs)) {
-                $existingDocs = $existingDocs.Trim()
-                try {
-                    $existingUri = [System.Uri]::new($existingDocs)
-                    $expectedUri = [System.Uri]::new($docs)
-                    if ($existingUri.Scheme -eq 'https' -and
-                        $existingUri.Host -eq 'learn.microsoft.com' -and
-                        [string]::IsNullOrEmpty($existingUri.Query) -and
-                        [string]::IsNullOrEmpty($existingUri.Fragment) -and
-                        $existingUri.AbsolutePath -eq $expectedUri.AbsolutePath) {
-                        $docs = $existingDocs
-                    }
-                } catch {
-                    # Ignore invalid existing docs; fall back to Learn.
-                    $existingDocs = $null
+    if ($docs -and $existingDocsByRule.ContainsKey($ruleName)) {
+        $existingDocs = [string]$existingDocsByRule[$ruleName]
+        if (-not [string]::IsNullOrWhiteSpace($existingDocs)) {
+            try {
+                $existingUri = [System.Uri]::new($existingDocs)
+                $expectedUri = [System.Uri]::new($docs)
+                if ($existingUri.Scheme -eq 'https' -and
+                    $existingUri.Host -eq 'learn.microsoft.com' -and
+                    [string]::IsNullOrEmpty($existingUri.Query) -and
+                    [string]::IsNullOrEmpty($existingUri.Fragment) -and
+                    $existingUri.AbsolutePath -eq $expectedUri.AbsolutePath) {
+                    $docs = $existingDocs
                 }
+            } catch {
+                # Ignore invalid existing docs; fall back to Learn.
+                $existingDocs = $null
             }
-        } catch {
-            # Ignore read/parse errors; fall back to Learn.
-            $existingDocs = $null
         }
     }
 
