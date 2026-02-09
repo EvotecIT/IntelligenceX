@@ -363,6 +363,8 @@ function Get-LearnDocsUrl([string]$ruleName) {
     if ([string]::IsNullOrWhiteSpace($ruleName)) { return $null }
     $name = $ruleName.Trim()
     if ($name.StartsWith('PS', [System.StringComparison]::OrdinalIgnoreCase)) {
+        # Learn slugs omit the leading PS prefix (e.g. PSAvoidLongLines -> avoidlonglines). The PS-prefixed
+        # variant 404s at time of writing.
         $name = $name.Substring(2)
     }
     $slug = $name.ToLowerInvariant()

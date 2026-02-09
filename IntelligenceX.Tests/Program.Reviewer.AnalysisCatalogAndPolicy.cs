@@ -589,6 +589,15 @@ internal static partial class Program {
             var actualSlug = path.Substring(learnPrefix.Length).Trim('/');
             AssertEqual(false, string.IsNullOrWhiteSpace(actualSlug), $"{rule.Id} docs slug is present");
             AssertEqual(false, actualSlug.Any(char.IsWhiteSpace), $"{rule.Id} docs slug has no whitespace");
+
+            // Learn rule pages use a lowercased slug derived from the PSScriptAnalyzer rule name,
+            // with the leading "PS" prefix removed (e.g. PSAvoidLongLines -> avoidlonglines).
+            var expectedName = (rule.ToolRuleId ?? rule.Id).Trim();
+            if (expectedName.StartsWith("PS", StringComparison.OrdinalIgnoreCase)) {
+                expectedName = expectedName.Substring(2);
+            }
+            var expectedSlug = expectedName.ToLowerInvariant();
+            AssertEqual(expectedSlug, actualSlug, $"{rule.Id} docs slug matches Learn convention");
         }
     }
 
