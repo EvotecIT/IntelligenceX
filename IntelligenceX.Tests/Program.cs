@@ -56,6 +56,7 @@ internal static partial class Program {
         failed += Run("CLI dispatch manage command failure fallback", TestCliDispatchManageCommandFailureShowsFallbackError);
         failed += Run("CLI dispatch manage command unexpected failure fallback", TestCliDispatchManageCommandUnexpectedFailureShowsFallbackError);
         failed += Run("CLI dispatch detailed error flags", TestCliDispatchDetailedErrorFlagParsing);
+        failed += Run("Resolve default repo normalizes env value", TestResolveDefaultRepoNormalizesEnvironmentValue);
         failed += Run("Manage external command timeout returns promptly", TestManageRunExternalCommandTimeoutReturnsPromptly);
         failed += Run("Manage external command captures help tail line", TestManageRunExternalCommandCapturesHelpTailLine);
         failed += Run("Manage external command start failure returns promptly", TestManageRunExternalCommandStartFailureReturnsPromptly);

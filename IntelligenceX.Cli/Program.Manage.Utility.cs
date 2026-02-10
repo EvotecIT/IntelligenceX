@@ -113,8 +113,11 @@ internal static partial class Program {
     private static string? ResolveDefaultRepo() {
         var envRepo = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_REPO")
                       ?? Environment.GetEnvironmentVariable("GITHUB_REPOSITORY");
-        if (!string.IsNullOrWhiteSpace(envRepo) && TryParseRepo(envRepo, out _, out _)) {
-            return envRepo;
+        if (!string.IsNullOrWhiteSpace(envRepo)) {
+            var normalizedRepo = NormalizeRepo(envRepo);
+            if (TryParseRepo(normalizedRepo, out _, out _)) {
+                return normalizedRepo;
+            }
         }
         var detected = GitHubRepoDetector.TryDetectRepo(Environment.CurrentDirectory);
         if (!string.IsNullOrWhiteSpace(detected) && TryParseRepo(detected, out _, out _)) {

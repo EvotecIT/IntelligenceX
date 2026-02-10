@@ -121,6 +121,19 @@ internal static partial class Program {
         }
     }
 
+    private static void TestResolveDefaultRepoNormalizesEnvironmentValue() {
+        var previousRepo = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_REPO");
+        var previousGitHubRepo = Environment.GetEnvironmentVariable("GITHUB_REPOSITORY");
+        try {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_GITHUB_REPO", "owner/repository/");
+            Environment.SetEnvironmentVariable("GITHUB_REPOSITORY", null);
+            AssertEqual("owner/repository", InvokeResolveDefaultRepo(), "resolve default repo normalizes env value");
+        } finally {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_GITHUB_REPO", previousRepo);
+            Environment.SetEnvironmentVariable("GITHUB_REPOSITORY", previousGitHubRepo);
+        }
+    }
+
     private static void AssertShouldShowDetailedErrorsFor(string envVar, string? value, bool expected) {
         var previousDebug = Environment.GetEnvironmentVariable("INTELLIGENCEX_DEBUG");
         var previousVerbose = Environment.GetEnvironmentVariable("INTELLIGENCEX_VERBOSE");
@@ -140,6 +153,13 @@ internal static partial class Program {
         var method = typeof(global::IntelligenceX.Cli.Program).GetMethod("ShouldShowDetailedErrors", flags);
         AssertNotNull(method, "dispatch detailed errors method lookup");
         return (bool)method!.Invoke(null, null)!;
+    }
+
+    private static string? InvokeResolveDefaultRepo() {
+        var flags = global::System.Reflection.BindingFlags.NonPublic | global::System.Reflection.BindingFlags.Static;
+        var method = typeof(global::IntelligenceX.Cli.Program).GetMethod("ResolveDefaultRepo", flags);
+        AssertNotNull(method, "resolve default repo method lookup");
+        return (string?)method!.Invoke(null, null);
     }
 
     private static (int ExitCode, string StdOut, string StdErr) RunCliDispatchWithCapturedOutput(
