@@ -55,6 +55,10 @@ internal static partial class Program {
         failed += Run("CLI dispatch no-args manage failure fallback", TestCliDispatchNoArgsManageFailureShowsFallbackError);
         failed += Run("CLI dispatch manage command failure fallback", TestCliDispatchManageCommandFailureShowsFallbackError);
         failed += Run("Manage external command timeout returns promptly", TestManageRunExternalCommandTimeoutReturnsPromptly);
+        failed += Run("Manage GitHub CLI status token authenticated", TestManageGitHubCliStatusWithTokenIsAuthenticated);
+        failed += Run("Manage GitHub CLI status exit code zero authenticated", TestManageGitHubCliStatusExitCodeZeroAuthenticated);
+        failed += Run("Manage GitHub CLI status exit code non-zero unauthenticated", TestManageGitHubCliStatusExitCodeNonZeroUnauthenticated);
+        failed += Run("Manage GitHub CLI status missing CLI", TestManageGitHubCliStatusMissingCli);
         failed += Run("GitHub repo detector parses remote urls", TestGitHubRepoDetectorParsesRemoteUrls);
         failed += Run("GitHub repo detector parses git config sections", TestGitHubRepoDetectorParsesGitConfigRemoteSection);
         failed += Run("GitHub secrets reject empty value", TestGitHubSecretsRejectEmptyValue);

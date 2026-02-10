@@ -200,15 +200,18 @@ internal static partial class Program {
 
     private static (bool Installed, bool Authenticated) GetGitHubCliStatus() {
         var token = TryReadGhToken();
+        var result = RunExternalCommand("gh", "auth status");
+        return EvaluateGitHubCliStatus(token, result.ExitCode);
+    }
+
+    internal static (bool Installed, bool Authenticated) EvaluateGitHubCliStatus(string? token, int authStatusExitCode) {
         if (!string.IsNullOrWhiteSpace(token)) {
             return (true, true);
         }
-
-        var result = RunExternalCommand("gh", "auth status");
-        if (result.ExitCode == int.MinValue) {
+        if (authStatusExitCode == int.MinValue) {
             return (false, false);
         }
-        return (true, false);
+        return (true, authStatusExitCode == 0);
     }
 
     private static (int ExitCode, string StdOut, string StdErr) RunExternalCommand(string fileName, string arguments) {
