@@ -11,7 +11,14 @@ internal sealed partial class WebApi {
         if (body is null) {
             return;
         }
-        var request = JsonSerializer.Deserialize<DeviceCodeRequest>(body, _jsonOptions) ?? new DeviceCodeRequest();
+        DeviceCodeRequest request;
+        try {
+            request = JsonSerializer.Deserialize<DeviceCodeRequest>(body, _jsonOptions) ?? new DeviceCodeRequest();
+        } catch (JsonException) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Invalid JSON payload." }).ConfigureAwait(false);
+            return;
+        }
         var effectiveClientId = request.GetEffectiveClientId();
         if (string.IsNullOrWhiteSpace(effectiveClientId)) {
             context.Response.StatusCode = 400;
@@ -40,7 +47,14 @@ internal sealed partial class WebApi {
         if (body is null) {
             return;
         }
-        var request = JsonSerializer.Deserialize<DevicePollRequest>(body, _jsonOptions) ?? new DevicePollRequest();
+        DevicePollRequest request;
+        try {
+            request = JsonSerializer.Deserialize<DevicePollRequest>(body, _jsonOptions) ?? new DevicePollRequest();
+        } catch (JsonException) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Invalid JSON payload." }).ConfigureAwait(false);
+            return;
+        }
         var effectiveClientId = request.GetEffectiveClientId();
         if (string.IsNullOrWhiteSpace(effectiveClientId) || string.IsNullOrWhiteSpace(request.DeviceCode)) {
             context.Response.StatusCode = 400;

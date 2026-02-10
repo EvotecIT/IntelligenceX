@@ -78,6 +78,11 @@ internal sealed partial class WebApi {
     }
 
     private async Task HandleUsageCacheAsync(System.Net.HttpListenerContext context) {
+        if (!string.Equals(context.Request.HttpMethod, "GET", StringComparison.OrdinalIgnoreCase)) {
+            context.Response.StatusCode = 405;
+            await WriteJsonAsync(context, new { error = "GET required" }).ConfigureAwait(false);
+            return;
+        }
         try {
             if (!ChatGptUsageCache.TryLoad(out var entry) || entry is null) {
                 await WriteJsonAsync(context, new UsageResponse()).ConfigureAwait(false);

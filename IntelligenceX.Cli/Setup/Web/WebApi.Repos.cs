@@ -13,7 +13,14 @@ internal sealed partial class WebApi {
         if (body is null) {
             return;
         }
-        var request = JsonSerializer.Deserialize<RepoListRequest>(body, _jsonOptions) ?? new RepoListRequest();
+        RepoListRequest request;
+        try {
+            request = JsonSerializer.Deserialize<RepoListRequest>(body, _jsonOptions) ?? new RepoListRequest();
+        } catch (JsonException) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Invalid JSON payload." }).ConfigureAwait(false);
+            return;
+        }
         if (string.IsNullOrWhiteSpace(request.Token)) {
             context.Response.StatusCode = 400;
             await WriteJsonAsync(context, new { error = "Missing token" }).ConfigureAwait(false);
@@ -72,7 +79,14 @@ internal sealed partial class WebApi {
         if (body is null) {
             return;
         }
-        var request = JsonSerializer.Deserialize<RepoStatusRequest>(body, _jsonOptions) ?? new RepoStatusRequest();
+        RepoStatusRequest request;
+        try {
+            request = JsonSerializer.Deserialize<RepoStatusRequest>(body, _jsonOptions) ?? new RepoStatusRequest();
+        } catch (JsonException) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Invalid JSON payload." }).ConfigureAwait(false);
+            return;
+        }
         if (string.IsNullOrWhiteSpace(request.Token)) {
             context.Response.StatusCode = 400;
             await WriteJsonAsync(context, new { error = "Missing token" }).ConfigureAwait(false);
@@ -139,7 +153,14 @@ internal sealed partial class WebApi {
         if (body is null) {
             return;
         }
-        var request = JsonSerializer.Deserialize<RepoConfigRequest>(body, _jsonOptions) ?? new RepoConfigRequest();
+        RepoConfigRequest request;
+        try {
+            request = JsonSerializer.Deserialize<RepoConfigRequest>(body, _jsonOptions) ?? new RepoConfigRequest();
+        } catch (JsonException) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Invalid JSON payload." }).ConfigureAwait(false);
+            return;
+        }
         if (string.IsNullOrWhiteSpace(request.Token) || string.IsNullOrWhiteSpace(request.Repo)) {
             context.Response.StatusCode = 400;
             await WriteJsonAsync(context, new { error = "Missing token or repo" }).ConfigureAwait(false);
@@ -213,7 +234,14 @@ internal sealed partial class WebApi {
         if (body is null) {
             return;
         }
-        var request = JsonSerializer.Deserialize<RepoWorkflowRequest>(body, _jsonOptions) ?? new RepoWorkflowRequest();
+        RepoWorkflowRequest request;
+        try {
+            request = JsonSerializer.Deserialize<RepoWorkflowRequest>(body, _jsonOptions) ?? new RepoWorkflowRequest();
+        } catch (JsonException) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Invalid JSON payload." }).ConfigureAwait(false);
+            return;
+        }
         if (string.IsNullOrWhiteSpace(request.Token) || string.IsNullOrWhiteSpace(request.Repo)) {
             context.Response.StatusCode = 400;
             await WriteJsonAsync(context, new { error = "Missing token or repo" }).ConfigureAwait(false);

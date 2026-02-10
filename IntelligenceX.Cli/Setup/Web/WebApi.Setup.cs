@@ -11,7 +11,14 @@ internal sealed partial class WebApi {
         if (body is null) {
             return;
         }
-        var request = JsonSerializer.Deserialize<SetupRequest>(body, _jsonOptions) ?? new SetupRequest();
+        SetupRequest request;
+        try {
+            request = JsonSerializer.Deserialize<SetupRequest>(body, _jsonOptions) ?? new SetupRequest();
+        } catch (JsonException) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Invalid JSON payload." }).ConfigureAwait(false);
+            return;
+        }
         if ((request.Repos is null || request.Repos.Count == 0) && string.IsNullOrWhiteSpace(request.Repo)) {
             context.Response.StatusCode = 400;
             await WriteJsonAsync(context, new { error = "Missing repo(s)" }).ConfigureAwait(false);

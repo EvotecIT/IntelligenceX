@@ -18,7 +18,7 @@ internal sealed partial class WebApi {
         context.Response.ContentType = "application/json; charset=utf-8";
         context.Response.ContentLength64 = bytes.Length;
         await context.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
-        context.Response.Close();
+        await context.Response.OutputStream.FlushAsync().ConfigureAwait(false);
     }
 
     private async Task<string?> ReadJsonBodyAsync(System.Net.HttpListenerContext context) {

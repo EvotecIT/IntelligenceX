@@ -13,7 +13,14 @@ internal sealed partial class WebApi {
         if (body is null) {
             return;
         }
-        var request = JsonSerializer.Deserialize<AppManifestRequest>(body, _jsonOptions) ?? new AppManifestRequest();
+        AppManifestRequest request;
+        try {
+            request = JsonSerializer.Deserialize<AppManifestRequest>(body, _jsonOptions) ?? new AppManifestRequest();
+        } catch (JsonException) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Invalid JSON payload." }).ConfigureAwait(false);
+            return;
+        }
         if (string.IsNullOrWhiteSpace(request.AppName)) {
             request.AppName = "IntelligenceX Reviewer";
         }
@@ -53,7 +60,14 @@ internal sealed partial class WebApi {
         if (body is null) {
             return;
         }
-        var request = JsonSerializer.Deserialize<AppInstallationRequest>(body, _jsonOptions) ?? new AppInstallationRequest();
+        AppInstallationRequest request;
+        try {
+            request = JsonSerializer.Deserialize<AppInstallationRequest>(body, _jsonOptions) ?? new AppInstallationRequest();
+        } catch (JsonException) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Invalid JSON payload." }).ConfigureAwait(false);
+            return;
+        }
         if (request.AppId <= 0 || string.IsNullOrWhiteSpace(request.Pem)) {
             context.Response.StatusCode = 400;
             await WriteJsonAsync(context, new { error = "Missing appId or pem" }).ConfigureAwait(false);
@@ -83,7 +97,14 @@ internal sealed partial class WebApi {
         if (body is null) {
             return;
         }
-        var request = JsonSerializer.Deserialize<AppTokenRequest>(body, _jsonOptions) ?? new AppTokenRequest();
+        AppTokenRequest request;
+        try {
+            request = JsonSerializer.Deserialize<AppTokenRequest>(body, _jsonOptions) ?? new AppTokenRequest();
+        } catch (JsonException) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Invalid JSON payload." }).ConfigureAwait(false);
+            return;
+        }
         if (request.AppId <= 0 || string.IsNullOrWhiteSpace(request.Pem) || request.InstallationId <= 0) {
             context.Response.StatusCode = 400;
             await WriteJsonAsync(context, new { error = "Missing appId, pem, or installationId" }).ConfigureAwait(false);
