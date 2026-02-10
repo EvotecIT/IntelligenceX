@@ -160,38 +160,38 @@ internal static class GitCli {
         }
     }
 
-	    private static async Task<(byte[] Data, bool Truncated)> ReadAllBytesAsync(Stream stream, int maxBytes, CancellationToken cancellationToken, Action? onTruncate) {
-	        // Stream.ReadAllBytesAsync isn't available on all TFMs we target.
-	        var truncated = false;
-	        var truncationSignaled = false;
-	        using var ms = new MemoryStream(capacity: Math.Min(Math.Max(0, maxBytes), 64 * 1024));
-	        var buffer = new byte[16 * 1024];
-	        var buffered = 0;
-	        long readTotal = 0;
-	        while (true) {
-	            var read = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false);
-	            if (read <= 0) {
-	                break;
-	            }
-	            readTotal += read;
-	            if (!truncated) {
-	                var take = Math.Min(read, Math.Max(0, maxBytes - buffered));
-	                if (take > 0) {
-	                    ms.Write(buffer, 0, take);
-	                    buffered += take;
-	                }
-	                if (readTotal > maxBytes) {
-	                    truncated = true;
-	                    if (!truncationSignaled) {
-	                        truncationSignaled = true;
-	                        try { onTruncate?.Invoke(); } catch { }
-	                    }
-	                }
-	            }
-	            // If truncated, keep draining without buffering to avoid deadlocks from full pipes.
-	        }
-	        return (ms.ToArray(), truncated);
-	    }
+    private static async Task<(byte[] Data, bool Truncated)> ReadAllBytesAsync(Stream stream, int maxBytes, CancellationToken cancellationToken, Action? onTruncate) {
+        // Stream.ReadAllBytesAsync isn't available on all TFMs we target.
+        var truncated = false;
+        var truncationSignaled = false;
+        using var ms = new MemoryStream(capacity: Math.Min(Math.Max(0, maxBytes), 64 * 1024));
+        var buffer = new byte[16 * 1024];
+        var buffered = 0;
+        long readTotal = 0;
+        while (true) {
+            var read = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false);
+            if (read <= 0) {
+                break;
+            }
+            readTotal += read;
+            if (!truncated) {
+                var take = Math.Min(read, Math.Max(0, maxBytes - buffered));
+                if (take > 0) {
+                    ms.Write(buffer, 0, take);
+                    buffered += take;
+                }
+                if (readTotal > maxBytes) {
+                    truncated = true;
+                    if (!truncationSignaled) {
+                        truncationSignaled = true;
+                        try { onTruncate?.Invoke(); } catch { }
+                    }
+                }
+            }
+            // If truncated, keep draining without buffering to avoid deadlocks from full pipes.
+        }
+        return (ms.ToArray(), truncated);
+    }
 
     private static TimeSpan ResolveTimeout(TimeSpan? timeout) {
         if (timeout.HasValue && timeout.Value > TimeSpan.Zero) {
