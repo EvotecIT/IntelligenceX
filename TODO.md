@@ -2,6 +2,52 @@
 
 Status: In progress
 
+## Reviewer E2E Launch Plan
+Status: In progress
+
+Goal: reviewer + static analysis + onboarding (CLI + Web) feel "done" end-to-end for a new repo.
+
+### Acceptance (Definition Of Done)
+- [ ] A new user can run `intelligencex setup wizard` on a clean machine and reach "PR created" without manual repo edits.
+- [ ] A new user can run `intelligencex setup web` and reach "PR created" without manual repo edits.
+- [ ] First merged onboarding PR produces a successful review on the next PR (sticky summary + inline when supported).
+- [ ] Review comment always includes reviewed SHA and an explicit diff-range label (base -> head).
+- [ ] Static analysis runs before review, publishes artifacts, and the review comment always renders analysis status (pass/unavailable) even when findings are zero.
+- [ ] Static analysis gate behavior is predictable: failing types/severities are documented and match observed CI results.
+- [ ] Dependabot identity limitation is documented and visible during onboarding (reviews may be authored by `github-actions`).
+
+### Phase A — Onboarding UX (CLI + Web)
+- [ ] CLI wizard: add "Enable static analysis" toggle and pack picker (default `all-50`).
+- [ ] Web UI: add "Enable static analysis" toggle and pack picker (default `all-50`).
+- [ ] CLI + Web: show a final "Effective config" preview (review + analysis) before Apply.
+- [ ] CLI + Web: surface the Dependabot secrets limitation in the UI copy (why bot identity may differ).
+- [ ] CLI + Web: add a post-Apply "Verify" step (workflow present, config present if requested, required secrets present, last runs links).
+
+### Phase B — Setup Output (Workflow + reviewer.json)
+- [ ] Setup config writer: include `analysis` section in `.intelligencex/reviewer.json` when static analysis is enabled (create + merge paths).
+- [ ] Setup presets: define recommended tiers for analysis packs (`all-50`, `all-100`, `all-500`) and a "no analysis" option.
+- [ ] Ensure workflow/config generation stays stable across upgrades (managed block upgrades do not delete user customization outside managed block).
+
+### Phase C — Review Reliability (Reduce Churn, Increase Continuity)
+- [ ] Add a diff range option for incremental review (for example `reviewDiffRange: last-reviewed` uses the last reviewed commit from the sticky summary as base).
+- [ ] Add a deterministic "replay" mode for debugging: load a saved PR snapshot + artifacts and run review formatting without provider calls.
+- [ ] Ensure thread triage does not repeatedly re-suggest already-addressed items; prefer dedupe and summary stability over rewriting.
+
+### Phase D — Static Analysis Productization
+- [ ] Wizard: explain analysis gate semantics (which types/severities fail the check) and link to docs.
+- [ ] Add "list packs" affordance in onboarding (CLI and Web) so users can browse available packs.
+- [ ] Provide an optional "export analyzer config" path for IDE support (explicit opt-in, never default).
+- [ ] Add a CI guardrail: `intelligencex analyze validate-catalog` and pack integrity checks run on every PR that touches Analysis/Catalog or Analysis/Packs.
+
+### Phase E — Docs + Samples
+- [ ] Promote `Docs/reviewer/static-analysis.md` from Draft to stable docs (align examples with actual wizard output).
+- [ ] Add "First PR checklist" doc: what to expect after merging onboarding PR and how to debug common issues.
+- [ ] Add screenshots (CLI + Web) for the "Configure" step and the "Verify" step.
+
+### Phase F — End-To-End Tests
+- [ ] Add tests for setup plan generation: ensure enabling analysis produces `analysis` in reviewer.json and does not regress existing review settings.
+- [ ] Add tests for config merge behavior (existing reviewer.json + enable analysis preserves unrelated user keys).
+
 ## Engine Roadmap
 Status: In progress
 
