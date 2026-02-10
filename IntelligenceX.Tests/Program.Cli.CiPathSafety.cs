@@ -62,7 +62,14 @@ internal static partial class Program {
         Directory.CreateDirectory(outside);
         try {
             var link = Path.Combine(root, "link");
-            Directory.CreateSymbolicLink(link, outside);
+            try {
+                Directory.CreateSymbolicLink(link, outside);
+            } catch (Exception ex) when (ex is UnauthorizedAccessException || ex is PlatformNotSupportedException || ex is NotSupportedException || ex is IOException) {
+                // Symlink creation can be restricted (for example, Windows without Developer Mode/admin privileges).
+                // Treat this as a skipped test so CI stays portable across runners.
+                Console.Error.WriteLine($"Skipping symlink traversal test (symlink creation not supported): {ex.Message}");
+                return;
+            }
             AssertEqual(true, Directory.Exists(link), "symlink directory exists");
 
             var target = Path.Combine(link, "x.txt");
