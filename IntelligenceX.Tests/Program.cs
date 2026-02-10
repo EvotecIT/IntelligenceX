@@ -33,6 +33,7 @@ internal static partial class Program {
 #if NET8_0_OR_GREATER
         failed += Run("Auth store invalid key throws", TestAuthStoreInvalidKeyThrows);
         failed += Run("Auth store encrypted roundtrip", TestAuthStoreEncryptedRoundtrip);
+        failed += Run("Path safety blocks symlink traversal", TestPathSafetyBlocksSymlinkTraversal);
 #endif
         failed += Run("Native tool schema fallback detects tools[n]", TestNativeToolSchemaFallbackDetectsIndex);
         failed += Run("Native tool schema fallback detects tools.n", TestNativeToolSchemaFallbackDetectsDotIndex);

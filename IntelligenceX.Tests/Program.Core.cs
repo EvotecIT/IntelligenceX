@@ -1,6 +1,47 @@
 namespace IntelligenceX.Tests;
 
 internal static partial class Program {
+#if NET8_0_OR_GREATER
+    private static void TestPathSafetyBlocksSymlinkTraversal() {
+        var root = Path.Combine(Path.GetTempPath(), $"ix-workspace-{Guid.NewGuid():N}");
+        var outside = Path.Combine(Path.GetTempPath(), $"ix-outside-{Guid.NewGuid():N}");
+        try {
+            Directory.CreateDirectory(root);
+            Directory.CreateDirectory(outside);
+
+            var outsideFile = Path.Combine(outside, "outside.txt");
+            File.WriteAllText(outsideFile, "x");
+
+            var linkDir = Path.Combine(root, "link");
+            try {
+                Directory.CreateSymbolicLink(linkDir, outside);
+            } catch {
+                // Symlink creation can be restricted on some Windows environments. Treat as non-actionable.
+                return;
+            }
+
+            var escapedPath = Path.Combine(linkDir, "outside.txt");
+            AssertEqual(true, File.Exists(escapedPath), "escaped file exists via link");
+            AssertThrows<InvalidOperationException>(() => PathSafety.EnsureUnderRoot(escapedPath, root), "symlink traversal blocked");
+        } finally {
+            try {
+                if (Directory.Exists(root)) {
+                    Directory.Delete(root, recursive: true);
+                }
+            } catch {
+                // best-effort cleanup
+            }
+            try {
+                if (Directory.Exists(outside)) {
+                    Directory.Delete(outside, recursive: true);
+                }
+            } catch {
+                // best-effort cleanup
+            }
+        }
+    }
+#endif
+
     private static void TestToolCallParsing() {
         var output = new JsonObject()
             .Add("type", "custom_tool_call")
