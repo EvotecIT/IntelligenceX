@@ -25,6 +25,44 @@ internal static partial class Program {
         }, args, "setup args analysis");
     }
 
+    private static void TestSetupAnalysisDisableWritesFalse() {
+        var root = new System.Text.Json.Nodes.JsonObject();
+        SetupAnalysisConfig.Apply(
+            root,
+            enabledSet: true, enabled: false,
+            gateEnabledSet: false, gateEnabled: false,
+            packsSet: false, packs: Array.Empty<string>());
+
+        var analysis = root["analysis"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(analysis, "analysis root");
+        AssertEqual(false, analysis!["enabled"]?.GetValue<bool>(), "analysis.enabled");
+    }
+
+    private static void TestSetupAnalysisDefaultsPacksToAll50() {
+        var root = new System.Text.Json.Nodes.JsonObject();
+        SetupAnalysisConfig.Apply(
+            root,
+            enabledSet: true, enabled: true,
+            gateEnabledSet: false, gateEnabled: false,
+            packsSet: true, packs: Array.Empty<string>());
+
+        var analysis = root["analysis"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(analysis, "analysis root");
+
+        var packsNode = analysis!["packs"] as System.Text.Json.Nodes.JsonArray;
+        AssertNotNull(packsNode, "analysis.packs");
+
+        var packs = new List<string>();
+        foreach (var item in packsNode!) {
+            var value = item?.GetValue<string>();
+            if (!string.IsNullOrEmpty(value)) {
+                packs.Add(value);
+            }
+        }
+
+        AssertSequenceEqual(new[] { "all-50" }, packs, "analysis.packs default");
+    }
+
     private static void TestGitHubRepoDetectorParsesRemoteUrls() {
         AssertEqual("owner/repo", GitHubRepoDetector.ParseRepoFromRemoteUrl("https://github.com/owner/repo.git"), "https git");
         AssertEqual("owner/repo", GitHubRepoDetector.ParseRepoFromRemoteUrl("https://github.com/owner/repo"), "https no git");
