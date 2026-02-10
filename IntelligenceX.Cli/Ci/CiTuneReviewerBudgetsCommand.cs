@@ -130,6 +130,10 @@ internal static class CiTuneReviewerBudgetsCommand {
                 }
             }
             if (!matchesGitHubEnv) {
+                if (!CiPathSafety.IsUnderRoot(resolvedCandidate, workspaceRoot)) {
+                    error = $"Env-file output path must be within the workspace (or equal to $GITHUB_ENV). out-env={resolvedCandidate} workspace={workspaceRoot}";
+                    return false;
+                }
                 var dir = Path.GetDirectoryName(resolvedCandidate);
                 if (string.IsNullOrWhiteSpace(dir)) {
                     dir = workspaceRoot;

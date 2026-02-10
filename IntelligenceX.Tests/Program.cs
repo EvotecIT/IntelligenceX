@@ -56,6 +56,7 @@ internal static partial class Program {
         failed += Run("CI path safety allows nested non-existent segments", TestCiPathSafetyUnderRootPhysicalAllowsNestedNonexistentSegments);
         failed += Run("CI changed-files writes into new output directory", TestCiChangedFilesWritesIntoNewDirectory);
         failed += Run("CI changed-files strict fails on diff failure even with fallback", TestCiChangedFilesStrictFailsWhenDiffFailsEvenIfFallbackSucceeds);
+        failed += Run("CI tune-reviewer-budgets rejects out-env outside workspace", TestCiTuneReviewerBudgetsRejectsOutEnvOutsideWorkspaceWhenGitHubEnvMissing);
 #endif
 
         // Reviewer tests are excluded from NET472 builds (no reviewer references there), and enforced for non-NET472

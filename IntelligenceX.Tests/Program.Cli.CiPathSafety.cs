@@ -126,5 +126,40 @@ internal static partial class Program {
             try { Directory.Delete(root, recursive: true); } catch { }
         }
     }
+
+    private static void TestCiTuneReviewerBudgetsRejectsOutEnvOutsideWorkspaceWhenGitHubEnvMissing() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-ci-tune-budgets-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try {
+            var changedFilesPath = Path.Combine(root, "artifacts", "changed-files.txt");
+            Directory.CreateDirectory(Path.GetDirectoryName(changedFilesPath)!);
+            File.WriteAllText(changedFilesPath, "a.txt\n");
+
+            var outside = Path.Combine(Path.GetTempPath(), "ix-ci-outside-" + Guid.NewGuid().ToString("N"), "env.txt");
+            var originalWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+            var originalEnv = Environment.GetEnvironmentVariable("GITHUB_ENV");
+            var originalActions = Environment.GetEnvironmentVariable("GITHUB_ACTIONS");
+            try {
+                Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", root);
+                Environment.SetEnvironmentVariable("GITHUB_ENV", null);
+                Environment.SetEnvironmentVariable("GITHUB_ACTIONS", null);
+
+                var exit = CiTuneReviewerBudgetsCommand.RunAsync(new[] {
+                        "--changed-files", "artifacts/changed-files.txt",
+                        "--changed-threshold", "0",
+                        "--out-env", outside
+                    })
+                    .GetAwaiter().GetResult();
+                AssertEqual(1, exit, "tune-reviewer-budgets exit code rejects out-env outside workspace when GITHUB_ENV missing");
+                AssertEqual(false, File.Exists(outside), "out-env file not created outside workspace");
+            } finally {
+                Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", originalWorkspace);
+                Environment.SetEnvironmentVariable("GITHUB_ENV", originalEnv);
+                Environment.SetEnvironmentVariable("GITHUB_ACTIONS", originalActions);
+            }
+        } finally {
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
 #endif
 }
