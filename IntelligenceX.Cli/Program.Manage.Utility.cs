@@ -262,6 +262,13 @@ internal static partial class Program {
             } catch {
                 // ignore kill failures
             }
+            try {
+                await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            } catch (TimeoutException) {
+                // best effort: process may already be terminating
+            } catch (InvalidOperationException) {
+                // process was not started or already exited
+            }
 
             var drainTask = Task.WhenAll(stdOutTask, stdErrTask);
             var drainCompleted = await Task.WhenAny(drainTask, Task.Delay(1000)).ConfigureAwait(false);
