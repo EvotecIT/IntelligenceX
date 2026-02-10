@@ -15,6 +15,16 @@ internal static class WizardSummary {
         table.AddRow("Operation", DescribeOperation(plan));
         table.AddRow("With config", plan.WithConfig ? "yes" : "no");
         table.AddRow("Config detail", DescribeConfig(plan));
+        if (plan.WithConfig) {
+            var analysis = plan.AnalysisEnabled.HasValue
+                ? (plan.AnalysisEnabled.Value ? "enabled" : "disabled")
+                : "(default)";
+            table.AddRow("Static analysis", analysis);
+            if (plan.AnalysisEnabled == true) {
+                table.AddRow("Analysis packs", string.IsNullOrWhiteSpace(plan.AnalysisPacks) ? "(default)" : plan.AnalysisPacks!);
+                table.AddRow("Analysis gate", plan.AnalysisGateEnabled == true ? "enabled" : "disabled");
+            }
+        }
         if (!string.IsNullOrWhiteSpace(configSource)) {
             table.AddRow("Config source", configSource);
         }

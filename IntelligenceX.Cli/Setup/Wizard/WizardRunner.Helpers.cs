@@ -12,6 +12,26 @@ using Spectre.Console;
 namespace IntelligenceX.Cli.Setup.Wizard;
 
 internal static partial class WizardRunner {
+    private static void ApplyAnalysisSelection(WizardState state) {
+        if (state.Operation != WizardOperation.Setup || !state.WithConfig) {
+            state.AnalysisEnabled = null;
+            state.AnalysisGateEnabled = null;
+            state.AnalysisPacks = null;
+            return;
+        }
+
+        var analysisEnabled = WizardPrompts.PromptAnalysisEnabled(state.AnalysisEnabled ?? true);
+        state.AnalysisEnabled = analysisEnabled;
+        if (!analysisEnabled) {
+            state.AnalysisGateEnabled = null;
+            state.AnalysisPacks = null;
+            return;
+        }
+
+        state.AnalysisPacks = WizardPrompts.PromptAnalysisPacks(state.AnalysisPacks ?? "all-50");
+        state.AnalysisGateEnabled = WizardPrompts.PromptAnalysisGateEnabled(state.AnalysisGateEnabled ?? false);
+    }
+
     private static SetupPlan BuildPlan(WizardState state, string repo) {
         var withConfig = state.WithConfig ||
                          !string.IsNullOrWhiteSpace(state.ConfigPath) ||
@@ -36,7 +56,10 @@ internal static partial class WizardRunner {
             Cleanup = state.Operation == WizardOperation.Cleanup,
             KeepSecret = state.KeepSecret,
             DryRun = state.DryRun,
-            BranchName = state.BranchName
+            BranchName = state.BranchName,
+            AnalysisEnabled = withConfig && state.Operation == WizardOperation.Setup ? state.AnalysisEnabled : null,
+            AnalysisGateEnabled = withConfig && state.Operation == WizardOperation.Setup ? state.AnalysisGateEnabled : null,
+            AnalysisPacks = withConfig && state.Operation == WizardOperation.Setup ? state.AnalysisPacks : null
         };
         return plan;
     }
@@ -630,4 +653,3 @@ internal static partial class WizardRunner {
         return !string.IsNullOrWhiteSpace(owner) && !string.IsNullOrWhiteSpace(name);
     }
 }
-

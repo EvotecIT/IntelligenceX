@@ -63,6 +63,9 @@ const appOwner = $('appOwner');
 const appId = $('appId');
 const appPem = $('appPem');
 const installation = $('installation');
+const analysisEnabled = $('analysisEnabled');
+const analysisGate = $('analysisGate');
+const analysisPacks = $('analysisPacks');
 
 // ── Step navigation ──
 function goToStep(step) {
@@ -440,6 +443,7 @@ function showOutput(text) {
 // ── Build request body ──
 function buildRequestBody(dryRun) {
   const skipSecret = shouldSkipSecrets() || secretOption === 'skip';
+  const wantAnalysis = selectedOperation === 'setup' && (withConfig.checked || (configJson.value.trim().length > 0) || (configPath.value.trim().length > 0));
   return {
     repos: selectedRepos(),
     gitHubToken: getToken(),
@@ -461,7 +465,10 @@ function buildRequestBody(dryRun) {
     branchName: branchName.value.trim(),
     cleanup: selectedOperation === 'cleanup',
     updateSecret: selectedOperation === 'update-secret',
-    keepSecret: keepSecret.checked
+    keepSecret: keepSecret.checked,
+    analysisEnabled: wantAnalysis ? !!(analysisEnabled && analysisEnabled.checked) : null,
+    analysisGateEnabled: wantAnalysis ? !!(analysisGate && analysisGate.checked) : null,
+    analysisPacks: wantAnalysis ? (analysisPacks ? analysisPacks.value.trim() : '') : null
   };
 }
 
@@ -932,6 +939,15 @@ if (repo) repo.addEventListener('input', updateRepoCount);
 // ── Config auto-enable ──
 configJson.addEventListener('input', () => { if (configJson.value.trim()) withConfig.checked = true; });
 configPath.addEventListener('input', () => { if (configPath.value.trim()) withConfig.checked = true; });
+
+// ── Static analysis toggle ──
+function updateAnalysisControls() {
+  const enabled = analysisEnabled && analysisEnabled.checked;
+  if (analysisGate) analysisGate.disabled = !enabled;
+  if (analysisPacks) analysisPacks.disabled = !enabled;
+}
+if (analysisEnabled) analysisEnabled.addEventListener('change', updateAnalysisControls);
+updateAnalysisControls();
 
 // ── App field watchers ──
 appId.addEventListener('input', updateAppControls);

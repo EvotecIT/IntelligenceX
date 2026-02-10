@@ -235,6 +235,40 @@ internal static class WizardPrompts {
         return AnsiConsole.Confirm("Use explicit secrets block in workflow?", current);
     }
 
+    public static bool PromptAnalysisEnabled(bool current) {
+        return AnsiConsole.Confirm("Enable static analysis (recommended)?", current);
+    }
+
+    public static string PromptAnalysisPacks(string current) {
+        var choices = new[] {
+            "all-50",
+            "all-100",
+            "all-500",
+            "all-security-default",
+            "powershell-50",
+            "custom (enter pack ids)"
+        };
+        var selected = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("Static analysis pack(s):")
+                .PageSize(10)
+                .AddChoices(choices));
+        if (!string.Equals(selected, "custom (enter pack ids)", StringComparison.Ordinal)) {
+            return selected;
+        }
+        var prompt = new TextPrompt<string>("Pack ids (comma-separated):")
+            .AllowEmpty();
+        if (!string.IsNullOrWhiteSpace(current)) {
+            prompt.DefaultValue(current);
+        }
+        var raw = AnsiConsole.Prompt(prompt);
+        return string.IsNullOrWhiteSpace(raw) ? current : raw.Trim();
+    }
+
+    public static bool PromptAnalysisGateEnabled(bool current) {
+        return AnsiConsole.Confirm("Fail CI on static analysis findings?", current);
+    }
+
     public static SecretTarget PromptSecretTarget(int selectedRepoCount, bool ownersMatch) {
         if (selectedRepoCount <= 1 || !ownersMatch) {
             return SecretTarget.Repo;

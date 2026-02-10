@@ -63,6 +63,7 @@ internal static partial class WizardRunner {
         if (state.Operation == WizardOperation.Setup) {
             state.ConfigMode = WizardPrompts.PromptConfigMode();
             await ApplyConfigSelectionAsync(state).ConfigureAwait(false);
+            ApplyAnalysisSelection(state);
             if (WizardPrompts.PromptViewWorkflowPreview()) {
                 await ShowWorkflowPreviewAsync(state).ConfigureAwait(false);
             }

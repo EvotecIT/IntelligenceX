@@ -765,6 +765,18 @@ internal sealed class WebApi {
             args.Add("--review-comment-mode");
             args.Add(request.ReviewCommentMode!);
         }
+        if (request.AnalysisEnabled.HasValue) {
+            args.Add("--analysis-enabled");
+            args.Add(request.AnalysisEnabled.Value ? "true" : "false");
+        }
+        if (request.AnalysisGateEnabled.HasValue) {
+            args.Add("--analysis-gate");
+            args.Add(request.AnalysisGateEnabled.Value ? "true" : "false");
+        }
+        if (!string.IsNullOrWhiteSpace(request.AnalysisPacks)) {
+            args.Add("--analysis-packs");
+            args.Add(request.AnalysisPacks!);
+        }
         if (request.SkipSecret) {
             args.Add("--skip-secret");
         }
@@ -1058,6 +1070,9 @@ internal sealed class WebApi {
         public string? ReviewProfile { get; set; }
         public string? ReviewMode { get; set; }
         public string? ReviewCommentMode { get; set; }
+        public bool? AnalysisEnabled { get; set; }
+        public bool? AnalysisGateEnabled { get; set; }
+        public string? AnalysisPacks { get; set; }
         public bool SkipSecret { get; set; }
         public bool ManualSecret { get; set; }
         public bool ExplicitSecrets { get; set; }

@@ -88,6 +88,9 @@ internal sealed class WizardState {
     public string? ConfigPath { get; set; }
     public string? ConfigJson { get; set; }
     public string? ConfigSourceLabel { get; set; }
+    public bool? AnalysisEnabled { get; set; } = true;
+    public bool? AnalysisGateEnabled { get; set; } = false;
+    public string? AnalysisPacks { get; set; } = "all-50";
     public bool Force { get; set; }
     public bool Upgrade { get; set; }
     public WizardOperation Operation { get; set; } = WizardOperation.Setup;
