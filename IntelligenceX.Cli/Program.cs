@@ -1,5 +1,4 @@
 using System;
-using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -57,7 +56,7 @@ internal static partial class Program {
     private static async Task<int> RunManageWithFallbackAsync(Func<string[], Task<int>> runManage, string[] args) {
         try {
             return await runManage(args).ConfigureAwait(false);
-        } catch (Exception ex) when (IsManageLaunchOperationalException(ex)) {
+        } catch (Exception ex) {
             Console.Error.WriteLine("Failed to launch management hub.");
             if (ShouldShowDetailedErrors()) {
                 Console.Error.WriteLine(ex.ToString());
@@ -67,19 +66,6 @@ internal static partial class Program {
             PrintHelp();
             return 1;
         }
-    }
-
-    private static bool IsManageLaunchOperationalException(Exception ex) {
-        if (ex is AggregateException aggregate && aggregate.InnerException is not null) {
-            return IsManageLaunchOperationalException(aggregate.InnerException);
-        }
-        return ex is InvalidOperationException
-            or IOException
-            or UnauthorizedAccessException
-            or NotSupportedException
-            or JsonException
-            or OperationCanceledException
-            or Win32Exception;
     }
 
     private static bool ShouldShowDetailedErrors() {

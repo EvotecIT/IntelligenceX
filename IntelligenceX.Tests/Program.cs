@@ -54,6 +54,7 @@ internal static partial class Program {
         failed += Run("CLI dispatch manage command routes to manage", TestCliDispatchManageCommandRoutesToManage);
         failed += Run("CLI dispatch no-args manage failure fallback", TestCliDispatchNoArgsManageFailureShowsFallbackError);
         failed += Run("CLI dispatch manage command failure fallback", TestCliDispatchManageCommandFailureShowsFallbackError);
+        failed += Run("CLI dispatch manage command unexpected failure fallback", TestCliDispatchManageCommandUnexpectedFailureShowsFallbackError);
         failed += Run("Manage external command timeout returns promptly", TestManageRunExternalCommandTimeoutReturnsPromptly);
         failed += Run("Manage GitHub CLI status token authenticated", TestManageGitHubCliStatusWithTokenIsAuthenticated);
         failed += Run("Manage GitHub CLI status exit code zero authenticated", TestManageGitHubCliStatusExitCodeZeroAuthenticated);
