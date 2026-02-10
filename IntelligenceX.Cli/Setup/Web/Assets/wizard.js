@@ -449,7 +449,7 @@ function buildRequestBody(dryRun) {
   const analysisEnabledValue = wantAnalysis && analysisEnabled && analysisEnabled.checked ? true : null;
   const analysisOn = analysisEnabledValue === true;
   const packsRaw = analysisPacks ? analysisPacks.value.trim() : '';
-  return {
+  const body = {
     repos: selectedRepos(),
     gitHubToken: getToken(),
     gitHubClientId: clientId ? clientId.value.trim() : '',
@@ -470,11 +470,16 @@ function buildRequestBody(dryRun) {
     branchName: branchName.value.trim(),
     cleanup: selectedOperation === 'cleanup',
     updateSecret: selectedOperation === 'update-secret',
-    keepSecret: keepSecret.checked,
-    analysisEnabled: analysisEnabledValue,
-    analysisGateEnabled: analysisOn ? !!(analysisGate && analysisGate.checked) : null,
-    analysisPacks: analysisOn && packsRaw.length > 0 ? packsRaw : null
+    keepSecret: keepSecret.checked
   };
+  if (wantAnalysis) {
+    body.analysisEnabled = analysisEnabledValue;
+    if (analysisOn) {
+      body.analysisGateEnabled = !!(analysisGate && analysisGate.checked);
+      if (packsRaw.length > 0) body.analysisPacks = packsRaw;
+    }
+  }
+  return body;
 }
 
 // ── Format helpers ──
