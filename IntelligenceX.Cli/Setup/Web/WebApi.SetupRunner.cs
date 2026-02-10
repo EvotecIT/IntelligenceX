@@ -1,9 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using IntelligenceX.Cli.Setup.Wizard;
 
 namespace IntelligenceX.Cli.Setup.Web;
 
@@ -116,23 +117,54 @@ internal sealed partial class WebApi {
             };
         }
         try {
-            using var output = new StringWriter();
-            using var error = new StringWriter();
-            var originalOut = Console.Out;
-            var originalErr = Console.Error;
-            try {
-                Console.SetOut(output);
-                Console.SetError(error);
-                var code = await SetupRunner.RunAsync(args).ConfigureAwait(false);
-                return new SetupResponse {
-                    ExitCode = code,
-                    Output = output.ToString(),
-                    Error = error.ToString()
-                };
-            } finally {
-                Console.SetOut(originalOut);
-                Console.SetError(originalErr);
+            var exePath = Environment.ProcessPath;
+            if (string.IsNullOrWhiteSpace(exePath)) {
+                exePath = "dotnet";
             }
+
+            var entryAssemblyPath = Assembly.GetEntryAssembly()?.Location;
+            if (string.IsNullOrWhiteSpace(entryAssemblyPath)) {
+                entryAssemblyPath = typeof(WebApi).Assembly.Location;
+            }
+
+                var psi = new ProcessStartInfo {
+                    FileName = exePath,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                    WorkingDirectory = Environment.CurrentDirectory
+                };
+
+                var isDotNetHost = Path.GetFileNameWithoutExtension(exePath)
+                    .Equals("dotnet", StringComparison.OrdinalIgnoreCase);
+                if (isDotNetHost) {
+                    psi.ArgumentList.Add(entryAssemblyPath);
+                }
+
+                psi.ArgumentList.Add("setup");
+                foreach (var arg in args) {
+                    psi.ArgumentList.Add(arg);
+                }
+
+                using var process = Process.Start(psi);
+                if (process is null) {
+                    return new SetupResponse {
+                        ExitCode = 1,
+                        Error = "Failed to start setup process."
+                    };
+                }
+
+                var outputTask = process.StandardOutput.ReadToEndAsync();
+                var errorTask = process.StandardError.ReadToEndAsync();
+                await process.WaitForExitAsync().ConfigureAwait(false);
+
+                var code = process.ExitCode;
+            return new SetupResponse {
+                ExitCode = code,
+                Output = await outputTask.ConfigureAwait(false),
+                Error = await errorTask.ConfigureAwait(false)
+            };
         } finally {
             ConsoleLock.Release();
         }
