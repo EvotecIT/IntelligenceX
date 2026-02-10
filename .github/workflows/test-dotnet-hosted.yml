@@ -59,8 +59,7 @@ jobs:
 
             - name: Upload coverage reports
               uses: actions/upload-artifact@v4
-              if: always()
+              if: ${{ always() && hashFiles('**/coverage.cobertura.xml') != '' }}
               with:
                   name: coverage-reports-${{ matrix.os }}
                   path: '**/coverage.cobertura.xml'
-
