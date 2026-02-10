@@ -30,6 +30,10 @@ internal static partial class Program {
         failed += Run("Ensure ChatGPT login triggers when missing", TestEnsureChatGptLoginTriggersLoginWhenMissing);
         failed += Run("Ensure ChatGPT login force triggers", TestEnsureChatGptLoginForceTriggersLogin);
         failed += Run("Ensure ChatGPT login cancellation propagates", TestEnsureChatGptLoginCancellationPropagates);
+#if NET8_0_OR_GREATER
+        failed += Run("Auth store invalid key throws", TestAuthStoreInvalidKeyThrows);
+        failed += Run("Auth store encrypted roundtrip", TestAuthStoreEncryptedRoundtrip);
+#endif
         failed += Run("Native tool schema fallback detects tools[n]", TestNativeToolSchemaFallbackDetectsIndex);
         failed += Run("Native tool schema fallback detects tools.n", TestNativeToolSchemaFallbackDetectsDotIndex);
         failed += Run("Native tool_choice matches wire format", TestNativeToolChoiceSerializationMatchesWireFormat);
