@@ -100,6 +100,12 @@ internal sealed partial class WebApi {
     }
 
     private async Task HandleSetupEffectiveConfigAsync(System.Net.HttpListenerContext context) {
+        if (!string.Equals(context.Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase)) {
+            context.Response.StatusCode = 405;
+            await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+            return;
+        }
+
         var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
         if (body is null) {
             return;
@@ -173,12 +179,14 @@ internal sealed partial class WebApi {
         }
 
         if (!string.IsNullOrWhiteSpace(request.ConfigJson)) {
-            var normalized = request.ConfigJson!;
+            string normalized;
             try {
                 var parsed = JsonNode.Parse(request.ConfigJson!);
                 normalized = parsed?.ToJsonString(CliJson.Indented) ?? request.ConfigJson!;
             } catch (JsonException) {
-                // Keep raw input if parsing fails.
+                context.Response.StatusCode = 400;
+                await WriteJsonAsync(context, new { error = "Invalid configJson payload." }).ConfigureAwait(false);
+                return;
             }
 
             await WriteJsonOkAsync(context, new {
