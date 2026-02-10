@@ -524,9 +524,21 @@ internal sealed class WebApi {
         // Analysis flags are only honored when the setup flow is generating/merging reviewer.json.
         // If the user provides a full config override (configJson/configPath), these flags would be ignored by SetupRunner,
         // so we also ignore them here to avoid misleading behavior.
+        var isSetup = !request.Cleanup && !request.UpdateSecret;
         var hasConfigOverride = !string.IsNullOrWhiteSpace(request.ConfigJson) || !string.IsNullOrWhiteSpace(request.ConfigPath);
-        var analysisApplies = request.WithConfig && !hasConfigOverride;
+        var analysisApplies = isSetup && request.WithConfig && !hasConfigOverride;
+        var hasAnyAnalysis =
+            request.AnalysisEnabled.HasValue ||
+            request.AnalysisGateEnabled.HasValue ||
+            !string.IsNullOrWhiteSpace(request.AnalysisPacks);
         if (!analysisApplies) {
+            if (hasAnyAnalysis) {
+                context.Response.StatusCode = 400;
+                await WriteJsonAsync(context, new {
+                    error = "Static analysis options are only supported for setup when generating config from presets (withConfig=true and no configJson/configPath override)."
+                }).ConfigureAwait(false);
+                return;
+            }
             request.AnalysisEnabled = null;
             request.AnalysisGateEnabled = null;
             request.AnalysisPacks = null;
@@ -538,6 +550,13 @@ internal sealed class WebApi {
             }
             request.AnalysisPacks = normalizedPacks;
         } else {
+            if (request.AnalysisGateEnabled.HasValue || !string.IsNullOrWhiteSpace(request.AnalysisPacks)) {
+                context.Response.StatusCode = 400;
+                await WriteJsonAsync(context, new {
+                    error = "analysisGateEnabled/analysisPacks require analysisEnabled=true."
+                }).ConfigureAwait(false);
+                return;
+            }
             // Prevent accidental or malicious argv "flag injection" by ensuring these are never forwarded when disabled/unset.
             request.AnalysisGateEnabled = null;
             request.AnalysisPacks = null;
@@ -753,7 +772,8 @@ internal sealed class WebApi {
                          !string.IsNullOrWhiteSpace(request.ConfigJson) ||
                          !string.IsNullOrWhiteSpace(request.ConfigPath);
         var hasConfigOverride = !string.IsNullOrWhiteSpace(request.ConfigJson) || !string.IsNullOrWhiteSpace(request.ConfigPath);
-        var analysisApplies = request.WithConfig && !hasConfigOverride;
+        var isSetup = !request.Cleanup && !request.UpdateSecret;
+        var analysisApplies = isSetup && request.WithConfig && !hasConfigOverride;
         if (withConfig) {
             args.Add("--with-config");
         }
