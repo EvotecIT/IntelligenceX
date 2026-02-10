@@ -65,6 +65,7 @@ internal static partial class SetupRunner {
     }
 
     // Test helper kept for backward compatibility in existing tests.
+    [Obsolete("Use BuildReviewerConfigJson for production and new call sites.")]
     internal static string BuildReviewerConfigJsonForTests(string[] args) => BuildReviewerConfigJson(args);
 
     private static string? ReadConfigOverride(SetupOptions options) {
