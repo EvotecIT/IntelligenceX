@@ -56,6 +56,17 @@ internal static partial class Program {
         }
     }
 
+    private static void TestCiPathSafetyUnderRootPhysicalAllowsNestedNonexistentSegments() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-ci-path-nested-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try {
+            var nested = Path.Combine(root, "artifacts", "nested", "changed-files.txt");
+            AssertEqual(true, CiPathSafety.IsUnderRootPhysical(nested, root), "nested non-existent segments allowed");
+        } finally {
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
+
     private static void TestCiChangedFilesWritesIntoNewDirectory() {
         var root = Path.Combine(Path.GetTempPath(), "ix-ci-changed-files-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);

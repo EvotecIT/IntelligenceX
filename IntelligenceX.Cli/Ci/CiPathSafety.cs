@@ -92,7 +92,8 @@ internal static class CiPathSafety {
 	                    return false;
 	                }
 	                if (!Directory.Exists(current)) {
-	                    return false;
+	                    // The remaining segments don't exist yet, so there is nothing further we can validate physically.
+	                    break;
 	                }
 	                if (IsLinkOrReparsePoint(current)) {
 	                    return false;
