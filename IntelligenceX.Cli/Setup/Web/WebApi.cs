@@ -523,44 +523,27 @@ internal sealed class WebApi {
 
         // Analysis flags are only honored when the setup flow is generating/merging reviewer.json.
         // If the user provides a full config override (configJson/configPath), these flags would be ignored by SetupRunner,
-        // so we also ignore them here to avoid misleading behavior.
+        // so reject them here to avoid misleading behavior and hard-to-debug no-op requests.
         var isSetup = !request.Cleanup && !request.UpdateSecret;
         var hasConfigOverride = !string.IsNullOrWhiteSpace(request.ConfigJson) || !string.IsNullOrWhiteSpace(request.ConfigPath);
-        var analysisApplies = isSetup && request.WithConfig && !hasConfigOverride;
-        var hasAnyAnalysis =
-            request.AnalysisEnabled.HasValue ||
-            request.AnalysisGateEnabled.HasValue ||
-            !string.IsNullOrWhiteSpace(request.AnalysisPacks);
-        if (!analysisApplies) {
-            if (hasAnyAnalysis) {
-                context.Response.StatusCode = 400;
-                await WriteJsonAsync(context, new {
-                    error = "Static analysis options are only supported for setup when generating config from presets (withConfig=true and no configJson/configPath override)."
-                }).ConfigureAwait(false);
-                return;
-            }
-            request.AnalysisEnabled = null;
-            request.AnalysisGateEnabled = null;
-            request.AnalysisPacks = null;
-        } else if (request.AnalysisEnabled == true) {
-            if (!SetupAnalysisPacks.TryNormalizeCsv(request.AnalysisPacks, out var normalizedPacks, out var packsError)) {
-                context.Response.StatusCode = 400;
-                await WriteJsonAsync(context, new { error = packsError }).ConfigureAwait(false);
-                return;
-            }
-            request.AnalysisPacks = normalizedPacks;
-        } else {
-            if (request.AnalysisGateEnabled.HasValue || !string.IsNullOrWhiteSpace(request.AnalysisPacks)) {
-                context.Response.StatusCode = 400;
-                await WriteJsonAsync(context, new {
-                    error = "analysisGateEnabled/analysisPacks require analysisEnabled=true."
-                }).ConfigureAwait(false);
-                return;
-            }
-            // Prevent accidental or malicious argv "flag injection" by ensuring these are never forwarded when disabled/unset.
-            request.AnalysisGateEnabled = null;
-            request.AnalysisPacks = null;
+        if (!WebSetupAnalysisValidator.TryValidateAndNormalize(
+            isSetup: isSetup,
+            withConfig: request.WithConfig,
+            hasConfigOverride: hasConfigOverride,
+            analysisEnabled: request.AnalysisEnabled,
+            analysisGateEnabled: request.AnalysisGateEnabled,
+            analysisPacks: request.AnalysisPacks,
+            normalizedEnabled: out var normalizedEnabled,
+            normalizedGateEnabled: out var normalizedGateEnabled,
+            normalizedPacks: out var normalizedPacks,
+            error: out var analysisError)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = analysisError }).ConfigureAwait(false);
+            return;
         }
+        request.AnalysisEnabled = normalizedEnabled;
+        request.AnalysisGateEnabled = normalizedGateEnabled;
+        request.AnalysisPacks = normalizedPacks;
 
         var repos = request.Repos is not null && request.Repos.Count > 0
             ? request.Repos
