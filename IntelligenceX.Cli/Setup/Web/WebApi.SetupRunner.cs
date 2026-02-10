@@ -157,7 +157,7 @@ internal sealed partial class WebApi {
 
             var outputTask = process.StandardOutput.ReadToEndAsync();
             var errorTask = process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync().ConfigureAwait(false);
+            await Task.WhenAll(outputTask, errorTask, process.WaitForExitAsync()).ConfigureAwait(false);
 
             var code = process.ExitCode;
             return new SetupResponse {

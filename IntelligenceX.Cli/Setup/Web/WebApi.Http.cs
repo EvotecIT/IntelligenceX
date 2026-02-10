@@ -30,7 +30,8 @@ internal sealed partial class WebApi {
             }
             ms.Write(buffer, 0, read);
         }
-        return encoding.GetString(ms.ToArray());
+        // Decode only the bytes that were read; GetBuffer() returns the backing array, ms.Length is the valid portion.
+        return encoding.GetString(ms.GetBuffer(), 0, (int)ms.Length);
     }
 
     private async Task WriteJsonAsync(System.Net.HttpListenerContext context, object payload) {
