@@ -166,7 +166,7 @@ internal sealed partial class WebApi {
         if (!string.IsNullOrWhiteSpace(request.ConfigPath)) {
             await WriteJsonOkAsync(context, new {
                 source = "path",
-                note = $"Using config path override: {request.ConfigPath}",
+                note = "Using config path override.",
                 config = (string?)null
             }).ConfigureAwait(false);
             return;
