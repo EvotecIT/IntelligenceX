@@ -49,6 +49,8 @@ internal static partial class Program {
         failed += Run("GitHub repo detector parses git config sections", TestGitHubRepoDetectorParsesGitConfigRemoteSection);
         failed += Run("GitHub secrets reject empty value", TestGitHubSecretsRejectEmptyValue);
         failed += Run("Release reviewer env token", TestReleaseReviewerEnvToken);
+        failed += Run("CI path safety allows non-existent leaf under workspace", TestCiPathSafetyUnderRootPhysicalAllowsNonexistentLeaf);
+        failed += Run("CI changed-files writes into new output directory", TestCiChangedFilesWritesIntoNewDirectory);
 #endif
 
         // Reviewer tests are excluded from NET472 builds (no reviewer references there), and enforced for non-NET472

@@ -40,8 +40,19 @@ internal static class CiPathSafety {
 
             // Check each existing directory segment under the root for symlinks/junctions.
             // This is best-effort and reduces the risk of writing outside the workspace via reparse points.
-            var dirToCheck = Directory.Exists(fullPath) ? fullPath : (Path.GetDirectoryName(fullPath) ?? trimmedRoot);
+            var dirToCheck = Directory.Exists(fullPath)
+                ? fullPath
+                : (Path.GetDirectoryName(fullPath) ?? trimmedRoot);
             dirToCheck = Path.TrimEndingDirectorySeparator(Path.GetFullPath(dirToCheck));
+            while (!string.IsNullOrWhiteSpace(dirToCheck) &&
+                   !Directory.Exists(dirToCheck) &&
+                   !string.Equals(dirToCheck, trimmedRoot, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)) {
+                var parent = Path.GetDirectoryName(dirToCheck);
+                if (string.IsNullOrWhiteSpace(parent)) {
+                    break;
+                }
+                dirToCheck = Path.TrimEndingDirectorySeparator(Path.GetFullPath(parent));
+            }
 
             var relative = Path.GetRelativePath(trimmedRoot, dirToCheck);
             if (relative.StartsWith("..", OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)) {
@@ -54,9 +65,10 @@ internal static class CiPathSafety {
                 if (File.Exists(current)) {
                     return false;
                 }
+                // Only validate reparse points for segments that exist. Non-existent leaf segments may be created later
+                // via TryEnsureSafeDirectory or other safe creation flows.
                 if (!Directory.Exists(current)) {
-                    // Physical containment requires all directory segments to exist (so we can evaluate reparse points).
-                    return false;
+                    break;
                 }
                 var attrs = File.GetAttributes(current);
                 if ((attrs & FileAttributes.ReparsePoint) != 0) {
