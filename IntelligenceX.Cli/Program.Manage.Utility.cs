@@ -287,11 +287,26 @@ internal static partial class Program {
             }
         };
 
-        if (!process.Start()) {
-            return (int.MinValue, string.Empty, "Failed to start process.");
+        try {
+            if (!process.Start()) {
+                stdOutClosed.TrySetResult(true);
+                stdErrClosed.TrySetResult(true);
+                return (int.MinValue, string.Empty, "Failed to start process.");
+            }
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+        } catch (Exception ex) {
+            stdOutClosed.TrySetResult(true);
+            stdErrClosed.TrySetResult(true);
+            try {
+                if (!process.HasExited) {
+                    process.Kill(entireProcessTree: true);
+                }
+            } catch {
+                // ignore kill failures
+            }
+            return (int.MinValue, string.Empty, ex.Message);
         }
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
 
         var completionTask = Task.WhenAll(process.WaitForExitAsync(), stdOutClosed.Task, stdErrClosed.Task);
         var timedOut = false;

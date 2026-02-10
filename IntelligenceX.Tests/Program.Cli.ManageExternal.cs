@@ -29,6 +29,17 @@ internal static partial class Program {
         AssertContainsText(result.StdOut, "  intelligencex", "manage external help final line");
     }
 
+    private static void TestManageRunExternalCommandStartFailureReturnsPromptly() {
+        var timer = Stopwatch.StartNew();
+        var result = global::IntelligenceX.Cli.Program.RunExternalCommandForTests("intelligencex-this-command-does-not-exist", "", timeoutMs: 5000);
+        timer.Stop();
+
+        AssertEqual(int.MinValue, result.ExitCode, "manage external start failure exit code");
+        if (timer.Elapsed > TimeSpan.FromSeconds(2)) {
+            throw new InvalidOperationException($"Expected startup failure test to return promptly, got {timer.Elapsed}.");
+        }
+    }
+
     private static string ResolveCliDllPathForTests() {
         var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         var candidates = new[] {
