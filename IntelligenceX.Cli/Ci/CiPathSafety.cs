@@ -46,6 +46,9 @@ internal static class CiPathSafety {
             return false;
         }
         try {
+            // Strict: only make a "physical" (symlink/junction-aware) containment claim for existing filesystem
+            // objects. If the path doesn't exist yet, callers should create/ensure directories and then validate
+            // the directory chain they will write into.
             var normalizedPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
             var normalizedRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
             var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -57,10 +60,17 @@ internal static class CiPathSafety {
                 return false;
             }
 
-            // Validate the directory chain we will write into. For a non-existent file path, we validate its parent
-            // directory. For a directory path, we require it to exist to make a meaningful "physical" guarantee.
+            // Only validate existing objects to avoid ambiguity between "file path" and "directory path" when the
+            // leaf doesn't exist.
+            var isDir = Directory.Exists(normalizedPath);
+            var isFile = !isDir && File.Exists(normalizedPath);
+            if (!isDir && !isFile) {
+                return false;
+            }
+
+            // Validate the directory chain we will traverse/write into.
             string dirToCheck;
-            if (Directory.Exists(normalizedPath)) {
+            if (isDir) {
                 dirToCheck = normalizedPath;
             } else {
                 var parent = Path.GetDirectoryName(normalizedPath);
@@ -99,7 +109,7 @@ internal static class CiPathSafety {
                 }
             }
 
-            if ((File.Exists(normalizedPath) || Directory.Exists(normalizedPath)) && IsLinkOrReparsePoint(normalizedPath)) {
+            if (IsLinkOrReparsePoint(normalizedPath)) {
                 return false;
             }
 

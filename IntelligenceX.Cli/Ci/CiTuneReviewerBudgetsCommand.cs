@@ -28,13 +28,17 @@ internal static class CiTuneReviewerBudgetsCommand {
 
         var workspaceRoot = ResolveWorkspaceRoot();
         var changedFilesPath = ResolvePathWithinWorkspace(workspaceRoot, options.ChangedFilesPath!);
-        if (!CiPathSafety.IsUnderRootPhysical(changedFilesPath, workspaceRoot)) {
+        if (!CiPathSafety.IsUnderRoot(changedFilesPath, workspaceRoot)) {
             Console.Error.WriteLine($"changed-files path must be within the workspace. changed-files={changedFilesPath} workspace={workspaceRoot}");
             return Task.FromResult(1);
         }
         if (!File.Exists(changedFilesPath)) {
             Console.Error.WriteLine($"No changed-files file found at {changedFilesPath}; leaving budgets unchanged.");
             return Task.FromResult(0);
+        }
+        if (!CiPathSafety.IsUnderRootPhysical(changedFilesPath, workspaceRoot)) {
+            Console.Error.WriteLine($"changed-files path must be within the workspace and not traverse symlinks/junctions. changed-files={changedFilesPath} workspace={workspaceRoot}");
+            return Task.FromResult(1);
         }
 
         var changed = 0;
@@ -134,8 +138,8 @@ internal static class CiTuneReviewerBudgetsCommand {
                     error = $"Failed to prepare env-file output path: {ensureError}";
                     return false;
                 }
-                if (!CiPathSafety.IsUnderRootPhysical(resolvedCandidate, workspaceRoot)) {
-                    error = $"Env-file output path must be within the workspace (and not traverse symlinks/junctions), or equal to $GITHUB_ENV. out-env={resolvedCandidate} workspace={workspaceRoot}";
+                if (!CiPathSafety.IsUnderRootPhysical(dir!, workspaceRoot)) {
+                    error = $"Env-file output directory must be within the workspace (and not traverse symlinks/junctions), or equal to $GITHUB_ENV. out-env={resolvedCandidate} workspace={workspaceRoot}";
                     return false;
                 }
             }
