@@ -46,6 +46,10 @@
   --pf-shadow-button: 0 8px 24px rgba(8, 145, 178, 0.12);
   --pf-success: #059669;
 }
+
+/* API docs fragments inject plain <a> tags (no theme-specific classes). */
+.ix-nav-links a { font-size: 0.9rem; font-weight: 500; color: var(--pf-muted); text-decoration: none; transition: color 0.2s; }
+.ix-nav-links a:hover { color: var(--pf-accent); }
 </style>
 <header class="ix-header">
   <div class="ix-header-inner">
@@ -56,6 +60,11 @@
       </svg>
       <span>IntelligenceX</span>
     </a>
+
+    <button class="ix-nav-toggle" type="button" aria-label="Toggle navigation">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+
     <nav class="ix-nav" aria-label="Main navigation">
       <div class="ix-nav-links">
         {{NAV_LINKS}}

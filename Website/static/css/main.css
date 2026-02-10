@@ -35,8 +35,10 @@ p { margin: 0 0 1rem; color: var(--pf-muted); }
 .ix-logo { flex-shrink: 0; }
 .ix-nav { display: flex; align-items: center; gap: 1.5rem; }
 .ix-nav-links { display: flex; gap: 1.75rem; }
-.ix-nav-link { font-size: 0.9rem; font-weight: 500; color: var(--pf-muted); transition: color 0.2s; }
-.ix-nav-link:hover { color: var(--pf-accent); }
+.ix-nav-links a, .ix-nav-link { font-size: 0.9rem; font-weight: 500; color: var(--pf-muted); text-decoration: none; transition: color 0.2s; }
+.ix-nav-links a:hover, .ix-nav-link:hover { color: var(--pf-accent); }
+.ix-nav-links a.is-active, .ix-nav-link.is-active { color: var(--pf-ink); }
+.ix-nav-links a.is-ancestor, .ix-nav-link.is-ancestor { color: var(--pf-ink); }
 .ix-actions { display: flex; align-items: center; gap: 0.75rem; }
 .nav-icon { color: var(--pf-muted); display: flex; align-items: center; }
 .nav-icon:hover { color: var(--pf-accent); }

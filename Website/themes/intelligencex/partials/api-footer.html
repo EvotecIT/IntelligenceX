@@ -46,13 +46,4 @@
     </div>
   </div>
 </footer>
-<script>
-document.querySelectorAll('.ix-theme-toggle').forEach(function(btn){
-  btn.addEventListener('click',function(){
-    var c=document.documentElement.getAttribute('data-theme')||'dark';
-    var n=c==='dark'?'light':'dark';
-    document.documentElement.setAttribute('data-theme',n);
-    localStorage.setItem('theme',n);
-  });
-});
-</script>
+<script src="/js/main.js" defer></script>

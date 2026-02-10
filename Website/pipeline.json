@@ -43,6 +43,7 @@
       "task": "apidocs",
       "id": "build-apidocs",
       "dependsOn": ["build-library", "build-site"],
+      "config": "./site.json",
       "xml": "../IntelligenceX/bin/Release/net8.0/IntelligenceX.xml",
       "assembly": "../IntelligenceX/bin/Release/net8.0/IntelligenceX.dll",
       "out": "./_site/api",
@@ -51,11 +52,11 @@
       "format": "both",
       "template": "docs",
       "nav": "./site.json",
-      "css": "/css/api.css",
+      "navContextPath": "/",
+      "css": "/css/main.css,/css/api.css",
       "sourceRoot": "..",
       "sourceUrl": "https://github.com/EvotecIT/IntelligenceX/blob/master/{path}#L{line}",
-      "headerHtml": "./themes/intelligencex/partials/api-header.html",
-      "footerHtml": "./themes/intelligencex/partials/api-footer.html"
+      "injectCriticalCss": true
     },
     {
       "task": "llms",
@@ -153,4 +154,3 @@
     }
   ]
 }
-
