@@ -25,13 +25,13 @@ jobs:
       actions: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # Gate uses PR diff for changed-file scoping; ensure merge parents are available.
           fetch-depth: 0
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
 
@@ -72,7 +72,7 @@ jobs:
         run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze hotspots sync-state --config .intelligencex/reviewer.json --workspace . --check
 
       - name: Upload analysis artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always()
         continue-on-error: true
         with:
@@ -95,17 +95,17 @@ jobs:
       INTELLIGENCEX_APP_ID: ${{ secrets.INTELLIGENCEX_GITHUB_APP_ID }}
       INTELLIGENCEX_APP_KEY: ${{ secrets.INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 1
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
 
       - name: Download analysis artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         if: always()
         continue-on-error: true
         with:
@@ -132,7 +132,7 @@ jobs:
       - name: Create GitHub App token
         id: app_token
         if: ${{ env.INTELLIGENCEX_APP_ID != '' && env.INTELLIGENCEX_APP_KEY != '' }}
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ env.INTELLIGENCEX_APP_ID }}
           private-key: ${{ env.INTELLIGENCEX_APP_KEY }}
