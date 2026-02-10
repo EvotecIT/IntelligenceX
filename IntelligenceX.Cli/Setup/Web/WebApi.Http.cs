@@ -39,21 +39,8 @@ internal sealed partial class WebApi {
         var bytes = Encoding.UTF8.GetBytes(json);
         context.Response.ContentType = "application/json; charset=utf-8";
         context.Response.ContentLength64 = bytes.Length;
-        try {
-            await context.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
-            await context.Response.OutputStream.FlushAsync().ConfigureAwait(false);
-        } finally {
-            try {
-                context.Response.OutputStream.Close();
-            } catch {
-                // Best effort close.
-            }
-            try {
-                context.Response.Close();
-            } catch {
-                // Best effort close.
-            }
-        }
+        await context.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
+        await context.Response.OutputStream.FlushAsync().ConfigureAwait(false);
     }
 
     private async Task<string?> ReadJsonBodyAsync(System.Net.HttpListenerContext context) {
