@@ -24,9 +24,6 @@ internal sealed partial class WebApi {
         long total = 0;
         while (true) {
             var remaining = MaxRequestBodyBytes - total;
-            if (remaining <= 0) {
-                throw new RequestBodyTooLargeException();
-            }
             var maxRead = (int)Math.Min(buffer.Length, remaining + 1);
             var read = await context.Request.InputStream.ReadAsync(buffer, 0, maxRead).ConfigureAwait(false);
             if (read <= 0) {
@@ -46,19 +43,8 @@ internal sealed partial class WebApi {
         var bytes = Encoding.UTF8.GetBytes(json);
         context.Response.ContentType = "application/json; charset=utf-8";
         context.Response.ContentLength64 = bytes.Length;
-        // Explicitly close the output stream after writing to avoid truncated responses on HttpListener.
-        var output = context.Response.OutputStream;
-        await output.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
-        await output.FlushAsync().ConfigureAwait(false);
-        try {
-            await output.DisposeAsync().ConfigureAwait(false);
-        } catch {
-            try {
-                output.Close();
-            } catch {
-                // Best effort close.
-            }
-        }
+        await context.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
+        await context.Response.OutputStream.FlushAsync().ConfigureAwait(false);
     }
 
     private Task WriteJsonOkAsync(System.Net.HttpListenerContext context, object payload) {
