@@ -444,6 +444,8 @@ function showOutput(text) {
 function buildRequestBody(dryRun) {
   const skipSecret = shouldSkipSecrets() || secretOption === 'skip';
   const wantAnalysis = selectedOperation === 'setup' && (withConfig.checked || (configJson.value.trim().length > 0) || (configPath.value.trim().length > 0));
+  const analysisOn = wantAnalysis && !!(analysisEnabled && analysisEnabled.checked);
+  const packsRaw = analysisPacks ? analysisPacks.value.trim() : '';
   return {
     repos: selectedRepos(),
     gitHubToken: getToken(),
@@ -466,9 +468,9 @@ function buildRequestBody(dryRun) {
     cleanup: selectedOperation === 'cleanup',
     updateSecret: selectedOperation === 'update-secret',
     keepSecret: keepSecret.checked,
-    analysisEnabled: wantAnalysis ? !!(analysisEnabled && analysisEnabled.checked) : null,
-    analysisGateEnabled: wantAnalysis ? !!(analysisGate && analysisGate.checked) : null,
-    analysisPacks: wantAnalysis ? (analysisPacks ? analysisPacks.value.trim() : '') : null
+    analysisEnabled: wantAnalysis ? analysisOn : null,
+    analysisGateEnabled: analysisOn ? !!(analysisGate && analysisGate.checked) : null,
+    analysisPacks: analysisOn && packsRaw.length > 0 ? packsRaw : null
   };
 }
 

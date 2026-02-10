@@ -17,6 +17,7 @@ namespace IntelligenceX.Cli.Setup.Web;
 
 internal sealed class WebApi {
     private static readonly Regex RepoSegmentRegex = new("^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex AnalysisPackIdRegex = new("^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task HandleAsync(System.Net.HttpListenerContext context) {
@@ -521,6 +522,25 @@ internal sealed class WebApi {
             return;
         }
 
+        if (!TryNormalizeAnalysisPacks(request.AnalysisPacks, out var normalizedPacks, out var packsError)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = packsError }).ConfigureAwait(false);
+            return;
+        }
+        request.AnalysisPacks = normalizedPacks;
+        if (request.AnalysisEnabled is null) {
+            // Backward compatibility / future-proofing: if a client sends packs/gate without the top-level toggle,
+            // assume they intended to enable analysis.
+            if (request.AnalysisGateEnabled.HasValue || request.AnalysisPacks is not null) {
+                request.AnalysisEnabled = true;
+            }
+        }
+        if (request.AnalysisEnabled != true) {
+            // Prevent accidental or malicious argv "flag injection" by ensuring these are never forwarded when disabled.
+            request.AnalysisGateEnabled = null;
+            request.AnalysisPacks = null;
+        }
+
         var repos = request.Repos is not null && request.Repos.Count > 0
             ? request.Repos
             : new List<string> { request.Repo! };
@@ -765,15 +785,15 @@ internal sealed class WebApi {
             args.Add("--review-comment-mode");
             args.Add(request.ReviewCommentMode!);
         }
-        if (request.AnalysisEnabled.HasValue) {
+        if (withConfig && request.AnalysisEnabled.HasValue) {
             args.Add("--analysis-enabled");
             args.Add(request.AnalysisEnabled.Value ? "true" : "false");
         }
-        if (request.AnalysisGateEnabled.HasValue) {
+        if (withConfig && request.AnalysisEnabled != false && request.AnalysisGateEnabled.HasValue) {
             args.Add("--analysis-gate");
             args.Add(request.AnalysisGateEnabled.Value ? "true" : "false");
         }
-        if (!string.IsNullOrWhiteSpace(request.AnalysisPacks)) {
+        if (withConfig && request.AnalysisEnabled != false && !string.IsNullOrWhiteSpace(request.AnalysisPacks)) {
             args.Add("--analysis-packs");
             args.Add(request.AnalysisPacks!);
         }
@@ -809,6 +829,48 @@ internal sealed class WebApi {
             args.Add(request.BranchName!);
         }
         return args.ToArray();
+    }
+
+    private static bool TryNormalizeAnalysisPacks(string? raw, out string? normalized, out string? error) {
+        normalized = null;
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(raw)) {
+            return true;
+        }
+
+        var parts = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 0) {
+            return true;
+        }
+
+        var ids = new List<string>(parts.Length);
+        foreach (var part in parts) {
+            if (string.IsNullOrWhiteSpace(part)) {
+                continue;
+            }
+            if (!AnalysisPackIdRegex.IsMatch(part)) {
+                error = $"Invalid analysis pack id: '{part}'. Use comma-separated ids matching {AnalysisPackIdRegex}.";
+                return false;
+            }
+            ids.Add(part);
+        }
+
+        if (ids.Count == 0) {
+            return true;
+        }
+        if (ids.Count > 100) {
+            error = "Too many analysis pack ids (max 100).";
+            return false;
+        }
+
+        normalized = string.Join(",", ids);
+        if (normalized.Length > 2048) {
+            error = "Analysis pack list is too long.";
+            return false;
+        }
+
+        return true;
     }
 
     private static readonly SemaphoreSlim ConsoleLock = new(1, 1);
