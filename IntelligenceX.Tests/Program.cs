@@ -53,6 +53,7 @@ internal static partial class Program {
         failed += Run("CLI dispatch no-args non-interactive shows help", TestCliDispatchNoArgsNonInteractiveShowsHelp);
         failed += Run("CLI dispatch manage command routes to manage", TestCliDispatchManageCommandRoutesToManage);
         failed += Run("CLI dispatch no-args manage failure fallback", TestCliDispatchNoArgsManageFailureShowsFallbackError);
+        failed += Run("Manage external command timeout returns promptly", TestManageRunExternalCommandTimeoutReturnsPromptly);
         failed += Run("GitHub repo detector parses remote urls", TestGitHubRepoDetectorParsesRemoteUrls);
         failed += Run("GitHub repo detector parses git config sections", TestGitHubRepoDetectorParsesGitConfigRemoteSection);
         failed += Run("GitHub secrets reject empty value", TestGitHubSecretsRejectEmptyValue);

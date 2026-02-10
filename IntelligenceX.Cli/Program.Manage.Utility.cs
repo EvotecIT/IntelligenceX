@@ -212,34 +212,73 @@ internal static partial class Program {
     }
 
     private static (int ExitCode, string StdOut, string StdErr) RunExternalCommand(string fileName, string arguments) {
+        return RunExternalCommand(fileName, arguments, TimeSpan.FromSeconds(30));
+    }
+
+    internal static (int ExitCode, string StdOut, string StdErr) RunExternalCommandForTests(
+        string fileName,
+        string arguments,
+        int timeoutMs) {
+        return RunExternalCommand(fileName, arguments, TimeSpan.FromMilliseconds(timeoutMs));
+    }
+
+    private static (int ExitCode, string StdOut, string StdErr) RunExternalCommand(
+        string fileName,
+        string arguments,
+        TimeSpan timeout) {
         try {
-            var startInfo = new ProcessStartInfo {
-                FileName = fileName,
-                Arguments = arguments,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            using var process = Process.Start(startInfo);
-            if (process is null) {
-                return (int.MinValue, string.Empty, "Failed to start process.");
-            }
-            var stdOut = process.StandardOutput.ReadToEnd();
-            var stdErr = process.StandardError.ReadToEnd();
-            var exited = process.WaitForExit(30000);
-            if (!exited) {
-                try {
-                    process.Kill(entireProcessTree: true);
-                } catch {
-                    // ignore kill failures
-                }
-                return (124, stdOut, string.IsNullOrWhiteSpace(stdErr) ? "Command timed out after 30s." : stdErr);
-            }
-            return (process.ExitCode, stdOut, stdErr);
+            return RunExternalCommandAsync(fileName, arguments, timeout).GetAwaiter().GetResult();
         } catch (Exception ex) {
             return (int.MinValue, string.Empty, ex.Message);
         }
+    }
+
+    private static async Task<(int ExitCode, string StdOut, string StdErr)> RunExternalCommandAsync(
+        string fileName,
+        string arguments,
+        TimeSpan timeout) {
+        var startInfo = new ProcessStartInfo {
+            FileName = fileName,
+            Arguments = arguments,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        using var process = Process.Start(startInfo);
+        if (process is null) {
+            return (int.MinValue, string.Empty, "Failed to start process.");
+        }
+
+        var stdOutTask = process.StandardOutput.ReadToEndAsync();
+        var stdErrTask = process.StandardError.ReadToEndAsync();
+        var exitTask = process.WaitForExitAsync();
+        var timeoutTask = Task.Delay(timeout);
+
+        var completed = await Task.WhenAny(exitTask, timeoutTask).ConfigureAwait(false);
+        if (completed != exitTask) {
+            try {
+                process.Kill(entireProcessTree: true);
+            } catch {
+                // ignore kill failures
+            }
+
+            var drainTask = Task.WhenAll(stdOutTask, stdErrTask);
+            var drainCompleted = await Task.WhenAny(drainTask, Task.Delay(1000)).ConfigureAwait(false);
+            var stdOut = stdOutTask.IsCompletedSuccessfully ? stdOutTask.Result : string.Empty;
+            var stdErr = stdErrTask.IsCompletedSuccessfully ? stdErrTask.Result : string.Empty;
+            if (drainCompleted == drainTask) {
+                await drainTask.ConfigureAwait(false);
+            }
+            if (string.IsNullOrWhiteSpace(stdErr)) {
+                stdErr = $"Command timed out after {Math.Max(1, (int)Math.Ceiling(timeout.TotalSeconds))}s.";
+            }
+            return (124, stdOut, stdErr);
+        }
+
+        await exitTask.ConfigureAwait(false);
+        await Task.WhenAll(stdOutTask, stdErrTask).ConfigureAwait(false);
+        return (process.ExitCode, stdOutTask.Result, stdErrTask.Result);
     }
 
     private static void RenderTitle(string title) {
