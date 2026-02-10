@@ -46,12 +46,23 @@ internal static class GitCli {
         using var cts = new CancellationTokenSource(effectiveTimeout);
         using var drainCts = new CancellationTokenSource();
         var maxBytes = ResolveMaxOutputBytes();
+        var truncation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         // IMPORTANT: stdout/stderr draining must not be coupled to the timeout token; otherwise we can treat
         // large-but-valid output as a timeout even when the process exited successfully.
-        var stdoutTask = ReadAllBytesAsync(proc.StandardOutput.BaseStream, maxBytes, drainCts.Token);
-        var stderrTask = ReadAllBytesAsync(proc.StandardError.BaseStream, maxBytes, drainCts.Token);
+        var stdoutTask = ReadAllBytesAsync(proc.StandardOutput.BaseStream, maxBytes, drainCts.Token, onTruncate: () => truncation.TrySetResult(true));
+        var stderrTask = ReadAllBytesAsync(proc.StandardError.BaseStream, maxBytes, drainCts.Token, onTruncate: () => truncation.TrySetResult(true));
         try {
-            await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
+            var exitTask = proc.WaitForExitAsync(cts.Token);
+            var winner = await Task.WhenAny(exitTask, truncation.Task).ConfigureAwait(false);
+            if (winner == truncation.Task) {
+                // Fail fast: once output is truncated, kill the process and return a clear error instead of waiting for EOF.
+                TryKill(proc);
+                await TryReapAsync(proc).ConfigureAwait(false);
+                drainCts.Cancel();
+                return (126, Array.Empty<byte>(), Utf8NoBom.GetBytes($"git output exceeded {maxBytes} bytes and was truncated."));
+            }
+
+            await exitTask.ConfigureAwait(false);
             await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
         } catch (OperationCanceledException) {
             TryKill(proc);
@@ -132,9 +143,10 @@ internal static class GitCli {
         }
     }
 
-    private static async Task<(byte[] Data, bool Truncated)> ReadAllBytesAsync(Stream stream, int maxBytes, CancellationToken cancellationToken) {
+    private static async Task<(byte[] Data, bool Truncated)> ReadAllBytesAsync(Stream stream, int maxBytes, CancellationToken cancellationToken, Action? onTruncate) {
         // Stream.ReadAllBytesAsync isn't available on all TFMs we target.
         var truncated = false;
+        var truncationSignaled = false;
         using var ms = new MemoryStream(capacity: Math.Min(maxBytes, 64 * 1024));
         var buffer = new byte[16 * 1024];
         var total = 0;
@@ -151,6 +163,10 @@ internal static class GitCli {
                 }
                 if (total >= maxBytes) {
                     truncated = true;
+                    if (!truncationSignaled) {
+                        truncationSignaled = true;
+                        try { onTruncate?.Invoke(); } catch { }
+                    }
                 }
             }
             // If truncated, keep draining without buffering to avoid deadlocks from full pipes.
