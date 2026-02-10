@@ -465,6 +465,15 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `reviewThreadsAutoResolveDiffRange` supports `current`, `pr-base`, or `first-review`.
 - Thread assessment ids are trimmed, expected to be unique, and keyed case-insensitively; missing ids are skipped and duplicate ids keep the last occurrence (with warnings).
 
+## Review thread states (active/resolved/stale)
+
+GitHub can mark a review thread as:
+- active: still anchored to the current diff
+- stale: shown as "Outdated" in the GitHub UI (the diff hunk changed), but the thread may still be unresolved
+- resolved: explicitly resolved (hidden/collapsed by default)
+
+Important: **Outdated does not mean resolved**. Outdated only means the diff context changed. If you want to reduce PR noise from bot-only outdated threads, enable `reviewThreadsAutoResolveStale` to auto-resolve stale threads that contain only bot comments.
+
 ## Auto-resolve troubleshooting
 If you see `Resource not accessible by integration` when resolving threads:
 - Re-authorize or reinstall the GitHub App after permission changes.
