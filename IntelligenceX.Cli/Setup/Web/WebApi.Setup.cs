@@ -100,12 +100,6 @@ internal sealed partial class WebApi {
     }
 
     private async Task HandleSetupEffectiveConfigAsync(System.Net.HttpListenerContext context) {
-        if (!string.Equals(context.Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase)) {
-            context.Response.StatusCode = 405;
-            await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
-            return;
-        }
-
         var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
         if (body is null) {
             return;
