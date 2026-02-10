@@ -44,7 +44,7 @@ internal sealed partial class WebApi {
                 return;
             }
 
-            await WriteJsonAsync(context, new {
+            await WriteJsonOkAsync(context, new {
                 appId = result.AppId,
                 pem = result.Pem
             }).ConfigureAwait(false);
@@ -82,7 +82,7 @@ internal sealed partial class WebApi {
         try {
             using var client = new GitHubAppClient(request.AppId, request.Pem!, apiBaseUrl);
             var installs = await client.ListInstallationsAsync().ConfigureAwait(false);
-            await WriteJsonAsync(context, new {
+            await WriteJsonOkAsync(context, new {
                 installations = installs.ConvertAll(i => new { id = i.Id, login = i.AccountLogin })
             }).ConfigureAwait(false);
         } catch (Exception ex) {
@@ -119,7 +119,7 @@ internal sealed partial class WebApi {
         try {
             using var client = new GitHubAppClient(request.AppId, request.Pem!, apiBaseUrl);
             var token = await client.CreateInstallationTokenAsync(request.InstallationId).ConfigureAwait(false);
-            await WriteJsonAsync(context, new { token }).ConfigureAwait(false);
+            await WriteJsonOkAsync(context, new { token }).ConfigureAwait(false);
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
             Trace.TraceError($"HandleAppTokenAsync failed: {ex}");

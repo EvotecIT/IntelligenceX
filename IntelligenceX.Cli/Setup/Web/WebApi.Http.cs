@@ -42,6 +42,11 @@ internal sealed partial class WebApi {
         await context.Response.OutputStream.FlushAsync().ConfigureAwait(false);
     }
 
+    private Task WriteJsonOkAsync(System.Net.HttpListenerContext context, object payload) {
+        context.Response.StatusCode = 200;
+        return WriteJsonAsync(context, payload);
+    }
+
     private async Task<string?> ReadJsonBodyAsync(System.Net.HttpListenerContext context) {
         if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
             return null;

@@ -34,7 +34,7 @@ internal sealed partial class WebApi {
         try {
             var result = await GitHubDeviceFlowClient.RequestCodeAsync(effectiveClientId, authBaseUrl, request.Scopes)
                 .ConfigureAwait(false);
-            await WriteJsonAsync(context, result).ConfigureAwait(false);
+            await WriteJsonOkAsync(context, result).ConfigureAwait(false);
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
             Trace.TraceError($"HandleDeviceCodeAsync failed: {ex}");
@@ -75,7 +75,7 @@ internal sealed partial class WebApi {
                 await WriteJsonAsync(context, new { error = "Device flow expired. Please start again." }).ConfigureAwait(false);
                 return;
             }
-            await WriteJsonAsync(context, new { token }).ConfigureAwait(false);
+            await WriteJsonOkAsync(context, new { token }).ConfigureAwait(false);
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
             Trace.TraceError($"HandleDevicePollAsync failed: {ex}");

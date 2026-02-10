@@ -57,7 +57,7 @@ internal sealed partial class WebApi {
             var json = AuthBundleSerializer.Serialize(result.Bundle);
             var authB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
 
-            await WriteJsonAsync(context, new {
+            await WriteJsonOkAsync(context, new {
                 authB64,
                 accountId = result.Bundle.AccountId,
                 expiresAt = result.Bundle.ExpiresAt?.ToUniversalTime().ToString("u")
@@ -90,4 +90,3 @@ internal sealed partial class WebApi {
         }
     }
 }
-

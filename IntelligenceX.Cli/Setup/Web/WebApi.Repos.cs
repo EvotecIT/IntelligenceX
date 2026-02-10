@@ -52,13 +52,16 @@ internal sealed partial class WebApi {
             }
 
             if (repos is null) {
-                var message = installError is null
-                    ? userError?.Message ?? "Failed to list repositories."
-                    : $"User repo list failed: {userError?.Message}. Installation repo list failed: {installError.Message}";
-                throw new InvalidOperationException(message);
+                if (userError is not null) {
+                    Trace.TraceWarning($"ListRepositoriesAsync failed: {userError}");
+                }
+                if (installError is not null) {
+                    Trace.TraceWarning($"ListInstallationRepositoriesAsync failed: {installError}");
+                }
+                throw new InvalidOperationException("Failed to list repositories.");
             }
 
-            await WriteJsonAsync(context, new {
+            await WriteJsonOkAsync(context, new {
                 repos = repos.ConvertAll(r => new {
                     name = r.FullName,
                     updatedAt = r.UpdatedAt,
@@ -145,7 +148,7 @@ internal sealed partial class WebApi {
             return;
         }
 
-        await WriteJsonAsync(context, new { status = results }).ConfigureAwait(false);
+        await WriteJsonOkAsync(context, new { status = results }).ConfigureAwait(false);
     }
 
     private async Task HandleRepoConfigAsync(System.Net.HttpListenerContext context) {
@@ -194,7 +197,7 @@ internal sealed partial class WebApi {
                 config = legacyConfig;
             }
 
-            await WriteJsonAsync(context, new {
+            await WriteJsonOkAsync(context, new {
                 config = config.Content,
                 branch = defaultBranch
             }).ConfigureAwait(false);
@@ -269,7 +272,7 @@ internal sealed partial class WebApi {
                 return;
             }
             var managed = workflow.Content.Contains("INTELLIGENCEX:BEGIN", StringComparison.Ordinal);
-            await WriteJsonAsync(context, new {
+            await WriteJsonOkAsync(context, new {
                 workflow = workflow.Content,
                 branch = defaultBranch,
                 managed

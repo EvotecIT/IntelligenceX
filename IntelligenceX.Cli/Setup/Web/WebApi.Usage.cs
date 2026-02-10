@@ -41,11 +41,11 @@ internal sealed partial class WebApi {
 
                 var tempPath = Path.Combine(Path.GetTempPath(), $"intelligencex-auth-{Guid.NewGuid():N}.json");
                 await using (var stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous)) {
+                    TryHardenTempFile(tempPath);
                     var bytes = Encoding.UTF8.GetBytes(content);
                     await stream.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
                 }
 
-                TryHardenTempFile(tempPath);
                 tempFile = new TempFile(tempPath);
                 authPath = tempPath;
             }
@@ -73,7 +73,7 @@ internal sealed partial class WebApi {
             TrySaveCache(report.Snapshot);
 
             var response = BuildUsageResponse(report, DateTimeOffset.UtcNow);
-            await WriteJsonAsync(context, response).ConfigureAwait(false);
+            await WriteJsonOkAsync(context, response).ConfigureAwait(false);
         } catch (FormatException) {
             context.Response.StatusCode = 400;
             await WriteJsonAsync(context, new { error = "Invalid base64 auth bundle." }).ConfigureAwait(false);
@@ -95,7 +95,7 @@ internal sealed partial class WebApi {
 
         try {
             if (!ChatGptUsageCache.TryLoad(out var entry) || entry is null) {
-                await WriteJsonAsync(context, new UsageResponse()).ConfigureAwait(false);
+                await WriteJsonOkAsync(context, new UsageResponse()).ConfigureAwait(false);
                 return;
             }
 
@@ -104,7 +104,7 @@ internal sealed partial class WebApi {
                 Events = new List<UsageEvent>(),
                 UpdatedAt = entry.UpdatedAt.ToUniversalTime().ToString("u")
             };
-            await WriteJsonAsync(context, response).ConfigureAwait(false);
+            await WriteJsonOkAsync(context, response).ConfigureAwait(false);
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
             Trace.TraceError($"HandleUsageCacheAsync failed: {ex}");
@@ -128,4 +128,3 @@ internal sealed partial class WebApi {
         }
     }
 }
-

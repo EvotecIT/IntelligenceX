@@ -91,7 +91,7 @@ internal sealed partial class WebApi {
             outputs.Add(result);
         }
 
-        await WriteJsonAsync(context, new {
+        await WriteJsonOkAsync(context, new {
             results = outputs
         }).ConfigureAwait(false);
     }
