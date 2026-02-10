@@ -90,6 +90,21 @@ internal static class SetupArgsBuilder {
             args.Add(plan.ReviewCommentMode);
         }
 
+        if (plan.AnalysisEnabled.HasValue) {
+            args.Add("--analysis-enabled");
+            args.Add(plan.AnalysisEnabled.Value ? "true" : "false");
+        }
+
+        if (plan.AnalysisGateEnabled.HasValue) {
+            args.Add("--analysis-gate");
+            args.Add(plan.AnalysisGateEnabled.Value ? "true" : "false");
+        }
+
+        if (!string.IsNullOrWhiteSpace(plan.AnalysisPacks)) {
+            args.Add("--analysis-packs");
+            args.Add(plan.AnalysisPacks);
+        }
+
         if (plan.SkipSecret) {
             args.Add("--skip-secret");
         }
@@ -134,5 +149,4 @@ internal static class SetupArgsBuilder {
         return args.ToArray();
     }
 }
-
 

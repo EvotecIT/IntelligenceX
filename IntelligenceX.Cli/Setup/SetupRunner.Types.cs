@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using IntelligenceX.OpenAI.Auth;
 
 namespace IntelligenceX.Cli.Setup;
@@ -39,6 +40,12 @@ internal static partial class SetupRunner {
         public bool Diagnostics { get; set; }
         public bool Preflight { get; set; }
         public int PreflightTimeoutSeconds { get; set; } = 15;
+        public bool AnalysisEnabled { get; set; }
+        public bool AnalysisEnabledSet { get; set; }
+        public bool AnalysisGateEnabled { get; set; }
+        public bool AnalysisGateEnabledSet { get; set; }
+        public string? AnalysisPacks { get; set; }
+        public bool AnalysisPacksSet { get; set; }
         public bool CleanupEnabled { get; set; }
         public string? CleanupMode { get; set; } = "comment";
         public string? CleanupScope { get; set; } = "pr";
@@ -200,6 +207,18 @@ internal static partial class SetupRunner {
                     case "review-comment-mode":
                         options.ReviewCommentMode = value;
                         options.ReviewCommentModeSet = true;
+                        break;
+                    case "analysis-enabled":
+                        options.AnalysisEnabled = ParseBool(value, options.AnalysisEnabled);
+                        options.AnalysisEnabledSet = true;
+                        break;
+                    case "analysis-gate":
+                        options.AnalysisGateEnabled = ParseBool(value, options.AnalysisGateEnabled);
+                        options.AnalysisGateEnabledSet = true;
+                        break;
+                    case "analysis-packs":
+                        options.AnalysisPacks = value;
+                        options.AnalysisPacksSet = true;
                         break;
                     case "config-path":
                         options.ConfigPath = value;
@@ -388,6 +407,12 @@ internal static partial class SetupRunner {
         public bool Diagnostics { get; set; }
         public bool Preflight { get; set; }
         public int PreflightTimeoutSeconds { get; set; } = 15;
+        public bool AnalysisEnabled { get; set; }
+        public bool AnalysisEnabledSet { get; set; }
+        public bool AnalysisGateEnabled { get; set; }
+        public bool AnalysisGateEnabledSet { get; set; }
+        public string[] AnalysisPacks { get; set; } = Array.Empty<string>();
+        public bool AnalysisPacksSet { get; set; }
 
         public static ConfigSettings FromOptions(SetupOptions options) {
             return new ConfigSettings {
@@ -404,8 +429,23 @@ internal static partial class SetupRunner {
                 ProgressUpdates = options.ProgressUpdates,
                 Diagnostics = options.Diagnostics,
                 Preflight = options.Preflight,
-                PreflightTimeoutSeconds = options.PreflightTimeoutSeconds
+                PreflightTimeoutSeconds = options.PreflightTimeoutSeconds,
+                AnalysisEnabled = options.AnalysisEnabled,
+                AnalysisEnabledSet = options.AnalysisEnabledSet,
+                AnalysisGateEnabled = options.AnalysisGateEnabled,
+                AnalysisGateEnabledSet = options.AnalysisGateEnabledSet,
+                AnalysisPacks = SplitCsv(options.AnalysisPacks),
+                AnalysisPacksSet = options.AnalysisPacksSet
             };
+        }
+
+        private static string[] SplitCsv(string? raw) {
+            if (string.IsNullOrWhiteSpace(raw)) {
+                return Array.Empty<string>();
+            }
+            return raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .ToArray();
         }
     }
 
@@ -479,6 +519,9 @@ internal static partial class SetupRunner {
         public bool? Diagnostics { get; set; }
         public bool? Preflight { get; set; }
         public int? PreflightTimeoutSeconds { get; set; }
+        public bool? AnalysisEnabled { get; set; }
+        public bool? AnalysisGateEnabled { get; set; }
+        public string[] AnalysisPacks { get; set; } = Array.Empty<string>();
 
         public bool HasAny =>
             Provider is not null ||
@@ -494,7 +537,10 @@ internal static partial class SetupRunner {
             ProgressUpdates.HasValue ||
             Diagnostics.HasValue ||
             Preflight.HasValue ||
-            PreflightTimeoutSeconds.HasValue;
+            PreflightTimeoutSeconds.HasValue ||
+            AnalysisEnabled.HasValue ||
+            AnalysisGateEnabled.HasValue ||
+            AnalysisPacks.Length > 0;
     }
 
     private sealed class SetupState {
@@ -541,5 +587,3 @@ internal static partial class SetupRunner {
     }
 
 }
-
-

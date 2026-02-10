@@ -10,6 +10,21 @@ internal static partial class Program {
         AssertThrows<InvalidOperationException>(() => SetupArgsBuilder.FromPlan(plan), "skip+update");
     }
 
+    private static void TestSetupArgsIncludeAnalysisOptions() {
+        var plan = new SetupPlan("owner/repo") {
+            AnalysisEnabled = true,
+            AnalysisGateEnabled = true,
+            AnalysisPacks = "all-50,all-100"
+        };
+        var args = SetupArgsBuilder.FromPlan(plan);
+        AssertSequenceEqual(new[] {
+            "--repo", "owner/repo",
+            "--analysis-enabled", "true",
+            "--analysis-gate", "true",
+            "--analysis-packs", "all-50,all-100"
+        }, args, "setup args analysis");
+    }
+
     private static void TestGitHubRepoDetectorParsesRemoteUrls() {
         AssertEqual("owner/repo", GitHubRepoDetector.ParseRepoFromRemoteUrl("https://github.com/owner/repo.git"), "https git");
         AssertEqual("owner/repo", GitHubRepoDetector.ParseRepoFromRemoteUrl("https://github.com/owner/repo"), "https no git");

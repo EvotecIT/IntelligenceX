@@ -225,6 +225,15 @@ internal static partial class SetupRunner {
         if (!options.PreflightTimeoutSecondsSet && snapshot.PreflightTimeoutSeconds.HasValue) {
             settings.PreflightTimeoutSeconds = snapshot.PreflightTimeoutSeconds.Value;
         }
+        if (!options.AnalysisEnabledSet && snapshot.AnalysisEnabled.HasValue) {
+            settings.AnalysisEnabled = snapshot.AnalysisEnabled.Value;
+        }
+        if (!options.AnalysisGateEnabledSet && snapshot.AnalysisGateEnabled.HasValue) {
+            settings.AnalysisGateEnabled = snapshot.AnalysisGateEnabled.Value;
+        }
+        if (!options.AnalysisPacksSet && snapshot.AnalysisPacks.Length > 0) {
+            settings.AnalysisPacks = snapshot.AnalysisPacks;
+        }
 
         return settings;
     }
@@ -250,6 +259,9 @@ internal static partial class SetupRunner {
         if (!string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
             ((JsonObject)root["review"]!)["openaiAccountId"] = settings.OpenAIAccountId;
         }
+        if (settings.AnalysisEnabled) {
+            root["analysis"] = BuildAnalysisConfig(settings);
+        }
 
         return root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
@@ -274,7 +286,75 @@ internal static partial class SetupRunner {
         review["preflight"] = settings.Preflight;
         review["preflightTimeoutSeconds"] = settings.PreflightTimeoutSeconds;
         node["review"] = review;
+        if (settings.AnalysisEnabledSet || settings.AnalysisGateEnabledSet || settings.AnalysisPacksSet) {
+            ApplyAnalysisConfig(node, settings);
+        }
         return node.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private static JsonObject BuildAnalysisConfig(ConfigSettings settings) {
+        var packs = settings.AnalysisPacks.Length > 0 ? settings.AnalysisPacks : new[] { "all-50" };
+        var packsNode = new JsonArray();
+        foreach (var pack in packs) {
+            packsNode.Add(pack);
+        }
+
+        return new JsonObject {
+            ["enabled"] = true,
+            ["packs"] = packsNode,
+            ["configMode"] = "respect",
+            ["gate"] = new JsonObject {
+                // Default to non-blocking onboarding; teams can enable gating explicitly.
+                ["enabled"] = settings.AnalysisGateEnabled,
+                ["minSeverity"] = "warning",
+                ["types"] = new JsonArray("vulnerability", "bug"),
+                ["failOnUnavailable"] = true,
+                ["failOnNoEnabledRules"] = true,
+                ["includeOutsidePackRules"] = false,
+                ["failOnHotspotsToReview"] = false
+            },
+            ["results"] = new JsonObject {
+                ["inputs"] = new JsonArray("artifacts/**/*.sarif", "artifacts/intelligencex.findings.json"),
+                ["minSeverity"] = "warning",
+                ["maxInline"] = 20,
+                ["summary"] = true,
+                ["summaryMaxItems"] = 10,
+                ["summaryPlacement"] = "bottom",
+                ["showPolicy"] = true
+            }
+        };
+    }
+
+    private static void ApplyAnalysisConfig(JsonObject root, ConfigSettings settings) {
+        var analysis = root["analysis"] as JsonObject;
+        if (analysis is null) {
+            // If the caller is toggling analysis on/off, we need a baseline object to edit.
+            analysis = settings.AnalysisEnabled ? BuildAnalysisConfig(settings) : new JsonObject();
+        }
+
+        if (settings.AnalysisEnabledSet) {
+            analysis["enabled"] = settings.AnalysisEnabled;
+        } else if (analysis["enabled"] is null && (settings.AnalysisGateEnabledSet || settings.AnalysisPacksSet)) {
+            analysis["enabled"] = true;
+        }
+
+        if (settings.AnalysisPacksSet) {
+            var packsNode = new JsonArray();
+            foreach (var pack in settings.AnalysisPacks) {
+                if (!string.IsNullOrWhiteSpace(pack)) {
+                    packsNode.Add(pack);
+                }
+            }
+            analysis["packs"] = packsNode;
+        }
+
+        if (settings.AnalysisGateEnabledSet) {
+            var gate = analysis["gate"] as JsonObject ?? new JsonObject();
+            gate["enabled"] = settings.AnalysisGateEnabled;
+            analysis["gate"] = gate;
+        }
+
+        root["analysis"] = analysis;
     }
 
     private static string BuildWorkflowYaml(WorkflowSettings settings) {
@@ -509,6 +589,15 @@ internal static partial class SetupRunner {
                 snapshot.Preflight = ReadJsonBool(review, "preflight");
                 snapshot.PreflightTimeoutSeconds = ReadJsonInt(review, "preflightTimeoutSeconds");
             }
+            var analysis = root["analysis"] as JsonObject;
+            if (analysis is not null) {
+                snapshot.AnalysisEnabled = ReadJsonBool(analysis, "enabled");
+                snapshot.AnalysisPacks = ReadJsonStringArray(analysis, "packs");
+                var gate = analysis["gate"] as JsonObject;
+                if (gate is not null) {
+                    snapshot.AnalysisGateEnabled = ReadJsonBool(gate, "enabled");
+                }
+            }
             return true;
         } catch {
             return false;
@@ -517,6 +606,23 @@ internal static partial class SetupRunner {
 
     private static string? ReadJsonString(JsonObject obj, string key) {
         return obj.TryGetPropertyValue(key, out var value) ? value?.GetValue<string>() : null;
+    }
+
+    private static string[] ReadJsonStringArray(JsonObject obj, string key) {
+        if (!obj.TryGetPropertyValue(key, out var value) || value is null) {
+            return Array.Empty<string>();
+        }
+        if (value is not JsonArray arr || arr.Count == 0) {
+            return Array.Empty<string>();
+        }
+        var list = new List<string>();
+        foreach (var item in arr) {
+            var str = item?.GetValue<string>();
+            if (!string.IsNullOrWhiteSpace(str)) {
+                list.Add(str.Trim());
+            }
+        }
+        return list.ToArray();
     }
 
     private static bool? ReadJsonBool(JsonObject obj, string key) {
@@ -579,6 +685,9 @@ internal static partial class SetupRunner {
         Console.WriteLine("  --review-profile <balanced|picky|highlevel|security|performance|tests|minimal>");
         Console.WriteLine("  --review-mode <hybrid|summary|inline>");
         Console.WriteLine("  --review-comment-mode <sticky|fresh>");
+        Console.WriteLine("  --analysis-enabled <true|false> (write analysis section into reviewer.json)");
+        Console.WriteLine("  --analysis-gate <true|false> (when true, analysis gate can fail CI; default false)");
+        Console.WriteLine("  --analysis-packs <id1,id2> (default all-50 when analysis is enabled)");
         Console.WriteLine("  --config-path <path> (use custom config.json content)");
         Console.WriteLine("  --config-json <json> (use inline config.json content)");
         Console.WriteLine("  --auth-b64 <value> (use pre-exported auth bundle)");

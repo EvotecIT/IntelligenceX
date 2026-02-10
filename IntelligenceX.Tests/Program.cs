@@ -45,6 +45,7 @@ internal static partial class Program {
         failed += Run("Native request body omits previous_response_id", TestNativeRequestBodyOmitsPreviousResponseId);
 #if !NET472
         failed += Run("Setup args reject skip+update", TestSetupArgsRejectSkipUpdate);
+        failed += Run("Setup args include analysis options", TestSetupArgsIncludeAnalysisOptions);
         failed += Run("GitHub repo detector parses remote urls", TestGitHubRepoDetectorParsesRemoteUrls);
         failed += Run("GitHub repo detector parses git config sections", TestGitHubRepoDetectorParsesGitConfigRemoteSection);
         failed += Run("GitHub secrets reject empty value", TestGitHubSecretsRejectEmptyValue);
