@@ -36,6 +36,9 @@ internal static partial class WizardRunner {
         var withConfig = state.WithConfig ||
                          !string.IsNullOrWhiteSpace(state.ConfigPath) ||
                          !string.IsNullOrWhiteSpace(state.ConfigJson);
+        var analysisApplies = withConfig &&
+                              state.Operation == WizardOperation.Setup &&
+                              state.ConfigMode == ConfigMode.Preset;
         var allowSecrets = state.Operation == WizardOperation.Setup;
         var plan = new SetupPlan(repo) {
             GitHubClientId = state.GitHubClientId,
@@ -57,9 +60,9 @@ internal static partial class WizardRunner {
             KeepSecret = state.KeepSecret,
             DryRun = state.DryRun,
             BranchName = state.BranchName,
-            AnalysisEnabled = withConfig && state.Operation == WizardOperation.Setup ? state.AnalysisEnabled : null,
-            AnalysisGateEnabled = withConfig && state.Operation == WizardOperation.Setup ? state.AnalysisGateEnabled : null,
-            AnalysisPacks = withConfig && state.Operation == WizardOperation.Setup ? state.AnalysisPacks : null
+            AnalysisEnabled = analysisApplies ? state.AnalysisEnabled : null,
+            AnalysisGateEnabled = analysisApplies ? state.AnalysisGateEnabled : null,
+            AnalysisPacks = analysisApplies ? state.AnalysisPacks : null
         };
         return plan;
     }
