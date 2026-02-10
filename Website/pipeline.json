@@ -52,6 +52,7 @@
       "format": "both",
       "template": "docs",
       "nav": "./site.json",
+      "navContextPath": "/",
       "css": "/css/main.css,/css/api.css",
       "sourceRoot": "..",
       "sourceUrl": "https://github.com/EvotecIT/IntelligenceX/blob/master/{path}#L{line}",
