@@ -116,7 +116,8 @@ internal sealed partial class WebApi {
             await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
             return false;
         }
-        var csrfHeader = context.Request.Headers[SetupCsrfHeaderName];
+        var csrfHeaders = context.Request.Headers.GetValues(SetupCsrfHeaderName);
+        var csrfHeader = csrfHeaders is { Length: 1 } ? csrfHeaders[0] : null;
         if (!string.Equals(csrfHeader, SetupCsrfHeaderValue, StringComparison.Ordinal)) {
             context.Response.StatusCode = 403;
             await WriteJsonAsync(context, new { error = "Missing or invalid setup CSRF header." }).ConfigureAwait(false);
