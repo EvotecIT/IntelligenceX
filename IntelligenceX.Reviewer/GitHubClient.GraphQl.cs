@@ -12,15 +12,26 @@ internal sealed partial class GitHubClient {
         if (string.IsNullOrWhiteSpace(queryText)) {
             return false;
         }
-        const string MutationKeyword = "mutation";
         var trimmed = TrimGraphQlLeadingTrivia(queryText);
-        if (!trimmed.StartsWith(MutationKeyword, StringComparison.OrdinalIgnoreCase)) {
+        if (trimmed.Length == 0) {
             return false;
         }
-        if (trimmed.Length == MutationKeyword.Length) {
+
+        var i = 0;
+        while (i < trimmed.Length && char.IsLetter(trimmed[i])) {
+            i++;
+        }
+        if (i == 0) {
+            return false;
+        }
+        var keyword = trimmed[..i];
+        if (!keyword.Equals("mutation", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+        if (i == trimmed.Length) {
             return true;
         }
-        var next = trimmed[MutationKeyword.Length];
+        var next = trimmed[i];
         return char.IsWhiteSpace(next) || next == '(' || next == '{';
     }
 
