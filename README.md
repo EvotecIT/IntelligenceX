@@ -70,10 +70,21 @@ Start here: `Docs/index.md`
 
 ## Build
 
-Full build check (includes legacy TFMs on any OS):
+Full build check:
 
 ```powershell
-pwsh ./Build/Build-All.ps1 -Configuration Release
+dotnet build IntelligenceX.sln -c Release
+dotnet test IntelligenceX.sln -c Release
+
+# CI also runs the executable test harness (recommended locally before pushing):
+dotnet ./IntelligenceX.Tests/bin/Release/net8.0/IntelligenceX.Tests.dll
+dotnet ./IntelligenceX.Tests/bin/Release/net10.0/IntelligenceX.Tests.dll
+```
+
+Publish the CLI (self-contained single-file):
+
+```powershell
+pwsh ./Build/Publish-Cli.ps1 -Runtime win-x64 -Configuration Release -Framework net8.0
 ```
 
 ## License
