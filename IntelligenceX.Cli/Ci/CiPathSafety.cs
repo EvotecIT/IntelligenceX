@@ -75,6 +75,9 @@ internal static class CiPathSafety {
 	            }
 
 	            var relative = Path.GetRelativePath(normalizedRoot, dirToCheck);
+	            if (string.Equals(relative, ".", StringComparison.Ordinal)) {
+	                relative = string.Empty;
+	            }
 	            if (relative.StartsWith("..", comparison)) {
 	                return false;
 	            }
@@ -96,17 +99,19 @@ internal static class CiPathSafety {
 	                }
 	            }
 
-	            // If the leaf exists (file or directory), ensure it isn't itself a reparse point.
-	            if (File.Exists(normalizedPath) || Directory.Exists(normalizedPath)) {
-	                if (IsLinkOrReparsePoint(normalizedPath)) {
-	                    return false;
-	                }
+	            var leafExists = File.Exists(normalizedPath) || Directory.Exists(normalizedPath);
+	            if (!leafExists) {
+	                return true;
+	            }
+	            // If the leaf exists (file or directory), ensure it isn't itself a symlink/junction/reparse point.
+	            if (IsLinkOrReparsePoint(normalizedPath)) {
+	                return false;
 	            }
 
-            return true;
-        } catch {
-            return false;
-        }
+	            return true;
+	        } catch {
+	            return false;
+	        }
     }
 
 	    internal static bool TryEnsureSafeDirectory(string directoryPath, string root, out string error) {
