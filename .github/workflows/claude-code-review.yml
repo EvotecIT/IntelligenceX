@@ -28,7 +28,7 @@ jobs:
     steps:
       - name: Detect workflow file changes
         id: changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3
         with:
           filters: |
             claude_workflows:
@@ -36,7 +36,7 @@ jobs:
               - '.github/workflows/claude.yml'
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 1
 
@@ -51,7 +51,7 @@ jobs:
         id: claude-review
         if: steps.changes.outputs.claude_workflows != 'true' && secrets.CLAUDE_CODE_OAUTH_TOKEN != ''
         continue-on-error: true
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@67805944d388cd9d66742b65ed24fb3d844f0399 # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
