@@ -87,58 +87,9 @@ internal static class GitCli {
     }
 
     public static async Task<(int ExitCode, string StdOut, string StdErr)> RunAsync(string? workingDirectory, TimeSpan? timeout, params string[] args) {
-        var psi = new ProcessStartInfo {
-            FileName = "git",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false
-        };
-        if (!string.IsNullOrWhiteSpace(workingDirectory)) {
-            psi.WorkingDirectory = workingDirectory;
-        }
-        foreach (var a in args) {
-            psi.ArgumentList.Add(a);
-        }
-
-        using var proc = new Process { StartInfo = psi };
-        try {
-            proc.Start();
-        } catch (Exception ex) {
-            return (127, string.Empty, ex.Message);
-        }
-
-        var effectiveTimeout = ResolveTimeout(timeout);
-        using var cts = new CancellationTokenSource(effectiveTimeout);
-        using var drainCts = new CancellationTokenSource();
-        var stdoutTask = proc.StandardOutput.ReadToEndAsync(drainCts.Token);
-        var stderrTask = proc.StandardError.ReadToEndAsync(drainCts.Token);
-        try {
-            await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
-            // Ensure we drain stdout/stderr after process exit; otherwise we can return truncated output.
-            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
-        } catch (OperationCanceledException) {
-            TryKill(proc);
-            await TryReapAsync(proc).ConfigureAwait(false);
-            drainCts.Cancel();
-            return (124, string.Empty, $"git command timed out after {effectiveTimeout.TotalSeconds:0}s.");
-        } catch (Exception ex) {
-            TryKill(proc);
-            await TryReapAsync(proc).ConfigureAwait(false);
-            drainCts.Cancel();
-            return (125, string.Empty, ex.Message);
-        } finally {
-            try {
-                if (drainCts.IsCancellationRequested) {
-                    await Task.WhenAll(stdoutTask, stderrTask).WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
-                } else {
-                    await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
-                }
-            } catch {
-                // ignore
-            }
-        }
-
-        return (proc.ExitCode, SafeTaskResult(stdoutTask), SafeTaskResult(stderrTask));
+        // Reuse the bounded-output implementation to avoid pipe deadlocks/hangs.
+        var result = await RunBytesAsync(workingDirectory, timeout, args).ConfigureAwait(false);
+        return (result.ExitCode, DecodeUtf8(result.StdOut), DecodeUtf8(result.StdErr));
     }
 
     private static void TryKill(Process proc) {
@@ -161,11 +112,15 @@ internal static class GitCli {
         }
     }
 
-    private static string SafeTaskResult(Task<string> task) {
-        try {
-            return task.GetAwaiter().GetResult();
-        } catch {
+    private static string DecodeUtf8(byte[] bytes) {
+        if (bytes.Length == 0) {
             return string.Empty;
+        }
+        try {
+            return Utf8NoBom.GetString(bytes);
+        } catch {
+            // Defensive: GetString shouldn't throw for UTF-8, but avoid bubbling errors from diagnostics paths.
+            return Encoding.UTF8.GetString(bytes);
         }
     }
 
