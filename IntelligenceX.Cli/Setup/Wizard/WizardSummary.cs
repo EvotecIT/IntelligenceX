@@ -131,7 +131,7 @@ internal static class WizardSummary {
             try {
                 var parsed = JsonNode.Parse(plan.ConfigJson!);
                 return parsed?.ToJsonString(CliJson.Indented) ?? plan.ConfigJson;
-            } catch {
+            } catch (JsonException) {
                 return plan.ConfigJson;
             }
         }

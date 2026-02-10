@@ -54,6 +54,11 @@ internal sealed partial class WebApi {
                 return;
             }
             if (normalizedPath.Equals("/api/setup/effective-config", StringComparison.OrdinalIgnoreCase)) {
+                if (!string.Equals(context.Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase)) {
+                    context.Response.StatusCode = 405;
+                    await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+                    return;
+                }
                 await HandleSetupEffectiveConfigAsync(context).ConfigureAwait(false);
                 return;
             }
