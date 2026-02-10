@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.Auth;
@@ -248,53 +249,83 @@ internal static partial class Program {
             UseShellExecute = false,
             CreateNoWindow = true
         };
-        using var process = Process.Start(startInfo);
-        if (process is null) {
+        using var process = new Process { StartInfo = startInfo };
+        var outputLock = new object();
+        var stdOut = new StringBuilder();
+        var stdErr = new StringBuilder();
+        process.OutputDataReceived += (_, eventArgs) => {
+            if (eventArgs.Data is null) {
+                return;
+            }
+            lock (outputLock) {
+                if (stdOut.Length > 0) {
+                    stdOut.AppendLine();
+                }
+                stdOut.Append(eventArgs.Data);
+            }
+        };
+        process.ErrorDataReceived += (_, eventArgs) => {
+            if (eventArgs.Data is null) {
+                return;
+            }
+            lock (outputLock) {
+                if (stdErr.Length > 0) {
+                    stdErr.AppendLine();
+                }
+                stdErr.Append(eventArgs.Data);
+            }
+        };
+
+        if (!process.Start()) {
             return (int.MinValue, string.Empty, "Failed to start process.");
         }
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
 
-        var stdOutTask = process.StandardOutput.ReadToEndAsync();
-        var stdErrTask = process.StandardError.ReadToEndAsync();
-        var completionTask = WaitForProcessAndStreamDrainAsync(process, stdOutTask, stdErrTask);
-        var timeoutTask = Task.Delay(timeout);
-
-        var completed = await Task.WhenAny(completionTask, timeoutTask).ConfigureAwait(false);
-        if (completed != completionTask) {
+        var timedOut = false;
+        try {
+            await process.WaitForExitAsync().WaitAsync(timeout).ConfigureAwait(false);
+        } catch (TimeoutException) {
+            timedOut = true;
             try {
                 process.Kill(entireProcessTree: true);
             } catch {
                 // ignore kill failures
             }
             try {
-                await WaitForProcessAndStreamDrainAsync(process, stdOutTask, stdErrTask)
-                    .WaitAsync(TimeSpan.FromSeconds(2))
-                    .ConfigureAwait(false);
+                await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
             } catch (TimeoutException) {
-                // best effort: process may already be terminating
+                // best effort: process may still be terminating
             } catch (InvalidOperationException) {
                 // process was not started or already exited
             }
-
-            var drainTask = Task.WhenAll(stdOutTask, stdErrTask);
-            var drainCompleted = await Task.WhenAny(drainTask, Task.Delay(1000)).ConfigureAwait(false);
-            var stdOut = stdOutTask.IsCompletedSuccessfully ? stdOutTask.Result : string.Empty;
-            var stdErr = stdErrTask.IsCompletedSuccessfully ? stdErrTask.Result : string.Empty;
-            if (drainCompleted == drainTask) {
-                await drainTask.ConfigureAwait(false);
+        } finally {
+            try {
+                process.CancelOutputRead();
+            } catch {
+                // ignore cancel failures
             }
-            if (string.IsNullOrWhiteSpace(stdErr)) {
-                stdErr = $"Command timed out after {Math.Max(1, (int)Math.Ceiling(timeout.TotalSeconds))}s.";
+            try {
+                process.CancelErrorRead();
+            } catch {
+                // ignore cancel failures
             }
-            return (124, stdOut, stdErr);
         }
 
-        await completionTask.ConfigureAwait(false);
-        return (process.ExitCode, stdOutTask.Result, stdErrTask.Result);
-    }
+        string outText;
+        string errText;
+        lock (outputLock) {
+            outText = stdOut.ToString();
+            errText = stdErr.ToString();
+        }
+        if (timedOut) {
+            if (string.IsNullOrWhiteSpace(errText)) {
+                errText = $"Command timed out after {Math.Max(1, (int)Math.Ceiling(timeout.TotalSeconds))}s.";
+            }
+            return (124, outText, errText);
+        }
 
-    private static async Task WaitForProcessAndStreamDrainAsync(Process process, Task<string> stdOutTask, Task<string> stdErrTask) {
-        await process.WaitForExitAsync().ConfigureAwait(false);
-        await Task.WhenAll(stdOutTask, stdErrTask).ConfigureAwait(false);
+        return (process.ExitCode, outText, errText);
     }
 
     private static void RenderTitle(string title) {
