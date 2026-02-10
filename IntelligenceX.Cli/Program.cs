@@ -27,18 +27,7 @@ internal static partial class Program {
 
         if (args.Length == 0) {
             if (canLaunch()) {
-                try {
-                    return await runManage(Array.Empty<string>()).ConfigureAwait(false);
-                } catch (Exception ex) when (IsManageLaunchOperationalException(ex)) {
-                    Console.Error.WriteLine("Failed to launch management hub.");
-                    if (ShouldShowDetailedErrors()) {
-                        Console.Error.WriteLine(ex.ToString());
-                    } else {
-                        Console.Error.WriteLine("Set INTELLIGENCEX_DEBUG=1 for exception details.");
-                    }
-                    PrintHelp();
-                    return 1;
-                }
+                return await RunManageWithFallbackAsync(runManage, Array.Empty<string>()).ConfigureAwait(false);
             }
             PrintHelp();
             return 1;
@@ -55,7 +44,7 @@ internal static partial class Program {
             "ci" => await Ci.CiRunner.RunAsync(rest).ConfigureAwait(false),
             "reviewer" => await RunReviewerAsync(rest).ConfigureAwait(false),
             "setup" => await RunSetupAsync(rest).ConfigureAwait(false),
-            "manage" => await runManage(rest).ConfigureAwait(false),
+            "manage" => await RunManageWithFallbackAsync(runManage, rest).ConfigureAwait(false),
             "doctor" => await Doctor.DoctorRunner.RunAsync(rest).ConfigureAwait(false),
             "todo" => await Todo.TodoRunner.RunAsync(rest).ConfigureAwait(false),
             "release" => await RunReleaseAsync(rest).ConfigureAwait(false),
@@ -63,6 +52,21 @@ internal static partial class Program {
             "help" or "-h" or "--help" => PrintHelpReturn(),
             _ => PrintHelpReturn()
         };
+    }
+
+    private static async Task<int> RunManageWithFallbackAsync(Func<string[], Task<int>> runManage, string[] args) {
+        try {
+            return await runManage(args).ConfigureAwait(false);
+        } catch (Exception ex) when (IsManageLaunchOperationalException(ex)) {
+            Console.Error.WriteLine("Failed to launch management hub.");
+            if (ShouldShowDetailedErrors()) {
+                Console.Error.WriteLine(ex.ToString());
+            } else {
+                Console.Error.WriteLine("Set INTELLIGENCEX_DEBUG=1 for exception details.");
+            }
+            PrintHelp();
+            return 1;
+        }
     }
 
     private static bool IsManageLaunchOperationalException(Exception ex) {

@@ -64,6 +64,21 @@ internal static partial class Program {
         AssertContainsText(stdout, "Usage:", "dispatch no-args manage failure help output");
     }
 
+    private static void TestCliDispatchManageCommandFailureShowsFallbackError() {
+        var (exit, stdout, stderr) = RunCliDispatchWithCapturedOutput(
+            new[] { "manage" },
+            () => false,
+            _ => throw new InvalidOperationException("boom"));
+
+        AssertEqual(1, exit, "dispatch manage command failure exit");
+        AssertContainsText(stderr, "Failed to launch management hub.", "dispatch manage command failure stderr");
+        AssertContainsText(stderr, "INTELLIGENCEX_DEBUG=1", "dispatch manage command failure debug hint");
+        if (stderr.IndexOf("boom", StringComparison.Ordinal) >= 0) {
+            throw new InvalidOperationException("Expected manage command failure stderr to hide raw exception details by default.");
+        }
+        AssertContainsText(stdout, "Usage:", "dispatch manage command failure help output");
+    }
+
     private static (int ExitCode, string StdOut, string StdErr) RunCliDispatchWithCapturedOutput(
         string[] args,
         Func<bool> canLaunchManageHub,
