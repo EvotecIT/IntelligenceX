@@ -165,11 +165,15 @@ public static partial class ReviewerApp {
             }
 
             using var github = new GitHubClient(token, maxConcurrency: settings.GitHubMaxConcurrency);
-            // Lightweight adapter over github; it does not own additional resources.
-            IReviewCodeHostReader codeHostReader = new GitHubCodeHostReader(github);
             using var fallbackGithub = string.IsNullOrWhiteSpace(fallbackToken)
                 ? null
                 : new GitHubClient(fallbackToken, maxConcurrency: settings.GitHubMaxConcurrency);
+
+            // Prefer the standard GITHUB_TOKEN for read operations when available; some GitHub App tokens are
+            // intentionally scoped for writes/comments and may not have full PR read access in all environments.
+            var readGithub = fallbackGithub ?? github;
+            // Lightweight adapter over github; it does not own additional resources.
+            IReviewCodeHostReader codeHostReader = new GitHubCodeHostReader(readGithub);
             var eventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
             if (!string.IsNullOrWhiteSpace(eventPath) && File.Exists(eventPath)) {
                 var json = await File.ReadAllTextAsync(eventPath).ConfigureAwait(false);
@@ -496,6 +500,7 @@ public static partial class ReviewerApp {
             return 130;
         } catch (Exception ex) {
             Console.Error.WriteLine(ex.Message);
+            var failOpen = settings is not null && ReviewRunner.ShouldFailOpen(settings, ex);
             if (!summaryPosted &&
                 commentId.HasValue &&
                 allowWrites &&
@@ -512,7 +517,7 @@ public static partial class ReviewerApp {
                     Console.Error.WriteLine($"Failed to update review comment after error: {updateEx.Message}");
                 }
             }
-            return 1;
+            return failOpen ? 0 : 1;
         } finally {
             secretsAudit?.WriteSummary();
             secretsAudit?.Dispose();

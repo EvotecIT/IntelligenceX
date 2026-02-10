@@ -46,23 +46,8 @@ jobs:
       - name: Run static analysis
         run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze run --config .intelligencex/reviewer.json --out artifacts --framework net8.0
 
-      - name: Init changed files list
-        run: |
-          mkdir -p artifacts
-          : > artifacts/changed-files.txt
-
-      - name: Compute PR changed files
-        if: ${{ github.event_name == 'pull_request' }}
-        run: |
-          mkdir -p artifacts
-          if git rev-parse HEAD^2 >/dev/null 2>&1; then
-            base="$(git rev-parse HEAD^1)"
-            head="$(git rev-parse HEAD^2)"
-            git diff --name-only "$base" "$head" > artifacts/changed-files.txt
-          else
-            git diff --name-only > artifacts/changed-files.txt
-          fi
-          echo "Changed files: $(wc -l < artifacts/changed-files.txt)"
+      - name: Compute changed files
+        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- ci changed-files --workspace . --out artifacts/changed-files.txt
 
       - name: Static analysis gate
         run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze gate --config .intelligencex/reviewer.json --workspace . --changed-files artifacts/changed-files.txt
@@ -114,20 +99,7 @@ jobs:
 
       - name: Tune reviewer budgets for large PRs
         if: ${{ github.event_name == 'pull_request' }}
-        run: |
-          if [ ! -f artifacts/changed-files.txt ]; then
-            echo "No changed-files artifact found; using default reviewer budgets."
-            exit 0
-          fi
-          changed="$(wc -l < artifacts/changed-files.txt | tr -d ' ')"
-          catalog="$(grep -cE '^Analysis/Catalog/(rules|overrides)/' artifacts/changed-files.txt || true)"
-          if [ "${changed:-0}" -gt 30 ] || [ "${catalog:-0}" -gt 10 ]; then
-            echo "Detected large diff (changed=${changed}, catalog=${catalog}); expanding reviewer context limits."
-            echo "INPUT_MAX_FILES=200" >> "$GITHUB_ENV"
-            echo "INPUT_MAX_PATCH_CHARS=120000" >> "$GITHUB_ENV"
-          else
-            echo "Diff size within default limits (changed=${changed}, catalog=${catalog}); using defaults."
-          fi
+        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- ci tune-reviewer-budgets --changed-files artifacts/changed-files.txt
 
       - name: Create GitHub App token
         id: app_token

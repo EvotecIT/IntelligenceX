@@ -27,6 +27,7 @@ internal static partial class Program {
         return command switch {
             "auth" => await RunAuthAsync(rest).ConfigureAwait(false),
             "analyze" => await Analysis.AnalyzeRunner.RunAsync(rest).ConfigureAwait(false),
+            "ci" => await Ci.CiRunner.RunAsync(rest).ConfigureAwait(false),
             "reviewer" => await RunReviewerAsync(rest).ConfigureAwait(false),
             "setup" => await RunSetupAsync(rest).ConfigureAwait(false),
             "doctor" => await Doctor.DoctorRunner.RunAsync(rest).ConfigureAwait(false),
