@@ -38,6 +38,24 @@ internal static partial class Program {
         }
     }
 
+    private static void TestCiPathSafetyUnderRootPhysicalRejectsSymlinkTraversal() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-ci-path-symlink-" + Guid.NewGuid().ToString("N"));
+        var outside = Path.Combine(Path.GetTempPath(), "ix-ci-path-outside-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(outside);
+        try {
+            var link = Path.Combine(root, "link");
+            Directory.CreateSymbolicLink(link, outside);
+            AssertEqual(true, Directory.Exists(link), "symlink directory exists");
+
+            var target = Path.Combine(link, "x.txt");
+            AssertEqual(false, CiPathSafety.IsUnderRootPhysical(target, root), "reject symlink traversal");
+        } finally {
+            try { Directory.Delete(root, recursive: true); } catch { }
+            try { Directory.Delete(outside, recursive: true); } catch { }
+        }
+    }
+
     private static void TestCiChangedFilesWritesIntoNewDirectory() {
         var root = Path.Combine(Path.GetTempPath(), "ix-ci-changed-files-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);

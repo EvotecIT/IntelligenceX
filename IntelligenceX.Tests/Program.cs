@@ -51,6 +51,7 @@ internal static partial class Program {
         failed += Run("Release reviewer env token", TestReleaseReviewerEnvToken);
         failed += Run("CI path safety allows non-existent leaf under workspace", TestCiPathSafetyUnderRootPhysicalAllowsNonexistentLeaf);
         failed += Run("CI path safety handles trailing separators", TestCiPathSafetyUnderRootPhysicalTrailingSeparators);
+        failed += Run("CI path safety rejects symlink traversal", TestCiPathSafetyUnderRootPhysicalRejectsSymlinkTraversal);
         failed += Run("CI changed-files writes into new output directory", TestCiChangedFilesWritesIntoNewDirectory);
         failed += Run("CI changed-files strict fails on diff failure even with fallback", TestCiChangedFilesStrictFailsWhenDiffFailsEvenIfFallbackSucceeds);
 #endif

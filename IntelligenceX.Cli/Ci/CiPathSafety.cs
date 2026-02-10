@@ -4,6 +4,24 @@ using System.IO;
 namespace IntelligenceX.Cli.Ci;
 
 internal static class CiPathSafety {
+    private static bool IsLinkOrReparsePoint(string path) {
+        try {
+            FileSystemInfo fsi;
+            if (Directory.Exists(path)) {
+                fsi = new DirectoryInfo(path);
+            } else {
+                fsi = new FileInfo(path);
+            }
+            if (!string.IsNullOrWhiteSpace(fsi.LinkTarget)) {
+                return true;
+            }
+            var attrs = File.GetAttributes(path);
+            return (attrs & FileAttributes.ReparsePoint) != 0;
+        } catch {
+            return false;
+        }
+    }
+
     internal static bool IsUnderRoot(string path, string root) {
         if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(root)) {
             return false;
@@ -33,10 +51,11 @@ internal static class CiPathSafety {
 	            var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 	
 	            if (Directory.Exists(normalizedRoot)) {
-	                var rootAttrs = File.GetAttributes(normalizedRoot);
-	                if ((rootAttrs & FileAttributes.ReparsePoint) != 0) {
+	                if (IsLinkOrReparsePoint(normalizedRoot)) {
 	                    return false;
 	                }
+	            } else {
+	                return false;
 	            }
 
             // Check each existing directory segment under the root for symlinks/junctions.
@@ -69,21 +88,17 @@ internal static class CiPathSafety {
 	                if (File.Exists(current)) {
 	                    return false;
 	                }
-                // Only validate reparse points for segments that exist. Non-existent leaf segments may be created later
-                // via TryEnsureSafeDirectory or other safe creation flows.
-                if (!Directory.Exists(current)) {
-                    break;
-                }
-                var attrs = File.GetAttributes(current);
-                if ((attrs & FileAttributes.ReparsePoint) != 0) {
-                    return false;
-                }
+	                if (!Directory.Exists(current)) {
+	                    return false;
+	                }
+	                if (IsLinkOrReparsePoint(current)) {
+	                    return false;
+	                }
 	            }
 
 	            // If the leaf exists (file or directory), ensure it isn't itself a reparse point.
 	            if (File.Exists(normalizedPath) || Directory.Exists(normalizedPath)) {
-	                var leafAttrs = File.GetAttributes(normalizedPath);
-	                if ((leafAttrs & FileAttributes.ReparsePoint) != 0) {
+	                if (IsLinkOrReparsePoint(normalizedPath)) {
 	                    return false;
 	                }
 	            }
@@ -94,7 +109,7 @@ internal static class CiPathSafety {
         }
     }
 
-    internal static bool TryEnsureSafeDirectory(string directoryPath, string root, out string error) {
+	    internal static bool TryEnsureSafeDirectory(string directoryPath, string root, out string error) {
         error = string.Empty;
         if (string.IsNullOrWhiteSpace(directoryPath) || string.IsNullOrWhiteSpace(root)) {
             error = "Invalid directory path.";
@@ -108,14 +123,16 @@ internal static class CiPathSafety {
                 return false;
             }
 
-            var trimmedRoot = Path.TrimEndingDirectorySeparator(fullRoot);
-            if (Directory.Exists(trimmedRoot)) {
-                var rootAttrs = File.GetAttributes(trimmedRoot);
-                if ((rootAttrs & FileAttributes.ReparsePoint) != 0) {
-                    error = "Workspace root is a symlink/junction (reparse point).";
-                    return false;
-                }
-            }
+	            var trimmedRoot = Path.TrimEndingDirectorySeparator(fullRoot);
+	            if (Directory.Exists(trimmedRoot)) {
+	                if (IsLinkOrReparsePoint(trimmedRoot)) {
+	                    error = "Workspace root is a symlink/junction (reparse point).";
+	                    return false;
+	                }
+	            } else {
+	                error = "Workspace root not found.";
+	                return false;
+	            }
 
             var relative = Path.GetRelativePath(trimmedRoot, fullDir);
             if (relative.StartsWith("..", OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)) {
@@ -130,15 +147,14 @@ internal static class CiPathSafety {
                     error = $"Path segment is a file, not a directory: {current}";
                     return false;
                 }
-                if (!Directory.Exists(current)) {
-                    Directory.CreateDirectory(current);
-                }
-                var attrs = File.GetAttributes(current);
-                if ((attrs & FileAttributes.ReparsePoint) != 0) {
-                    error = $"Path contains a symlink/junction component: {current}";
-                    return false;
-                }
-            }
+	                if (!Directory.Exists(current)) {
+	                    Directory.CreateDirectory(current);
+	                }
+	                if (IsLinkOrReparsePoint(current)) {
+	                    error = $"Path contains a symlink/junction component: {current}";
+	                    return false;
+	                }
+	            }
 
             return true;
         } catch (Exception ex) {
