@@ -40,19 +40,37 @@ internal sealed partial class WebApi {
                 var content = Encoding.UTF8.GetString(raw);
 
                 var tempPath = Path.Combine(Path.GetTempPath(), $"intelligencex-auth-{Guid.NewGuid():N}.json");
-                var streamOptions = new FileStreamOptions {
-                    Mode = FileMode.CreateNew,
-                    Access = FileAccess.Write,
-                    Share = FileShare.None,
-                    Options = FileOptions.Asynchronous
-                };
-                if (!OperatingSystem.IsWindows()) {
-                    streamOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-                }
-                await using (var stream = new FileStream(tempPath, streamOptions)) {
+                var bytes = Encoding.UTF8.GetBytes(content);
+
+                // Harden permissions before writing sensitive content.
+                if (OperatingSystem.IsWindows()) {
+                    // On Windows we harden after creating and closing the empty file to maximize chances
+                    // that ACL changes succeed.
+                    using (new FileStream(tempPath, new FileStreamOptions {
+                        Mode = FileMode.CreateNew,
+                        Access = FileAccess.Write,
+                        Share = FileShare.None
+                    })) { }
                     TryHardenTempFile(tempPath);
-                    var bytes = Encoding.UTF8.GetBytes(content);
-                    await stream.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
+                    await using (var stream = new FileStream(tempPath, new FileStreamOptions {
+                        Mode = FileMode.Open,
+                        Access = FileAccess.Write,
+                        Share = FileShare.None,
+                        Options = FileOptions.Asynchronous
+                    })) {
+                        await stream.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
+                    }
+                } else {
+                    await using (var stream = new FileStream(tempPath, new FileStreamOptions {
+                        Mode = FileMode.CreateNew,
+                        Access = FileAccess.Write,
+                        Share = FileShare.None,
+                        Options = FileOptions.Asynchronous,
+                        UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite
+                    })) {
+                        await stream.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
+                    }
+                    TryHardenTempFile(tempPath);
                 }
 
                 tempFile = new TempFile(tempPath);
