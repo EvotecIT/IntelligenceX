@@ -134,6 +134,10 @@ internal static class CiTuneReviewerBudgetsCommand {
                     error = $"Env-file output path must be within the workspace (or equal to $GITHUB_ENV). out-env={resolvedCandidate} workspace={workspaceRoot}";
                     return false;
                 }
+                if (Directory.Exists(resolvedCandidate) || string.IsNullOrWhiteSpace(Path.GetFileName(resolvedCandidate))) {
+                    error = $"Env-file output path must be a file path. out-env={resolvedCandidate}";
+                    return false;
+                }
                 var dir = Path.GetDirectoryName(resolvedCandidate);
                 if (string.IsNullOrWhiteSpace(dir)) {
                     dir = workspaceRoot;

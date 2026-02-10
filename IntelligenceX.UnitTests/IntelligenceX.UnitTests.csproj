@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../IntelligenceX/IntelligenceX.csproj" />
+    <ProjectReference Include="../IntelligenceX.Cli/IntelligenceX.Cli.csproj" />
   </ItemGroup>
 
   <ItemGroup>
