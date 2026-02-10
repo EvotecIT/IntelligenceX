@@ -6,17 +6,12 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.Json.Serialization.Metadata;
 using System.Text.RegularExpressions;
+using IntelligenceX.Cli;
 
 namespace IntelligenceX.Cli.Setup;
 
 internal static partial class SetupRunner {
-    private static readonly JsonSerializerOptions IndentedJsonOptions = new(JsonSerializerDefaults.Web) {
-        WriteIndented = true,
-        TypeInfoResolver = new DefaultJsonTypeInfoResolver()
-    };
-
     private static FilePlan PlanWorkflowChange(SetupOptions options, string? existingContent) {
         var path = ".github/workflows/review-intelligencex.yml";
         if (string.IsNullOrWhiteSpace(existingContent)) {
@@ -61,6 +56,13 @@ internal static partial class SetupRunner {
             ? MergeConfigJson(seedContent, settings)
             : BuildConfigJson(settings);
         return PlanWrite(path, existingReviewerContent, content, options.Force);
+    }
+
+    // Test helper: validates config-building behavior without reflection against private nested types.
+    internal static string BuildReviewerConfigJsonForTests(string[] args) {
+        var options = SetupOptions.Parse(args);
+        var plan = PlanConfigChange(options, existingReviewerContent: null, seedContent: null);
+        return plan.Content ?? string.Empty;
     }
 
     private static string? ReadConfigOverride(SetupOptions options) {
@@ -276,8 +278,8 @@ internal static partial class SetupRunner {
 	                packs: settings.AnalysisPacks);
 	        }
 
-	        return root.ToJsonString(IndentedJsonOptions);
-	    }
+            return root.ToJsonString(CliJson.Indented);
+        }
 
     private static string MergeConfigJson(string existingContent, ConfigSettings settings) {
         var node = JsonNode.Parse(existingContent) as JsonObject ?? new JsonObject();
@@ -305,8 +307,8 @@ internal static partial class SetupRunner {
                 gateEnabledSet: settings.AnalysisGateEnabledSet, gateEnabled: settings.AnalysisGateEnabled,
                 packsSet: settings.AnalysisPacksSet, packs: settings.AnalysisPacks);
         }
-	        return node.ToJsonString(IndentedJsonOptions);
-	    }
+        return node.ToJsonString(CliJson.Indented);
+    }
 
     private static string BuildWorkflowYaml(WorkflowSettings settings) {
         var template = ReadEmbeddedResource("review-intelligencex.yml");
