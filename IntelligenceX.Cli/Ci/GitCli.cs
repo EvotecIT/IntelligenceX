@@ -43,11 +43,12 @@ internal static class GitCli {
 
         var effectiveTimeout = ResolveTimeout(timeout);
         using var cts = new CancellationTokenSource(effectiveTimeout);
+        using var drainCts = new CancellationTokenSource();
         var maxBytes = ResolveMaxOutputBytes();
         // IMPORTANT: stdout/stderr draining must not be coupled to the timeout token; otherwise we can treat
         // large-but-valid output as a timeout even when the process exited successfully.
-        var stdoutTask = ReadAllBytesAsync(proc.StandardOutput.BaseStream, maxBytes, CancellationToken.None);
-        var stderrTask = ReadAllBytesAsync(proc.StandardError.BaseStream, maxBytes, CancellationToken.None);
+        var stdoutTask = ReadAllBytesAsync(proc.StandardOutput.BaseStream, maxBytes, drainCts.Token);
+        var stderrTask = ReadAllBytesAsync(proc.StandardError.BaseStream, maxBytes, drainCts.Token);
         try {
             await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
             await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
@@ -57,6 +58,8 @@ internal static class GitCli {
             } catch {
                 // ignore
             }
+            // Ensure stderr/stdout drains can't hang the caller after a timeout/kill.
+            drainCts.Cancel();
             return (124, Array.Empty<byte>(), Array.Empty<byte>());
         } catch {
             try {
@@ -64,10 +67,16 @@ internal static class GitCli {
             } catch {
                 // ignore
             }
+            drainCts.Cancel();
             return (125, Array.Empty<byte>(), Array.Empty<byte>());
         } finally {
             try {
-                await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+                if (drainCts.IsCancellationRequested) {
+                    // Best-effort: don't allow a broken stream to hang the caller after kill/cancel.
+                    await Task.WhenAll(stdoutTask, stderrTask).WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                } else {
+                    await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+                }
             } catch {
                 // ignore
             }
@@ -103,11 +112,11 @@ internal static class GitCli {
             return (127, string.Empty, ex.Message);
         }
 
-        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
-        var stderrTask = proc.StandardError.ReadToEndAsync();
-
         var effectiveTimeout = ResolveTimeout(timeout);
         using var cts = new CancellationTokenSource(effectiveTimeout);
+        using var drainCts = new CancellationTokenSource();
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync(drainCts.Token);
+        var stderrTask = proc.StandardError.ReadToEndAsync(drainCts.Token);
         try {
             await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
             // Ensure we drain stdout/stderr after process exit; otherwise we can return truncated output.
@@ -118,6 +127,7 @@ internal static class GitCli {
             } catch {
                 // ignore
             }
+            drainCts.Cancel();
             return (124, string.Empty, $"git command timed out after {effectiveTimeout.TotalSeconds:0}s.");
         } catch (Exception ex) {
             try {
@@ -125,10 +135,15 @@ internal static class GitCli {
             } catch {
                 // ignore
             }
+            drainCts.Cancel();
             return (125, string.Empty, ex.Message);
         } finally {
             try {
-                await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+                if (drainCts.IsCancellationRequested) {
+                    await Task.WhenAll(stdoutTask, stderrTask).WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                } else {
+                    await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+                }
             } catch {
                 // ignore
             }
