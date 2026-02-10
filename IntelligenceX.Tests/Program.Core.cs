@@ -264,6 +264,52 @@ internal static partial class Program {
         AssertNotNull(ex.Hint, "exception hint");
     }
 
+    private static int GetRpcPendingCount(JsonRpcClient client) {
+        var field = typeof(JsonRpcClient).GetField("_pending", BindingFlags.NonPublic | BindingFlags.Instance);
+        AssertNotNull(field, "_pending field");
+        var value = field!.GetValue(client);
+        AssertNotNull(value, "_pending value");
+        var prop = value!.GetType().GetProperty("Count", BindingFlags.Public | BindingFlags.Instance);
+        AssertNotNull(prop, "_pending.Count property");
+        return (int)(prop!.GetValue(value) ?? 0);
+    }
+
+    private static void TestRpcCallCancellationCleansPending() {
+        var client = new JsonRpcClient(_ => Task.CompletedTask);
+        long id = 0;
+        client.CallStarted += (_, args) => id = args.RequestId ?? 0;
+
+        var protocolError = false;
+        client.ProtocolError += (_, _) => protocolError = true;
+
+        using var cts = new CancellationTokenSource();
+        var task = client.CallAsync("test", (JsonValue?)null, cts.Token);
+        cts.Cancel();
+
+        AssertThrows<OperationCanceledException>(() => task.GetAwaiter().GetResult(), "rpc call canceled");
+        AssertEqual(0, GetRpcPendingCount(client), "pending empty after cancellation");
+
+        // Late responses to a locally-canceled call should be ignored (not treated as protocol errors).
+        client.HandleLine($"{{\"id\":{id},\"result\":123}}");
+        AssertEqual(false, protocolError, "late response ignored");
+    }
+
+    private static void TestRpcCallSendFailureCleansPending() {
+        var sendEx = new InvalidOperationException("send failed");
+        var client = new JsonRpcClient(_ => Task.FromException(sendEx));
+        var callCompleted = false;
+        client.CallCompleted += (_, args) => callCompleted = !args.Success;
+
+        long id = 0;
+        client.CallStarted += (_, args) => id = args.RequestId ?? 0;
+
+        AssertThrows<InvalidOperationException>(() => client.CallAsync("test", (JsonValue?)null, CancellationToken.None).GetAwaiter().GetResult(),
+            "rpc send failure");
+        AssertEqual(true, id > 0, "id assigned");
+        AssertEqual(true, callCompleted, "call completed fired");
+        AssertEqual(0, GetRpcPendingCount(client), "pending empty after send failure");
+    }
+
     private static void TestHeaderTransportMessage() {
         var payload = "{\"method\":\"ping\"}";
         var header = $"Content-Length: {Encoding.UTF8.GetByteCount(payload)}\r\n\r\n";

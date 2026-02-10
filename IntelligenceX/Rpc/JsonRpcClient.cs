@@ -49,15 +49,29 @@ internal sealed class JsonRpcClient : IDisposable {
         var tcs = new TaskCompletionSource<JsonValue?>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending.TryAdd(id, new PendingCall(method, tcs));
 
-        using var ctr = cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
-        await SendRequestAsync(id, method, @params).ConfigureAwait(false);
-
         try {
+            using var ctr = cancellationToken.Register(() => {
+                if (_pending.TryRemove(id, out var pending)) {
+                    pending.Tcs.TrySetCanceled(cancellationToken);
+                } else {
+                    tcs.TrySetCanceled(cancellationToken);
+                }
+            });
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try {
+                await SendRequestAsync(id, method, @params).ConfigureAwait(false);
+            } catch {
+                _pending.TryRemove(id, out _);
+                throw;
+            }
+
             var result = await tcs.Task.ConfigureAwait(false);
             var duration = DateTime.UtcNow - started;
             CallCompleted?.Invoke(this, new RpcCallCompletedEventArgs(method, duration, true, null, id));
             return result;
         } catch (Exception ex) {
+            _pending.TryRemove(id, out _);
             var duration = DateTime.UtcNow - started;
             CallCompleted?.Invoke(this, new RpcCallCompletedEventArgs(method, duration, false, ex, id));
             throw;
@@ -127,6 +141,8 @@ internal sealed class JsonRpcClient : IDisposable {
                 pending.Tcs.TrySetResult(resultValue);
                 return;
             }
+            // Unknown response id. This can happen with late responses for locally-canceled calls.
+            return;
         }
 
         ProtocolError?.Invoke(this, new FormatException("Unknown JSON-RPC message shape."));
