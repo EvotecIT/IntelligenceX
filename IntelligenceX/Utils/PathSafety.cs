@@ -52,10 +52,17 @@ internal static class PathSafety {
             return;
         }
 
-        var relative = Path.GetRelativePath(root, path);
-        if (string.IsNullOrWhiteSpace(relative) ||
-            relative.StartsWith("..", StringComparison.Ordinal) ||
-            Path.IsPathRooted(relative)) {
+        var comparison = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        var rootWithSep = root.EndsWith(Path.DirectorySeparatorChar.ToString(), comparison)
+            ? root
+            : root + Path.DirectorySeparatorChar;
+        if (!path.StartsWith(rootWithSep, comparison)) {
+            return;
+        }
+        var relative = path.Substring(rootWithSep.Length);
+        if (string.IsNullOrWhiteSpace(relative)) {
             return;
         }
 
