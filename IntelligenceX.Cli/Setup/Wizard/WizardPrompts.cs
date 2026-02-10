@@ -1,14 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.RegularExpressions;
 using Spectre.Console;
 
 namespace IntelligenceX.Cli.Setup.Wizard;
 
 internal static class WizardPrompts {
-    private static readonly Regex AnalysisPackIdRegex = new("^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
     public static string PromptRepo(string? current) {
         var prompt = new TextPrompt<string>("Repository (owner/name):")
             .Validate(value => value.Contains('/')
@@ -245,7 +242,7 @@ internal static class WizardPrompts {
     }
 
     public static string? PromptAnalysisPacks(string? current) {
-        var choices = new[] {
+        var choices = new List<string> {
             "(default: all-50)",
             "all-100",
             "all-500",
@@ -253,6 +250,11 @@ internal static class WizardPrompts {
             "powershell-50",
             "custom (enter pack ids)"
         };
+        if (!string.IsNullOrWhiteSpace(current) &&
+            !choices.Contains(current, StringComparer.Ordinal) &&
+            !string.Equals(current, "all-50", StringComparison.Ordinal)) {
+            choices.Insert(1, $"(keep current: {current})");
+        }
         var selected = AnsiConsole.Prompt(
             new SelectionPrompt<string>()
                 .Title("Static analysis pack(s):")
@@ -261,22 +263,23 @@ internal static class WizardPrompts {
         if (string.Equals(selected, "(default: all-50)", StringComparison.Ordinal)) {
             return null;
         }
+        if (selected.StartsWith("(keep current:", StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(current)) {
+            return current;
+        }
         if (!string.Equals(selected, "custom (enter pack ids)", StringComparison.Ordinal)) {
             return selected;
         }
 
         while (true) {
-            var prompt = new TextPrompt<string>("Pack ids (comma-separated, empty for default):")
+            var currentHint = string.IsNullOrWhiteSpace(current) ? string.Empty : $" (current: {current})";
+            var prompt = new TextPrompt<string>($"Pack ids (comma-separated, empty for default){currentHint}:")
                 .AllowEmpty();
-            if (!string.IsNullOrWhiteSpace(current)) {
-                prompt.DefaultValue(current);
-            }
             var raw = AnsiConsole.Prompt(prompt);
             if (string.IsNullOrWhiteSpace(raw)) {
-                return string.IsNullOrWhiteSpace(current) ? null : current;
+                return null;
             }
 
-            if (TryNormalizeAnalysisPacks(raw, out var normalized, out var error)) {
+            if (SetupAnalysisPacks.TryNormalizeCsv(raw, out var normalized, out var error)) {
                 return normalized;
             }
             AnsiConsole.MarkupLine($"[red]{error}[/]");
@@ -287,46 +290,7 @@ internal static class WizardPrompts {
         return AnsiConsole.Confirm("Fail CI on static analysis findings?", current);
     }
 
-    private static bool TryNormalizeAnalysisPacks(string raw, out string normalized, out string error) {
-        normalized = string.Empty;
-        error = string.Empty;
-
-        var parts = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length == 0) {
-            error = "Enter at least one pack id, or leave empty for defaults.";
-            return false;
-        }
-
-        var ids = new List<string>(parts.Length);
-        foreach (var part in parts) {
-            if (string.IsNullOrWhiteSpace(part)) {
-                continue;
-            }
-            if (!AnalysisPackIdRegex.IsMatch(part)) {
-                error = $"Invalid pack id '{part}'. Allowed characters: letters/digits plus . _ -, no spaces, must start/end with letter/digit.";
-                return false;
-            }
-            ids.Add(part);
-        }
-
-        ids = ids.Distinct(StringComparer.Ordinal).ToList();
-        if (ids.Count == 0) {
-            error = "Enter at least one pack id, or leave empty for defaults.";
-            return false;
-        }
-        if (ids.Count > 100) {
-            error = "Too many pack ids (max 100).";
-            return false;
-        }
-
-        normalized = string.Join(",", ids);
-        if (normalized.Length > 2048) {
-            error = "Pack list is too long.";
-            return false;
-        }
-
-        return true;
-    }
+    // Pack validation/normalization lives in SetupAnalysisPacks (shared with web onboarding).
 
     public static SecretTarget PromptSecretTarget(int selectedRepoCount, bool ownersMatch) {
         if (selectedRepoCount <= 1 || !ownersMatch) {

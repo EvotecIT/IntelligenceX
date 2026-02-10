@@ -17,7 +17,6 @@ namespace IntelligenceX.Cli.Setup.Web;
 
 internal sealed class WebApi {
     private static readonly Regex RepoSegmentRegex = new("^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
-    private static readonly Regex AnalysisPackIdRegex = new("^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task HandleAsync(System.Net.HttpListenerContext context) {
@@ -532,7 +531,7 @@ internal sealed class WebApi {
             request.AnalysisGateEnabled = null;
             request.AnalysisPacks = null;
         } else if (request.AnalysisEnabled == true) {
-            if (!TryNormalizeAnalysisPacks(request.AnalysisPacks, out var normalizedPacks, out var packsError)) {
+            if (!SetupAnalysisPacks.TryNormalizeCsv(request.AnalysisPacks, out var normalizedPacks, out var packsError)) {
                 context.Response.StatusCode = 400;
                 await WriteJsonAsync(context, new { error = packsError }).ConfigureAwait(false);
                 return;
@@ -834,51 +833,6 @@ internal sealed class WebApi {
             args.Add(request.BranchName!);
         }
         return args.ToArray();
-    }
-
-    private static bool TryNormalizeAnalysisPacks(string? raw, out string? normalized, out string? error) {
-        normalized = null;
-        error = null;
-
-        if (string.IsNullOrWhiteSpace(raw)) {
-            return true;
-        }
-
-        var parts = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length == 0) {
-            return true;
-        }
-
-        var ids = new List<string>(parts.Length);
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var part in parts) {
-            if (string.IsNullOrWhiteSpace(part)) {
-                continue;
-            }
-            if (!AnalysisPackIdRegex.IsMatch(part)) {
-                error = $"Invalid analysis pack id: '{part}'. Use comma-separated ids matching {AnalysisPackIdRegex}.";
-                return false;
-            }
-            if (seen.Add(part)) {
-                ids.Add(part);
-            }
-        }
-
-        if (ids.Count == 0) {
-            return true;
-        }
-        if (ids.Count > 100) {
-            error = "Too many analysis pack ids (max 100).";
-            return false;
-        }
-
-        normalized = string.Join(",", ids);
-        if (normalized.Length > 2048) {
-            error = "Analysis pack list is too long.";
-            return false;
-        }
-
-        return true;
     }
 
     private static readonly SemaphoreSlim ConsoleLock = new(1, 1);
