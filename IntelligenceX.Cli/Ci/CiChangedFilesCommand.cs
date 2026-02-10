@@ -42,6 +42,14 @@ internal static class CiChangedFilesCommand {
             Console.Error.WriteLine($"Output directory is not safe: {ensureError}");
             return 1;
         }
+        try {
+            // Ensure the output directory exists before doing "physical" containment checks.
+            // IsUnderRootPhysical is strict and rejects non-existent leaves by design.
+            Directory.CreateDirectory(outputDir!);
+        } catch (Exception ex) {
+            Console.Error.WriteLine($"Output directory could not be created: {outputDir}. {ex.Message}");
+            return 1;
+        }
         if (!Directory.Exists(outputDir)) {
             Console.Error.WriteLine($"Output directory could not be created: {outputDir}");
             return 1;
