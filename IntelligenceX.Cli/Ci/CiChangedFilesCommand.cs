@@ -47,17 +47,22 @@ internal static class CiChangedFilesCommand {
             return 1;
         }
 
-        var (success, lines, message) = await TryComputeChangedFilesAsync(workspaceRoot, options.Base, options.Head).ConfigureAwait(false);
-        if (!success) {
+        var (computed, lines, message) = await TryComputeChangedFilesAsync(workspaceRoot, options.Base, options.Head).ConfigureAwait(false);
+        if (!computed) {
             // Don't silently produce an empty list on git failures; fall back to a conservative file list.
             var (listed, fallbackLines, fallbackMessage) = await TryListAllFilesAsync(workspaceRoot).ConfigureAwait(false);
             if (listed && fallbackLines.Count > 0) {
                 lines = fallbackLines;
+                computed = true;
                 message = string.IsNullOrWhiteSpace(message)
                     ? "Warning: failed to compute diff changed files; fell back to `git ls-files`."
                     : (message + "\nWarning: fell back to `git ls-files`.");
             } else if (!string.IsNullOrWhiteSpace(fallbackMessage)) {
                 message = string.IsNullOrWhiteSpace(message) ? fallbackMessage : (message + "\n" + fallbackMessage);
+            } else {
+                message = string.IsNullOrWhiteSpace(message)
+                    ? "Warning: failed to compute changed files and could not enumerate tracked files; writing empty changed-files list."
+                    : (message + "\nWarning: could not enumerate tracked files; writing empty changed-files list.");
             }
         }
 
@@ -84,10 +89,10 @@ internal static class CiChangedFilesCommand {
 
         Console.WriteLine($"Changed files: {lines.Count} (written to {outputPath})");
         if (!string.IsNullOrWhiteSpace(message)) {
-            var writer = success ? Console.Out : Console.Error;
-            writer.WriteLine(message);
+            // Warnings are meaningful for CI logs even when we continue in non-strict mode.
+            Console.Error.WriteLine(message);
         }
-        if (!success && options.Strict) {
+        if (!computed && options.Strict) {
             return 1;
         }
         return 0;
