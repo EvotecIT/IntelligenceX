@@ -200,7 +200,7 @@ internal sealed partial class WebApi {
 
         try {
             var args = BuildSetupArgs(request, dryRun: true, previewRepo!);
-            var config = SetupRunner.BuildReviewerConfigJsonForTests(args);
+            var config = SetupRunner.BuildReviewerConfigJson(args);
             await WriteJsonOkAsync(context, new {
                 source = "generated",
                 note = "Generated from current setup selections.",

@@ -138,7 +138,7 @@ internal static class WizardSummary {
 
         try {
             var args = SetupArgsBuilder.FromPlan(plan);
-            var generated = SetupRunner.BuildReviewerConfigJsonForTests(args);
+            var generated = SetupRunner.BuildReviewerConfigJson(args);
             if (string.IsNullOrWhiteSpace(generated)) {
                 return "Effective config preview is unavailable.";
             }
