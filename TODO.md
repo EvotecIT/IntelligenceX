@@ -14,13 +14,13 @@ Goal: reviewer + static analysis + onboarding (CLI + Web) feel "done" end-to-end
 - [ ] Review comment always includes reviewed SHA and an explicit diff-range label (base -> head).
 - [ ] Static analysis runs before review, publishes artifacts, and the review comment always renders analysis status (pass/unavailable) even when findings are zero.
 - [ ] Static analysis gate behavior is predictable: failing types/severities are documented and match observed CI results.
-- [ ] Dependabot identity limitation is documented and visible during onboarding (reviews may be authored by `github-actions`).
+- [x] Dependabot identity limitation is documented and visible during onboarding (reviews may be authored by `github-actions`).
 
 ### Phase A — Onboarding UX (CLI + Web)
 - [x] CLI wizard: add "Enable static analysis" toggle and pack picker (default `all-50`).
 - [x] Web UI: add "Enable static analysis" toggle and pack picker (default `all-50`).
 - [ ] CLI + Web: show a final "Effective config" preview (review + analysis) before Apply.
-- [ ] CLI + Web: surface the Dependabot secrets limitation in the UI copy (why bot identity may differ).
+- [x] CLI + Web: surface the Dependabot secrets limitation in the UI copy (why bot identity may differ).
 - [ ] CLI + Web: add a post-Apply "Verify" step (workflow present, config present if requested, required secrets present, last runs links).
 
 ### Phase B — Setup Output (Workflow + reviewer.json)
