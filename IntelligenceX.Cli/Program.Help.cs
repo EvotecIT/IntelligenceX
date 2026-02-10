@@ -19,10 +19,14 @@ internal static partial class Program {
         Console.WriteLine("  intelligencex setup [options]");
         Console.WriteLine("  intelligencex setup wizard [options]");
         Console.WriteLine("  intelligencex setup web [url]");
+        Console.WriteLine("  intelligencex manage [options]");
         Console.WriteLine("  intelligencex doctor [options]");
         Console.WriteLine("  intelligencex todo <command>");
         Console.WriteLine("  intelligencex release <command>");
         Console.WriteLine("  intelligencex usage [options]");
+        Console.WriteLine();
+        Console.WriteLine("Tip:");
+        Console.WriteLine("  Run `intelligencex` with no arguments in an interactive terminal to open the management hub.");
         Console.WriteLine();
         Console.WriteLine("Auth commands:");
         Console.WriteLine("  auth login       Start OAuth login flow and store credentials");
@@ -42,6 +46,9 @@ internal static partial class Program {
         Console.WriteLine();
         Console.WriteLine("Setup:");
         Console.WriteLine("  setup            Configure GitHub Actions workflow and secrets");
+        Console.WriteLine();
+        Console.WriteLine("Manage:");
+        Console.WriteLine("  manage           Open interactive operations hub (auth, doctor, setup, reviewer)");
         Console.WriteLine();
         Console.WriteLine("Doctor:");
         Console.WriteLine("  doctor           Preflight checks for auth/config/GitHub access");
