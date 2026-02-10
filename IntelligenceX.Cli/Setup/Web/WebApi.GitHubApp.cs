@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -42,7 +43,8 @@ internal sealed partial class WebApi {
             }).ConfigureAwait(false);
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
-            await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+            Trace.TraceError($"HandleAppManifestAsync failed: {ex}");
+            await WriteJsonAsync(context, new { error = "Internal server error." }).ConfigureAwait(false);
         }
     }
 
@@ -71,7 +73,8 @@ internal sealed partial class WebApi {
             }).ConfigureAwait(false);
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
-            await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+            Trace.TraceError($"HandleAppInstallationsAsync failed: {ex}");
+            await WriteJsonAsync(context, new { error = "Internal server error." }).ConfigureAwait(false);
         }
     }
 
@@ -98,7 +101,8 @@ internal sealed partial class WebApi {
             await WriteJsonAsync(context, new { token }).ConfigureAwait(false);
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
-            await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+            Trace.TraceError($"HandleAppTokenAsync failed: {ex}");
+            await WriteJsonAsync(context, new { error = "Internal server error." }).ConfigureAwait(false);
         }
     }
 

@@ -12,47 +12,47 @@ internal sealed partial class WebApi {
     public async Task HandleAsync(System.Net.HttpListenerContext context) {
         var path = context.Request.Url?.AbsolutePath ?? "/";
         var normalizedPath = path.Length > 1 ? path.TrimEnd('/') : path;
-        if (path.StartsWith("/api/repos", StringComparison.OrdinalIgnoreCase)) {
+        if (normalizedPath.Equals("/api/repos", StringComparison.OrdinalIgnoreCase)) {
             await HandleReposAsync(context).ConfigureAwait(false);
             return;
         }
-        if (path.StartsWith("/api/repo-status", StringComparison.OrdinalIgnoreCase)) {
+        if (normalizedPath.Equals("/api/repo-status", StringComparison.OrdinalIgnoreCase)) {
             await HandleRepoStatusAsync(context).ConfigureAwait(false);
             return;
         }
-        if (path.StartsWith("/api/repo-config", StringComparison.OrdinalIgnoreCase)) {
+        if (normalizedPath.Equals("/api/repo-config", StringComparison.OrdinalIgnoreCase)) {
             await HandleRepoConfigAsync(context).ConfigureAwait(false);
             return;
         }
-        if (path.StartsWith("/api/repo-workflow", StringComparison.OrdinalIgnoreCase)) {
+        if (normalizedPath.Equals("/api/repo-workflow", StringComparison.OrdinalIgnoreCase)) {
             await HandleRepoWorkflowAsync(context).ConfigureAwait(false);
             return;
         }
-        if (path.StartsWith("/api/device-code", StringComparison.OrdinalIgnoreCase)) {
+        if (normalizedPath.Equals("/api/device-code", StringComparison.OrdinalIgnoreCase)) {
             await HandleDeviceCodeAsync(context).ConfigureAwait(false);
             return;
         }
-        if (path.StartsWith("/api/device-poll", StringComparison.OrdinalIgnoreCase)) {
+        if (normalizedPath.Equals("/api/device-poll", StringComparison.OrdinalIgnoreCase)) {
             await HandleDevicePollAsync(context).ConfigureAwait(false);
             return;
         }
-        if (path.StartsWith("/api/app-manifest", StringComparison.OrdinalIgnoreCase)) {
+        if (normalizedPath.Equals("/api/app-manifest", StringComparison.OrdinalIgnoreCase)) {
             await HandleAppManifestAsync(context).ConfigureAwait(false);
             return;
         }
-        if (path.StartsWith("/api/app-installations", StringComparison.OrdinalIgnoreCase)) {
+        if (normalizedPath.Equals("/api/app-installations", StringComparison.OrdinalIgnoreCase)) {
             await HandleAppInstallationsAsync(context).ConfigureAwait(false);
             return;
         }
-        if (path.StartsWith("/api/app-token", StringComparison.OrdinalIgnoreCase)) {
+        if (normalizedPath.Equals("/api/app-token", StringComparison.OrdinalIgnoreCase)) {
             await HandleAppTokenAsync(context).ConfigureAwait(false);
             return;
         }
-        if (path.StartsWith("/api/setup/plan", StringComparison.OrdinalIgnoreCase)) {
+        if (normalizedPath.Equals("/api/setup/plan", StringComparison.OrdinalIgnoreCase)) {
             await HandleSetupAsync(context, dryRun: true).ConfigureAwait(false);
             return;
         }
-        if (path.StartsWith("/api/setup/apply", StringComparison.OrdinalIgnoreCase)) {
+        if (normalizedPath.Equals("/api/setup/apply", StringComparison.OrdinalIgnoreCase)) {
             await HandleSetupAsync(context, dryRun: false).ConfigureAwait(false);
             return;
         }
@@ -73,4 +73,3 @@ internal sealed partial class WebApi {
         await WriteJsonAsync(context, new { error = "Not found" }).ConfigureAwait(false);
     }
 }
-

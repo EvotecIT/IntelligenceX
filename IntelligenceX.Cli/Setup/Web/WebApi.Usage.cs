@@ -70,7 +70,8 @@ internal sealed partial class WebApi {
             await WriteJsonAsync(context, new { error = "Invalid base64 auth bundle." }).ConfigureAwait(false);
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
-            await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+            Trace.TraceError($"HandleUsageAsync failed: {ex}");
+            await WriteJsonAsync(context, new { error = "Internal server error." }).ConfigureAwait(false);
         } finally {
             tempFile?.Dispose();
         }
@@ -90,7 +91,8 @@ internal sealed partial class WebApi {
             await WriteJsonAsync(context, response).ConfigureAwait(false);
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
-            await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+            Trace.TraceError($"HandleUsageCacheAsync failed: {ex}");
+            await WriteJsonAsync(context, new { error = "Internal server error." }).ConfigureAwait(false);
         }
     }
 

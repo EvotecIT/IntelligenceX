@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.Setup.Wizard;
@@ -61,7 +62,8 @@ internal sealed partial class WebApi {
             }).ConfigureAwait(false);
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
-            await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+            Trace.TraceError($"HandleReposAsync failed: {ex}");
+            await WriteJsonAsync(context, new { error = "Internal server error." }).ConfigureAwait(false);
         }
     }
 
@@ -118,12 +120,14 @@ internal sealed partial class WebApi {
                         ConfigExists = hasReviewerConfig
                     });
                 } catch (Exception ex) {
-                    results.Add(new RepoStatusResponse { Repo = repo, Error = ex.Message });
+                    Trace.TraceWarning($"HandleRepoStatusAsync failed for {repo}: {ex}");
+                    results.Add(new RepoStatusResponse { Repo = repo, Error = "Failed to read repo status." });
                 }
             }
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
-            await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+            Trace.TraceError($"HandleRepoStatusAsync failed: {ex}");
+            await WriteJsonAsync(context, new { error = "Internal server error." }).ConfigureAwait(false);
             return;
         }
 
@@ -175,7 +179,8 @@ internal sealed partial class WebApi {
             }).ConfigureAwait(false);
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
-            await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+            Trace.TraceError($"HandleRepoConfigAsync failed: {ex}");
+            await WriteJsonAsync(context, new { error = "Internal server error." }).ConfigureAwait(false);
         }
     }
 
@@ -243,7 +248,8 @@ internal sealed partial class WebApi {
             }).ConfigureAwait(false);
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
-            await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+            Trace.TraceError($"HandleRepoWorkflowAsync failed: {ex}");
+            await WriteJsonAsync(context, new { error = "Internal server error." }).ConfigureAwait(false);
         }
     }
 

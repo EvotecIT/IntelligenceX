@@ -69,7 +69,8 @@ internal sealed partial class WebApi {
             await WriteJsonAsync(context, new { error = "Login timed out. Please try again." }).ConfigureAwait(false);
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
-            await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+            Trace.TraceError($"HandleOpenAILoginAsync failed: {ex}");
+            await WriteJsonAsync(context, new { error = "Internal server error." }).ConfigureAwait(false);
         }
     }
 

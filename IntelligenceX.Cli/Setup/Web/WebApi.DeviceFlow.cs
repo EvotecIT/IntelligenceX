@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Threading.Tasks;
 
@@ -29,7 +30,8 @@ internal sealed partial class WebApi {
             await WriteJsonAsync(context, result).ConfigureAwait(false);
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
-            await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+            Trace.TraceError($"HandleDeviceCodeAsync failed: {ex}");
+            await WriteJsonAsync(context, new { error = "Internal server error." }).ConfigureAwait(false);
         }
     }
 
@@ -62,7 +64,8 @@ internal sealed partial class WebApi {
             await WriteJsonAsync(context, new { token }).ConfigureAwait(false);
         } catch (Exception ex) {
             context.Response.StatusCode = 500;
-            await WriteJsonAsync(context, new { error = ex.Message }).ConfigureAwait(false);
+            Trace.TraceError($"HandleDevicePollAsync failed: {ex}");
+            await WriteJsonAsync(context, new { error = "Internal server error." }).ConfigureAwait(false);
         }
     }
 
