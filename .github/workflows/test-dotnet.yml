@@ -75,15 +75,16 @@ jobs:
                   fail_ci_if_error: false
                   verbose: true
 
-    test-ubuntu:
-        name: 'Ubuntu'
-        # While the repo is private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
-        # When public, use GitHub-hosted runners by default.
-        runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
-        timeout-minutes: 20
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+	    test-ubuntu:
+	        name: 'Ubuntu'
+	        # Default to GitHub-hosted runners, even for private repos, to avoid CI deadlocks when no
+	        # self-hosted runners are available. Opt-in to self-hosted by setting:
+	        #   vars.IX_ENABLE_UBUNTU_SELF_HOSTED=true
+	        runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_ENABLE_UBUNTU_SELF_HOSTED == 'true') && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
+	        timeout-minutes: 20
+	        steps:
+	            - name: Checkout code
+	              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
             - name: Setup .NET
               uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4

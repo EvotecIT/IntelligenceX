@@ -18,9 +18,10 @@ jobs:
   # INTELLIGENCEX:BEGIN
   analysis:
     name: Static Analysis Gate
-    # While the repo is private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
-    # When public, use GitHub-hosted runners by default.
-    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
+    # Default to GitHub-hosted runners, even for private repos, to avoid CI deadlocks when no
+    # self-hosted runners are available. Opt-in to self-hosted by setting:
+    #   vars.IX_ENABLE_UBUNTU_SELF_HOSTED=true
+    runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_ENABLE_UBUNTU_SELF_HOSTED == 'true') && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
     permissions:
       actions: write
       contents: read
@@ -68,9 +69,10 @@ jobs:
     name: AI Review (Fail-Open)
     needs: [analysis]
     if: always()
-    # While the repo is private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
-    # When public, use GitHub-hosted runners by default.
-    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
+    # Default to GitHub-hosted runners, even for private repos, to avoid CI deadlocks when no
+    # self-hosted runners are available. Opt-in to self-hosted by setting:
+    #   vars.IX_ENABLE_UBUNTU_SELF_HOSTED=true
+    runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_ENABLE_UBUNTU_SELF_HOSTED == 'true') && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
     permissions:
       contents: read
       pull-requests: write

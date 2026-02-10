@@ -7,6 +7,8 @@ This file defines how automated agents should operate in this repo. Follow it fo
 - Work in a dedicated worktree + branch per task.
 - Do not touch the Website PR or website work unless explicitly requested.
 - Do not use destructive git commands (`reset --hard`, `checkout --`).
+- Avoid CI deadlocks: for private repos, ensure PR workflows can run on GitHub-hosted runners unless
+  the repo explicitly opts into self-hosted via repo `vars` (see workflow comments).
 
 **Worktree + Branch**
 1. Create a worktree for every task: `git worktree add -b <branch> <path> origin/master`.
