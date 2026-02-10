@@ -252,18 +252,20 @@ internal static partial class Program {
 
         var stdOutTask = process.StandardOutput.ReadToEndAsync();
         var stdErrTask = process.StandardError.ReadToEndAsync();
-        var exitTask = process.WaitForExitAsync();
+        var completionTask = WaitForProcessAndStreamDrainAsync(process, stdOutTask, stdErrTask);
         var timeoutTask = Task.Delay(timeout);
 
-        var completed = await Task.WhenAny(exitTask, timeoutTask).ConfigureAwait(false);
-        if (completed != exitTask) {
+        var completed = await Task.WhenAny(completionTask, timeoutTask).ConfigureAwait(false);
+        if (completed != completionTask) {
             try {
                 process.Kill(entireProcessTree: true);
             } catch {
                 // ignore kill failures
             }
             try {
-                await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                await WaitForProcessAndStreamDrainAsync(process, stdOutTask, stdErrTask)
+                    .WaitAsync(TimeSpan.FromSeconds(2))
+                    .ConfigureAwait(false);
             } catch (TimeoutException) {
                 // best effort: process may already be terminating
             } catch (InvalidOperationException) {
@@ -283,9 +285,13 @@ internal static partial class Program {
             return (124, stdOut, stdErr);
         }
 
-        await exitTask.ConfigureAwait(false);
-        await Task.WhenAll(stdOutTask, stdErrTask).ConfigureAwait(false);
+        await completionTask.ConfigureAwait(false);
         return (process.ExitCode, stdOutTask.Result, stdErrTask.Result);
+    }
+
+    private static async Task WaitForProcessAndStreamDrainAsync(Process process, Task<string> stdOutTask, Task<string> stdErrTask) {
+        await process.WaitForExitAsync().ConfigureAwait(false);
+        await Task.WhenAll(stdOutTask, stdErrTask).ConfigureAwait(false);
     }
 
     private static void RenderTitle(string title) {
