@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using IntelligenceX.Cli.Setup;
 using Spectre.Console;
 
 namespace IntelligenceX.Cli.Setup.Wizard;
