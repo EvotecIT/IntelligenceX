@@ -34,10 +34,6 @@ internal sealed partial class WebApi {
     }
 
     private async Task WriteJsonAsync(System.Net.HttpListenerContext context, object payload) {
-        // Ensure success responses don't accidentally inherit a prior error status.
-        if (context.Response.StatusCode < 400) {
-            context.Response.StatusCode = 200;
-        }
         var json = JsonSerializer.Serialize(payload, _jsonOptions);
         var bytes = Encoding.UTF8.GetBytes(json);
         context.Response.ContentType = "application/json; charset=utf-8";
