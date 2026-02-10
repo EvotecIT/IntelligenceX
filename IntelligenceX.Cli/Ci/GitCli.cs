@@ -45,31 +45,26 @@ internal static class GitCli {
         var effectiveTimeout = ResolveTimeout(timeout);
         using var cts = new CancellationTokenSource(effectiveTimeout);
         using var drainCts = new CancellationTokenSource();
-        var maxBytes = ResolveMaxOutputBytes();
-        var truncationSignaled = 0;
-        void OnTruncate() {
-            // Don't wait for EOF once output is truncated; kill the process and stop drains.
-            if (Interlocked.Exchange(ref truncationSignaled, 1) != 0) {
-                return;
-            }
-            TryKill(proc);
-            drainCts.Cancel();
-        }
+	        var maxBytes = ResolveMaxOutputBytes();
+	        var truncationSignaled = 0;
+	        void OnTruncate() {
+	            // Don't wait for EOF once output is truncated; kill the process so output stops promptly.
+	            if (Interlocked.Exchange(ref truncationSignaled, 1) != 0) {
+	                return;
+	            }
+	            TryKill(proc);
+	        }
         // IMPORTANT: stdout/stderr draining must not be coupled to the timeout token; otherwise we can treat
         // large-but-valid output as a timeout even when the process exited successfully.
         var stdoutTask = ReadAllBytesAsync(proc.StandardOutput.BaseStream, maxBytes, drainCts.Token, onTruncate: OnTruncate);
-        var stderrTask = ReadAllBytesAsync(proc.StandardError.BaseStream, maxBytes, drainCts.Token, onTruncate: OnTruncate);
-        try {
-            await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
-            try {
-                await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
-            } catch (OperationCanceledException) when (Volatile.Read(ref truncationSignaled) != 0) {
-                // Expected: drains are canceled when we fail fast on truncation.
-            }
-        } catch (OperationCanceledException) {
-            TryKill(proc);
-            await TryReapAsync(proc).ConfigureAwait(false);
-            // Ensure stderr/stdout drains can't hang the caller after a timeout/kill.
+	        var stderrTask = ReadAllBytesAsync(proc.StandardError.BaseStream, maxBytes, drainCts.Token, onTruncate: OnTruncate);
+	        try {
+	            await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
+	            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+	        } catch (OperationCanceledException) {
+	            TryKill(proc);
+	            await TryReapAsync(proc).ConfigureAwait(false);
+	            // Ensure stderr/stdout drains can't hang the caller after a timeout/kill.
             drainCts.Cancel();
             return (124, Array.Empty<byte>(), Array.Empty<byte>());
         } catch {
@@ -145,36 +140,38 @@ internal static class GitCli {
         }
     }
 
-    private static async Task<(byte[] Data, bool Truncated)> ReadAllBytesAsync(Stream stream, int maxBytes, CancellationToken cancellationToken, Action? onTruncate) {
-        // Stream.ReadAllBytesAsync isn't available on all TFMs we target.
-        var truncated = false;
-        var truncationSignaled = false;
-        using var ms = new MemoryStream(capacity: Math.Min(maxBytes, 64 * 1024));
-        var buffer = new byte[16 * 1024];
-        var total = 0;
-        while (true) {
-            var read = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false);
-            if (read <= 0) {
-                break;
-            }
-            if (!truncated) {
-                var take = Math.Min(read, Math.Max(0, maxBytes - total));
-                if (take > 0) {
-                    ms.Write(buffer, 0, take);
-                    total += take;
-                }
-                if (total >= maxBytes) {
-                    truncated = true;
-                    if (!truncationSignaled) {
-                        truncationSignaled = true;
-                        try { onTruncate?.Invoke(); } catch { }
-                    }
-                }
-            }
-            // If truncated, keep draining without buffering to avoid deadlocks from full pipes.
-        }
-        return (ms.ToArray(), truncated);
-    }
+	    private static async Task<(byte[] Data, bool Truncated)> ReadAllBytesAsync(Stream stream, int maxBytes, CancellationToken cancellationToken, Action? onTruncate) {
+	        // Stream.ReadAllBytesAsync isn't available on all TFMs we target.
+	        var truncated = false;
+	        var truncationSignaled = false;
+	        using var ms = new MemoryStream(capacity: Math.Min(Math.Max(0, maxBytes), 64 * 1024));
+	        var buffer = new byte[16 * 1024];
+	        var buffered = 0;
+	        long readTotal = 0;
+	        while (true) {
+	            var read = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false);
+	            if (read <= 0) {
+	                break;
+	            }
+	            readTotal += read;
+	            if (!truncated) {
+	                var take = Math.Min(read, Math.Max(0, maxBytes - buffered));
+	                if (take > 0) {
+	                    ms.Write(buffer, 0, take);
+	                    buffered += take;
+	                }
+	                if (readTotal > maxBytes) {
+	                    truncated = true;
+	                    if (!truncationSignaled) {
+	                        truncationSignaled = true;
+	                        try { onTruncate?.Invoke(); } catch { }
+	                    }
+	                }
+	            }
+	            // If truncated, keep draining without buffering to avoid deadlocks from full pipes.
+	        }
+	        return (ms.ToArray(), truncated);
+	    }
 
     private static TimeSpan ResolveTimeout(TimeSpan? timeout) {
         if (timeout.HasValue && timeout.Value > TimeSpan.Zero) {
