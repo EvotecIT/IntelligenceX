@@ -54,14 +54,14 @@ internal static partial class Program {
         failed += Run("CI path safety handles trailing separators", TestCiPathSafetyUnderRootPhysicalTrailingSeparators);
         failed += Run("CI path safety rejects symlink traversal", TestCiPathSafetyUnderRootPhysicalRejectsSymlinkTraversal);
         failed += Run("CI path safety allows nested non-existent segments", TestCiPathSafetyUnderRootPhysicalAllowsNestedNonexistentSegments);
-        failed += Run("CI changed-files writes into new output directory", TestCiChangedFilesWritesIntoNewDirectory);
-        failed += Run("CI changed-files strict fails on diff failure even with fallback", TestCiChangedFilesStrictFailsWhenDiffFailsEvenIfFallbackSucceeds);
-        failed += Run("CI tune-reviewer-budgets rejects out-env outside workspace", TestCiTuneReviewerBudgetsRejectsOutEnvOutsideWorkspaceWhenGitHubEnvMissing);
+	        failed += Run("CI changed-files writes into new output directory", TestCiChangedFilesWritesIntoNewDirectory);
+	        failed += Run("CI changed-files strict fails on diff failure even with fallback", TestCiChangedFilesStrictFailsWhenDiffFailsEvenIfFallbackSucceeds);
+	        failed += Run("CI tune-reviewer-budgets rejects out-env outside workspace", TestCiTuneReviewerBudgetsRejectsOutEnvOutsideWorkspaceWhenGitHubEnvMissing);
+	        failed += Run("Reviewer GraphQL mutation detection", TestReviewerGraphQlMutationDetection);
 #endif
-        failed += Run("Reviewer GraphQL mutation detection", TestReviewerGraphQlMutationDetection);
 
-        // Reviewer tests are excluded from NET472 builds (no reviewer references there), and enforced for non-NET472
-        // builds via `IntelligenceX.Tests/ReviewerSymbolGuard.cs` + `IntelligenceX.Tests/IntelligenceX.Tests.csproj`.
+	        // Reviewer tests are excluded from NET472 builds (no reviewer references there), and enforced for non-NET472
+	        // builds via `IntelligenceX.Tests/ReviewerSymbolGuard.cs` + `IntelligenceX.Tests/IntelligenceX.Tests.csproj`.
 #if INTELLIGENCEX_REVIEWER
         failed += Run("Cleanup normalize allowed edits", TestCleanupNormalizeAllowedEdits);
         failed += Run("Cleanup clamp confidence", TestCleanupClampConfidence);
