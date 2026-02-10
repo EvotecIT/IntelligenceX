@@ -10,6 +10,75 @@ internal static partial class Program {
         AssertThrows<InvalidOperationException>(() => SetupArgsBuilder.FromPlan(plan), "skip+update");
     }
 
+    private static void TestSetupArgsIncludeAnalysisOptions() {
+        var plan = new SetupPlan("owner/repo") {
+            AnalysisEnabled = true,
+            AnalysisGateEnabled = true,
+            AnalysisPacks = "all-50,all-100"
+        };
+        var args = SetupArgsBuilder.FromPlan(plan);
+        AssertSequenceEqual(new[] {
+            "--repo", "owner/repo",
+            "--analysis-enabled", "true",
+            "--analysis-gate", "true",
+            "--analysis-packs", "all-50,all-100"
+        }, args, "setup args analysis");
+    }
+
+    private static void TestSetupAnalysisDisableWritesFalse() {
+        var root = new System.Text.Json.Nodes.JsonObject();
+        SetupAnalysisConfig.Apply(
+            root,
+            enabledSet: true, enabled: false,
+            gateEnabledSet: false, gateEnabled: false,
+            packsSet: false, packs: Array.Empty<string>());
+
+        var analysis = root["analysis"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(analysis, "analysis root");
+        AssertEqual(false, analysis!["enabled"]?.GetValue<bool>(), "analysis.enabled");
+    }
+
+    private static void TestSetupAnalysisDefaultsPacksToAll50() {
+        var root = new System.Text.Json.Nodes.JsonObject();
+        SetupAnalysisConfig.Apply(
+            root,
+            enabledSet: true, enabled: true,
+            gateEnabledSet: false, gateEnabled: false,
+            packsSet: true, packs: Array.Empty<string>());
+
+        var analysis = root["analysis"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(analysis, "analysis root");
+
+        var packsNode = analysis!["packs"] as System.Text.Json.Nodes.JsonArray;
+        AssertNotNull(packsNode, "analysis.packs");
+
+        var packs = new List<string>();
+        foreach (var item in packsNode!) {
+            var value = item?.GetValue<string>();
+            if (!string.IsNullOrEmpty(value)) {
+                packs.Add(value);
+            }
+        }
+
+        AssertSequenceEqual(new[] { "all-50" }, packs, "analysis.packs default");
+    }
+
+    private static void TestSetupBuildConfigJsonHonorsAnalysisGateOnNewConfig() {
+        var content = SetupRunner.BuildReviewerConfigJsonForTests(new[] { "--analysis-gate", "true" });
+        AssertNotNull(content, "config json content");
+
+        var root = System.Text.Json.Nodes.JsonNode.Parse(content) as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(root, "config json root");
+
+        var analysis = root!["analysis"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(analysis, "analysis object");
+        AssertEqual(true, analysis!["enabled"]?.GetValue<bool>(), "analysis.enabled inferred");
+
+        var gate = analysis["gate"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(gate, "analysis.gate");
+        AssertEqual(true, gate!["enabled"]?.GetValue<bool>(), "analysis.gate.enabled");
+    }
+
     private static void TestGitHubRepoDetectorParsesRemoteUrls() {
         AssertEqual("owner/repo", GitHubRepoDetector.ParseRepoFromRemoteUrl("https://github.com/owner/repo.git"), "https git");
         AssertEqual("owner/repo", GitHubRepoDetector.ParseRepoFromRemoteUrl("https://github.com/owner/repo"), "https no git");

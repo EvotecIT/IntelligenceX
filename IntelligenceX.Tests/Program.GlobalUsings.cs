@@ -12,6 +12,7 @@ global using System.Threading.Tasks;
 global using IntelligenceX.Analysis;
 global using IntelligenceX.Cli;
 global using IntelligenceX.Cli.Release;
+global using IntelligenceX.Cli.Setup;
 global using IntelligenceX.Cli.Setup.Host;
 #endif
 global using IntelligenceX.Copilot;

@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using IntelligenceX.Cli;
 
 namespace IntelligenceX.Cli.Setup;
 
@@ -55,6 +56,13 @@ internal static partial class SetupRunner {
             ? MergeConfigJson(seedContent, settings)
             : BuildConfigJson(settings);
         return PlanWrite(path, existingReviewerContent, content, options.Force);
+    }
+
+    // Test helper: validates config-building behavior without reflection against private nested types.
+    internal static string BuildReviewerConfigJsonForTests(string[] args) {
+        var options = SetupOptions.Parse(args);
+        var plan = PlanConfigChange(options, existingReviewerContent: null, seedContent: null);
+        return plan.Content ?? string.Empty;
     }
 
     private static string? ReadConfigOverride(SetupOptions options) {
@@ -225,6 +233,15 @@ internal static partial class SetupRunner {
         if (!options.PreflightTimeoutSecondsSet && snapshot.PreflightTimeoutSeconds.HasValue) {
             settings.PreflightTimeoutSeconds = snapshot.PreflightTimeoutSeconds.Value;
         }
+        if (!options.AnalysisEnabledSet && snapshot.AnalysisEnabled.HasValue) {
+            settings.AnalysisEnabled = snapshot.AnalysisEnabled.Value;
+        }
+        if (!options.AnalysisGateEnabledSet && snapshot.AnalysisGateEnabled.HasValue) {
+            settings.AnalysisGateEnabled = snapshot.AnalysisGateEnabled.Value;
+        }
+        if (!options.AnalysisPacksSet && snapshot.AnalysisPacks is { Length: > 0 }) {
+            settings.AnalysisPacks = snapshot.AnalysisPacks;
+        }
 
         return settings;
     }
@@ -250,8 +267,18 @@ internal static partial class SetupRunner {
         if (!string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
             ((JsonObject)root["review"]!)["openaiAccountId"] = settings.OpenAIAccountId;
         }
+        if (settings.AnalysisEnabledSet || settings.AnalysisGateEnabledSet || settings.AnalysisPacksSet) {
+            SetupAnalysisConfig.Apply(root,
+                enabledSet: settings.AnalysisEnabledSet, enabled: settings.AnalysisEnabled,
+                gateEnabledSet: settings.AnalysisGateEnabledSet, gateEnabled: settings.AnalysisGateEnabled,
+                packsSet: settings.AnalysisPacksSet, packs: settings.AnalysisPacks);
+        } else if (settings.AnalysisEnabled) {
+            // Backwards-compatible behavior for future defaults where analysis might be enabled without a set-flag.
+            root["analysis"] = SetupAnalysisConfig.Build(enabled: true, gateEnabled: settings.AnalysisGateEnabled,
+                packs: settings.AnalysisPacks);
+        }
 
-        return root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+        return root.ToJsonString(CliJson.Indented);
     }
 
     private static string MergeConfigJson(string existingContent, ConfigSettings settings) {
@@ -274,7 +301,13 @@ internal static partial class SetupRunner {
         review["preflight"] = settings.Preflight;
         review["preflightTimeoutSeconds"] = settings.PreflightTimeoutSeconds;
         node["review"] = review;
-        return node.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+        if (settings.AnalysisEnabledSet || settings.AnalysisGateEnabledSet || settings.AnalysisPacksSet) {
+            SetupAnalysisConfig.Apply(node,
+                enabledSet: settings.AnalysisEnabledSet, enabled: settings.AnalysisEnabled,
+                gateEnabledSet: settings.AnalysisGateEnabledSet, gateEnabled: settings.AnalysisGateEnabled,
+                packsSet: settings.AnalysisPacksSet, packs: settings.AnalysisPacks);
+        }
+        return node.ToJsonString(CliJson.Indented);
     }
 
     private static string BuildWorkflowYaml(WorkflowSettings settings) {
@@ -509,6 +542,15 @@ internal static partial class SetupRunner {
                 snapshot.Preflight = ReadJsonBool(review, "preflight");
                 snapshot.PreflightTimeoutSeconds = ReadJsonInt(review, "preflightTimeoutSeconds");
             }
+            var analysis = root["analysis"] as JsonObject;
+            if (analysis is not null) {
+                snapshot.AnalysisEnabled = ReadJsonBool(analysis, "enabled");
+                snapshot.AnalysisPacks = SetupAnalysisConfig.ReadStringArray(analysis, "packs");
+                var gate = analysis["gate"] as JsonObject;
+                if (gate is not null) {
+                    snapshot.AnalysisGateEnabled = ReadJsonBool(gate, "enabled");
+                }
+            }
             return true;
         } catch {
             return false;
@@ -579,6 +621,9 @@ internal static partial class SetupRunner {
         Console.WriteLine("  --review-profile <balanced|picky|highlevel|security|performance|tests|minimal>");
         Console.WriteLine("  --review-mode <hybrid|summary|inline>");
         Console.WriteLine("  --review-comment-mode <sticky|fresh>");
+        Console.WriteLine("  --analysis-enabled <true|false> (write analysis section into reviewer.json)");
+        Console.WriteLine("  --analysis-gate <true|false> (when true, analysis gate can fail CI; default false)");
+        Console.WriteLine("  --analysis-packs <id1,id2> (default all-50 when analysis is enabled)");
         Console.WriteLine("  --config-path <path> (use custom config.json content)");
         Console.WriteLine("  --config-json <json> (use inline config.json content)");
         Console.WriteLine("  --auth-b64 <value> (use pre-exported auth bundle)");

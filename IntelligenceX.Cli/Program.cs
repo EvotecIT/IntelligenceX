@@ -375,7 +375,7 @@ internal static partial class Program {
         var outRoot = new JsonObject();
         outRoot["version"] = node["version"]?.DeepClone() ?? 1;
         outRoot["bundles"] = filtered;
-        var outJson = outRoot.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+        var outJson = outRoot.ToJsonString(CliJson.Indented);
         if (IsStoreBase64Format(format)) {
             Console.WriteLine(Convert.ToBase64String(Encoding.UTF8.GetBytes(outJson)));
         } else {
