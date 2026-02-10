@@ -7,6 +7,8 @@ using System.Threading.Tasks;
 namespace IntelligenceX.Cli.Setup.Web;
 
 internal sealed partial class WebApi {
+    private const string SetupCsrfHeaderName = "X-IntelligenceX-Setup-Request";
+    private const string SetupCsrfHeaderValue = "1";
     private static readonly Regex RepoSegmentRegex = new("^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -112,6 +114,12 @@ internal sealed partial class WebApi {
         if (!string.Equals(context.Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase)) {
             context.Response.StatusCode = 405;
             await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+            return false;
+        }
+        var csrfHeader = context.Request.Headers[SetupCsrfHeaderName];
+        if (!string.Equals(csrfHeader, SetupCsrfHeaderValue, StringComparison.Ordinal)) {
+            context.Response.StatusCode = 403;
+            await WriteJsonAsync(context, new { error = "Missing or invalid setup CSRF header." }).ConfigureAwait(false);
             return false;
         }
 

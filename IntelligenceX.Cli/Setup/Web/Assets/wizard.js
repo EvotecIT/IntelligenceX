@@ -320,6 +320,13 @@ async function fetchJsonSafe(url, options) {
   return payload || {};
 }
 
+function getSetupRequestHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'X-IntelligenceX-Setup-Request': '1'
+  };
+}
+
 function getToken() {
   return (token ? token.value.trim() : '') || '';
 }
@@ -480,7 +487,7 @@ async function refreshEffectiveConfigPreview() {
   try {
     const data = await fetchJsonSafe('/api/setup/effective-config', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getSetupRequestHeaders(),
       body: JSON.stringify(buildRequestBody(true))
     });
 
@@ -1240,7 +1247,7 @@ async function doPlan() {
   try {
     const data = await fetchJsonSafe('/api/setup/plan', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getSetupRequestHeaders(),
       body: JSON.stringify(buildRequestBody(true))
     });
     write(formatResults(data));
@@ -1272,7 +1279,7 @@ async function doApply() {
   try {
     const data = await fetchJsonSafe('/api/setup/apply', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getSetupRequestHeaders(),
       body: JSON.stringify(buildRequestBody(false))
     });
     write(formatResults(data));
