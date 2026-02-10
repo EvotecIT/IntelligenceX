@@ -47,13 +47,12 @@ internal static class CiChangedFilesCommand {
             return 1;
         }
 
-        var (computed, lines, message) = await TryComputeChangedFilesAsync(workspaceRoot, options.Base, options.Head).ConfigureAwait(false);
-        if (!computed) {
+        var (diffComputed, lines, message) = await TryComputeChangedFilesAsync(workspaceRoot, options.Base, options.Head).ConfigureAwait(false);
+        if (!diffComputed) {
             // Don't silently produce an empty list on git failures; fall back to a conservative file list.
             var (listed, fallbackLines, fallbackMessage) = await TryListAllFilesAsync(workspaceRoot).ConfigureAwait(false);
             if (listed && fallbackLines.Count > 0) {
                 lines = fallbackLines;
-                computed = true;
                 message = string.IsNullOrWhiteSpace(message)
                     ? "Warning: failed to compute diff changed files; fell back to `git ls-files`."
                     : (message + "\nWarning: fell back to `git ls-files`.");
@@ -92,7 +91,7 @@ internal static class CiChangedFilesCommand {
             // Warnings are meaningful for CI logs even when we continue in non-strict mode.
             Console.Error.WriteLine(message);
         }
-        if (!computed && options.Strict) {
+        if (!diffComputed && options.Strict) {
             return 1;
         }
         return 0;

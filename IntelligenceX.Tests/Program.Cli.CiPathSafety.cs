@@ -35,6 +35,32 @@ internal static partial class Program {
             try { Directory.Delete(root, recursive: true); } catch { }
         }
     }
+
+    private static void TestCiChangedFilesStrictFailsWhenDiffFailsEvenIfFallbackSucceeds() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-ci-changed-files-strict-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try {
+            File.WriteAllText(Path.Combine(root, "a.txt"), "x\n");
+            var (initExit, _, _) = GitCli.RunAsync(root, "init").GetAwaiter().GetResult();
+            AssertEqual(0, initExit, "git init exit");
+
+            var (addExit, _, _) = GitCli.RunAsync(root, "add", "a.txt").GetAwaiter().GetResult();
+            AssertEqual(0, addExit, "git add exit");
+
+            var exit = CiChangedFilesCommand.RunAsync(new[] {
+                    "--workspace", root,
+                    "--out", "artifacts/changed-files.txt",
+                    "--base", "deadbeef",
+                    "--strict"
+                })
+                .GetAwaiter().GetResult();
+            AssertEqual(1, exit, "changed-files strict exit code");
+
+            var outputPath = Path.Combine(root, "artifacts", "changed-files.txt");
+            AssertEqual(true, File.Exists(outputPath), "changed-files strict output exists");
+        } finally {
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
 #endif
 }
-
