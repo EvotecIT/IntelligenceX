@@ -6,11 +6,17 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
 using System.Text.RegularExpressions;
 
 namespace IntelligenceX.Cli.Setup;
 
 internal static partial class SetupRunner {
+    private static readonly JsonSerializerOptions IndentedJsonOptions = new(JsonSerializerDefaults.Web) {
+        WriteIndented = true,
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver()
+    };
+
     private static FilePlan PlanWorkflowChange(SetupOptions options, string? existingContent) {
         var path = ".github/workflows/review-intelligencex.yml";
         if (string.IsNullOrWhiteSpace(existingContent)) {

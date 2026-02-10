@@ -4,7 +4,6 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using IntelligenceX.Cli;
 using IntelligenceX.Cli.GitHub;
@@ -14,10 +13,6 @@ namespace IntelligenceX.Cli.Setup;
 
 internal static partial class SetupRunner {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private static readonly JsonSerializerOptions IndentedJsonOptions = new(JsonSerializerDefaults.Web) {
-        WriteIndented = true,
-        TypeInfoResolver = new DefaultJsonTypeInfoResolver()
-    };
 
     public static async Task<int> RunAsync(string[] args) {
         try {
