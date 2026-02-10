@@ -116,6 +116,13 @@ internal sealed partial class WebApi {
             await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
             return false;
         }
+        var contentType = context.Request.ContentType;
+        if (string.IsNullOrWhiteSpace(contentType) ||
+            !contentType.StartsWith("application/json", StringComparison.OrdinalIgnoreCase)) {
+            context.Response.StatusCode = 415;
+            await WriteJsonAsync(context, new { error = "Content-Type must be application/json." }).ConfigureAwait(false);
+            return false;
+        }
         var csrfHeaders = context.Request.Headers.GetValues(SetupCsrfHeaderName);
         var csrfHeader = csrfHeaders is { Length: 1 } ? csrfHeaders[0] : null;
         if (!string.Equals(csrfHeader, SetupCsrfHeaderValue, StringComparison.Ordinal)) {
