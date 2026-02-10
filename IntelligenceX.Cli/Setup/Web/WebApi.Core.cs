@@ -1,4 +1,5 @@
 using System;
+using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -54,6 +55,11 @@ internal sealed partial class WebApi {
                 return;
             }
             if (normalizedPath.Equals("/api/setup/effective-config", StringComparison.OrdinalIgnoreCase)) {
+                if (!IsLoopbackRequest(context.Request)) {
+                    context.Response.StatusCode = 403;
+                    await WriteJsonAsync(context, new { error = "Local requests only." }).ConfigureAwait(false);
+                    return;
+                }
                 if (!string.Equals(context.Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase)) {
                     context.Response.StatusCode = 405;
                     await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
@@ -88,5 +94,13 @@ internal sealed partial class WebApi {
                 // Best effort close.
             }
         }
+    }
+
+    private static bool IsLoopbackRequest(System.Net.HttpListenerRequest request) {
+        if (request.IsLocal) {
+            return true;
+        }
+        var remote = request.RemoteEndPoint;
+        return remote is not null && IPAddress.IsLoopback(remote.Address);
     }
 }
