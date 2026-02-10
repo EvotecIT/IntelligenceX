@@ -17,14 +17,14 @@ Goal: reviewer + static analysis + onboarding (CLI + Web) feel "done" end-to-end
 - [ ] Dependabot identity limitation is documented and visible during onboarding (reviews may be authored by `github-actions`).
 
 ### Phase A — Onboarding UX (CLI + Web)
-- [ ] CLI wizard: add "Enable static analysis" toggle and pack picker (default `all-50`).
-- [ ] Web UI: add "Enable static analysis" toggle and pack picker (default `all-50`).
+- [x] CLI wizard: add "Enable static analysis" toggle and pack picker (default `all-50`).
+- [x] Web UI: add "Enable static analysis" toggle and pack picker (default `all-50`).
 - [ ] CLI + Web: show a final "Effective config" preview (review + analysis) before Apply.
 - [ ] CLI + Web: surface the Dependabot secrets limitation in the UI copy (why bot identity may differ).
 - [ ] CLI + Web: add a post-Apply "Verify" step (workflow present, config present if requested, required secrets present, last runs links).
 
 ### Phase B — Setup Output (Workflow + reviewer.json)
-- [ ] Setup config writer: include `analysis` section in `.intelligencex/reviewer.json` when static analysis is enabled (create + merge paths).
+- [x] Setup config writer: include `analysis` section in `.intelligencex/reviewer.json` when static analysis is enabled (create + merge paths).
 - [ ] Setup presets: define recommended tiers for analysis packs (`all-50`, `all-100`, `all-500`) and a "no analysis" option.
 - [ ] Ensure workflow/config generation stays stable across upgrades (managed block upgrades do not delete user customization outside managed block).
 
@@ -47,6 +47,8 @@ Goal: reviewer + static analysis + onboarding (CLI + Web) feel "done" end-to-end
 ### Phase F — End-To-End Tests
 - [ ] Add tests for setup plan generation: ensure enabling analysis produces `analysis` in reviewer.json and does not regress existing review settings.
 - [ ] Add tests for config merge behavior (existing reviewer.json + enable analysis preserves unrelated user keys).
+- [ ] Add unit tests for `SetupAnalysisPacks.TryNormalizeCsv` (empty/default, invalid chars, max ids/length, dedupe).
+- [ ] Add tests for web setup validation: analysis fields rejected when not applicable (config override, update-secret/cleanup), and rejected when `analysisEnabled != true` but gate/packs provided.
 
 ## Engine Roadmap
 Status: In progress
