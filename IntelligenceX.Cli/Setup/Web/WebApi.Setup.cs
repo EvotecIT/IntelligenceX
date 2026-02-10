@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
+using IntelligenceX.Cli.Setup;
 
 namespace IntelligenceX.Cli.Setup.Web;
 
@@ -93,6 +95,114 @@ internal sealed partial class WebApi {
 
         await WriteJsonOkAsync(context, new {
             results = outputs
+        }).ConfigureAwait(false);
+    }
+
+    private async Task HandleSetupEffectiveConfigAsync(System.Net.HttpListenerContext context) {
+        var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
+        if (body is null) {
+            return;
+        }
+
+        SetupRequest request;
+        try {
+            request = JsonSerializer.Deserialize<SetupRequest>(body, _jsonOptions) ?? new SetupRequest();
+        } catch (JsonException) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Invalid JSON payload." }).ConfigureAwait(false);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.ConfigJson) && !string.IsNullOrWhiteSpace(request.ConfigPath)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Choose only one of configJson or configPath." }).ConfigureAwait(false);
+            return;
+        }
+
+        var isSetup = !request.Cleanup && !request.UpdateSecret;
+        if (!isSetup) {
+            await WriteJsonOkAsync(context, new {
+                source = "none",
+                note = "Effective reviewer config preview is only available for setup operation.",
+                config = (string?)null
+            }).ConfigureAwait(false);
+            return;
+        }
+
+        var withConfig = request.WithConfig ||
+                         !string.IsNullOrWhiteSpace(request.ConfigJson) ||
+                         !string.IsNullOrWhiteSpace(request.ConfigPath);
+        var hasConfigOverride = !string.IsNullOrWhiteSpace(request.ConfigJson) || !string.IsNullOrWhiteSpace(request.ConfigPath);
+
+        if (!WebSetupAnalysisValidator.TryValidateAndNormalize(
+            isSetup: isSetup,
+            withConfig: withConfig,
+            hasConfigOverride: hasConfigOverride,
+            analysisEnabled: request.AnalysisEnabled,
+            analysisGateEnabled: request.AnalysisGateEnabled,
+            analysisPacks: request.AnalysisPacks,
+            normalizedEnabled: out var normalizedEnabled,
+            normalizedGateEnabled: out var normalizedGateEnabled,
+            normalizedPacks: out var normalizedPacks,
+            error: out var analysisError)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = analysisError }).ConfigureAwait(false);
+            return;
+        }
+        request.AnalysisEnabled = normalizedEnabled;
+        request.AnalysisGateEnabled = normalizedGateEnabled;
+        request.AnalysisPacks = normalizedPacks;
+
+        if (!withConfig) {
+            await WriteJsonOkAsync(context, new {
+                source = "disabled",
+                note = "Reviewer config will not be written (withConfig disabled).",
+                config = (string?)null
+            }).ConfigureAwait(false);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.ConfigPath)) {
+            await WriteJsonOkAsync(context, new {
+                source = "path",
+                note = $"Using config path override: {request.ConfigPath}",
+                config = (string?)null
+            }).ConfigureAwait(false);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.ConfigJson)) {
+            var normalized = request.ConfigJson!;
+            try {
+                var parsed = JsonNode.Parse(request.ConfigJson!);
+                normalized = parsed?.ToJsonString(CliJson.Indented) ?? request.ConfigJson!;
+            } catch {
+                // Keep raw input if parsing fails.
+            }
+
+            await WriteJsonOkAsync(context, new {
+                source = "inline",
+                note = "Using inline config override.",
+                config = normalized
+            }).ConfigureAwait(false);
+            return;
+        }
+
+        // Generate preview using the same config builder path as setup.
+        var previewRepo = request.Repo;
+        if (string.IsNullOrWhiteSpace(previewRepo) && request.Repos is { Count: > 0 }) {
+            previewRepo = request.Repos[0];
+        }
+        if (string.IsNullOrWhiteSpace(previewRepo)) {
+            previewRepo = "owner/repo";
+        }
+
+        var args = BuildSetupArgs(request, dryRun: true, previewRepo!);
+        var config = SetupRunner.BuildReviewerConfigJsonForTests(args);
+        await WriteJsonOkAsync(context, new {
+            source = "generated",
+            note = "Generated from current setup selections.",
+            config
         }).ConfigureAwait(false);
     }
 }

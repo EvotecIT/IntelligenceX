@@ -53,6 +53,10 @@ internal sealed partial class WebApi {
                 await HandleSetupAsync(context, dryRun: true).ConfigureAwait(false);
                 return;
             }
+            if (normalizedPath.Equals("/api/setup/effective-config", StringComparison.OrdinalIgnoreCase)) {
+                await HandleSetupEffectiveConfigAsync(context).ConfigureAwait(false);
+                return;
+            }
             if (normalizedPath.Equals("/api/setup/apply", StringComparison.OrdinalIgnoreCase)) {
                 await HandleSetupAsync(context, dryRun: false).ConfigureAwait(false);
                 return;

@@ -368,6 +368,11 @@ function buildReviewTable() {
   if (!grid) return;
 
   const repos = selectedRepos();
+  const withConfigEffective = (withConfig && withConfig.checked) || (configJson && configJson.value.trim().length > 0) || (configPath && configPath.value.trim().length > 0);
+  const hasConfigOverride = (configJson && configJson.value.trim().length > 0) || (configPath && configPath.value.trim().length > 0);
+  const analysisState = selectedOperation !== 'setup' || !withConfigEffective || hasConfigOverride
+    ? 'not applicable'
+    : (analysisEnabled && analysisEnabled.checked ? 'enabled' : 'disabled');
   const providerLabel = selectedProvider === 'openai' ? 'ChatGPT / OpenAI' : 'GitHub Copilot';
   const profileLabels = {
     balanced: 'Balanced',
@@ -406,6 +411,22 @@ function buildReviewTable() {
         <span class="review-label">Review Profile</span>
         <span class="review-value">${profileLabels[selectedPresetProfile] || selectedPresetProfile}</span>
       </div>
+      <div class="review-item">
+        <span class="review-label">With config</span>
+        <span class="review-value">${withConfigEffective ? 'yes' : 'no'}</span>
+      </div>
+      <div class="review-item">
+        <span class="review-label">Review mode</span>
+        <span class="review-value">${reviewMode && reviewMode.value ? reviewMode.value : 'default'}</span>
+      </div>
+      <div class="review-item">
+        <span class="review-label">Comment mode</span>
+        <span class="review-value">${reviewCommentMode && reviewCommentMode.value ? reviewCommentMode.value : 'default'}</span>
+      </div>
+      <div class="review-item">
+        <span class="review-label">Static analysis</span>
+        <span class="review-value">${analysisState}</span>
+      </div>
     </div>
   `;
 
@@ -428,6 +449,37 @@ function buildReviewTable() {
   }
 
   grid.innerHTML = html;
+  refreshEffectiveConfigPreview();
+}
+
+async function refreshEffectiveConfigPreview() {
+  const previewEl = $('effectiveConfigPreview');
+  const noteEl = $('effectiveConfigNote');
+  if (!previewEl || !noteEl) return;
+
+  previewEl.textContent = '(loading...)';
+  noteEl.textContent = 'Generated from your current setup choices.';
+
+  try {
+    const data = await fetchJsonSafe('/api/setup/effective-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildRequestBody(true))
+    });
+
+    if (data && data.config && String(data.config).trim().length > 0) {
+      previewEl.textContent = data.config;
+    } else {
+      previewEl.textContent = '(no config preview available)';
+    }
+
+    if (data && data.note) {
+      noteEl.textContent = data.note;
+    }
+  } catch (e) {
+    previewEl.textContent = '(preview unavailable)';
+    noteEl.textContent = `Preview error: ${e.message || e}`;
+  }
 }
 
 function clearOutput() {
