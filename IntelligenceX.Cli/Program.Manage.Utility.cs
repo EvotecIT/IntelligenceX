@@ -135,7 +135,8 @@ internal static partial class Program {
             }
             var prefs = JsonSerializer.Deserialize<ManagePreferences>(json);
             return prefs ?? new ManagePreferences();
-        } catch {
+        } catch (Exception ex) {
+            LogManageDebug("Failed to load manage-hub preferences.", ex);
             return new ManagePreferences();
         }
     }
@@ -155,7 +156,8 @@ internal static partial class Program {
                 WriteIndented = true
             });
             File.WriteAllText(path, json);
-        } catch {
+        } catch (Exception ex) {
+            LogManageDebug("Failed to save manage-hub preferences.", ex);
             // Best effort; ignore persistence failures.
         }
     }
@@ -170,11 +172,7 @@ internal static partial class Program {
     }
 
     private static string NormalizeRepo(string value) {
-        var repo = value.Trim();
-        while (repo.EndsWith("/") || repo.EndsWith("\\")) {
-            repo = repo.Substring(0, repo.Length - 1);
-        }
-        return repo;
+        return value.Trim().TrimEnd('/', '\\');
     }
 
     private static List<OpenAiBundleStatus> ReadOpenAiBundles() {
@@ -194,9 +192,18 @@ internal static partial class Program {
                 .Where(e => string.Equals(e.Provider, "openai-codex", StringComparison.OrdinalIgnoreCase))
                 .Select(e => new OpenAiBundleStatus(e.Provider, e.AccountId, e.ExpiresAt))
                 .ToList();
-        } catch {
+        } catch (Exception ex) {
+            LogManageDebug("Failed to parse OpenAI auth bundles from auth store.", ex);
             return new List<OpenAiBundleStatus>();
         }
+    }
+
+    private static void LogManageDebug(string message, Exception ex) {
+        if (!ShouldShowDetailedErrors()) {
+            return;
+        }
+        Console.Error.WriteLine($"[manage][debug] {message}");
+        Console.Error.WriteLine(ex.ToString());
     }
 
     private static (bool Installed, bool Authenticated) GetGitHubCliStatus() {

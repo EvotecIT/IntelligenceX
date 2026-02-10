@@ -94,6 +94,54 @@ internal static partial class Program {
         AssertContainsText(stdout, "Usage:", "dispatch manage command unexpected failure help output");
     }
 
+    private static void TestCliDispatchDetailedErrorFlagParsing() {
+        var previousDebug = Environment.GetEnvironmentVariable("INTELLIGENCEX_DEBUG");
+        var previousVerbose = Environment.GetEnvironmentVariable("INTELLIGENCEX_VERBOSE");
+        try {
+            AssertShouldShowDetailedErrorsFor("INTELLIGENCEX_DEBUG", "1", true);
+            AssertShouldShowDetailedErrorsFor("INTELLIGENCEX_DEBUG", "true", true);
+            AssertShouldShowDetailedErrorsFor("INTELLIGENCEX_DEBUG", "YES", true);
+            AssertShouldShowDetailedErrorsFor("INTELLIGENCEX_DEBUG", "on", true);
+            AssertShouldShowDetailedErrorsFor("INTELLIGENCEX_DEBUG", "0", false);
+            AssertShouldShowDetailedErrorsFor("INTELLIGENCEX_DEBUG", "false", false);
+            AssertShouldShowDetailedErrorsFor("INTELLIGENCEX_DEBUG", "no", false);
+            AssertShouldShowDetailedErrorsFor("INTELLIGENCEX_DEBUG", "off", false);
+
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_DEBUG", null);
+            AssertShouldShowDetailedErrorsFor("INTELLIGENCEX_VERBOSE", "1", true);
+            AssertShouldShowDetailedErrorsFor("INTELLIGENCEX_VERBOSE", "yes", true);
+            AssertShouldShowDetailedErrorsFor("INTELLIGENCEX_VERBOSE", "0", false);
+
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_DEBUG", "on");
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_VERBOSE", "0");
+            AssertEqual(true, InvokeShouldShowDetailedErrors(), "dispatch detailed errors: debug overrides verbose falsy");
+        } finally {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_DEBUG", previousDebug);
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_VERBOSE", previousVerbose);
+        }
+    }
+
+    private static void AssertShouldShowDetailedErrorsFor(string envVar, string? value, bool expected) {
+        var previousDebug = Environment.GetEnvironmentVariable("INTELLIGENCEX_DEBUG");
+        var previousVerbose = Environment.GetEnvironmentVariable("INTELLIGENCEX_VERBOSE");
+        try {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_DEBUG", null);
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_VERBOSE", null);
+            Environment.SetEnvironmentVariable(envVar, value);
+            AssertEqual(expected, InvokeShouldShowDetailedErrors(), $"dispatch detailed errors: {envVar}={value ?? "<null>"}");
+        } finally {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_DEBUG", previousDebug);
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_VERBOSE", previousVerbose);
+        }
+    }
+
+    private static bool InvokeShouldShowDetailedErrors() {
+        var flags = global::System.Reflection.BindingFlags.NonPublic | global::System.Reflection.BindingFlags.Static;
+        var method = typeof(global::IntelligenceX.Cli.Program).GetMethod("ShouldShowDetailedErrors", flags);
+        AssertNotNull(method, "dispatch detailed errors method lookup");
+        return (bool)method!.Invoke(null, null)!;
+    }
+
     private static (int ExitCode, string StdOut, string StdErr) RunCliDispatchWithCapturedOutput(
         string[] args,
         Func<bool> canLaunchManageHub,
