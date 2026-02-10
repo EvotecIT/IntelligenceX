@@ -260,8 +260,11 @@ internal static partial class Program {
         var outputLock = new object();
         var stdOut = new StringBuilder();
         var stdErr = new StringBuilder();
+        var stdOutClosed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stdErrClosed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         process.OutputDataReceived += (_, eventArgs) => {
             if (eventArgs.Data is null) {
+                stdOutClosed.TrySetResult(true);
                 return;
             }
             lock (outputLock) {
@@ -273,6 +276,7 @@ internal static partial class Program {
         };
         process.ErrorDataReceived += (_, eventArgs) => {
             if (eventArgs.Data is null) {
+                stdErrClosed.TrySetResult(true);
                 return;
             }
             lock (outputLock) {
@@ -289,9 +293,10 @@ internal static partial class Program {
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
+        var completionTask = Task.WhenAll(process.WaitForExitAsync(), stdOutClosed.Task, stdErrClosed.Task);
         var timedOut = false;
         try {
-            await process.WaitForExitAsync().WaitAsync(timeout).ConfigureAwait(false);
+            await completionTask.WaitAsync(timeout).ConfigureAwait(false);
         } catch (TimeoutException) {
             timedOut = true;
             try {
@@ -300,7 +305,7 @@ internal static partial class Program {
                 // ignore kill failures
             }
             try {
-                await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                await completionTask.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
             } catch (TimeoutException) {
                 // best effort: process may still be terminating
             } catch (InvalidOperationException) {

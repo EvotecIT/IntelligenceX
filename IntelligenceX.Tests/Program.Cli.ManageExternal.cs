@@ -16,5 +16,31 @@ internal static partial class Program {
             throw new InvalidOperationException($"Expected timeout test to return promptly, got {timer.Elapsed}.");
         }
     }
+
+    private static void TestManageRunExternalCommandCapturesHelpTailLine() {
+        var cliPath = ResolveCliDllPathForTests();
+        var args = $"\"{cliPath}\" manage --help";
+        var result = global::IntelligenceX.Cli.Program.RunExternalCommandForTests("dotnet", args, timeoutMs: 10000);
+        if (result.ExitCode == int.MinValue) {
+            throw new InvalidOperationException($"Expected CLI help command to start, got error: {result.StdErr}");
+        }
+        AssertEqual(0, result.ExitCode, "manage external help exit code");
+        AssertContainsText(result.StdOut, "IntelligenceX management hub", "manage external help title");
+        AssertContainsText(result.StdOut, "  intelligencex", "manage external help final line");
+    }
+
+    private static string ResolveCliDllPathForTests() {
+        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        var candidates = new[] {
+            Path.Combine(root, "IntelligenceX.Cli", "bin", "Release", "net10.0", "IntelligenceX.Cli.dll"),
+            Path.Combine(root, "IntelligenceX.Cli", "bin", "Release", "net8.0", "IntelligenceX.Cli.dll")
+        };
+        foreach (var candidate in candidates) {
+            if (File.Exists(candidate)) {
+                return candidate;
+            }
+        }
+        throw new InvalidOperationException("Could not locate built IntelligenceX.Cli.dll for external command capture test.");
+    }
 #endif
 }
