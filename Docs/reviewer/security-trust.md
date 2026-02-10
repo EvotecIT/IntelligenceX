@@ -41,6 +41,13 @@ The CLI prints the base64 auth store for manual paste into GitHub secrets.
 
 All changes are made via PRs by default.
 
+## Dependabot PR limitation (GitHub Actions secrets)
+
+For Dependabot PRs, GitHub typically does not expose repository secrets to workflows triggered by `pull_request`.
+If your reviewer workflow relies on GitHub App secrets (app id/private key) to post as a branded bot identity, those
+secrets may be unavailable on Dependabot PR runs. In that case the reviewer will fall back to `GITHUB_TOKEN`, and PR
+comments will appear authored by `github-actions`.
+
 ## Secret handling options
 
 - Auto-upload secrets via the CLI or wizard (`--set-github-secret`).

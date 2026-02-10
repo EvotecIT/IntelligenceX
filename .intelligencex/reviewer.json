@@ -33,6 +33,7 @@
   "review": {
     "maxFiles": 30,
     "maxPatchChars": 20000,
+    "reviewThreadsAutoResolveStale": true,
     "reviewThreadsAutoResolveAIReply": true,
     "reviewUsageSummary": true,
     "reviewUsageSummaryCacheMinutes": 10,
