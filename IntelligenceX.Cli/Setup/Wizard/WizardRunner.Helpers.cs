@@ -13,12 +13,15 @@ namespace IntelligenceX.Cli.Setup.Wizard;
 
 internal static partial class WizardRunner {
     private static void ApplyAnalysisSelection(WizardState state) {
-        if (state.Operation != WizardOperation.Setup || !state.WithConfig || state.ConfigMode != ConfigMode.Preset) {
+        if (state.Operation != WizardOperation.Setup || state.ConfigMode != ConfigMode.Preset) {
             state.AnalysisEnabled = null;
             state.AnalysisGateEnabled = null;
             state.AnalysisPacks = null;
             return;
         }
+
+        // Preset mode always generates reviewer.json; ensure state reflects that.
+        state.WithConfig = true;
 
         var analysisEnabled = WizardPrompts.PromptAnalysisEnabled(state.AnalysisEnabled ?? true);
         state.AnalysisEnabled = analysisEnabled;
