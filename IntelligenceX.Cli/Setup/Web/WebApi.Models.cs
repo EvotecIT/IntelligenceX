@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using IntelligenceX.OpenAI.Usage;
 
 namespace IntelligenceX.Cli.Setup.Web;
@@ -158,17 +160,42 @@ internal sealed partial class WebApi {
         }
     }
 
-    private static void TryHardenTempFile(string path) {
-        try {
-            if (!File.Exists(path)) {
-                return;
-            }
-            var attrs = File.GetAttributes(path);
-            File.SetAttributes(path, attrs | FileAttributes.Temporary | FileAttributes.Hidden);
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Temp file harden failed: {ex.GetType().Name}: {ex.Message}");
-        }
-    }
+	    private static void TryHardenTempFile(string path) {
+	        try {
+	            if (!File.Exists(path)) {
+	                return;
+	            }
+	            try {
+	                var attrs = File.GetAttributes(path);
+	                File.SetAttributes(path, attrs | FileAttributes.Temporary | FileAttributes.Hidden);
+	            } catch (Exception ex) {
+	                Trace.TraceWarning($"Temp file harden attributes failed: {ex.GetType().Name}: {ex.Message}");
+	            }
+
+	            if (OperatingSystem.IsWindows()) {
+	                try {
+	                    var sid = WindowsIdentity.GetCurrent().User;
+	                    if (sid is not null) {
+	                        var security = new FileSecurity();
+	                        security.SetOwner(sid);
+	                        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+	                        security.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl, AccessControlType.Allow));
+	                        new FileInfo(path).SetAccessControl(security);
+	                    }
+	                } catch (Exception ex) {
+	                    Trace.TraceWarning($"Temp file harden ACL failed: {ex.GetType().Name}: {ex.Message}");
+	                }
+	            } else {
+	                try {
+	                    File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+	                } catch (Exception ex) {
+	                    Trace.TraceWarning($"Temp file harden permissions failed: {ex.GetType().Name}: {ex.Message}");
+	                }
+	            }
+	        } catch (Exception ex) {
+	            Trace.TraceWarning($"Temp file harden failed: {ex.GetType().Name}: {ex.Message}");
+	        }
+	    }
 
     private sealed class UsageResponse {
         public UsageSnapshot? Usage { get; set; }

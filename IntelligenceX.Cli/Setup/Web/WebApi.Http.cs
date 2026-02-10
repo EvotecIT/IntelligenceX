@@ -7,9 +7,30 @@ using System.Threading.Tasks;
 namespace IntelligenceX.Cli.Setup.Web;
 
 internal sealed partial class WebApi {
+    private const long MaxRequestBodyBytes = 1024 * 1024; // 1 MiB
+
+    private sealed class RequestBodyTooLargeException : Exception {
+    }
+
     private async Task<string> ReadBodyAsync(System.Net.HttpListenerContext context) {
-        using var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding ?? Encoding.UTF8);
-        return await reader.ReadToEndAsync().ConfigureAwait(false);
+        var contentLength = context.Request.ContentLength64;
+        if (contentLength > MaxRequestBodyBytes) {
+            throw new RequestBodyTooLargeException();
+        }
+
+        var encoding = context.Request.ContentEncoding ?? Encoding.UTF8;
+        using var ms = new MemoryStream();
+        var buffer = new byte[8192];
+        long total = 0;
+        int read;
+        while ((read = await context.Request.InputStream.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0) {
+            total += read;
+            if (total > MaxRequestBodyBytes) {
+                throw new RequestBodyTooLargeException();
+            }
+            ms.Write(buffer, 0, read);
+        }
+        return encoding.GetString(ms.ToArray());
     }
 
     private async Task WriteJsonAsync(System.Net.HttpListenerContext context, object payload) {
@@ -25,7 +46,14 @@ internal sealed partial class WebApi {
         if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
             return null;
         }
-        var body = await ReadBodyAsync(context).ConfigureAwait(false);
+        string body;
+        try {
+            body = await ReadBodyAsync(context).ConfigureAwait(false);
+        } catch (RequestBodyTooLargeException) {
+            context.Response.StatusCode = 413;
+            await WriteJsonAsync(context, new { error = "Request body too large." }).ConfigureAwait(false);
+            return null;
+        }
         if (string.IsNullOrWhiteSpace(body)) {
             context.Response.StatusCode = 400;
             await WriteJsonAsync(context, new { error = "Request body required." }).ConfigureAwait(false);

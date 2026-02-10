@@ -80,11 +80,21 @@ internal sealed partial class WebApi {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) {
             return false;
         }
+        if (!string.IsNullOrEmpty(uri.UserInfo)) {
+            return false;
+        }
+        if (uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)) {
+            normalized = uri.ToString();
+            return true;
+        }
+        if (uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) && uri.IsLoopback) {
+            normalized = uri.ToString();
+            return true;
+        }
         if (!uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
             !uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)) {
             return false;
         }
-        normalized = uri.ToString();
-        return true;
+        return false;
     }
 }

@@ -10,15 +10,22 @@ namespace IntelligenceX.Cli.Setup.Web;
 
 internal sealed partial class WebApi {
     private async Task HandleOpenAILoginAsync(System.Net.HttpListenerContext context) {
-        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
-            return;
-        }
+	        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
+	            return;
+	        }
 
-        var body = await ReadBodyAsync(context).ConfigureAwait(false);
-        OpenAILoginRequest request;
-        try {
-            request = string.IsNullOrWhiteSpace(body)
-                ? new OpenAILoginRequest()
+	        string body;
+	        try {
+	            body = await ReadBodyAsync(context).ConfigureAwait(false);
+	        } catch (RequestBodyTooLargeException) {
+	            context.Response.StatusCode = 413;
+	            await WriteJsonAsync(context, new { error = "Request body too large." }).ConfigureAwait(false);
+	            return;
+	        }
+	        OpenAILoginRequest request;
+	        try {
+	            request = string.IsNullOrWhiteSpace(body)
+	                ? new OpenAILoginRequest()
                 : JsonSerializer.Deserialize<OpenAILoginRequest>(body, _jsonOptions) ?? new OpenAILoginRequest();
         } catch (JsonException) {
             context.Response.StatusCode = 400;

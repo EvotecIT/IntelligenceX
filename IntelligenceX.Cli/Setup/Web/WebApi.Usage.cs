@@ -13,16 +13,23 @@ using IntelligenceX.OpenAI.Usage;
 namespace IntelligenceX.Cli.Setup.Web;
 
 internal sealed partial class WebApi {
-    private async Task HandleUsageAsync(System.Net.HttpListenerContext context) {
-        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
-            return;
-        }
+	    private async Task HandleUsageAsync(System.Net.HttpListenerContext context) {
+	        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
+	            return;
+	        }
 
-        var body = await ReadBodyAsync(context).ConfigureAwait(false);
-        UsageRequest request;
-        try {
-            request = JsonSerializer.Deserialize<UsageRequest>(body, _jsonOptions) ?? new UsageRequest();
-        } catch (JsonException) {
+	        string body;
+	        try {
+	            body = await ReadBodyAsync(context).ConfigureAwait(false);
+	        } catch (RequestBodyTooLargeException) {
+	            context.Response.StatusCode = 413;
+	            await WriteJsonAsync(context, new { error = "Request body too large." }).ConfigureAwait(false);
+	            return;
+	        }
+	        UsageRequest request;
+	        try {
+	            request = JsonSerializer.Deserialize<UsageRequest>(body, _jsonOptions) ?? new UsageRequest();
+	        } catch (JsonException) {
             context.Response.StatusCode = 400;
             await WriteJsonAsync(context, new { error = "Invalid JSON payload." }).ConfigureAwait(false);
             return;
@@ -30,18 +37,21 @@ internal sealed partial class WebApi {
         TempFile? tempFile = null;
         try {
             var authPath = request.AuthB64Path;
-            if (string.IsNullOrWhiteSpace(authPath) && string.IsNullOrWhiteSpace(request.AuthB64)) {
-                authPath = AuthPaths.ResolveAuthPath();
-            }
-            if (!string.IsNullOrWhiteSpace(request.AuthB64)) {
-                var raw = Convert.FromBase64String(request.AuthB64);
-                var content = Encoding.UTF8.GetString(raw);
-                var tempPath = Path.Combine(Path.GetTempPath(), $"intelligencex-auth-{Guid.NewGuid():N}.json");
-                await File.WriteAllTextAsync(tempPath, content).ConfigureAwait(false);
-                TryHardenTempFile(tempPath);
-                tempFile = new TempFile(tempPath);
-                authPath = tempPath;
-            }
+	            if (string.IsNullOrWhiteSpace(authPath) && string.IsNullOrWhiteSpace(request.AuthB64)) {
+	                authPath = AuthPaths.ResolveAuthPath();
+	            }
+	            if (!string.IsNullOrWhiteSpace(request.AuthB64)) {
+	                var raw = Convert.FromBase64String(request.AuthB64);
+	                var content = Encoding.UTF8.GetString(raw);
+	                var tempPath = Path.Combine(Path.GetTempPath(), $"intelligencex-auth-{Guid.NewGuid():N}.json");
+	                await using (var stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous)) {
+	                    var bytes = Encoding.UTF8.GetBytes(content);
+	                    await stream.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
+	                }
+	                TryHardenTempFile(tempPath);
+	                tempFile = new TempFile(tempPath);
+	                authPath = tempPath;
+	            }
             if (string.IsNullOrWhiteSpace(authPath) || !File.Exists(authPath)) {
                 context.Response.StatusCode = 400;
                 await WriteJsonAsync(context, new { error = "Auth bundle path not found." }).ConfigureAwait(false);
