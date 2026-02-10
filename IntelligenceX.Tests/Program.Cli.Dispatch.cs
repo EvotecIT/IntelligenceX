@@ -2,6 +2,8 @@ namespace IntelligenceX.Tests;
 
 internal static partial class Program {
 #if !NET472
+    private static readonly object CliDispatchConsoleLock = new();
+
     private static void TestCliDispatchNoArgsInteractiveRunsManage() {
         string[]? forwardedArgs = null;
         var exit = global::IntelligenceX.Cli.Program.DispatchAsync(
@@ -54,7 +56,11 @@ internal static partial class Program {
             _ => throw new InvalidOperationException("boom"));
 
         AssertEqual(1, exit, "dispatch no-args manage failure exit");
-        AssertContainsText(stderr, "Failed to launch management hub: boom", "dispatch no-args manage failure stderr");
+        AssertContainsText(stderr, "Failed to launch management hub.", "dispatch no-args manage failure stderr");
+        AssertContainsText(stderr, "INTELLIGENCEX_DEBUG=1", "dispatch no-args manage failure debug hint");
+        if (stderr.IndexOf("boom", StringComparison.Ordinal) >= 0) {
+            throw new InvalidOperationException("Expected no-args manage failure stderr to hide raw exception details by default.");
+        }
         AssertContainsText(stdout, "Usage:", "dispatch no-args manage failure help output");
     }
 
@@ -62,20 +68,22 @@ internal static partial class Program {
         string[] args,
         Func<bool> canLaunchManageHub,
         Func<string[], Task<int>> runManageAsync) {
-        var originalOut = Console.Out;
-        var originalErr = Console.Error;
-        using var outWriter = new StringWriter();
-        using var errWriter = new StringWriter();
-        Console.SetOut(outWriter);
-        Console.SetError(errWriter);
-        try {
-            var exit = global::IntelligenceX.Cli.Program.DispatchAsync(args, canLaunchManageHub, runManageAsync)
-                .GetAwaiter()
-                .GetResult();
-            return (exit, outWriter.ToString(), errWriter.ToString());
-        } finally {
-            Console.SetOut(originalOut);
-            Console.SetError(originalErr);
+        lock (CliDispatchConsoleLock) {
+            var originalOut = Console.Out;
+            var originalErr = Console.Error;
+            using var outWriter = new StringWriter();
+            using var errWriter = new StringWriter();
+            Console.SetOut(outWriter);
+            Console.SetError(errWriter);
+            try {
+                var exit = global::IntelligenceX.Cli.Program.DispatchAsync(args, canLaunchManageHub, runManageAsync)
+                    .GetAwaiter()
+                    .GetResult();
+                return (exit, outWriter.ToString(), errWriter.ToString());
+            } finally {
+                Console.SetOut(originalOut);
+                Console.SetError(originalErr);
+            }
         }
     }
 #endif

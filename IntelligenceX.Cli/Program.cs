@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -28,9 +29,13 @@ internal static partial class Program {
             if (canLaunch()) {
                 try {
                     return await runManage(Array.Empty<string>()).ConfigureAwait(false);
-                } catch (Exception ex) {
-                    var detail = string.IsNullOrWhiteSpace(ex.Message) ? ex.GetType().Name : ex.Message;
-                    Console.Error.WriteLine($"Failed to launch management hub: {detail}");
+                } catch (Exception ex) when (IsManageLaunchOperationalException(ex)) {
+                    Console.Error.WriteLine("Failed to launch management hub.");
+                    if (ShouldShowDetailedErrors()) {
+                        Console.Error.WriteLine(ex.ToString());
+                    } else {
+                        Console.Error.WriteLine("Set INTELLIGENCEX_DEBUG=1 for exception details.");
+                    }
                     PrintHelp();
                     return 1;
                 }
@@ -58,6 +63,34 @@ internal static partial class Program {
             "help" or "-h" or "--help" => PrintHelpReturn(),
             _ => PrintHelpReturn()
         };
+    }
+
+    private static bool IsManageLaunchOperationalException(Exception ex) {
+        if (ex is AggregateException aggregate && aggregate.InnerException is not null) {
+            return IsManageLaunchOperationalException(aggregate.InnerException);
+        }
+        return ex is InvalidOperationException
+            or IOException
+            or UnauthorizedAccessException
+            or NotSupportedException
+            or JsonException
+            or OperationCanceledException
+            or Win32Exception;
+    }
+
+    private static bool ShouldShowDetailedErrors() {
+        return IsTruthyFlag(Environment.GetEnvironmentVariable("INTELLIGENCEX_DEBUG"))
+               || IsTruthyFlag(Environment.GetEnvironmentVariable("INTELLIGENCEX_VERBOSE"));
+    }
+
+    private static bool IsTruthyFlag(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return false;
+        }
+        return value.Equals("1", StringComparison.OrdinalIgnoreCase)
+               || value.Equals("true", StringComparison.OrdinalIgnoreCase)
+               || value.Equals("yes", StringComparison.OrdinalIgnoreCase)
+               || value.Equals("on", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<int> RunAuthAsync(string[] args) {
