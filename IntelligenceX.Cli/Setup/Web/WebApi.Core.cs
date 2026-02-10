@@ -1,4 +1,5 @@
 using System;
+using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -6,6 +7,8 @@ using System.Threading.Tasks;
 namespace IntelligenceX.Cli.Setup.Web;
 
 internal sealed partial class WebApi {
+    private const string SetupCsrfHeaderName = "X-IntelligenceX-Setup-Request";
+    private const string SetupCsrfHeaderValue = "1";
     private static readonly Regex RepoSegmentRegex = new("^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -50,10 +53,23 @@ internal sealed partial class WebApi {
                 return;
             }
             if (normalizedPath.Equals("/api/setup/plan", StringComparison.OrdinalIgnoreCase)) {
+                if (!await EnsureLocalPostSetupRequestAsync(context).ConfigureAwait(false)) {
+                    return;
+                }
                 await HandleSetupAsync(context, dryRun: true).ConfigureAwait(false);
                 return;
             }
+            if (normalizedPath.Equals("/api/setup/effective-config", StringComparison.OrdinalIgnoreCase)) {
+                if (!await EnsureLocalPostSetupRequestAsync(context).ConfigureAwait(false)) {
+                    return;
+                }
+                await HandleSetupEffectiveConfigAsync(context).ConfigureAwait(false);
+                return;
+            }
             if (normalizedPath.Equals("/api/setup/apply", StringComparison.OrdinalIgnoreCase)) {
+                if (!await EnsureLocalPostSetupRequestAsync(context).ConfigureAwait(false)) {
+                    return;
+                }
                 await HandleSetupAsync(context, dryRun: false).ConfigureAwait(false);
                 return;
             }
@@ -79,5 +95,44 @@ internal sealed partial class WebApi {
                 // Best effort close.
             }
         }
+    }
+
+    private static bool IsLoopbackRequest(System.Net.HttpListenerRequest request) {
+        var remote = request.RemoteEndPoint;
+        if (remote is null || !IPAddress.IsLoopback(remote.Address)) {
+            return false;
+        }
+
+        var local = request.LocalEndPoint;
+        return local is null || IPAddress.IsLoopback(local.Address);
+    }
+
+    private async Task<bool> EnsureLocalPostSetupRequestAsync(System.Net.HttpListenerContext context) {
+        if (!IsLoopbackRequest(context.Request)) {
+            context.Response.StatusCode = 403;
+            await WriteJsonAsync(context, new { error = "Local requests only." }).ConfigureAwait(false);
+            return false;
+        }
+        if (!string.Equals(context.Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase)) {
+            context.Response.StatusCode = 405;
+            await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+            return false;
+        }
+        var contentType = context.Request.ContentType;
+        if (string.IsNullOrWhiteSpace(contentType) ||
+            !contentType.StartsWith("application/json", StringComparison.OrdinalIgnoreCase)) {
+            context.Response.StatusCode = 415;
+            await WriteJsonAsync(context, new { error = "Content-Type must be application/json." }).ConfigureAwait(false);
+            return false;
+        }
+        var csrfHeaders = context.Request.Headers.GetValues(SetupCsrfHeaderName);
+        var csrfHeader = csrfHeaders is { Length: 1 } ? csrfHeaders[0] : null;
+        if (!string.Equals(csrfHeader, SetupCsrfHeaderValue, StringComparison.Ordinal)) {
+            context.Response.StatusCode = 403;
+            await WriteJsonAsync(context, new { error = "Missing or invalid setup CSRF header." }).ConfigureAwait(false);
+            return false;
+        }
+
+        return true;
     }
 }

@@ -320,6 +320,13 @@ async function fetchJsonSafe(url, options) {
   return payload || {};
 }
 
+function getSetupRequestHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'X-IntelligenceX-Setup-Request': '1'
+  };
+}
+
 function getToken() {
   return (token ? token.value.trim() : '') || '';
 }
@@ -362,12 +369,26 @@ function updateRepoCount() {
   if (el) el.textContent = `${count} repo${count !== 1 ? 's' : ''} selected`;
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ── Build review grid ──
 function buildReviewTable() {
   const grid = $('reviewGrid');
   if (!grid) return;
 
   const repos = selectedRepos();
+  const withConfigEffective = (withConfig && withConfig.checked) || (configJson && configJson.value.trim().length > 0) || (configPath && configPath.value.trim().length > 0);
+  const hasConfigOverride = (configJson && configJson.value.trim().length > 0) || (configPath && configPath.value.trim().length > 0);
+  const analysisState = selectedOperation !== 'setup' || !withConfigEffective || hasConfigOverride
+    ? 'not applicable'
+    : (analysisEnabled && analysisEnabled.checked ? 'enabled' : 'disabled');
   const providerLabel = selectedProvider === 'openai' ? 'ChatGPT / OpenAI' : 'GitHub Copilot';
   const profileLabels = {
     balanced: 'Balanced',
@@ -377,6 +398,13 @@ function buildReviewTable() {
     performance: 'Performance',
     tests: 'Tests'
   };
+  const safeOperation = escapeHtml(selectedOperation);
+  const safeProviderLabel = escapeHtml(providerLabel);
+  const safeProfile = escapeHtml(profileLabels[selectedPresetProfile] || selectedPresetProfile);
+  const safeReviewMode = escapeHtml(reviewMode && reviewMode.value ? reviewMode.value : 'default');
+  const safeReviewCommentMode = escapeHtml(reviewCommentMode && reviewCommentMode.value ? reviewCommentMode.value : 'default');
+  const safeAnalysisState = escapeHtml(analysisState);
+  const safeRepoHtml = repos.map(r => `<code>${escapeHtml(r)}</code>`).join(' ');
 
   let html = `
     <div class="review-section">
@@ -389,22 +417,38 @@ function buildReviewTable() {
         <span class="review-label">Repositories</span>
         <span class="review-value">${repos.length > 0 ? `<strong>${repos.length}</strong> selected` : '<span class="badge badge-warn">None</span>'}</span>
       </div>
-      ${repos.length > 0 && repos.length <= 5 ? `<div class="review-repos">${repos.map(r => `<code>${r}</code>`).join(' ')}</div>` : ''}
+      ${repos.length > 0 && repos.length <= 5 ? `<div class="review-repos">${safeRepoHtml}</div>` : ''}
     </div>
 
     <div class="review-section">
       <div class="review-section-title">Configuration</div>
       <div class="review-item">
         <span class="review-label">Operation</span>
-        <span class="review-value"><strong>${selectedOperation}</strong></span>
+        <span class="review-value"><strong>${safeOperation}</strong></span>
       </div>
       <div class="review-item">
         <span class="review-label">AI Provider</span>
-        <span class="review-value">${providerLabel}</span>
+        <span class="review-value">${safeProviderLabel}</span>
       </div>
       <div class="review-item">
         <span class="review-label">Review Profile</span>
-        <span class="review-value">${profileLabels[selectedPresetProfile] || selectedPresetProfile}</span>
+        <span class="review-value">${safeProfile}</span>
+      </div>
+      <div class="review-item">
+        <span class="review-label">With config</span>
+        <span class="review-value">${withConfigEffective ? 'yes' : 'no'}</span>
+      </div>
+      <div class="review-item">
+        <span class="review-label">Review mode</span>
+        <span class="review-value">${safeReviewMode}</span>
+      </div>
+      <div class="review-item">
+        <span class="review-label">Comment mode</span>
+        <span class="review-value">${safeReviewCommentMode}</span>
+      </div>
+      <div class="review-item">
+        <span class="review-label">Static analysis</span>
+        <span class="review-value">${safeAnalysisState}</span>
       </div>
     </div>
   `;
@@ -416,18 +460,51 @@ function buildReviewTable() {
       file: 'Auth bundle (file path)',
       skip: 'Skipped (set up later)'
     };
+    const safeSecretMethod = escapeHtml(secretLabels[secretOption] || secretOption);
     html += `
       <div class="review-section">
         <div class="review-section-title">AI Authentication</div>
         <div class="review-item">
           <span class="review-label">Method</span>
-          <span class="review-value">${secretLabels[secretOption] || secretOption}</span>
+          <span class="review-value">${safeSecretMethod}</span>
         </div>
       </div>
     `;
   }
 
   grid.innerHTML = html;
+  refreshEffectiveConfigPreview();
+}
+
+async function refreshEffectiveConfigPreview() {
+  const previewEl = $('effectiveConfigPreview');
+  const noteEl = $('effectiveConfigNote');
+  if (!previewEl || !noteEl) return;
+
+  previewEl.textContent = '(loading...)';
+  noteEl.textContent = 'Generated from your current setup choices.';
+
+  try {
+    const data = await fetchJsonSafe('/api/setup/effective-config', {
+      method: 'POST',
+      headers: getSetupRequestHeaders(),
+      body: JSON.stringify(buildRequestBody(true))
+    });
+
+    if (data && data.config && String(data.config).trim().length > 0) {
+      previewEl.textContent = data.config;
+    } else {
+      previewEl.textContent = '(no config preview available)';
+    }
+
+    if (data && data.note) {
+      noteEl.textContent = data.note;
+    }
+  } catch (e) {
+    console.warn('Effective config preview refresh failed.', e);
+    previewEl.textContent = '(preview unavailable)';
+    noteEl.textContent = 'Effective config preview is unavailable.';
+  }
 }
 
 function clearOutput() {
@@ -1170,7 +1247,7 @@ async function doPlan() {
   try {
     const data = await fetchJsonSafe('/api/setup/plan', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getSetupRequestHeaders(),
       body: JSON.stringify(buildRequestBody(true))
     });
     write(formatResults(data));
@@ -1202,7 +1279,7 @@ async function doApply() {
   try {
     const data = await fetchJsonSafe('/api/setup/apply', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getSetupRequestHeaders(),
       body: JSON.stringify(buildRequestBody(false))
     });
     write(formatResults(data));

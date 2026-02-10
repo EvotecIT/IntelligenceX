@@ -58,12 +58,15 @@ internal static partial class SetupRunner {
         return PlanWrite(path, existingReviewerContent, content, options.Force);
     }
 
-    // Test helper: validates config-building behavior without reflection against private nested types.
-    internal static string BuildReviewerConfigJsonForTests(string[] args) {
+    internal static string BuildReviewerConfigJson(string[] args) {
         var options = SetupOptions.Parse(args);
         var plan = PlanConfigChange(options, existingReviewerContent: null, seedContent: null);
         return plan.Content ?? string.Empty;
     }
+
+    // Test helper kept for backward compatibility in existing tests.
+    [Obsolete("Use BuildReviewerConfigJson for production and new call sites.")]
+    internal static string BuildReviewerConfigJsonForTests(string[] args) => BuildReviewerConfigJson(args);
 
     private static string? ReadConfigOverride(SetupOptions options) {
         if (!string.IsNullOrWhiteSpace(options.ConfigJson)) {

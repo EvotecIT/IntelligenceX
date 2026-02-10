@@ -64,7 +64,7 @@ internal static partial class Program {
     }
 
     private static void TestSetupBuildConfigJsonHonorsAnalysisGateOnNewConfig() {
-        var content = SetupRunner.BuildReviewerConfigJsonForTests(new[] { "--analysis-gate", "true" });
+        var content = SetupRunner.BuildReviewerConfigJson(new[] { "--analysis-gate", "true" });
         AssertNotNull(content, "config json content");
 
         var root = System.Text.Json.Nodes.JsonNode.Parse(content) as System.Text.Json.Nodes.JsonObject;

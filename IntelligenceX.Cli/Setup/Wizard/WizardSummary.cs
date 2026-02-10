@@ -1,5 +1,9 @@
 using Spectre.Console;
 using IntelligenceX.Cli.Setup.Host;
+using System.Diagnostics;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using IntelligenceX.Cli.Setup;
 
 namespace IntelligenceX.Cli.Setup.Wizard;
 
@@ -62,6 +66,16 @@ internal static class WizardSummary {
 
         AnsiConsole.Write(table);
         AnsiConsole.WriteLine();
+
+        var effectiveConfig = BuildEffectiveConfigPreview(plan);
+        if (!string.IsNullOrWhiteSpace(effectiveConfig)) {
+            var panel = new Panel(new Text(effectiveConfig)) {
+                Header = new PanelHeader("Effective Reviewer Config"),
+                Border = BoxBorder.Rounded
+            };
+            AnsiConsole.Write(panel);
+            AnsiConsole.WriteLine();
+        }
     }
 
     private static string FormatRepoList(IReadOnlyList<string> repos) {
@@ -101,5 +115,37 @@ internal static class WizardSummary {
             return "update secret";
         }
         return "setup";
+    }
+
+    private static string? BuildEffectiveConfigPreview(SetupPlan plan) {
+        if (plan.Cleanup || plan.UpdateSecret) {
+            return null;
+        }
+        if (!plan.WithConfig) {
+            return "Reviewer config will not be written (with-config disabled).";
+        }
+        if (!string.IsNullOrWhiteSpace(plan.ConfigPath)) {
+            return $"Using config file override path:\n{plan.ConfigPath}";
+        }
+        if (!string.IsNullOrWhiteSpace(plan.ConfigJson)) {
+            try {
+                var parsed = JsonNode.Parse(plan.ConfigJson!);
+                return parsed?.ToJsonString(CliJson.Indented) ?? plan.ConfigJson;
+            } catch (JsonException) {
+                return plan.ConfigJson;
+            }
+        }
+
+        try {
+            var args = SetupArgsBuilder.FromPlan(plan);
+            var generated = SetupRunner.BuildReviewerConfigJson(args);
+            if (string.IsNullOrWhiteSpace(generated)) {
+                return "Effective config preview is unavailable.";
+            }
+            return generated;
+        } catch (Exception ex) {
+            Trace.TraceWarning($"Effective config preview generation failed: {ex.GetType().Name}: {ex.Message}");
+            return "Effective config preview is unavailable.";
+        }
     }
 }

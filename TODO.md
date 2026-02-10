@@ -19,7 +19,7 @@ Goal: reviewer + static analysis + onboarding (CLI + Web) feel "done" end-to-end
 ### Phase A — Onboarding UX (CLI + Web)
 - [x] CLI wizard: add "Enable static analysis" toggle and pack picker (default `all-50`).
 - [x] Web UI: add "Enable static analysis" toggle and pack picker (default `all-50`).
-- [ ] CLI + Web: show a final "Effective config" preview (review + analysis) before Apply.
+- [x] CLI + Web: show a final "Effective config" preview (review + analysis) before Apply.
 - [x] CLI + Web: surface the Dependabot secrets limitation in the UI copy (why bot identity may differ).
 - [ ] CLI + Web: add a post-Apply "Verify" step (workflow present, config present if requested, required secrets present, last runs links).
 
