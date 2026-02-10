@@ -446,7 +446,8 @@ function buildRequestBody(dryRun) {
   const skipSecret = shouldSkipSecrets() || secretOption === 'skip';
   const hasConfigOverride = (configJson.value.trim().length > 0) || (configPath.value.trim().length > 0);
   const wantAnalysis = selectedOperation === 'setup' && withConfig.checked && !hasConfigOverride;
-  const analysisOn = wantAnalysis && !!(analysisEnabled && analysisEnabled.checked);
+  const analysisEnabledValue = wantAnalysis && analysisEnabled && analysisEnabled.checked ? true : null;
+  const analysisOn = analysisEnabledValue === true;
   const packsRaw = analysisPacks ? analysisPacks.value.trim() : '';
   return {
     repos: selectedRepos(),
@@ -470,7 +471,7 @@ function buildRequestBody(dryRun) {
     cleanup: selectedOperation === 'cleanup',
     updateSecret: selectedOperation === 'update-secret',
     keepSecret: keepSecret.checked,
-    analysisEnabled: wantAnalysis ? analysisOn : null,
+    analysisEnabled: analysisEnabledValue,
     analysisGateEnabled: analysisOn ? !!(analysisGate && analysisGate.checked) : null,
     analysisPacks: analysisOn && packsRaw.length > 0 ? packsRaw : null
   };
