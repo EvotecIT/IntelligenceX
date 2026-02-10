@@ -536,6 +536,7 @@ internal sealed partial class GitHubClient : IDisposable {
             var json = JsonLite.Serialize(JsonValue.From(payload));
             var attempts = allowRetries ? DefaultRetryAttempts : 1;
             var retryBudgetStart = DateTimeOffset.UtcNow;
+            Exception? lastError = null;
             for (var attempt = 1; attempt <= attempts; attempt++) {
                 cancellationToken.ThrowIfCancellationRequested();
                 try {
@@ -543,6 +544,11 @@ internal sealed partial class GitHubClient : IDisposable {
                     using (var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false)) {
                         var responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                         if (attempt < attempts && TryGetRetryDelay(response, responseText, attempt, out var delay)) {
+                            // Preserve the last retryable HTTP error so we can surface it if retries exhaust.
+                            if (!response.IsSuccessStatusCode) {
+                                lastError = new InvalidOperationException(
+                                    FormatApiError("POST", url, response, responseText));
+                            }
                             if (TryScheduleRetry(retryBudgetStart, ref delay)) {
                                 await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                                 continue;
@@ -555,14 +561,16 @@ internal sealed partial class GitHubClient : IDisposable {
                         }
                         return JsonLite.Parse(responseText) ?? JsonValue.Null;
                     }
-                } catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested && attempt < attempts) {
+                } catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested && attempt < attempts) {
+                    lastError = ex;
                     var delay = ComputeBackoff(attempt, maxSeconds: 8);
                     if (TryScheduleRetry(retryBudgetStart, ref delay)) {
                         await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                         continue;
                     }
                     throw;
-                } catch (HttpRequestException) when (attempt < attempts) {
+                } catch (HttpRequestException ex) when (attempt < attempts) {
+                    lastError = ex;
                     var delay = ComputeBackoff(attempt, maxSeconds: 8);
                     if (TryScheduleRetry(retryBudgetStart, ref delay)) {
                         await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
@@ -570,6 +578,9 @@ internal sealed partial class GitHubClient : IDisposable {
                     }
                     throw;
                 }
+            }
+            if (lastError is not null) {
+                throw new InvalidOperationException($"GitHub API request failed (POST {url}) after {attempts} attempts.", lastError);
             }
             throw new InvalidOperationException($"GitHub API request failed (POST {url}) after {attempts} attempts.");
         }, cancellationToken).ConfigureAwait(false);
