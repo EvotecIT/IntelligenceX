@@ -24,7 +24,7 @@ internal sealed partial class WebApi {
                          !string.IsNullOrWhiteSpace(request.ConfigPath);
         var hasConfigOverride = !string.IsNullOrWhiteSpace(request.ConfigJson) || !string.IsNullOrWhiteSpace(request.ConfigPath);
         var isSetup = !request.Cleanup && !request.UpdateSecret;
-        var analysisApplies = isSetup && request.WithConfig && !hasConfigOverride;
+        var analysisApplies = isSetup && withConfig && !hasConfigOverride;
         if (withConfig) {
             args.Add("--with-config");
         }

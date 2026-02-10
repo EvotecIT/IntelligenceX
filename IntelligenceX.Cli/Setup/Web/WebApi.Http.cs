@@ -30,6 +30,9 @@ internal sealed partial class WebApi {
             }
             ms.Write(buffer, 0, read);
         }
+        if (ms.TryGetBuffer(out var segment) && segment.Array is not null) {
+            return encoding.GetString(segment.Array, segment.Offset, segment.Count);
+        }
         return encoding.GetString(ms.ToArray());
     }
 
