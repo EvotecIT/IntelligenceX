@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Reviewer", "I
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Cli", "IntelligenceX.Cli\IntelligenceX.Cli.csproj", "{3CC3EC98-2F2B-41FE-95B1-2E56ECC94A92}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.UnitTests", "IntelligenceX.UnitTests\IntelligenceX.UnitTests.csproj", "{D34B52A9-4A01-4F0C-AD2D-F7BC213167D1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -97,6 +99,18 @@ Global
 		{3CC3EC98-2F2B-41FE-95B1-2E56ECC94A92}.Release|x64.Build.0 = Release|Any CPU
 		{3CC3EC98-2F2B-41FE-95B1-2E56ECC94A92}.Release|x86.ActiveCfg = Release|Any CPU
 		{3CC3EC98-2F2B-41FE-95B1-2E56ECC94A92}.Release|x86.Build.0 = Release|Any CPU
+		{D34B52A9-4A01-4F0C-AD2D-F7BC213167D1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D34B52A9-4A01-4F0C-AD2D-F7BC213167D1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D34B52A9-4A01-4F0C-AD2D-F7BC213167D1}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D34B52A9-4A01-4F0C-AD2D-F7BC213167D1}.Debug|x64.Build.0 = Debug|Any CPU
+		{D34B52A9-4A01-4F0C-AD2D-F7BC213167D1}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D34B52A9-4A01-4F0C-AD2D-F7BC213167D1}.Debug|x86.Build.0 = Debug|Any CPU
+		{D34B52A9-4A01-4F0C-AD2D-F7BC213167D1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D34B52A9-4A01-4F0C-AD2D-F7BC213167D1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D34B52A9-4A01-4F0C-AD2D-F7BC213167D1}.Release|x64.ActiveCfg = Release|Any CPU
+		{D34B52A9-4A01-4F0C-AD2D-F7BC213167D1}.Release|x64.Build.0 = Release|Any CPU
+		{D34B52A9-4A01-4F0C-AD2D-F7BC213167D1}.Release|x86.ActiveCfg = Release|Any CPU
+		{D34B52A9-4A01-4F0C-AD2D-F7BC213167D1}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
