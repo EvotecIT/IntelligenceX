@@ -20,6 +20,24 @@ internal static partial class Program {
         }
     }
 
+    private static void TestCiPathSafetyUnderRootPhysicalTrailingSeparators() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-ci-path-seps-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try {
+            var artifacts = Path.Combine(root, "artifacts");
+            Directory.CreateDirectory(artifacts);
+
+            var sep = Path.DirectorySeparatorChar.ToString();
+            AssertEqual(true, CiPathSafety.IsUnderRootPhysical(artifacts, root), "physical under root baseline");
+            AssertEqual(true, CiPathSafety.IsUnderRootPhysical(artifacts + sep, root), "path trailing sep");
+            AssertEqual(true, CiPathSafety.IsUnderRootPhysical(artifacts, root + sep), "root trailing sep");
+            AssertEqual(true, CiPathSafety.IsUnderRootPhysical(artifacts + sep, root + sep), "both trailing sep");
+            AssertEqual(true, CiPathSafety.IsUnderRootPhysical(root + sep, root), "root self trailing sep");
+        } finally {
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
+
     private static void TestCiChangedFilesWritesIntoNewDirectory() {
         var root = Path.Combine(Path.GetTempPath(), "ix-ci-changed-files-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
