@@ -63,6 +63,52 @@ internal static partial class Program {
         AssertSequenceEqual(new[] { "all-50" }, packs, "analysis.packs default");
     }
 
+    private static void TestSetupBuildConfigJsonHonorsAnalysisGateOnNewConfig() {
+        var setupRunner = typeof(SetupRunner);
+        var optionsType = setupRunner.GetNestedType("SetupOptions", BindingFlags.NonPublic);
+        var planType = setupRunner.GetNestedType("FilePlan", BindingFlags.NonPublic);
+        var planMethod = setupRunner.GetMethod("PlanConfigChange", BindingFlags.NonPublic | BindingFlags.Static);
+        if (optionsType is null || planType is null || planMethod is null) {
+            throw new InvalidOperationException("SetupRunner private types/methods not found for config planning test.");
+        }
+
+        var options = Activator.CreateInstance(optionsType);
+        if (options is null) {
+            throw new InvalidOperationException("Failed to create SetupRunner.SetupOptions.");
+        }
+
+        // Simulate a first-time setup (no existing reviewer.json) where the user asks for analysis gate enabled.
+        optionsType.GetProperty("AnalysisGateEnabledSet")!.SetValue(options, true);
+        optionsType.GetProperty("AnalysisGateEnabled")!.SetValue(options, true);
+
+        object? plan;
+        try {
+            plan = planMethod.Invoke(null, new object?[] { options, null, null });
+        } catch (TargetInvocationException ex) {
+            // Improve diagnostics for reflection-based test across TFMs.
+            throw ex.InnerException ?? ex;
+        }
+        if (plan is null) {
+            throw new InvalidOperationException("PlanConfigChange returned null.");
+        }
+
+        var content = (string?)planType.GetProperty("Content")!.GetValue(plan);
+        if (string.IsNullOrWhiteSpace(content)) {
+            throw new InvalidOperationException("Expected config plan to contain JSON content.");
+        }
+
+        var root = System.Text.Json.Nodes.JsonNode.Parse(content) as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(root, "config json root");
+
+        var analysis = root!["analysis"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(analysis, "analysis object");
+        AssertEqual(true, analysis!["enabled"]?.GetValue<bool>(), "analysis.enabled inferred");
+
+        var gate = analysis["gate"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(gate, "analysis.gate");
+        AssertEqual(true, gate!["enabled"]?.GetValue<bool>(), "analysis.gate.enabled");
+    }
+
     private static void TestGitHubRepoDetectorParsesRemoteUrls() {
         AssertEqual("owner/repo", GitHubRepoDetector.ParseRepoFromRemoteUrl("https://github.com/owner/repo.git"), "https git");
         AssertEqual("owner/repo", GitHubRepoDetector.ParseRepoFromRemoteUrl("https://github.com/owner/repo"), "https no git");

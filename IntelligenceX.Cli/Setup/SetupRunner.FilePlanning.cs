@@ -228,12 +228,12 @@ internal static partial class SetupRunner {
         if (!options.AnalysisEnabledSet && snapshot.AnalysisEnabled.HasValue) {
             settings.AnalysisEnabled = snapshot.AnalysisEnabled.Value;
         }
-        if (!options.AnalysisGateEnabledSet && snapshot.AnalysisGateEnabled.HasValue) {
-            settings.AnalysisGateEnabled = snapshot.AnalysisGateEnabled.Value;
-        }
-        if (!options.AnalysisPacksSet && snapshot.AnalysisPacks.Length > 0) {
-            settings.AnalysisPacks = snapshot.AnalysisPacks;
-        }
+	        if (!options.AnalysisGateEnabledSet && snapshot.AnalysisGateEnabled.HasValue) {
+	            settings.AnalysisGateEnabled = snapshot.AnalysisGateEnabled.Value;
+	        }
+	        if (!options.AnalysisPacksSet && snapshot.AnalysisPacks is { Length: > 0 }) {
+	            settings.AnalysisPacks = snapshot.AnalysisPacks;
+	        }
 
         return settings;
     }
@@ -256,16 +256,22 @@ internal static partial class SetupRunner {
                 ["preflightTimeoutSeconds"] = settings.PreflightTimeoutSeconds
             }
         };
-        if (!string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
-            ((JsonObject)root["review"]!)["openaiAccountId"] = settings.OpenAIAccountId;
-        }
-        if (settings.AnalysisEnabled) {
-            root["analysis"] = SetupAnalysisConfig.Build(enabled: true, gateEnabled: settings.AnalysisGateEnabled,
-                packs: settings.AnalysisPacks);
-        }
+	        if (!string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
+	            ((JsonObject)root["review"]!)["openaiAccountId"] = settings.OpenAIAccountId;
+	        }
+	        if (settings.AnalysisEnabledSet || settings.AnalysisGateEnabledSet || settings.AnalysisPacksSet) {
+	            SetupAnalysisConfig.Apply(root,
+	                enabledSet: settings.AnalysisEnabledSet, enabled: settings.AnalysisEnabled,
+	                gateEnabledSet: settings.AnalysisGateEnabledSet, gateEnabled: settings.AnalysisGateEnabled,
+	                packsSet: settings.AnalysisPacksSet, packs: settings.AnalysisPacks);
+	        } else if (settings.AnalysisEnabled) {
+	            // Backwards-compatible behavior for future defaults where analysis might be enabled without a set-flag.
+	            root["analysis"] = SetupAnalysisConfig.Build(enabled: true, gateEnabled: settings.AnalysisGateEnabled,
+	                packs: settings.AnalysisPacks);
+	        }
 
-        return root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
-    }
+	        return root.ToJsonString(IndentedJsonOptions);
+	    }
 
     private static string MergeConfigJson(string existingContent, ConfigSettings settings) {
         var node = JsonNode.Parse(existingContent) as JsonObject ?? new JsonObject();
@@ -293,8 +299,8 @@ internal static partial class SetupRunner {
                 gateEnabledSet: settings.AnalysisGateEnabledSet, gateEnabled: settings.AnalysisGateEnabled,
                 packsSet: settings.AnalysisPacksSet, packs: settings.AnalysisPacks);
         }
-        return node.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
-    }
+	        return node.ToJsonString(IndentedJsonOptions);
+	    }
 
     private static string BuildWorkflowYaml(WorkflowSettings settings) {
         var template = ReadEmbeddedResource("review-intelligencex.yml");

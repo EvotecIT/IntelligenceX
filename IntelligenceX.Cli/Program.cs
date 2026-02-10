@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.Auth;
 using IntelligenceX.Cli.Usage;
@@ -13,6 +14,11 @@ using IntelligenceX.OpenAI.Auth;
 namespace IntelligenceX.Cli;
 
 internal static partial class Program {
+    private static readonly JsonSerializerOptions IndentedJsonOptions = new(JsonSerializerDefaults.Web) {
+        WriteIndented = true,
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver()
+    };
+
     private static async Task<int> Main(string[] args) {
         if (args.Length == 0) {
             PrintHelp();
@@ -375,7 +381,7 @@ internal static partial class Program {
         var outRoot = new JsonObject();
         outRoot["version"] = node["version"]?.DeepClone() ?? 1;
         outRoot["bundles"] = filtered;
-        var outJson = outRoot.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+        var outJson = outRoot.ToJsonString(IndentedJsonOptions);
         if (IsStoreBase64Format(format)) {
             Console.WriteLine(Convert.ToBase64String(Encoding.UTF8.GetBytes(outJson)));
         } else {
