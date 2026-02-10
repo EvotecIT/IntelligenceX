@@ -51,24 +51,23 @@ internal sealed partial class WebApi {
                 return;
             }
             if (normalizedPath.Equals("/api/setup/plan", StringComparison.OrdinalIgnoreCase)) {
+                if (!await EnsureLocalPostSetupRequestAsync(context).ConfigureAwait(false)) {
+                    return;
+                }
                 await HandleSetupAsync(context, dryRun: true).ConfigureAwait(false);
                 return;
             }
             if (normalizedPath.Equals("/api/setup/effective-config", StringComparison.OrdinalIgnoreCase)) {
-                if (!IsLoopbackRequest(context.Request)) {
-                    context.Response.StatusCode = 403;
-                    await WriteJsonAsync(context, new { error = "Local requests only." }).ConfigureAwait(false);
-                    return;
-                }
-                if (!string.Equals(context.Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase)) {
-                    context.Response.StatusCode = 405;
-                    await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+                if (!await EnsureLocalPostSetupRequestAsync(context).ConfigureAwait(false)) {
                     return;
                 }
                 await HandleSetupEffectiveConfigAsync(context).ConfigureAwait(false);
                 return;
             }
             if (normalizedPath.Equals("/api/setup/apply", StringComparison.OrdinalIgnoreCase)) {
+                if (!await EnsureLocalPostSetupRequestAsync(context).ConfigureAwait(false)) {
+                    return;
+                }
                 await HandleSetupAsync(context, dryRun: false).ConfigureAwait(false);
                 return;
             }
@@ -102,5 +101,20 @@ internal sealed partial class WebApi {
         }
         var remote = request.RemoteEndPoint;
         return remote is not null && IPAddress.IsLoopback(remote.Address);
+    }
+
+    private async Task<bool> EnsureLocalPostSetupRequestAsync(System.Net.HttpListenerContext context) {
+        if (!IsLoopbackRequest(context.Request)) {
+            context.Response.StatusCode = 403;
+            await WriteJsonAsync(context, new { error = "Local requests only." }).ConfigureAwait(false);
+            return false;
+        }
+        if (!string.Equals(context.Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase)) {
+            context.Response.StatusCode = 405;
+            await WriteJsonAsync(context, new { error = "POST required" }).ConfigureAwait(false);
+            return false;
+        }
+
+        return true;
     }
 }
