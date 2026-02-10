@@ -63,6 +63,9 @@ const appOwner = $('appOwner');
 const appId = $('appId');
 const appPem = $('appPem');
 const installation = $('installation');
+const analysisEnabled = $('analysisEnabled');
+const analysisGate = $('analysisGate');
+const analysisPacks = $('analysisPacks');
 
 // ── Step navigation ──
 function goToStep(step) {
@@ -178,6 +181,7 @@ function selectOperation(op) {
   });
   $('setupOptions').classList.toggle('hidden', op !== 'setup');
   $('cleanupOptions').classList.toggle('hidden', op !== 'cleanup');
+  updateAnalysisControls();
 }
 
 // ── Provider toggle ──
@@ -440,7 +444,12 @@ function showOutput(text) {
 // ── Build request body ──
 function buildRequestBody(dryRun) {
   const skipSecret = shouldSkipSecrets() || secretOption === 'skip';
-  return {
+  const hasConfigOverride = (configJson.value.trim().length > 0) || (configPath.value.trim().length > 0);
+  const wantAnalysis = selectedOperation === 'setup' && withConfig.checked && !hasConfigOverride;
+  const analysisEnabledValue = wantAnalysis && analysisEnabled && analysisEnabled.checked ? true : null;
+  const analysisOn = analysisEnabledValue === true;
+  const packsRaw = analysisPacks ? analysisPacks.value.trim() : '';
+  const body = {
     repos: selectedRepos(),
     gitHubToken: getToken(),
     gitHubClientId: clientId ? clientId.value.trim() : '',
@@ -463,6 +472,14 @@ function buildRequestBody(dryRun) {
     updateSecret: selectedOperation === 'update-secret',
     keepSecret: keepSecret.checked
   };
+  if (wantAnalysis) {
+    body.analysisEnabled = analysisEnabledValue;
+    if (analysisOn) {
+      body.analysisGateEnabled = !!(analysisGate && analysisGate.checked);
+      if (packsRaw.length > 0) body.analysisPacks = packsRaw;
+    }
+  }
+  return body;
 }
 
 // ── Format helpers ──
@@ -930,8 +947,35 @@ repoList.addEventListener('change', updateRepoCount);
 if (repo) repo.addEventListener('input', updateRepoCount);
 
 // ── Config auto-enable ──
-configJson.addEventListener('input', () => { if (configJson.value.trim()) withConfig.checked = true; });
-configPath.addEventListener('input', () => { if (configPath.value.trim()) withConfig.checked = true; });
+configJson.addEventListener('input', () => {
+  if (configJson.value.trim()) withConfig.checked = true;
+  updateAnalysisControls();
+});
+configPath.addEventListener('input', () => {
+  if (configPath.value.trim()) withConfig.checked = true;
+  updateAnalysisControls();
+});
+withConfig.addEventListener('change', updateAnalysisControls);
+
+// ── Static analysis toggle ──
+function updateAnalysisControls() {
+  const hasConfigOverride = (configJson.value.trim().length > 0) || (configPath.value.trim().length > 0);
+  const applicable = selectedOperation === 'setup' && withConfig.checked && !hasConfigOverride;
+  const enabled = applicable && analysisEnabled && analysisEnabled.checked;
+
+  if (analysisEnabled) analysisEnabled.disabled = !applicable;
+  if (analysisGate) analysisGate.disabled = !enabled;
+  if (analysisPacks) analysisPacks.disabled = !enabled;
+
+  const hint = $('analysisHint');
+  if (hint) {
+    hint.textContent = applicable
+      ? 'Leave empty to use defaults. Examples: all-50, all-100, all-500, all-security-default, powershell-50.'
+      : 'Static analysis settings apply only when generating config from presets (no Config JSON/path override).';
+  }
+}
+if (analysisEnabled) analysisEnabled.addEventListener('change', updateAnalysisControls);
+updateAnalysisControls();
 
 // ── App field watchers ──
 appId.addEventListener('input', updateAppControls);

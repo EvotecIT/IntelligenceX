@@ -12,10 +12,36 @@ using Spectre.Console;
 namespace IntelligenceX.Cli.Setup.Wizard;
 
 internal static partial class WizardRunner {
+    private static void ApplyAnalysisSelection(WizardState state) {
+        if (state.Operation != WizardOperation.Setup || state.ConfigMode != ConfigMode.Preset) {
+            state.AnalysisEnabled = null;
+            state.AnalysisGateEnabled = null;
+            state.AnalysisPacks = null;
+            return;
+        }
+
+        // Preset mode always generates reviewer.json; ensure state reflects that.
+        state.WithConfig = true;
+
+        var analysisEnabled = WizardPrompts.PromptAnalysisEnabled(state.AnalysisEnabled ?? true);
+        state.AnalysisEnabled = analysisEnabled;
+        if (!analysisEnabled) {
+            state.AnalysisGateEnabled = null;
+            state.AnalysisPacks = null;
+            return;
+        }
+
+        state.AnalysisPacks = WizardPrompts.PromptAnalysisPacks(state.AnalysisPacks);
+        state.AnalysisGateEnabled = WizardPrompts.PromptAnalysisGateEnabled(state.AnalysisGateEnabled ?? false);
+    }
+
     private static SetupPlan BuildPlan(WizardState state, string repo) {
         var withConfig = state.WithConfig ||
                          !string.IsNullOrWhiteSpace(state.ConfigPath) ||
                          !string.IsNullOrWhiteSpace(state.ConfigJson);
+        var analysisApplies = withConfig &&
+                              state.Operation == WizardOperation.Setup &&
+                              state.ConfigMode == ConfigMode.Preset;
         var allowSecrets = state.Operation == WizardOperation.Setup;
         var plan = new SetupPlan(repo) {
             GitHubClientId = state.GitHubClientId,
@@ -36,7 +62,10 @@ internal static partial class WizardRunner {
             Cleanup = state.Operation == WizardOperation.Cleanup,
             KeepSecret = state.KeepSecret,
             DryRun = state.DryRun,
-            BranchName = state.BranchName
+            BranchName = state.BranchName,
+            AnalysisEnabled = analysisApplies ? state.AnalysisEnabled : null,
+            AnalysisGateEnabled = analysisApplies ? state.AnalysisGateEnabled : null,
+            AnalysisPacks = analysisApplies ? state.AnalysisPacks : null
         };
         return plan;
     }
@@ -630,4 +659,3 @@ internal static partial class WizardRunner {
         return !string.IsNullOrWhiteSpace(owner) && !string.IsNullOrWhiteSpace(name);
     }
 }
-

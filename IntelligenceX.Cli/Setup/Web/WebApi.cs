@@ -521,6 +521,47 @@ internal sealed class WebApi {
             return;
         }
 
+        // Analysis flags are only honored when the setup flow is generating/merging reviewer.json.
+        // If the user provides a full config override (configJson/configPath), these flags would be ignored by SetupRunner,
+        // so we also ignore them here to avoid misleading behavior.
+        var isSetup = !request.Cleanup && !request.UpdateSecret;
+        var hasConfigOverride = !string.IsNullOrWhiteSpace(request.ConfigJson) || !string.IsNullOrWhiteSpace(request.ConfigPath);
+        var analysisApplies = isSetup && request.WithConfig && !hasConfigOverride;
+        var hasAnyAnalysis =
+            request.AnalysisEnabled.HasValue ||
+            request.AnalysisGateEnabled.HasValue ||
+            !string.IsNullOrWhiteSpace(request.AnalysisPacks);
+        if (!analysisApplies) {
+            if (hasAnyAnalysis) {
+                context.Response.StatusCode = 400;
+                await WriteJsonAsync(context, new {
+                    error = "Static analysis options are only supported for setup when generating config from presets (withConfig=true and no configJson/configPath override)."
+                }).ConfigureAwait(false);
+                return;
+            }
+            request.AnalysisEnabled = null;
+            request.AnalysisGateEnabled = null;
+            request.AnalysisPacks = null;
+        } else if (request.AnalysisEnabled == true) {
+            if (!SetupAnalysisPacks.TryNormalizeCsv(request.AnalysisPacks, out var normalizedPacks, out var packsError)) {
+                context.Response.StatusCode = 400;
+                await WriteJsonAsync(context, new { error = packsError }).ConfigureAwait(false);
+                return;
+            }
+            request.AnalysisPacks = normalizedPacks;
+        } else {
+            if (request.AnalysisGateEnabled.HasValue || !string.IsNullOrWhiteSpace(request.AnalysisPacks)) {
+                context.Response.StatusCode = 400;
+                await WriteJsonAsync(context, new {
+                    error = "analysisGateEnabled/analysisPacks require analysisEnabled=true."
+                }).ConfigureAwait(false);
+                return;
+            }
+            // Prevent accidental or malicious argv "flag injection" by ensuring these are never forwarded when disabled/unset.
+            request.AnalysisGateEnabled = null;
+            request.AnalysisPacks = null;
+        }
+
         var repos = request.Repos is not null && request.Repos.Count > 0
             ? request.Repos
             : new List<string> { request.Repo! };
@@ -730,6 +771,9 @@ internal sealed class WebApi {
         var withConfig = request.WithConfig ||
                          !string.IsNullOrWhiteSpace(request.ConfigJson) ||
                          !string.IsNullOrWhiteSpace(request.ConfigPath);
+        var hasConfigOverride = !string.IsNullOrWhiteSpace(request.ConfigJson) || !string.IsNullOrWhiteSpace(request.ConfigPath);
+        var isSetup = !request.Cleanup && !request.UpdateSecret;
+        var analysisApplies = isSetup && request.WithConfig && !hasConfigOverride;
         if (withConfig) {
             args.Add("--with-config");
         }
@@ -764,6 +808,18 @@ internal sealed class WebApi {
         if (!string.IsNullOrWhiteSpace(request.ReviewCommentMode)) {
             args.Add("--review-comment-mode");
             args.Add(request.ReviewCommentMode!);
+        }
+        if (analysisApplies && request.AnalysisEnabled.HasValue) {
+            args.Add("--analysis-enabled");
+            args.Add(request.AnalysisEnabled.Value ? "true" : "false");
+        }
+        if (analysisApplies && request.AnalysisEnabled == true && request.AnalysisGateEnabled.HasValue) {
+            args.Add("--analysis-gate");
+            args.Add(request.AnalysisGateEnabled.Value ? "true" : "false");
+        }
+        if (analysisApplies && request.AnalysisEnabled == true && !string.IsNullOrWhiteSpace(request.AnalysisPacks)) {
+            args.Add("--analysis-packs");
+            args.Add(request.AnalysisPacks!);
         }
         if (request.SkipSecret) {
             args.Add("--skip-secret");
@@ -1058,6 +1114,9 @@ internal sealed class WebApi {
         public string? ReviewProfile { get; set; }
         public string? ReviewMode { get; set; }
         public string? ReviewCommentMode { get; set; }
+        public bool? AnalysisEnabled { get; set; }
+        public bool? AnalysisGateEnabled { get; set; }
+        public string? AnalysisPacks { get; set; }
         public bool SkipSecret { get; set; }
         public bool ManualSecret { get; set; }
         public bool ExplicitSecrets { get; set; }

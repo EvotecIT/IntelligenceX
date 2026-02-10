@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using IntelligenceX.Cli.Setup;
 using Spectre.Console;
 
 namespace IntelligenceX.Cli.Setup.Wizard;
@@ -234,6 +237,61 @@ internal static class WizardPrompts {
     public static bool PromptExplicitSecrets(bool current) {
         return AnsiConsole.Confirm("Use explicit secrets block in workflow?", current);
     }
+
+    public static bool PromptAnalysisEnabled(bool current) {
+        return AnsiConsole.Confirm("Enable static analysis (recommended)?", current);
+    }
+
+    public static string? PromptAnalysisPacks(string? current) {
+        var choices = new List<string> {
+            "(default: all-50)",
+            "all-100",
+            "all-500",
+            "all-security-default",
+            "powershell-50",
+            "custom (enter pack ids)"
+        };
+        if (!string.IsNullOrWhiteSpace(current) &&
+            !choices.Contains(current, StringComparer.Ordinal) &&
+            !string.Equals(current, "all-50", StringComparison.Ordinal)) {
+            choices.Insert(1, $"(keep current: {current})");
+        }
+        var selected = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("Static analysis pack(s):")
+                .PageSize(10)
+                .AddChoices(choices));
+        if (string.Equals(selected, "(default: all-50)", StringComparison.Ordinal)) {
+            return null;
+        }
+        if (selected.StartsWith("(keep current:", StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(current)) {
+            return current;
+        }
+        if (!string.Equals(selected, "custom (enter pack ids)", StringComparison.Ordinal)) {
+            return selected;
+        }
+
+        while (true) {
+            var currentHint = string.IsNullOrWhiteSpace(current) ? string.Empty : $" (current: {current})";
+            var prompt = new TextPrompt<string>($"Pack ids (comma-separated, empty for default){currentHint}:")
+                .AllowEmpty();
+            var raw = AnsiConsole.Prompt(prompt);
+            if (string.IsNullOrWhiteSpace(raw)) {
+                return null;
+            }
+
+            if (SetupAnalysisPacks.TryNormalizeCsv(raw, out var normalized, out var error)) {
+                return normalized;
+            }
+            AnsiConsole.MarkupLine($"[red]{error}[/]");
+        }
+    }
+
+    public static bool PromptAnalysisGateEnabled(bool current) {
+        return AnsiConsole.Confirm("Fail CI on static analysis findings?", current);
+    }
+
+    // Pack validation/normalization lives in SetupAnalysisPacks (shared with web onboarding).
 
     public static SecretTarget PromptSecretTarget(int selectedRepoCount, bool ownersMatch) {
         if (selectedRepoCount <= 1 || !ownersMatch) {
