@@ -11,6 +11,7 @@ internal static class GitCli {
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
     private const int DefaultMaxOutputBytes = 25 * 1024 * 1024;
     private static readonly Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+    private static readonly TimeSpan KillReapTimeout = TimeSpan.FromSeconds(5);
 
     public static Task<(int ExitCode, string StdOut, string StdErr)> RunAsync(string? workingDirectory, params string[] args) {
         return RunAsync(workingDirectory, timeout: null, args);
@@ -53,20 +54,14 @@ internal static class GitCli {
             await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
             await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
         } catch (OperationCanceledException) {
-            try {
-                proc.Kill(entireProcessTree: true);
-            } catch {
-                // ignore
-            }
+            TryKill(proc);
+            await TryReapAsync(proc).ConfigureAwait(false);
             // Ensure stderr/stdout drains can't hang the caller after a timeout/kill.
             drainCts.Cancel();
             return (124, Array.Empty<byte>(), Array.Empty<byte>());
         } catch {
-            try {
-                proc.Kill(entireProcessTree: true);
-            } catch {
-                // ignore
-            }
+            TryKill(proc);
+            await TryReapAsync(proc).ConfigureAwait(false);
             drainCts.Cancel();
             return (125, Array.Empty<byte>(), Array.Empty<byte>());
         } finally {
@@ -122,19 +117,13 @@ internal static class GitCli {
             // Ensure we drain stdout/stderr after process exit; otherwise we can return truncated output.
             await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
         } catch (OperationCanceledException) {
-            try {
-                proc.Kill(entireProcessTree: true);
-            } catch {
-                // ignore
-            }
+            TryKill(proc);
+            await TryReapAsync(proc).ConfigureAwait(false);
             drainCts.Cancel();
             return (124, string.Empty, $"git command timed out after {effectiveTimeout.TotalSeconds:0}s.");
         } catch (Exception ex) {
-            try {
-                proc.Kill(entireProcessTree: true);
-            } catch {
-                // ignore
-            }
+            TryKill(proc);
+            await TryReapAsync(proc).ConfigureAwait(false);
             drainCts.Cancel();
             return (125, string.Empty, ex.Message);
         } finally {
@@ -150,6 +139,26 @@ internal static class GitCli {
         }
 
         return (proc.ExitCode, SafeTaskResult(stdoutTask), SafeTaskResult(stderrTask));
+    }
+
+    private static void TryKill(Process proc) {
+        try {
+            if (!proc.HasExited) {
+                proc.Kill(entireProcessTree: true);
+            }
+        } catch {
+            // ignore
+        }
+    }
+
+    private static async Task TryReapAsync(Process proc) {
+        try {
+            // After Kill, ensure the process is reaped so it can't keep pipes open and hang drains.
+            // This is bounded to avoid deadlocking the caller if the process can't be terminated.
+            await proc.WaitForExitAsync().WaitAsync(KillReapTimeout).ConfigureAwait(false);
+        } catch {
+            // ignore
+        }
     }
 
     private static string SafeTaskResult(Task<string> task) {
