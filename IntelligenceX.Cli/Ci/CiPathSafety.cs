@@ -109,7 +109,7 @@ internal static class CiPathSafety {
         }
     }
 
-	    internal static bool TryEnsureSafeDirectory(string directoryPath, string root, out string error) {
+    internal static bool TryEnsureSafeDirectory(string directoryPath, string root, out string error) {
         error = string.Empty;
         if (string.IsNullOrWhiteSpace(directoryPath) || string.IsNullOrWhiteSpace(root)) {
             error = "Invalid directory path.";
@@ -123,16 +123,16 @@ internal static class CiPathSafety {
                 return false;
             }
 
-	            var trimmedRoot = Path.TrimEndingDirectorySeparator(fullRoot);
-	            if (Directory.Exists(trimmedRoot)) {
-	                if (IsLinkOrReparsePoint(trimmedRoot)) {
-	                    error = "Workspace root is a symlink/junction (reparse point).";
-	                    return false;
-	                }
-	            } else {
-	                error = "Workspace root not found.";
-	                return false;
-	            }
+            var trimmedRoot = Path.TrimEndingDirectorySeparator(fullRoot);
+            if (Directory.Exists(trimmedRoot)) {
+                if (IsLinkOrReparsePoint(trimmedRoot)) {
+                    error = "Workspace root is a symlink/junction (reparse point).";
+                    return false;
+                }
+            } else {
+                error = "Workspace root not found.";
+                return false;
+            }
 
             var relative = Path.GetRelativePath(trimmedRoot, fullDir);
             if (relative.StartsWith("..", OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)) {
@@ -147,14 +147,14 @@ internal static class CiPathSafety {
                     error = $"Path segment is a file, not a directory: {current}";
                     return false;
                 }
-	                if (!Directory.Exists(current)) {
-	                    Directory.CreateDirectory(current);
-	                }
-	                if (IsLinkOrReparsePoint(current)) {
-	                    error = $"Path contains a symlink/junction component: {current}";
-	                    return false;
-	                }
-	            }
+                if (!Directory.Exists(current)) {
+                    Directory.CreateDirectory(current);
+                }
+                if (IsLinkOrReparsePoint(current)) {
+                    error = $"Path contains a symlink/junction component: {current}";
+                    return false;
+                }
+            }
 
             return true;
         } catch (Exception ex) {
