@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -36,7 +37,11 @@ internal static partial class Program {
             DateTimeOffset? pushed = null;
             if (item.TryGetProperty("pushedAt", out var pushedProp) && pushedProp.ValueKind == JsonValueKind.String) {
                 var raw = pushedProp.GetString();
-                if (DateTimeOffset.TryParse(raw, out var parsed)) {
+                if (DateTimeOffset.TryParse(
+                        raw,
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                        out var parsed)) {
                     pushed = parsed;
                 }
             }
@@ -110,7 +115,7 @@ internal static partial class Program {
         return $"{(int)duration.TotalHours}h {duration.Minutes}m {duration.Seconds}s";
     }
 
-    private static string? ResolveDefaultRepo() {
+    internal static string? ResolveDefaultRepo() {
         var envRepo = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_REPO")
                       ?? Environment.GetEnvironmentVariable("GITHUB_REPOSITORY");
         if (!string.IsNullOrWhiteSpace(envRepo)) {
@@ -209,9 +214,9 @@ internal static partial class Program {
         Console.Error.WriteLine(ex.ToString());
     }
 
-    private static (bool Installed, bool Authenticated) GetGitHubCliStatus() {
+    private static async Task<(bool Installed, bool Authenticated)> GetGitHubCliStatusAsync() {
         var token = TryReadGhToken();
-        var result = RunExternalCommand("gh", "auth status");
+        var result = await RunExternalCommandAsync("gh", "auth status", TimeSpan.FromSeconds(30)).ConfigureAwait(false);
         return EvaluateGitHubCliStatus(token, result.ExitCode);
     }
 
@@ -241,7 +246,7 @@ internal static partial class Program {
         string arguments,
         TimeSpan timeout) {
         try {
-            return RunExternalCommandAsync(fileName, arguments, timeout).GetAwaiter().GetResult();
+            return Task.Run(() => RunExternalCommandAsync(fileName, arguments, timeout)).GetAwaiter().GetResult();
         } catch (Exception ex) {
             return (int.MinValue, string.Empty, ex.Message);
         }

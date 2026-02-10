@@ -87,7 +87,7 @@ internal static partial class Program {
         SetActiveRepo(state, repo);
 
         var result = await RunWithSpinnerAsync($"Loading PRs from {repo}...",
-            () => FetchPullRequests(repo, prState, 20)).ConfigureAwait(false);
+            () => FetchPullRequestsAsync(repo, prState, 20)).ConfigureAwait(false);
 
         AnsiConsole.Clear();
         RenderTitle($"{Icon("repo")} {title} ({repo})");
@@ -148,7 +148,7 @@ internal static partial class Program {
         }
 
         var checks = await RunWithSpinnerAsync($"Loading checks for PR #{prNumber.Value}...",
-            () => FetchPullRequestChecks(repo, prNumber.Value)).ConfigureAwait(false);
+            () => FetchPullRequestChecksAsync(repo, prNumber.Value)).ConfigureAwait(false);
 
         AnsiConsole.Clear();
         RenderTitle($"{Icon("check")} PR #{prNumber.Value} Checks ({repo})");
@@ -199,7 +199,7 @@ internal static partial class Program {
         SetActiveRepo(state, repo);
 
         var runs = await RunWithSpinnerAsync($"Loading reviewer workflow runs for {repo}...",
-            () => FetchWorkflowRuns(repo, "review-intelligencex.yml", 15)).ConfigureAwait(false);
+            () => FetchWorkflowRunsAsync(repo, "review-intelligencex.yml", 15)).ConfigureAwait(false);
 
         AnsiConsole.Clear();
         RenderTitle($"{Icon("process")} Recent Reviewer Runs ({repo})");
@@ -305,7 +305,7 @@ internal static partial class Program {
     private static async Task RunGitHubAuthStatusAsync(ManageState state) {
         var started = DateTimeOffset.UtcNow;
         var timer = Stopwatch.StartNew();
-        var result = RunExternalCommand("gh", "auth status");
+        var result = await RunExternalCommandAsync("gh", "auth status", TimeSpan.FromSeconds(30)).ConfigureAwait(false);
         timer.Stop();
 
         state.LastProcessName = "GitHub auth status";
@@ -552,7 +552,7 @@ internal static partial class Program {
         };
     }
 
-    private static void RenderDashboard(ManageState state) {
+    private static async Task RenderDashboardAsync(ManageState state) {
         AnsiConsole.Clear();
         AnsiConsole.Write(new FigletText("IntelligenceX").Color(Color.Aqua));
         AnsiConsole.MarkupLine("[grey]Management Hub[/]");
@@ -562,7 +562,7 @@ internal static partial class Program {
         AnsiConsole.WriteLine();
 
         var left = BuildContextPanel(state);
-        var right = BuildRuntimePanel();
+        var right = await BuildRuntimePanelAsync().ConfigureAwait(false);
         var row = new Grid();
         row.AddColumn();
         row.AddColumn();
@@ -573,7 +573,7 @@ internal static partial class Program {
         var secondary = new Grid();
         secondary.AddColumn();
         secondary.AddColumn();
-        secondary.AddRow(BuildHealthPanel(state), BuildRecentActivityPanel(state));
+        secondary.AddRow(await BuildHealthPanelAsync(state).ConfigureAwait(false), BuildRecentActivityPanel(state));
         AnsiConsole.Write(secondary);
         AnsiConsole.WriteLine();
 
@@ -625,8 +625,8 @@ internal static partial class Program {
         };
     }
 
-    private static Panel BuildRuntimePanel() {
-        var ghStatus = GetGitHubCliStatus();
+    private static async Task<Panel> BuildRuntimePanelAsync() {
+        var ghStatus = await GetGitHubCliStatusAsync().ConfigureAwait(false);
         var table = new Table()
             .Border(TableBorder.None)
             .HideHeaders()
@@ -645,13 +645,13 @@ internal static partial class Program {
         };
     }
 
-    private static Panel BuildHealthPanel(ManageState state) {
+    private static async Task<Panel> BuildHealthPanelAsync(ManageState state) {
         var bundles = ReadOpenAiBundles();
         var now = DateTimeOffset.UtcNow;
         var valid = bundles.Count(b => b.ExpiresAt.HasValue && b.ExpiresAt.Value > now.AddHours(24));
         var soon = bundles.Count(b => b.ExpiresAt.HasValue && b.ExpiresAt.Value > now && b.ExpiresAt.Value <= now.AddHours(24));
         var expired = bundles.Count(b => !b.ExpiresAt.HasValue || b.ExpiresAt.Value <= now);
-        var gh = GetGitHubCliStatus();
+        var gh = await GetGitHubCliStatusAsync().ConfigureAwait(false);
 
         var table = new Table()
             .Border(TableBorder.None)

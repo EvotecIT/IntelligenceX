@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -142,7 +143,7 @@ internal static partial class Program {
     }
 
     private static void SetActiveRepo(ManageState state, string? repo) {
-        SetActiveRepo(state, repo);
+        state.ActiveRepo = string.IsNullOrWhiteSpace(repo) ? null : NormalizeRepo(repo);
         var owner = TryGetOwner(repo);
         if (!string.IsNullOrWhiteSpace(owner)) {
             state.LastOwner = owner;
@@ -152,10 +153,10 @@ internal static partial class Program {
     private sealed record CommandError(string Command, int ExitCode, string StdErr, string StdOut);
     private sealed record FetchResult<T>(List<T>? Items, CommandError? Error);
 
-    private static FetchResult<PullRequestSummary> FetchPullRequests(string repo, string state, int limit) {
+    private static async Task<FetchResult<PullRequestSummary>> FetchPullRequestsAsync(string repo, string state, int limit) {
         var cmd =
             $"pr list --repo {repo} --state {state} --limit {limit} --json number,title,state,isDraft,headRefName,updatedAt,url";
-        var result = RunExternalCommand("gh", cmd);
+        var result = await RunExternalCommandAsync("gh", cmd, TimeSpan.FromSeconds(30)).ConfigureAwait(false);
         if (result.ExitCode != 0) {
             return new FetchResult<PullRequestSummary>(
                 null,
@@ -172,10 +173,10 @@ internal static partial class Program {
         }
     }
 
-    private static FetchResult<WorkflowRunSummary> FetchWorkflowRuns(string repo, string workflowFile, int limit) {
+    private static async Task<FetchResult<WorkflowRunSummary>> FetchWorkflowRunsAsync(string repo, string workflowFile, int limit) {
         var cmd =
             $"run list --repo {repo} --workflow {workflowFile} --limit {limit} --json databaseId,status,conclusion,displayTitle,headBranch,event,createdAt,url";
-        var result = RunExternalCommand("gh", cmd);
+        var result = await RunExternalCommandAsync("gh", cmd, TimeSpan.FromSeconds(30)).ConfigureAwait(false);
         if (result.ExitCode != 0) {
             return new FetchResult<WorkflowRunSummary>(
                 null,
@@ -192,10 +193,10 @@ internal static partial class Program {
         }
     }
 
-    private static FetchResult<PullRequestCheckSummary> FetchPullRequestChecks(string repo, int prNumber) {
+    private static async Task<FetchResult<PullRequestCheckSummary>> FetchPullRequestChecksAsync(string repo, int prNumber) {
         var cmd =
             $"pr checks --repo {repo} {prNumber} --json name,state,link,bucket,event,workflow";
-        var result = RunExternalCommand("gh", cmd);
+        var result = await RunExternalCommandAsync("gh", cmd, TimeSpan.FromSeconds(30)).ConfigureAwait(false);
         if (result.ExitCode != 0) {
             return new FetchResult<PullRequestCheckSummary>(
                 null,
@@ -308,12 +309,18 @@ internal static partial class Program {
         if (string.IsNullOrWhiteSpace(raw)) {
             return null;
         }
-        return DateTimeOffset.TryParse(raw, out var parsed) ? parsed : null;
+        return DateTimeOffset.TryParse(
+            raw,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+            out var parsed)
+            ? parsed
+            : null;
     }
 
     private static async Task<int?> PromptPullRequestNumberAsync(string repo) {
         var open = await RunWithSpinnerAsync($"Loading PR candidates for {repo}...",
-            () => FetchPullRequests(repo, "all", 20)).ConfigureAwait(false);
+            () => FetchPullRequestsAsync(repo, "all", 20)).ConfigureAwait(false);
         if (open.Error is not null || open.Items is null || open.Items.Count == 0) {
             return PromptPrNumberManual();
         }
@@ -359,13 +366,12 @@ internal static partial class Program {
         }
     }
 
-    private static async Task<T> RunWithSpinnerAsync<T>(string statusMessage, Func<T> work) {
+    private static async Task<T> RunWithSpinnerAsync<T>(string statusMessage, Func<Task<T>> workAsync) {
         T result = default!;
         await AnsiConsole.Status()
             .Spinner(Spinner.Known.Dots)
-            .StartAsync(statusMessage, _ => {
-                result = work();
-                return Task.CompletedTask;
+            .StartAsync(statusMessage, async _ => {
+                result = await workAsync().ConfigureAwait(false);
             }).ConfigureAwait(false);
         return result;
     }
@@ -426,7 +432,7 @@ internal static partial class Program {
         };
     }
 
-    private static Task<string?> PromptRepositoryFromGitHubAsync(string? fallbackRepo, string? ownerHint) {
+    private static async Task<string?> PromptRepositoryFromGitHubAsync(string? fallbackRepo, string? ownerHint) {
         var ownerDefault = ownerHint ?? TryGetOwner(fallbackRepo) ?? TryGetOwner(ResolveDefaultRepo()) ?? string.Empty;
         var owner = AnsiConsole.Prompt(
             new TextPrompt<string>("GitHub owner/org")
@@ -436,13 +442,16 @@ internal static partial class Program {
         owner = owner.Trim();
         if (string.IsNullOrWhiteSpace(owner)) {
             AnsiConsole.MarkupLine("[yellow]Owner/org is required to browse repositories.[/]");
-            return Task.FromResult<string?>(null);
+            return null;
         }
 
-        var result = RunExternalCommand("gh", $"repo list {owner} --limit 100 --json nameWithOwner,pushedAt,isPrivate");
+        var result = await RunExternalCommandAsync(
+            "gh",
+            $"repo list {owner} --limit 100 --json nameWithOwner,pushedAt,isPrivate",
+            TimeSpan.FromSeconds(30)).ConfigureAwait(false);
         if (result.ExitCode != 0) {
             AnsiConsole.MarkupLine("[yellow]Could not load repositories from GitHub. Falling back to manual entry.[/]");
-            return Task.FromResult(PromptRepository("Set active repository", required: false, fallbackRepo));
+            return PromptRepository("Set active repository", required: false, fallbackRepo);
         }
 
         List<(string Repo, DateTimeOffset? PushedAt, bool IsPrivate)> repos;
@@ -450,12 +459,12 @@ internal static partial class Program {
             repos = ParseRepoList(result.StdOut);
         } catch {
             AnsiConsole.MarkupLine("[yellow]Failed to parse GitHub repository list. Falling back to manual entry.[/]");
-            return Task.FromResult(PromptRepository("Set active repository", required: false, fallbackRepo));
+            return PromptRepository("Set active repository", required: false, fallbackRepo);
         }
 
         if (repos.Count == 0) {
             AnsiConsole.MarkupLine("[yellow]No repositories returned for this owner/org.[/]");
-            return Task.FromResult(PromptRepository("Set active repository", required: false, fallbackRepo));
+            return PromptRepository("Set active repository", required: false, fallbackRepo);
         }
 
         var labels = new List<string>();
@@ -480,9 +489,9 @@ internal static partial class Program {
                 .AddChoices(labels));
 
         if (string.Equals(selected, manual, StringComparison.Ordinal)) {
-            return Task.FromResult(PromptRepository("Set active repository", required: false, fallbackRepo));
+            return PromptRepository("Set active repository", required: false, fallbackRepo);
         }
-        return Task.FromResult(mapping.TryGetValue(selected, out var resolved) ? resolved : fallbackRepo);
+        return mapping.TryGetValue(selected, out var resolved) ? resolved : fallbackRepo;
     }
 
 }

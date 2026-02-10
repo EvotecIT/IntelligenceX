@@ -13,6 +13,8 @@ using IntelligenceX.OpenAI.Auth;
 namespace IntelligenceX.Cli;
 
 internal static partial class Program {
+    private const int ManageLaunchFailureExitCode = 2;
+
     private static async Task<int> Main(string[] args) {
         return await DispatchAsync(args).ConfigureAwait(false);
     }
@@ -64,11 +66,11 @@ internal static partial class Program {
                 Console.Error.WriteLine("Set INTELLIGENCEX_DEBUG=1 for exception details.");
             }
             PrintHelp();
-            return 1;
+            return ManageLaunchFailureExitCode;
         }
     }
 
-    private static bool ShouldShowDetailedErrors() {
+    internal static bool ShouldShowDetailedErrors() {
         return IsTruthyFlag(Environment.GetEnvironmentVariable("INTELLIGENCEX_DEBUG"))
                || IsTruthyFlag(Environment.GetEnvironmentVariable("INTELLIGENCEX_VERBOSE"));
     }

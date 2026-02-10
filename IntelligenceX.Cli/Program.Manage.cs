@@ -153,7 +153,7 @@ internal static partial class Program {
 
         while (true) {
             SavePreferences(state);
-            RenderDashboard(state);
+            await RenderDashboardAsync(state).ConfigureAwait(false);
             var action = PromptMainAction();
             switch (action) {
                 case MainMenuAction.FavoriteQuickFixOpenAi:
@@ -474,7 +474,7 @@ internal static partial class Program {
         await RunProcessWithSummaryAsync(state, "Pipeline: daily health check", new[] {
             new ProcessStep {
                 Title = "Check GitHub auth status",
-                RunAsync = () => Task.FromResult(RunExternalCommand("gh", "auth status").ExitCode)
+                RunAsync = async () => (await RunExternalCommandAsync("gh", "auth status", TimeSpan.FromSeconds(30)).ConfigureAwait(false)).ExitCode
             },
             new ProcessStep {
                 Title = "Run doctor checks",
@@ -483,9 +483,9 @@ internal static partial class Program {
         }).ConfigureAwait(false);
 
         var prs = await RunWithSpinnerAsync("Fetching open pull requests...",
-            () => FetchPullRequests(repo, "open", 50)).ConfigureAwait(false);
+            () => FetchPullRequestsAsync(repo, "open", 50)).ConfigureAwait(false);
         var runs = await RunWithSpinnerAsync("Fetching recent reviewer runs...",
-            () => FetchWorkflowRuns(repo, "review-intelligencex.yml", 20)).ConfigureAwait(false);
+            () => FetchWorkflowRunsAsync(repo, "review-intelligencex.yml", 20)).ConfigureAwait(false);
 
         if (prs.Items is not null) {
             state.LastOpenPullRequestCount = prs.Items.Count;
@@ -547,15 +547,15 @@ internal static partial class Program {
             },
             new ProcessStep {
                 Title = "Load pull request checks",
-                RunAsync = () => {
-                    var checks = FetchPullRequestChecks(repo, prNumber.Value);
-                    return Task.FromResult(checks.Error is null ? 0 : 1);
+                RunAsync = async () => {
+                    var checks = await FetchPullRequestChecksAsync(repo, prNumber.Value).ConfigureAwait(false);
+                    return checks.Error is null ? 0 : 1;
                 }
             }
         }).ConfigureAwait(false);
 
         var checksResult = await RunWithSpinnerAsync("Fetching check details...",
-            () => FetchPullRequestChecks(repo, prNumber.Value)).ConfigureAwait(false);
+            () => FetchPullRequestChecksAsync(repo, prNumber.Value)).ConfigureAwait(false);
         if (checksResult.Items is not null) {
             state.LastFailedCheckCount = checksResult.Items.Count(c =>
                 string.Equals(c.State, "FAILURE", StringComparison.OrdinalIgnoreCase) ||

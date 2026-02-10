@@ -55,7 +55,7 @@ internal static partial class Program {
             () => true,
             _ => throw new InvalidOperationException("boom"));
 
-        AssertEqual(1, exit, "dispatch no-args manage failure exit");
+        AssertEqual(2, exit, "dispatch no-args manage failure exit");
         AssertContainsText(stderr, "Failed to launch management hub.", "dispatch no-args manage failure stderr");
         AssertContainsText(stderr, "INTELLIGENCEX_DEBUG=1", "dispatch no-args manage failure debug hint");
         if (stderr.IndexOf("boom", StringComparison.Ordinal) >= 0) {
@@ -70,7 +70,7 @@ internal static partial class Program {
             () => false,
             _ => throw new InvalidOperationException("boom"));
 
-        AssertEqual(1, exit, "dispatch manage command failure exit");
+        AssertEqual(2, exit, "dispatch manage command failure exit");
         AssertContainsText(stderr, "Failed to launch management hub.", "dispatch manage command failure stderr");
         AssertContainsText(stderr, "INTELLIGENCEX_DEBUG=1", "dispatch manage command failure debug hint");
         if (stderr.IndexOf("boom", StringComparison.Ordinal) >= 0) {
@@ -85,7 +85,7 @@ internal static partial class Program {
             () => false,
             _ => throw new Exception("unexpected"));
 
-        AssertEqual(1, exit, "dispatch manage command unexpected failure exit");
+        AssertEqual(2, exit, "dispatch manage command unexpected failure exit");
         AssertContainsText(stderr, "Failed to launch management hub.", "dispatch manage command unexpected failure stderr");
         AssertContainsText(stderr, "INTELLIGENCEX_DEBUG=1", "dispatch manage command unexpected failure debug hint");
         if (stderr.IndexOf("unexpected", StringComparison.Ordinal) >= 0) {
@@ -114,7 +114,7 @@ internal static partial class Program {
 
             Environment.SetEnvironmentVariable("INTELLIGENCEX_DEBUG", "on");
             Environment.SetEnvironmentVariable("INTELLIGENCEX_VERBOSE", "0");
-            AssertEqual(true, InvokeShouldShowDetailedErrors(), "dispatch detailed errors: debug overrides verbose falsy");
+            AssertEqual(true, global::IntelligenceX.Cli.Program.ShouldShowDetailedErrors(), "dispatch detailed errors: debug overrides verbose falsy");
         } finally {
             Environment.SetEnvironmentVariable("INTELLIGENCEX_DEBUG", previousDebug);
             Environment.SetEnvironmentVariable("INTELLIGENCEX_VERBOSE", previousVerbose);
@@ -127,7 +127,7 @@ internal static partial class Program {
         try {
             Environment.SetEnvironmentVariable("INTELLIGENCEX_GITHUB_REPO", "owner/repository/");
             Environment.SetEnvironmentVariable("GITHUB_REPOSITORY", null);
-            AssertEqual("owner/repository", InvokeResolveDefaultRepo(), "resolve default repo normalizes env value");
+            AssertEqual("owner/repository", global::IntelligenceX.Cli.Program.ResolveDefaultRepo(), "resolve default repo normalizes env value");
         } finally {
             Environment.SetEnvironmentVariable("INTELLIGENCEX_GITHUB_REPO", previousRepo);
             Environment.SetEnvironmentVariable("GITHUB_REPOSITORY", previousGitHubRepo);
@@ -141,25 +141,11 @@ internal static partial class Program {
             Environment.SetEnvironmentVariable("INTELLIGENCEX_DEBUG", null);
             Environment.SetEnvironmentVariable("INTELLIGENCEX_VERBOSE", null);
             Environment.SetEnvironmentVariable(envVar, value);
-            AssertEqual(expected, InvokeShouldShowDetailedErrors(), $"dispatch detailed errors: {envVar}={value ?? "<null>"}");
+            AssertEqual(expected, global::IntelligenceX.Cli.Program.ShouldShowDetailedErrors(), $"dispatch detailed errors: {envVar}={value ?? "<null>"}");
         } finally {
             Environment.SetEnvironmentVariable("INTELLIGENCEX_DEBUG", previousDebug);
             Environment.SetEnvironmentVariable("INTELLIGENCEX_VERBOSE", previousVerbose);
         }
-    }
-
-    private static bool InvokeShouldShowDetailedErrors() {
-        var flags = global::System.Reflection.BindingFlags.NonPublic | global::System.Reflection.BindingFlags.Static;
-        var method = typeof(global::IntelligenceX.Cli.Program).GetMethod("ShouldShowDetailedErrors", flags);
-        AssertNotNull(method, "dispatch detailed errors method lookup");
-        return (bool)method!.Invoke(null, null)!;
-    }
-
-    private static string? InvokeResolveDefaultRepo() {
-        var flags = global::System.Reflection.BindingFlags.NonPublic | global::System.Reflection.BindingFlags.Static;
-        var method = typeof(global::IntelligenceX.Cli.Program).GetMethod("ResolveDefaultRepo", flags);
-        AssertNotNull(method, "resolve default repo method lookup");
-        return (string?)method!.Invoke(null, null);
     }
 
     private static (int ExitCode, string StdOut, string StdErr) RunCliDispatchWithCapturedOutput(
