@@ -127,39 +127,39 @@ internal sealed partial class WebApi {
                 entryAssemblyPath = typeof(WebApi).Assembly.Location;
             }
 
-                var psi = new ProcessStartInfo {
-                    FileName = exePath,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true,
-                    WorkingDirectory = Environment.CurrentDirectory
+            var psi = new ProcessStartInfo {
+                FileName = exePath,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                WorkingDirectory = Environment.CurrentDirectory
+            };
+
+            var isDotNetHost = Path.GetFileNameWithoutExtension(exePath)
+                .Equals("dotnet", StringComparison.OrdinalIgnoreCase);
+            if (isDotNetHost) {
+                psi.ArgumentList.Add(entryAssemblyPath);
+            }
+
+            psi.ArgumentList.Add("setup");
+            foreach (var arg in args) {
+                psi.ArgumentList.Add(arg);
+            }
+
+            using var process = Process.Start(psi);
+            if (process is null) {
+                return new SetupResponse {
+                    ExitCode = 1,
+                    Error = "Failed to start setup process."
                 };
+            }
 
-                var isDotNetHost = Path.GetFileNameWithoutExtension(exePath)
-                    .Equals("dotnet", StringComparison.OrdinalIgnoreCase);
-                if (isDotNetHost) {
-                    psi.ArgumentList.Add(entryAssemblyPath);
-                }
+            var outputTask = process.StandardOutput.ReadToEndAsync();
+            var errorTask = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync().ConfigureAwait(false);
 
-                psi.ArgumentList.Add("setup");
-                foreach (var arg in args) {
-                    psi.ArgumentList.Add(arg);
-                }
-
-                using var process = Process.Start(psi);
-                if (process is null) {
-                    return new SetupResponse {
-                        ExitCode = 1,
-                        Error = "Failed to start setup process."
-                    };
-                }
-
-                var outputTask = process.StandardOutput.ReadToEndAsync();
-                var errorTask = process.StandardError.ReadToEndAsync();
-                await process.WaitForExitAsync().ConfigureAwait(false);
-
-                var code = process.ExitCode;
+            var code = process.ExitCode;
             return new SetupResponse {
                 ExitCode = code,
                 Output = await outputTask.ConfigureAwait(false),
