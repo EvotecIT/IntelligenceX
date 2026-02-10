@@ -26,6 +26,11 @@ This file defines how automated agents should operate in this repo. Follow it fo
 8. Merge only when all required checks pass and the PR is mergeable.
 9. Merge with squash + delete branch: `gh pr merge <num> --repo EvotecIT/IntelligenceX --squash --delete-branch`.
 
+**Dependabot + Workflow-Only PRs**
+- On Dependabot PRs, comments may be authored by `github-actions` rather than the IntelligenceX GitHub App. This is expected: GitHub typically does not expose repo secrets (including app private keys) to Dependabot PR workflows.
+- The IntelligenceX reviewer may intentionally skip PRs that only modify workflow files to avoid self-modifying workflow runs. If checks are green and the diff is limited to pin bumps (e.g., `uses:` SHA updates), treat this as mergeable unless maintainers explicitly require a manual review.
+- Never touch `/.github/workflows/deploy-website.yml` unless explicitly requested (even when updating pinned action SHAs elsewhere).
+
 **Local Preflight (Before You Push)**
 To avoid bot/CI churn, run local checks before pushing when you touched runtime behavior or workflows.
 1. Build: `dotnet build IntelligenceX.sln -c Release`
@@ -62,6 +67,12 @@ When an agent is assigned a PR to improve or unblock, it must iterate until merg
    - maintainers explicitly decide to accept the risk
    - the PR is infra-blocked and recorded per step 7
    - the only remaining bot todo/critical items are classified as churn per step 8, recorded in `TODO.md`, and surfaced to maintainers in a status summary comment
+
+**Commenting Hygiene (Avoid Shell Foot-Guns)**
+- When posting PR comments from a shell, prefer `--body-file -` with a single-quoted heredoc to avoid accidental command substitution (for example backticks interpreted by zsh):
+  - `cat <<'EOF' | gh pr comment <num> --repo EvotecIT/IntelligenceX --body-file -`
+  - `...comment body here...`
+  - `EOF`
 
 **Review Feedback Backlog**
 1. Aggregate bot review feedback using `gh api graphql`.
