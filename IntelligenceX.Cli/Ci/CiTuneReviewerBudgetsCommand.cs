@@ -129,6 +129,27 @@ internal static class CiTuneReviewerBudgetsCommand {
                     matchesGitHubEnv = false;
                 }
             }
+            if (matchesGitHubEnv && !CiPathSafety.IsUnderRoot(resolvedCandidate, workspaceRoot)) {
+                // $GITHUB_ENV is expected to be a GitHub Actions-managed, existing file path.
+                // If it's outside the workspace, do defense-in-depth checks to avoid following a symlink/junction.
+                if (!isGitHubActions) {
+                    error = $"Refusing to write outside the workspace when not running in GitHub Actions. out-env={resolvedCandidate}";
+                    return false;
+                }
+                if (!File.Exists(resolvedCandidate)) {
+                    error = $"Refusing to create a new env-file outside the workspace. out-env={resolvedCandidate}";
+                    return false;
+                }
+                if (IsLinkOrReparsePointFailClosed(resolvedCandidate)) {
+                    error = $"Env-file path is a symlink/junction (reparse point). out-env={resolvedCandidate}";
+                    return false;
+                }
+                var parentDir = Path.GetDirectoryName(resolvedCandidate);
+                if (!string.IsNullOrWhiteSpace(parentDir) && IsLinkOrReparsePointFailClosed(parentDir)) {
+                    error = $"Env-file directory is a symlink/junction (reparse point). out-env={resolvedCandidate}";
+                    return false;
+                }
+            }
             if (!matchesGitHubEnv) {
                 if (!CiPathSafety.IsUnderRoot(resolvedCandidate, workspaceRoot)) {
                     error = $"Env-file output path must be within the workspace (or equal to $GITHUB_ENV). out-env={resolvedCandidate} workspace={workspaceRoot}";
@@ -169,6 +190,24 @@ internal static class CiTuneReviewerBudgetsCommand {
 
         envPath = resolvedCandidate;
         return true;
+    }
+
+    private static bool IsLinkOrReparsePointFailClosed(string path) {
+        try {
+            FileSystemInfo fsi = Directory.Exists(path)
+                ? new DirectoryInfo(path)
+                : new FileInfo(path);
+
+            if (!string.IsNullOrWhiteSpace(fsi.LinkTarget)) {
+                return true;
+            }
+
+            var attrs = File.GetAttributes(path);
+            return (attrs & FileAttributes.ReparsePoint) != 0;
+        } catch {
+            // If we can't inspect attributes/link target, treat as unsafe.
+            return true;
+        }
     }
 
     private static string ResolveWorkspaceRoot() {

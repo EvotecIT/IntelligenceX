@@ -58,6 +58,7 @@ internal static partial class Program {
         failed += Run("CI changed-files strict fails on diff failure even with fallback", TestCiChangedFilesStrictFailsWhenDiffFailsEvenIfFallbackSucceeds);
         failed += Run("CI tune-reviewer-budgets rejects out-env outside workspace", TestCiTuneReviewerBudgetsRejectsOutEnvOutsideWorkspaceWhenGitHubEnvMissing);
 #endif
+        failed += Run("Reviewer GraphQL mutation detection", TestReviewerGraphQlMutationDetection);
 
         // Reviewer tests are excluded from NET472 builds (no reviewer references there), and enforced for non-NET472
         // builds via `IntelligenceX.Tests/ReviewerSymbolGuard.cs` + `IntelligenceX.Tests/IntelligenceX.Tests.csproj`.

@@ -93,10 +93,25 @@ internal static class CiChangedFilesCommand {
             .Distinct(StringComparer.Ordinal)
             .OrderBy(value => value, StringComparer.Ordinal)
             .ToList();
+        if (Directory.Exists(outputPath)) {
+            Console.Error.WriteLine($"Output path is a directory: {outputPath}");
+            return 1;
+        }
+        if (File.Exists(outputPath) && !CiPathSafety.IsUnderRootPhysical(outputPath, workspaceRoot)) {
+            Console.Error.WriteLine($"Output path must be within the workspace and not traverse symlinks/junctions. out={outputPath} workspace={workspaceRoot}");
+            return 1;
+        }
+        var tempPath = Path.Combine(outputDir!, ".changed-files." + Guid.NewGuid().ToString("N") + ".tmp");
         try {
-            File.WriteAllLines(outputPath, lines, Utf8Tolerant);
+            File.WriteAllLines(tempPath, lines, Utf8Tolerant);
+            File.Move(tempPath, outputPath, overwrite: true);
         } catch (Exception ex) {
             Console.Error.WriteLine($"Failed to write {outputPath}: {ex.Message}");
+            try { if (File.Exists(tempPath)) { File.Delete(tempPath); } } catch { }
+            return 1;
+        }
+        if (!CiPathSafety.IsUnderRootPhysical(outputPath, workspaceRoot)) {
+            Console.Error.WriteLine($"Output path must be within the workspace and not traverse symlinks/junctions. out={outputPath} workspace={workspaceRoot}");
             return 1;
         }
 
@@ -234,7 +249,12 @@ internal static class CiChangedFilesCommand {
                     options.Error = "Missing value for --workspace.";
                     return options;
                 }
-                options.Workspace = args[++i];
+                var value = args[++i];
+                if (value.IndexOfAny(new[] { '\n', '\r', '\0' }) >= 0) {
+                    options.Error = "Invalid --workspace path.";
+                    return options;
+                }
+                options.Workspace = value;
                 continue;
             }
             if (arg.Equals("--base", StringComparison.OrdinalIgnoreCase)) {

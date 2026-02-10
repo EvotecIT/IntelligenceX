@@ -21,7 +21,7 @@ internal sealed partial class GitHubClient {
             return true;
         }
         var next = trimmed[MutationKeyword.Length];
-        return char.IsWhiteSpace(next) || next == '(';
+        return char.IsWhiteSpace(next) || next == '(' || next == '{';
     }
 
     private static string TrimGraphQlLeadingTrivia(string queryText) {
@@ -125,4 +125,3 @@ internal sealed partial class GitHubClient {
         }, cancellationToken).ConfigureAwait(false);
     }
 }
-

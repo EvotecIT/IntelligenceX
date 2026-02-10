@@ -79,6 +79,7 @@ public sealed class CiTuneReviewerBudgetsCommandTests {
             File.WriteAllText(Path.Combine(workspace, "changed-files.txt"), "a.txt\nb.txt\n");
 
             var envPath = Path.Combine(outside, "github.env");
+            File.WriteAllText(envPath, string.Empty);
 
             using var env = new EnvScope(
                 ("GITHUB_WORKSPACE", workspace),
