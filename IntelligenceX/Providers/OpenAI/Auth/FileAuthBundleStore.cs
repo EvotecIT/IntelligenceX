@@ -137,12 +137,16 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
         if (string.IsNullOrWhiteSpace(keyBase64)) {
             return null;
         }
+        byte[] bytes;
         try {
-            var bytes = Convert.FromBase64String(keyBase64);
-            return bytes.Length == 32 ? bytes : null;
-        } catch {
-            return null;
+            bytes = Convert.FromBase64String(keyBase64);
+        } catch (Exception ex) {
+            throw new InvalidOperationException("INTELLIGENCEX_AUTH_KEY must be base64 and decode to 32 bytes.", ex);
         }
+        if (bytes.Length != 32) {
+            throw new InvalidOperationException("INTELLIGENCEX_AUTH_KEY must be base64 and decode to 32 bytes.");
+        }
+        return bytes;
     }
 
     private static bool IsEncrypted(string content) {

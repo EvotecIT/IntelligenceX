@@ -1,7 +1,10 @@
 using System;
+using System.IO;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.Auth;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Chat;
@@ -61,6 +64,43 @@ internal static partial class Program {
             client.EnsureChatGptLoginAsync(cancellationToken: cts.Token).GetAwaiter().GetResult();
         }, "EnsureChatGptLoginAsync cancellation");
     }
+
+#if NET8_0_OR_GREATER
+    private static void TestAuthStoreInvalidKeyThrows() {
+        AssertThrows<InvalidOperationException>(() => {
+            _ = new FileAuthBundleStore(path: Path.Combine(Path.GetTempPath(), $"ix-auth-{Guid.NewGuid():N}.json"), encryptionKeyBase64: "nope");
+        }, "invalid auth key throws");
+    }
+
+    private static void TestAuthStoreEncryptedRoundtrip() {
+        var path = Path.Combine(Path.GetTempPath(), $"ix-auth-{Guid.NewGuid():N}.json");
+        var key = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        try {
+            var store = new FileAuthBundleStore(path: path, encryptionKeyBase64: key);
+            var bundle = new AuthBundle("openai", "access", "refresh", DateTimeOffset.UtcNow.AddHours(1)) {
+                AccountId = "acct"
+            };
+            store.SaveAsync(bundle, CancellationToken.None).GetAwaiter().GetResult();
+
+            var content = File.ReadAllText(path);
+            AssertEqual(true, content.StartsWith("{\"encrypted\":true", StringComparison.OrdinalIgnoreCase), "encrypted envelope written");
+
+            var loaded = store.GetAsync("openai", accountId: "acct", cancellationToken: CancellationToken.None).GetAwaiter().GetResult();
+            AssertNotNull(loaded, "loaded bundle");
+            AssertEqual("access", loaded!.AccessToken, "access token");
+            AssertEqual("refresh", loaded.RefreshToken, "refresh token");
+            AssertEqual("acct", loaded.AccountId, "account id");
+        } finally {
+            try {
+                if (File.Exists(path)) {
+                    File.Delete(path);
+                }
+            } catch {
+                // best-effort cleanup
+            }
+        }
+    }
+#endif
 
     private enum FakeAccountMode {
         Ok,
