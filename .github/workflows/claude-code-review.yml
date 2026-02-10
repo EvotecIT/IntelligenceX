@@ -51,7 +51,7 @@ jobs:
         id: claude-review
         if: steps.changes.outputs.claude_workflows != 'true' && secrets.CLAUDE_CODE_OAUTH_TOKEN != ''
         continue-on-error: true
-        uses: anthropics/claude-code-action@67805944d388cd9d66742b65ed24fb3d844f0399 # v1
+        uses: anthropics/claude-code-action@b433f16b30d54063fd3bab6b12f46f3da00e41b6 # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
