@@ -6,6 +6,7 @@
   "engine": "scriban",
   "layoutsPath": "layouts",
   "partialsPath": "partials",
+  "scriptsPath": "scripts",
   "defaultLayout": "home",
   "features": ["docs", "apiDocs", "notFound"],
   "slots": {
