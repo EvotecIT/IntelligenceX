@@ -41,6 +41,8 @@ internal static class WizardPrompts {
             "[grey]We use the IntelligenceX GitHub App to simplify setup:[/]\n" +
             "[green]✓[/] Sign in without creating tokens manually\n" +
             "[green]✓[/] Pre-fill settings when creating your own GitHub App\n\n" +
+            "[yellow]Dependabot note:[/] Dependabot PR workflows usually cannot access repo secrets.\n" +
+            "For those runs, review comments may appear as [grey]github-actions[/] instead of your app bot.\n\n" +
             "[grey]We don't store your credentials or access repos without\n" +
             "your approval. Everything runs locally.[/]\n\n" +
             "[dim]Override with: INTELLIGENCEX_GITHUB_CLIENT_ID env var[/]") {

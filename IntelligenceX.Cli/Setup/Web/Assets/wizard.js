@@ -1184,9 +1184,10 @@ function confirmApply() {
   if (repos.length === 0) { write('Select repos first.'); return; }
   if (!getToken()) { write('Token required.'); return; }
 
+  const dependabotNote = '\n\nDependabot note: PR workflows usually cannot access repo secrets, so comments may appear as github-actions instead of your app bot.';
   const msg = repos.length === 1
-    ? `Apply changes to ${repos[0]}?\n\nThis will create a PR with the workflow and upload secrets.`
-    : `Apply changes to ${repos.length} repositories?\n\nThis will create PRs with the workflow and upload secrets.`;
+    ? `Apply changes to ${repos[0]}?\n\nThis will create a PR with the workflow and upload secrets.${dependabotNote}`
+    : `Apply changes to ${repos.length} repositories?\n\nThis will create PRs with the workflow and upload secrets.${dependabotNote}`;
 
   if (!confirm(msg)) return;
   doApply();
