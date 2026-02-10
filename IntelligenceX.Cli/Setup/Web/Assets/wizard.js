@@ -362,6 +362,15 @@ function updateRepoCount() {
   if (el) el.textContent = `${count} repo${count !== 1 ? 's' : ''} selected`;
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ── Build review grid ──
 function buildReviewTable() {
   const grid = $('reviewGrid');
@@ -382,6 +391,13 @@ function buildReviewTable() {
     performance: 'Performance',
     tests: 'Tests'
   };
+  const safeOperation = escapeHtml(selectedOperation);
+  const safeProviderLabel = escapeHtml(providerLabel);
+  const safeProfile = escapeHtml(profileLabels[selectedPresetProfile] || selectedPresetProfile);
+  const safeReviewMode = escapeHtml(reviewMode && reviewMode.value ? reviewMode.value : 'default');
+  const safeReviewCommentMode = escapeHtml(reviewCommentMode && reviewCommentMode.value ? reviewCommentMode.value : 'default');
+  const safeAnalysisState = escapeHtml(analysisState);
+  const safeRepoHtml = repos.map(r => `<code>${escapeHtml(r)}</code>`).join(' ');
 
   let html = `
     <div class="review-section">
@@ -394,22 +410,22 @@ function buildReviewTable() {
         <span class="review-label">Repositories</span>
         <span class="review-value">${repos.length > 0 ? `<strong>${repos.length}</strong> selected` : '<span class="badge badge-warn">None</span>'}</span>
       </div>
-      ${repos.length > 0 && repos.length <= 5 ? `<div class="review-repos">${repos.map(r => `<code>${r}</code>`).join(' ')}</div>` : ''}
+      ${repos.length > 0 && repos.length <= 5 ? `<div class="review-repos">${safeRepoHtml}</div>` : ''}
     </div>
 
     <div class="review-section">
       <div class="review-section-title">Configuration</div>
       <div class="review-item">
         <span class="review-label">Operation</span>
-        <span class="review-value"><strong>${selectedOperation}</strong></span>
+        <span class="review-value"><strong>${safeOperation}</strong></span>
       </div>
       <div class="review-item">
         <span class="review-label">AI Provider</span>
-        <span class="review-value">${providerLabel}</span>
+        <span class="review-value">${safeProviderLabel}</span>
       </div>
       <div class="review-item">
         <span class="review-label">Review Profile</span>
-        <span class="review-value">${profileLabels[selectedPresetProfile] || selectedPresetProfile}</span>
+        <span class="review-value">${safeProfile}</span>
       </div>
       <div class="review-item">
         <span class="review-label">With config</span>
@@ -417,15 +433,15 @@ function buildReviewTable() {
       </div>
       <div class="review-item">
         <span class="review-label">Review mode</span>
-        <span class="review-value">${reviewMode && reviewMode.value ? reviewMode.value : 'default'}</span>
+        <span class="review-value">${safeReviewMode}</span>
       </div>
       <div class="review-item">
         <span class="review-label">Comment mode</span>
-        <span class="review-value">${reviewCommentMode && reviewCommentMode.value ? reviewCommentMode.value : 'default'}</span>
+        <span class="review-value">${safeReviewCommentMode}</span>
       </div>
       <div class="review-item">
         <span class="review-label">Static analysis</span>
-        <span class="review-value">${analysisState}</span>
+        <span class="review-value">${safeAnalysisState}</span>
       </div>
     </div>
   `;
@@ -437,12 +453,13 @@ function buildReviewTable() {
       file: 'Auth bundle (file path)',
       skip: 'Skipped (set up later)'
     };
+    const safeSecretMethod = escapeHtml(secretLabels[secretOption] || secretOption);
     html += `
       <div class="review-section">
         <div class="review-section-title">AI Authentication</div>
         <div class="review-item">
           <span class="review-label">Method</span>
-          <span class="review-value">${secretLabels[secretOption] || secretOption}</span>
+          <span class="review-value">${safeSecretMethod}</span>
         </div>
       </div>
     `;
