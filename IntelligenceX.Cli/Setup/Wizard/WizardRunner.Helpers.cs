@@ -13,7 +13,7 @@ namespace IntelligenceX.Cli.Setup.Wizard;
 
 internal static partial class WizardRunner {
     private static void ApplyAnalysisSelection(WizardState state) {
-        if (state.Operation != WizardOperation.Setup || !state.WithConfig) {
+        if (state.Operation != WizardOperation.Setup || !state.WithConfig || state.ConfigMode != ConfigMode.Preset) {
             state.AnalysisEnabled = null;
             state.AnalysisGateEnabled = null;
             state.AnalysisPacks = null;

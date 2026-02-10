@@ -181,6 +181,7 @@ function selectOperation(op) {
   });
   $('setupOptions').classList.toggle('hidden', op !== 'setup');
   $('cleanupOptions').classList.toggle('hidden', op !== 'cleanup');
+  updateAnalysisControls();
 }
 
 // ── Provider toggle ──
@@ -443,7 +444,8 @@ function showOutput(text) {
 // ── Build request body ──
 function buildRequestBody(dryRun) {
   const skipSecret = shouldSkipSecrets() || secretOption === 'skip';
-  const wantAnalysis = selectedOperation === 'setup' && (withConfig.checked || (configJson.value.trim().length > 0) || (configPath.value.trim().length > 0));
+  const hasConfigOverride = (configJson.value.trim().length > 0) || (configPath.value.trim().length > 0);
+  const wantAnalysis = selectedOperation === 'setup' && withConfig.checked && !hasConfigOverride;
   const analysisOn = wantAnalysis && !!(analysisEnabled && analysisEnabled.checked);
   const packsRaw = analysisPacks ? analysisPacks.value.trim() : '';
   return {
@@ -939,14 +941,32 @@ repoList.addEventListener('change', updateRepoCount);
 if (repo) repo.addEventListener('input', updateRepoCount);
 
 // ── Config auto-enable ──
-configJson.addEventListener('input', () => { if (configJson.value.trim()) withConfig.checked = true; });
-configPath.addEventListener('input', () => { if (configPath.value.trim()) withConfig.checked = true; });
+configJson.addEventListener('input', () => {
+  if (configJson.value.trim()) withConfig.checked = true;
+  updateAnalysisControls();
+});
+configPath.addEventListener('input', () => {
+  if (configPath.value.trim()) withConfig.checked = true;
+  updateAnalysisControls();
+});
+withConfig.addEventListener('change', updateAnalysisControls);
 
 // ── Static analysis toggle ──
 function updateAnalysisControls() {
-  const enabled = analysisEnabled && analysisEnabled.checked;
+  const hasConfigOverride = (configJson.value.trim().length > 0) || (configPath.value.trim().length > 0);
+  const applicable = selectedOperation === 'setup' && withConfig.checked && !hasConfigOverride;
+  const enabled = applicable && analysisEnabled && analysisEnabled.checked;
+
+  if (analysisEnabled) analysisEnabled.disabled = !applicable;
   if (analysisGate) analysisGate.disabled = !enabled;
   if (analysisPacks) analysisPacks.disabled = !enabled;
+
+  const hint = $('analysisHint');
+  if (hint) {
+    hint.textContent = applicable
+      ? 'Leave empty to use defaults. Examples: all-50, all-100, all-500, all-security-default, powershell-50.'
+      : 'Static analysis settings apply only when generating config from presets (no Config JSON/path override).';
+  }
 }
 if (analysisEnabled) analysisEnabled.addEventListener('change', updateAnalysisControls);
 updateAnalysisControls();

@@ -522,21 +522,24 @@ internal sealed class WebApi {
             return;
         }
 
-        if (!TryNormalizeAnalysisPacks(request.AnalysisPacks, out var normalizedPacks, out var packsError)) {
-            context.Response.StatusCode = 400;
-            await WriteJsonAsync(context, new { error = packsError }).ConfigureAwait(false);
-            return;
-        }
-        request.AnalysisPacks = normalizedPacks;
-        if (request.AnalysisEnabled is null) {
-            // Backward compatibility / future-proofing: if a client sends packs/gate without the top-level toggle,
-            // assume they intended to enable analysis.
-            if (request.AnalysisGateEnabled.HasValue || request.AnalysisPacks is not null) {
-                request.AnalysisEnabled = true;
+        // Analysis flags are only honored when the setup flow is generating/merging reviewer.json.
+        // If the user provides a full config override (configJson/configPath), these flags would be ignored by SetupRunner,
+        // so we also ignore them here to avoid misleading behavior.
+        var hasConfigOverride = !string.IsNullOrWhiteSpace(request.ConfigJson) || !string.IsNullOrWhiteSpace(request.ConfigPath);
+        var analysisApplies = request.WithConfig && !hasConfigOverride;
+        if (!analysisApplies) {
+            request.AnalysisEnabled = null;
+            request.AnalysisGateEnabled = null;
+            request.AnalysisPacks = null;
+        } else if (request.AnalysisEnabled == true) {
+            if (!TryNormalizeAnalysisPacks(request.AnalysisPacks, out var normalizedPacks, out var packsError)) {
+                context.Response.StatusCode = 400;
+                await WriteJsonAsync(context, new { error = packsError }).ConfigureAwait(false);
+                return;
             }
-        }
-        if (request.AnalysisEnabled != true) {
-            // Prevent accidental or malicious argv "flag injection" by ensuring these are never forwarded when disabled.
+            request.AnalysisPacks = normalizedPacks;
+        } else {
+            // Prevent accidental or malicious argv "flag injection" by ensuring these are never forwarded when disabled/unset.
             request.AnalysisGateEnabled = null;
             request.AnalysisPacks = null;
         }
@@ -750,6 +753,8 @@ internal sealed class WebApi {
         var withConfig = request.WithConfig ||
                          !string.IsNullOrWhiteSpace(request.ConfigJson) ||
                          !string.IsNullOrWhiteSpace(request.ConfigPath);
+        var hasConfigOverride = !string.IsNullOrWhiteSpace(request.ConfigJson) || !string.IsNullOrWhiteSpace(request.ConfigPath);
+        var analysisApplies = request.WithConfig && !hasConfigOverride;
         if (withConfig) {
             args.Add("--with-config");
         }
@@ -785,15 +790,15 @@ internal sealed class WebApi {
             args.Add("--review-comment-mode");
             args.Add(request.ReviewCommentMode!);
         }
-        if (withConfig && request.AnalysisEnabled.HasValue) {
+        if (analysisApplies && request.AnalysisEnabled.HasValue) {
             args.Add("--analysis-enabled");
             args.Add(request.AnalysisEnabled.Value ? "true" : "false");
         }
-        if (withConfig && request.AnalysisEnabled != false && request.AnalysisGateEnabled.HasValue) {
+        if (analysisApplies && request.AnalysisEnabled == true && request.AnalysisGateEnabled.HasValue) {
             args.Add("--analysis-gate");
             args.Add(request.AnalysisGateEnabled.Value ? "true" : "false");
         }
-        if (withConfig && request.AnalysisEnabled != false && !string.IsNullOrWhiteSpace(request.AnalysisPacks)) {
+        if (analysisApplies && request.AnalysisEnabled == true && !string.IsNullOrWhiteSpace(request.AnalysisPacks)) {
             args.Add("--analysis-packs");
             args.Add(request.AnalysisPacks!);
         }
@@ -845,6 +850,7 @@ internal sealed class WebApi {
         }
 
         var ids = new List<string>(parts.Length);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var part in parts) {
             if (string.IsNullOrWhiteSpace(part)) {
                 continue;
@@ -853,7 +859,9 @@ internal sealed class WebApi {
                 error = $"Invalid analysis pack id: '{part}'. Use comma-separated ids matching {AnalysisPackIdRegex}.";
                 return false;
             }
-            ids.Add(part);
+            if (seen.Add(part)) {
+                ids.Add(part);
+            }
         }
 
         if (ids.Count == 0) {
