@@ -30,10 +30,11 @@ internal sealed partial class WebApi {
             }
             ms.Write(buffer, 0, read);
         }
-        if (ms.TryGetBuffer(out var segment) && segment.Array is not null) {
-            return encoding.GetString(segment.Array, segment.Offset, segment.Count);
+        try {
+            return encoding.GetString(ms.GetBuffer(), 0, (int)ms.Length);
+        } catch {
+            return encoding.GetString(ms.ToArray());
         }
-        return encoding.GetString(ms.ToArray());
     }
 
     private async Task WriteJsonAsync(System.Net.HttpListenerContext context, object payload) {

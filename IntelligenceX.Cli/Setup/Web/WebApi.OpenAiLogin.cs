@@ -8,20 +8,21 @@ using IntelligenceX.OpenAI.Auth;
 
 namespace IntelligenceX.Cli.Setup.Web;
 
-    internal sealed partial class WebApi {
-        private async Task HandleOpenAILoginAsync(System.Net.HttpListenerContext context) {
-            var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
-            if (body is null) {
-                return;
-            }
-            OpenAILoginRequest request;
-            try {
-                request = JsonSerializer.Deserialize<OpenAILoginRequest>(body, _jsonOptions) ?? new OpenAILoginRequest();
-            } catch (JsonException) {
-                context.Response.StatusCode = 400;
-                await WriteJsonAsync(context, new { error = "Invalid JSON payload." }).ConfigureAwait(false);
-                return;
-            }
+internal sealed partial class WebApi {
+    private async Task HandleOpenAILoginAsync(System.Net.HttpListenerContext context) {
+        var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
+        if (body is null) {
+            return;
+        }
+
+        OpenAILoginRequest request;
+        try {
+            request = JsonSerializer.Deserialize<OpenAILoginRequest>(body, _jsonOptions) ?? new OpenAILoginRequest();
+        } catch (JsonException) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = "Invalid JSON payload." }).ConfigureAwait(false);
+            return;
+        }
 
         try {
             var config = OAuthConfig.FromEnvironment();
@@ -75,6 +76,7 @@ namespace IntelligenceX.Cli.Setup.Web;
         if (!TryNormalizeHttpUrl(url, out var safeUrl)) {
             return;
         }
+
         try {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) {
                 Process.Start(new ProcessStartInfo(safeUrl) { UseShellExecute = true });
@@ -88,3 +90,4 @@ namespace IntelligenceX.Cli.Setup.Web;
         }
     }
 }
+
