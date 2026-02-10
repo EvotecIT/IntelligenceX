@@ -98,11 +98,13 @@ internal sealed partial class WebApi {
     }
 
     private static bool IsLoopbackRequest(System.Net.HttpListenerRequest request) {
-        if (request.IsLocal) {
-            return true;
-        }
         var remote = request.RemoteEndPoint;
-        return remote is not null && IPAddress.IsLoopback(remote.Address);
+        if (remote is null || !IPAddress.IsLoopback(remote.Address)) {
+            return false;
+        }
+
+        var local = request.LocalEndPoint;
+        return local is null || IPAddress.IsLoopback(local.Address);
     }
 
     private async Task<bool> EnsureLocalPostSetupRequestAsync(System.Net.HttpListenerContext context) {
