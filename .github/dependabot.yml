@@ -5,7 +5,19 @@ updates:
     schedule:
       interval: "weekly"
     ignore:
-      - dependency-name: "*"
+      - dependency-name: "actions/*"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "github/*"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "codecov/codecov-action"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "anthropics/claude-code-action"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "dorny/paths-filter"
         update-types:
           - "version-update:semver-major"
     groups:
