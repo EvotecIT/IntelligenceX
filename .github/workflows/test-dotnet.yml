@@ -67,7 +67,7 @@ jobs:
                   path: '**/coverage.cobertura.xml'
             - name: Upload coverage to Codecov
               uses: codecov/codecov-action@ab904c41d6ece82784817410c45d8b8c02684457 # v3
-              if: ${{ hashFiles('**/coverage.cobertura.xml') != '' }}
+              if: ${{ runner.os == 'Linux' && hashFiles('**/coverage.cobertura.xml') != '' }}
               with:
                   files: '**/coverage.cobertura.xml'
                   fail_ci_if_error: false
@@ -114,7 +114,7 @@ jobs:
                   path: '**/*.trx'
             - name: Upload coverage to Codecov
               uses: codecov/codecov-action@ab904c41d6ece82784817410c45d8b8c02684457 # v3
-              if: ${{ hashFiles('**/coverage.cobertura.xml') != '' }}
+              if: ${{ runner.os == 'Linux' && hashFiles('**/coverage.cobertura.xml') != '' }}
               with:
                   files: '**/coverage.cobertura.xml'
                   fail_ci_if_error: false
@@ -161,7 +161,7 @@ jobs:
                   path: '**/*.trx'
             - name: Upload coverage to Codecov
               uses: codecov/codecov-action@ab904c41d6ece82784817410c45d8b8c02684457 # v3
-              if: ${{ hashFiles('**/coverage.cobertura.xml') != '' }}
+              if: ${{ runner.os == 'Linux' && hashFiles('**/coverage.cobertura.xml') != '' }}
               with:
                   files: '**/coverage.cobertura.xml'
                   fail_ci_if_error: false
