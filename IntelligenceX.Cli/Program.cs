@@ -13,8 +13,23 @@ using IntelligenceX.OpenAI.Auth;
 namespace IntelligenceX.Cli;
 
 internal static partial class Program {
+    private const int ManageLaunchFailureExitCode = 2;
+
     private static async Task<int> Main(string[] args) {
+        return await DispatchAsync(args).ConfigureAwait(false);
+    }
+
+    internal static async Task<int> DispatchAsync(
+        string[] args,
+        Func<bool>? canLaunchManageHub = null,
+        Func<string[], Task<int>>? runManageAsync = null) {
+        var canLaunch = canLaunchManageHub ?? CanLaunchManageHub;
+        var runManage = runManageAsync ?? RunManageAsync;
+
         if (args.Length == 0) {
+            if (canLaunch()) {
+                return await RunManageWithFallbackAsync(runManage, Array.Empty<string>()).ConfigureAwait(false);
+            }
             PrintHelp();
             return 1;
         }
@@ -30,6 +45,7 @@ internal static partial class Program {
             "ci" => await Ci.CiRunner.RunAsync(rest).ConfigureAwait(false),
             "reviewer" => await RunReviewerAsync(rest).ConfigureAwait(false),
             "setup" => await RunSetupAsync(rest).ConfigureAwait(false),
+            "manage" => await RunManageWithFallbackAsync(runManage, rest).ConfigureAwait(false),
             "doctor" => await Doctor.DoctorRunner.RunAsync(rest).ConfigureAwait(false),
             "todo" => await Todo.TodoRunner.RunAsync(rest).ConfigureAwait(false),
             "release" => await RunReleaseAsync(rest).ConfigureAwait(false),
@@ -37,6 +53,36 @@ internal static partial class Program {
             "help" or "-h" or "--help" => PrintHelpReturn(),
             _ => PrintHelpReturn()
         };
+    }
+
+    private static async Task<int> RunManageWithFallbackAsync(Func<string[], Task<int>> runManage, string[] args) {
+        try {
+            return await runManage(args).ConfigureAwait(false);
+        } catch (Exception ex) {
+            Console.Error.WriteLine("Failed to launch management hub.");
+            if (ShouldShowDetailedErrors()) {
+                Console.Error.WriteLine(ex.ToString());
+            } else {
+                Console.Error.WriteLine("Set INTELLIGENCEX_DEBUG=1 for exception details.");
+            }
+            PrintHelp();
+            return ManageLaunchFailureExitCode;
+        }
+    }
+
+    internal static bool ShouldShowDetailedErrors() {
+        return IsTruthyFlag(Environment.GetEnvironmentVariable("INTELLIGENCEX_DEBUG"))
+               || IsTruthyFlag(Environment.GetEnvironmentVariable("INTELLIGENCEX_VERBOSE"));
+    }
+
+    private static bool IsTruthyFlag(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return false;
+        }
+        return value.Equals("1", StringComparison.OrdinalIgnoreCase)
+               || value.Equals("true", StringComparison.OrdinalIgnoreCase)
+               || value.Equals("yes", StringComparison.OrdinalIgnoreCase)
+               || value.Equals("on", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<int> RunAuthAsync(string[] args) {
