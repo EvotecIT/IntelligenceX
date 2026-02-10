@@ -42,6 +42,10 @@ internal static class CiChangedFilesCommand {
             Console.Error.WriteLine($"Output directory is not safe: {ensureError}");
             return 1;
         }
+        if (!Directory.Exists(outputDir)) {
+            Console.Error.WriteLine($"Output directory could not be created: {outputDir}");
+            return 1;
+        }
         // Re-validate the directory chain after creating/ensuring directories to avoid TOCTOU issues with
         // symlink/junction insertion between validation and writes.
         if (!CiPathSafety.IsUnderRootPhysical(outputDir!, workspaceRoot)) {
