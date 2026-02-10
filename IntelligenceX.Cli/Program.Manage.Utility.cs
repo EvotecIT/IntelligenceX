@@ -329,6 +329,8 @@ internal static partial class Program {
             } catch (InvalidOperationException) {
                 // process was not started or already exited
             }
+        } catch (Exception ex) {
+            return (int.MinValue, string.Empty, ex.Message);
         } finally {
             try {
                 process.CancelOutputRead();

@@ -40,6 +40,14 @@ internal static partial class Program {
         }
     }
 
+    private static void TestManageRunExternalCommandNonTimeoutFailureIsNotTimeout() {
+        var result = global::IntelligenceX.Cli.Program.RunExternalCommandForTests("dotnet", "--help", timeoutMs: -2);
+        AssertEqual(int.MinValue, result.ExitCode, "manage external non-timeout failure exit code");
+        if (result.StdErr.IndexOf("timed out", StringComparison.OrdinalIgnoreCase) >= 0) {
+            throw new InvalidOperationException("Expected non-timeout external command failure to avoid timeout classification.");
+        }
+    }
+
     private static string ResolveCliDllPathForTests() {
         var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         var candidates = new[] {
