@@ -26,7 +26,7 @@ internal static partial class Program {
         Console.WriteLine("  intelligencex usage [options]");
         Console.WriteLine();
         Console.WriteLine("Tip:");
-        Console.WriteLine("  Run `intelligencex` with no arguments in an interactive terminal to open the management hub.");
+        Console.WriteLine("  Run intelligencex with no arguments in an interactive terminal to open the management hub.");
         Console.WriteLine();
         Console.WriteLine("Auth commands:");
         Console.WriteLine("  auth login       Start OAuth login flow and store credentials");

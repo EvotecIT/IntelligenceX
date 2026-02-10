@@ -14,9 +14,26 @@ namespace IntelligenceX.Cli;
 
 internal static partial class Program {
     private static async Task<int> Main(string[] args) {
+        return await DispatchAsync(args).ConfigureAwait(false);
+    }
+
+    internal static async Task<int> DispatchAsync(
+        string[] args,
+        Func<bool>? canLaunchManageHub = null,
+        Func<string[], Task<int>>? runManageAsync = null) {
+        var canLaunch = canLaunchManageHub ?? CanLaunchManageHub;
+        var runManage = runManageAsync ?? RunManageAsync;
+
         if (args.Length == 0) {
-            if (CanLaunchManageHub()) {
-                return await RunManageAsync(Array.Empty<string>()).ConfigureAwait(false);
+            if (canLaunch()) {
+                try {
+                    return await runManage(Array.Empty<string>()).ConfigureAwait(false);
+                } catch (Exception ex) {
+                    var detail = string.IsNullOrWhiteSpace(ex.Message) ? ex.GetType().Name : ex.Message;
+                    Console.Error.WriteLine($"Failed to launch management hub: {detail}");
+                    PrintHelp();
+                    return 1;
+                }
             }
             PrintHelp();
             return 1;
@@ -33,7 +50,7 @@ internal static partial class Program {
             "ci" => await Ci.CiRunner.RunAsync(rest).ConfigureAwait(false),
             "reviewer" => await RunReviewerAsync(rest).ConfigureAwait(false),
             "setup" => await RunSetupAsync(rest).ConfigureAwait(false),
-            "manage" => await RunManageAsync(rest).ConfigureAwait(false),
+            "manage" => await runManage(rest).ConfigureAwait(false),
             "doctor" => await Doctor.DoctorRunner.RunAsync(rest).ConfigureAwait(false),
             "todo" => await Todo.TodoRunner.RunAsync(rest).ConfigureAwait(false),
             "release" => await RunReleaseAsync(rest).ConfigureAwait(false),
