@@ -38,7 +38,7 @@ internal sealed partial class GitHubClient {
         // Fall back to a conservative "last two segments" parse only for known GitHub web URLs.
         var host = uri.Host;
         if (!string.Equals(host, "github.com", StringComparison.OrdinalIgnoreCase) &&
-            !host.EndsWith(".github.com", StringComparison.OrdinalIgnoreCase)) {
+            !string.Equals(host, "www.github.com", StringComparison.OrdinalIgnoreCase)) {
             return string.Empty;
         }
         // Only accept the canonical repo URL shape: https://github.com/{owner}/{repo}
