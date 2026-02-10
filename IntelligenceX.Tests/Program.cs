@@ -10,6 +10,8 @@ internal static partial class Program {
         failed += Run("RPC unknown shape", TestRpcUnknownShape);
         failed += Run("RPC notification", TestRpcNotification);
         failed += Run("RPC error hints", TestRpcErrorHints);
+        failed += Run("RPC call cancellation cleans pending", TestRpcCallCancellationCleansPending);
+        failed += Run("RPC call send failure cleans pending", TestRpcCallSendFailureCleansPending);
         failed += Run("Header transport message", TestHeaderTransportMessage);
         failed += Run("Header transport truncated", TestHeaderTransportTruncated);
         failed += Run("Config load invalid JSON", TestConfigLoadInvalidJsonThrows);
