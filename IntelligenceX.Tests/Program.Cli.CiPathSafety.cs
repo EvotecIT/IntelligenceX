@@ -8,13 +8,30 @@ namespace IntelligenceX.Tests;
 
 internal static partial class Program {
 #if !NET472
-    private static void TestCiPathSafetyUnderRootPhysicalAllowsNonexistentLeaf() {
+    private static void TestCiPathSafetyUnderRootPhysicalRejectsNonexistentDirectoryLeaf() {
         var root = Path.Combine(Path.GetTempPath(), "ix-ci-path-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         try {
             var newDir = Path.Combine(root, "artifacts");
             AssertEqual(false, Directory.Exists(newDir), "artifacts directory does not exist");
-            AssertEqual(true, CiPathSafety.IsUnderRootPhysical(newDir, root), "IsUnderRootPhysical allows non-existent leaf");
+            AssertEqual(false, CiPathSafety.IsUnderRootPhysical(newDir, root), "IsUnderRootPhysical rejects non-existent directory leaf");
+        } finally {
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
+
+    private static void TestCiPathSafetyTryEnsureSafeDirectoryAllowsNewDirectoryLeaf() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-ci-path-ensure-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try {
+            var newDir = Path.Combine(root, "artifacts");
+            AssertEqual(false, Directory.Exists(newDir), "ensure target dir does not exist");
+
+            AssertEqual(true, CiPathSafety.TryEnsureSafeDirectory(newDir, root, out var error), "TryEnsureSafeDirectory ok");
+            AssertEqual(string.Empty, error, "TryEnsureSafeDirectory error empty");
+
+            AssertEqual(true, Directory.Exists(newDir), "ensure target dir exists");
+            AssertEqual(true, CiPathSafety.IsUnderRootPhysical(newDir, root), "IsUnderRootPhysical ok after ensure");
         } finally {
             try { Directory.Delete(root, recursive: true); } catch { }
         }
@@ -61,7 +78,7 @@ internal static partial class Program {
         Directory.CreateDirectory(root);
         try {
             var nested = Path.Combine(root, "artifacts", "nested", "changed-files.txt");
-            AssertEqual(true, CiPathSafety.IsUnderRootPhysical(nested, root), "nested non-existent segments allowed");
+            AssertEqual(false, CiPathSafety.IsUnderRootPhysical(nested, root), "nested non-existent segments rejected until ensured");
         } finally {
             try { Directory.Delete(root, recursive: true); } catch { }
         }

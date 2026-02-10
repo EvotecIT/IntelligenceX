@@ -41,78 +41,72 @@ internal static class CiPathSafety {
         return trimmedPath.StartsWith(normalizedRoot, comparison);
     }
 
-	    internal static bool IsUnderRootPhysical(string path, string root) {
-	        if (!IsUnderRoot(path, root)) {
-	            return false;
-	        }
-	        try {
-	            var normalizedPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
-	            var normalizedRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
-	            var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-	
-	            if (Directory.Exists(normalizedRoot)) {
-	                if (IsLinkOrReparsePoint(normalizedRoot)) {
-	                    return false;
-	                }
-	            } else {
-	                return false;
-	            }
+    internal static bool IsUnderRootPhysical(string path, string root) {
+        if (!IsUnderRoot(path, root)) {
+            return false;
+        }
+        try {
+            var normalizedPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+            var normalizedRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
+            var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
-            // Check each existing directory segment under the root for symlinks/junctions.
-            // This is best-effort and reduces the risk of writing outside the workspace via reparse points.
-	            var dirToCheck = Directory.Exists(normalizedPath)
-	                ? normalizedPath
-	                : (Path.GetDirectoryName(normalizedPath) ?? normalizedRoot);
-	            dirToCheck = Path.TrimEndingDirectorySeparator(Path.GetFullPath(dirToCheck));
-	            while (!string.IsNullOrWhiteSpace(dirToCheck) &&
-	                   !Directory.Exists(dirToCheck) &&
-	                   !string.Equals(dirToCheck, normalizedRoot, comparison)) {
-	                var parent = Path.GetDirectoryName(dirToCheck);
-	                if (string.IsNullOrWhiteSpace(parent)) {
-	                    break;
-	                }
-	                dirToCheck = Path.TrimEndingDirectorySeparator(Path.GetFullPath(parent));
-	            }
+            if (!Directory.Exists(normalizedRoot)) {
+                return false;
+            }
+            if (IsLinkOrReparsePoint(normalizedRoot)) {
+                return false;
+            }
 
-	            var relative = Path.GetRelativePath(normalizedRoot, dirToCheck);
-	            if (string.Equals(relative, ".", StringComparison.Ordinal)) {
-	                relative = string.Empty;
-	            }
-	            if (relative.StartsWith("..", comparison)) {
-	                return false;
-	            }
+            // Validate the directory chain we will write into. For a non-existent file path, we validate its parent
+            // directory. For a directory path, we require it to exist to make a meaningful "physical" guarantee.
+            string dirToCheck;
+            if (Directory.Exists(normalizedPath)) {
+                dirToCheck = normalizedPath;
+            } else {
+                var parent = Path.GetDirectoryName(normalizedPath);
+                if (string.IsNullOrWhiteSpace(parent)) {
+                    return false;
+                }
+                dirToCheck = Path.TrimEndingDirectorySeparator(Path.GetFullPath(parent));
+                if (!Directory.Exists(dirToCheck)) {
+                    return false;
+                }
+            }
 
-	            var current = normalizedRoot;
-	            foreach (var segment in relative.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries)) {
-	                if (string.Equals(segment, ".", StringComparison.Ordinal)) {
-	                    continue;
-	                }
-	                current = Path.Combine(current, segment);
-	                if (File.Exists(current)) {
-	                    return false;
-	                }
-	                if (!Directory.Exists(current)) {
-	                    // The remaining segments don't exist yet, so there is nothing further we can validate physically.
-	                    break;
-	                }
-	                if (IsLinkOrReparsePoint(current)) {
-	                    return false;
-	                }
-	            }
+            var relative = Path.GetRelativePath(normalizedRoot, dirToCheck);
+            if (string.Equals(relative, ".", StringComparison.Ordinal)) {
+                relative = string.Empty;
+            }
+            if (relative.StartsWith("..", comparison)) {
+                return false;
+            }
 
-	            var leafExists = File.Exists(normalizedPath) || Directory.Exists(normalizedPath);
-	            if (!leafExists) {
-	                return true;
-	            }
-	            // If the leaf exists (file or directory), ensure it isn't itself a symlink/junction/reparse point.
-	            if (IsLinkOrReparsePoint(normalizedPath)) {
-	                return false;
-	            }
+            var current = normalizedRoot;
+            foreach (var segment in relative.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries)) {
+                if (string.Equals(segment, ".", StringComparison.Ordinal)) {
+                    continue;
+                }
+                current = Path.Combine(current, segment);
+                if (File.Exists(current)) {
+                    return false;
+                }
+                if (!Directory.Exists(current)) {
+                    // dirToCheck exists, so any missing segment indicates an unexpected path shape.
+                    return false;
+                }
+                if (IsLinkOrReparsePoint(current)) {
+                    return false;
+                }
+            }
 
-	            return true;
-	        } catch {
-	            return false;
-	        }
+            if ((File.Exists(normalizedPath) || Directory.Exists(normalizedPath)) && IsLinkOrReparsePoint(normalizedPath)) {
+                return false;
+            }
+
+            return true;
+        } catch {
+            return false;
+        }
     }
 
 	    internal static bool TryEnsureSafeDirectory(string directoryPath, string root, out string error) {

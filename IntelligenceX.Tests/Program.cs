@@ -49,7 +49,8 @@ internal static partial class Program {
         failed += Run("GitHub repo detector parses git config sections", TestGitHubRepoDetectorParsesGitConfigRemoteSection);
         failed += Run("GitHub secrets reject empty value", TestGitHubSecretsRejectEmptyValue);
         failed += Run("Release reviewer env token", TestReleaseReviewerEnvToken);
-        failed += Run("CI path safety allows non-existent leaf under workspace", TestCiPathSafetyUnderRootPhysicalAllowsNonexistentLeaf);
+        failed += Run("CI path safety rejects non-existent directory leaf", TestCiPathSafetyUnderRootPhysicalRejectsNonexistentDirectoryLeaf);
+        failed += Run("CI path safety ensure-safe-dir allows new leaf", TestCiPathSafetyTryEnsureSafeDirectoryAllowsNewDirectoryLeaf);
         failed += Run("CI path safety handles trailing separators", TestCiPathSafetyUnderRootPhysicalTrailingSeparators);
         failed += Run("CI path safety rejects symlink traversal", TestCiPathSafetyUnderRootPhysicalRejectsSymlinkTraversal);
         failed += Run("CI path safety allows nested non-existent segments", TestCiPathSafetyUnderRootPhysicalAllowsNestedNonexistentSegments);
