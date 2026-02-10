@@ -465,6 +465,14 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `reviewThreadsAutoResolveDiffRange` supports `current`, `pr-base`, or `first-review`.
 - Thread assessment ids are trimmed, expected to be unique, and keyed case-insensitively; missing ids are skipped and duplicate ids keep the last occurrence (with warnings).
 
+## Choosing a diff range (review vs last commit)
+
+The reviewer does not default to "last commit only". By default, `reviewDiffRange: current` uses the current PR file list
+from GitHub (cumulative changes for the PR at HEAD).
+
+When you want the bot to always have an explicit base SHA range in its prompt (useful for debugging and determinism),
+set `reviewDiffRange: pr-base` so the prompt includes a `PR base → head (abc1234..def5678)` range label.
+
 ## Review thread states (active/resolved/stale)
 
 GitHub can mark a review thread as:
