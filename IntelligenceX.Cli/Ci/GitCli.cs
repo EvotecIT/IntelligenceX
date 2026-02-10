@@ -46,24 +46,26 @@ internal static class GitCli {
         using var cts = new CancellationTokenSource(effectiveTimeout);
         using var drainCts = new CancellationTokenSource();
         var maxBytes = ResolveMaxOutputBytes();
-        var truncation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var truncationSignaled = 0;
+        void OnTruncate() {
+            // Don't wait for EOF once output is truncated; kill the process and stop drains.
+            if (Interlocked.Exchange(ref truncationSignaled, 1) != 0) {
+                return;
+            }
+            TryKill(proc);
+            drainCts.Cancel();
+        }
         // IMPORTANT: stdout/stderr draining must not be coupled to the timeout token; otherwise we can treat
         // large-but-valid output as a timeout even when the process exited successfully.
-        var stdoutTask = ReadAllBytesAsync(proc.StandardOutput.BaseStream, maxBytes, drainCts.Token, onTruncate: () => truncation.TrySetResult(true));
-        var stderrTask = ReadAllBytesAsync(proc.StandardError.BaseStream, maxBytes, drainCts.Token, onTruncate: () => truncation.TrySetResult(true));
+        var stdoutTask = ReadAllBytesAsync(proc.StandardOutput.BaseStream, maxBytes, drainCts.Token, onTruncate: OnTruncate);
+        var stderrTask = ReadAllBytesAsync(proc.StandardError.BaseStream, maxBytes, drainCts.Token, onTruncate: OnTruncate);
         try {
-            var exitTask = proc.WaitForExitAsync(cts.Token);
-            var winner = await Task.WhenAny(exitTask, truncation.Task).ConfigureAwait(false);
-            if (winner == truncation.Task) {
-                // Fail fast: once output is truncated, kill the process and return a clear error instead of waiting for EOF.
-                TryKill(proc);
-                await TryReapAsync(proc).ConfigureAwait(false);
-                drainCts.Cancel();
-                return (126, Array.Empty<byte>(), Utf8NoBom.GetBytes($"git output exceeded {maxBytes} bytes and was truncated."));
+            await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
+            try {
+                await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+            } catch (OperationCanceledException) when (Volatile.Read(ref truncationSignaled) != 0) {
+                // Expected: drains are canceled when we fail fast on truncation.
             }
-
-            await exitTask.ConfigureAwait(false);
-            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
         } catch (OperationCanceledException) {
             TryKill(proc);
             await TryReapAsync(proc).ConfigureAwait(false);
@@ -90,7 +92,7 @@ internal static class GitCli {
 
         var (stdout, stdoutTruncated) = SafeTaskResult(stdoutTask);
         var (stderr, stderrTruncated) = SafeTaskResult(stderrTask);
-        if (stdoutTruncated || stderrTruncated) {
+        if (Volatile.Read(ref truncationSignaled) != 0 || stdoutTruncated || stderrTruncated) {
             return (126, Array.Empty<byte>(), Utf8NoBom.GetBytes($"git output exceeded {maxBytes} bytes and was truncated."));
         }
 
