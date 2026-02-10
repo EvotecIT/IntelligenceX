@@ -40,7 +40,16 @@ internal sealed partial class WebApi {
                 var content = Encoding.UTF8.GetString(raw);
 
                 var tempPath = Path.Combine(Path.GetTempPath(), $"intelligencex-auth-{Guid.NewGuid():N}.json");
-                await using (var stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous)) {
+                var streamOptions = new FileStreamOptions {
+                    Mode = FileMode.CreateNew,
+                    Access = FileAccess.Write,
+                    Share = FileShare.None,
+                    Options = FileOptions.Asynchronous
+                };
+                if (!OperatingSystem.IsWindows()) {
+                    streamOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+                }
+                await using (var stream = new FileStream(tempPath, streamOptions)) {
                     TryHardenTempFile(tempPath);
                     var bytes = Encoding.UTF8.GetBytes(content);
                     await stream.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);

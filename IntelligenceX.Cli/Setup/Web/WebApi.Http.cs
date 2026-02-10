@@ -22,8 +22,16 @@ internal sealed partial class WebApi {
         using var ms = new MemoryStream();
         var buffer = new byte[8192];
         long total = 0;
-        int read;
-        while ((read = await context.Request.InputStream.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0) {
+        while (true) {
+            var remaining = MaxRequestBodyBytes - total;
+            if (remaining <= 0) {
+                throw new RequestBodyTooLargeException();
+            }
+            var maxRead = (int)Math.Min(buffer.Length, remaining + 1);
+            var read = await context.Request.InputStream.ReadAsync(buffer, 0, maxRead).ConfigureAwait(false);
+            if (read <= 0) {
+                break;
+            }
             total += read;
             if (total > MaxRequestBodyBytes) {
                 throw new RequestBodyTooLargeException();
