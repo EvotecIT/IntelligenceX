@@ -1,5 +1,6 @@
 using Spectre.Console;
 using IntelligenceX.Cli.Setup.Host;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using IntelligenceX.Cli.Setup;
@@ -143,7 +144,8 @@ internal static class WizardSummary {
             }
             return generated;
         } catch (Exception ex) {
-            return $"Effective config preview is unavailable: {ex.Message}";
+            Trace.TraceWarning($"Effective config preview generation failed: {ex.GetType().Name}: {ex.Message}");
+            return "Effective config preview is unavailable.";
         }
     }
 }

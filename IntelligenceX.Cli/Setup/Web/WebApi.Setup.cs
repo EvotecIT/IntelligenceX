@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
@@ -176,7 +177,7 @@ internal sealed partial class WebApi {
             try {
                 var parsed = JsonNode.Parse(request.ConfigJson!);
                 normalized = parsed?.ToJsonString(CliJson.Indented) ?? request.ConfigJson!;
-            } catch {
+            } catch (JsonException) {
                 // Keep raw input if parsing fails.
             }
 
@@ -197,12 +198,20 @@ internal sealed partial class WebApi {
             previewRepo = "owner/repo";
         }
 
-        var args = BuildSetupArgs(request, dryRun: true, previewRepo!);
-        var config = SetupRunner.BuildReviewerConfigJsonForTests(args);
-        await WriteJsonOkAsync(context, new {
-            source = "generated",
-            note = "Generated from current setup selections.",
-            config
-        }).ConfigureAwait(false);
+        try {
+            var args = BuildSetupArgs(request, dryRun: true, previewRepo!);
+            var config = SetupRunner.BuildReviewerConfigJsonForTests(args);
+            await WriteJsonOkAsync(context, new {
+                source = "generated",
+                note = "Generated from current setup selections.",
+                config
+            }).ConfigureAwait(false);
+        } catch (Exception ex) {
+            Trace.TraceWarning($"Effective config preview generation failed: {ex.GetType().Name}: {ex.Message}");
+            context.Response.StatusCode = 500;
+            await WriteJsonAsync(context, new {
+                error = "Effective config preview is unavailable."
+            }).ConfigureAwait(false);
+        }
     }
 }

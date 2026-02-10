@@ -477,8 +477,9 @@ async function refreshEffectiveConfigPreview() {
       noteEl.textContent = data.note;
     }
   } catch (e) {
+    console.warn('Effective config preview refresh failed.', e);
     previewEl.textContent = '(preview unavailable)';
-    noteEl.textContent = `Preview error: ${e.message || e}`;
+    noteEl.textContent = 'Effective config preview is unavailable.';
   }
 }
 
