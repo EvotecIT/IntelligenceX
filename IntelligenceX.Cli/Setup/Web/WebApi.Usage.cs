@@ -12,18 +12,10 @@ using IntelligenceX.OpenAI.Usage;
 
 namespace IntelligenceX.Cli.Setup.Web;
 
-internal sealed partial class WebApi {
+	internal sealed partial class WebApi {
 	    private async Task HandleUsageAsync(System.Net.HttpListenerContext context) {
-	        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
-	            return;
-	        }
-
-	        string body;
-	        try {
-	            body = await ReadBodyAsync(context).ConfigureAwait(false);
-	        } catch (RequestBodyTooLargeException) {
-	            context.Response.StatusCode = 413;
-	            await WriteJsonAsync(context, new { error = "Request body too large." }).ConfigureAwait(false);
+	        var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
+	        if (body is null) {
 	            return;
 	        }
 	        UsageRequest request;

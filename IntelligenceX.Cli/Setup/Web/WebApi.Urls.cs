@@ -91,10 +91,6 @@ internal sealed partial class WebApi {
             normalized = uri.ToString();
             return true;
         }
-        if (!uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
-            !uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)) {
-            return false;
-        }
         return false;
     }
 }

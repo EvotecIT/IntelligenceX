@@ -26,7 +26,7 @@ internal sealed partial class WebApi {
         }
         if (string.IsNullOrWhiteSpace(request.GitHubToken) && string.IsNullOrWhiteSpace(request.GitHubClientId)) {
             context.Response.StatusCode = 400;
-            await WriteJsonAsync(context, new { error = "Missing repo or GitHub auth" }).ConfigureAwait(false);
+            await WriteJsonAsync(context, new { error = "Missing GitHub auth" }).ConfigureAwait(false);
             return;
         }
         if (!string.IsNullOrWhiteSpace(request.ConfigJson) && !string.IsNullOrWhiteSpace(request.ConfigPath)) {

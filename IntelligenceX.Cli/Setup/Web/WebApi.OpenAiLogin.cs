@@ -8,30 +8,20 @@ using IntelligenceX.OpenAI.Auth;
 
 namespace IntelligenceX.Cli.Setup.Web;
 
-internal sealed partial class WebApi {
-    private async Task HandleOpenAILoginAsync(System.Net.HttpListenerContext context) {
-	        if (!await RequirePostJsonAsync(context).ConfigureAwait(false)) {
-	            return;
-	        }
-
-	        string body;
-	        try {
-	            body = await ReadBodyAsync(context).ConfigureAwait(false);
-	        } catch (RequestBodyTooLargeException) {
-	            context.Response.StatusCode = 413;
-	            await WriteJsonAsync(context, new { error = "Request body too large." }).ConfigureAwait(false);
+	internal sealed partial class WebApi {
+	    private async Task HandleOpenAILoginAsync(System.Net.HttpListenerContext context) {
+	        var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
+	        if (body is null) {
 	            return;
 	        }
 	        OpenAILoginRequest request;
 	        try {
-	            request = string.IsNullOrWhiteSpace(body)
-	                ? new OpenAILoginRequest()
-                : JsonSerializer.Deserialize<OpenAILoginRequest>(body, _jsonOptions) ?? new OpenAILoginRequest();
-        } catch (JsonException) {
-            context.Response.StatusCode = 400;
-            await WriteJsonAsync(context, new { error = "Invalid JSON payload." }).ConfigureAwait(false);
-            return;
-        }
+	            request = JsonSerializer.Deserialize<OpenAILoginRequest>(body, _jsonOptions) ?? new OpenAILoginRequest();
+	        } catch (JsonException) {
+	            context.Response.StatusCode = 400;
+	            await WriteJsonAsync(context, new { error = "Invalid JSON payload." }).ConfigureAwait(false);
+	            return;
+	        }
 
         try {
             var config = OAuthConfig.FromEnvironment();
