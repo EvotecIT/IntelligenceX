@@ -222,6 +222,15 @@ function applyOnboardingPath(path) {
       setOnboardingPathHint('Path selected: New Setup. Next: authenticate with GitHub, then select repositories.');
       break;
   }
+
+  refreshPathStateAfterOnboardingSelection();
+}
+
+function refreshPathStateAfterOnboardingSelection() {
+  updateAnalysisControls();
+  if (currentStep === 4) {
+    buildReviewTable();
+  }
 }
 
 // ── Provider toggle ──
