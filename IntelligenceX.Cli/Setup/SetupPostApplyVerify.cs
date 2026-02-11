@@ -35,8 +35,8 @@ internal sealed class SetupPostApplyObservedState {
     public bool? WorkflowExists { get; set; }
     public bool? WorkflowManaged { get; set; }
     public bool? ConfigExists { get; set; }
-    public bool? RepoSecretExists { get; set; }
-    public bool? OrgSecretExists { get; set; }
+    public GitHubRepoClient.SecretLookupResult? RepoSecretLookup { get; set; }
+    public GitHubRepoClient.SecretLookupResult? OrgSecretLookup { get; set; }
 }
 
 internal sealed class SetupPostApplyCheck {
@@ -187,10 +187,10 @@ internal static class SetupPostApplyVerifier {
         }
 
         if (needsRepoSecretCheck) {
-            observed.RepoSecretExists = await client.TryRepoSecretExistsAsync(owner, repo, SecretName).ConfigureAwait(false);
+            observed.RepoSecretLookup = await client.TryRepoSecretExistsAsync(owner, repo, SecretName).ConfigureAwait(false);
         }
         if (needsOrgSecretCheck && !string.IsNullOrWhiteSpace(context.SecretOrg)) {
-            observed.OrgSecretExists = await client.TryOrgSecretExistsAsync(context.SecretOrg!, SecretName).ConfigureAwait(false);
+            observed.OrgSecretLookup = await client.TryOrgSecretExistsAsync(context.SecretOrg!, SecretName).ConfigureAwait(false);
         }
 
         return observed;
@@ -276,13 +276,11 @@ internal static class SetupPostApplyVerifier {
             return;
         }
 
-        AddPresenceCheck(
+        AddSecretPresenceCheck(
             result,
             "Repo secret",
             expected: context.KeepSecret ? "present" : "missing",
-            observedValue: observed.RepoSecretExists,
-            whenTrue: "present",
-            whenFalse: "missing",
+            lookup: observed.RepoSecretLookup,
             note: context.KeepSecret ? "keep-secret enabled." : "cleanup deletes repo secret by default.");
     }
 
@@ -295,24 +293,20 @@ internal static class SetupPostApplyVerifier {
         }
 
         if (context.ExpectOrgSecret && !string.IsNullOrWhiteSpace(context.SecretOrg)) {
-            AddPresenceCheck(
+            AddSecretPresenceCheck(
                 result,
                 "Org secret",
                 expected: "present",
-                observedValue: observed.OrgSecretExists,
-                whenTrue: "present",
-                whenFalse: "missing",
+                lookup: observed.OrgSecretLookup,
                 note: $"Organization: {context.SecretOrg}");
             return;
         }
 
-        AddPresenceCheck(
+        AddSecretPresenceCheck(
             result,
             "Repo secret",
             expected: "present",
-            observedValue: observed.RepoSecretExists,
-            whenTrue: "present",
-            whenFalse: "missing",
+            lookup: observed.RepoSecretLookup,
             note: "Update-secret should refresh this value.");
     }
 
@@ -325,13 +319,11 @@ internal static class SetupPostApplyVerifier {
         }
 
         if (context.ExpectOrgSecret && !string.IsNullOrWhiteSpace(context.SecretOrg)) {
-            AddPresenceCheck(
+            AddSecretPresenceCheck(
                 result,
                 "Org secret",
                 expected: "present",
-                observedValue: observed.OrgSecretExists,
-                whenTrue: "present",
-                whenFalse: "missing",
+                lookup: observed.OrgSecretLookup,
                 note: $"Organization: {context.SecretOrg}");
             return;
         }
@@ -348,13 +340,11 @@ internal static class SetupPostApplyVerifier {
             return;
         }
 
-        AddPresenceCheck(
+        AddSecretPresenceCheck(
             result,
             "Repo secret",
             expected: "present",
-            observedValue: observed.RepoSecretExists,
-            whenTrue: "present",
-            whenFalse: "missing",
+            lookup: observed.RepoSecretLookup,
             note: "Setup should create or update this secret.");
     }
 
@@ -433,6 +423,48 @@ internal static class SetupPostApplyVerifier {
         });
     }
 
+    private static void AddSecretPresenceCheck(
+        SetupPostApplyVerification result,
+        string name,
+        string expected,
+        GitHubRepoClient.SecretLookupResult? lookup,
+        string? note = null) {
+        if (lookup is null) {
+            AddSkippedCheck(result, name, expected, "unknown", "State unavailable from GitHub API.");
+            return;
+        }
+
+        if (lookup.Exists.HasValue) {
+            var actual = lookup.Exists.Value ? "present" : "missing";
+            var passed = string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase);
+            result.Checks.Add(new SetupPostApplyCheck {
+                Name = name,
+                Expected = expected,
+                Actual = actual,
+                Passed = passed,
+                Skipped = false,
+                Note = CombineNotes(note, lookup.Note)
+            });
+            return;
+        }
+
+        if (string.Equals(lookup.Status, "unauthorized", StringComparison.Ordinal) ||
+            string.Equals(lookup.Status, "forbidden", StringComparison.Ordinal) ||
+            string.Equals(lookup.Status, "rate_limited", StringComparison.Ordinal)) {
+            result.Checks.Add(new SetupPostApplyCheck {
+                Name = name,
+                Expected = expected,
+                Actual = lookup.Status,
+                Passed = false,
+                Skipped = false,
+                Note = CombineNotes(note, lookup.Note)
+            });
+            return;
+        }
+
+        AddSkippedCheck(result, name, expected, lookup.Status, CombineNotes(note, lookup.Note));
+    }
+
     private static void AddPresenceCheck(
         SetupPostApplyVerification result,
         string name,
@@ -456,6 +488,16 @@ internal static class SetupPostApplyVerifier {
             Skipped = false,
             Note = note
         });
+    }
+
+    private static string CombineNotes(string? first, string? second) {
+        if (string.IsNullOrWhiteSpace(first)) {
+            return string.IsNullOrWhiteSpace(second) ? string.Empty : second!;
+        }
+        if (string.IsNullOrWhiteSpace(second)) {
+            return first;
+        }
+        return $"{first} {second}";
     }
 
     private static void AddSkippedCheck(SetupPostApplyVerification result, string name, string expected, string actual, string note) {

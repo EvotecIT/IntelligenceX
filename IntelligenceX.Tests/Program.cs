@@ -62,6 +62,8 @@ internal static partial class Program {
         failed += Run("Setup post-apply verify detects residual cleanup config", TestSetupPostApplyVerifyCleanupDetectsResidualConfig);
         failed += Run("Setup post-apply verify allows unknown branch state when PR exists",
             TestSetupPostApplyVerifySetupAllowsUnknownBranchStateWithPr);
+        failed += Run("Setup post-apply verify unauthorized secret lookup fails deterministically",
+            TestSetupPostApplyVerifySecretLookupUnauthorizedFailsDeterministically);
         failed += Run("CLI dispatch no-args interactive runs manage", TestCliDispatchNoArgsInteractiveRunsManage);
         failed += Run("CLI dispatch no-args non-interactive shows help", TestCliDispatchNoArgsNonInteractiveShowsHelp);
         failed += Run("CLI dispatch manage command routes to manage", TestCliDispatchManageCommandRoutesToManage);

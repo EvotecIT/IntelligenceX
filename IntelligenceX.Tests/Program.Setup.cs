@@ -298,7 +298,7 @@ jobs:
             WorkflowExists = true,
             WorkflowManaged = true,
             ConfigExists = true,
-            RepoSecretExists = true
+            RepoSecretLookup = IntelligenceX.Cli.Setup.Wizard.GitHubRepoClient.SecretLookupResult.Present()
         };
 
         var verify = SetupPostApplyVerifier.EvaluateForTests(context, observed);
@@ -325,7 +325,7 @@ jobs:
             WorkflowExists = false,
             WorkflowManaged = false,
             ConfigExists = true,
-            RepoSecretExists = false
+            RepoSecretLookup = IntelligenceX.Cli.Setup.Wizard.GitHubRepoClient.SecretLookupResult.Missing()
         };
 
         var verify = SetupPostApplyVerifier.EvaluateForTests(context, observed);
@@ -354,13 +354,35 @@ jobs:
             WorkflowExists = null,
             WorkflowManaged = null,
             ConfigExists = null,
-            RepoSecretExists = null
+            RepoSecretLookup = null
         };
 
         var verify = SetupPostApplyVerifier.EvaluateForTests(context, observed);
         AssertEqual(true, verify.Passed, "post-apply setup verify passes when PR exists and branch state is unknown");
         AssertEqual(true, verify.Checks.Exists(check => check.Name == "Workflow" && check.Skipped),
             "post-apply setup workflow check skipped when branch state unknown");
+    }
+
+    private static void TestSetupPostApplyVerifySecretLookupUnauthorizedFailsDeterministically() {
+        var context = new SetupPostApplyContext {
+            Repo = "owner/repo",
+            Operation = SetupApplyOperation.UpdateSecret,
+            Provider = "openai",
+            ExitSuccess = true,
+            Output = "Secret updated: INTELLIGENCEX_AUTH_B64"
+        };
+        var observed = new SetupPostApplyObservedState {
+            RepoSecretLookup = IntelligenceX.Cli.Setup.Wizard.GitHubRepoClient.SecretLookupResult.Unauthorized(
+                "GitHub API returned 401 Unauthorized.")
+        };
+
+        var verify = SetupPostApplyVerifier.EvaluateForTests(context, observed);
+        AssertEqual(false, verify.Passed, "post-apply unauthorized secret lookup fails");
+        var secretCheck = verify.Checks.Find(check => check.Name == "Repo secret");
+        AssertNotNull(secretCheck, "post-apply unauthorized secret check exists");
+        AssertEqual(false, secretCheck!.Skipped, "post-apply unauthorized secret check not skipped");
+        AssertEqual(false, secretCheck.Passed, "post-apply unauthorized secret check failed");
+        AssertEqual("unauthorized", secretCheck.Actual, "post-apply unauthorized secret check actual");
     }
 
     private static void TestGitHubRepoDetectorParsesRemoteUrls() {
