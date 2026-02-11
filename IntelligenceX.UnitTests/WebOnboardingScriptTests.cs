@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Reflection;
+using System.Linq;
 using Xunit;
 
 namespace IntelligenceX.UnitTests;
@@ -24,7 +25,15 @@ public sealed class WebOnboardingScriptTests {
 
     private static string LoadWizardScript() {
         var assembly = Assembly.Load("IntelligenceX.Cli");
-        using var stream = assembly.GetManifestResourceStream("Setup.Web.wizard.js");
+        var resourceName = assembly
+            .GetManifestResourceNames()
+            .FirstOrDefault(name => string.Equals(name, "Setup.Web.wizard.js", StringComparison.Ordinal))
+            ?? assembly
+                .GetManifestResourceNames()
+                .FirstOrDefault(name => name.EndsWith("wizard.js", StringComparison.OrdinalIgnoreCase));
+
+        Assert.False(string.IsNullOrWhiteSpace(resourceName), "wizard.js embedded resource not found.");
+        using var stream = assembly.GetManifestResourceStream(resourceName!);
         Assert.NotNull(stream);
 
         using var reader = new StreamReader(stream!);
