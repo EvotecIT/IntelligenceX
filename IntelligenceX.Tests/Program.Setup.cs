@@ -117,6 +117,13 @@ internal static partial class Program {
         });
         AssertEqual(".intelligencex/analyzers/.editorconfig", duplicate, "analysis export duplicate detection");
 
+        var mixedSeparatorAndCaseDuplicate = SetupAnalysisExportPath.FindFirstDuplicatePath(new[] {
+            ".intelligencex\\analyzers\\.editorconfig",
+            ".intelligencex/analyzers/.EDITORCONFIG"
+        });
+        AssertEqual(".intelligencex/analyzers/.editorconfig", mixedSeparatorAndCaseDuplicate,
+            "analysis export duplicate detection mixed separators and case");
+
         var none = SetupAnalysisExportPath.FindFirstDuplicatePath(new[] {
             ".intelligencex/analyzers/.editorconfig",
             ".intelligencex/analyzers/PSScriptAnalyzerSettings.psd1"

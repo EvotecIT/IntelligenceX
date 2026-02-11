@@ -78,15 +78,16 @@ internal static class SetupAnalysisExportPath {
         if (paths is null) {
             return null;
         }
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var path in paths) {
             if (string.IsNullOrWhiteSpace(path)) {
                 continue;
             }
             var normalized = path.Trim().Replace('\\', '/');
-            if (!seen.Add(normalized)) {
-                return normalized;
+            if (seen.TryGetValue(normalized, out var firstNormalized)) {
+                return firstNormalized;
             }
+            seen[normalized] = normalized;
         }
         return null;
     }
