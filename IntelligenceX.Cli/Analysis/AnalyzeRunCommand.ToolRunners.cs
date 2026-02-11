@@ -124,7 +124,7 @@ internal static partial class AnalyzeRunCommand {
             }
             segments.Add(segment.Trim());
         }
-        return string.Join(",", segments);
+        return string.Join(",", segments.OrderBy(static segment => segment, StringComparer.OrdinalIgnoreCase));
     }
 
     private static TemporaryFileScope? PrepareEditorConfigOverride(AnalysisSettings settings, string workspace,

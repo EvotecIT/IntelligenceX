@@ -63,6 +63,8 @@ internal static partial class Program {
             "powershell strict args include excluded directories csv");
         AssertContainsText(strictExcludedDirectories ?? string.Empty, ".worktrees",
             "powershell strict args include .worktrees exclusion");
+        AssertEqual(".git,.vs,.worktrees,bin,node_modules,obj", strictExcludedDirectories ?? string.Empty,
+            "powershell strict args excluded directories order is deterministic");
     }
 }
 #endif
