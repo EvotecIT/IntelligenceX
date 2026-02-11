@@ -17,6 +17,7 @@ internal static partial class WizardRunner {
             state.AnalysisEnabled = null;
             state.AnalysisGateEnabled = null;
             state.AnalysisPacks = null;
+            state.AnalysisExportPath = null;
             return;
         }
 
@@ -28,6 +29,7 @@ internal static partial class WizardRunner {
         if (!analysisEnabled) {
             state.AnalysisGateEnabled = null;
             state.AnalysisPacks = null;
+            state.AnalysisExportPath = null;
             return;
         }
 
@@ -36,9 +38,11 @@ internal static partial class WizardRunner {
             state.AnalysisEnabled = false;
             state.AnalysisGateEnabled = null;
             state.AnalysisPacks = null;
+            state.AnalysisExportPath = null;
             return;
         }
         state.AnalysisGateEnabled = WizardPrompts.PromptAnalysisGateEnabled(state.AnalysisGateEnabled ?? false);
+        state.AnalysisExportPath = WizardPrompts.PromptAnalysisExportPath(state.AnalysisExportPath);
     }
 
     private static SetupPlan BuildPlan(WizardState state, string repo) {
@@ -71,7 +75,8 @@ internal static partial class WizardRunner {
             BranchName = state.BranchName,
             AnalysisEnabled = analysisApplies ? state.AnalysisEnabled : null,
             AnalysisGateEnabled = analysisApplies ? state.AnalysisGateEnabled : null,
-            AnalysisPacks = analysisApplies ? state.AnalysisPacks : null
+            AnalysisPacks = analysisApplies ? state.AnalysisPacks : null,
+            AnalysisExportPath = analysisApplies && state.AnalysisEnabled == true ? state.AnalysisExportPath : null
         };
         return plan;
     }

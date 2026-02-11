@@ -30,6 +30,8 @@ internal static class WizardSummary {
             if (!configOverride && plan.AnalysisEnabled == true) {
                 table.AddRow("Analysis packs", string.IsNullOrWhiteSpace(plan.AnalysisPacks) ? "(default)" : plan.AnalysisPacks!);
                 table.AddRow("Analysis gate", plan.AnalysisGateEnabled == true ? "enabled" : "disabled");
+                table.AddRow("Analysis export path",
+                    string.IsNullOrWhiteSpace(plan.AnalysisExportPath) ? "(disabled)" : plan.AnalysisExportPath!);
             }
         }
         if (!string.IsNullOrWhiteSpace(configSource)) {

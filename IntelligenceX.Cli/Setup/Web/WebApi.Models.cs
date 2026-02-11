@@ -97,6 +97,7 @@ internal sealed partial class WebApi {
         public bool? AnalysisEnabled { get; set; }
         public bool? AnalysisGateEnabled { get; set; }
         public string? AnalysisPacks { get; set; }
+        public string? AnalysisExportPath { get; set; }
         public bool SkipSecret { get; set; }
         public bool ManualSecret { get; set; }
         public bool ExplicitSecrets { get; set; }

@@ -25,11 +25,26 @@ internal static partial class Program {
         }, args, "setup args analysis");
     }
 
+    private static void TestSetupArgsIncludeAnalysisExportPath() {
+        var plan = new SetupPlan("owner/repo") {
+            AnalysisEnabled = true,
+            AnalysisExportPath = ".intelligencex/analyzers"
+        };
+
+        var args = SetupArgsBuilder.FromPlan(plan);
+        AssertSequenceEqual(new[] {
+            "--repo", "owner/repo",
+            "--analysis-enabled", "true",
+            "--analysis-export-path", ".intelligencex/analyzers"
+        }, args, "setup args analysis export path");
+    }
+
     private static void TestSetupArgsDisableAnalysisOmitsGateAndPacks() {
         var plan = new SetupPlan("owner/repo") {
             AnalysisEnabled = false,
             AnalysisGateEnabled = true,
-            AnalysisPacks = "all-100"
+            AnalysisPacks = "all-100",
+            AnalysisExportPath = ".intelligencex/analyzers"
         };
 
         var args = SetupArgsBuilder.FromPlan(plan);
@@ -37,6 +52,83 @@ internal static partial class Program {
             "--repo", "owner/repo",
             "--analysis-enabled", "false"
         }, args, "setup args analysis disabled");
+    }
+
+    private static void TestSetupAnalysisExportPathNormalization() {
+        var ok = SetupAnalysisExportPath.TryNormalize(" .intelligencex\\analyzers ", out var normalized, out var error);
+        AssertEqual(true, ok, "analysis export path normalized ok");
+        AssertEqual(null, error, "analysis export path normalized error");
+        AssertEqual(".intelligencex/analyzers", normalized, "analysis export path normalized value");
+
+        var invalid = SetupAnalysisExportPath.TryNormalize("../outside", out _, out var invalidError);
+        AssertEqual(false, invalid, "analysis export path rejects parent");
+        AssertContainsText(invalidError ?? string.Empty, "analysisExportPath", "analysis export path invalid message");
+    }
+
+    private static void TestSetupAnalysisExportPathCombineRejectsRootedFileName() {
+        var combined = SetupAnalysisExportPath.Combine(".intelligencex/analyzers", ".editorconfig");
+        AssertEqual(".intelligencex/analyzers/.editorconfig", combined, "analysis export path combine valid");
+
+        AssertThrows<ArgumentException>(() =>
+            SetupAnalysisExportPath.Combine(".intelligencex/analyzers", "/.editorconfig"), "analysis export path combine rooted");
+        AssertThrows<ArgumentException>(() =>
+            SetupAnalysisExportPath.Combine(".intelligencex/analyzers", ".."), "analysis export path combine parent");
+        AssertThrows<ArgumentException>(() =>
+            SetupAnalysisExportPath.Combine(".intelligencex/analyzers", "nested/file"), "analysis export path combine separators");
+        AssertThrows<ArgumentException>(() =>
+            SetupAnalysisExportPath.Combine(".intelligencex/analyzers", "..%2f.editorconfig"), "analysis export path combine encoded traversal");
+        AssertThrows<ArgumentException>(() =>
+            SetupAnalysisExportPath.Combine(".intelligencex/analyzers", "name."), "analysis export path combine trailing dot");
+    }
+
+    private static void TestSetupAnalysisExportCatalogPrereqValidation() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-setup-export-prereq-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var ok = SetupRunner.ValidateLocalAnalysisCatalogForTests(temp, out var error);
+            AssertEqual(false, ok, "analysis export prereq missing dirs");
+            AssertContainsText(error ?? string.Empty, "Analysis/Catalog/rules", "analysis export prereq missing dirs message");
+
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "csharp");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+
+            File.WriteAllText(Path.Combine(rulesDir, "CA0001.json"), "{}");
+            File.WriteAllText(Path.Combine(packsDir, "all-50.json"), "{}");
+
+            ok = SetupRunner.ValidateLocalAnalysisCatalogForTests(temp, out error);
+            AssertEqual(true, ok, "analysis export prereq valid dirs");
+            AssertEqual(string.Empty, error, "analysis export prereq valid message");
+        } finally {
+            try {
+                Directory.Delete(temp, recursive: true);
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
+    }
+
+    private static void TestSetupAnalysisExportDuplicateTargetDetection() {
+        var duplicate = SetupAnalysisExportPath.FindFirstDuplicatePath(new[] {
+            ".intelligencex/analyzers/.editorconfig",
+            ".intelligencex/analyzers/PSScriptAnalyzerSettings.psd1",
+            ".intelligencex/analyzers/.editorconfig"
+        });
+        AssertEqual(".intelligencex/analyzers/.editorconfig", duplicate, "analysis export duplicate detection");
+
+        var mixedSeparatorAndCaseDuplicate = SetupAnalysisExportPath.FindFirstDuplicatePath(new[] {
+            ".intelligencex\\analyzers\\.editorconfig",
+            ".intelligencex/analyzers/.EDITORCONFIG"
+        });
+        AssertEqual(".intelligencex/analyzers/.editorconfig", mixedSeparatorAndCaseDuplicate,
+            "analysis export duplicate detection mixed separators and case");
+
+        var none = SetupAnalysisExportPath.FindFirstDuplicatePath(new[] {
+            ".intelligencex/analyzers/.editorconfig",
+            ".intelligencex/analyzers/PSScriptAnalyzerSettings.psd1"
+        });
+        AssertEqual(null, none, "analysis export duplicate detection none");
     }
 
     private static void TestSetupAnalysisDisableWritesFalse() {

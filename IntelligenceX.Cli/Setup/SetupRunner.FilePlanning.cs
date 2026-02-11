@@ -634,6 +634,7 @@ internal static partial class SetupRunner {
         Console.WriteLine("  --analysis-enabled <true|false> (write analysis section into reviewer.json)");
         Console.WriteLine("  --analysis-gate <true|false> (when true, analysis gate can fail CI; default false)");
         Console.WriteLine("  --analysis-packs <id1,id2> (default all-50 when analysis is enabled)");
+        Console.WriteLine("  --analysis-export-path <repo/path> (optional: export analyzer configs into PR for IDE support)");
         Console.WriteLine("  --config-path <path> (use custom config.json content)");
         Console.WriteLine("  --config-json <json> (use inline config.json content)");
         Console.WriteLine("  --auth-b64 <value> (use pre-exported auth bundle)");

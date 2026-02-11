@@ -91,6 +91,7 @@ internal sealed class WizardState {
     public bool? AnalysisEnabled { get; set; } = true;
     public bool? AnalysisGateEnabled { get; set; } = false;
     public string? AnalysisPacks { get; set; }
+    public string? AnalysisExportPath { get; set; }
     public bool Force { get; set; }
     public bool Upgrade { get; set; }
     public WizardOperation Operation { get; set; } = WizardOperation.Setup;

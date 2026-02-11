@@ -70,9 +70,11 @@ internal sealed partial class WebApi {
             analysisEnabled: request.AnalysisEnabled,
             analysisGateEnabled: request.AnalysisGateEnabled,
             analysisPacks: request.AnalysisPacks,
+            analysisExportPath: request.AnalysisExportPath,
             normalizedEnabled: out var normalizedEnabled,
             normalizedGateEnabled: out var normalizedGateEnabled,
             normalizedPacks: out var normalizedPacks,
+            normalizedExportPath: out var normalizedExportPath,
             error: out var analysisError)) {
             context.Response.StatusCode = 400;
             await WriteJsonAsync(context, new { error = analysisError }).ConfigureAwait(false);
@@ -81,6 +83,7 @@ internal sealed partial class WebApi {
         request.AnalysisEnabled = normalizedEnabled;
         request.AnalysisGateEnabled = normalizedGateEnabled;
         request.AnalysisPacks = normalizedPacks;
+        request.AnalysisExportPath = normalizedExportPath;
 
         var repos = request.Repos is not null && request.Repos.Count > 0
             ? request.Repos
@@ -142,9 +145,11 @@ internal sealed partial class WebApi {
             analysisEnabled: request.AnalysisEnabled,
             analysisGateEnabled: request.AnalysisGateEnabled,
             analysisPacks: request.AnalysisPacks,
+            analysisExportPath: request.AnalysisExportPath,
             normalizedEnabled: out var normalizedEnabled,
             normalizedGateEnabled: out var normalizedGateEnabled,
             normalizedPacks: out var normalizedPacks,
+            normalizedExportPath: out var normalizedExportPath,
             error: out var analysisError)) {
             context.Response.StatusCode = 400;
             await WriteJsonAsync(context, new { error = analysisError }).ConfigureAwait(false);
@@ -153,6 +158,7 @@ internal sealed partial class WebApi {
         request.AnalysisEnabled = normalizedEnabled;
         request.AnalysisGateEnabled = normalizedGateEnabled;
         request.AnalysisPacks = normalizedPacks;
+        request.AnalysisExportPath = normalizedExportPath;
 
         if (!withConfig) {
             await WriteJsonOkAsync(context, new {

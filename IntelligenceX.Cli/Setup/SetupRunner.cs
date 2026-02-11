@@ -1,12 +1,15 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using IntelligenceX.Analysis;
 using IntelligenceX.Cli;
 using IntelligenceX.Cli.GitHub;
+using JsonLite = IntelligenceX.Json.JsonLite;
 using IntelligenceX.OpenAI.Auth;
 
 namespace IntelligenceX.Cli.Setup;
@@ -41,6 +44,29 @@ internal static partial class SetupRunner {
             if (!string.IsNullOrWhiteSpace(options.AuthB64) && !string.IsNullOrWhiteSpace(options.AuthB64Path)) {
                 Console.Error.WriteLine("Choose only one of --auth-b64 or --auth-b64-path.");
                 return 1;
+            }
+            if (options.AnalysisExportPathSet) {
+                if (options.Cleanup || options.UpdateSecret) {
+                    Console.Error.WriteLine("--analysis-export-path is only supported for setup operation.");
+                    return 1;
+                }
+                if (!options.WithConfig) {
+                    Console.Error.WriteLine("--analysis-export-path requires --with-config (or config-json/config-path).");
+                    return 1;
+                }
+                if (!SetupAnalysisExportPath.TryNormalize(options.AnalysisExportPath, out var normalizedExportPath, out var exportError)) {
+                    Console.Error.WriteLine(exportError ?? "Invalid --analysis-export-path value.");
+                    return 1;
+                }
+                options.AnalysisExportPath = normalizedExportPath;
+                if (options.AnalysisEnabledSet && !options.AnalysisEnabled) {
+                    Console.Error.WriteLine("--analysis-export-path requires --analysis-enabled=true.");
+                    return 1;
+                }
+                if (!TryValidateLocalAnalysisCatalog(Environment.CurrentDirectory, out var catalogError)) {
+                    Console.Error.WriteLine(catalogError);
+                    return 1;
+                }
             }
 
             var state = new SetupState(options);
@@ -100,31 +126,34 @@ internal static partial class SetupRunner {
             var configPlan = options.WithConfig
                 ? PlanConfigChange(options, existingConfig?.Content, seedConfigContent)
                 : FilePlan.Skip(".intelligencex/reviewer.json", "Not requested (--with-config not set)");
+            var exportPlans = await PlanAnalysisExportFilesAsync(
+                github, options, owner, repo, defaultBranch, configPlan, existingConfig?.Content ?? seedConfigContent)
+                .ConfigureAwait(false);
 
             if (options.DryRun) {
-                PrintDryRun(state, workflowPlan, configPlan);
+                PrintDryRun(state, workflowPlan, configPlan, exportPlans);
                 return 0;
             }
 
-        if (!options.SkipSecret) {
-            var authB64 = ResolveAuthB64(options);
-            if (string.IsNullOrWhiteSpace(authB64)) {
-                state.OpenAI.AuthBundle = await LoginOpenAiAsync(options).ConfigureAwait(false);
-                state.OpenAI.AuthJson = AuthBundleSerializer.Serialize(state.OpenAI.AuthBundle);
-                state.OpenAI.AuthB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(state.OpenAI.AuthJson));
-            } else {
-                state.OpenAI.AuthB64 = authB64;
-            }
+            if (!options.SkipSecret) {
+                var authB64 = ResolveAuthB64(options);
+                if (string.IsNullOrWhiteSpace(authB64)) {
+                    state.OpenAI.AuthBundle = await LoginOpenAiAsync(options).ConfigureAwait(false);
+                    state.OpenAI.AuthJson = AuthBundleSerializer.Serialize(state.OpenAI.AuthBundle);
+                    state.OpenAI.AuthB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(state.OpenAI.AuthJson));
+                } else {
+                    state.OpenAI.AuthB64 = authB64;
+                }
 
-            if (options.ManualSecret) {
-                PrintManualSecret(state.OpenAI.AuthB64);
-            } else {
+                if (options.ManualSecret) {
+                    PrintManualSecret(state.OpenAI.AuthB64);
+                } else {
                     await github.SetSecretAsync(owner, repo, "INTELLIGENCEX_AUTH_B64", state.OpenAI.AuthB64)
                         .ConfigureAwait(false);
                 }
             }
 
-            var hasFileChanges = workflowPlan.IsWrite || configPlan.IsWrite;
+            var hasFileChanges = workflowPlan.IsWrite || configPlan.IsWrite || exportPlans.Any(plan => plan.IsWrite);
             if (!hasFileChanges) {
                 Console.WriteLine("No files changed. Skipping PR creation.");
                 return 0;
@@ -143,6 +172,13 @@ internal static partial class SetupRunner {
                 changed |= await github.CreateOrUpdateFileAsync(owner, repo, configPlan.Path, configPlan.Content,
                     "Configure IntelligenceX reviewer", branchName, overwrite: true).ConfigureAwait(false);
             }
+            foreach (var exportPlan in exportPlans) {
+                if (!exportPlan.IsWrite || exportPlan.Content is null) {
+                    continue;
+                }
+                changed |= await github.CreateOrUpdateFileAsync(owner, repo, exportPlan.Path, exportPlan.Content,
+                    "Export analyzer configs for IDE support", branchName, overwrite: true).ConfigureAwait(false);
+            }
             if (legacyConfigLooksLikeReviewer && legacyConfig is not null && configPlan.IsWrite) {
                 // Migrate legacy reviewer config location to the correct file name.
                 changed |= await github.DeleteFileAsync(owner, repo, ".intelligencex/config.json",
@@ -156,7 +192,7 @@ internal static partial class SetupRunner {
 
             var prTitle = "Add IntelligenceX review automation";
             var prBody = options.WithConfig
-                ? "This adds the IntelligenceX review workflow and config."
+                ? BuildSetupPrBody(includeAnalysisExport: exportPlans.Any(plan => plan.IsWrite))
                 : "This adds the IntelligenceX review workflow.";
             var prUrl = await github.CreatePullRequestAsync(owner, repo, prTitle, branchName, defaultBranch, prBody)
                 .ConfigureAwait(false);
@@ -357,12 +393,148 @@ internal static partial class SetupRunner {
         return 0;
     }
 
-    private static void PrintDryRun(SetupState state, FilePlan workflowPlan, FilePlan configPlan) {
+    internal static bool ValidateLocalAnalysisCatalogForTests(string workspace, out string error) {
+        return TryValidateLocalAnalysisCatalog(workspace, out error);
+    }
+
+    private static bool TryValidateLocalAnalysisCatalog(string workspace, out string error) {
+        error = string.Empty;
+        var resolvedWorkspace = string.IsNullOrWhiteSpace(workspace) ? Environment.CurrentDirectory : workspace;
+        var rulesRoot = Path.Combine(resolvedWorkspace, "Analysis", "Catalog", "rules");
+        var packsRoot = Path.Combine(resolvedWorkspace, "Analysis", "Packs");
+
+        if (!Directory.Exists(rulesRoot) || !Directory.Exists(packsRoot)) {
+            error =
+                "--analysis-export-path requires a local analysis catalog. Expected directories: Analysis/Catalog/rules and Analysis/Packs.";
+            return false;
+        }
+
+        var hasRuleFiles = Directory.EnumerateFiles(rulesRoot, "*.json", SearchOption.AllDirectories).Any();
+        var hasPackFiles = Directory.EnumerateFiles(packsRoot, "*.json", SearchOption.TopDirectoryOnly).Any();
+        if (!hasRuleFiles || !hasPackFiles) {
+            error =
+                "--analysis-export-path requires local catalog JSON files under Analysis/Catalog/rules and Analysis/Packs.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static async Task<List<FilePlan>> PlanAnalysisExportFilesAsync(
+        GitHubApi github,
+        SetupOptions options,
+        string owner,
+        string repo,
+        string defaultBranch,
+        FilePlan configPlan,
+        string? existingConfigContent) {
+        var plans = new List<FilePlan>();
+        if (!options.AnalysisExportPathSet) {
+            return plans;
+        }
+
+        if (!SetupAnalysisExportPath.TryNormalize(options.AnalysisExportPath, out var normalizedExportPath, out var exportPathError)) {
+            throw new InvalidOperationException(exportPathError ?? "Invalid --analysis-export-path value.");
+        }
+        if (string.IsNullOrWhiteSpace(normalizedExportPath)) {
+            throw new InvalidOperationException("Invalid --analysis-export-path value.");
+        }
+
+        var effectiveConfigContent = ResolveEffectiveConfigContentForAnalysisExport(options, configPlan, existingConfigContent);
+        if (string.IsNullOrWhiteSpace(effectiveConfigContent)) {
+            throw new InvalidOperationException("--analysis-export-path requires effective reviewer config content.");
+        }
+
+        IntelligenceX.Json.JsonObject? root;
+        try {
+            root = JsonLite.Parse(effectiveConfigContent)?.AsObject();
+        } catch (Exception ex) {
+            throw new InvalidOperationException($"Failed to parse effective reviewer config for analysis export: {ex.Message}");
+        }
+        if (root is null) {
+            throw new InvalidOperationException("Effective reviewer config must be a JSON object for analysis export.");
+        }
+
+        var settings = new AnalysisSettings();
+        var reviewObj = root.GetObject("review") ?? root;
+        AnalysisConfigReader.Apply(root, reviewObj, settings);
+        if (!settings.Enabled) {
+            throw new InvalidOperationException("--analysis-export-path requires analysis.enabled=true.");
+        }
+
+        var catalog = AnalysisCatalogLoader.LoadFromWorkspace(Environment.CurrentDirectory);
+        var tempOutputDirectory = Path.Combine(Path.GetTempPath(), "ix-setup-analysis-export-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempOutputDirectory);
+        try {
+            var export = AnalysisConfigExporter.Export(settings, catalog, tempOutputDirectory);
+            foreach (var warning in export.Warnings) {
+                Console.WriteLine($"Warning: {warning}");
+            }
+            if (export.Files.Count == 0) {
+                throw new InvalidOperationException(
+                    "No analyzer config files were generated. Check analysis packs and local Analysis catalog availability.");
+            }
+
+            var targetEntries = new List<(string Path, string Content)>();
+            foreach (var generatedPath in export.Files) {
+                var fileName = Path.GetFileName(generatedPath);
+                if (string.IsNullOrWhiteSpace(fileName)) {
+                    continue;
+                }
+                var targetPath = SetupAnalysisExportPath.Combine(normalizedExportPath, fileName);
+                var content = File.ReadAllText(generatedPath);
+                targetEntries.Add((targetPath, content));
+            }
+
+            var duplicateTargetPath = SetupAnalysisExportPath.FindFirstDuplicatePath(targetEntries.Select(entry => entry.Path));
+            if (!string.IsNullOrWhiteSpace(duplicateTargetPath)) {
+                throw new InvalidOperationException($"Duplicate analyzer export target path detected: {duplicateTargetPath}");
+            }
+
+            foreach (var entry in targetEntries) {
+                var existing = await github.TryGetFileAsync(owner, repo, entry.Path, defaultBranch).ConfigureAwait(false);
+                plans.Add(PlanWrite(entry.Path, existing?.Content, entry.Content, options.Force));
+            }
+        } finally {
+            TryDeleteDirectory(tempOutputDirectory);
+        }
+
+        return plans;
+    }
+
+    private static string? ResolveEffectiveConfigContentForAnalysisExport(SetupOptions options, FilePlan configPlan, string? existingConfigContent) {
+        if (!options.WithConfig) {
+            return null;
+        }
+        if (!string.IsNullOrWhiteSpace(configPlan.Content)) {
+            return configPlan.Content;
+        }
+        if (!string.IsNullOrWhiteSpace(existingConfigContent)) {
+            return existingConfigContent;
+        }
+        return ReadConfigOverride(options);
+    }
+
+    private static void TryDeleteDirectory(string path) {
+        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path)) {
+            return;
+        }
+        try {
+            Directory.Delete(path, recursive: true);
+        } catch {
+            // Best-effort cleanup.
+        }
+    }
+
+    private static void PrintDryRun(SetupState state, FilePlan workflowPlan, FilePlan configPlan, IReadOnlyList<FilePlan> exportPlans) {
         Console.WriteLine("Dry run summary:");
         Console.WriteLine($"- Repo: {state.GitHub.RepositoryFullName}");
         Console.WriteLine($"- Secret: INTELLIGENCEX_AUTH_B64 ({DescribeSecretAction(state.Options)})");
         Console.WriteLine($"- File: {workflowPlan.Path} ({DescribePlan(workflowPlan)})");
         Console.WriteLine($"- File: {configPlan.Path} ({DescribePlan(configPlan)})");
+        foreach (var exportPlan in exportPlans) {
+            Console.WriteLine($"- File: {exportPlan.Path} ({DescribePlan(exportPlan)})");
+        }
         Console.WriteLine("- PR: would be created on a new branch for file changes");
         Console.WriteLine();
 
@@ -374,6 +546,20 @@ internal static partial class SetupRunner {
             Console.WriteLine($"--- {workflowPlan.Path} ---");
             Console.WriteLine(workflowPlan.Content);
         }
+        foreach (var exportPlan in exportPlans) {
+            if (exportPlan.Content is null) {
+                continue;
+            }
+            Console.WriteLine($"--- {exportPlan.Path} ---");
+            Console.WriteLine(exportPlan.Content);
+        }
+    }
+
+    private static string BuildSetupPrBody(bool includeAnalysisExport) {
+        if (!includeAnalysisExport) {
+            return "This adds the IntelligenceX review workflow and config.";
+        }
+        return "This adds the IntelligenceX review workflow and config, and exports analyzer configs for IDE support.";
     }
 
     private static string DescribePlan(FilePlan plan) {

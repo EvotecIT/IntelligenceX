@@ -73,6 +73,10 @@ internal sealed partial class WebApi {
             args.Add("--analysis-packs");
             args.Add(request.AnalysisPacks!);
         }
+        if (analysisApplies && request.AnalysisEnabled == true && !string.IsNullOrWhiteSpace(request.AnalysisExportPath)) {
+            args.Add("--analysis-export-path");
+            args.Add(request.AnalysisExportPath!);
+        }
         if (request.SkipSecret) {
             args.Add("--skip-secret");
         }
