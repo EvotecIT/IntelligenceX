@@ -455,6 +455,17 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function coerceBoolean(value) {
+  if (value === true || value === false) return value;
+  if (typeof value === 'number') return value === 0 ? false : (value === 1 ? true : null);
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1' || normalized === 'yes') return true;
+    if (normalized === 'false' || normalized === '0' || normalized === 'no') return false;
+  }
+  return null;
+}
+
 // ── Build review grid ──
 function buildReviewTable() {
   const grid = $('reviewGrid');
@@ -654,7 +665,12 @@ function formatResults(data) {
     const total = data.results.length;
     const succeeded = data.results.filter(r => r.exitCode === 0).length;
     const failed = total - succeeded;
-    const verifyFailed = data.results.filter(r => r.verify && r.verify.skipped !== true && r.verify.passed === false).length;
+    const verifyFailed = data.results.filter(r => {
+      if (!r || !r.verify) return false;
+      const skipped = coerceBoolean(r.verify.skipped);
+      const passed = coerceBoolean(r.verify.passed);
+      return skipped !== true && passed !== true;
+    }).length;
     const verifyText = verifyFailed > 0 ? `, verify issues in ${verifyFailed}` : '';
     setSummary(`Results: ${succeeded}/${total} succeeded${failed > 0 ? `, ${failed} failed` : ''}${verifyText}.`);
     lines.push(`Summary: ${succeeded}/${total} succeeded`);
@@ -680,7 +696,9 @@ function formatResults(data) {
       }
       if (result.verify) {
         const verify = result.verify;
-        const verifyStatus = verify.skipped ? 'skipped' : (verify.passed ? 'ok' : 'failed');
+        const verifySkipped = coerceBoolean(verify.skipped);
+        const verifyPassed = coerceBoolean(verify.passed);
+        const verifyStatus = verifySkipped === true ? 'skipped' : (verifyPassed === true ? 'ok' : 'failed');
         lines.push(`verify: ${verifyStatus}`);
         if (verify.checkedRef && String(verify.checkedRef).trim().length > 0) {
           const source = verify.checkedRefSource ? String(verify.checkedRefSource) : 'ref';
@@ -693,9 +711,11 @@ function formatResults(data) {
           verify.checks.forEach(check => {
             const safeCheck = check && typeof check === 'object' ? check : null;
             let checkStatus = 'fail';
-            if (safeCheck && safeCheck.skipped === true) {
+            const checkSkipped = safeCheck ? coerceBoolean(safeCheck.skipped) : null;
+            const checkPassed = safeCheck ? coerceBoolean(safeCheck.passed) : null;
+            if (checkSkipped === true) {
               checkStatus = 'skip';
-            } else if (safeCheck && safeCheck.passed === true) {
+            } else if (checkPassed === true) {
               checkStatus = 'ok';
             }
             const expected = safeCheck && safeCheck.expected != null
