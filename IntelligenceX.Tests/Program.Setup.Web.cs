@@ -55,6 +55,32 @@ internal static partial class Program {
         AssertContainsText(verify.Note ?? string.Empty, "failed", "web setup post-apply verify failure note");
     }
 
+    private static void TestWebSetupResolveOrgSecretVerificationContext() {
+        var setupWithOrg = IntelligenceX.Cli.Setup.Web.WebApi.ResolveOrgSecretVerificationContextForTests(
+            cleanup: false,
+            updateSecret: false,
+            secretTarget: "org",
+            secretOrg: null);
+        AssertEqual(true, setupWithOrg.ExpectOrgSecret, "web setup org secret expected for org target without explicit org");
+        AssertEqual(null, setupWithOrg.SecretOrg, "web setup org secret remains null when not provided");
+
+        var updateWithOrg = IntelligenceX.Cli.Setup.Web.WebApi.ResolveOrgSecretVerificationContextForTests(
+            cleanup: false,
+            updateSecret: true,
+            secretTarget: "org",
+            secretOrg: "EvotecIT");
+        AssertEqual(true, updateWithOrg.ExpectOrgSecret, "web update-secret org secret expected for org target");
+        AssertEqual("EvotecIT", updateWithOrg.SecretOrg, "web update-secret org secret value");
+
+        var repoTarget = IntelligenceX.Cli.Setup.Web.WebApi.ResolveOrgSecretVerificationContextForTests(
+            cleanup: false,
+            updateSecret: false,
+            secretTarget: "repo",
+            secretOrg: "EvotecIT");
+        AssertEqual(false, repoTarget.ExpectOrgSecret, "web setup repo target does not expect org secret");
+        AssertEqual(null, repoTarget.SecretOrg, "web setup repo target does not pass org secret");
+    }
+
     private static void TestWebSetupRunProcessTimeoutReturnsPromptly() {
         var command = Environment.ProcessPath;
         if (string.IsNullOrWhiteSpace(command)) {

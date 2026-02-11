@@ -28,10 +28,32 @@ internal sealed partial class WebApi {
         return ResolveWithConfigFromArgs(args);
     }
 
+    internal static (bool ExpectOrgSecret, string? SecretOrg) ResolveOrgSecretVerificationContextForTests(
+        bool cleanup,
+        bool updateSecret,
+        string? secretTarget,
+        string? secretOrg) {
+        var operation = cleanup
+            ? SetupApplyOperation.Cleanup
+            : updateSecret
+                ? SetupApplyOperation.UpdateSecret
+                : SetupApplyOperation.Setup;
+        return ResolveOrgSecretVerificationContext(operation, secretTarget, secretOrg);
+    }
+
     private static bool ResolveWithConfigFromArgs(IReadOnlyList<string> args) {
         return ContainsArg(args, "--with-config") ||
                ContainsArg(args, "--config-json") ||
                ContainsArg(args, "--config-path");
+    }
+
+    private static (bool ExpectOrgSecret, string? SecretOrg) ResolveOrgSecretVerificationContext(
+        SetupApplyOperation operation,
+        string? secretTarget,
+        string? secretOrg) {
+        var expectOrgSecret = (operation == SetupApplyOperation.Setup || operation == SetupApplyOperation.UpdateSecret) &&
+                              string.Equals(secretTarget, "org", StringComparison.OrdinalIgnoreCase);
+        return (expectOrgSecret, expectOrgSecret ? secretOrg : null);
     }
 
     private static bool ContainsArg(IReadOnlyList<string> args, string name) {
@@ -131,8 +153,7 @@ internal sealed partial class WebApi {
                 : SetupApplyOperation.Setup;
         var provider = string.IsNullOrWhiteSpace(request.Provider) ? "openai" : request.Provider!;
         var requestDryRun = dryRun || request.DryRun;
-        var expectOrgSecret = string.Equals(request.SecretTarget, "org", StringComparison.OrdinalIgnoreCase) &&
-                              !string.IsNullOrWhiteSpace(request.SecretOrg);
+        var orgSecretContext = ResolveOrgSecretVerificationContext(operation, request.SecretTarget, request.SecretOrg);
 
         GitHubRepoClient? verifyClient = null;
         try {
@@ -156,8 +177,8 @@ internal sealed partial class WebApi {
                     KeepSecret = request.KeepSecret,
                     DryRun = effectiveDryRun,
                     ExitSuccess = result.ExitCode == 0,
-                    ExpectOrgSecret = expectOrgSecret,
-                    SecretOrg = expectOrgSecret ? request.SecretOrg : null,
+                    ExpectOrgSecret = orgSecretContext.ExpectOrgSecret,
+                    SecretOrg = orgSecretContext.SecretOrg,
                     Provider = provider,
                     Output = result.Output,
                     PullRequestUrl = result.PullRequestUrl
