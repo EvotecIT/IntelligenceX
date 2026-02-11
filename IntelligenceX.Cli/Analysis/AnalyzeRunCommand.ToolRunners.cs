@@ -105,10 +105,26 @@ internal static partial class AnalyzeRunCommand {
             "-SettingsPath",
             settingsPath
         };
+        var excludedDirectoriesCsv = BuildExcludedDirectoriesCsv();
+        if (!string.IsNullOrWhiteSpace(excludedDirectoriesCsv)) {
+            args.Add("-ExcludedDirectoriesCsv");
+            args.Add(excludedDirectoriesCsv);
+        }
         if (strict) {
             args.Add("-FailOnAnalyzerErrors");
         }
         return args;
+    }
+
+    private static string BuildExcludedDirectoriesCsv() {
+        var segments = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var segment in DefaultExcludedDirectorySegments) {
+            if (string.IsNullOrWhiteSpace(segment)) {
+                continue;
+            }
+            segments.Add(segment.Trim());
+        }
+        return string.Join(",", segments.OrderBy(static segment => segment, StringComparer.OrdinalIgnoreCase));
     }
 
     private static TemporaryFileScope? PrepareEditorConfigOverride(AnalysisSettings settings, string workspace,

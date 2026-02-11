@@ -271,30 +271,143 @@ internal static partial class AnalyzeRunCommand {
     [Parameter(Mandatory=$true)][string]$Workspace,
     [Parameter(Mandatory=$true)][string]$OutFile,
     [Parameter()][string]$SettingsPath,
+    [Parameter()][string]$ExcludedDirectoriesCsv,
     [Parameter()][switch]$FailOnAnalyzerErrors
 )
 $ErrorActionPreference = 'Stop'
+
+if ([System.IO.File]::Exists($Workspace)) {
+    throw ('Workspace path is not a directory: ' + $Workspace)
+}
+if (-not [System.IO.Directory]::Exists($Workspace)) {
+    throw ('Workspace path not found: ' + $Workspace)
+}
+$workspaceRoot = [System.IO.Path]::GetFullPath($Workspace)
 
 if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
     throw 'PSScriptAnalyzer module not found. Install with: Install-Module PSScriptAnalyzer -Scope CurrentUser'
 }
 Import-Module PSScriptAnalyzer -ErrorAction Stop
 
-$invoke = @{
-    Path = $Workspace
-    Recurse = $true
-    Severity = @('Error','Warning','Information')
-}
-if ($SettingsPath -and (Test-Path -LiteralPath $SettingsPath)) {
-    $invoke['Settings'] = $SettingsPath
+$excludedSegmentSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+if ($ExcludedDirectoriesCsv) {
+    foreach ($segment in $ExcludedDirectoriesCsv.Split(',')) {
+        if ([string]::IsNullOrWhiteSpace($segment)) {
+            continue
+        }
+        [void]$excludedSegmentSet.Add($segment.Trim())
+    }
 }
 
+function Get-AnalyzerPaths {
+    param(
+        [Parameter(Mandatory=$true)][string]$Root,
+        [Parameter(Mandatory=$true)][System.Collections.Generic.HashSet[string]]$ExcludedSegments
+    )
+
+    $paths = New-Object System.Collections.Generic.List[string]
+    $stack = New-Object System.Collections.Generic.Stack[string]
+    $stack.Push([System.IO.Path]::GetFullPath($Root))
+
+    while ($stack.Count -gt 0) {
+        $current = $stack.Pop()
+
+        try {
+            foreach ($subdirectory in [System.IO.Directory]::EnumerateDirectories($current)) {
+                $name = [System.IO.Path]::GetFileName($subdirectory)
+                if (-not [string]::IsNullOrWhiteSpace($name) -and $ExcludedSegments.Contains($name)) {
+                    continue
+                }
+
+                try {
+                    $attributes = [System.IO.Directory]::GetAttributes($subdirectory)
+                    if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                        continue
+                    }
+                } catch [System.UnauthorizedAccessException] {
+                    continue
+                } catch [System.IO.PathTooLongException] {
+                    continue
+                } catch [System.IO.DirectoryNotFoundException] {
+                    continue
+                } catch [System.IO.IOException] {
+                    continue
+                }
+
+                $stack.Push($subdirectory)
+            }
+        } catch [System.UnauthorizedAccessException] {
+            continue
+        } catch [System.IO.PathTooLongException] {
+            continue
+        } catch [System.IO.DirectoryNotFoundException] {
+            continue
+        }
+
+        try {
+            foreach ($file in [System.IO.Directory]::EnumerateFiles($current)) {
+                try {
+                    $attributes = [System.IO.File]::GetAttributes($file)
+                    if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                        continue
+                    }
+                } catch [System.UnauthorizedAccessException] {
+                    continue
+                } catch [System.IO.PathTooLongException] {
+                    continue
+                } catch [System.IO.DirectoryNotFoundException] {
+                    continue
+                } catch [System.IO.IOException] {
+                    continue
+                }
+
+                $extension = [System.IO.Path]::GetExtension($file)
+                if ([string]::Equals($extension, '.ps1', [System.StringComparison]::OrdinalIgnoreCase) -or
+                    [string]::Equals($extension, '.psm1', [System.StringComparison]::OrdinalIgnoreCase) -or
+                    [string]::Equals($extension, '.psd1', [System.StringComparison]::OrdinalIgnoreCase)) {
+                    [void]$paths.Add($file)
+                }
+            }
+        } catch [System.UnauthorizedAccessException] {
+            continue
+        } catch [System.IO.PathTooLongException] {
+            continue
+        } catch [System.IO.DirectoryNotFoundException] {
+            continue
+        } catch [System.IO.IOException] {
+            continue
+        }
+    }
+
+    return $paths.ToArray()
+}
+
+$analysisPaths = Get-AnalyzerPaths -Root $workspaceRoot -ExcludedSegments $excludedSegmentSet
+$invokeSeverity = @('Error','Warning','Information')
+$hasSettings = $SettingsPath -and (Test-Path -LiteralPath $SettingsPath)
+
 $invokeErrors = @()
-$results = @()
-try {
-    $results = @(Invoke-ScriptAnalyzer @invoke -ErrorAction Continue -ErrorVariable +invokeErrors)
-} catch {
-    $invokeErrors += $_
+$results = New-Object System.Collections.Generic.List[object]
+if ($analysisPaths.Length -gt 0) {
+    foreach ($analysisPath in $analysisPaths) {
+        if ([string]::IsNullOrWhiteSpace($analysisPath)) {
+            continue
+        }
+
+        try {
+            if ($hasSettings) {
+                foreach ($result in @(Invoke-ScriptAnalyzer -Path $analysisPath -Severity $invokeSeverity -Settings $SettingsPath -ErrorAction Continue -ErrorVariable +invokeErrors)) {
+                    [void]$results.Add($result)
+                }
+            } else {
+                foreach ($result in @(Invoke-ScriptAnalyzer -Path $analysisPath -Severity $invokeSeverity -ErrorAction Continue -ErrorVariable +invokeErrors)) {
+                    [void]$results.Add($result)
+                }
+            }
+        } catch {
+            $invokeErrors += $_
+        }
+    }
 }
 
 $sawInvokeErrors = $false

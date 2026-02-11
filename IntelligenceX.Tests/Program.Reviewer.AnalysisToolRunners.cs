@@ -6,6 +6,20 @@ internal static partial class Program {
         var script = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildPowerShellRunnerScriptForTests();
 
         AssertContainsText(script, "[switch]$FailOnAnalyzerErrors", "powershell runner strict switch parameter");
+        AssertContainsText(script, "[string]$ExcludedDirectoriesCsv", "powershell runner excluded directories parameter");
+        AssertContainsText(script, "Workspace path not found", "powershell runner validates missing workspace");
+        AssertContainsText(script, "Workspace path is not a directory", "powershell runner validates workspace directory type");
+        AssertContainsText(script, "Get-AnalyzerPaths", "powershell runner pre-enumerates script paths");
+        AssertContainsText(script, "[System.IO.FileAttributes]::ReparsePoint", "powershell runner skips reparse-point directories");
+        AssertContainsText(script, "Directory]::GetAttributes($subdirectory)", "powershell runner checks directory attributes for reparse points");
+        AssertContainsText(script, "GetAttributes($file)", "powershell runner checks file-level reparse points");
+        AssertContainsText(script, "[System.StringComparison]::OrdinalIgnoreCase", "powershell runner extension filtering is case-insensitive");
+        AssertContainsText(script, "System.Collections.Generic.List[object]", "powershell runner uses typed list result aggregation");
+        AssertContainsText(script, "catch [System.UnauthorizedAccessException]", "powershell runner handles expected access exceptions");
+        AssertContainsText(script, "catch [System.IO.IOException]", "powershell runner handles expected io exceptions");
+        AssertContainsText(script, "if ($analysisPaths.Length -gt 0)", "powershell runner handles empty path list");
+        AssertContainsText(script, "foreach ($analysisPath in $analysisPaths)", "powershell runner iterates filtered paths");
+        AssertContainsText(script, "Invoke-ScriptAnalyzer -Path $analysisPath", "powershell runner invokes analyzer per path");
         AssertContainsText(script, "-ErrorAction Continue -ErrorVariable +invokeErrors",
             "powershell runner captures non-terminating engine errors");
         AssertContainsText(script, "if ($sawInvokeErrors -and $FailOnAnalyzerErrors)",
@@ -45,6 +59,21 @@ internal static partial class Program {
 
         AssertEqual(true, strictHasSwitch, "powershell strict args include fail switch");
         AssertEqual(false, nonStrictHasSwitch, "powershell non-strict args omit fail switch");
+
+        string? strictExcludedDirectories = null;
+        for (var i = 0; i + 1 < strictArgs.Count; i++) {
+            if (string.Equals(strictArgs[i], "-ExcludedDirectoriesCsv", StringComparison.Ordinal)) {
+                strictExcludedDirectories = strictArgs[i + 1];
+                break;
+            }
+        }
+
+        AssertEqual(false, string.IsNullOrWhiteSpace(strictExcludedDirectories),
+            "powershell strict args include excluded directories csv");
+        AssertContainsText(strictExcludedDirectories ?? string.Empty, ".worktrees",
+            "powershell strict args include .worktrees exclusion");
+        AssertEqual(".git,.vs,.worktrees,bin,node_modules,obj", strictExcludedDirectories ?? string.Empty,
+            "powershell strict args excluded directories order is deterministic");
     }
 }
 #endif
