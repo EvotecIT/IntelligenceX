@@ -192,6 +192,8 @@ internal static partial class Program {
         failed += Run("Analyze hotspots help has no side effects", TestAnalyzeHotspotsHelpHasNoSideEffects);
         failed += Run("Analyze hotspots state path is workspace-bound", TestAnalyzeHotspotsStatePathIsWorkspaceBound);
         failed += Run("Analyze validate-catalog command", TestAnalyzeValidateCatalogCommand);
+        failed += Run("Analyze list-packs --ids", TestAnalyzeListPacksIds);
+        failed += Run("Analyze list-packs help", TestAnalyzeListPacksHelp);
         failed += Run("Analyze list-rules markdown format", TestAnalyzeListRulesMarkdownFormat);
         failed += Run("Analyze list-rules json with pack filter", TestAnalyzeListRulesJsonWithPackFilter);
         failed += Run("Analyze list-rules tier counts", TestAnalyzeListRulesTierCounts);

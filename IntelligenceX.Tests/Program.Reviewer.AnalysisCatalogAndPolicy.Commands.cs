@@ -371,6 +371,80 @@ internal static partial class Program {
         AssertContainsText(output, "PSAvoidUsingWriteHost", "analyze list-rules markdown includes powershell rule");
     }
 
+    private static void TestAnalyzeListPacksIds() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-list-packs-ids-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "internal");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+
+            File.WriteAllText(Path.Combine(rulesDir, "IX001.json"), """
+{
+  "id": "IX001",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "title": "Rule one",
+  "description": "Rule one"
+}
+""");
+            File.WriteAllText(Path.Combine(rulesDir, "IX002.json"), """
+{
+  "id": "IX002",
+  "language": "internal",
+  "tool": "IntelligenceX",
+  "title": "Rule two",
+  "description": "Rule two"
+}
+""");
+            File.WriteAllText(Path.Combine(packsDir, "beta.json"), """
+{
+  "id": "beta",
+  "label": "Beta",
+  "rules": ["IX001"]
+}
+""");
+            File.WriteAllText(Path.Combine(packsDir, "alpha.json"), """
+{
+  "id": "alpha",
+  "label": "Alpha",
+  "rules": ["IX002"]
+}
+""");
+
+            var (exitCode, stdout, stderr) = RunAnalyzeAndCaptureStreams(new[] {
+                "list-packs",
+                "--workspace",
+                temp,
+                "--ids"
+            });
+
+            AssertEqual(0, exitCode, "analyze list-packs --ids exit");
+            var ids = stdout
+                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(value => value.Trim())
+                .Where(value => value.Length > 0)
+                .ToArray();
+            AssertSequenceEqual(new[] { "alpha", "beta" }, ids, "analyze list-packs --ids sorted ids");
+            AssertEqual(string.Empty, stderr.Trim(), "analyze list-packs --ids stderr");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalyzeListPacksHelp() {
+        var (exitCode, output) = RunAnalyzeAndCaptureOutput(new[] {
+            "list-packs",
+            "--help"
+        });
+        AssertEqual(0, exitCode, "analyze list-packs --help exit");
+        AssertContainsText(output, "intelligencex analyze list-packs", "analyze list-packs --help usage");
+        AssertContainsText(output, "--ids", "analyze list-packs --help ids option");
+    }
+
     private static void TestAnalyzeListRulesJsonWithPackFilter() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-list-rules-json-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

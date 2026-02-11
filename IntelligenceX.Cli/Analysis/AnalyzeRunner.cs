@@ -80,13 +80,26 @@ internal static class AnalyzeRunner {
     }
 
     private static Task<int> ListPacksAsync(string[] args) {
-        var workspace = ParseWorkspace(args);
-        var catalog = AnalysisCatalogLoader.LoadFromWorkspace(ResolveWorkspace(workspace));
+        var options = ParseListPacksArgs(args);
+        if (options.ShowHelp) {
+            PrintListPacksHelp();
+            return Task.FromResult(0);
+        }
+        if (options.Error is not null) {
+            Console.WriteLine(options.Error);
+            return Task.FromResult(1);
+        }
+
+        var catalog = AnalysisCatalogLoader.LoadFromWorkspace(ResolveWorkspace(options.Workspace));
         if (catalog.Packs.Count == 0) {
             Console.WriteLine("No packs found.");
             return Task.FromResult(0);
         }
         foreach (var pack in catalog.Packs.Values.OrderBy(pack => pack.Id, StringComparer.OrdinalIgnoreCase)) {
+            if (options.IdsOnly) {
+                Console.WriteLine(pack.Id);
+                continue;
+            }
             var desc = string.IsNullOrWhiteSpace(pack.Description) ? string.Empty : $" - {pack.Description}";
             Console.WriteLine($"{pack.Id}: {pack.Label}{desc}");
         }
@@ -179,6 +192,34 @@ internal static class AnalyzeRunner {
             }
         }
         return null;
+    }
+
+    private static ListPacksOptions ParseListPacksArgs(string[] args) {
+        var options = new ListPacksOptions();
+        for (var i = 0; i < args.Length; i++) {
+            var arg = args[i];
+            if (IsHelp(arg)) {
+                options.ShowHelp = true;
+                return options;
+            }
+            if (arg.Equals("--workspace", StringComparison.OrdinalIgnoreCase)) {
+                if (i + 1 >= args.Length) {
+                    options.Error = "Missing value for --workspace.";
+                    return options;
+                }
+                options.Workspace = args[++i];
+                continue;
+            }
+            if (arg.Equals("--ids", StringComparison.OrdinalIgnoreCase)) {
+                options.IdsOnly = true;
+                continue;
+            }
+
+            options.Error = $"Unknown option '{arg}' for list-packs.";
+            return options;
+        }
+
+        return options;
     }
 
     private static ListRulesOptions ParseListRulesArgs(string[] args) {
@@ -352,10 +393,15 @@ internal static class AnalyzeRunner {
         AnalyzeRunCommand.PrintHelp();
         AnalyzeGateCommand.PrintHelp();
         Console.WriteLine("  intelligencex analyze export-config --out <dir> [--config <path>] [--workspace <path>]");
-        Console.WriteLine("  intelligencex analyze list-packs [--workspace <path>]");
+        Console.WriteLine("  intelligencex analyze list-packs [--workspace <path>] [--ids]");
         Console.WriteLine("  intelligencex analyze list-rules [--workspace <path>] [--format text|markdown|json] [--pack <id>] [--packs <id1,id2>]");
         Console.WriteLine("  intelligencex analyze hotspots <command> [options]");
         Console.WriteLine("  intelligencex analyze validate-catalog [--workspace <path>]");
+    }
+
+    private static void PrintListPacksHelp() {
+        Console.WriteLine("Usage:");
+        Console.WriteLine("  intelligencex analyze list-packs [--workspace <path>] [--ids]");
     }
 
     private static void PrintListRulesHelp() {
@@ -378,6 +424,13 @@ internal static class AnalyzeRunner {
         public string? Workspace { get; set; }
         public string Format { get; set; } = "text";
         public List<string> Packs { get; } = new List<string>();
+        public bool ShowHelp { get; set; }
+        public string? Error { get; set; }
+    }
+
+    private sealed class ListPacksOptions {
+        public string? Workspace { get; set; }
+        public bool IdsOnly { get; set; }
         public bool ShowHelp { get; set; }
         public string? Error { get; set; }
     }
