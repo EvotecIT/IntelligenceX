@@ -231,6 +231,8 @@ jobs:
       - name: Compute changed files
         run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- ci changed-files --workspace . --out artifacts/changed-files.txt
       - name: Static analysis gate
+        # Gate reads findings from analysis.results.inputs in reviewer.json
+        # (defaults include artifacts/**/*.sarif and artifacts/intelligencex.findings.json).
         run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze gate --config .intelligencex/reviewer.json --workspace . --changed-files artifacts/changed-files.txt
       - name: Upload analysis artifacts
         uses: actions/upload-artifact@v4
