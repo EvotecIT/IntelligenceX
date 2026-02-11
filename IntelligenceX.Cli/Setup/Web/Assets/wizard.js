@@ -175,6 +175,30 @@ function getEffectiveClientId() {
 }
 
 // ── Operation selection ──
+function getOnboardingPathForOperation(op) {
+  switch (op) {
+    case 'update-secret':
+      return 'refresh-auth';
+    case 'cleanup':
+      return 'cleanup';
+    case 'setup':
+    default:
+      return 'new-setup';
+  }
+}
+
+function getOnboardingPathHint(path) {
+  switch (path) {
+    case 'refresh-auth':
+      return 'Path selected: Fix Expired Auth. Next: authenticate, choose repos, then run update-secret.';
+    case 'cleanup':
+      return 'Path selected: Cleanup. Next: authenticate, select repos, then preview and remove setup files.';
+    case 'new-setup':
+    default:
+      return 'Path selected: New Setup. Next: authenticate with GitHub, then select repositories.';
+  }
+}
+
 function selectOperation(op) {
   selectedOperation = op;
   document.querySelectorAll('[data-op]').forEach(c => {
@@ -183,6 +207,12 @@ function selectOperation(op) {
   $('setupOptions').classList.toggle('hidden', op !== 'setup');
   $('cleanupOptions').classList.toggle('hidden', op !== 'cleanup');
   updateAnalysisControls();
+
+  const path = getOnboardingPathForOperation(op);
+  if (path !== selectedOnboardingPath) {
+    selectedOnboardingPath = path;
+    syncOnboardingPathVisualState();
+  }
 }
 
 function setOnboardingPathHint(message) {
@@ -196,52 +226,36 @@ function syncOnboardingPathVisualState() {
   document.querySelectorAll('[data-path]').forEach(c => {
     c.classList.toggle('selected', c.dataset.path === selectedOnboardingPath);
   });
-
-  switch (selectedOnboardingPath) {
-    case 'refresh-auth':
-      setOnboardingPathHint('Path selected: Fix Expired Auth. Next: authenticate, choose repos, then run update-secret.');
-      break;
-    case 'cleanup':
-      setOnboardingPathHint('Path selected: Cleanup. Next: authenticate, select repos, then preview and remove setup files.');
-      break;
-    case 'new-setup':
-    default:
-      setOnboardingPathHint('Path selected: New Setup. Next: authenticate with GitHub, then select repositories.');
-      break;
-  }
+  setOnboardingPathHint(getOnboardingPathHint(selectedOnboardingPath));
 }
 
 function applyOnboardingPath(path) {
   selectedOnboardingPath = path;
-  document.querySelectorAll('[data-path]').forEach(c => {
-    c.classList.toggle('selected', c.dataset.path === path);
-  });
 
-  switch (path) {
+  switch (selectedOnboardingPath) {
     case 'refresh-auth':
       selectOperation('update-secret');
       selectProvider('openai');
       selectSecretOption('login');
       if (withConfig) withConfig.checked = false;
-      setOnboardingPathHint('Path selected: Fix Expired Auth. Next: authenticate, choose repos, then run update-secret.');
       break;
     case 'cleanup':
       selectOperation('cleanup');
       selectProvider('openai');
       selectSecretOption('skip');
       if (withConfig) withConfig.checked = false;
-      setOnboardingPathHint('Path selected: Cleanup. Next: authenticate, select repos, then preview and remove setup files.');
       break;
     case 'new-setup':
     default:
+      selectedOnboardingPath = 'new-setup';
       selectOperation('setup');
       selectProvider('openai');
       selectSecretOption('login');
       if (withConfig) withConfig.checked = true;
-      setOnboardingPathHint('Path selected: New Setup. Next: authenticate with GitHub, then select repositories.');
       break;
   }
 
+  syncOnboardingPathVisualState();
   refreshPathStateAfterOnboardingSelection();
 }
 
