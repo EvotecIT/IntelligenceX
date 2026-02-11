@@ -25,16 +25,5 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Validate catalog structure and pack references
+      - name: Validate catalog structure and pack integrity
         run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze validate-catalog --workspace .
-
-      - name: Resolve all pack rules
-        shell: bash
-        run: |
-          set -euo pipefail
-          packs="$(dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze list-packs --workspace . | awk -F: '{print $1}' | paste -sd, -)"
-          if [ -z "${packs}" ]; then
-            echo "No analysis packs found."
-            exit 1
-          fi
-          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze list-rules --workspace . --format json --packs "${packs}" > /dev/null
