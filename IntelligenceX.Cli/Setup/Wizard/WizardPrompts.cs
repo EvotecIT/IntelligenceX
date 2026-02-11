@@ -247,39 +247,47 @@ internal static class WizardPrompts {
     }
 
     public static string? PromptAnalysisPacks(string? current) {
-        var choices = new List<string> {
-            "(default: all-50)",
-            "all-100",
-            "all-500",
-            "none (disable static analysis)",
-            "all-security-default",
-            "powershell-50",
-            "custom (enter pack ids)"
-        };
-        if (!string.IsNullOrWhiteSpace(current) &&
-            !choices.Contains(current, StringComparer.Ordinal) &&
-            !string.Equals(current, "all-50", StringComparison.Ordinal)) {
-            choices.Insert(1, $"(keep current: {current})");
-        }
-        var selected = AnsiConsole.Prompt(
-            new SelectionPrompt<string>()
-                .Title("Static analysis pack(s):")
-                .PageSize(10)
-                .AddChoices(choices));
-        if (string.Equals(selected, "(default: all-50)", StringComparison.Ordinal)) {
-            return null;
-        }
-        if (string.Equals(selected, "none (disable static analysis)", StringComparison.Ordinal)) {
-            return DisableAnalysisSelection;
-        }
-        if (selected.StartsWith("(keep current:", StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(current)) {
-            return current;
-        }
-        if (!string.Equals(selected, "custom (enter pack ids)", StringComparison.Ordinal)) {
-            return selected;
-        }
-
         while (true) {
+            var choices = new List<string> {
+                "(default: all-50)",
+                "all-100",
+                "all-500",
+                "none (disable static analysis)",
+                "all-security-default",
+                "powershell-50",
+                "list available packs",
+                "custom (enter pack ids)"
+            };
+            if (!string.IsNullOrWhiteSpace(current) &&
+                !choices.Contains(current, StringComparer.Ordinal) &&
+                !string.Equals(current, "all-50", StringComparison.Ordinal)) {
+                choices.Insert(1, $"(keep current: {current})");
+            }
+            var selected = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("Static analysis pack(s):")
+                    .PageSize(10)
+                    .AddChoices(choices));
+            if (string.Equals(selected, "(default: all-50)", StringComparison.Ordinal)) {
+                return null;
+            }
+            if (string.Equals(selected, "none (disable static analysis)", StringComparison.Ordinal)) {
+                return DisableAnalysisSelection;
+            }
+            if (selected.StartsWith("(keep current:", StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(current)) {
+                return current;
+            }
+            if (string.Equals(selected, "list available packs", StringComparison.Ordinal)) {
+                AnsiConsole.MarkupLine("[grey]Browse available packs:[/]");
+                AnsiConsole.MarkupLine("[grey]  intelligencex analyze list-rules --workspace . --format markdown[/]");
+                AnsiConsole.MarkupLine("[grey]  intelligencex analyze list-rules --workspace . --pack all-50[/]");
+                AnsiConsole.MarkupLine("[grey]Docs: Docs/reviewer/static-analysis.md[/]");
+                continue;
+            }
+            if (!string.Equals(selected, "custom (enter pack ids)", StringComparison.Ordinal)) {
+                return selected;
+            }
+
             var currentHint = string.IsNullOrWhiteSpace(current) ? string.Empty : $" (current: {current})";
             var prompt = new TextPrompt<string>($"Pack ids (comma-separated, empty for default){currentHint}:")
                 .AllowEmpty();
