@@ -88,7 +88,13 @@ public static class ToolOutputEnvelope {
     /// <param name="error">Human-readable error message.</param>
     /// <param name="hints">Optional remediation hints.</param>
     /// <param name="isTransient">Whether the failure is likely transient (retryable).</param>
-    public static JsonObject ErrorObject(string errorCode, string error, IEnumerable<string>? hints = null, bool isTransient = false) {
+    /// <param name="meta">Optional structured error metadata (for example <c>meta.error.category</c>).</param>
+    public static JsonObject ErrorObject(
+        string errorCode,
+        string error,
+        IEnumerable<string>? hints = null,
+        bool isTransient = false,
+        JsonObject? meta = null) {
         if (string.IsNullOrWhiteSpace(errorCode)) {
             throw new ArgumentException("Error code cannot be empty.", nameof(errorCode));
         }
@@ -111,12 +117,21 @@ public static class ToolOutputEnvelope {
             }
         }
 
+        if (meta is not null) {
+            obj.Add("meta", meta);
+        }
+
         return obj;
     }
 
     /// <summary>
     /// Serializes an error envelope (<c>ok=false</c>) as JSON.
     /// </summary>
-    public static string Error(string errorCode, string error, IEnumerable<string>? hints = null, bool isTransient = false)
-        => JsonLite.Serialize(ErrorObject(errorCode, error, hints, isTransient));
+    public static string Error(
+        string errorCode,
+        string error,
+        IEnumerable<string>? hints = null,
+        bool isTransient = false,
+        JsonObject? meta = null)
+        => JsonLite.Serialize(ErrorObject(errorCode, error, hints, isTransient, meta));
 }
