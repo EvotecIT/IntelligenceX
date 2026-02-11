@@ -692,11 +692,16 @@ function formatResults(data) {
         if (Array.isArray(verify.checks) && verify.checks.length > 0) {
           verify.checks.forEach(check => {
             const safeCheck = check && typeof check === 'object' ? check : null;
-            const checkStatus = safeCheck && safeCheck.skipped === true ? 'skip' : (safeCheck && safeCheck.passed === true ? 'ok' : 'fail');
-            const expected = safeCheck && safeCheck.expected !== null && typeof safeCheck.expected !== 'undefined'
+            let checkStatus = 'fail';
+            if (safeCheck && safeCheck.skipped === true) {
+              checkStatus = 'skip';
+            } else if (safeCheck && safeCheck.passed === true) {
+              checkStatus = 'ok';
+            }
+            const expected = safeCheck && safeCheck.expected != null
               ? String(safeCheck.expected)
               : 'n/a';
-            const actual = safeCheck && safeCheck.actual !== null && typeof safeCheck.actual !== 'undefined'
+            const actual = safeCheck && safeCheck.actual != null
               ? String(safeCheck.actual)
               : 'n/a';
             const note = safeCheck && safeCheck.note ? ` (${String(safeCheck.note)})` : '';
