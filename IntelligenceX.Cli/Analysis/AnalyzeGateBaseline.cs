@@ -188,7 +188,7 @@ internal static class AnalyzeGateBaseline {
         if (!line.HasValue || line.Value <= 0) {
             return 0;
         }
-        if (line.Value >= int.MaxValue) {
+        if (line.Value > int.MaxValue) {
             return int.MaxValue;
         }
         return (int)line.Value;
