@@ -540,6 +540,22 @@ jobs:
         AssertEqual(null, file, "repo client file fetch invalid base64");
     }
 
+    private static void TestGitHubRepoClientFileFetchMissingShaReturnsNull() {
+        using var client = CreateGitHubRepoClientForTests((_, _) => {
+            var payload = """
+{
+  "content": "e30="
+}
+""";
+            return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK) {
+                Content = new System.Net.Http.StringContent(payload)
+            });
+        });
+
+        var file = client.TryGetFileAsync("owner", "repo", ".intelligencex/reviewer.json", "main").GetAwaiter().GetResult();
+        AssertEqual(null, file, "repo client file fetch missing sha");
+    }
+
     private static void TestGitHubRepoClientInjectedHttpClientAppliesDefaultHeaders() {
         System.Net.Http.HttpRequestMessage? capturedRequest = null;
         using var client = CreateGitHubRepoClientForTests((request, _) => {
@@ -558,6 +574,50 @@ jobs:
             capturedRequest.Headers.TryGetValues("X-GitHub-Api-Version", out var values)
             && values.Contains("2022-11-28"),
             "repo client injected headers api version");
+    }
+
+    private static void TestGitHubRepoClientReusedInjectedHttpClientRemainsIdempotent() {
+        var requests = new List<System.Net.Http.HttpRequestMessage>();
+        using var http = new System.Net.Http.HttpClient(new DelegateHttpMessageHandler((request, _) => {
+            requests.Add(request);
+            return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
+        })) {
+            BaseAddress = new Uri("https://api.github.com")
+        };
+
+        using (var first = new IntelligenceX.Cli.Setup.Wizard.GitHubRepoClient(http, token: "token-one")) {
+            var firstResult = first.TryRepoSecretExistsAsync("owner", "repo", "INTELLIGENCEX_AUTH_B64").GetAwaiter().GetResult();
+            AssertEqual("missing", firstResult.Status, "repo client reused injected first status");
+        }
+
+        using (var second = new IntelligenceX.Cli.Setup.Wizard.GitHubRepoClient(http, token: "token-two")) {
+            var secondResult = second.TryRepoSecretExistsAsync("owner", "repo", "INTELLIGENCEX_AUTH_B64").GetAwaiter().GetResult();
+            AssertEqual("missing", secondResult.Status, "repo client reused injected second status");
+        }
+
+        AssertEqual(true, requests.Count >= 2, "repo client reused injected requests captured");
+        var lastRequest = requests[requests.Count - 1];
+        AssertEqual("token-two", lastRequest.Headers.Authorization?.Parameter, "repo client reused injected latest auth token");
+
+        var userAgentCount = 0;
+        foreach (var _ in lastRequest.Headers.UserAgent) {
+            userAgentCount++;
+        }
+        AssertEqual(1, userAgentCount, "repo client reused injected user-agent count");
+
+        var acceptCount = 0;
+        foreach (var _ in lastRequest.Headers.Accept) {
+            acceptCount++;
+        }
+        AssertEqual(1, acceptCount, "repo client reused injected accept count");
+
+        var versionCount = 0;
+        if (lastRequest.Headers.TryGetValues("X-GitHub-Api-Version", out var apiVersions)) {
+            foreach (var _ in apiVersions) {
+                versionCount++;
+            }
+        }
+        AssertEqual(1, versionCount, "repo client reused injected api version count");
     }
 
     private static IntelligenceX.Cli.Setup.Wizard.GitHubRepoClient CreateGitHubRepoClientForTests(
