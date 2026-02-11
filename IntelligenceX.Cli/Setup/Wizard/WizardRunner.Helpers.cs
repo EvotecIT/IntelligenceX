@@ -32,6 +32,12 @@ internal static partial class WizardRunner {
         }
 
         state.AnalysisPacks = WizardPrompts.PromptAnalysisPacks(state.AnalysisPacks);
+        if (string.Equals(state.AnalysisPacks, WizardPrompts.DisableAnalysisSelection, StringComparison.Ordinal)) {
+            state.AnalysisEnabled = false;
+            state.AnalysisGateEnabled = null;
+            state.AnalysisPacks = null;
+            return;
+        }
         state.AnalysisGateEnabled = WizardPrompts.PromptAnalysisGateEnabled(state.AnalysisGateEnabled ?? false);
     }
 

@@ -25,7 +25,7 @@ Goal: reviewer + static analysis + onboarding (CLI + Web) feel "done" end-to-end
 
 ### Phase B — Setup Output (Workflow + reviewer.json)
 - [x] Setup config writer: include `analysis` section in `.intelligencex/reviewer.json` when static analysis is enabled (create + merge paths).
-- [ ] Setup presets: define recommended tiers for analysis packs (`all-50`, `all-100`, `all-500`) and a "no analysis" option.
+- [x] Setup presets: define recommended tiers for analysis packs (`all-50`, `all-100`, `all-500`) and a "no analysis" option.
 - [ ] Ensure workflow/config generation stays stable across upgrades (managed block upgrades do not delete user customization outside managed block).
 
 ### Phase C — Review Reliability (Reduce Churn, Increase Continuity)
