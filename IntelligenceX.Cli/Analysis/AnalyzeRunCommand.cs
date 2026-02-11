@@ -276,6 +276,15 @@ internal static partial class AnalyzeRunCommand {
 )
 $ErrorActionPreference = 'Stop'
 
+if (-not (Test-Path -LiteralPath $Workspace)) {
+    throw ('Workspace path not found: ' + $Workspace)
+}
+$workspaceItem = Get-Item -LiteralPath $Workspace -ErrorAction Stop
+if (-not $workspaceItem.PSIsContainer) {
+    throw ('Workspace path is not a directory: ' + $Workspace)
+}
+$workspaceRoot = [System.IO.Path]::GetFullPath([string]$workspaceItem.FullName)
+
 if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
     throw 'PSScriptAnalyzer module not found. Install with: Install-Module PSScriptAnalyzer -Scope CurrentUser'
 }
@@ -343,7 +352,7 @@ function Get-AnalyzerPaths {
     return $paths.ToArray()
 }
 
-$analysisPaths = Get-AnalyzerPaths -Root $Workspace -ExcludedSegments $excludedSegmentSet
+$analysisPaths = Get-AnalyzerPaths -Root $workspaceRoot -ExcludedSegments $excludedSegmentSet
 $invokeSeverity = @('Error','Warning','Information')
 $hasSettings = $SettingsPath -and (Test-Path -LiteralPath $SettingsPath)
 

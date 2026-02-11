@@ -7,6 +7,8 @@ internal static partial class Program {
 
         AssertContainsText(script, "[switch]$FailOnAnalyzerErrors", "powershell runner strict switch parameter");
         AssertContainsText(script, "[string]$ExcludedDirectoriesCsv", "powershell runner excluded directories parameter");
+        AssertContainsText(script, "Workspace path not found", "powershell runner validates missing workspace");
+        AssertContainsText(script, "Workspace path is not a directory", "powershell runner validates workspace directory type");
         AssertContainsText(script, "Get-AnalyzerPaths", "powershell runner pre-enumerates script paths");
         AssertContainsText(script, "catch [System.UnauthorizedAccessException]", "powershell runner handles expected access exceptions");
         AssertContainsText(script, "catch [System.IO.IOException]", "powershell runner handles expected io exceptions");
