@@ -412,5 +412,10 @@ internal static partial class Program {
         Console.WriteLine();
         Console.WriteLine("No arguments in interactive terminals also open this hub:");
         Console.WriteLine("  intelligencex");
+        Console.WriteLine();
+        Console.WriteLine("Onboarding shortcuts:");
+        Console.WriteLine("  intelligencex setup web");
+        Console.WriteLine("  intelligencex setup wizard --operation setup --repo owner/name");
+        Console.WriteLine("  intelligencex setup wizard --operation update-secret --repo owner/name");
     }
 }

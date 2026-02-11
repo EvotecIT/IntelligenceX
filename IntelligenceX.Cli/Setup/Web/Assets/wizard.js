@@ -25,6 +25,7 @@ let selectedOperation = 'setup';
 let selectedProvider = 'openai';
 let selectedPresetProfile = 'balanced';
 let secretOption = 'login';   // 'login' | 'paste' | 'file' | 'skip'
+let selectedOnboardingPath = 'new-setup';
 let deviceState = null;
 let lastRecommendation = null;
 let lastSummaryBase = 'Ready to preview or apply.';
@@ -174,6 +175,30 @@ function getEffectiveClientId() {
 }
 
 // ── Operation selection ──
+function getOnboardingPathForOperation(op) {
+  switch (op) {
+    case 'update-secret':
+      return 'refresh-auth';
+    case 'cleanup':
+      return 'cleanup';
+    case 'setup':
+    default:
+      return 'new-setup';
+  }
+}
+
+function getOnboardingPathHint(path) {
+  switch (path) {
+    case 'refresh-auth':
+      return 'Path selected: Fix Expired Auth. Next: authenticate, choose repos, then run update-secret.';
+    case 'cleanup':
+      return 'Path selected: Cleanup. Next: authenticate, select repos, then preview and remove setup files.';
+    case 'new-setup':
+    default:
+      return 'Path selected: New Setup. Next: authenticate with GitHub, then select repositories.';
+  }
+}
+
 function selectOperation(op) {
   selectedOperation = op;
   document.querySelectorAll('[data-op]').forEach(c => {
@@ -182,6 +207,57 @@ function selectOperation(op) {
   $('setupOptions').classList.toggle('hidden', op !== 'setup');
   $('cleanupOptions').classList.toggle('hidden', op !== 'cleanup');
   updateAnalysisControls();
+
+  selectedOnboardingPath = getOnboardingPathForOperation(op);
+  syncOnboardingPathVisualState();
+}
+
+function setOnboardingPathHint(message) {
+  const hint = $('pathHint');
+  if (hint) {
+    hint.textContent = message;
+  }
+}
+
+function syncOnboardingPathVisualState() {
+  document.querySelectorAll('[data-path]').forEach(c => {
+    c.classList.toggle('selected', c.dataset.path === selectedOnboardingPath);
+  });
+  setOnboardingPathHint(getOnboardingPathHint(selectedOnboardingPath));
+}
+
+function applyOnboardingPath(path) {
+  switch (path) {
+    case 'refresh-auth':
+      selectOperation('update-secret');
+      selectProvider('openai');
+      selectSecretOption('login');
+      if (withConfig) withConfig.checked = false;
+      break;
+    case 'cleanup':
+      selectOperation('cleanup');
+      selectProvider('openai');
+      selectSecretOption('skip');
+      if (withConfig) withConfig.checked = false;
+      break;
+    case 'new-setup':
+    default:
+      selectOperation('setup');
+      selectProvider('openai');
+      selectSecretOption('login');
+      if (withConfig) withConfig.checked = true;
+      break;
+  }
+
+  syncOnboardingPathVisualState();
+  refreshPathStateAfterOnboardingSelection();
+}
+
+function refreshPathStateAfterOnboardingSelection() {
+  updateAnalysisControls();
+  if (currentStep === 4) {
+    buildReviewTable();
+  }
 }
 
 // ── Provider toggle ──
@@ -1292,7 +1368,5 @@ async function doApply() {
 refreshPresets();
 loadUsageCache();
 updateProgressBar();
-
-// Show default secret option sub-flow
-const loginFlow = $('secretLoginFlow');
-if (loginFlow) loginFlow.classList.add('visible');
+selectSecretOption(secretOption);
+syncOnboardingPathVisualState();

@@ -245,6 +245,7 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] PR #73 fix: harden retry backoff and file limits — checklist items: Deduplicate finite validation between config/env parsing; Add a negative `maxFiles` test to document `<= 0` behavior; Document why non-finite backoff values are rejected; Clarify `maxFiles <= 0` meaning in docs.. Links: https://github.com/EvotecIT/IntelligenceX/pull/73
 - [x] PR #74 Fix reviewer backlog items — checklist items: Consider an integration-style test that validates the failure-summary update path in `Program.RunAsync`.. Links: https://github.com/EvotecIT/IntelligenceX/pull/74
 - [ ] PR #208 Manage hub external-command review churn — checklist item keeps reappearing despite early-return startup/read-init failure handling in `IntelligenceX.Cli/Program.Manage.Utility.cs`; treat as churn unless maintainers escalate. Links: https://github.com/EvotecIT/IntelligenceX/pull/208#issuecomment-3880247612
+- [ ] PR #210 CLI/Web onboarding review churn — blocker oscillates between opposite onboarding state models across iterations; treat as churn unless maintainers explicitly escalate. Links: https://github.com/EvotecIT/IntelligenceX/pull/210#issuecomment-3883453782
 <details>
 <summary>PR #95 Fix duplicate weekly labels in usage summary</summary>
 

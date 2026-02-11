@@ -22,6 +22,11 @@ internal static partial class WizardRunner {
         Console.WriteLine("  --branch <name>");
         Console.WriteLine("  --plain (disable wizard UI)");
         Console.WriteLine("  --help");
+        Console.WriteLine();
+        Console.WriteLine("Quick examples:");
+        Console.WriteLine("  intelligencex setup wizard --operation setup --repo owner/name");
+        Console.WriteLine("  intelligencex setup wizard --operation update-secret --repo owner/name");
+        Console.WriteLine("  intelligencex setup wizard --operation cleanup --repo owner/name --dry-run");
     }
 
     private sealed class WizardOptions {
@@ -113,4 +118,3 @@ internal static partial class WizardRunner {
         }
     }
 }
-
