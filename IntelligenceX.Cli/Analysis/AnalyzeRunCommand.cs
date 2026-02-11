@@ -320,7 +320,7 @@ function Get-AnalyzerPaths {
                 }
 
                 try {
-                    $attributes = [System.IO.File]::GetAttributes($subdirectory)
+                    $attributes = [System.IO.Directory]::GetAttributes($subdirectory)
                     if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
                         continue
                     }

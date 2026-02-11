@@ -11,6 +11,7 @@ internal static partial class Program {
         AssertContainsText(script, "Workspace path is not a directory", "powershell runner validates workspace directory type");
         AssertContainsText(script, "Get-AnalyzerPaths", "powershell runner pre-enumerates script paths");
         AssertContainsText(script, "[System.IO.FileAttributes]::ReparsePoint", "powershell runner skips reparse-point directories");
+        AssertContainsText(script, "Directory]::GetAttributes($subdirectory)", "powershell runner checks directory attributes for reparse points");
         AssertContainsText(script, "GetAttributes($file)", "powershell runner checks file-level reparse points");
         AssertContainsText(script, "[System.StringComparison]::OrdinalIgnoreCase", "powershell runner extension filtering is case-insensitive");
         AssertContainsText(script, "System.Collections.Generic.List[object]", "powershell runner uses typed list result aggregation");
