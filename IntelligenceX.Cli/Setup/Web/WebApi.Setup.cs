@@ -147,7 +147,7 @@ internal sealed partial class WebApi {
                 var result = await RunSetupAsync(args).ConfigureAwait(false);
                 result.Repo = repo;
                 result.PullRequestUrl = SetupPostApplyVerifier.ExtractPullRequestUrl(result.Output);
-                result.Verify = await SetupPostApplyVerifier.VerifyAsync(verifyClient, new SetupPostApplyContext {
+                var verifyContext = new SetupPostApplyContext {
                     Repo = repo,
                     Operation = operation,
                     WithConfig = withConfig,
@@ -161,7 +161,10 @@ internal sealed partial class WebApi {
                     Provider = provider,
                     Output = result.Output,
                     PullRequestUrl = result.PullRequestUrl
-                }).ConfigureAwait(false);
+                };
+                result.Verify = await ResolvePostApplyVerificationAsync(
+                    verifyContext,
+                    () => SetupPostApplyVerifier.VerifyAsync(verifyClient, verifyContext)).ConfigureAwait(false);
                 outputs.Add(result);
             }
         } finally {

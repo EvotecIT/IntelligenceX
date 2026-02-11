@@ -385,6 +385,31 @@ jobs:
         AssertEqual("unauthorized", secretCheck.Actual, "post-apply unauthorized secret check actual");
     }
 
+    private static void TestWizardPostApplyVerifySkipsCallbackWhenApplyFails() {
+        var context = new SetupPostApplyContext {
+            Repo = "owner/repo",
+            Operation = SetupApplyOperation.Setup,
+            ExitSuccess = false
+        };
+
+        var verifyCalls = 0;
+        var verify = IntelligenceX.Cli.Setup.Wizard.WizardRunner.ResolvePostApplyVerificationForTests(
+            context,
+            () => {
+                verifyCalls++;
+                return System.Threading.Tasks.Task.FromResult(new SetupPostApplyVerification {
+                    Repo = "owner/repo",
+                    Operation = "setup",
+                    Passed = true
+                });
+            }).GetAwaiter().GetResult();
+
+        AssertEqual(0, verifyCalls, "wizard post-apply verify callback skipped on failed apply");
+        AssertEqual(true, verify.Skipped, "wizard post-apply verify skipped on failed apply");
+        AssertEqual(false, verify.Passed, "wizard post-apply verify failed status on failed apply");
+        AssertContainsText(verify.Note ?? string.Empty, "failed", "wizard post-apply verify failure note");
+    }
+
     private static void TestGitHubRepoDetectorParsesRemoteUrls() {
         AssertEqual("owner/repo", GitHubRepoDetector.ParseRepoFromRemoteUrl("https://github.com/owner/repo.git"), "https git");
         AssertEqual("owner/repo", GitHubRepoDetector.ParseRepoFromRemoteUrl("https://github.com/owner/repo"), "https no git");

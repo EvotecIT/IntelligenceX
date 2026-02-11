@@ -64,6 +64,8 @@ internal static partial class Program {
             TestSetupPostApplyVerifySetupAllowsUnknownBranchStateWithPr);
         failed += Run("Setup post-apply verify unauthorized secret lookup fails deterministically",
             TestSetupPostApplyVerifySecretLookupUnauthorizedFailsDeterministically);
+        failed += Run("Wizard post-apply verify skips callback on failed apply",
+            TestWizardPostApplyVerifySkipsCallbackWhenApplyFails);
         failed += Run("CLI dispatch no-args interactive runs manage", TestCliDispatchNoArgsInteractiveRunsManage);
         failed += Run("CLI dispatch no-args non-interactive shows help", TestCliDispatchNoArgsNonInteractiveShowsHelp);
         failed += Run("CLI dispatch manage command routes to manage", TestCliDispatchManageCommandRoutesToManage);
@@ -78,6 +80,8 @@ internal static partial class Program {
         failed += Run("Manage external command non-timeout failure is not timeout", TestManageRunExternalCommandNonTimeoutFailureIsNotTimeout);
         failed += Run("Web setup args propagate request dry-run", TestWebSetupBuildSetupArgsPropagatesRequestDryRun);
         failed += Run("Web setup resolves with-config from args", TestWebSetupResolveWithConfigFromArgs);
+        failed += Run("Web setup post-apply verify skips callback on failed apply",
+            TestWebSetupPostApplyVerifySkipsCallbackWhenApplyFails);
         failed += Run("Web setup subprocess timeout returns promptly", TestWebSetupRunProcessTimeoutReturnsPromptly);
         failed += Run("Manage GitHub CLI status token authenticated", TestManageGitHubCliStatusWithTokenIsAuthenticated);
         failed += Run("Manage GitHub CLI status exit code zero authenticated", TestManageGitHubCliStatusExitCodeZeroAuthenticated);

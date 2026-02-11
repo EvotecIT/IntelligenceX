@@ -87,20 +87,28 @@ internal static class SetupPostApplyVerifier {
         return Evaluate(context, observed);
     }
 
+    public static SetupPostApplyVerification CreateFailedApplySkipped(SetupPostApplyContext context) {
+        if (context is null) {
+            throw new ArgumentNullException(nameof(context));
+        }
+
+        return new SetupPostApplyVerification {
+            Repo = context.Repo,
+            Operation = DescribeOperation(context.Operation),
+            PullRequestUrl = context.PullRequestUrl,
+            Skipped = true,
+            Passed = false,
+            Note = "Setup command failed; verification was skipped."
+        };
+    }
+
     public static async Task<SetupPostApplyVerification> VerifyAsync(GitHubRepoClient? client, SetupPostApplyContext context) {
         if (context is null) {
             throw new ArgumentNullException(nameof(context));
         }
 
         if (!context.ExitSuccess) {
-            return new SetupPostApplyVerification {
-                Repo = context.Repo,
-                Operation = DescribeOperation(context.Operation),
-                PullRequestUrl = context.PullRequestUrl,
-                Skipped = true,
-                Passed = false,
-                Note = "Setup command failed; verification was skipped."
-            };
+            return CreateFailedApplySkipped(context);
         }
 
         if (context.DryRun) {

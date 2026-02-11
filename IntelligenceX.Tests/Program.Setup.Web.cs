@@ -30,6 +30,31 @@ internal static partial class Program {
             "--repo", "owner/repo"), "web setup resolve with-config none");
     }
 
+    private static void TestWebSetupPostApplyVerifySkipsCallbackWhenApplyFails() {
+        var context = new SetupPostApplyContext {
+            Repo = "owner/repo",
+            Operation = SetupApplyOperation.Setup,
+            ExitSuccess = false
+        };
+
+        var verifyCalls = 0;
+        var verify = IntelligenceX.Cli.Setup.Web.WebApi.ResolvePostApplyVerificationForTests(
+            context,
+            () => {
+                verifyCalls++;
+                return System.Threading.Tasks.Task.FromResult(new SetupPostApplyVerification {
+                    Repo = "owner/repo",
+                    Operation = "setup",
+                    Passed = true
+                });
+            }).GetAwaiter().GetResult();
+
+        AssertEqual(0, verifyCalls, "web setup post-apply verify callback skipped on failed apply");
+        AssertEqual(true, verify.Skipped, "web setup post-apply verify skipped on failed apply");
+        AssertEqual(false, verify.Passed, "web setup post-apply verify failed status on failed apply");
+        AssertContainsText(verify.Note ?? string.Empty, "failed", "web setup post-apply verify failure note");
+    }
+
     private static void TestWebSetupRunProcessTimeoutReturnsPromptly() {
         var command = Environment.ProcessPath;
         if (string.IsNullOrWhiteSpace(command)) {

@@ -164,7 +164,9 @@ internal static partial class WizardRunner {
                         }
 
                         var verifyContext = BuildPostApplyVerifyContext(state, repoPlan, result, prUrl);
-                        var verifyResult = await SetupPostApplyVerifier.VerifyAsync(verifyClient, verifyContext).ConfigureAwait(false);
+                        var verifyResult = await ResolvePostApplyVerificationAsync(
+                            verifyContext,
+                            () => SetupPostApplyVerifier.VerifyAsync(verifyClient, verifyContext)).ConfigureAwait(false);
                         verifyResults.Add(verifyResult);
                     }
                 }).ConfigureAwait(false);
