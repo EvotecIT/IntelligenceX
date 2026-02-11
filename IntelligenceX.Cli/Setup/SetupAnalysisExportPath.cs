@@ -74,6 +74,23 @@ internal static class SetupAnalysisExportPath {
         return normalizedBasePath.TrimEnd('/') + "/" + normalizedFileName;
     }
 
+    internal static string? FindFirstDuplicatePath(IEnumerable<string> paths) {
+        if (paths is null) {
+            return null;
+        }
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in paths) {
+            if (string.IsNullOrWhiteSpace(path)) {
+                continue;
+            }
+            var normalized = path.Trim().Replace('\\', '/');
+            if (!seen.Add(normalized)) {
+                return normalized;
+            }
+        }
+        return null;
+    }
+
     private static bool IsValidPathSegment(string value) {
         if (string.IsNullOrWhiteSpace(value)) {
             return false;

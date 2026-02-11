@@ -475,6 +475,7 @@ internal static partial class SetupRunner {
                     "No analyzer config files were generated. Check analysis packs and local Analysis catalog availability.");
             }
 
+            var targetEntries = new List<(string Path, string Content)>();
             foreach (var generatedPath in export.Files) {
                 var fileName = Path.GetFileName(generatedPath);
                 if (string.IsNullOrWhiteSpace(fileName)) {
@@ -482,8 +483,17 @@ internal static partial class SetupRunner {
                 }
                 var targetPath = SetupAnalysisExportPath.Combine(normalizedExportPath, fileName);
                 var content = File.ReadAllText(generatedPath);
-                var existing = await github.TryGetFileAsync(owner, repo, targetPath, defaultBranch).ConfigureAwait(false);
-                plans.Add(PlanWrite(targetPath, existing?.Content, content, options.Force));
+                targetEntries.Add((targetPath, content));
+            }
+
+            var duplicateTargetPath = SetupAnalysisExportPath.FindFirstDuplicatePath(targetEntries.Select(entry => entry.Path));
+            if (!string.IsNullOrWhiteSpace(duplicateTargetPath)) {
+                throw new InvalidOperationException($"Duplicate analyzer export target path detected: {duplicateTargetPath}");
+            }
+
+            foreach (var entry in targetEntries) {
+                var existing = await github.TryGetFileAsync(owner, repo, entry.Path, defaultBranch).ConfigureAwait(false);
+                plans.Add(PlanWrite(entry.Path, existing?.Content, entry.Content, options.Force));
             }
         } finally {
             TryDeleteDirectory(tempOutputDirectory);

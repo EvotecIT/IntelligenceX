@@ -109,6 +109,21 @@ internal static partial class Program {
         }
     }
 
+    private static void TestSetupAnalysisExportDuplicateTargetDetection() {
+        var duplicate = SetupAnalysisExportPath.FindFirstDuplicatePath(new[] {
+            ".intelligencex/analyzers/.editorconfig",
+            ".intelligencex/analyzers/PSScriptAnalyzerSettings.psd1",
+            ".intelligencex/analyzers/.editorconfig"
+        });
+        AssertEqual(".intelligencex/analyzers/.editorconfig", duplicate, "analysis export duplicate detection");
+
+        var none = SetupAnalysisExportPath.FindFirstDuplicatePath(new[] {
+            ".intelligencex/analyzers/.editorconfig",
+            ".intelligencex/analyzers/PSScriptAnalyzerSettings.psd1"
+        });
+        AssertEqual(null, none, "analysis export duplicate detection none");
+    }
+
     private static void TestSetupAnalysisDisableWritesFalse() {
         var root = new System.Text.Json.Nodes.JsonObject();
         SetupAnalysisConfig.Apply(
