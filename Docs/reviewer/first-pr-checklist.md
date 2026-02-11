@@ -45,11 +45,11 @@ Confirm the next PR is reviewed end-to-end (analysis + reviewer) without manual 
 
 ```bash
 # PR checks summary
-gh pr checks <pr-number> --repo EvotecIT/IntelligenceX
+gh pr checks <pr-number>
 
 # Run details / logs
-gh run list --repo EvotecIT/IntelligenceX --limit 10
-gh run view <run-id> --repo EvotecIT/IntelligenceX --log
+gh run list --limit 10
+gh run view <run-id> --log
 ```
 
 ## Related Docs
