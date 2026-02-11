@@ -228,6 +228,18 @@ internal static partial class Program {
         }
     }
 
+    private sealed class ConfiguredTool : ITool {
+        public ConfiguredTool(ToolDefinition definition) {
+            Definition = definition ?? throw new ArgumentNullException(nameof(definition));
+        }
+
+        public ToolDefinition Definition { get; }
+
+        public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+            return Task.FromResult("ok");
+        }
+    }
+
     private static JsonArray CallChatInputToJson(ChatInput input) {
         var method = typeof(ChatInput).GetMethod("ToJson", BindingFlags.NonPublic | BindingFlags.Instance);
         if (method is null) {

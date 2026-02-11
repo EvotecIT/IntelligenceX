@@ -23,6 +23,9 @@ internal static partial class Program {
         failed += Run("Tool output input", TestToolOutputInput);
         failed += Run("Turn response_id parsing", TestTurnResponseIdParsing);
         failed += Run("Tool definitions ordered", TestToolDefinitionOrdering);
+        failed += Run("Tool definition alias merges tags", TestToolDefinitionAliasMergesTags);
+        failed += Run("Tool registry registers aliases from definition", TestToolRegistryRegistersAliasesFromDefinition);
+        failed += Run("Tool registry register alias override", TestToolRegistryRegisterAliasWithOverrides);
         failed += Run("Tool runner max rounds", TestToolRunnerMaxRounds);
         failed += Run("Tool runner unregistered tool", TestToolRunnerUnregisteredTool);
         failed += Run("Tool runner parallel execution", TestToolRunnerParallelExecution);
@@ -42,6 +45,7 @@ internal static partial class Program {
         failed += Run("Native tool schema fallback uses structured error data", TestNativeToolSchemaFallbackUsesStructuredErrorData);
         failed += Run("Native tool schema fallback ignores unrelated", TestNativeToolSchemaFallbackIgnoresUnrelated);
         failed += Run("Native tool schema serialization switches field name", TestNativeToolSchemaSerializationSwitchesFieldName);
+        failed += Run("Native tool schema serialization includes tags in description", TestNativeToolSchemaSerializationIncludesTagsInDescription);
         failed += Run("Native request body omits previous_response_id", TestNativeRequestBodyOmitsPreviousResponseId);
 #if !NET472
         failed += Run("Setup args reject skip+update", TestSetupArgsRejectSkipUpdate);

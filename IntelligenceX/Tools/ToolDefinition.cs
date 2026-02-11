@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using IntelligenceX.Json;
 
 namespace IntelligenceX.Tools;
@@ -13,13 +15,30 @@ public sealed class ToolDefinition {
     /// <param name="name">Tool name.</param>
     /// <param name="description">Tool description.</param>
     /// <param name="parameters">JSON schema for tool parameters.</param>
-    public ToolDefinition(string name, string? description = null, JsonObject? parameters = null) {
+    /// <param name="tags">Optional tags used for model/tooling guidance.</param>
+    /// <param name="aliases">Optional aliases that should invoke the same tool implementation.</param>
+    /// <param name="aliasOf">Optional canonical tool name when this definition is an alias.</param>
+    public ToolDefinition(
+        string name,
+        string? description = null,
+        JsonObject? parameters = null,
+        IReadOnlyList<string>? tags = null,
+        IReadOnlyList<ToolAliasDefinition>? aliases = null,
+        string? aliasOf = null) {
         if (string.IsNullOrWhiteSpace(name)) {
             throw new ArgumentException("Tool name cannot be empty.", nameof(name));
         }
-        Name = name;
+        Name = name.Trim();
+        if (!string.IsNullOrWhiteSpace(aliasOf) &&
+            string.Equals(Name, aliasOf!.Trim(), StringComparison.OrdinalIgnoreCase)) {
+            throw new ArgumentException("Alias cannot reference itself.", nameof(aliasOf));
+        }
+
         Description = description;
         Parameters = parameters;
+        Tags = NormalizeTags(tags);
+        Aliases = NormalizeAliases(aliases, Name);
+        AliasOf = string.IsNullOrWhiteSpace(aliasOf) ? null : aliasOf!.Trim();
     }
 
     /// <summary>
@@ -34,4 +53,145 @@ public sealed class ToolDefinition {
     /// Gets the JSON schema for tool parameters.
     /// </summary>
     public JsonObject? Parameters { get; }
+
+    /// <summary>
+    /// Gets optional tags associated with this tool definition.
+    /// </summary>
+    public IReadOnlyList<string> Tags { get; }
+
+    /// <summary>
+    /// Gets optional aliases exposed for this tool definition.
+    /// </summary>
+    public IReadOnlyList<ToolAliasDefinition> Aliases { get; }
+
+    /// <summary>
+    /// Gets the canonical tool name when this definition represents an alias.
+    /// </summary>
+    public string? AliasOf { get; }
+
+    /// <summary>
+    /// Gets the canonical tool name for this definition.
+    /// </summary>
+    public string CanonicalName => AliasOf ?? Name;
+
+    /// <summary>
+    /// Creates an alias definition derived from the current canonical definition.
+    /// </summary>
+    /// <param name="aliasName">Alias tool name.</param>
+    /// <param name="description">Optional alias-specific description override.</param>
+    /// <param name="tags">Optional alias tags merged with canonical tags.</param>
+    public ToolDefinition CreateAliasDefinition(string aliasName, string? description = null, IReadOnlyList<string>? tags = null) {
+        if (string.IsNullOrWhiteSpace(aliasName)) {
+            throw new ArgumentException("Alias name cannot be empty.", nameof(aliasName));
+        }
+
+        var normalizedAliasName = aliasName.Trim();
+        if (string.Equals(normalizedAliasName, CanonicalName, StringComparison.OrdinalIgnoreCase)) {
+            throw new ArgumentException("Alias name cannot match canonical tool name.", nameof(aliasName));
+        }
+
+        var mergedTags = MergeTags(Tags, tags);
+        return new ToolDefinition(
+            name: normalizedAliasName,
+            description: string.IsNullOrWhiteSpace(description) ? Description : description,
+            parameters: Parameters,
+            tags: mergedTags,
+            aliases: null,
+            aliasOf: CanonicalName);
+    }
+
+    /// <summary>
+    /// Returns description text augmented with tag hints.
+    /// </summary>
+    public string? GetDescriptionWithTags() {
+        var baseDescription = string.IsNullOrWhiteSpace(Description) ? null : Description!.Trim();
+        if (Tags.Count == 0) {
+            return baseDescription;
+        }
+
+        var tagsText = $"tags: {string.Join(", ", Tags)}";
+        return string.IsNullOrWhiteSpace(baseDescription)
+            ? tagsText
+            : $"{baseDescription} [{tagsText}]";
+    }
+
+    private static IReadOnlyList<string> NormalizeTags(IReadOnlyList<string>? tags) {
+        if (tags is null || tags.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var list = new List<string>(tags.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var tag in tags) {
+            if (string.IsNullOrWhiteSpace(tag)) {
+                continue;
+            }
+
+            var normalized = tag.Trim();
+            if (seen.Add(normalized)) {
+                list.Add(normalized);
+            }
+        }
+
+        return list.Count == 0 ? Array.Empty<string>() : list.ToArray();
+    }
+
+    private static IReadOnlyList<ToolAliasDefinition> NormalizeAliases(
+        IReadOnlyList<ToolAliasDefinition>? aliases,
+        string canonicalName) {
+        if (aliases is null || aliases.Count == 0) {
+            return Array.Empty<ToolAliasDefinition>();
+        }
+
+        var list = new List<ToolAliasDefinition>(aliases.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var alias in aliases) {
+            if (alias is null) {
+                continue;
+            }
+            if (string.Equals(alias.Name, canonicalName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (seen.Add(alias.Name)) {
+                list.Add(alias);
+            }
+        }
+
+        return list.Count == 0 ? Array.Empty<ToolAliasDefinition>() : list.ToArray();
+    }
+
+    private static IReadOnlyList<string> MergeTags(IReadOnlyList<string> first, IReadOnlyList<string>? second) {
+        if ((first is null || first.Count == 0) && (second is null || second.Count == 0)) {
+            return Array.Empty<string>();
+        }
+
+        var merged = new List<string>((first?.Count ?? 0) + (second?.Count ?? 0));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (first is not null) {
+            foreach (var tag in first) {
+                if (string.IsNullOrWhiteSpace(tag)) {
+                    continue;
+                }
+                var normalized = tag.Trim();
+                if (seen.Add(normalized)) {
+                    merged.Add(normalized);
+                }
+            }
+        }
+
+        if (second is not null) {
+            foreach (var tag in second) {
+                if (string.IsNullOrWhiteSpace(tag)) {
+                    continue;
+                }
+                var normalized = tag.Trim();
+                if (seen.Add(normalized)) {
+                    merged.Add(normalized);
+                }
+            }
+        }
+
+        return merged.Count == 0 ? Array.Empty<string>() : merged.ToArray();
+    }
 }

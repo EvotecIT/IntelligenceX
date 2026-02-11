@@ -122,6 +122,70 @@ internal static partial class Program {
         AssertSequenceEqual(new[] { "Alpha", "beta", "zeta" }, names, "tool definition order");
     }
 
+    private static void TestToolDefinitionAliasMergesTags() {
+        var canonical = new ToolDefinition(
+            name: "ad_search",
+            description: "Search Active Directory",
+            tags: new[] { "ad", "ldap" });
+        var alias = canonical.CreateAliasDefinition(
+            aliasName: "ad_find",
+            tags: new[] { "discovery" });
+
+        AssertEqual("ad_find", alias.Name, "alias name");
+        AssertEqual("ad_search", alias.AliasOf, "alias canonical");
+        AssertEqual("Search Active Directory", alias.Description, "alias description");
+        AssertSequenceEqual(new[] { "ad", "ldap", "discovery" }, alias.Tags.ToArray(), "alias tags");
+    }
+
+    private static void TestToolRegistryRegistersAliasesFromDefinition() {
+        var registry = new ToolRegistry();
+        var tool = new ConfiguredTool(new ToolDefinition(
+            name: "ad_search",
+            description: "Search Active Directory",
+            aliases: new[] {
+                new ToolAliasDefinition("ad_find", tags: new[] { "search" }),
+                new ToolAliasDefinition("ad_lookup")
+            }));
+
+        registry.Register(tool);
+
+        AssertEqual(true, registry.TryGet("ad_search", out var canonical), "canonical registered");
+        AssertEqual(true, registry.TryGet("ad_find", out var aliasFind), "alias ad_find registered");
+        AssertEqual(true, registry.TryGet("ad_lookup", out var aliasLookup), "alias ad_lookup registered");
+        AssertEqual(true, ReferenceEquals(canonical, aliasFind), "ad_find maps to canonical tool instance");
+        AssertEqual(true, ReferenceEquals(canonical, aliasLookup), "ad_lookup maps to canonical tool instance");
+
+        var definitions = registry.GetDefinitions().ToDictionary(static d => d.Name, StringComparer.OrdinalIgnoreCase);
+        AssertEqual("ad_search", definitions["ad_search"].CanonicalName, "canonical canonical name");
+        AssertEqual("ad_search", definitions["ad_find"].CanonicalName, "ad_find canonical name");
+        AssertEqual("ad_search", definitions["ad_lookup"].CanonicalName, "ad_lookup canonical name");
+    }
+
+    private static void TestToolRegistryRegisterAliasWithOverrides() {
+        var registry = new ToolRegistry();
+        var tool = new ConfiguredTool(new ToolDefinition(
+            name: "system_info",
+            description: "Read system summary",
+            tags: new[] { "system", "inventory" }));
+
+        registry.Register(tool);
+        registry.RegisterAlias(
+            aliasName: "host_info",
+            targetToolName: "system_info",
+            description: "Read host details",
+            tags: new[] { "host" });
+
+        AssertEqual(true, registry.TryGet("host_info", out var aliasTool), "registered alias");
+        AssertEqual(true, ReferenceEquals(tool, aliasTool), "alias maps to canonical tool instance");
+
+        var definitions = registry.GetDefinitions().ToDictionary(static d => d.Name, StringComparer.OrdinalIgnoreCase);
+        var aliasDef = definitions["host_info"];
+        AssertEqual("system_info", aliasDef.AliasOf, "aliasOf");
+        AssertEqual("system_info", aliasDef.CanonicalName, "canonical name");
+        AssertEqual("Read host details", aliasDef.Description, "alias description");
+        AssertSequenceEqual(new[] { "system", "inventory", "host" }, aliasDef.Tags.ToArray(), "alias merged tags");
+    }
+
     private static void TestToolRunnerMaxRounds() {
         using var client = CreateToolRunnerClient(BuildToolCallTurn(("call_1", "echo")));
         var registry = new ToolRegistry();
