@@ -362,10 +362,10 @@ function Get-AnalyzerPaths {
                 }
 
                 $extension = [System.IO.Path]::GetExtension($file)
-                switch ($extension) {
-                    '.ps1' { [void]$paths.Add($file) }
-                    '.psm1' { [void]$paths.Add($file) }
-                    '.psd1' { [void]$paths.Add($file) }
+                if ([string]::Equals($extension, '.ps1', [System.StringComparison]::OrdinalIgnoreCase) -or
+                    [string]::Equals($extension, '.psm1', [System.StringComparison]::OrdinalIgnoreCase) -or
+                    [string]::Equals($extension, '.psd1', [System.StringComparison]::OrdinalIgnoreCase)) {
+                    [void]$paths.Add($file)
                 }
             }
         } catch [System.UnauthorizedAccessException] {
