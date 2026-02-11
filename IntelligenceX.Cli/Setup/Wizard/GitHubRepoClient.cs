@@ -100,9 +100,9 @@ internal sealed class GitHubRepoClient : IDisposable {
         } catch (HttpRequestException ex) {
             Trace.TraceWarning($"GitHub pull request fetch HTTP failure for {owner}/{repo}#{number}: {ex.Message}");
             return null;
-        } catch (TaskCanceledException ex) {
-            Trace.TraceWarning($"GitHub pull request fetch timeout/cancel for {owner}/{repo}#{number}: {ex.Message}");
-            return null;
+        } catch (OperationCanceledException) {
+            // Preserve cancellation semantics for callers that enforce timeouts/cancellation tokens.
+            throw;
         } catch (JsonException ex) {
             Trace.TraceWarning($"GitHub pull request fetch JSON parse failure for {owner}/{repo}#{number}: {ex.Message}");
             return null;
