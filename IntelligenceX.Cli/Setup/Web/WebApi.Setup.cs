@@ -31,6 +31,7 @@ internal sealed partial class WebApi {
     internal static (bool ExpectOrgSecret, string? SecretOrg) ResolveOrgSecretVerificationContextForTests(
         bool cleanup,
         bool updateSecret,
+        string provider,
         string? secretTarget,
         string? secretOrg) {
         var operation = cleanup
@@ -38,7 +39,7 @@ internal sealed partial class WebApi {
             : updateSecret
                 ? SetupApplyOperation.UpdateSecret
                 : SetupApplyOperation.Setup;
-        return ResolveOrgSecretVerificationContext(operation, secretTarget, secretOrg);
+        return ResolveOrgSecretVerificationContext(operation, provider, secretTarget, secretOrg);
     }
 
     private static bool ResolveWithConfigFromArgs(IReadOnlyList<string> args) {
@@ -49,11 +50,19 @@ internal sealed partial class WebApi {
 
     private static (bool ExpectOrgSecret, string? SecretOrg) ResolveOrgSecretVerificationContext(
         SetupApplyOperation operation,
+        string provider,
         string? secretTarget,
         string? secretOrg) {
         var expectOrgSecret = (operation == SetupApplyOperation.Setup || operation == SetupApplyOperation.UpdateSecret) &&
+                              IsOpenAiProvider(provider) &&
                               string.Equals(secretTarget, "org", StringComparison.OrdinalIgnoreCase);
         return (expectOrgSecret, expectOrgSecret ? secretOrg : null);
+    }
+
+    private static bool IsOpenAiProvider(string provider) {
+        return string.Equals(provider, "openai", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(provider, "chatgpt", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(provider, "codex", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool ContainsArg(IReadOnlyList<string> args, string name) {
@@ -153,7 +162,7 @@ internal sealed partial class WebApi {
                 : SetupApplyOperation.Setup;
         var provider = string.IsNullOrWhiteSpace(request.Provider) ? "openai" : request.Provider!;
         var requestDryRun = dryRun || request.DryRun;
-        var orgSecretContext = ResolveOrgSecretVerificationContext(operation, request.SecretTarget, request.SecretOrg);
+        var orgSecretContext = ResolveOrgSecretVerificationContext(operation, provider, request.SecretTarget, request.SecretOrg);
 
         GitHubRepoClient? verifyClient = null;
         try {

@@ -59,6 +59,7 @@ internal static partial class Program {
         var setupWithOrg = IntelligenceX.Cli.Setup.Web.WebApi.ResolveOrgSecretVerificationContextForTests(
             cleanup: false,
             updateSecret: false,
+            provider: "openai",
             secretTarget: "org",
             secretOrg: null);
         AssertEqual(true, setupWithOrg.ExpectOrgSecret, "web setup org secret expected for org target without explicit org");
@@ -67,6 +68,7 @@ internal static partial class Program {
         var updateWithOrg = IntelligenceX.Cli.Setup.Web.WebApi.ResolveOrgSecretVerificationContextForTests(
             cleanup: false,
             updateSecret: true,
+            provider: "chatgpt",
             secretTarget: "org",
             secretOrg: "EvotecIT");
         AssertEqual(true, updateWithOrg.ExpectOrgSecret, "web update-secret org secret expected for org target");
@@ -75,10 +77,20 @@ internal static partial class Program {
         var repoTarget = IntelligenceX.Cli.Setup.Web.WebApi.ResolveOrgSecretVerificationContextForTests(
             cleanup: false,
             updateSecret: false,
+            provider: "openai",
             secretTarget: "repo",
             secretOrg: "EvotecIT");
         AssertEqual(false, repoTarget.ExpectOrgSecret, "web setup repo target does not expect org secret");
         AssertEqual(null, repoTarget.SecretOrg, "web setup repo target does not pass org secret");
+
+        var nonOpenAiProvider = IntelligenceX.Cli.Setup.Web.WebApi.ResolveOrgSecretVerificationContextForTests(
+            cleanup: false,
+            updateSecret: false,
+            provider: "copilot",
+            secretTarget: "org",
+            secretOrg: "EvotecIT");
+        AssertEqual(false, nonOpenAiProvider.ExpectOrgSecret, "web setup org target non-openai provider does not expect org secret");
+        AssertEqual(null, nonOpenAiProvider.SecretOrg, "web setup org target non-openai provider does not pass org secret");
     }
 
     private static void TestWebSetupRunProcessTimeoutReturnsPromptly() {
