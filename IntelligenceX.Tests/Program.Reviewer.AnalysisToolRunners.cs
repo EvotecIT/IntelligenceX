@@ -6,6 +6,11 @@ internal static partial class Program {
         var script = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.BuildPowerShellRunnerScriptForTests();
 
         AssertContainsText(script, "[switch]$FailOnAnalyzerErrors", "powershell runner strict switch parameter");
+        AssertContainsText(script, "[string]$ExcludedDirectoriesCsv", "powershell runner excluded directories parameter");
+        AssertContainsText(script, "Get-AnalyzerPaths", "powershell runner pre-enumerates script paths");
+        AssertContainsText(script, "if ($analysisPaths.Length -gt 0)", "powershell runner handles empty path list");
+        AssertContainsText(script, "foreach ($analysisPath in $analysisPaths)", "powershell runner iterates filtered paths");
+        AssertContainsText(script, "Invoke-ScriptAnalyzer -Path $analysisPath", "powershell runner invokes analyzer per path");
         AssertContainsText(script, "-ErrorAction Continue -ErrorVariable +invokeErrors",
             "powershell runner captures non-terminating engine errors");
         AssertContainsText(script, "if ($sawInvokeErrors -and $FailOnAnalyzerErrors)",
@@ -45,6 +50,19 @@ internal static partial class Program {
 
         AssertEqual(true, strictHasSwitch, "powershell strict args include fail switch");
         AssertEqual(false, nonStrictHasSwitch, "powershell non-strict args omit fail switch");
+
+        string? strictExcludedDirectories = null;
+        for (var i = 0; i + 1 < strictArgs.Count; i++) {
+            if (string.Equals(strictArgs[i], "-ExcludedDirectoriesCsv", StringComparison.Ordinal)) {
+                strictExcludedDirectories = strictArgs[i + 1];
+                break;
+            }
+        }
+
+        AssertEqual(false, string.IsNullOrWhiteSpace(strictExcludedDirectories),
+            "powershell strict args include excluded directories csv");
+        AssertContainsText(strictExcludedDirectories ?? string.Empty, ".worktrees",
+            "powershell strict args include .worktrees exclusion");
     }
 }
 #endif
