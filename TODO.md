@@ -46,8 +46,8 @@ Goal: reviewer + static analysis + onboarding (CLI + Web) feel "done" end-to-end
 
 ### Phase F — End-To-End Tests
 - [ ] Add tests for setup plan generation: ensure enabling analysis produces `analysis` in reviewer.json and does not regress existing review settings.
-- [ ] Add tests for config merge behavior (existing reviewer.json + enable analysis preserves unrelated user keys).
-- [ ] Add unit tests for `SetupAnalysisPacks.TryNormalizeCsv` (empty/default, invalid chars, max ids/length, dedupe).
+- [x] Add tests for config merge behavior (existing reviewer.json + enable analysis preserves unrelated user keys).
+- [x] Add unit tests for `SetupAnalysisPacks.TryNormalizeCsv` (empty/default, invalid chars, max ids/length, dedupe).
 - [ ] Add tests for web setup validation: analysis fields rejected when not applicable (config override, update-secret/cleanup), and rejected when `analysisEnabled != true` but gate/packs provided.
 
 ## Engine Roadmap
