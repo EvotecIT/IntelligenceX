@@ -42,7 +42,7 @@ Goal: reviewer + static analysis + onboarding (CLI + Web) feel "done" end-to-end
 ### Phase E — Docs + Samples
 - [x] Promote `Docs/reviewer/static-analysis.md` from Draft to stable docs (align examples with actual wizard output).
 - [x] Add "First PR checklist" doc: what to expect after merging onboarding PR and how to debug common issues.
-- [ ] Add screenshots (CLI + Web) for the "Configure" step and the "Verify" step.
+- [x] Add screenshots (CLI + Web) for the "Configure" step and the "Verify" step.
 
 ### Phase F — End-To-End Tests
 - [x] Add tests for setup plan generation: ensure enabling analysis produces `analysis` in reviewer.json and does not regress existing review settings.

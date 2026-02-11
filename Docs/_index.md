@@ -47,7 +47,7 @@ Welcome to the IntelligenceX documentation.
 - [Examples](/docs/examples/)
 - [Troubleshooting](/docs/troubleshooting/)
 - [FAQ](/docs/faq/)
-- [Screenshots (Planned)](/docs/screenshots/)
+- [Screenshots](/docs/screenshots/)
 
 ## Apps (Planned)
 
