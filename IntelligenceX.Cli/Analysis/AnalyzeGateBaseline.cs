@@ -114,7 +114,7 @@ internal static class AnalyzeGateBaseline {
             if (string.IsNullOrWhiteSpace(key)) {
                 key = BuildBaselineKey(new AnalysisFinding(
                     Path: obj.GetString("path") ?? string.Empty,
-                    Line: (int)(obj.GetInt64("line") ?? 0),
+                    Line: ReadLineForBaselineItem(obj),
                     Message: obj.GetString("message") ?? string.Empty,
                     Severity: obj.GetString("severity") ?? "unknown",
                     RuleId: obj.GetString("ruleId"),
@@ -181,6 +181,17 @@ internal static class AnalyzeGateBaseline {
         return trimmed.Substring(0, first + 1) +
                NormalizePathForBaselineKey(path) +
                trimmed.Substring(second);
+    }
+
+    private static int ReadLineForBaselineItem(JsonObject obj) {
+        var line = obj.GetInt64("line");
+        if (!line.HasValue || line.Value <= 0) {
+            return 0;
+        }
+        if (line.Value >= int.MaxValue) {
+            return int.MaxValue;
+        }
+        return (int)line.Value;
     }
 
     private static string FormatExceptionMessage(Exception ex) {

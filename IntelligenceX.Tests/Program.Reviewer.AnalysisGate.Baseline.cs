@@ -215,6 +215,77 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeGateNewIssuesOnlyLargeLegacyLineDoesNotWrapToZero() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-baseline-line-clamp-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            SeedMinimalGateCatalog(temp);
+            Directory.CreateDirectory(Path.Combine(temp, "artifacts"));
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+
+            File.WriteAllText(Path.Combine(temp, "artifacts", "intelligencex.findings.json"), """
+{
+  "schema": "intelligencex.findings.v1",
+  "items": [
+    {
+      "path": "src/test.cs",
+      "line": 0,
+      "severity": "warning",
+      "message": "Broken.",
+      "ruleId": "IX001",
+      "tool": "IntelligenceX"
+    }
+  ]
+}
+""");
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "analysis-baseline.json"), """
+{
+  "schema": "intelligencex.findings.v1",
+  "items": [
+    {
+      "path": "src/test.cs",
+      "line": 9223372036854775807,
+      "severity": "warning",
+      "message": "Broken.",
+      "ruleId": "IX001",
+      "tool": "IntelligenceX"
+    }
+  ]
+}
+""");
+            var configPath = Path.Combine(temp, ".intelligencex", "reviewer.json");
+            File.WriteAllText(configPath, """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["all-50"],
+    "gate": {
+      "enabled": true,
+      "newIssuesOnly": true,
+      "baselinePath": ".intelligencex/analysis-baseline.json",
+      "failOnUnavailable": true
+    },
+    "results": { "inputs": ["artifacts/intelligencex.findings.json"] }
+  }
+}
+""");
+
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunner.RunAsync(new[] {
+                "gate",
+                "--workspace", temp,
+                "--config", configPath
+            }).GetAwaiter().GetResult();
+            AssertEqual(2, exit, "analyze gate large legacy line does not wrap and suppress line 0 finding");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalyzeGateNewIssuesOnlyMissingBaselineIsUnavailable() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-baseline-missing-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
