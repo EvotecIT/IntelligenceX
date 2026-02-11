@@ -654,9 +654,12 @@ function formatResults(data) {
     const total = data.results.length;
     const succeeded = data.results.filter(r => r.exitCode === 0).length;
     const failed = total - succeeded;
-    setSummary(`Results: ${succeeded}/${total} succeeded${failed > 0 ? `, ${failed} failed` : ''}.`);
+    const verifyFailed = data.results.filter(r => r.verify && r.verify.skipped !== true && r.verify.passed === false).length;
+    const verifyText = verifyFailed > 0 ? `, verify issues in ${verifyFailed}` : '';
+    setSummary(`Results: ${succeeded}/${total} succeeded${failed > 0 ? `, ${failed} failed` : ''}${verifyText}.`);
     lines.push(`Summary: ${succeeded}/${total} succeeded`);
     if (failed > 0) lines.push(`Failures: ${failed}`);
+    if (verifyFailed > 0) lines.push(`Verification issues: ${verifyFailed}`);
     lines.push('');
     data.results.forEach(result => {
       const name = result.repo || 'repo';
@@ -664,6 +667,9 @@ function formatResults(data) {
       lines.push(`== ${name} ==`);
       lines.push(`status: ${status}`);
       if (typeof result.exitCode !== 'undefined') lines.push(`exit: ${result.exitCode}`);
+      if (result.pullRequestUrl && result.pullRequestUrl.trim().length > 0) {
+        lines.push(`pr: ${result.pullRequestUrl.trim()}`);
+      }
       if (result.error && result.error.trim().length > 0) {
         lines.push('error:');
         lines.push(result.error.trim());
@@ -671,6 +677,28 @@ function formatResults(data) {
       if (result.output && result.output.trim().length > 0) {
         lines.push('output:');
         lines.push(result.output.trim());
+      }
+      if (result.verify) {
+        const verify = result.verify;
+        const verifyStatus = verify.skipped ? 'skipped' : (verify.passed ? 'ok' : 'failed');
+        lines.push(`verify: ${verifyStatus}`);
+        if (verify.checkedRef && String(verify.checkedRef).trim().length > 0) {
+          const source = verify.checkedRefSource ? String(verify.checkedRefSource) : 'ref';
+          lines.push(`verify-ref: ${source}=${verify.checkedRef}`);
+        }
+        if (verify.note && String(verify.note).trim().length > 0) {
+          lines.push(`verify-note: ${String(verify.note).trim()}`);
+        }
+        if (Array.isArray(verify.checks) && verify.checks.length > 0) {
+          verify.checks.forEach(check => {
+            const checkStatus = check && check.skipped ? 'skip' : (check && check.passed ? 'ok' : 'fail');
+            const expected = check && check.expected ? String(check.expected) : 'n/a';
+            const actual = check && check.actual ? String(check.actual) : 'n/a';
+            const note = check && check.note ? ` (${String(check.note)})` : '';
+            const checkName = check && check.name ? String(check.name) : 'check';
+            lines.push(`- ${checkName}: ${checkStatus} (expected ${expected}, actual ${actual})${note}`);
+          });
+        }
       }
       lines.push('');
     });

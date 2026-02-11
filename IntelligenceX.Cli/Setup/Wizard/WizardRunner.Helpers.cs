@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Cli.Setup;
 using IntelligenceX.Cli.Setup.Host;
 using IntelligenceX.OpenAI.Auth;
 using IntelligenceX.OpenAI.Native;
@@ -91,19 +92,39 @@ internal static partial class WizardRunner {
         };
     }
 
-    private static string? ExtractPullRequestUrl(string output) {
-        if (string.IsNullOrWhiteSpace(output)) {
-            return null;
-        }
-        foreach (var line in output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries)) {
-            var marker = "PR created:";
-            var idx = line.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-            if (idx < 0) {
-                continue;
-            }
-            return line.Substring(idx + marker.Length).Trim();
-        }
-        return null;
+    private static SetupPostApplyContext BuildPostApplyVerifyContext(
+        WizardState state,
+        SetupPlan plan,
+        SetupHostResult result,
+        string? pullRequestUrl) {
+        var operation = state.Operation switch {
+            WizardOperation.Cleanup => SetupApplyOperation.Cleanup,
+            WizardOperation.UpdateSecret => SetupApplyOperation.UpdateSecret,
+            _ => SetupApplyOperation.Setup
+        };
+        var provider = !string.IsNullOrWhiteSpace(plan.Provider) ? plan.Provider! : state.Provider;
+        var expectOrgSecret = (state.Operation == WizardOperation.Setup || state.Operation == WizardOperation.UpdateSecret) &&
+                              IsOpenAiProvider(provider) &&
+                              state.SecretTarget == SecretTarget.Org;
+        var withConfig = plan.WithConfig ||
+                         !string.IsNullOrWhiteSpace(plan.ConfigJson) ||
+                         !string.IsNullOrWhiteSpace(plan.ConfigPath);
+
+        return new SetupPostApplyContext {
+            Repo = plan.RepoFullName,
+            Operation = operation,
+            WithConfig = withConfig,
+            SkipSecret = plan.SkipSecret,
+            ManualSecret = plan.ManualSecret,
+            KeepSecret = plan.KeepSecret,
+            DryRun = plan.DryRun,
+            ExitSuccess = result.ExitCode == 0,
+            ExpectOrgSecret = expectOrgSecret,
+            SecretOrg = expectOrgSecret ? state.SecretOrg : null,
+            Provider = provider,
+            Output = result.Output,
+            PullRequestUrl = pullRequestUrl
+        };
     }
 
     private static void RenderPullRequestSummary(IReadOnlyList<(string Repo, string Url)> links) {
@@ -116,6 +137,40 @@ internal static partial class WizardRunner {
             table.AddRow(repo, url);
         }
 
+        AnsiConsole.Write(table);
+        AnsiConsole.WriteLine();
+    }
+
+    private static void RenderPostApplyVerificationSummary(IReadOnlyList<SetupPostApplyVerification> results) {
+        var table = new Table()
+            .RoundedBorder()
+            .AddColumn("Repository")
+            .AddColumn("Verify")
+            .AddColumn("Details");
+
+        foreach (var verify in results) {
+            var status = verify.Skipped
+                ? "[grey]skipped[/]"
+                : verify.Passed
+                    ? "[green]ok[/]"
+                    : "[red]failed[/]";
+
+            var details = new List<string>();
+            if (!string.IsNullOrWhiteSpace(verify.CheckedRef)) {
+                details.Add($"{verify.CheckedRefSource ?? "ref"}={verify.CheckedRef}");
+            }
+            foreach (var check in verify.Checks) {
+                var checkStatus = check.Skipped ? "skip" : (check.Passed ? "ok" : "fail");
+                details.Add($"{check.Name}:{checkStatus}");
+            }
+            if (!string.IsNullOrWhiteSpace(verify.Note)) {
+                details.Add(verify.Note!);
+            }
+
+            table.AddRow(verify.Repo, status, string.Join("; ", details));
+        }
+
+        AnsiConsole.MarkupLine("[grey]Post-apply verification[/]");
         AnsiConsole.Write(table);
         AnsiConsole.WriteLine();
     }

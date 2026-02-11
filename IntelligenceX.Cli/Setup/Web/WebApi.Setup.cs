@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.Setup;
+using IntelligenceX.Cli.Setup.Wizard;
 
 namespace IntelligenceX.Cli.Setup.Web;
 
@@ -90,11 +91,43 @@ internal sealed partial class WebApi {
             : new List<string> { request.Repo! };
 
         var outputs = new List<SetupResponse>();
-        foreach (var repo in repos) {
-            var args = BuildSetupArgs(request, dryRun, repo);
-            var result = await RunSetupAsync(args).ConfigureAwait(false);
-            result.Repo = repo;
-            outputs.Add(result);
+        var withConfig = request.WithConfig || hasConfigOverride;
+        var effectiveDryRun = dryRun || request.DryRun;
+        var operation = request.Cleanup
+            ? SetupApplyOperation.Cleanup
+            : request.UpdateSecret
+                ? SetupApplyOperation.UpdateSecret
+                : SetupApplyOperation.Setup;
+        var provider = string.IsNullOrWhiteSpace(request.Provider) ? "openai" : request.Provider!;
+
+        GitHubRepoClient? verifyClient = null;
+        try {
+            if (!effectiveDryRun && !string.IsNullOrWhiteSpace(request.GitHubToken)) {
+                verifyClient = new GitHubRepoClient(request.GitHubToken!, "https://api.github.com");
+            }
+
+            foreach (var repo in repos) {
+                var args = BuildSetupArgs(request, dryRun, repo);
+                var result = await RunSetupAsync(args).ConfigureAwait(false);
+                result.Repo = repo;
+                result.PullRequestUrl = SetupPostApplyVerifier.ExtractPullRequestUrl(result.Output);
+                result.Verify = await SetupPostApplyVerifier.VerifyAsync(verifyClient, new SetupPostApplyContext {
+                    Repo = repo,
+                    Operation = operation,
+                    WithConfig = withConfig,
+                    SkipSecret = request.SkipSecret,
+                    ManualSecret = request.ManualSecret,
+                    KeepSecret = request.KeepSecret,
+                    DryRun = effectiveDryRun,
+                    ExitSuccess = result.ExitCode == 0,
+                    Provider = provider,
+                    Output = result.Output,
+                    PullRequestUrl = result.PullRequestUrl
+                }).ConfigureAwait(false);
+                outputs.Add(result);
+            }
+        } finally {
+            verifyClient?.Dispose();
         }
 
         await WriteJsonOkAsync(context, new {

@@ -90,6 +90,27 @@ internal sealed class GitHubRepoClient : IDisposable {
         }
     }
 
+    public async Task<PullRequestInfo?> TryGetPullRequestAsync(string owner, string repo, int number) {
+        try {
+            var json = await GetJsonAsync($"/repos/{owner}/{repo}/pulls/{number}").ConfigureAwait(false);
+            var headRef = json.GetProperty("head").GetProperty("ref").GetString();
+            var baseRef = json.GetProperty("base").GetProperty("ref").GetString();
+            var url = json.TryGetProperty("html_url", out var htmlUrl) ? htmlUrl.GetString() : null;
+            return new PullRequestInfo(number, headRef, baseRef, url);
+        } catch (Exception ex) {
+            Trace.TraceWarning($"GitHub pull request fetch failed for {owner}/{repo}#{number}: {ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
+    }
+
+    public Task<bool?> TryRepoSecretExistsAsync(string owner, string repo, string name) {
+        return TrySecretExistsAsync($"/repos/{owner}/{repo}/actions/secrets/{name}");
+    }
+
+    public Task<bool?> TryOrgSecretExistsAsync(string org, string name) {
+        return TrySecretExistsAsync($"/orgs/{org}/actions/secrets/{name}");
+    }
+
     private async Task<JsonElement> GetJsonAsync(string url) {
         using var response = await _http.GetAsync(url).ConfigureAwait(false);
         var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -115,6 +136,24 @@ internal sealed class GitHubRepoClient : IDisposable {
             }
         }
         return msg;
+    }
+
+    private async Task<bool?> TrySecretExistsAsync(string url) {
+        try {
+            using var response = await _http.GetAsync(url).ConfigureAwait(false);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound) {
+                return false;
+            }
+            if (response.IsSuccessStatusCode) {
+                return true;
+            }
+            var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            Trace.TraceWarning($"GitHub secret lookup failed ({(int)response.StatusCode}): {content}");
+            return null;
+        } catch (Exception ex) {
+            Trace.TraceWarning($"GitHub secret lookup failed: {ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
     }
 
     private static bool TryParseRepository(JsonElement item, out RepositoryInfo info) {
@@ -216,5 +255,19 @@ internal sealed class GitHubRepoClient : IDisposable {
         /// Decoded file content.
         /// </summary>
         public string Content { get; }
+    }
+
+    public sealed class PullRequestInfo {
+        public PullRequestInfo(int number, string? headRef, string? baseRef, string? url) {
+            Number = number;
+            HeadRef = headRef;
+            BaseRef = baseRef;
+            Url = url;
+        }
+
+        public int Number { get; }
+        public string? HeadRef { get; }
+        public string? BaseRef { get; }
+        public string? Url { get; }
     }
 }
