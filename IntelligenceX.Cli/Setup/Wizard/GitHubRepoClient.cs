@@ -7,6 +7,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace IntelligenceX.Cli.Setup.Wizard;
@@ -14,7 +15,7 @@ namespace IntelligenceX.Cli.Setup.Wizard;
 internal sealed class GitHubRepoClient : IDisposable {
     private readonly HttpClient _http;
     private readonly bool _ownsHttpClient;
-    private bool _disposed;
+    private int _disposeState;
 
     public GitHubRepoClient(string token, string apiBaseUrl) {
         _http = new HttpClient {
@@ -32,13 +33,12 @@ internal sealed class GitHubRepoClient : IDisposable {
     }
 
     public void Dispose() {
-        if (_disposed) {
+        if (Interlocked.Exchange(ref _disposeState, 1) != 0) {
             return;
         }
         if (_ownsHttpClient) {
             _http.Dispose();
         }
-        _disposed = true;
     }
 
     public async Task<List<RepositoryInfo>> ListRepositoriesAsync() {
@@ -188,7 +188,7 @@ internal sealed class GitHubRepoClient : IDisposable {
     }
 
     private void ThrowIfDisposed() {
-        if (_disposed) {
+        if (Volatile.Read(ref _disposeState) != 0) {
             throw new ObjectDisposedException(nameof(GitHubRepoClient));
         }
     }
