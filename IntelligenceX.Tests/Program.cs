@@ -175,6 +175,8 @@ internal static partial class Program {
         failed += Run("Analyze gate new-only missing baseline schema logs inference", TestAnalyzeGateNewIssuesOnlyMissingSchemaLogsInference);
         failed += Run("Analyze gate new-only large legacy line does not wrap to zero",
             TestAnalyzeGateNewIssuesOnlyLargeLegacyLineDoesNotWrapToZero);
+        failed += Run("Analyze gate new-only legacy line int-max matches int-max finding",
+            TestAnalyzeGateNewIssuesOnlyLegacyLineIntMaxMatchesIntMaxFinding);
         failed += Run("Analyze gate new-only missing baseline unavailable", TestAnalyzeGateNewIssuesOnlyMissingBaselineIsUnavailable);
         failed += Run("Analyze gate new-only missing baseline can pass when unavailable allowed",
             TestAnalyzeGateNewIssuesOnlyMissingBaselineCanPassWhenUnavailableAllowed);
