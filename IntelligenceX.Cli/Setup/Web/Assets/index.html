@@ -278,11 +278,11 @@
             <h3 style="margin: 12px 0 8px 0;">Static analysis</h3>
             <div class="row">
               <label class="inline"><input type="checkbox" id="analysisEnabled" /> Enable static analysis</label>
-              <label class="inline"><input type="checkbox" id="analysisGate" /> Fail PR on findings</label>
+              <label class="inline"><input type="checkbox" id="analysisGate" /> Fail PR on findings (vulnerability/bug at warning+)</label>
             </div>
             <label>Analysis pack ids (comma-separated)</label>
             <input id="analysisPacks" placeholder="(default: all-50)" />
-            <p class="hint" id="analysisHint">Leave empty to use defaults. Examples: all-50, all-100, all-500, all-security-default, powershell-50.</p>
+            <p class="hint" id="analysisHint">Leave empty to use defaults. Examples: all-50, all-100, all-500, all-security-default, powershell-50. Gate semantics/docs: Docs/reviewer/static-analysis.md</p>
 
             <label>Branch name (optional)</label>
             <input id="branchName" placeholder="setup/intelligencex" />

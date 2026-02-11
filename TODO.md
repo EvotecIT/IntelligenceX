@@ -34,7 +34,7 @@ Goal: reviewer + static analysis + onboarding (CLI + Web) feel "done" end-to-end
 - [ ] Ensure thread triage does not repeatedly re-suggest already-addressed items; prefer dedupe and summary stability over rewriting.
 
 ### Phase D — Static Analysis Productization
-- [ ] Wizard: explain analysis gate semantics (which types/severities fail the check) and link to docs.
+- [x] Wizard: explain analysis gate semantics (which types/severities fail the check) and link to docs.
 - [ ] Add "list packs" affordance in onboarding (CLI and Web) so users can browse available packs.
 - [ ] Provide an optional "export analyzer config" path for IDE support (explicit opt-in, never default).
 - [ ] Add a CI guardrail: `intelligencex analyze validate-catalog` and pack integrity checks run on every PR that touches Analysis/Catalog or Analysis/Packs.
