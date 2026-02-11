@@ -276,14 +276,13 @@ internal static partial class AnalyzeRunCommand {
 )
 $ErrorActionPreference = 'Stop'
 
-if (-not (Test-Path -LiteralPath $Workspace)) {
-    throw ('Workspace path not found: ' + $Workspace)
-}
-$workspaceItem = Get-Item -LiteralPath $Workspace -ErrorAction Stop
-if (-not $workspaceItem.PSIsContainer) {
+if ([System.IO.File]::Exists($Workspace)) {
     throw ('Workspace path is not a directory: ' + $Workspace)
 }
-$workspaceRoot = [System.IO.Path]::GetFullPath([string]$workspaceItem.FullName)
+if (-not [System.IO.Directory]::Exists($Workspace)) {
+    throw ('Workspace path not found: ' + $Workspace)
+}
+$workspaceRoot = [System.IO.Path]::GetFullPath($Workspace)
 
 if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
     throw 'PSScriptAnalyzer module not found. Install with: Install-Module PSScriptAnalyzer -Scope CurrentUser'
@@ -363,7 +362,7 @@ function Get-AnalyzerPaths {
                 }
 
                 $extension = [System.IO.Path]::GetExtension($file)
-                switch ($extension.ToLowerInvariant()) {
+                switch ($extension) {
                     '.ps1' { [void]$paths.Add($file) }
                     '.psm1' { [void]$paths.Add($file) }
                     '.psd1' { [void]$paths.Add($file) }
