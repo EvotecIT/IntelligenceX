@@ -88,3 +88,11 @@ When an agent is assigned a PR to improve or unblock, it must iterate until merg
 **Testing**
 - Run targeted `dotnet build` or tests if a change touches runtime behavior.
 - Note any skipped tests and why.
+
+**Repo-Local Skills**
+- Use repo skills from `/.agents/skills/README.md` for repeatable task execution.
+- Preferred skills by task type:
+  - Onboarding/setup UX and flows: `/.agents/skills/intelligencex-onboarding-setup/SKILL.md`
+  - Analysis/catalog/gate work: `/.agents/skills/intelligencex-analysis-gate/SKILL.md`
+  - PR unblock/merge loop: `/.agents/skills/intelligencex-pr-unblock-loop/SKILL.md`
+- Follow each skill's strict execution order and helper scripts before posting PR updates.
