@@ -28,6 +28,11 @@ internal static partial class Program {
         Console.WriteLine("Tip:");
         Console.WriteLine("  Run intelligencex with no arguments in an interactive terminal to open the management hub.");
         Console.WriteLine();
+        Console.WriteLine("Onboarding quick start:");
+        Console.WriteLine("  intelligencex setup web                              # guided browser onboarding");
+        Console.WriteLine("  intelligencex setup wizard --operation setup --repo owner/name");
+        Console.WriteLine("  intelligencex setup wizard --operation update-secret --repo owner/name");
+        Console.WriteLine();
         Console.WriteLine("Auth commands:");
         Console.WriteLine("  auth login       Start OAuth login flow and store credentials");
         Console.WriteLine("  auth export      Export stored credentials (json or base64)");

@@ -25,6 +25,7 @@ let selectedOperation = 'setup';
 let selectedProvider = 'openai';
 let selectedPresetProfile = 'balanced';
 let secretOption = 'login';   // 'login' | 'paste' | 'file' | 'skip'
+let selectedOnboardingPath = 'new-setup';
 let deviceState = null;
 let lastRecommendation = null;
 let lastSummaryBase = 'Ready to preview or apply.';
@@ -182,6 +183,42 @@ function selectOperation(op) {
   $('setupOptions').classList.toggle('hidden', op !== 'setup');
   $('cleanupOptions').classList.toggle('hidden', op !== 'cleanup');
   updateAnalysisControls();
+}
+
+function setOnboardingPathHint(message) {
+  const hint = $('pathHint');
+  if (hint) {
+    hint.textContent = message;
+  }
+}
+
+function applyOnboardingPath(path) {
+  selectedOnboardingPath = path;
+  document.querySelectorAll('[data-path]').forEach(c => {
+    c.classList.toggle('selected', c.dataset.path === path);
+  });
+
+  switch (path) {
+    case 'refresh-auth':
+      selectOperation('update-secret');
+      selectProvider('openai');
+      selectSecretOption('login');
+      setOnboardingPathHint('Path selected: Fix Expired Auth. Next: authenticate, choose repos, then run update-secret.');
+      break;
+    case 'cleanup':
+      selectOperation('cleanup');
+      selectSecretOption('skip');
+      setOnboardingPathHint('Path selected: Cleanup. Next: authenticate, select repos, then preview and remove setup files.');
+      break;
+    case 'new-setup':
+    default:
+      selectOperation('setup');
+      selectProvider('openai');
+      selectSecretOption('login');
+      if (withConfig) withConfig.checked = true;
+      setOnboardingPathHint('Path selected: New Setup. Next: authenticate with GitHub, then select repositories.');
+      break;
+  }
 }
 
 // ── Provider toggle ──
@@ -1292,7 +1329,4 @@ async function doApply() {
 refreshPresets();
 loadUsageCache();
 updateProgressBar();
-
-// Show default secret option sub-flow
-const loginFlow = $('secretLoginFlow');
-if (loginFlow) loginFlow.classList.add('visible');
+applyOnboardingPath(selectedOnboardingPath);

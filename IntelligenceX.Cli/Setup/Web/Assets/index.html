@@ -62,6 +62,29 @@
         </div>
 
         <div class="card">
+          <h2>Choose Your Onboarding Path</h2>
+          <p class="hint">This pre-fills operation and auth defaults. You can still change everything later.</p>
+          <div class="card-grid cols-3">
+            <div class="option-card selected" data-path="new-setup" onclick="applyOnboardingPath('new-setup')">
+              <div class="card-icon">&#x1F680;</div>
+              <div class="card-title">New Setup</div>
+              <div class="card-desc">Configure workflow + secrets for first-time onboarding.</div>
+            </div>
+            <div class="option-card" data-path="refresh-auth" onclick="applyOnboardingPath('refresh-auth')">
+              <div class="card-icon">&#x1F504;</div>
+              <div class="card-title">Fix Expired Auth</div>
+              <div class="card-desc">Refresh OpenAI auth and update the repository secret.</div>
+            </div>
+            <div class="option-card" data-path="cleanup" onclick="applyOnboardingPath('cleanup')">
+              <div class="card-icon">&#x1F9F9;</div>
+              <div class="card-title">Cleanup</div>
+              <div class="card-desc">Remove workflow/config from selected repositories.</div>
+            </div>
+          </div>
+          <p class="hint" id="pathHint">Path selected: New Setup. Next: authenticate with GitHub.</p>
+        </div>
+
+        <div class="card">
           <h2>GitHub Authentication</h2>
           <p class="hint">Choose how to authenticate with GitHub.</p>
 
