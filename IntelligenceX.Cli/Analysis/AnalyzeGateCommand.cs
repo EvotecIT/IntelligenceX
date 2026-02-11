@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
 using IntelligenceX.Analysis;
 using IntelligenceX.Json;
@@ -14,12 +13,6 @@ internal static class AnalyzeGateCommand {
     private const int ExitSuccess = 0;
     private const int ExitError = 1;
     private const int ExitGateFailed = 2;
-    private const string BaselineSchemaValue = "intelligencex.analysis-baseline.v1";
-    private const string FindingsSchemaValue = "intelligencex.findings.v1";
-    private static readonly JsonSerializerOptions BaselineJsonOptions = new() {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
 
     public static Task<int> RunAsync(string[] args) {
         var options = ParseArgs(args, out var error);
@@ -188,7 +181,7 @@ internal static class AnalyzeGateCommand {
                 Console.WriteLine($"Invalid baseline output path outside workspace: {options.WriteBaselinePath}");
                 return Task.FromResult(ExitError);
             }
-            var writeResult = TryWriteBaselineFile(writePath, violations, out var writeError);
+            var writeResult = AnalyzeGateBaseline.TryWriteBaselineFile(writePath, violations, out var writeError);
             if (!writeResult) {
                 Console.WriteLine($"Failed to write baseline: {writeError}");
                 return Task.FromResult(ExitError);
@@ -209,17 +202,25 @@ internal static class AnalyzeGateCommand {
             }
             baselinePathResolved = baselinePath;
 
-            var baselineResult = TryLoadBaselineKeys(baselinePath, out var baselineKeys, out var baselineSchema, out var baselineError);
+            var baselineResult = AnalyzeGateBaseline.TryLoadBaselineKeys(
+                baselinePath,
+                out var baselineKeys,
+                out var baselineSchema,
+                out var baselineSchemaInferred,
+                out var baselineError);
             if (!baselineResult) {
                 Console.WriteLine($"Static analysis gate: unavailable ({baselineError}).");
                 return Task.FromResult(analysisSettings.Gate.FailOnUnavailable ? ExitGateFailed : ExitSuccess);
+            }
+            if (baselineSchemaInferred) {
+                Console.WriteLine($"Static analysis baseline schema inferred as '{baselineSchema}' (schema property missing).");
             }
             baselineLoadedCount = baselineKeys.Count;
             Console.WriteLine($"Static analysis baseline loaded: {baselinePath} (schema={baselineSchema}, items={baselineLoadedCount}).");
 
             var newViolations = new List<AnalysisFinding>();
             foreach (var violation in violations) {
-                var key = BuildBaselineKey(violation);
+                var key = AnalyzeGateBaseline.BuildBaselineKey(violation);
                 if (baselineKeys.Contains(key)) {
                     baselineSuppressed++;
                     continue;
@@ -604,163 +605,6 @@ internal static class AnalyzeGateCommand {
                value.Equals("--help", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool TryWriteBaselineFile(string path, IReadOnlyList<AnalysisFinding> findings, out string? error) {
-        error = null;
-        if (string.IsNullOrWhiteSpace(path)) {
-            error = "Baseline path is empty.";
-            return false;
-        }
-        try {
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory)) {
-                Directory.CreateDirectory(directory);
-            }
-
-            var byKey = new Dictionary<string, BaselineItem>(StringComparer.OrdinalIgnoreCase);
-            foreach (var finding in findings ?? Array.Empty<AnalysisFinding>()) {
-                var key = BuildBaselineKey(finding);
-                if (string.IsNullOrWhiteSpace(key) || byKey.ContainsKey(key)) {
-                    continue;
-                }
-                byKey[key] = new BaselineItem {
-                    Key = key,
-                    Path = finding.Path,
-                    Line = finding.Line,
-                    RuleId = finding.RuleId ?? string.Empty,
-                    Tool = finding.Tool ?? string.Empty,
-                    Severity = AnalysisSeverity.Normalize(finding.Severity),
-                    Fingerprint = finding.Fingerprint
-                };
-            }
-
-            var envelope = new BaselineEnvelope {
-                Schema = BaselineSchemaValue,
-                GeneratedAtUtc = DateTime.UtcNow.ToString("O"),
-                Items = byKey.Values
-                    .OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
-                    .ToList()
-            };
-            File.WriteAllText(path, JsonSerializer.Serialize(envelope, BaselineJsonOptions));
-            return true;
-        } catch (Exception ex) {
-            error = ex.Message;
-            return false;
-        }
-    }
-
-    private static bool TryLoadBaselineKeys(string path, out HashSet<string> keys, out string schema, out string? error) {
-        keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        schema = string.Empty;
-        error = null;
-
-        if (!File.Exists(path)) {
-            error = $"baseline file not found: {path}";
-            return false;
-        }
-
-        JsonObject? root;
-        try {
-            root = JsonLite.Parse(File.ReadAllText(path))?.AsObject();
-        } catch (Exception ex) {
-            error = $"could not parse baseline file: {ex.Message}";
-            return false;
-        }
-        if (root is null) {
-            error = "baseline file root must be a JSON object";
-            return false;
-        }
-
-        schema = root.GetString("schema") ?? string.Empty;
-        if (!string.IsNullOrWhiteSpace(schema) &&
-            !schema.Equals(BaselineSchemaValue, StringComparison.OrdinalIgnoreCase) &&
-            !schema.Equals(FindingsSchemaValue, StringComparison.OrdinalIgnoreCase)) {
-            error = $"unsupported baseline schema '{schema}'";
-            return false;
-        }
-        if (string.IsNullOrWhiteSpace(schema)) {
-            schema = FindingsSchemaValue;
-        }
-
-        var items = root.GetArray("items");
-        if (items is null || items.Count == 0) {
-            return true;
-        }
-
-        foreach (var item in items) {
-            var obj = item.AsObject();
-            if (obj is null) {
-                continue;
-            }
-
-            var key = obj.GetString("key");
-            if (string.IsNullOrWhiteSpace(key)) {
-                key = BuildBaselineKey(new AnalysisFinding(
-                    Path: obj.GetString("path") ?? string.Empty,
-                    Line: (int)(obj.GetInt64("line") ?? 0),
-                    Message: obj.GetString("message") ?? string.Empty,
-                    Severity: obj.GetString("severity") ?? "unknown",
-                    RuleId: obj.GetString("ruleId"),
-                    Tool: obj.GetString("tool"),
-                    Fingerprint: obj.GetString("fingerprint")));
-            }
-            key = NormalizeBaselineKey(key);
-
-            if (!string.IsNullOrWhiteSpace(key)) {
-                keys.Add(key);
-            }
-        }
-
-        return true;
-    }
-
-    private static string BuildBaselineKey(AnalysisFinding finding) {
-        var path = NormalizePathForBaselineKey(finding.Path);
-        var ruleId = (finding.RuleId ?? string.Empty).Trim();
-        var tool = (finding.Tool ?? string.Empty).Trim();
-        var line = finding.Line < 0 ? 0 : finding.Line;
-        var fingerprint = (finding.Fingerprint ?? string.Empty).Trim();
-        if (!string.IsNullOrWhiteSpace(fingerprint)) {
-            return $"{ruleId}|{path}|{line}|{tool}|fp:{fingerprint}";
-        }
-
-        var message = (finding.Message ?? string.Empty)
-            .Trim()
-            .Replace("\r\n", "\n")
-            .Replace('\r', '\n')
-            .Replace('\n', ' ');
-        return $"{ruleId}|{path}|{line}|{tool}|msg:{message}";
-    }
-
-    private static string NormalizePathForBaselineKey(string? path) {
-        var normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
-        if (normalized.StartsWith("./", StringComparison.Ordinal)) {
-            normalized = normalized.Substring(2);
-        }
-        return normalized.ToLowerInvariant();
-    }
-
-    private static string NormalizeBaselineKey(string? key) {
-        var trimmed = (key ?? string.Empty).Trim();
-        if (string.IsNullOrWhiteSpace(trimmed)) {
-            return string.Empty;
-        }
-
-        // Key shape is: ruleId|path|line|tool|fingerprint-or-message...
-        var first = trimmed.IndexOf('|');
-        if (first < 0) {
-            return trimmed;
-        }
-        var second = trimmed.IndexOf('|', first + 1);
-        if (second < 0) {
-            return trimmed;
-        }
-
-        var path = trimmed.Substring(first + 1, second - first - 1);
-        return trimmed.Substring(0, first + 1) +
-               NormalizePathForBaselineKey(path) +
-               trimmed.Substring(second);
-    }
-
     private sealed class GateOptions {
         public bool ShowHelp { get; set; }
         public string? Workspace { get; set; }
@@ -769,21 +613,5 @@ internal static class AnalyzeGateCommand {
         public bool NewIssuesOnly { get; set; }
         public string? BaselinePath { get; set; }
         public string? WriteBaselinePath { get; set; }
-    }
-
-    private sealed class BaselineEnvelope {
-        public string Schema { get; set; } = BaselineSchemaValue;
-        public string GeneratedAtUtc { get; set; } = string.Empty;
-        public List<BaselineItem> Items { get; set; } = new();
-    }
-
-    private sealed class BaselineItem {
-        public string Key { get; set; } = string.Empty;
-        public string Path { get; set; } = string.Empty;
-        public int Line { get; set; }
-        public string RuleId { get; set; } = string.Empty;
-        public string Tool { get; set; } = string.Empty;
-        public string Severity { get; set; } = "unknown";
-        public string? Fingerprint { get; set; }
     }
 }
