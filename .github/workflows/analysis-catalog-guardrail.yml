@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          packs="$(dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze list-packs --workspace . --ids | paste -sd, -)"
+          packs="$(dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze list-packs --workspace . --ids | tr '\n' ',' | sed 's/,$//')"
           if [ -z "${packs}" ]; then
             echo "No analysis packs found."
             exit 1
