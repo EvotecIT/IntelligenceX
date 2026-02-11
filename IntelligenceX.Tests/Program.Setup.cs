@@ -65,6 +65,18 @@ internal static partial class Program {
         AssertContainsText(invalidError ?? string.Empty, "analysisExportPath", "analysis export path invalid message");
     }
 
+    private static void TestSetupAnalysisExportPathCombineRejectsRootedFileName() {
+        var combined = SetupAnalysisExportPath.Combine(".intelligencex/analyzers", ".editorconfig");
+        AssertEqual(".intelligencex/analyzers/.editorconfig", combined, "analysis export path combine valid");
+
+        AssertThrows<ArgumentException>(() =>
+            SetupAnalysisExportPath.Combine(".intelligencex/analyzers", "/.editorconfig"), "analysis export path combine rooted");
+        AssertThrows<ArgumentException>(() =>
+            SetupAnalysisExportPath.Combine(".intelligencex/analyzers", ".."), "analysis export path combine parent");
+        AssertThrows<ArgumentException>(() =>
+            SetupAnalysisExportPath.Combine(".intelligencex/analyzers", "nested/file"), "analysis export path combine separators");
+    }
+
     private static void TestSetupAnalysisDisableWritesFalse() {
         var root = new System.Text.Json.Nodes.JsonObject();
         SetupAnalysisConfig.Apply(

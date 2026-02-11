@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.IO;
 
 namespace IntelligenceX.Cli.Setup;
 
@@ -52,7 +52,22 @@ internal static class SetupAnalysisExportPath {
         if (string.IsNullOrWhiteSpace(fileName)) {
             throw new ArgumentException("File name is required.", nameof(fileName));
         }
-        return normalizedBasePath.TrimEnd('/') + "/" + fileName.TrimStart('/');
+        var normalizedFileName = fileName.Trim();
+        if (Path.IsPathRooted(normalizedFileName) ||
+            normalizedFileName.StartsWith("/", StringComparison.Ordinal) ||
+            normalizedFileName.StartsWith("\\", StringComparison.Ordinal)) {
+            throw new ArgumentException("File name must be relative.", nameof(fileName));
+        }
+        if (normalizedFileName.Contains("/", StringComparison.Ordinal) ||
+            normalizedFileName.Contains("\\", StringComparison.Ordinal)) {
+            throw new ArgumentException("File name must not contain path separators.", nameof(fileName));
+        }
+        if (normalizedFileName.Equals(".", StringComparison.Ordinal) ||
+            normalizedFileName.Equals("..", StringComparison.Ordinal) ||
+            !IsValidPathSegment(normalizedFileName)) {
+            throw new ArgumentException("File name contains unsupported characters.", nameof(fileName));
+        }
+        return normalizedBasePath.TrimEnd('/') + "/" + normalizedFileName;
     }
 
     private static bool IsValidPathSegment(string value) {

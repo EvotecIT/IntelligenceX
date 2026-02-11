@@ -49,6 +49,7 @@ internal static partial class Program {
         failed += Run("Setup args include analysis export path", TestSetupArgsIncludeAnalysisExportPath);
         failed += Run("Setup args disable analysis omits gate and packs", TestSetupArgsDisableAnalysisOmitsGateAndPacks);
         failed += Run("Setup analysis export path normalization", TestSetupAnalysisExportPathNormalization);
+        failed += Run("Setup analysis export path combine rejects rooted file name", TestSetupAnalysisExportPathCombineRejectsRootedFileName);
         failed += Run("Setup analysis disable writes enabled=false", TestSetupAnalysisDisableWritesFalse);
         failed += Run("Setup analysis defaults packs to all-50", TestSetupAnalysisDefaultsPacksToAll50);
         failed += Run("Setup config build honors analysis gate", TestSetupBuildConfigJsonHonorsAnalysisGateOnNewConfig);
