@@ -7,6 +7,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace IntelligenceX.Cli.Setup.Wizard;
@@ -14,6 +15,7 @@ namespace IntelligenceX.Cli.Setup.Wizard;
 internal sealed class GitHubRepoClient : IDisposable {
     private readonly HttpClient _http;
     private readonly bool _ownsHttpClient;
+    private int _disposeState;
 
     public GitHubRepoClient(string token, string apiBaseUrl) {
         _http = new HttpClient {
@@ -24,18 +26,23 @@ internal sealed class GitHubRepoClient : IDisposable {
     }
 
     internal GitHubRepoClient(HttpClient httpClient, string token = "test-token", bool ownsHttpClient = false) {
+        ArgumentNullException.ThrowIfNull(httpClient);
         _http = httpClient;
         _ownsHttpClient = ownsHttpClient;
         ConfigureDefaultHeaders(_http, token);
     }
 
     public void Dispose() {
+        if (Interlocked.Exchange(ref _disposeState, 1) != 0) {
+            return;
+        }
         if (_ownsHttpClient) {
             _http.Dispose();
         }
     }
 
     public async Task<List<RepositoryInfo>> ListRepositoriesAsync() {
+        ThrowIfDisposed();
         var repos = new List<RepositoryInfo>();
         var page = 1;
         while (true) {
@@ -58,6 +65,7 @@ internal sealed class GitHubRepoClient : IDisposable {
     }
 
     public async Task<List<RepositoryInfo>> ListInstallationRepositoriesAsync() {
+        ThrowIfDisposed();
         var json = await GetJsonAsync("/installation/repositories").ConfigureAwait(false);
         if (json.ValueKind != JsonValueKind.Object || !json.TryGetProperty("repositories", out var repoArray)) {
             return new List<RepositoryInfo>();
@@ -73,11 +81,13 @@ internal sealed class GitHubRepoClient : IDisposable {
     }
 
     public async Task<string> GetDefaultBranchAsync(string owner, string repo) {
+        ThrowIfDisposed();
         var json = await GetJsonAsync($"/repos/{owner}/{repo}").ConfigureAwait(false);
         return json.GetProperty("default_branch").GetString() ?? "main";
     }
 
     public async Task<RepoFile?> TryGetFileAsync(string owner, string repo, string path, string branch) {
+        ThrowIfDisposed();
         try {
             var json = await GetJsonAsync($"/repos/{owner}/{repo}/contents/{path}?ref={branch}")
                 .ConfigureAwait(false);
@@ -116,6 +126,7 @@ internal sealed class GitHubRepoClient : IDisposable {
     }
 
     public async Task<PullRequestInfo?> TryGetPullRequestAsync(string owner, string repo, int number) {
+        ThrowIfDisposed();
         try {
             var json = await GetJsonAsync($"/repos/{owner}/{repo}/pulls/{number}").ConfigureAwait(false);
             var headRef = json.GetProperty("head").GetProperty("ref").GetString();
@@ -141,10 +152,12 @@ internal sealed class GitHubRepoClient : IDisposable {
     }
 
     public Task<SecretLookupResult> TryRepoSecretExistsAsync(string owner, string repo, string name) {
+        ThrowIfDisposed();
         return TrySecretExistsAsync($"/repos/{owner}/{repo}/actions/secrets/{name}");
     }
 
     public Task<SecretLookupResult> TryOrgSecretExistsAsync(string org, string name) {
+        ThrowIfDisposed();
         return TrySecretExistsAsync($"/orgs/{org}/actions/secrets/{name}");
     }
 
@@ -172,6 +185,12 @@ internal sealed class GitHubRepoClient : IDisposable {
             http.DefaultRequestHeaders.Remove("X-GitHub-Api-Version");
         }
         http.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+    }
+
+    private void ThrowIfDisposed() {
+        if (Volatile.Read(ref _disposeState) != 0) {
+            throw new ObjectDisposedException(nameof(GitHubRepoClient));
+        }
     }
 
     private static string FormatGitHubFailure(HttpResponseMessage response, string body) {

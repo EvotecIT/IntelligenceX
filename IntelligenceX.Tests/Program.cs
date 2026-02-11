@@ -99,6 +99,9 @@ internal static partial class Program {
         failed += Run("GitHub repo client injected http client applies default headers", TestGitHubRepoClientInjectedHttpClientAppliesDefaultHeaders);
         failed += Run("GitHub repo client reused injected http client remains idempotent", TestGitHubRepoClientReusedInjectedHttpClientRemainsIdempotent);
         failed += Run("GitHub repo client file fetch missing sha returns null", TestGitHubRepoClientFileFetchMissingShaReturnsNull);
+        failed += Run("GitHub repo client injected ctor null guard", TestGitHubRepoClientInjectedCtorNullGuard);
+        failed += Run("GitHub repo client dispose ownership semantics", TestGitHubRepoClientDisposeOwnershipSemantics);
+        failed += Run("GitHub repo client rejects use after dispose", TestGitHubRepoClientRejectsUseAfterDispose);
         failed += Run("GitHub secrets reject empty value", TestGitHubSecretsRejectEmptyValue);
         failed += Run("Release reviewer env token", TestReleaseReviewerEnvToken);
         failed += Run("CI path safety rejects non-existent directory leaf", TestCiPathSafetyUnderRootPhysicalRejectsNonexistentDirectoryLeaf);
