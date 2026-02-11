@@ -387,7 +387,7 @@ $invokeSeverity = @('Error','Warning','Information')
 $hasSettings = $SettingsPath -and (Test-Path -LiteralPath $SettingsPath)
 
 $invokeErrors = @()
-$results = @()
+$results = New-Object System.Collections.Generic.List[object]
 if ($analysisPaths.Length -gt 0) {
     foreach ($analysisPath in $analysisPaths) {
         if ([string]::IsNullOrWhiteSpace($analysisPath)) {
@@ -396,9 +396,13 @@ if ($analysisPaths.Length -gt 0) {
 
         try {
             if ($hasSettings) {
-                $results += @(Invoke-ScriptAnalyzer -Path $analysisPath -Severity $invokeSeverity -Settings $SettingsPath -ErrorAction Continue -ErrorVariable +invokeErrors)
+                foreach ($result in @(Invoke-ScriptAnalyzer -Path $analysisPath -Severity $invokeSeverity -Settings $SettingsPath -ErrorAction Continue -ErrorVariable +invokeErrors)) {
+                    [void]$results.Add($result)
+                }
             } else {
-                $results += @(Invoke-ScriptAnalyzer -Path $analysisPath -Severity $invokeSeverity -ErrorAction Continue -ErrorVariable +invokeErrors)
+                foreach ($result in @(Invoke-ScriptAnalyzer -Path $analysisPath -Severity $invokeSeverity -ErrorAction Continue -ErrorVariable +invokeErrors)) {
+                    [void]$results.Add($result)
+                }
             }
         } catch {
             $invokeErrors += $_

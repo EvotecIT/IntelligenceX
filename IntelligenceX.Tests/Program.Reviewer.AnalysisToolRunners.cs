@@ -13,6 +13,7 @@ internal static partial class Program {
         AssertContainsText(script, "[System.IO.FileAttributes]::ReparsePoint", "powershell runner skips reparse-point directories");
         AssertContainsText(script, "GetAttributes($file)", "powershell runner checks file-level reparse points");
         AssertContainsText(script, "[System.StringComparison]::OrdinalIgnoreCase", "powershell runner extension filtering is case-insensitive");
+        AssertContainsText(script, "System.Collections.Generic.List[object]", "powershell runner uses typed list result aggregation");
         AssertContainsText(script, "catch [System.UnauthorizedAccessException]", "powershell runner handles expected access exceptions");
         AssertContainsText(script, "catch [System.IO.IOException]", "powershell runner handles expected io exceptions");
         AssertContainsText(script, "if ($analysisPaths.Length -gt 0)", "powershell runner handles empty path list");
