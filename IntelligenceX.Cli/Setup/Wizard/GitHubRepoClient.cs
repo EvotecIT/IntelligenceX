@@ -17,10 +17,11 @@ internal sealed class GitHubRepoClient : IDisposable {
         _http = new HttpClient {
             BaseAddress = new Uri(apiBaseUrl)
         };
-        _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("IntelligenceX.Cli", "1.0"));
-        _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        _http.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+        ConfigureDefaultHeaders(_http, token);
+    }
+
+    internal GitHubRepoClient(HttpClient httpClient) {
+        _http = httpClient;
     }
 
     public void Dispose() => _http.Dispose();
@@ -84,8 +85,23 @@ internal sealed class GitHubRepoClient : IDisposable {
             var bytes = Convert.FromBase64String(normalized);
             var text = Encoding.UTF8.GetString(bytes);
             return new RepoFile(sha, text);
-        } catch (Exception ex) {
+        } catch (HttpRequestException ex) {
+            Trace.TraceWarning($"GitHub file fetch HTTP failure for {owner}/{repo}/{path}@{branch}: {ex.Message}");
+            return null;
+        } catch (OperationCanceledException) {
+            // Preserve cancellation semantics for callers that enforce timeouts/cancellation tokens.
+            throw;
+        } catch (JsonException ex) {
+            Trace.TraceWarning($"GitHub file fetch JSON parse failure for {owner}/{repo}/{path}@{branch}: {ex.Message}");
+            return null;
+        } catch (FormatException ex) {
+            Trace.TraceWarning($"GitHub file fetch base64 decode failure for {owner}/{repo}/{path}@{branch}: {ex.Message}");
+            return null;
+        } catch (InvalidOperationException ex) {
             Trace.TraceWarning($"GitHub file fetch failed for {owner}/{repo}/{path}@{branch}: {ex.GetType().Name}: {ex.Message}");
+            return null;
+        } catch (KeyNotFoundException ex) {
+            Trace.TraceWarning($"GitHub file fetch payload missing fields for {owner}/{repo}/{path}@{branch}: {ex.Message}");
             return null;
         }
     }
@@ -131,6 +147,13 @@ internal sealed class GitHubRepoClient : IDisposable {
         }
         using var doc = JsonDocument.Parse(content);
         return doc.RootElement.Clone();
+    }
+
+    private static void ConfigureDefaultHeaders(HttpClient http, string token) {
+        http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("IntelligenceX.Cli", "1.0"));
+        http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        http.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
     }
 
     private static string FormatGitHubFailure(HttpResponseMessage response, string body) {
