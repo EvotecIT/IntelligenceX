@@ -24,6 +24,44 @@ public sealed class WebSetupAnalysisValidatorTests {
     }
 
     [Fact]
+    public void UpdateSecret_WithAnalysisFields_Fails() {
+        // update-secret requests are non-setup mode in WebApi and must reject analysis options.
+        var ok = WebSetupAnalysisValidator.TryValidateAndNormalize(
+            isSetup: false,
+            withConfig: true,
+            hasConfigOverride: false,
+            analysisEnabled: true,
+            analysisGateEnabled: null,
+            analysisPacks: null,
+            normalizedEnabled: out _,
+            normalizedGateEnabled: out _,
+            normalizedPacks: out _,
+            error: out var error);
+
+        Assert.False(ok);
+        Assert.False(string.IsNullOrWhiteSpace(error));
+    }
+
+    [Fact]
+    public void Cleanup_WithAnalysisFields_Fails() {
+        // cleanup requests are non-setup mode in WebApi and must reject analysis options.
+        var ok = WebSetupAnalysisValidator.TryValidateAndNormalize(
+            isSetup: false,
+            withConfig: true,
+            hasConfigOverride: false,
+            analysisEnabled: null,
+            analysisGateEnabled: null,
+            analysisPacks: "all-50",
+            normalizedEnabled: out _,
+            normalizedGateEnabled: out _,
+            normalizedPacks: out _,
+            error: out var error);
+
+        Assert.False(ok);
+        Assert.False(string.IsNullOrWhiteSpace(error));
+    }
+
+    [Fact]
     public void WithoutConfig_WithAnalysisFields_Fails() {
         var ok = WebSetupAnalysisValidator.TryValidateAndNormalize(
             isSetup: true,
@@ -96,6 +134,42 @@ public sealed class WebSetupAnalysisValidatorTests {
     }
 
     [Fact]
+    public void AnalysisEnabledFalse_GateEnabled_Fails() {
+        var ok = WebSetupAnalysisValidator.TryValidateAndNormalize(
+            isSetup: true,
+            withConfig: true,
+            hasConfigOverride: false,
+            analysisEnabled: false,
+            analysisGateEnabled: true,
+            analysisPacks: null,
+            normalizedEnabled: out _,
+            normalizedGateEnabled: out _,
+            normalizedPacks: out _,
+            error: out var error);
+
+        Assert.False(ok);
+        Assert.Contains("require", error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AnalysisEnabledNull_PacksProvided_Fails() {
+        var ok = WebSetupAnalysisValidator.TryValidateAndNormalize(
+            isSetup: true,
+            withConfig: true,
+            hasConfigOverride: false,
+            analysisEnabled: null,
+            analysisGateEnabled: null,
+            analysisPacks: "all-50",
+            normalizedEnabled: out _,
+            normalizedGateEnabled: out _,
+            normalizedPacks: out _,
+            error: out var error);
+
+        Assert.False(ok);
+        Assert.Contains("require", error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void AnalysisEnabledTrue_InvalidPacks_Fails() {
         var ok = WebSetupAnalysisValidator.TryValidateAndNormalize(
             isSetup: true,
@@ -155,4 +229,3 @@ public sealed class WebSetupAnalysisValidatorTests {
         Assert.Null(normalizedPacks);
     }
 }
-

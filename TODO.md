@@ -48,7 +48,7 @@ Goal: reviewer + static analysis + onboarding (CLI + Web) feel "done" end-to-end
 - [x] Add tests for setup plan generation: ensure enabling analysis produces `analysis` in reviewer.json and does not regress existing review settings.
 - [x] Add tests for config merge behavior (existing reviewer.json + enable analysis preserves unrelated user keys).
 - [x] Add unit tests for `SetupAnalysisPacks.TryNormalizeCsv` (empty/default, invalid chars, max ids/length, dedupe).
-- [ ] Add tests for web setup validation: analysis fields rejected when not applicable (config override, update-secret/cleanup), and rejected when `analysisEnabled != true` but gate/packs provided.
+- [x] Add tests for web setup validation: analysis fields rejected when not applicable (config override, update-secret/cleanup), and rejected when `analysisEnabled != true` but gate/packs provided.
 
 ## Engine Roadmap
 Status: In progress
