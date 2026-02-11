@@ -44,8 +44,22 @@ public sealed class WebOnboardingScriptTests {
         var start = script.IndexOf($"case '{caseName}':", StringComparison.Ordinal);
         Assert.True(start >= 0, $"Missing case block: {caseName}");
 
-        var end = script.IndexOf("break;", start, StringComparison.Ordinal);
-        Assert.True(end > start, $"Missing break for case block: {caseName}");
+        var nextCase = script.IndexOf("case '", start + 1, StringComparison.Ordinal);
+        var nextDefault = script.IndexOf("default:", start + 1, StringComparison.Ordinal);
+        var switchEnd = script.IndexOf('}', start + 1);
+
+        var end = int.MaxValue;
+        if (nextCase > start) {
+            end = Math.Min(end, nextCase);
+        }
+        if (nextDefault > start) {
+            end = Math.Min(end, nextDefault);
+        }
+        if (switchEnd > start) {
+            end = Math.Min(end, switchEnd);
+        }
+
+        Assert.True(end > start && end != int.MaxValue, $"Could not determine case block end: {caseName}");
 
         return script.Substring(start, end - start);
     }
