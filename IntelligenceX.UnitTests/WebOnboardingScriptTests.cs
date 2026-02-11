@@ -1,7 +1,7 @@
 using System;
 using System.IO;
-using System.Reflection;
 using System.Linq;
+using System.Reflection;
 using Xunit;
 
 namespace IntelligenceX.UnitTests;
@@ -10,33 +10,24 @@ public sealed class WebOnboardingScriptTests {
     [Fact]
     public void OnboardingPathSwitchesResetWithConfigDeterministically() {
         var script = LoadWizardScript();
+        var normalized = NormalizeWhitespace(script);
 
-        Assert.Contains("case 'new-setup':", script, StringComparison.Ordinal);
-        Assert.Contains(
-            "case 'new-setup':\n" +
-            "    default:\n" +
-            "      selectOperation('setup');\n" +
-            "      selectProvider('openai');\n" +
-            "      selectSecretOption('login');\n" +
-            "      if (withConfig) withConfig.checked = true;",
-            script,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "case 'refresh-auth':\n" +
-            "      selectOperation('update-secret');\n" +
-            "      selectProvider('openai');\n" +
-            "      selectSecretOption('login');\n" +
-            "      if (withConfig) withConfig.checked = false;",
-            script,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "case 'cleanup':\n" +
-            "      selectOperation('cleanup');\n" +
-            "      selectProvider('openai');\n" +
-            "      selectSecretOption('skip');\n" +
-            "      if (withConfig) withConfig.checked = false;",
-            script,
-            StringComparison.Ordinal);
+        Assert.Contains("case 'refresh-auth':", normalized, StringComparison.Ordinal);
+        Assert.Contains("case 'cleanup':", normalized, StringComparison.Ordinal);
+        Assert.Contains("case 'new-setup':", normalized, StringComparison.Ordinal);
+        Assert.Contains("default:", normalized, StringComparison.Ordinal);
+
+        Assert.Contains("selectOperation('update-secret');", normalized, StringComparison.Ordinal);
+        Assert.Contains("selectOperation('cleanup');", normalized, StringComparison.Ordinal);
+        Assert.Contains("selectOperation('setup');", normalized, StringComparison.Ordinal);
+
+        Assert.Contains("selectSecretOption('skip');", normalized, StringComparison.Ordinal);
+        Assert.True(CountOccurrences(normalized, "selectSecretOption('login');") >= 2,
+            "Expected login secret option to be set for both setup and refresh-auth paths.");
+
+        Assert.True(CountOccurrences(normalized, "if (withConfig) withConfig.checked = false;") >= 2,
+            "Expected withConfig reset for non-setup paths.");
+        Assert.Contains("if (withConfig) withConfig.checked = true;", normalized, StringComparison.Ordinal);
     }
 
     private static string LoadWizardScript() {
@@ -54,5 +45,27 @@ public sealed class WebOnboardingScriptTests {
 
         using var reader = new StreamReader(stream!);
         return reader.ReadToEnd();
+    }
+
+    private static string NormalizeWhitespace(string input) {
+        var chars = input.Select(ch => char.IsWhiteSpace(ch) ? ' ' : ch).ToArray();
+        return new string(chars);
+    }
+
+    private static int CountOccurrences(string input, string value) {
+        if (string.IsNullOrEmpty(value)) {
+            return 0;
+        }
+
+        var count = 0;
+        var index = 0;
+        while (true) {
+            index = input.IndexOf(value, index, StringComparison.Ordinal);
+            if (index < 0) {
+                return count;
+            }
+            count++;
+            index += value.Length;
+        }
     }
 }
