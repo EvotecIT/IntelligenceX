@@ -20,8 +20,9 @@ internal sealed class GitHubRepoClient : IDisposable {
         ConfigureDefaultHeaders(_http, token);
     }
 
-    internal GitHubRepoClient(HttpClient httpClient) {
+    internal GitHubRepoClient(HttpClient httpClient, string token = "test-token") {
         _http = httpClient;
+        ConfigureDefaultHeaders(_http, token);
     }
 
     public void Dispose() => _http.Dispose();

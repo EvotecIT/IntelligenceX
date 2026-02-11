@@ -540,12 +540,33 @@ jobs:
         AssertEqual(null, file, "repo client file fetch invalid base64");
     }
 
+    private static void TestGitHubRepoClientInjectedHttpClientAppliesDefaultHeaders() {
+        System.Net.Http.HttpRequestMessage? capturedRequest = null;
+        using var client = CreateGitHubRepoClientForTests((request, _) => {
+            capturedRequest = request;
+            return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
+        }, token: "injected-token");
+
+        var result = client.TryRepoSecretExistsAsync("owner", "repo", "INTELLIGENCEX_AUTH_B64").GetAwaiter().GetResult();
+        AssertEqual("missing", result.Status, "repo client injected headers lookup status");
+        AssertNotNull(capturedRequest, "repo client injected headers captured request");
+        AssertEqual("Bearer", capturedRequest!.Headers.Authorization?.Scheme, "repo client injected headers auth scheme");
+        AssertEqual("injected-token", capturedRequest.Headers.Authorization?.Parameter, "repo client injected headers auth token");
+        AssertEqual(true, capturedRequest.Headers.UserAgent.ToString().Contains("IntelligenceX.Cli"), "repo client injected headers user agent");
+        AssertEqual(true, capturedRequest.Headers.Accept.ToString().Contains("application/vnd.github+json"), "repo client injected headers accept");
+        AssertEqual(true,
+            capturedRequest.Headers.TryGetValues("X-GitHub-Api-Version", out var values)
+            && values.Contains("2022-11-28"),
+            "repo client injected headers api version");
+    }
+
     private static IntelligenceX.Cli.Setup.Wizard.GitHubRepoClient CreateGitHubRepoClientForTests(
-        Func<System.Net.Http.HttpRequestMessage, CancellationToken, Task<System.Net.Http.HttpResponseMessage>> sendAsync) {
+        Func<System.Net.Http.HttpRequestMessage, CancellationToken, Task<System.Net.Http.HttpResponseMessage>> sendAsync,
+        string token = "test-token") {
         var http = new System.Net.Http.HttpClient(new DelegateHttpMessageHandler(sendAsync)) {
             BaseAddress = new Uri("https://api.github.com")
         };
-        return new IntelligenceX.Cli.Setup.Wizard.GitHubRepoClient(http);
+        return new IntelligenceX.Cli.Setup.Wizard.GitHubRepoClient(http, token);
     }
 
     private sealed class DelegateHttpMessageHandler : System.Net.Http.HttpMessageHandler {
