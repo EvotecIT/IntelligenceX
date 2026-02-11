@@ -24,6 +24,25 @@ internal sealed partial class WebApi {
         return BuildSetupArgsForRepo(request, routeDryRun, "owner/repo");
     }
 
+    internal static bool ResolveWithConfigFromArgsForTests(params string[] args) {
+        return ResolveWithConfigFromArgs(args);
+    }
+
+    private static bool ResolveWithConfigFromArgs(IReadOnlyList<string> args) {
+        return ContainsArg(args, "--with-config") ||
+               ContainsArg(args, "--config-json") ||
+               ContainsArg(args, "--config-path");
+    }
+
+    private static bool ContainsArg(IReadOnlyList<string> args, string name) {
+        for (var i = 0; i < args.Count; i++) {
+            if (string.Equals(args[i], name, StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private async Task HandleSetupAsync(System.Net.HttpListenerContext context, bool dryRun) {
         var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
         if (body is null) {
@@ -121,8 +140,8 @@ internal sealed partial class WebApi {
 
             foreach (var repo in repos) {
                 var effectiveDryRun = dryRun || request.DryRun;
-                var withConfig = request.WithConfig || hasConfigOverride;
                 var args = BuildSetupArgsForRepo(request, dryRun, repo);
+                var withConfig = ResolveWithConfigFromArgs(args);
                 var result = await RunSetupAsync(args).ConfigureAwait(false);
                 result.Repo = repo;
                 result.PullRequestUrl = SetupPostApplyVerifier.ExtractPullRequestUrl(result.Output);

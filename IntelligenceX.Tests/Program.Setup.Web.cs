@@ -19,6 +19,17 @@ internal static partial class Program {
         AssertEqual(false, Array.IndexOf(none, "--dry-run") >= 0, "web setup args no dry-run");
     }
 
+    private static void TestWebSetupResolveWithConfigFromArgs() {
+        AssertEqual(true, IntelligenceX.Cli.Setup.Web.WebApi.ResolveWithConfigFromArgsForTests(
+            "--repo", "owner/repo", "--with-config"), "web setup resolve with-config flag");
+        AssertEqual(true, IntelligenceX.Cli.Setup.Web.WebApi.ResolveWithConfigFromArgsForTests(
+            "--repo", "owner/repo", "--config-path", ".intelligencex/reviewer.json"), "web setup resolve with-config config-path");
+        AssertEqual(true, IntelligenceX.Cli.Setup.Web.WebApi.ResolveWithConfigFromArgsForTests(
+            "--repo", "owner/repo", "--config-json", "{\"review\":{}}"), "web setup resolve with-config config-json");
+        AssertEqual(false, IntelligenceX.Cli.Setup.Web.WebApi.ResolveWithConfigFromArgsForTests(
+            "--repo", "owner/repo"), "web setup resolve with-config none");
+    }
+
     private static void TestWebSetupRunProcessTimeoutReturnsPromptly() {
         var command = Environment.ProcessPath;
         if (string.IsNullOrWhiteSpace(command)) {
