@@ -233,6 +233,43 @@ internal static partial class Program {
         AssertEqual(true, packsNode!.Count > 0, "config json merge analysis.packs has values");
     }
 
+    private static void TestSetupWorkflowUpgradePreservesCustomSectionsOutsideManagedBlock() {
+        var seed = """
+name: IntelligenceX Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  custom_pre:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo pre
+  # INTELLIGENCEX:BEGIN
+  review:
+    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@master
+    with:
+      provider: openai
+      model: gpt-5.3-codex
+  # INTELLIGENCEX:END
+  custom_post:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo post
+""";
+
+        var content = SetupRunner.BuildWorkflowYamlFromSeedForTests(
+            new[] { "--provider", "copilot" },
+            seed);
+
+        AssertContainsText(content, "custom_pre:", "workflow upgrade keeps custom_pre");
+        AssertContainsText(content, "custom_post:", "workflow upgrade keeps custom_post");
+        AssertContainsText(content, "provider: copilot", "workflow upgrade updates managed provider");
+        AssertContainsText(content, "# INTELLIGENCEX:BEGIN", "workflow upgrade keeps managed begin marker");
+        AssertContainsText(content, "# INTELLIGENCEX:END", "workflow upgrade keeps managed end marker");
+    }
+
     private static void TestGitHubRepoDetectorParsesRemoteUrls() {
         AssertEqual("owner/repo", GitHubRepoDetector.ParseRepoFromRemoteUrl("https://github.com/owner/repo.git"), "https git");
         AssertEqual("owner/repo", GitHubRepoDetector.ParseRepoFromRemoteUrl("https://github.com/owner/repo"), "https no git");
