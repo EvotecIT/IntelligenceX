@@ -683,8 +683,9 @@ function formatResults(data) {
       lines.push(`== ${name} ==`);
       lines.push(`status: ${status}`);
       if (typeof result.exitCode !== 'undefined') lines.push(`exit: ${result.exitCode}`);
-      if (result.pullRequestUrl && result.pullRequestUrl.trim().length > 0) {
-        lines.push(`pr: ${result.pullRequestUrl.trim()}`);
+      const pullRequestUrl = typeof result.pullRequestUrl === 'string' ? result.pullRequestUrl.trim() : '';
+      if (pullRequestUrl.length > 0) {
+        lines.push(`pr: ${pullRequestUrl}`);
       }
       if (result.error && result.error.trim().length > 0) {
         lines.push('error:');
