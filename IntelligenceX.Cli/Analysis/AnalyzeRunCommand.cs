@@ -347,6 +347,21 @@ function Get-AnalyzerPaths {
 
         try {
             foreach ($file in [System.IO.Directory]::EnumerateFiles($current)) {
+                try {
+                    $attributes = [System.IO.File]::GetAttributes($file)
+                    if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                        continue
+                    }
+                } catch [System.UnauthorizedAccessException] {
+                    continue
+                } catch [System.IO.PathTooLongException] {
+                    continue
+                } catch [System.IO.DirectoryNotFoundException] {
+                    continue
+                } catch [System.IO.IOException] {
+                    continue
+                }
+
                 $extension = [System.IO.Path]::GetExtension($file)
                 switch ($extension.ToLowerInvariant()) {
                     '.ps1' { [void]$paths.Add($file) }
