@@ -268,6 +268,17 @@ jobs:
         AssertContainsText(content, "provider: copilot", "workflow upgrade updates managed provider");
         AssertContainsText(content, "# INTELLIGENCEX:BEGIN", "workflow upgrade keeps managed begin marker");
         AssertContainsText(content, "# INTELLIGENCEX:END", "workflow upgrade keeps managed end marker");
+        AssertEqual(1, CountOccurrences(content, "# INTELLIGENCEX:BEGIN"),
+            "workflow upgrade has single managed begin marker");
+        AssertEqual(1, CountOccurrences(content, "# INTELLIGENCEX:END"),
+            "workflow upgrade has single managed end marker");
+        AssertEqual(1, CountOccurrences(content, "provider: copilot"),
+            "workflow upgrade has single provider override");
+
+        var secondPass = SetupRunner.BuildWorkflowYamlFromSeedForTests(
+            new[] { "--provider", "copilot" },
+            content);
+        AssertEqual(content, secondPass, "workflow upgrade idempotent on second pass");
     }
 
     private static void TestGitHubRepoDetectorParsesRemoteUrls() {
