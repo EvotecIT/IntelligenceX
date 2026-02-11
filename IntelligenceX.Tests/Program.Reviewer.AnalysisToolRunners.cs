@@ -17,6 +17,9 @@ internal static partial class Program {
         AssertContainsText(script, "System.Collections.Generic.List[object]", "powershell runner uses typed list result aggregation");
         AssertContainsText(script, "catch [System.UnauthorizedAccessException]", "powershell runner handles expected access exceptions");
         AssertContainsText(script, "catch [System.IO.IOException]", "powershell runner handles expected io exceptions");
+        AssertContainsText(script,
+            "catch [System.IO.IOException] {\n            continue\n        }\n\n        try {\n            foreach ($file in [System.IO.Directory]::EnumerateFiles($current))",
+            "powershell runner handles io exceptions in directory enumeration");
         AssertContainsText(script, "if ($analysisPaths.Length -gt 0)", "powershell runner handles empty path list");
         AssertContainsText(script, "foreach ($analysisPath in $analysisPaths)", "powershell runner iterates filtered paths");
         AssertContainsText(script, "Invoke-ScriptAnalyzer -Path $analysisPath", "powershell runner invokes analyzer per path");
