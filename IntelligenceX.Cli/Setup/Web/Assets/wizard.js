@@ -203,11 +203,14 @@ function applyOnboardingPath(path) {
       selectOperation('update-secret');
       selectProvider('openai');
       selectSecretOption('login');
+      if (withConfig) withConfig.checked = false;
       setOnboardingPathHint('Path selected: Fix Expired Auth. Next: authenticate, choose repos, then run update-secret.');
       break;
     case 'cleanup':
       selectOperation('cleanup');
+      selectProvider('openai');
       selectSecretOption('skip');
+      if (withConfig) withConfig.checked = false;
       setOnboardingPathHint('Path selected: Cleanup. Next: authenticate, select repos, then preview and remove setup files.');
       break;
     case 'new-setup':
