@@ -140,8 +140,9 @@ internal sealed partial class OpenAINativeTransport {
             case ToolWireFormat.FunctionNestedParameters: {
                 var function = new JsonObject()
                     .Add("name", tool.Name);
-                if (!string.IsNullOrWhiteSpace(tool.Description)) {
-                    function.Add("description", tool.Description);
+                var description = tool.GetDescriptionWithTags();
+                if (!string.IsNullOrWhiteSpace(description)) {
+                    function.Add("description", description);
                 }
                 if (tool.Parameters is not null) {
                     function.Add(toolWireFormat == ToolWireFormat.FunctionNestedInputSchema ? "input_schema" : "parameters", tool.Parameters);
@@ -156,8 +157,9 @@ internal sealed partial class OpenAINativeTransport {
                 var obj = new JsonObject()
                     .Add("type", "custom")
                     .Add("name", tool.Name);
-                if (!string.IsNullOrWhiteSpace(tool.Description)) {
-                    obj.Add("description", tool.Description);
+                var description = tool.GetDescriptionWithTags();
+                if (!string.IsNullOrWhiteSpace(description)) {
+                    obj.Add("description", description);
                 }
                 if (tool.Parameters is not null) {
                     // ChatGPT native API has historically accepted either `parameters` or `input_schema` for custom tools.
@@ -172,8 +174,9 @@ internal sealed partial class OpenAINativeTransport {
                 var obj = new JsonObject()
                     .Add("type", "function")
                     .Add("name", tool.Name);
-                if (!string.IsNullOrWhiteSpace(tool.Description)) {
-                    obj.Add("description", tool.Description);
+                var description = tool.GetDescriptionWithTags();
+                if (!string.IsNullOrWhiteSpace(description)) {
+                    obj.Add("description", description);
                 }
                 if (tool.Parameters is not null) {
                     obj.Add(toolWireFormat == ToolWireFormat.FunctionFlatInputSchema ? "input_schema" : "parameters", tool.Parameters);
