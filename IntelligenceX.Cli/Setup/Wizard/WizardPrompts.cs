@@ -296,6 +296,7 @@ internal static class WizardPrompts {
     }
 
     public static bool PromptAnalysisGateEnabled(bool current) {
+        AnsiConsole.MarkupLine("[grey]Gate semantics: fail when enabled rules report vulnerability/bug findings at warning+ severity. Docs: Docs/reviewer/static-analysis.md[/]");
         return AnsiConsole.Confirm("Fail CI on static analysis findings?", current);
     }
 
