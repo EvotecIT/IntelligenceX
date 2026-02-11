@@ -8,6 +8,11 @@ intelligencex setup web
 
 This starts a local web server and opens the wizard in your browser (http://127.0.0.1 only).
 
+## Screenshots
+
+- Configure step: [Screenshot](../screenshots.md#web-ui---configure)
+- Verify step: [Screenshot](../screenshots.md#web-ui---verify)
+
 ## Quick flow
 
 ```text

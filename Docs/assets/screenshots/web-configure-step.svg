@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="860" viewBox="0 0 1400 860" role="img" aria-labelledby="title desc">
+  <title id="title">IntelligenceX Setup Web UI - Configure step</title>
+  <desc id="desc">Screenshot-style mock of the Configure step in the local web onboarding wizard.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f7f9fc"/>
+      <stop offset="100%" stop-color="#eef3fb"/>
+    </linearGradient>
+  </defs>
+  <rect width="1400" height="860" fill="url(#bg)"/>
+  <rect x="70" y="46" width="1260" height="768" rx="16" fill="#ffffff" stroke="#d7dfed"/>
+  <rect x="70" y="46" width="1260" height="54" rx="16" fill="#1f3048"/>
+  <text x="104" y="80" fill="#f8fbff" font-size="21" font-family="Segoe UI, Arial, sans-serif">IntelligenceX Setup Wizard (Web)</text>
+  <rect x="110" y="134" width="1160" height="60" rx="10" fill="#f2f6ff" stroke="#d9e4ff"/>
+  <text x="140" y="170" fill="#2c476f" font-size="18" font-family="Segoe UI, Arial, sans-serif">Auth  ->  Repos  ->  Configure  ->  Secrets  ->  Review</text>
+  <rect x="531" y="146" width="142" height="36" rx="18" fill="#2f7cf5"/>
+  <text x="568" y="170" fill="#ffffff" font-size="16" font-family="Segoe UI, Arial, sans-serif">Configure</text>
+
+  <rect x="110" y="222" width="760" height="520" rx="12" fill="#fbfcff" stroke="#dce5f4"/>
+  <text x="142" y="262" fill="#203a5d" font-size="28" font-family="Segoe UI, Arial, sans-serif">Configure Review + Analysis</text>
+  <text x="142" y="298" fill="#516989" font-size="17" font-family="Segoe UI, Arial, sans-serif">Preview effective settings before applying workflow changes.</text>
+
+  <rect x="142" y="332" width="696" height="72" rx="9" fill="#ffffff" stroke="#d9e2f2"/>
+  <text x="164" y="362" fill="#2f4b74" font-size="16" font-family="Segoe UI, Arial, sans-serif">Preset</text>
+  <text x="164" y="388" fill="#1a2d4a" font-size="20" font-family="Segoe UI, Arial, sans-serif">balanced</text>
+
+  <rect x="142" y="422" width="696" height="102" rx="9" fill="#ffffff" stroke="#d9e2f2"/>
+  <text x="164" y="452" fill="#2f4b74" font-size="16" font-family="Segoe UI, Arial, sans-serif">Static analysis</text>
+  <text x="164" y="478" fill="#1a2d4a" font-size="19" font-family="Segoe UI, Arial, sans-serif">enabled: true    packs: all-50    gate: false</text>
+  <text x="164" y="505" fill="#536b8d" font-size="15" font-family="Segoe UI, Arial, sans-serif">Optional export path: (none)</text>
+
+  <rect x="142" y="542" width="696" height="170" rx="9" fill="#ffffff" stroke="#d9e2f2"/>
+  <text x="164" y="572" fill="#2f4b74" font-size="16" font-family="Segoe UI, Arial, sans-serif">Effective config preview</text>
+  <text x="164" y="599" fill="#1d3558" font-size="15" font-family="Consolas, Menlo, monospace">{"review":{"provider":"openai","mode":"inline"},</text>
+  <text x="164" y="624" fill="#1d3558" font-size="15" font-family="Consolas, Menlo, monospace"> "analysis":{"enabled":true,"packs":["all-50"],</text>
+  <text x="164" y="649" fill="#1d3558" font-size="15" font-family="Consolas, Menlo, monospace"> "gate":{"enabled":false,"minSeverity":"warning"}}}</text>
+
+  <rect x="900" y="222" width="370" height="520" rx="12" fill="#fbfdff" stroke="#dce5f4"/>
+  <text x="928" y="262" fill="#203a5d" font-size="24" font-family="Segoe UI, Arial, sans-serif">Checklist</text>
+  <text x="928" y="298" fill="#2b7a3d" font-size="16" font-family="Segoe UI, Arial, sans-serif">[x] GitHub auth ready</text>
+  <text x="928" y="328" fill="#2b7a3d" font-size="16" font-family="Segoe UI, Arial, sans-serif">[x] Repos selected</text>
+  <text x="928" y="358" fill="#2b7a3d" font-size="16" font-family="Segoe UI, Arial, sans-serif">[x] Review preset selected</text>
+  <text x="928" y="388" fill="#2b7a3d" font-size="16" font-family="Segoe UI, Arial, sans-serif">[x] Analysis settings valid</text>
+  <text x="928" y="418" fill="#2b7a3d" font-size="16" font-family="Segoe UI, Arial, sans-serif">[x] Config preview ready</text>
+
+  <rect x="900" y="666" width="170" height="52" rx="8" fill="#e6edf8"/>
+  <text x="960" y="699" fill="#2b486f" font-size="18" font-family="Segoe UI, Arial, sans-serif">Back</text>
+  <rect x="1090" y="666" width="180" height="52" rx="8" fill="#2f7cf5"/>
+  <text x="1152" y="699" fill="#ffffff" font-size="18" font-family="Segoe UI, Arial, sans-serif">Next</text>
+</svg>
