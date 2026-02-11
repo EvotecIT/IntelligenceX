@@ -79,7 +79,7 @@ internal static partial class SetupRunner {
     internal static string BuildWorkflowYamlFromSeedForTests(string[] args, string seedContent) {
         var options = SetupOptions.Parse(args);
         var plan = PlanWorkflowChange(options, seedContent);
-        return plan.Content ?? string.Empty;
+        return plan.Content ?? seedContent;
     }
 
     private static string? ReadConfigOverride(SetupOptions options) {
