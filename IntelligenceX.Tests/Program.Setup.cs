@@ -421,6 +421,36 @@ jobs:
         AssertContainsText(latestRun.Note ?? string.Empty, "actions/runs/120", "post-apply latest workflow run note includes url");
     }
 
+    private static void TestSetupPostApplyVerifyWorkflowRunLookupFailureIsNotReportedAsNone() {
+        var context = new SetupPostApplyContext {
+            Repo = "owner/repo",
+            Operation = SetupApplyOperation.Setup,
+            WithConfig = true,
+            SkipSecret = true,
+            Provider = "openai",
+            ExitSuccess = true,
+            Output = "Setup complete. PR created: https://github.com/owner/repo/pull/22",
+            PullRequestUrl = "https://github.com/owner/repo/pull/22"
+        };
+        var observed = new SetupPostApplyObservedState {
+            DefaultBranch = "main",
+            CheckRef = "intelligencex-setup/20260211",
+            CheckRefSource = "pull-request",
+            WorkflowExists = true,
+            WorkflowManaged = true,
+            ConfigExists = true,
+            WorkflowRunLookupStatus = "forbidden",
+            WorkflowRunLookupNote = "GitHub API returned 403 Forbidden."
+        };
+
+        var verify = SetupPostApplyVerifier.EvaluateForTests(context, observed);
+        var latestRun = verify.Checks.Find(check => check.Name == "Latest workflow run");
+        AssertNotNull(latestRun, "post-apply latest workflow run failure check exists");
+        AssertEqual(true, latestRun!.Skipped, "post-apply latest workflow run failure check skipped");
+        AssertEqual("forbidden", latestRun.Actual, "post-apply latest workflow run failure status");
+        AssertContainsText(latestRun.Note ?? string.Empty, "403", "post-apply latest workflow run failure note");
+    }
+
     private static void TestWizardPostApplyVerifySkipsCallbackWhenApplyFails() {
         var context = new SetupPostApplyContext {
             Repo = "owner/repo",
@@ -574,13 +604,15 @@ jobs:
             });
         });
 
-        var runs = client.ListWorkflowRunsAsync("owner", "repo", ".github/workflows/review-intelligencex.yml", maxCount: 1)
+        var lookup = client.ListWorkflowRunsAsync("owner", "repo", ".github/workflows/review-intelligencex.yml", maxCount: 1)
             .GetAwaiter().GetResult();
-        AssertEqual(1, runs.Count, "repo client workflow runs count");
-        AssertEqual(42L, runs[0].Id, "repo client workflow run id");
-        AssertEqual("completed", runs[0].Status, "repo client workflow run status");
-        AssertEqual("success", runs[0].Conclusion, "repo client workflow run conclusion");
-        AssertContainsText(runs[0].Url ?? string.Empty, "actions/runs/42", "repo client workflow run url");
+        AssertEqual(true, lookup.Success, "repo client workflow runs lookup success");
+        AssertEqual("ok", lookup.Status, "repo client workflow runs lookup status");
+        AssertEqual(1, lookup.Runs.Count, "repo client workflow runs count");
+        AssertEqual(42L, lookup.Runs[0].Id, "repo client workflow run id");
+        AssertEqual("completed", lookup.Runs[0].Status, "repo client workflow run status");
+        AssertEqual("success", lookup.Runs[0].Conclusion, "repo client workflow run conclusion");
+        AssertContainsText(lookup.Runs[0].Url ?? string.Empty, "actions/runs/42", "repo client workflow run url");
     }
 
     private static void TestGitHubRepoClientListWorkflowRunsInvalidPayloadReturnsEmpty() {
@@ -595,9 +627,11 @@ jobs:
             });
         });
 
-        var runs = client.ListWorkflowRunsAsync("owner", "repo", ".github/workflows/review-intelligencex.yml", maxCount: 1)
+        var lookup = client.ListWorkflowRunsAsync("owner", "repo", ".github/workflows/review-intelligencex.yml", maxCount: 1)
             .GetAwaiter().GetResult();
-        AssertEqual(0, runs.Count, "repo client workflow runs invalid payload returns empty");
+        AssertEqual(false, lookup.Success, "repo client workflow runs invalid payload lookup failure");
+        AssertEqual("parse_error", lookup.Status, "repo client workflow runs invalid payload status");
+        AssertEqual(0, lookup.Runs.Count, "repo client workflow runs invalid payload returns empty");
     }
 
     private static void TestGitHubRepoClientListWorkflowRunsEncodesPathSegments() {
@@ -614,12 +648,25 @@ jobs:
             });
         });
 
-        _ = client.ListWorkflowRunsAsync("owner+team", "repo name", ".github/workflows/review-intelligencex.yml", maxCount: 1)
+        var lookup = client.ListWorkflowRunsAsync("owner+team", "repo name", ".github/workflows/review-intelligencex.yml", maxCount: 1)
             .GetAwaiter().GetResult();
+        AssertEqual(true, lookup.Success, "repo client workflow runs path encoding lookup success");
         AssertContainsText(absolutePath ?? string.Empty, "/repos/owner%2Bteam/repo%20name/actions/workflows/",
             "repo client workflow runs owner/repo segments encoded");
         AssertContainsText(absolutePath ?? string.Empty, ".github%2Fworkflows%2Freview-intelligencex.yml",
             "repo client workflow runs workflow path encoded");
+    }
+
+    private static void TestGitHubRepoClientListWorkflowRunsMapsUnauthorized() {
+        using var client = CreateGitHubRepoClientForTests((_, _) =>
+            Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized)));
+
+        var lookup = client.ListWorkflowRunsAsync("owner", "repo", ".github/workflows/review-intelligencex.yml", maxCount: 1)
+            .GetAwaiter().GetResult();
+        AssertEqual(false, lookup.Success, "repo client workflow runs unauthorized lookup failure");
+        AssertEqual("unauthorized", lookup.Status, "repo client workflow runs unauthorized status");
+        AssertEqual(0, lookup.Runs.Count, "repo client workflow runs unauthorized runs empty");
+        AssertContainsText(lookup.Note ?? string.Empty, "401", "repo client workflow runs unauthorized note");
     }
 
     private static void TestGitHubRepoClientFileFetchCancellationPropagates() {

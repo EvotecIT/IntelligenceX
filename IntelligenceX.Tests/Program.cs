@@ -72,6 +72,8 @@ internal static partial class Program {
             TestSetupPostApplyVerifySecretLookupUnauthorizedFailsDeterministically);
         failed += Run("Setup post-apply verify includes latest workflow run link",
             TestSetupPostApplyVerifyIncludesLatestWorkflowRunLink);
+        failed += Run("Setup post-apply verify workflow run lookup failure is not reported as none",
+            TestSetupPostApplyVerifyWorkflowRunLookupFailureIsNotReportedAsNone);
         failed += Run("Wizard post-apply verify skips callback on failed apply",
             TestWizardPostApplyVerifySkipsCallbackWhenApplyFails);
         failed += Run("CLI dispatch no-args interactive runs manage", TestCliDispatchNoArgsInteractiveRunsManage);
@@ -108,6 +110,8 @@ internal static partial class Program {
             TestGitHubRepoClientListWorkflowRunsInvalidPayloadReturnsEmpty);
         failed += Run("GitHub repo client list workflow runs encodes path segments",
             TestGitHubRepoClientListWorkflowRunsEncodesPathSegments);
+        failed += Run("GitHub repo client list workflow runs maps unauthorized",
+            TestGitHubRepoClientListWorkflowRunsMapsUnauthorized);
         failed += Run("GitHub repo client file fetch cancellation propagates", TestGitHubRepoClientFileFetchCancellationPropagates);
         failed += Run("GitHub repo client file fetch invalid base64 returns null", TestGitHubRepoClientFileFetchInvalidBase64ReturnsNull);
         failed += Run("GitHub repo client injected http client applies default headers", TestGitHubRepoClientInjectedHttpClientAppliesDefaultHeaders);

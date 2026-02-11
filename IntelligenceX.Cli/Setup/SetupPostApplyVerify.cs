@@ -38,6 +38,8 @@ internal sealed class SetupPostApplyObservedState {
     public GitHubRepoClient.SecretLookupResult? RepoSecretLookup { get; set; }
     public GitHubRepoClient.SecretLookupResult? OrgSecretLookup { get; set; }
     public GitHubRepoClient.WorkflowRunInfo? LatestWorkflowRun { get; set; }
+    public string? WorkflowRunLookupStatus { get; set; }
+    public string? WorkflowRunLookupNote { get; set; }
 }
 
 internal sealed class SetupPostApplyCheck {
@@ -203,9 +205,11 @@ internal static class SetupPostApplyVerifier {
         }
 
         try {
-            var runs = await client.ListWorkflowRunsAsync(owner, repo, WorkflowPath, maxCount: 1).ConfigureAwait(false);
-            if (runs.Count > 0) {
-                observed.LatestWorkflowRun = runs[0];
+            var runLookup = await client.ListWorkflowRunsAsync(owner, repo, WorkflowPath, maxCount: 1).ConfigureAwait(false);
+            observed.WorkflowRunLookupStatus = runLookup.Status;
+            observed.WorkflowRunLookupNote = runLookup.Note;
+            if (runLookup.Runs.Count > 0) {
+                observed.LatestWorkflowRun = runLookup.Runs[0];
             }
         } catch (OperationCanceledException) {
             throw;
@@ -370,7 +374,18 @@ internal static class SetupPostApplyVerifier {
     }
 
     private static void AddLatestWorkflowRunCheck(SetupPostApplyObservedState observed, SetupPostApplyVerification result) {
+        var lookupStatus = string.IsNullOrWhiteSpace(observed.WorkflowRunLookupStatus)
+            ? "unknown"
+            : observed.WorkflowRunLookupStatus!;
         if (observed.LatestWorkflowRun is null) {
+            if (!string.Equals(lookupStatus, "ok", StringComparison.OrdinalIgnoreCase)) {
+                var lookupNote = string.IsNullOrWhiteSpace(observed.WorkflowRunLookupNote)
+                    ? "Workflow run lookup failed."
+                    : observed.WorkflowRunLookupNote!;
+                AddSkippedCheck(result, "Latest workflow run", "observed", lookupStatus, lookupNote);
+                return;
+            }
+
             AddSkippedCheck(result, "Latest workflow run", "observed", "none",
                 "No workflow runs found for review-intelligencex.yml.");
             return;
