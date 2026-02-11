@@ -12,15 +12,31 @@ public sealed class WebOnboardingScriptTests {
         var script = LoadWizardScript();
 
         Assert.Contains("case 'new-setup':", script, StringComparison.Ordinal);
-        Assert.Contains("if (withConfig) withConfig.checked = true;", script, StringComparison.Ordinal);
-
-        var refreshBlock = ExtractCaseBlock(script, "refresh-auth");
-        Assert.Contains("if (withConfig) withConfig.checked = false;", refreshBlock, StringComparison.Ordinal);
-        Assert.Contains("selectProvider('openai');", refreshBlock, StringComparison.Ordinal);
-
-        var cleanupBlock = ExtractCaseBlock(script, "cleanup");
-        Assert.Contains("if (withConfig) withConfig.checked = false;", cleanupBlock, StringComparison.Ordinal);
-        Assert.Contains("selectProvider('openai');", cleanupBlock, StringComparison.Ordinal);
+        Assert.Contains(
+            "case 'new-setup':\n" +
+            "    default:\n" +
+            "      selectOperation('setup');\n" +
+            "      selectProvider('openai');\n" +
+            "      selectSecretOption('login');\n" +
+            "      if (withConfig) withConfig.checked = true;",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "case 'refresh-auth':\n" +
+            "      selectOperation('update-secret');\n" +
+            "      selectProvider('openai');\n" +
+            "      selectSecretOption('login');\n" +
+            "      if (withConfig) withConfig.checked = false;",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "case 'cleanup':\n" +
+            "      selectOperation('cleanup');\n" +
+            "      selectProvider('openai');\n" +
+            "      selectSecretOption('skip');\n" +
+            "      if (withConfig) withConfig.checked = false;",
+            script,
+            StringComparison.Ordinal);
     }
 
     private static string LoadWizardScript() {
@@ -38,29 +54,5 @@ public sealed class WebOnboardingScriptTests {
 
         using var reader = new StreamReader(stream!);
         return reader.ReadToEnd();
-    }
-
-    private static string ExtractCaseBlock(string script, string caseName) {
-        var start = script.IndexOf($"case '{caseName}':", StringComparison.Ordinal);
-        Assert.True(start >= 0, $"Missing case block: {caseName}");
-
-        var nextCase = script.IndexOf("case '", start + 1, StringComparison.Ordinal);
-        var nextDefault = script.IndexOf("default:", start + 1, StringComparison.Ordinal);
-        var switchEnd = script.IndexOf('}', start + 1);
-
-        var end = int.MaxValue;
-        if (nextCase > start) {
-            end = Math.Min(end, nextCase);
-        }
-        if (nextDefault > start) {
-            end = Math.Min(end, nextDefault);
-        }
-        if (switchEnd > start) {
-            end = Math.Min(end, switchEnd);
-        }
-
-        Assert.True(end > start && end != int.MaxValue, $"Could not determine case block end: {caseName}");
-
-        return script.Substring(start, end - start);
     }
 }
