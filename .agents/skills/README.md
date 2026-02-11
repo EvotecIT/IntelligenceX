@@ -6,6 +6,7 @@ Repo-local skills that make agents more consistent across onboarding, setup, ana
 - `intelligencex-onboarding-setup`: Use for CLI wizard + setup web onboarding changes.
 - `intelligencex-analysis-gate`: Use for analysis catalog/packs/gate/run behavior and reliability work.
 - `intelligencex-pr-unblock-loop`: Use for PR triage, CI failure classification, and merge-blocker closure loops.
+- `intelligencex-reviewer-bootstrap`: Use for reviewer bootstrap (`reviewer.json` + workflow YAML) dry-runs and validation.
 
 ## Shared Rules
 - Always use a dedicated `codex/*` branch and worktree.
