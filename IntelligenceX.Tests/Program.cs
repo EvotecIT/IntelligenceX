@@ -106,6 +106,8 @@ internal static partial class Program {
             TestGitHubRepoClientListWorkflowRunsParsesLatestRun);
         failed += Run("GitHub repo client list workflow runs invalid payload returns empty",
             TestGitHubRepoClientListWorkflowRunsInvalidPayloadReturnsEmpty);
+        failed += Run("GitHub repo client list workflow runs encodes path segments",
+            TestGitHubRepoClientListWorkflowRunsEncodesPathSegments);
         failed += Run("GitHub repo client file fetch cancellation propagates", TestGitHubRepoClientFileFetchCancellationPropagates);
         failed += Run("GitHub repo client file fetch invalid base64 returns null", TestGitHubRepoClientFileFetchInvalidBase64ReturnsNull);
         failed += Run("GitHub repo client injected http client applies default headers", TestGitHubRepoClientInjectedHttpClientAppliesDefaultHeaders);

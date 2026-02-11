@@ -165,13 +165,17 @@ internal sealed class GitHubRepoClient : IDisposable {
         ThrowIfDisposed();
         var runs = new List<WorkflowRunInfo>();
         var limit = Math.Clamp(maxCount, 1, 20);
+        var encodedOwner = Uri.EscapeDataString(owner ?? string.Empty);
+        var encodedRepo = Uri.EscapeDataString(repo ?? string.Empty);
         var encodedWorkflowFile = Uri.EscapeDataString(workflowFile ?? string.Empty);
-        if (string.IsNullOrWhiteSpace(encodedWorkflowFile)) {
+        if (string.IsNullOrWhiteSpace(encodedOwner) || string.IsNullOrWhiteSpace(encodedRepo) ||
+            string.IsNullOrWhiteSpace(encodedWorkflowFile)) {
             return runs;
         }
 
         try {
-            var json = await GetJsonAsync($"/repos/{owner}/{repo}/actions/workflows/{encodedWorkflowFile}/runs?per_page={limit}")
+            var json = await GetJsonAsync(
+                    $"/repos/{encodedOwner}/{encodedRepo}/actions/workflows/{encodedWorkflowFile}/runs?per_page={limit}")
                 .ConfigureAwait(false);
             if (!json.TryGetProperty("workflow_runs", out var workflowRuns) || workflowRuns.ValueKind != JsonValueKind.Array) {
                 return runs;
@@ -187,7 +191,7 @@ internal sealed class GitHubRepoClient : IDisposable {
                     && createdAtProperty.ValueKind == JsonValueKind.String
                     && DateTimeOffset.TryParse(createdAtProperty.GetString(),
                         CultureInfo.InvariantCulture,
-                        DateTimeStyles.AssumeUniversal,
+                        DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
                         out var parsedCreatedAt)) {
                     createdAt = parsedCreatedAt;
                 }

@@ -600,6 +600,28 @@ jobs:
         AssertEqual(0, runs.Count, "repo client workflow runs invalid payload returns empty");
     }
 
+    private static void TestGitHubRepoClientListWorkflowRunsEncodesPathSegments() {
+        string? absolutePath = null;
+        using var client = CreateGitHubRepoClientForTests((request, _) => {
+            absolutePath = request.RequestUri?.AbsolutePath;
+            var payload = """
+{
+  "workflow_runs": []
+}
+""";
+            return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK) {
+                Content = new System.Net.Http.StringContent(payload)
+            });
+        });
+
+        _ = client.ListWorkflowRunsAsync("owner+team", "repo name", ".github/workflows/review-intelligencex.yml", maxCount: 1)
+            .GetAwaiter().GetResult();
+        AssertContainsText(absolutePath ?? string.Empty, "/repos/owner%2Bteam/repo%20name/actions/workflows/",
+            "repo client workflow runs owner/repo segments encoded");
+        AssertContainsText(absolutePath ?? string.Empty, ".github%2Fworkflows%2Freview-intelligencex.yml",
+            "repo client workflow runs workflow path encoded");
+    }
+
     private static void TestGitHubRepoClientFileFetchCancellationPropagates() {
         using var client = CreateGitHubRepoClientForTests((_, _) => throw new OperationCanceledException("cancelled"));
         AssertThrows<OperationCanceledException>(() =>

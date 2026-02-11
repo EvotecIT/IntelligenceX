@@ -371,7 +371,7 @@ internal static class SetupPostApplyVerifier {
 
     private static void AddLatestWorkflowRunCheck(SetupPostApplyObservedState observed, SetupPostApplyVerification result) {
         if (observed.LatestWorkflowRun is null) {
-            AddSkippedCheck(result, "Latest workflow run", "link available", "none",
+            AddSkippedCheck(result, "Latest workflow run", "observed", "none",
                 "No workflow runs found for review-intelligencex.yml.");
             return;
         }
@@ -396,7 +396,7 @@ internal static class SetupPostApplyVerifier {
 
         result.Checks.Add(new SetupPostApplyCheck {
             Name = "Latest workflow run",
-            Expected = "link available",
+            Expected = "observed",
             Actual = actual,
             Passed = true,
             Skipped = false,
