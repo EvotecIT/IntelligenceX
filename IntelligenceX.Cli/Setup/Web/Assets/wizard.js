@@ -1368,4 +1368,5 @@ async function doApply() {
 refreshPresets();
 loadUsageCache();
 updateProgressBar();
+selectSecretOption(secretOption);
 syncOnboardingPathVisualState();
