@@ -132,6 +132,14 @@ public sealed class AnalysisGateSettings {
     /// When true, fail the gate if any in-scope security hotspot has state <c>to-review</c>.
     /// </summary>
     public bool FailOnHotspotsToReview { get; set; }
+    /// <summary>
+    /// When true, the gate evaluates only findings that are not present in the configured baseline.
+    /// </summary>
+    public bool NewIssuesOnly { get; set; }
+    /// <summary>
+    /// Relative or absolute path to the findings baseline used when <see cref="NewIssuesOnly"/> is enabled.
+    /// </summary>
+    public string BaselinePath { get; set; } = ".intelligencex/analysis-baseline.json";
 }
 
 /// <summary>

@@ -62,6 +62,8 @@ public static class AnalysisConfigReader {
             settings.Gate.FailOnUnavailable = ReadBool(gate, "failOnUnavailable", settings.Gate.FailOnUnavailable);
             settings.Gate.FailOnNoEnabledRules = ReadBool(gate, "failOnNoEnabledRules", settings.Gate.FailOnNoEnabledRules);
             settings.Gate.FailOnHotspotsToReview = ReadBool(gate, "failOnHotspotsToReview", settings.Gate.FailOnHotspotsToReview);
+            settings.Gate.NewIssuesOnly = ReadBool(gate, "newIssuesOnly", settings.Gate.NewIssuesOnly);
+            settings.Gate.BaselinePath = gate.GetString("baselinePath") ?? settings.Gate.BaselinePath;
         }
 
         var results = analysis.GetObject("results");
