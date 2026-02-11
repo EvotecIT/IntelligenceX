@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Diagnostics;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -12,20 +13,27 @@ namespace IntelligenceX.Cli.Setup.Wizard;
 
 internal sealed class GitHubRepoClient : IDisposable {
     private readonly HttpClient _http;
+    private readonly bool _ownsHttpClient;
 
     public GitHubRepoClient(string token, string apiBaseUrl) {
         _http = new HttpClient {
             BaseAddress = new Uri(apiBaseUrl)
         };
+        _ownsHttpClient = true;
         ConfigureDefaultHeaders(_http, token);
     }
 
-    internal GitHubRepoClient(HttpClient httpClient, string token = "test-token") {
+    internal GitHubRepoClient(HttpClient httpClient, string token = "test-token", bool ownsHttpClient = false) {
         _http = httpClient;
+        _ownsHttpClient = ownsHttpClient;
         ConfigureDefaultHeaders(_http, token);
     }
 
-    public void Dispose() => _http.Dispose();
+    public void Dispose() {
+        if (_ownsHttpClient) {
+            _http.Dispose();
+        }
+    }
 
     public async Task<List<RepositoryInfo>> ListRepositoriesAsync() {
         var repos = new List<RepositoryInfo>();
@@ -151,9 +159,18 @@ internal sealed class GitHubRepoClient : IDisposable {
     }
 
     private static void ConfigureDefaultHeaders(HttpClient http, string token) {
-        http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("IntelligenceX.Cli", "1.0"));
-        http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+        if (!http.DefaultRequestHeaders.UserAgent.Any(value =>
+                string.Equals(value.Product?.Name, "IntelligenceX.Cli", StringComparison.OrdinalIgnoreCase))) {
+            http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("IntelligenceX.Cli", "1.0"));
+        }
+        if (!http.DefaultRequestHeaders.Accept.Any(value =>
+                string.Equals(value.MediaType, "application/vnd.github+json", StringComparison.OrdinalIgnoreCase))) {
+            http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+        }
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        if (http.DefaultRequestHeaders.Contains("X-GitHub-Api-Version")) {
+            http.DefaultRequestHeaders.Remove("X-GitHub-Api-Version");
+        }
         http.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
     }
 
