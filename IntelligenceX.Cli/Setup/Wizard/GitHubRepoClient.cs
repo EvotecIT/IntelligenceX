@@ -161,6 +161,69 @@ internal sealed class GitHubRepoClient : IDisposable {
         return TrySecretExistsAsync($"/orgs/{org}/actions/secrets/{name}");
     }
 
+    public async Task<List<WorkflowRunInfo>> ListWorkflowRunsAsync(string owner, string repo, string workflowFile, int maxCount = 3) {
+        ThrowIfDisposed();
+        var runs = new List<WorkflowRunInfo>();
+        var limit = Math.Clamp(maxCount, 1, 20);
+        var encodedWorkflowFile = Uri.EscapeDataString(workflowFile ?? string.Empty);
+        if (string.IsNullOrWhiteSpace(encodedWorkflowFile)) {
+            return runs;
+        }
+
+        try {
+            var json = await GetJsonAsync($"/repos/{owner}/{repo}/actions/workflows/{encodedWorkflowFile}/runs?per_page={limit}")
+                .ConfigureAwait(false);
+            if (!json.TryGetProperty("workflow_runs", out var workflowRuns) || workflowRuns.ValueKind != JsonValueKind.Array) {
+                return runs;
+            }
+
+            foreach (var item in workflowRuns.EnumerateArray()) {
+                if (item.ValueKind != JsonValueKind.Object) {
+                    continue;
+                }
+
+                DateTimeOffset? createdAt = null;
+                if (item.TryGetProperty("created_at", out var createdAtProperty)
+                    && createdAtProperty.ValueKind == JsonValueKind.String
+                    && DateTimeOffset.TryParse(createdAtProperty.GetString(),
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.AssumeUniversal,
+                        out var parsedCreatedAt)) {
+                    createdAt = parsedCreatedAt;
+                }
+
+                runs.Add(new WorkflowRunInfo(
+                    id: item.TryGetProperty("id", out var idProperty) && idProperty.TryGetInt64(out var parsedId) ? parsedId : 0,
+                    url: item.TryGetProperty("html_url", out var urlProperty) && urlProperty.ValueKind == JsonValueKind.String
+                        ? urlProperty.GetString()
+                        : null,
+                    status: item.TryGetProperty("status", out var statusProperty) && statusProperty.ValueKind == JsonValueKind.String
+                        ? statusProperty.GetString()
+                        : null,
+                    conclusion: item.TryGetProperty("conclusion", out var conclusionProperty) && conclusionProperty.ValueKind == JsonValueKind.String
+                        ? conclusionProperty.GetString()
+                        : null,
+                    headBranch: item.TryGetProperty("head_branch", out var headBranchProperty) && headBranchProperty.ValueKind == JsonValueKind.String
+                        ? headBranchProperty.GetString()
+                        : null,
+                    @event: item.TryGetProperty("event", out var eventProperty) && eventProperty.ValueKind == JsonValueKind.String
+                        ? eventProperty.GetString()
+                        : null,
+                    createdAt: createdAt));
+            }
+        } catch (HttpRequestException ex) {
+            Trace.TraceWarning($"GitHub workflow run lookup HTTP failure for {owner}/{repo}: {ex.Message}");
+        } catch (OperationCanceledException) {
+            throw;
+        } catch (JsonException ex) {
+            Trace.TraceWarning($"GitHub workflow run lookup JSON parse failure for {owner}/{repo}: {ex.Message}");
+        } catch (InvalidOperationException ex) {
+            Trace.TraceWarning($"GitHub workflow run lookup failed for {owner}/{repo}: {ex.GetType().Name}: {ex.Message}");
+        }
+
+        return runs;
+    }
+
     private async Task<JsonElement> GetJsonAsync(string url) {
         using var response = await _http.GetAsync(url).ConfigureAwait(false);
         var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -378,5 +441,26 @@ internal sealed class GitHubRepoClient : IDisposable {
         public static SecretLookupResult Forbidden(string note) => new(null, "forbidden", note);
         public static SecretLookupResult RateLimited(string note) => new(null, "rate_limited", note);
         public static SecretLookupResult Unknown(string note) => new(null, "unknown", note);
+    }
+
+    public sealed class WorkflowRunInfo {
+        public WorkflowRunInfo(long id, string? url, string? status, string? conclusion, string? headBranch, string? @event,
+            DateTimeOffset? createdAt) {
+            Id = id;
+            Url = url;
+            Status = status;
+            Conclusion = conclusion;
+            HeadBranch = headBranch;
+            Event = @event;
+            CreatedAt = createdAt;
+        }
+
+        public long Id { get; }
+        public string? Url { get; }
+        public string? Status { get; }
+        public string? Conclusion { get; }
+        public string? HeadBranch { get; }
+        public string? Event { get; }
+        public DateTimeOffset? CreatedAt { get; }
     }
 }

@@ -385,6 +385,42 @@ jobs:
         AssertEqual("unauthorized", secretCheck.Actual, "post-apply unauthorized secret check actual");
     }
 
+    private static void TestSetupPostApplyVerifyIncludesLatestWorkflowRunLink() {
+        var context = new SetupPostApplyContext {
+            Repo = "owner/repo",
+            Operation = SetupApplyOperation.Setup,
+            WithConfig = true,
+            SkipSecret = true,
+            Provider = "openai",
+            ExitSuccess = true,
+            Output = "Setup complete. PR created: https://github.com/owner/repo/pull/22",
+            PullRequestUrl = "https://github.com/owner/repo/pull/22"
+        };
+        var observed = new SetupPostApplyObservedState {
+            DefaultBranch = "main",
+            CheckRef = "intelligencex-setup/20260211",
+            CheckRefSource = "pull-request",
+            WorkflowExists = true,
+            WorkflowManaged = true,
+            ConfigExists = true,
+            LatestWorkflowRun = new IntelligenceX.Cli.Setup.Wizard.GitHubRepoClient.WorkflowRunInfo(
+                id: 120,
+                url: "https://github.com/owner/repo/actions/runs/120",
+                status: "completed",
+                conclusion: "success",
+                headBranch: "main",
+                @event: "pull_request",
+                createdAt: DateTimeOffset.Parse("2026-02-11T19:45:00Z", System.Globalization.CultureInfo.InvariantCulture))
+        };
+
+        var verify = SetupPostApplyVerifier.EvaluateForTests(context, observed);
+        var latestRun = verify.Checks.Find(check => check.Name == "Latest workflow run");
+        AssertNotNull(latestRun, "post-apply latest workflow run check exists");
+        AssertEqual(false, latestRun!.Skipped, "post-apply latest workflow run check not skipped");
+        AssertEqual(true, latestRun.Passed, "post-apply latest workflow run check passed");
+        AssertContainsText(latestRun.Note ?? string.Empty, "actions/runs/120", "post-apply latest workflow run note includes url");
+    }
+
     private static void TestWizardPostApplyVerifySkipsCallbackWhenApplyFails() {
         var context = new SetupPostApplyContext {
             Repo = "owner/repo",
@@ -514,6 +550,54 @@ jobs:
         AssertThrows<OperationCanceledException>(() =>
                 client.TryRepoSecretExistsAsync("owner", "repo", "INTELLIGENCEX_AUTH_B64").GetAwaiter().GetResult(),
             "repo client secret cancellation");
+    }
+
+    private static void TestGitHubRepoClientListWorkflowRunsParsesLatestRun() {
+        using var client = CreateGitHubRepoClientForTests((_, _) => {
+            var payload = """
+{
+  "workflow_runs": [
+    {
+      "id": 42,
+      "html_url": "https://github.com/owner/repo/actions/runs/42",
+      "status": "completed",
+      "conclusion": "success",
+      "head_branch": "main",
+      "event": "pull_request",
+      "created_at": "2026-02-11T20:00:00Z"
+    }
+  ]
+}
+""";
+            return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK) {
+                Content = new System.Net.Http.StringContent(payload)
+            });
+        });
+
+        var runs = client.ListWorkflowRunsAsync("owner", "repo", ".github/workflows/review-intelligencex.yml", maxCount: 1)
+            .GetAwaiter().GetResult();
+        AssertEqual(1, runs.Count, "repo client workflow runs count");
+        AssertEqual(42L, runs[0].Id, "repo client workflow run id");
+        AssertEqual("completed", runs[0].Status, "repo client workflow run status");
+        AssertEqual("success", runs[0].Conclusion, "repo client workflow run conclusion");
+        AssertContainsText(runs[0].Url ?? string.Empty, "actions/runs/42", "repo client workflow run url");
+    }
+
+    private static void TestGitHubRepoClientListWorkflowRunsInvalidPayloadReturnsEmpty() {
+        using var client = CreateGitHubRepoClientForTests((_, _) => {
+            var payload = """
+{
+  "workflow_runs": "invalid"
+}
+""";
+            return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK) {
+                Content = new System.Net.Http.StringContent(payload)
+            });
+        });
+
+        var runs = client.ListWorkflowRunsAsync("owner", "repo", ".github/workflows/review-intelligencex.yml", maxCount: 1)
+            .GetAwaiter().GetResult();
+        AssertEqual(0, runs.Count, "repo client workflow runs invalid payload returns empty");
     }
 
     private static void TestGitHubRepoClientFileFetchCancellationPropagates() {

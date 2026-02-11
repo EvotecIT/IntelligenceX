@@ -37,6 +37,7 @@ internal sealed class SetupPostApplyObservedState {
     public bool? ConfigExists { get; set; }
     public GitHubRepoClient.SecretLookupResult? RepoSecretLookup { get; set; }
     public GitHubRepoClient.SecretLookupResult? OrgSecretLookup { get; set; }
+    public GitHubRepoClient.WorkflowRunInfo? LatestWorkflowRun { get; set; }
 }
 
 internal sealed class SetupPostApplyCheck {
@@ -201,6 +202,17 @@ internal static class SetupPostApplyVerifier {
             observed.OrgSecretLookup = await client.TryOrgSecretExistsAsync(context.SecretOrg!, SecretName).ConfigureAwait(false);
         }
 
+        try {
+            var runs = await client.ListWorkflowRunsAsync(owner, repo, WorkflowPath, maxCount: 1).ConfigureAwait(false);
+            if (runs.Count > 0) {
+                observed.LatestWorkflowRun = runs[0];
+            }
+        } catch (OperationCanceledException) {
+            throw;
+        } catch {
+            // Best-effort only; verification should remain deterministic without run metadata.
+        }
+
         return observed;
     }
 
@@ -222,6 +234,7 @@ internal static class SetupPostApplyVerifier {
         } else if (context.Operation == SetupApplyOperation.UpdateSecret) {
             AddUpdateSecretChecks(context, observed, result);
         }
+        AddLatestWorkflowRunCheck(observed, result);
 
         var hasDefinitiveChecks = false;
         var allDefinitivePassed = true;
@@ -354,6 +367,41 @@ internal static class SetupPostApplyVerifier {
             expected: "present",
             lookup: observed.RepoSecretLookup,
             note: "Setup should create or update this secret.");
+    }
+
+    private static void AddLatestWorkflowRunCheck(SetupPostApplyObservedState observed, SetupPostApplyVerification result) {
+        if (observed.LatestWorkflowRun is null) {
+            AddSkippedCheck(result, "Latest workflow run", "link available", "none",
+                "No workflow runs found for review-intelligencex.yml.");
+            return;
+        }
+
+        var latestRun = observed.LatestWorkflowRun;
+        var status = string.IsNullOrWhiteSpace(latestRun.Status) ? "unknown" : latestRun.Status!;
+        var conclusion = string.IsNullOrWhiteSpace(latestRun.Conclusion) ? "n/a" : latestRun.Conclusion!;
+        var actual = $"{status}/{conclusion}";
+        var noteParts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(latestRun.Url)) {
+            noteParts.Add(latestRun.Url!);
+        }
+        if (latestRun.CreatedAt.HasValue) {
+            noteParts.Add($"created {latestRun.CreatedAt.Value.UtcDateTime:u}");
+        }
+        if (!string.IsNullOrWhiteSpace(latestRun.HeadBranch)) {
+            noteParts.Add($"branch {latestRun.HeadBranch}");
+        }
+        if (!string.IsNullOrWhiteSpace(latestRun.Event)) {
+            noteParts.Add($"event {latestRun.Event}");
+        }
+
+        result.Checks.Add(new SetupPostApplyCheck {
+            Name = "Latest workflow run",
+            Expected = "link available",
+            Actual = actual,
+            Passed = true,
+            Skipped = false,
+            Note = noteParts.Count == 0 ? null : string.Join(" | ", noteParts)
+        });
     }
 
     private static void AddPullRequestCheck(SetupPostApplyContext context, SetupPostApplyVerification result) {

@@ -21,7 +21,7 @@ Goal: reviewer + static analysis + onboarding (CLI + Web) feel "done" end-to-end
 - [x] Web UI: add "Enable static analysis" toggle and pack picker (default `all-50`).
 - [x] CLI + Web: show a final "Effective config" preview (review + analysis) before Apply.
 - [x] CLI + Web: surface the Dependabot secrets limitation in the UI copy (why bot identity may differ).
-- [ ] CLI + Web: add a post-Apply "Verify" step (workflow present, config present if requested, required secrets present, last runs links).
+- [x] CLI + Web: add a post-Apply "Verify" step (workflow present, config present if requested, required secrets present, last runs links).
 
 ### Phase B — Setup Output (Workflow + reviewer.json)
 - [x] Setup config writer: include `analysis` section in `.intelligencex/reviewer.json` when static analysis is enabled (create + merge paths).
