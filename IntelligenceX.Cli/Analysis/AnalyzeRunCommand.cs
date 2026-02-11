@@ -319,6 +319,22 @@ function Get-AnalyzerPaths {
                 if (-not [string]::IsNullOrWhiteSpace($name) -and $ExcludedSegments.Contains($name)) {
                     continue
                 }
+
+                try {
+                    $attributes = [System.IO.File]::GetAttributes($subdirectory)
+                    if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                        continue
+                    }
+                } catch [System.UnauthorizedAccessException] {
+                    continue
+                } catch [System.IO.PathTooLongException] {
+                    continue
+                } catch [System.IO.DirectoryNotFoundException] {
+                    continue
+                } catch [System.IO.IOException] {
+                    continue
+                }
+
                 $stack.Push($subdirectory)
             }
         } catch [System.UnauthorizedAccessException] {
