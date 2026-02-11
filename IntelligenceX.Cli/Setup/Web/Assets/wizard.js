@@ -669,7 +669,7 @@ function formatResults(data) {
       if (!r || !r.verify) return false;
       const skipped = coerceBoolean(r.verify.skipped);
       const passed = coerceBoolean(r.verify.passed);
-      return skipped !== true && passed === false;
+      return skipped !== true && passed !== true;
     }).length;
     const verifyText = verifyFailed > 0 ? `, verify issues in ${verifyFailed}` : '';
     setSummary(`Results: ${succeeded}/${total} succeeded${failed > 0 ? `, ${failed} failed` : ''}${verifyText}.`);
