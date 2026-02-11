@@ -1,6 +1,6 @@
-# Static Analysis (Draft)
+# Static Analysis
 
-This document proposes how IntelligenceX can offer default static analysis rules and a first-class onboarding flow while keeping user repositories clean. The design keeps decisions centralized in `.intelligencex/reviewer.json` and avoids committing analyzer config files by default.
+This document describes the current IntelligenceX static analysis model and onboarding flow. Decisions stay centralized in `.intelligencex/reviewer.json`, and analyzer config files are not committed by default.
 
 ## Goals
 - Provide curated rule packs with hundreds of rules enabled out of the box.
@@ -11,14 +11,15 @@ This document proposes how IntelligenceX can offer default static analysis rules
 
 ## User Experience (Onboarding)
 - The wizard offers a single toggle: "Enable static analysis (recommended)."
-- Users select one or more packs (for example `all-50`, `all-100`, `all-500`).
-- Users can optionally toggle individual rules and change severities.
+- Users choose pack defaults from curated options (default `all-50`) or enter custom pack IDs.
+- Users can optionally enable analysis gating ("Fail CI on static analysis findings?").
+- Users can optionally set an analyzer export path for IDE support.
 - The wizard writes the `analysis` section into `.intelligencex/reviewer.json`.
 
 ## Source Of Truth
 All enablement decisions live in `.intelligencex/reviewer.json`. Analyzer tool configs are generated temporarily during analysis runs and deleted afterward. No config files are committed by default.
 
-## Proposed Configuration (reviewer.json)
+## Configuration (reviewer.json)
 ```json
 {
   "analysis": {
@@ -56,7 +57,7 @@ All enablement decisions live in `.intelligencex/reviewer.json`. Analyzer tool c
 ## Rule Catalog (One File Per Rule)
 Each rule has a metadata file with descriptions and mapping to the underlying analyzer rule ID. This powers the GUI/CLI toggles.
 
-Proposed layout:
+Catalog layout:
 - `Analysis/Catalog/rules/csharp/CA2000.json`
 - `Analysis/Catalog/rules/powershell/PSAvoidUsingWriteHost.json`
 - `Analysis/Catalog/rules/internal/IXLOC001.json`
@@ -99,7 +100,7 @@ If `type` is not explicitly set, IntelligenceX infers a default based on `catego
 ## Rule Packs
 Packs are curated lists of rule IDs plus optional severity overrides.
 
-Proposed layout:
+Pack layout:
 - `Analysis/Packs/csharp-default.json`
 - `Analysis/Packs/powershell-default.json`
 - `Analysis/Packs/intelligencex-maintainability-default.json`
@@ -216,7 +217,24 @@ Analysis runs before review and publishes findings as artifacts. The reviewer re
 
 ```yaml
 jobs:
+  analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Validate analysis catalog
+        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze validate-catalog --workspace .
+      - name: Run static analysis
+        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze run --config .intelligencex/reviewer.json --out artifacts --framework net8.0
+      - name: Compute changed files
+        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- ci changed-files --workspace . --out artifacts/changed-files.txt
+      - name: Static analysis gate
+        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze gate --config .intelligencex/reviewer.json --workspace . --changed-files artifacts/changed-files.txt
+
   review:
+    needs: [analysis]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -228,8 +246,6 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-      - name: Run analysis
-        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze run --config .intelligencex/reviewer.json --out artifacts --framework net8.0
       - name: Run reviewer
         run: dotnet run --project IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0
         env:
