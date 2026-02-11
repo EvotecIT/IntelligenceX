@@ -203,7 +203,6 @@ internal sealed partial class WebApi {
             }
 
             foreach (var repo in repos) {
-                var effectiveDryRun = dryRun || request.DryRun;
                 var args = BuildSetupArgsForRepo(request, dryRun, repo);
                 var withConfig = ResolveWithConfigFromArgs(args);
                 var secretOrgForRepo = ResolveSecretOrgForRepo(repo, request.SecretOrg);
@@ -218,7 +217,7 @@ internal sealed partial class WebApi {
                     SkipSecret = request.SkipSecret,
                     ManualSecret = request.ManualSecret,
                     KeepSecret = request.KeepSecret,
-                    DryRun = effectiveDryRun,
+                    DryRun = requestDryRun,
                     ExitSuccess = result.ExitCode == 0,
                     ExpectOrgSecret = orgSecretContext.ExpectOrgSecret,
                     SecretOrg = orgSecretContext.SecretOrg,
