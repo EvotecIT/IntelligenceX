@@ -174,6 +174,9 @@ internal sealed class GitHubRepoClient : IDisposable {
             }
             Trace.TraceWarning($"GitHub secret lookup failed ({statusCode}).");
             return SecretLookupResult.Unknown($"GitHub API returned {statusCode} {response.ReasonPhrase ?? "Error"}.");
+        } catch (OperationCanceledException) {
+            // Preserve cancellation semantics for callers that enforce timeouts/cancellation tokens.
+            throw;
         } catch (Exception ex) {
             Trace.TraceWarning($"GitHub secret lookup failed: {ex.GetType().Name}: {ex.Message}");
             return SecretLookupResult.Unknown("GitHub secret lookup failed due to an unexpected client error.");
