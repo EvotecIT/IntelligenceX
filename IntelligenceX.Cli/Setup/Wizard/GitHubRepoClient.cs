@@ -90,6 +90,39 @@ internal sealed class GitHubRepoClient : IDisposable {
         }
     }
 
+    public async Task<PullRequestInfo?> TryGetPullRequestAsync(string owner, string repo, int number) {
+        try {
+            var json = await GetJsonAsync($"/repos/{owner}/{repo}/pulls/{number}").ConfigureAwait(false);
+            var headRef = json.GetProperty("head").GetProperty("ref").GetString();
+            var baseRef = json.GetProperty("base").GetProperty("ref").GetString();
+            var url = json.TryGetProperty("html_url", out var htmlUrl) ? htmlUrl.GetString() : null;
+            return new PullRequestInfo(number, headRef, baseRef, url);
+        } catch (HttpRequestException ex) {
+            Trace.TraceWarning($"GitHub pull request fetch HTTP failure for {owner}/{repo}#{number}: {ex.Message}");
+            return null;
+        } catch (OperationCanceledException) {
+            // Preserve cancellation semantics for callers that enforce timeouts/cancellation tokens.
+            throw;
+        } catch (JsonException ex) {
+            Trace.TraceWarning($"GitHub pull request fetch JSON parse failure for {owner}/{repo}#{number}: {ex.Message}");
+            return null;
+        } catch (InvalidOperationException ex) {
+            Trace.TraceWarning($"GitHub pull request fetch failed for {owner}/{repo}#{number}: {ex.GetType().Name}: {ex.Message}");
+            return null;
+        } catch (KeyNotFoundException ex) {
+            Trace.TraceWarning($"GitHub pull request payload missing fields for {owner}/{repo}#{number}: {ex.Message}");
+            return null;
+        }
+    }
+
+    public Task<SecretLookupResult> TryRepoSecretExistsAsync(string owner, string repo, string name) {
+        return TrySecretExistsAsync($"/repos/{owner}/{repo}/actions/secrets/{name}");
+    }
+
+    public Task<SecretLookupResult> TryOrgSecretExistsAsync(string org, string name) {
+        return TrySecretExistsAsync($"/orgs/{org}/actions/secrets/{name}");
+    }
+
     private async Task<JsonElement> GetJsonAsync(string url) {
         using var response = await _http.GetAsync(url).ConfigureAwait(false);
         var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -115,6 +148,39 @@ internal sealed class GitHubRepoClient : IDisposable {
             }
         }
         return msg;
+    }
+
+    private async Task<SecretLookupResult> TrySecretExistsAsync(string url) {
+        try {
+            using var response = await _http.GetAsync(url).ConfigureAwait(false);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound) {
+                return SecretLookupResult.Missing();
+            }
+            if (response.IsSuccessStatusCode) {
+                return SecretLookupResult.Present();
+            }
+            var statusCode = (int)response.StatusCode;
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) {
+                Trace.TraceWarning($"GitHub secret lookup unauthorized ({statusCode}).");
+                return SecretLookupResult.Unauthorized($"GitHub API returned {statusCode} Unauthorized.");
+            }
+            if (response.StatusCode == System.Net.HttpStatusCode.Forbidden) {
+                Trace.TraceWarning($"GitHub secret lookup forbidden ({statusCode}).");
+                return SecretLookupResult.Forbidden($"GitHub API returned {statusCode} Forbidden.");
+            }
+            if (statusCode == 429) {
+                Trace.TraceWarning("GitHub secret lookup rate limited (429).");
+                return SecretLookupResult.RateLimited("GitHub API returned 429 Too Many Requests.");
+            }
+            Trace.TraceWarning($"GitHub secret lookup failed ({statusCode}).");
+            return SecretLookupResult.Unknown($"GitHub API returned {statusCode} {response.ReasonPhrase ?? "Error"}.");
+        } catch (OperationCanceledException) {
+            // Preserve cancellation semantics for callers that enforce timeouts/cancellation tokens.
+            throw;
+        } catch (Exception ex) {
+            Trace.TraceWarning($"GitHub secret lookup failed: {ex.GetType().Name}: {ex.Message}");
+            return SecretLookupResult.Unknown("GitHub secret lookup failed due to an unexpected client error.");
+        }
     }
 
     private static bool TryParseRepository(JsonElement item, out RepositoryInfo info) {
@@ -216,5 +282,38 @@ internal sealed class GitHubRepoClient : IDisposable {
         /// Decoded file content.
         /// </summary>
         public string Content { get; }
+    }
+
+    public sealed class PullRequestInfo {
+        public PullRequestInfo(int number, string? headRef, string? baseRef, string? url) {
+            Number = number;
+            HeadRef = headRef;
+            BaseRef = baseRef;
+            Url = url;
+        }
+
+        public int Number { get; }
+        public string? HeadRef { get; }
+        public string? BaseRef { get; }
+        public string? Url { get; }
+    }
+
+    public sealed class SecretLookupResult {
+        private SecretLookupResult(bool? exists, string status, string? note) {
+            Exists = exists;
+            Status = status;
+            Note = note;
+        }
+
+        public bool? Exists { get; }
+        public string Status { get; }
+        public string? Note { get; }
+
+        public static SecretLookupResult Present() => new(true, "present", null);
+        public static SecretLookupResult Missing() => new(false, "missing", null);
+        public static SecretLookupResult Unauthorized(string note) => new(null, "unauthorized", note);
+        public static SecretLookupResult Forbidden(string note) => new(null, "forbidden", note);
+        public static SecretLookupResult RateLimited(string note) => new(null, "rate_limited", note);
+        public static SecretLookupResult Unknown(string note) => new(null, "unknown", note);
     }
 }

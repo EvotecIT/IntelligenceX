@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using IntelligenceX.Cli.Setup;
 using IntelligenceX.Cli.Setup.Host;
 using Spectre.Console;
 
@@ -138,30 +139,59 @@ internal static partial class WizardRunner {
         }
 
         var failures = 0;
+        var verifyFailures = 0;
         var prLinks = new List<(string Repo, string Url)>();
+        var verifyResults = new List<SetupPostApplyVerification>();
         var host = new SetupHost();
-        await AnsiConsole.Status()
-            .Spinner(Spinner.Known.Dots)
-            .StartAsync("Applying setup...", async _ => {
-                foreach (var repoPlan in state.SelectedRepos.Select(repo => BuildPlan(state, repo))) {
-                    var result = await host.ApplyWithOutputAsync(repoPlan).ConfigureAwait(false);
-                    if (result.ExitCode != 0) {
-                        failures++;
+        GitHubRepoClient? verifyClient = null;
+        try {
+            if (!state.DryRun && !string.IsNullOrWhiteSpace(state.GitHubToken)) {
+                verifyClient = new GitHubRepoClient(state.GitHubToken!, DefaultGitHubApi);
+            }
+
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .StartAsync("Applying setup...", async _ => {
+                    foreach (var repoPlan in state.SelectedRepos.Select(repo => BuildPlan(state, repo))) {
+                        var result = await host.ApplyWithOutputAsync(repoPlan).ConfigureAwait(false);
+                        if (result.ExitCode != 0) {
+                            failures++;
+                        }
+
+                        var prUrl = SetupPostApplyVerifier.ExtractPullRequestUrl(result.Output);
+                        if (!string.IsNullOrWhiteSpace(prUrl)) {
+                            prLinks.Add((repoPlan.RepoFullName, prUrl!));
+                        }
+
+                        var verifyContext = BuildPostApplyVerifyContext(state, repoPlan, result, prUrl);
+                        var verifyResult = await ResolvePostApplyVerificationAsync(
+                            verifyContext,
+                            () => SetupPostApplyVerifier.VerifyAsync(verifyClient, verifyContext)).ConfigureAwait(false);
+                        verifyResults.Add(verifyResult);
                     }
-                    var prUrl = ExtractPullRequestUrl(result.Output);
-                    if (!string.IsNullOrWhiteSpace(prUrl)) {
-                        prLinks.Add((repoPlan.RepoFullName, prUrl!));
-                    }
-                }
-            }).ConfigureAwait(false);
+                }).ConfigureAwait(false);
+        } finally {
+            verifyClient?.Dispose();
+        }
 
         if (failures > 0) {
+            if (verifyResults.Count > 0) {
+                RenderPostApplyVerificationSummary(verifyResults);
+            }
             AnsiConsole.MarkupLine($"[red]Setup completed with {failures} failure(s).[/]");
             return 1;
         }
 
         if (prLinks.Count > 0) {
             RenderPullRequestSummary(prLinks);
+        }
+        if (verifyResults.Count > 0) {
+            RenderPostApplyVerificationSummary(verifyResults);
+            verifyFailures = verifyResults.Count(verify => !verify.Skipped && !verify.Passed);
+            if (verifyFailures > 0) {
+                AnsiConsole.MarkupLine($"[red]Post-apply verification detected {verifyFailures} issue(s).[/]");
+                return 1;
+            }
         }
 
         AnsiConsole.MarkupLine("[green]Setup completed successfully.[/]");

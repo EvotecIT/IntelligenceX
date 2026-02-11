@@ -455,6 +455,17 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function coerceBoolean(value) {
+  if (value === true || value === false) return value;
+  if (typeof value === 'number') return value === 0 ? false : (value === 1 ? true : null);
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1' || normalized === 'yes') return true;
+    if (normalized === 'false' || normalized === '0' || normalized === 'no') return false;
+  }
+  return null;
+}
+
 // ── Build review grid ──
 function buildReviewTable() {
   const grid = $('reviewGrid');
@@ -654,9 +665,17 @@ function formatResults(data) {
     const total = data.results.length;
     const succeeded = data.results.filter(r => r.exitCode === 0).length;
     const failed = total - succeeded;
-    setSummary(`Results: ${succeeded}/${total} succeeded${failed > 0 ? `, ${failed} failed` : ''}.`);
+    const verifyFailed = data.results.filter(r => {
+      if (!r || !r.verify) return false;
+      const skipped = coerceBoolean(r.verify.skipped);
+      const passed = coerceBoolean(r.verify.passed);
+      return skipped !== true && passed !== true;
+    }).length;
+    const verifyText = verifyFailed > 0 ? `, verify issues in ${verifyFailed}` : '';
+    setSummary(`Results: ${succeeded}/${total} succeeded${failed > 0 ? `, ${failed} failed` : ''}${verifyText}.`);
     lines.push(`Summary: ${succeeded}/${total} succeeded`);
     if (failed > 0) lines.push(`Failures: ${failed}`);
+    if (verifyFailed > 0) lines.push(`Verification issues: ${verifyFailed}`);
     lines.push('');
     data.results.forEach(result => {
       const name = result.repo || 'repo';
@@ -664,13 +683,61 @@ function formatResults(data) {
       lines.push(`== ${name} ==`);
       lines.push(`status: ${status}`);
       if (typeof result.exitCode !== 'undefined') lines.push(`exit: ${result.exitCode}`);
-      if (result.error && result.error.trim().length > 0) {
-        lines.push('error:');
-        lines.push(result.error.trim());
+      const pullRequestUrl = typeof result.pullRequestUrl === 'string' ? result.pullRequestUrl.trim() : '';
+      if (pullRequestUrl.length > 0) {
+        lines.push(`pr: ${pullRequestUrl}`);
       }
-      if (result.output && result.output.trim().length > 0) {
+      const errorText = typeof result.error === 'string' ? result.error.trim() : '';
+      if (errorText.length > 0) {
+        lines.push('error:');
+        lines.push(errorText);
+      }
+      const outputText = typeof result.output === 'string' ? result.output.trim() : '';
+      if (outputText.length > 0) {
         lines.push('output:');
-        lines.push(result.output.trim());
+        lines.push(outputText);
+      }
+      if (result.verify) {
+        const verify = result.verify;
+        const verifySkipped = coerceBoolean(verify.skipped);
+        const verifyPassed = coerceBoolean(verify.passed);
+        const verifyStatus = verifySkipped === true
+          ? 'skipped'
+          : verifyPassed === true
+            ? 'ok'
+            : verifyPassed === false
+              ? 'failed'
+              : 'unknown';
+        lines.push(`verify: ${verifyStatus}`);
+        if (verify.checkedRef && String(verify.checkedRef).trim().length > 0) {
+          const source = verify.checkedRefSource ? String(verify.checkedRefSource) : 'ref';
+          lines.push(`verify-ref: ${source}=${verify.checkedRef}`);
+        }
+        if (verify.note && String(verify.note).trim().length > 0) {
+          lines.push(`verify-note: ${String(verify.note).trim()}`);
+        }
+        if (Array.isArray(verify.checks) && verify.checks.length > 0) {
+          verify.checks.forEach(check => {
+            const safeCheck = check && typeof check === 'object' ? check : null;
+            let checkStatus = 'fail';
+            const checkSkipped = safeCheck ? coerceBoolean(safeCheck.skipped) : null;
+            const checkPassed = safeCheck ? coerceBoolean(safeCheck.passed) : null;
+            if (checkSkipped === true) {
+              checkStatus = 'skip';
+            } else if (checkPassed === true) {
+              checkStatus = 'ok';
+            }
+            const expected = safeCheck && safeCheck.expected != null
+              ? String(safeCheck.expected)
+              : 'n/a';
+            const actual = safeCheck && safeCheck.actual != null
+              ? String(safeCheck.actual)
+              : 'n/a';
+            const note = safeCheck && safeCheck.note ? ` (${String(safeCheck.note)})` : '';
+            const checkName = safeCheck && safeCheck.name ? String(safeCheck.name) : 'check';
+            lines.push(`- ${checkName}: ${checkStatus} (expected ${expected}, actual ${actual})${note}`);
+          });
+        }
       }
       lines.push('');
     });

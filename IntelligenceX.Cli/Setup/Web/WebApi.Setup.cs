@@ -5,10 +5,108 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.Setup;
+using IntelligenceX.Cli.Setup.Wizard;
 
 namespace IntelligenceX.Cli.Setup.Web;
 
 internal sealed partial class WebApi {
+    private static string[] BuildSetupArgsForRepo(SetupRequest request, bool routeDryRun, string repo) {
+        var effectiveDryRun = routeDryRun || request.DryRun;
+        return BuildSetupArgs(request, effectiveDryRun, repo);
+    }
+
+    internal static string[] BuildSetupArgsForDryRunPropagationTests(bool routeDryRun, bool requestDryRun) {
+        var request = new SetupRequest {
+            Repo = "owner/repo",
+            GitHubToken = "token",
+            DryRun = requestDryRun
+        };
+        return BuildSetupArgsForRepo(request, routeDryRun, "owner/repo");
+    }
+
+    internal static bool ResolveWithConfigFromArgsForTests(params string[] args) {
+        return ResolveWithConfigFromArgs(args);
+    }
+
+    internal static (bool ExpectOrgSecret, string? SecretOrg) ResolveOrgSecretVerificationContextForTests(
+        bool cleanup,
+        bool updateSecret,
+        string provider,
+        string? secretTarget,
+        string? secretOrg) {
+        var operation = cleanup
+            ? SetupApplyOperation.Cleanup
+            : updateSecret
+                ? SetupApplyOperation.UpdateSecret
+                : SetupApplyOperation.Setup;
+        return ResolveOrgSecretVerificationContext(operation, provider, secretTarget, secretOrg);
+    }
+
+    internal static (bool ExpectOrgSecret, string? SecretOrg) ResolveOrgSecretVerificationContextForRepoTests(
+        bool cleanup,
+        bool updateSecret,
+        string provider,
+        string repo,
+        string? secretTarget,
+        string? secretOrg) {
+        var operation = cleanup
+            ? SetupApplyOperation.Cleanup
+            : updateSecret
+                ? SetupApplyOperation.UpdateSecret
+                : SetupApplyOperation.Setup;
+        var resolvedSecretOrg = ResolveSecretOrgForRepo(repo, secretOrg);
+        return ResolveOrgSecretVerificationContext(operation, provider, secretTarget, resolvedSecretOrg);
+    }
+
+    private static bool ResolveWithConfigFromArgs(IReadOnlyList<string> args) {
+        return ContainsArg(args, "--with-config") ||
+               ContainsArg(args, "--config-json") ||
+               ContainsArg(args, "--config-path");
+    }
+
+    private static (bool ExpectOrgSecret, string? SecretOrg) ResolveOrgSecretVerificationContext(
+        SetupApplyOperation operation,
+        string provider,
+        string? secretTarget,
+        string? secretOrg) {
+        var expectOrgSecret = (operation == SetupApplyOperation.Setup || operation == SetupApplyOperation.UpdateSecret) &&
+                              IsOpenAiProvider(provider) &&
+                              string.Equals(secretTarget, "org", StringComparison.OrdinalIgnoreCase);
+        return (expectOrgSecret, expectOrgSecret ? secretOrg : null);
+    }
+
+    private static bool IsOpenAiProvider(string provider) {
+        return string.Equals(provider, "openai", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(provider, "chatgpt", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(provider, "codex", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ResolveSecretOrgForRepo(string repo, string? secretOrg) {
+        if (!string.IsNullOrWhiteSpace(secretOrg)) {
+            return secretOrg;
+        }
+
+        if (string.IsNullOrWhiteSpace(repo)) {
+            return null;
+        }
+
+        var slashIndex = repo.IndexOf('/');
+        if (slashIndex <= 0) {
+            return null;
+        }
+
+        return repo[..slashIndex];
+    }
+
+    private static bool ContainsArg(IReadOnlyList<string> args, string name) {
+        for (var i = 0; i < args.Count; i++) {
+            if (string.Equals(args[i], name, StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private async Task HandleSetupAsync(System.Net.HttpListenerContext context, bool dryRun) {
         var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
         if (body is null) {
@@ -90,11 +188,51 @@ internal sealed partial class WebApi {
             : new List<string> { request.Repo! };
 
         var outputs = new List<SetupResponse>();
-        foreach (var repo in repos) {
-            var args = BuildSetupArgs(request, dryRun, repo);
-            var result = await RunSetupAsync(args).ConfigureAwait(false);
-            result.Repo = repo;
-            outputs.Add(result);
+        var operation = request.Cleanup
+            ? SetupApplyOperation.Cleanup
+            : request.UpdateSecret
+                ? SetupApplyOperation.UpdateSecret
+                : SetupApplyOperation.Setup;
+        var provider = string.IsNullOrWhiteSpace(request.Provider) ? "openai" : request.Provider!;
+        var requestDryRun = dryRun || request.DryRun;
+
+        GitHubRepoClient? verifyClient = null;
+        try {
+            if (!requestDryRun && !string.IsNullOrWhiteSpace(request.GitHubToken)) {
+                verifyClient = new GitHubRepoClient(request.GitHubToken!, "https://api.github.com");
+            }
+
+            foreach (var repo in repos) {
+                var effectiveDryRun = dryRun || request.DryRun;
+                var args = BuildSetupArgsForRepo(request, dryRun, repo);
+                var withConfig = ResolveWithConfigFromArgs(args);
+                var secretOrgForRepo = ResolveSecretOrgForRepo(repo, request.SecretOrg);
+                var orgSecretContext = ResolveOrgSecretVerificationContext(operation, provider, request.SecretTarget, secretOrgForRepo);
+                var result = await RunSetupAsync(args).ConfigureAwait(false);
+                result.Repo = repo;
+                result.PullRequestUrl = SetupPostApplyVerifier.ExtractPullRequestUrl(result.Output);
+                var verifyContext = new SetupPostApplyContext {
+                    Repo = repo,
+                    Operation = operation,
+                    WithConfig = withConfig,
+                    SkipSecret = request.SkipSecret,
+                    ManualSecret = request.ManualSecret,
+                    KeepSecret = request.KeepSecret,
+                    DryRun = effectiveDryRun,
+                    ExitSuccess = result.ExitCode == 0,
+                    ExpectOrgSecret = orgSecretContext.ExpectOrgSecret,
+                    SecretOrg = orgSecretContext.SecretOrg,
+                    Provider = provider,
+                    Output = result.Output,
+                    PullRequestUrl = result.PullRequestUrl
+                };
+                result.Verify = await ResolvePostApplyVerificationAsync(
+                    verifyContext,
+                    () => SetupPostApplyVerifier.VerifyAsync(verifyClient, verifyContext)).ConfigureAwait(false);
+                outputs.Add(result);
+            }
+        } finally {
+            verifyClient?.Dispose();
         }
 
         await WriteJsonOkAsync(context, new {

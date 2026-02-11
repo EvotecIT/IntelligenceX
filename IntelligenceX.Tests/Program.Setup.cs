@@ -281,6 +281,135 @@ jobs:
         AssertEqual(content, secondPass, "workflow upgrade idempotent on second pass");
     }
 
+    private static void TestSetupPostApplyVerifySetupPassesWithManagedWorkflowAndSecret() {
+        var context = new SetupPostApplyContext {
+            Repo = "owner/repo",
+            Operation = SetupApplyOperation.Setup,
+            WithConfig = true,
+            Provider = "openai",
+            ExitSuccess = true,
+            Output = "Setup complete. PR created: https://github.com/owner/repo/pull/12",
+            PullRequestUrl = "https://github.com/owner/repo/pull/12"
+        };
+        var observed = new SetupPostApplyObservedState {
+            DefaultBranch = "main",
+            CheckRef = "intelligencex-setup/20260211",
+            CheckRefSource = "pull-request",
+            WorkflowExists = true,
+            WorkflowManaged = true,
+            ConfigExists = true,
+            RepoSecretLookup = IntelligenceX.Cli.Setup.Wizard.GitHubRepoClient.SecretLookupResult.Present()
+        };
+
+        var verify = SetupPostApplyVerifier.EvaluateForTests(context, observed);
+        AssertEqual(false, verify.Skipped, "post-apply setup verify skipped");
+        AssertEqual(true, verify.Passed, "post-apply setup verify passed");
+        AssertEqual("pull-request", verify.CheckedRefSource, "post-apply setup verify ref source");
+        AssertEqual("intelligencex-setup/20260211", verify.CheckedRef, "post-apply setup verify ref");
+    }
+
+    private static void TestSetupPostApplyVerifyCleanupDetectsResidualConfig() {
+        var context = new SetupPostApplyContext {
+            Repo = "owner/repo",
+            Operation = SetupApplyOperation.Cleanup,
+            KeepSecret = false,
+            Provider = "openai",
+            ExitSuccess = true,
+            Output = "Cleanup complete. PR created: https://github.com/owner/repo/pull/21",
+            PullRequestUrl = "https://github.com/owner/repo/pull/21"
+        };
+        var observed = new SetupPostApplyObservedState {
+            DefaultBranch = "main",
+            CheckRef = "intelligencex-cleanup/20260211",
+            CheckRefSource = "pull-request",
+            WorkflowExists = false,
+            WorkflowManaged = false,
+            ConfigExists = true,
+            RepoSecretLookup = IntelligenceX.Cli.Setup.Wizard.GitHubRepoClient.SecretLookupResult.Missing()
+        };
+
+        var verify = SetupPostApplyVerifier.EvaluateForTests(context, observed);
+        AssertEqual(false, verify.Passed, "post-apply cleanup verify failed");
+
+        var configCheck = verify.Checks.Find(check => check.Name == "Reviewer config");
+        AssertNotNull(configCheck, "post-apply cleanup config check exists");
+        AssertEqual(false, configCheck!.Passed, "post-apply cleanup config check failed");
+    }
+
+    private static void TestSetupPostApplyVerifySetupAllowsUnknownBranchStateWithPr() {
+        var context = new SetupPostApplyContext {
+            Repo = "owner/repo",
+            Operation = SetupApplyOperation.Setup,
+            WithConfig = true,
+            SkipSecret = true,
+            Provider = "openai",
+            ExitSuccess = true,
+            Output = "Setup complete. PR created: https://github.com/owner/repo/pull/13",
+            PullRequestUrl = "https://github.com/owner/repo/pull/13"
+        };
+        var observed = new SetupPostApplyObservedState {
+            DefaultBranch = "main",
+            CheckRef = null,
+            CheckRefSource = "pull-request",
+            WorkflowExists = null,
+            WorkflowManaged = null,
+            ConfigExists = null,
+            RepoSecretLookup = null
+        };
+
+        var verify = SetupPostApplyVerifier.EvaluateForTests(context, observed);
+        AssertEqual(true, verify.Passed, "post-apply setup verify passes when PR exists and branch state is unknown");
+        AssertEqual(true, verify.Checks.Exists(check => check.Name == "Workflow" && check.Skipped),
+            "post-apply setup workflow check skipped when branch state unknown");
+    }
+
+    private static void TestSetupPostApplyVerifySecretLookupUnauthorizedFailsDeterministically() {
+        var context = new SetupPostApplyContext {
+            Repo = "owner/repo",
+            Operation = SetupApplyOperation.UpdateSecret,
+            Provider = "openai",
+            ExitSuccess = true,
+            Output = "Secret updated: INTELLIGENCEX_AUTH_B64"
+        };
+        var observed = new SetupPostApplyObservedState {
+            RepoSecretLookup = IntelligenceX.Cli.Setup.Wizard.GitHubRepoClient.SecretLookupResult.Unauthorized(
+                "GitHub API returned 401 Unauthorized.")
+        };
+
+        var verify = SetupPostApplyVerifier.EvaluateForTests(context, observed);
+        AssertEqual(false, verify.Passed, "post-apply unauthorized secret lookup fails");
+        var secretCheck = verify.Checks.Find(check => check.Name == "Repo secret");
+        AssertNotNull(secretCheck, "post-apply unauthorized secret check exists");
+        AssertEqual(false, secretCheck!.Skipped, "post-apply unauthorized secret check not skipped");
+        AssertEqual(false, secretCheck.Passed, "post-apply unauthorized secret check failed");
+        AssertEqual("unauthorized", secretCheck.Actual, "post-apply unauthorized secret check actual");
+    }
+
+    private static void TestWizardPostApplyVerifySkipsCallbackWhenApplyFails() {
+        var context = new SetupPostApplyContext {
+            Repo = "owner/repo",
+            Operation = SetupApplyOperation.Setup,
+            ExitSuccess = false
+        };
+
+        var verifyCalls = 0;
+        var verify = IntelligenceX.Cli.Setup.Wizard.WizardRunner.ResolvePostApplyVerificationForTests(
+            context,
+            () => {
+                verifyCalls++;
+                return System.Threading.Tasks.Task.FromResult(new SetupPostApplyVerification {
+                    Repo = "owner/repo",
+                    Operation = "setup",
+                    Passed = true
+                });
+            }).GetAwaiter().GetResult();
+
+        AssertEqual(0, verifyCalls, "wizard post-apply verify callback skipped on failed apply");
+        AssertEqual(true, verify.Skipped, "wizard post-apply verify skipped on failed apply");
+        AssertEqual(false, verify.Passed, "wizard post-apply verify failed status on failed apply");
+        AssertContainsText(verify.Note ?? string.Empty, "failed", "wizard post-apply verify failure note");
+    }
+
     private static void TestGitHubRepoDetectorParsesRemoteUrls() {
         AssertEqual("owner/repo", GitHubRepoDetector.ParseRepoFromRemoteUrl("https://github.com/owner/repo.git"), "https git");
         AssertEqual("owner/repo", GitHubRepoDetector.ParseRepoFromRemoteUrl("https://github.com/owner/repo"), "https no git");

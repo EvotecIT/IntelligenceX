@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using IntelligenceX.Cli.Setup;
 using IntelligenceX.OpenAI.Usage;
 
 namespace IntelligenceX.Cli.Setup.Web;
@@ -98,6 +99,8 @@ internal sealed partial class WebApi {
         public bool? AnalysisGateEnabled { get; set; }
         public string? AnalysisPacks { get; set; }
         public string? AnalysisExportPath { get; set; }
+        public string? SecretTarget { get; set; }
+        public string? SecretOrg { get; set; }
         public bool SkipSecret { get; set; }
         public bool ManualSecret { get; set; }
         public bool ExplicitSecrets { get; set; }
@@ -129,6 +132,8 @@ internal sealed partial class WebApi {
         public int ExitCode { get; set; }
         public string Output { get; set; } = string.Empty;
         public string Error { get; set; } = string.Empty;
+        public string? PullRequestUrl { get; set; }
+        public SetupPostApplyVerification? Verify { get; set; }
     }
 
     private sealed class RepoStatusResponse {
