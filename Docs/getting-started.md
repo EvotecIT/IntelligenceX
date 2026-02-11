@@ -64,6 +64,8 @@ Once the workflow is in place, IntelligenceX automatically reviews every PR:
 - Hybrid mode combines both
 - Auto-resolve cleans up stale bot threads
 
+After merging your onboarding PR, run the [First PR Checklist](/Docs/reviewer/first-pr-checklist.md) on the next PR.
+
 ## Configuring the Reviewer
 
 Create `.intelligencex/reviewer.json` in your repo:
