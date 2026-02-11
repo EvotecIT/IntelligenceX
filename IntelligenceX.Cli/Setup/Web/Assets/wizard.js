@@ -208,11 +208,8 @@ function selectOperation(op) {
   $('cleanupOptions').classList.toggle('hidden', op !== 'cleanup');
   updateAnalysisControls();
 
-  const path = getOnboardingPathForOperation(op);
-  if (path !== selectedOnboardingPath) {
-    selectedOnboardingPath = path;
-    syncOnboardingPathVisualState();
-  }
+  selectedOnboardingPath = getOnboardingPathForOperation(op);
+  syncOnboardingPathVisualState();
 }
 
 function setOnboardingPathHint(message) {
@@ -230,9 +227,7 @@ function syncOnboardingPathVisualState() {
 }
 
 function applyOnboardingPath(path) {
-  selectedOnboardingPath = path;
-
-  switch (selectedOnboardingPath) {
+  switch (path) {
     case 'refresh-auth':
       selectOperation('update-secret');
       selectProvider('openai');
@@ -247,7 +242,6 @@ function applyOnboardingPath(path) {
       break;
     case 'new-setup':
     default:
-      selectedOnboardingPath = 'new-setup';
       selectOperation('setup');
       selectProvider('openai');
       selectSecretOption('login');
