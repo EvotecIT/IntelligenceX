@@ -75,6 +75,13 @@ internal static partial class SetupRunner {
         return plan.Content ?? string.Empty;
     }
 
+    // Test helper for workflow upgrade coverage against existing workflow content.
+    internal static string BuildWorkflowYamlFromSeedForTests(string[] args, string seedContent) {
+        var options = SetupOptions.Parse(args);
+        var plan = PlanWorkflowChange(options, seedContent);
+        return plan.Content ?? string.Empty;
+    }
+
     private static string? ReadConfigOverride(SetupOptions options) {
         if (!string.IsNullOrWhiteSpace(options.ConfigJson)) {
             return options.ConfigJson;
