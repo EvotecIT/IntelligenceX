@@ -77,6 +77,34 @@ internal static partial class Program {
             SetupAnalysisExportPath.Combine(".intelligencex/analyzers", "nested/file"), "analysis export path combine separators");
     }
 
+    private static void TestSetupAnalysisExportCatalogPrereqValidation() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-setup-export-prereq-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var ok = SetupRunner.ValidateLocalAnalysisCatalogForTests(temp, out var error);
+            AssertEqual(false, ok, "analysis export prereq missing dirs");
+            AssertContainsText(error ?? string.Empty, "Analysis/Catalog/rules", "analysis export prereq missing dirs message");
+
+            var rulesDir = Path.Combine(temp, "Analysis", "Catalog", "rules", "csharp");
+            var packsDir = Path.Combine(temp, "Analysis", "Packs");
+            Directory.CreateDirectory(rulesDir);
+            Directory.CreateDirectory(packsDir);
+
+            File.WriteAllText(Path.Combine(rulesDir, "CA0001.json"), "{}");
+            File.WriteAllText(Path.Combine(packsDir, "all-50.json"), "{}");
+
+            ok = SetupRunner.ValidateLocalAnalysisCatalogForTests(temp, out error);
+            AssertEqual(true, ok, "analysis export prereq valid dirs");
+            AssertEqual(string.Empty, error, "analysis export prereq valid message");
+        } finally {
+            try {
+                Directory.Delete(temp, recursive: true);
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
+    }
+
     private static void TestSetupAnalysisDisableWritesFalse() {
         var root = new System.Text.Json.Nodes.JsonObject();
         SetupAnalysisConfig.Apply(

@@ -63,6 +63,10 @@ internal static partial class SetupRunner {
                     Console.Error.WriteLine("--analysis-export-path requires --analysis-enabled=true.");
                     return 1;
                 }
+                if (!TryValidateLocalAnalysisCatalog(Environment.CurrentDirectory, out var catalogError)) {
+                    Console.Error.WriteLine(catalogError);
+                    return 1;
+                }
             }
 
             var state = new SetupState(options);
@@ -387,6 +391,33 @@ internal static partial class SetupRunner {
 
         Console.WriteLine("Secret updated: INTELLIGENCEX_AUTH_B64");
         return 0;
+    }
+
+    internal static bool ValidateLocalAnalysisCatalogForTests(string workspace, out string error) {
+        return TryValidateLocalAnalysisCatalog(workspace, out error);
+    }
+
+    private static bool TryValidateLocalAnalysisCatalog(string workspace, out string error) {
+        error = string.Empty;
+        var resolvedWorkspace = string.IsNullOrWhiteSpace(workspace) ? Environment.CurrentDirectory : workspace;
+        var rulesRoot = Path.Combine(resolvedWorkspace, "Analysis", "Catalog", "rules");
+        var packsRoot = Path.Combine(resolvedWorkspace, "Analysis", "Packs");
+
+        if (!Directory.Exists(rulesRoot) || !Directory.Exists(packsRoot)) {
+            error =
+                "--analysis-export-path requires a local analysis catalog. Expected directories: Analysis/Catalog/rules and Analysis/Packs.";
+            return false;
+        }
+
+        var hasRuleFiles = Directory.EnumerateFiles(rulesRoot, "*.json", SearchOption.AllDirectories).Any();
+        var hasPackFiles = Directory.EnumerateFiles(packsRoot, "*.json", SearchOption.TopDirectoryOnly).Any();
+        if (!hasRuleFiles || !hasPackFiles) {
+            error =
+                "--analysis-export-path requires local catalog JSON files under Analysis/Catalog/rules and Analysis/Packs.";
+            return false;
+        }
+
+        return true;
     }
 
     private static async Task<List<FilePlan>> PlanAnalysisExportFilesAsync(
