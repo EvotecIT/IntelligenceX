@@ -105,22 +105,23 @@ internal sealed partial class WebApi {
             : new List<string> { request.Repo! };
 
         var outputs = new List<SetupResponse>();
-        var withConfig = request.WithConfig || hasConfigOverride;
-        var effectiveDryRun = dryRun || request.DryRun;
         var operation = request.Cleanup
             ? SetupApplyOperation.Cleanup
             : request.UpdateSecret
                 ? SetupApplyOperation.UpdateSecret
                 : SetupApplyOperation.Setup;
         var provider = string.IsNullOrWhiteSpace(request.Provider) ? "openai" : request.Provider!;
+        var requestDryRun = dryRun || request.DryRun;
 
         GitHubRepoClient? verifyClient = null;
         try {
-            if (!effectiveDryRun && !string.IsNullOrWhiteSpace(request.GitHubToken)) {
+            if (!requestDryRun && !string.IsNullOrWhiteSpace(request.GitHubToken)) {
                 verifyClient = new GitHubRepoClient(request.GitHubToken!, "https://api.github.com");
             }
 
             foreach (var repo in repos) {
+                var effectiveDryRun = dryRun || request.DryRun;
+                var withConfig = request.WithConfig || hasConfigOverride;
                 var args = BuildSetupArgsForRepo(request, dryRun, repo);
                 var result = await RunSetupAsync(args).ConfigureAwait(false);
                 result.Repo = repo;
