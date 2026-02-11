@@ -192,6 +192,25 @@ function setOnboardingPathHint(message) {
   }
 }
 
+function syncOnboardingPathVisualState() {
+  document.querySelectorAll('[data-path]').forEach(c => {
+    c.classList.toggle('selected', c.dataset.path === selectedOnboardingPath);
+  });
+
+  switch (selectedOnboardingPath) {
+    case 'refresh-auth':
+      setOnboardingPathHint('Path selected: Fix Expired Auth. Next: authenticate, choose repos, then run update-secret.');
+      break;
+    case 'cleanup':
+      setOnboardingPathHint('Path selected: Cleanup. Next: authenticate, select repos, then preview and remove setup files.');
+      break;
+    case 'new-setup':
+    default:
+      setOnboardingPathHint('Path selected: New Setup. Next: authenticate with GitHub, then select repositories.');
+      break;
+  }
+}
+
 function applyOnboardingPath(path) {
   selectedOnboardingPath = path;
   document.querySelectorAll('[data-path]').forEach(c => {
@@ -1341,4 +1360,4 @@ async function doApply() {
 refreshPresets();
 loadUsageCache();
 updateProgressBar();
-applyOnboardingPath(selectedOnboardingPath);
+syncOnboardingPathVisualState();
