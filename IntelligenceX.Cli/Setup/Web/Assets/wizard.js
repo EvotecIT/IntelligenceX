@@ -687,13 +687,15 @@ function formatResults(data) {
       if (pullRequestUrl.length > 0) {
         lines.push(`pr: ${pullRequestUrl}`);
       }
-      if (result.error && result.error.trim().length > 0) {
+      const errorText = typeof result.error === 'string' ? result.error.trim() : '';
+      if (errorText.length > 0) {
         lines.push('error:');
-        lines.push(result.error.trim());
+        lines.push(errorText);
       }
-      if (result.output && result.output.trim().length > 0) {
+      const outputText = typeof result.output === 'string' ? result.output.trim() : '';
+      if (outputText.length > 0) {
         lines.push('output:');
-        lines.push(result.output.trim());
+        lines.push(outputText);
       }
       if (result.verify) {
         const verify = result.verify;
