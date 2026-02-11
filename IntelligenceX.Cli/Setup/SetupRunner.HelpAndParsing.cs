@@ -71,7 +71,7 @@ internal static partial class SetupRunner {
         Console.WriteLine("  INTELLIGENCEX_OPENAI_ACCOUNT_ID");
     }
 
-    private static bool ParseBool(string value, bool fallback) {
+    private static bool ParseBool(string? value, bool fallback) {
         if (string.IsNullOrWhiteSpace(value)) {
             return fallback;
         }
@@ -82,7 +82,7 @@ internal static partial class SetupRunner {
         };
     }
 
-    private static double ParseDouble(string value, double fallback) {
+    private static double ParseDouble(string? value, double fallback) {
         if (string.IsNullOrWhiteSpace(value)) {
             return fallback;
         }
@@ -92,7 +92,7 @@ internal static partial class SetupRunner {
         return fallback;
     }
 
-    private static int ParseInt(string value, int fallback) {
+    private static int ParseInt(string? value, int fallback) {
         if (string.IsNullOrWhiteSpace(value)) {
             return fallback;
         }
