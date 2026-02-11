@@ -75,6 +75,10 @@ internal static partial class Program {
             SetupAnalysisExportPath.Combine(".intelligencex/analyzers", ".."), "analysis export path combine parent");
         AssertThrows<ArgumentException>(() =>
             SetupAnalysisExportPath.Combine(".intelligencex/analyzers", "nested/file"), "analysis export path combine separators");
+        AssertThrows<ArgumentException>(() =>
+            SetupAnalysisExportPath.Combine(".intelligencex/analyzers", "..%2f.editorconfig"), "analysis export path combine encoded traversal");
+        AssertThrows<ArgumentException>(() =>
+            SetupAnalysisExportPath.Combine(".intelligencex/analyzers", "name."), "analysis export path combine trailing dot");
     }
 
     private static void TestSetupAnalysisExportCatalogPrereqValidation() {

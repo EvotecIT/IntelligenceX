@@ -62,6 +62,10 @@ internal static class SetupAnalysisExportPath {
             normalizedFileName.Contains("\\", StringComparison.Ordinal)) {
             throw new ArgumentException("File name must not contain path separators.", nameof(fileName));
         }
+        if (normalizedFileName.Contains("..", StringComparison.Ordinal) ||
+            normalizedFileName.Contains('%', StringComparison.Ordinal)) {
+            throw new ArgumentException("File name contains traversal-like tokens.", nameof(fileName));
+        }
         if (normalizedFileName.Equals(".", StringComparison.Ordinal) ||
             normalizedFileName.Equals("..", StringComparison.Ordinal) ||
             !IsValidPathSegment(normalizedFileName)) {
@@ -74,12 +78,15 @@ internal static class SetupAnalysisExportPath {
         if (string.IsNullOrWhiteSpace(value)) {
             return false;
         }
+        if (value.EndsWith(".", StringComparison.Ordinal) || value.EndsWith(" ", StringComparison.Ordinal)) {
+            return false;
+        }
         foreach (var ch in value) {
             if (ch < ' ') {
                 return false;
             }
             if (ch == '/' || ch == '\\' || ch == ':' || ch == '*' || ch == '?' ||
-                ch == '"' || ch == '<' || ch == '>' || ch == '|') {
+                ch == '"' || ch == '<' || ch == '>' || ch == '|' || ch == '%') {
                 return false;
             }
         }
