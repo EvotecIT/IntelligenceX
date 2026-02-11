@@ -177,9 +177,12 @@ internal sealed class GitHubRepoClient : IDisposable {
         } catch (OperationCanceledException) {
             // Preserve cancellation semantics for callers that enforce timeouts/cancellation tokens.
             throw;
-        } catch (Exception ex) {
-            Trace.TraceWarning($"GitHub secret lookup failed: {ex.GetType().Name}: {ex.Message}");
-            return SecretLookupResult.Unknown("GitHub secret lookup failed due to an unexpected client error.");
+        } catch (HttpRequestException ex) {
+            Trace.TraceWarning($"GitHub secret lookup HTTP failure: {ex.Message}");
+            return SecretLookupResult.Unknown("GitHub secret lookup failed due to an HTTP client error.");
+        } catch (InvalidOperationException ex) {
+            Trace.TraceWarning($"GitHub secret lookup client failure: {ex.Message}");
+            return SecretLookupResult.Unknown("GitHub secret lookup failed due to an HTTP client configuration error.");
         }
     }
 

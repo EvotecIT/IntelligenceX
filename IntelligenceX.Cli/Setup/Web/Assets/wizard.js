@@ -733,7 +733,10 @@ function formatResults(data) {
             const actual = safeCheck && safeCheck.actual != null
               ? String(safeCheck.actual)
               : 'n/a';
-            const note = safeCheck && safeCheck.note ? ` (${String(safeCheck.note)})` : '';
+            const checkNoteText = safeCheck && safeCheck.note != null
+              ? String(safeCheck.note).trim()
+              : '';
+            const note = checkNoteText.length > 0 ? ` (${checkNoteText})` : '';
             const checkName = safeCheck && safeCheck.name ? String(safeCheck.name) : 'check';
             lines.push(`- ${checkName}: ${checkStatus} (expected ${expected}, actual ${actual})${note}`);
           });
