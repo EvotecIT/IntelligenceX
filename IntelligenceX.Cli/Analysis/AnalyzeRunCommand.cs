@@ -312,7 +312,11 @@ function Get-AnalyzerPaths {
                 }
                 $stack.Push($subdirectory)
             }
-        } catch {
+        } catch [System.UnauthorizedAccessException] {
+            continue
+        } catch [System.IO.PathTooLongException] {
+            continue
+        } catch [System.IO.DirectoryNotFoundException] {
             continue
         }
 
@@ -325,7 +329,13 @@ function Get-AnalyzerPaths {
                     '.psd1' { [void]$paths.Add($file) }
                 }
             }
-        } catch {
+        } catch [System.UnauthorizedAccessException] {
+            continue
+        } catch [System.IO.PathTooLongException] {
+            continue
+        } catch [System.IO.DirectoryNotFoundException] {
+            continue
+        } catch [System.IO.IOException] {
             continue
         }
     }
