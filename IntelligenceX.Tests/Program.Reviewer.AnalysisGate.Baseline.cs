@@ -144,6 +144,77 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeGateNewIssuesOnlyMissingSchemaLogsInference() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-baseline-schema-infer-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            SeedMinimalGateCatalog(temp);
+            Directory.CreateDirectory(Path.Combine(temp, "artifacts"));
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+
+            File.WriteAllText(Path.Combine(temp, "artifacts", "intelligencex.findings.json"), """
+{
+  "schema": "intelligencex.findings.v1",
+  "items": [
+    {
+      "path": "src/test.cs",
+      "line": 10,
+      "severity": "warning",
+      "message": "Broken.",
+      "ruleId": "IX001",
+      "tool": "IntelligenceX"
+    }
+  ]
+}
+""");
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "analysis-baseline.json"), """
+{
+  "items": [
+    {
+      "path": "src/test.cs",
+      "line": 10,
+      "severity": "warning",
+      "message": "Broken.",
+      "ruleId": "IX001",
+      "tool": "IntelligenceX"
+    }
+  ]
+}
+""");
+            var configPath = Path.Combine(temp, ".intelligencex", "reviewer.json");
+            File.WriteAllText(configPath, """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["all-50"],
+    "gate": {
+      "enabled": true,
+      "newIssuesOnly": true,
+      "baselinePath": ".intelligencex/analysis-baseline.json",
+      "failOnUnavailable": true
+    },
+    "results": { "inputs": ["artifacts/intelligencex.findings.json"] }
+  }
+}
+""");
+
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+            var (exit, output) = RunAnalyzeAndCaptureOutput(new[] {
+                "gate",
+                "--workspace", temp,
+                "--config", configPath
+            });
+            AssertEqual(0, exit, "analyze gate baseline missing schema suppresses finding");
+            AssertContainsText(output, "schema inferred as 'intelligencex.findings.v1'", "analyze gate baseline schema inference note");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalyzeGateNewIssuesOnlyMissingBaselineIsUnavailable() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-baseline-missing-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
@@ -296,6 +367,72 @@ internal static partial class Program {
                 "--config", configPath
             }).GetAwaiter().GetResult();
             AssertEqual(0, exit, "analyze gate suppresses legacy baseline key with normalized path");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalyzeGateNewIssuesOnlySuppressesLegacyBaselineKeyDotRelativePrefix() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-baseline-legacy-key-dotrel-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            SeedMinimalGateCatalog(temp);
+            Directory.CreateDirectory(Path.Combine(temp, "artifacts"));
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+
+            File.WriteAllText(Path.Combine(temp, "artifacts", "intelligencex.findings.json"), """
+{
+  "schema": "intelligencex.findings.v1",
+  "items": [
+    {
+      "path": "src/test.cs",
+      "line": 10,
+      "severity": "warning",
+      "message": "Broken.",
+      "ruleId": "IX001",
+      "tool": "IntelligenceX"
+    }
+  ]
+}
+""");
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "analysis-baseline.json"), """
+{
+  "schema": "intelligencex.analysis-baseline.v1",
+  "items": [
+    {
+      "key": "IX001|.//SRC\\TEST.CS|10|IntelligenceX|msg:Broken."
+    }
+  ]
+}
+""");
+            var configPath = Path.Combine(temp, ".intelligencex", "reviewer.json");
+            File.WriteAllText(configPath, """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["all-50"],
+    "gate": {
+      "enabled": true,
+      "newIssuesOnly": true,
+      "baselinePath": ".intelligencex/analysis-baseline.json",
+      "failOnUnavailable": true
+    },
+    "results": { "inputs": ["artifacts/intelligencex.findings.json"] }
+  }
+}
+""");
+
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunner.RunAsync(new[] {
+                "gate",
+                "--workspace", temp,
+                "--config", configPath
+            }).GetAwaiter().GetResult();
+            AssertEqual(0, exit, "analyze gate suppresses dot-relative legacy baseline key with normalized path");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             if (Directory.Exists(temp)) {
