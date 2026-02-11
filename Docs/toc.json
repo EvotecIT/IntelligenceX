@@ -32,6 +32,7 @@
       { "title": "Quickstart", "href": "/docs/library/quickstart/" },
       { "title": "Providers", "href": "/docs/library/providers/" },
       { "title": "Tool Calling", "href": "/docs/library/tools/" },
+      { "title": "Tool Packs", "href": "/docs/library/tool-packs/" },
       { "title": "API Reference", "href": "/api/" }
     ]
   },
@@ -47,7 +48,8 @@
     "items": [
       { "title": "Examples", "href": "/docs/examples/" },
       { "title": "Troubleshooting", "href": "/docs/troubleshooting/" },
-      { "title": "Screenshots (Planned)", "href": "/docs/screenshots/" }
+      { "title": "Screenshots (Planned)", "href": "/docs/screenshots/" },
+      { "title": "Windows Tray Chat (Planned)", "href": "/docs/apps/windows-tray-chat/" }
     ]
   }
 ]
