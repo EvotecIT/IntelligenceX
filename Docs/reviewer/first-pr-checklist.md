@@ -54,6 +54,6 @@ gh run view <run-id> --repo EvotecIT/IntelligenceX --log
 
 ## Related Docs
 
-- [Onboarding Wizard](/docs/reviewer/onboarding-wizard/)
-- [Static Analysis](/docs/reviewer/static-analysis/)
-- [Reviewer Configuration](/docs/reviewer/configuration/)
+- [Onboarding Wizard](/Docs/reviewer/onboarding-wizard/)
+- [Static Analysis](/Docs/reviewer/static-analysis/)
+- [Reviewer Configuration](/Docs/reviewer/configuration/)
