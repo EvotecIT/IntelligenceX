@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using IntelligenceX.Analysis;
 using IntelligenceX.Json;
@@ -13,6 +14,12 @@ internal static class AnalyzeGateCommand {
     private const int ExitSuccess = 0;
     private const int ExitError = 1;
     private const int ExitGateFailed = 2;
+    private const string BaselineSchemaValue = "intelligencex.analysis-baseline.v1";
+    private const string FindingsSchemaValue = "intelligencex.findings.v1";
+    private static readonly JsonSerializerOptions BaselineJsonOptions = new() {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
 
     public static Task<int> RunAsync(string[] args) {
         var options = ParseArgs(args, out var error);
@@ -167,11 +174,73 @@ internal static class AnalyzeGateCommand {
             allowedTypes,
             includeAllTypes);
         var hasHotspotFailures = hotspotFailures.Count > 0;
+        var useNewIssuesOnly = options.NewIssuesOnly || analysisSettings.Gate.NewIssuesOnly;
+        var configuredBaselinePath = !string.IsNullOrWhiteSpace(options.BaselinePath)
+            ? options.BaselinePath
+            : analysisSettings.Gate.BaselinePath;
+        var baselineSuppressed = 0;
+        var baselineLoadedCount = 0;
+        var baselinePathResolved = string.Empty;
+
+        if (!string.IsNullOrWhiteSpace(options.WriteBaselinePath)) {
+            var writePath = ResolveWorkspaceBoundPath(workspace, options.WriteBaselinePath!);
+            if (writePath is null) {
+                Console.WriteLine($"Invalid baseline output path outside workspace: {options.WriteBaselinePath}");
+                return Task.FromResult(ExitError);
+            }
+            var writeResult = TryWriteBaselineFile(writePath, violations, out var writeError);
+            if (!writeResult) {
+                Console.WriteLine($"Failed to write baseline: {writeError}");
+                return Task.FromResult(ExitError);
+            }
+            Console.WriteLine($"Static analysis baseline updated: {writePath} ({violations.Count} item(s) considered).");
+        }
+
+        if (useNewIssuesOnly) {
+            if (string.IsNullOrWhiteSpace(configuredBaselinePath)) {
+                Console.WriteLine("Static analysis gate: unavailable (new-issues mode requires analysis.gate.baselinePath).");
+                return Task.FromResult(analysisSettings.Gate.FailOnUnavailable ? ExitGateFailed : ExitSuccess);
+            }
+
+            var baselinePath = ResolveWorkspaceBoundPath(workspace, configuredBaselinePath);
+            if (baselinePath is null) {
+                Console.WriteLine($"Static analysis gate: unavailable (baseline path resolves outside workspace: {configuredBaselinePath}).");
+                return Task.FromResult(analysisSettings.Gate.FailOnUnavailable ? ExitGateFailed : ExitSuccess);
+            }
+            baselinePathResolved = baselinePath;
+
+            var baselineResult = TryLoadBaselineKeys(baselinePath, out var baselineKeys, out var baselineSchema, out var baselineError);
+            if (!baselineResult) {
+                Console.WriteLine($"Static analysis gate: unavailable ({baselineError}).");
+                return Task.FromResult(analysisSettings.Gate.FailOnUnavailable ? ExitGateFailed : ExitSuccess);
+            }
+            baselineLoadedCount = baselineKeys.Count;
+            Console.WriteLine($"Static analysis baseline loaded: {baselinePath} (schema={baselineSchema}, items={baselineLoadedCount}).");
+
+            var newViolations = new List<AnalysisFinding>();
+            foreach (var violation in violations) {
+                var key = BuildBaselineKey(violation);
+                if (baselineKeys.Contains(key)) {
+                    baselineSuppressed++;
+                    continue;
+                }
+                newViolations.Add(violation);
+            }
+            violations = newViolations;
+        }
 
         if (violations.Count == 0 && !hasHotspotFailures) {
             Console.WriteLine("Static analysis gate: pass");
             Console.WriteLine($"- Findings considered: {allFindings.Count}");
             Console.WriteLine($"- Violations: 0");
+            if (useNewIssuesOnly) {
+                Console.WriteLine("- Baseline mode: new-only");
+                Console.WriteLine($"- Baseline items loaded: {baselineLoadedCount}");
+                Console.WriteLine($"- Existing findings suppressed by baseline: {baselineSuppressed}");
+                if (!string.IsNullOrWhiteSpace(baselinePathResolved)) {
+                    Console.WriteLine($"- Baseline file: {baselinePathResolved}");
+                }
+            }
             if (outsidePack > 0) {
                 Console.WriteLine($"- Outside-pack findings: {outsidePack} (ignored)");
             }
@@ -181,6 +250,14 @@ internal static class AnalyzeGateCommand {
         Console.WriteLine("Static analysis gate: fail");
         Console.WriteLine($"- Findings considered: {allFindings.Count}");
         Console.WriteLine($"- Violations: {violations.Count}" + (hasHotspotFailures ? $", hotspots to-review: {hotspotFailures.Count}" : string.Empty));
+        if (useNewIssuesOnly) {
+            Console.WriteLine("- Baseline mode: new-only");
+            Console.WriteLine($"- Baseline items loaded: {baselineLoadedCount}");
+            Console.WriteLine($"- Existing findings suppressed by baseline: {baselineSuppressed}");
+            if (!string.IsNullOrWhiteSpace(baselinePathResolved)) {
+                Console.WriteLine($"- Baseline file: {baselinePathResolved}");
+            }
+        }
         if (outsidePack > 0) {
             Console.WriteLine($"- Outside-pack findings: {outsidePack}" + (analysisSettings.Gate.IncludeOutsidePackRules ? " (included)" : " (ignored)"));
         }
@@ -202,6 +279,7 @@ internal static class AnalyzeGateCommand {
 
     public static void PrintHelp() {
         Console.WriteLine("  intelligencex analyze gate [--workspace <path>] [--config <path>] [--changed-files <path>]");
+        Console.WriteLine("                             [--new-only] [--baseline <path>] [--write-baseline <path>]");
     }
 
     private static void PrintViolationSummary(IReadOnlyList<AnalysisFinding> violations, AnalysisCatalog catalog,
@@ -494,6 +572,26 @@ internal static class AnalyzeGateCommand {
                 options.ChangedFilesPath = args[++i];
                 continue;
             }
+            if (arg.Equals("--new-only", StringComparison.OrdinalIgnoreCase)) {
+                options.NewIssuesOnly = true;
+                continue;
+            }
+            if (arg.Equals("--baseline", StringComparison.OrdinalIgnoreCase)) {
+                if (i + 1 >= args.Length) {
+                    error = "Missing value for --baseline.";
+                    return options;
+                }
+                options.BaselinePath = args[++i];
+                continue;
+            }
+            if (arg.Equals("--write-baseline", StringComparison.OrdinalIgnoreCase)) {
+                if (i + 1 >= args.Length) {
+                    error = "Missing value for --write-baseline.";
+                    return options;
+                }
+                options.WriteBaselinePath = args[++i];
+                continue;
+            }
             error = $"Unknown option '{arg}' for gate.";
             return options;
         }
@@ -506,10 +604,155 @@ internal static class AnalyzeGateCommand {
                value.Equals("--help", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool TryWriteBaselineFile(string path, IReadOnlyList<AnalysisFinding> findings, out string? error) {
+        error = null;
+        if (string.IsNullOrWhiteSpace(path)) {
+            error = "Baseline path is empty.";
+            return false;
+        }
+        try {
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(directory)) {
+                Directory.CreateDirectory(directory);
+            }
+
+            var byKey = new Dictionary<string, BaselineItem>(StringComparer.OrdinalIgnoreCase);
+            foreach (var finding in findings ?? Array.Empty<AnalysisFinding>()) {
+                var key = BuildBaselineKey(finding);
+                if (string.IsNullOrWhiteSpace(key) || byKey.ContainsKey(key)) {
+                    continue;
+                }
+                byKey[key] = new BaselineItem {
+                    Key = key,
+                    Path = finding.Path,
+                    Line = finding.Line,
+                    RuleId = finding.RuleId ?? string.Empty,
+                    Tool = finding.Tool ?? string.Empty,
+                    Severity = AnalysisSeverity.Normalize(finding.Severity),
+                    Fingerprint = finding.Fingerprint
+                };
+            }
+
+            var envelope = new BaselineEnvelope {
+                Schema = BaselineSchemaValue,
+                GeneratedAtUtc = DateTime.UtcNow.ToString("O"),
+                Items = byKey.Values
+                    .OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+            };
+            File.WriteAllText(path, JsonSerializer.Serialize(envelope, BaselineJsonOptions));
+            return true;
+        } catch (Exception ex) {
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    private static bool TryLoadBaselineKeys(string path, out HashSet<string> keys, out string schema, out string? error) {
+        keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        schema = string.Empty;
+        error = null;
+
+        if (!File.Exists(path)) {
+            error = $"baseline file not found: {path}";
+            return false;
+        }
+
+        JsonObject? root;
+        try {
+            root = JsonLite.Parse(File.ReadAllText(path))?.AsObject();
+        } catch (Exception ex) {
+            error = $"could not parse baseline file: {ex.Message}";
+            return false;
+        }
+        if (root is null) {
+            error = "baseline file root must be a JSON object";
+            return false;
+        }
+
+        schema = root.GetString("schema") ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(schema) &&
+            !schema.Equals(BaselineSchemaValue, StringComparison.OrdinalIgnoreCase) &&
+            !schema.Equals(FindingsSchemaValue, StringComparison.OrdinalIgnoreCase)) {
+            error = $"unsupported baseline schema '{schema}'";
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(schema)) {
+            schema = FindingsSchemaValue;
+        }
+
+        var items = root.GetArray("items");
+        if (items is null || items.Count == 0) {
+            return true;
+        }
+
+        foreach (var item in items) {
+            var obj = item.AsObject();
+            if (obj is null) {
+                continue;
+            }
+
+            var key = obj.GetString("key");
+            if (string.IsNullOrWhiteSpace(key)) {
+                key = BuildBaselineKey(new AnalysisFinding(
+                    Path: obj.GetString("path") ?? string.Empty,
+                    Line: (int)(obj.GetInt64("line") ?? 0),
+                    Message: obj.GetString("message") ?? string.Empty,
+                    Severity: obj.GetString("severity") ?? "unknown",
+                    RuleId: obj.GetString("ruleId"),
+                    Tool: obj.GetString("tool"),
+                    Fingerprint: obj.GetString("fingerprint")));
+            }
+
+            if (!string.IsNullOrWhiteSpace(key)) {
+                keys.Add(key);
+            }
+        }
+
+        return true;
+    }
+
+    private static string BuildBaselineKey(AnalysisFinding finding) {
+        var path = (finding.Path ?? string.Empty).Trim().Replace('\\', '/');
+        var ruleId = (finding.RuleId ?? string.Empty).Trim();
+        var tool = (finding.Tool ?? string.Empty).Trim();
+        var line = finding.Line < 0 ? 0 : finding.Line;
+        var fingerprint = (finding.Fingerprint ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(fingerprint)) {
+            return $"{ruleId}|{path}|{line}|{tool}|fp:{fingerprint}";
+        }
+
+        var message = (finding.Message ?? string.Empty)
+            .Trim()
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n')
+            .Replace('\n', ' ');
+        return $"{ruleId}|{path}|{line}|{tool}|msg:{message}";
+    }
+
     private sealed class GateOptions {
         public bool ShowHelp { get; set; }
         public string? Workspace { get; set; }
         public string? ConfigPath { get; set; }
         public string? ChangedFilesPath { get; set; }
+        public bool NewIssuesOnly { get; set; }
+        public string? BaselinePath { get; set; }
+        public string? WriteBaselinePath { get; set; }
+    }
+
+    private sealed class BaselineEnvelope {
+        public string Schema { get; set; } = BaselineSchemaValue;
+        public string GeneratedAtUtc { get; set; } = string.Empty;
+        public List<BaselineItem> Items { get; set; } = new();
+    }
+
+    private sealed class BaselineItem {
+        public string Key { get; set; } = string.Empty;
+        public string Path { get; set; } = string.Empty;
+        public int Line { get; set; }
+        public string RuleId { get; set; } = string.Empty;
+        public string Tool { get; set; } = string.Empty;
+        public string Severity { get; set; } = "unknown";
+        public string? Fingerprint { get; set; }
     }
 }

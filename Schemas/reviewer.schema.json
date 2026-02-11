@@ -150,7 +150,9 @@
             "includeOutsidePackRules": { "type": "boolean" },
             "failOnUnavailable": { "type": "boolean" },
             "failOnNoEnabledRules": { "type": "boolean" },
-            "failOnHotspotsToReview": { "type": "boolean" }
+            "failOnHotspotsToReview": { "type": "boolean" },
+            "newIssuesOnly": { "type": "boolean" },
+            "baselinePath": { "type": "string" }
           }
         },
         "results": {
