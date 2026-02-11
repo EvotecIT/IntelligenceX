@@ -703,6 +703,7 @@ internal static class AnalyzeGateCommand {
                     Tool: obj.GetString("tool"),
                     Fingerprint: obj.GetString("fingerprint")));
             }
+            key = NormalizeBaselineKey(key);
 
             if (!string.IsNullOrWhiteSpace(key)) {
                 keys.Add(key);
@@ -713,7 +714,7 @@ internal static class AnalyzeGateCommand {
     }
 
     private static string BuildBaselineKey(AnalysisFinding finding) {
-        var path = (finding.Path ?? string.Empty).Trim().Replace('\\', '/');
+        var path = NormalizePathForBaselineKey(finding.Path);
         var ruleId = (finding.RuleId ?? string.Empty).Trim();
         var tool = (finding.Tool ?? string.Empty).Trim();
         var line = finding.Line < 0 ? 0 : finding.Line;
@@ -728,6 +729,36 @@ internal static class AnalyzeGateCommand {
             .Replace('\r', '\n')
             .Replace('\n', ' ');
         return $"{ruleId}|{path}|{line}|{tool}|msg:{message}";
+    }
+
+    private static string NormalizePathForBaselineKey(string? path) {
+        var normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
+        if (normalized.StartsWith("./", StringComparison.Ordinal)) {
+            normalized = normalized.Substring(2);
+        }
+        return normalized.ToLowerInvariant();
+    }
+
+    private static string NormalizeBaselineKey(string? key) {
+        var trimmed = (key ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(trimmed)) {
+            return string.Empty;
+        }
+
+        // Key shape is: ruleId|path|line|tool|fingerprint-or-message...
+        var first = trimmed.IndexOf('|');
+        if (first < 0) {
+            return trimmed;
+        }
+        var second = trimmed.IndexOf('|', first + 1);
+        if (second < 0) {
+            return trimmed;
+        }
+
+        var path = trimmed.Substring(first + 1, second - first - 1);
+        return trimmed.Substring(0, first + 1) +
+               NormalizePathForBaselineKey(path) +
+               trimmed.Substring(second);
     }
 
     private sealed class GateOptions {

@@ -175,6 +175,8 @@ internal static partial class Program {
         failed += Run("Analyze gate new-only missing baseline unavailable", TestAnalyzeGateNewIssuesOnlyMissingBaselineIsUnavailable);
         failed += Run("Analyze gate new-only missing baseline can pass when unavailable allowed",
             TestAnalyzeGateNewIssuesOnlyMissingBaselineCanPassWhenUnavailableAllowed);
+        failed += Run("Analyze gate new-only suppresses legacy baseline key path normalization",
+            TestAnalyzeGateNewIssuesOnlySuppressesLegacyBaselineKeyPathNormalization);
         failed += Run("Analyze gate write baseline contract schema", TestAnalyzeGateWriteBaselineCreatesContractSchema);
         failed += Run("Reviewer schema includes analysis gate baseline properties", TestReviewerSchemaIncludesAnalysisGateBaselineProperties);
         failed += Run("Analyze gate hotspot state path bound", TestAnalyzeGateHotspotsStatePathIsWorkspaceBound);
