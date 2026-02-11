@@ -161,6 +161,97 @@ internal sealed class GitHubRepoClient : IDisposable {
         return TrySecretExistsAsync($"/orgs/{org}/actions/secrets/{name}");
     }
 
+    public async Task<WorkflowRunLookupResult> ListWorkflowRunsAsync(string owner, string repo, string workflowFile,
+        int maxCount = 3) {
+        ThrowIfDisposed();
+        var runs = new List<WorkflowRunInfo>();
+        var limit = Math.Clamp(maxCount, 1, 20);
+        var encodedOwner = Uri.EscapeDataString(owner ?? string.Empty);
+        var encodedRepo = Uri.EscapeDataString(repo ?? string.Empty);
+        var encodedWorkflowFile = Uri.EscapeDataString(workflowFile ?? string.Empty);
+        if (string.IsNullOrWhiteSpace(encodedOwner) || string.IsNullOrWhiteSpace(encodedRepo) ||
+            string.IsNullOrWhiteSpace(encodedWorkflowFile)) {
+            return WorkflowRunLookupResult.InvalidArguments("owner, repo, and workflowFile are required.");
+        }
+
+        try {
+            var path = $"/repos/{encodedOwner}/{encodedRepo}/actions/workflows/{encodedWorkflowFile}/runs?per_page={limit}";
+            using var response = await _http.GetAsync(path).ConfigureAwait(false);
+            var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+            if (!response.IsSuccessStatusCode) {
+                var statusCode = (int)response.StatusCode;
+                var reason = string.IsNullOrWhiteSpace(response.ReasonPhrase) ? "Error" : response.ReasonPhrase!;
+                var note = $"GitHub API returned {statusCode} {reason}.";
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) {
+                    return WorkflowRunLookupResult.Unauthorized(note);
+                }
+                if (response.StatusCode == System.Net.HttpStatusCode.Forbidden) {
+                    return WorkflowRunLookupResult.Forbidden(note);
+                }
+                if (statusCode == 429) {
+                    return WorkflowRunLookupResult.RateLimited("GitHub API returned 429 Too Many Requests.");
+                }
+                return WorkflowRunLookupResult.HttpError(note);
+            }
+
+            using var doc = JsonDocument.Parse(content);
+            var json = doc.RootElement;
+            if (!json.TryGetProperty("workflow_runs", out var workflowRuns) ||
+                workflowRuns.ValueKind != JsonValueKind.Array) {
+                return WorkflowRunLookupResult.ParseError("GitHub workflow runs payload is missing workflow_runs array.");
+            }
+
+            foreach (var item in workflowRuns.EnumerateArray()) {
+                if (item.ValueKind != JsonValueKind.Object) {
+                    continue;
+                }
+
+                DateTimeOffset? createdAt = null;
+                if (item.TryGetProperty("created_at", out var createdAtProperty)
+                    && createdAtProperty.ValueKind == JsonValueKind.String
+                    && DateTimeOffset.TryParse(createdAtProperty.GetString(),
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                        out var parsedCreatedAt)) {
+                    createdAt = parsedCreatedAt;
+                }
+
+                runs.Add(new WorkflowRunInfo(
+                    id: item.TryGetProperty("id", out var idProperty) && idProperty.TryGetInt64(out var parsedId) ? parsedId : 0,
+                    url: item.TryGetProperty("html_url", out var urlProperty) && urlProperty.ValueKind == JsonValueKind.String
+                        ? urlProperty.GetString()
+                        : null,
+                    status: item.TryGetProperty("status", out var statusProperty) && statusProperty.ValueKind == JsonValueKind.String
+                        ? statusProperty.GetString()
+                        : null,
+                    conclusion: item.TryGetProperty("conclusion", out var conclusionProperty) && conclusionProperty.ValueKind == JsonValueKind.String
+                        ? conclusionProperty.GetString()
+                        : null,
+                    headBranch: item.TryGetProperty("head_branch", out var headBranchProperty) && headBranchProperty.ValueKind == JsonValueKind.String
+                        ? headBranchProperty.GetString()
+                        : null,
+                    @event: item.TryGetProperty("event", out var eventProperty) && eventProperty.ValueKind == JsonValueKind.String
+                        ? eventProperty.GetString()
+                        : null,
+                    createdAt: createdAt));
+            }
+
+            return WorkflowRunLookupResult.Ok(runs);
+        } catch (HttpRequestException ex) {
+            Trace.TraceWarning($"GitHub workflow run lookup HTTP failure for {owner}/{repo}: {ex.Message}");
+            return WorkflowRunLookupResult.HttpError("GitHub workflow run lookup failed due to an HTTP client error.");
+        } catch (OperationCanceledException) {
+            throw;
+        } catch (JsonException ex) {
+            Trace.TraceWarning($"GitHub workflow run lookup JSON parse failure for {owner}/{repo}: {ex.Message}");
+            return WorkflowRunLookupResult.ParseError("GitHub workflow run lookup failed to parse JSON response.");
+        } catch (InvalidOperationException ex) {
+            Trace.TraceWarning($"GitHub workflow run lookup failed for {owner}/{repo}: {ex.GetType().Name}: {ex.Message}");
+            return WorkflowRunLookupResult.HttpError("GitHub workflow run lookup failed due to an HTTP client configuration error.");
+        }
+    }
+
     private async Task<JsonElement> GetJsonAsync(string url) {
         using var response = await _http.GetAsync(url).ConfigureAwait(false);
         var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -378,5 +469,48 @@ internal sealed class GitHubRepoClient : IDisposable {
         public static SecretLookupResult Forbidden(string note) => new(null, "forbidden", note);
         public static SecretLookupResult RateLimited(string note) => new(null, "rate_limited", note);
         public static SecretLookupResult Unknown(string note) => new(null, "unknown", note);
+    }
+
+    public sealed class WorkflowRunInfo {
+        public WorkflowRunInfo(long id, string? url, string? status, string? conclusion, string? headBranch, string? @event,
+            DateTimeOffset? createdAt) {
+            Id = id;
+            Url = url;
+            Status = status;
+            Conclusion = conclusion;
+            HeadBranch = headBranch;
+            Event = @event;
+            CreatedAt = createdAt;
+        }
+
+        public long Id { get; }
+        public string? Url { get; }
+        public string? Status { get; }
+        public string? Conclusion { get; }
+        public string? HeadBranch { get; }
+        public string? Event { get; }
+        public DateTimeOffset? CreatedAt { get; }
+    }
+
+    public sealed class WorkflowRunLookupResult {
+        private WorkflowRunLookupResult(string status, bool success, string? note, List<WorkflowRunInfo>? runs = null) {
+            Status = status;
+            Success = success;
+            Note = note;
+            Runs = runs ?? new List<WorkflowRunInfo>();
+        }
+
+        public string Status { get; }
+        public bool Success { get; }
+        public string? Note { get; }
+        public List<WorkflowRunInfo> Runs { get; }
+
+        public static WorkflowRunLookupResult Ok(List<WorkflowRunInfo> runs) => new("ok", true, null, runs);
+        public static WorkflowRunLookupResult InvalidArguments(string note) => new("invalid_arguments", false, note);
+        public static WorkflowRunLookupResult Unauthorized(string note) => new("unauthorized", false, note);
+        public static WorkflowRunLookupResult Forbidden(string note) => new("forbidden", false, note);
+        public static WorkflowRunLookupResult RateLimited(string note) => new("rate_limited", false, note);
+        public static WorkflowRunLookupResult HttpError(string note) => new("http_error", false, note);
+        public static WorkflowRunLookupResult ParseError(string note) => new("parse_error", false, note);
     }
 }

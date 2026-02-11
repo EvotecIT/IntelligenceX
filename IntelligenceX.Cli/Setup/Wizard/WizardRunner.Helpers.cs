@@ -161,7 +161,11 @@ internal static partial class WizardRunner {
             }
             foreach (var check in verify.Checks) {
                 var checkStatus = check.Skipped ? "skip" : (check.Passed ? "ok" : "fail");
-                details.Add($"{check.Name}:{checkStatus}");
+                var checkDetail = $"{check.Name}:{checkStatus}";
+                if (!string.IsNullOrWhiteSpace(check.Note)) {
+                    checkDetail += $" ({check.Note})";
+                }
+                details.Add(checkDetail);
             }
             if (!string.IsNullOrWhiteSpace(verify.Note)) {
                 details.Add(verify.Note!);

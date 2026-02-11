@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.Setup.Wizard;
@@ -37,6 +39,9 @@ internal sealed class SetupPostApplyObservedState {
     public bool? ConfigExists { get; set; }
     public GitHubRepoClient.SecretLookupResult? RepoSecretLookup { get; set; }
     public GitHubRepoClient.SecretLookupResult? OrgSecretLookup { get; set; }
+    public GitHubRepoClient.WorkflowRunInfo? LatestWorkflowRun { get; set; }
+    public string? WorkflowRunLookupStatus { get; set; }
+    public string? WorkflowRunLookupNote { get; set; }
 }
 
 internal sealed class SetupPostApplyCheck {
@@ -159,8 +164,14 @@ internal static class SetupPostApplyVerifier {
             string? defaultBranch = null;
             try {
                 defaultBranch = await client.GetDefaultBranchAsync(owner, repo).ConfigureAwait(false);
-            } catch {
-                // Leave null and continue with best-effort checks.
+            } catch (OperationCanceledException) {
+                throw;
+            } catch (HttpRequestException ex) {
+                Trace.TraceWarning($"GitHub default branch lookup HTTP failure for {owner}/{repo}: {ex.Message}");
+            } catch (JsonException ex) {
+                Trace.TraceWarning($"GitHub default branch lookup JSON parse failure for {owner}/{repo}: {ex.Message}");
+            } catch (InvalidOperationException ex) {
+                Trace.TraceWarning($"GitHub default branch lookup failed for {owner}/{repo}: {ex.GetType().Name}: {ex.Message}");
             }
 
             observed.DefaultBranch = defaultBranch;
@@ -201,6 +212,13 @@ internal static class SetupPostApplyVerifier {
             observed.OrgSecretLookup = await client.TryOrgSecretExistsAsync(context.SecretOrg!, SecretName).ConfigureAwait(false);
         }
 
+        var runLookup = await client.ListWorkflowRunsAsync(owner, repo, WorkflowPath, maxCount: 1).ConfigureAwait(false);
+        observed.WorkflowRunLookupStatus = runLookup.Status;
+        observed.WorkflowRunLookupNote = runLookup.Note;
+        if (runLookup.Runs.Count > 0) {
+            observed.LatestWorkflowRun = runLookup.Runs[0];
+        }
+
         return observed;
     }
 
@@ -222,6 +240,7 @@ internal static class SetupPostApplyVerifier {
         } else if (context.Operation == SetupApplyOperation.UpdateSecret) {
             AddUpdateSecretChecks(context, observed, result);
         }
+        AddLatestWorkflowRunCheck(observed, result);
 
         var hasDefinitiveChecks = false;
         var allDefinitivePassed = true;
@@ -354,6 +373,52 @@ internal static class SetupPostApplyVerifier {
             expected: "present",
             lookup: observed.RepoSecretLookup,
             note: "Setup should create or update this secret.");
+    }
+
+    private static void AddLatestWorkflowRunCheck(SetupPostApplyObservedState observed, SetupPostApplyVerification result) {
+        var lookupStatus = string.IsNullOrWhiteSpace(observed.WorkflowRunLookupStatus)
+            ? "unknown"
+            : observed.WorkflowRunLookupStatus!;
+        if (observed.LatestWorkflowRun is null) {
+            if (!string.Equals(lookupStatus, "ok", StringComparison.OrdinalIgnoreCase)) {
+                var lookupNote = string.IsNullOrWhiteSpace(observed.WorkflowRunLookupNote)
+                    ? "Workflow run lookup failed."
+                    : observed.WorkflowRunLookupNote!;
+                AddSkippedCheck(result, "Latest workflow run", "observed", lookupStatus, lookupNote);
+                return;
+            }
+
+            AddSkippedCheck(result, "Latest workflow run", "observed", "none",
+                "No workflow runs found for review-intelligencex.yml.");
+            return;
+        }
+
+        var latestRun = observed.LatestWorkflowRun;
+        var status = string.IsNullOrWhiteSpace(latestRun.Status) ? "unknown" : latestRun.Status!;
+        var conclusion = string.IsNullOrWhiteSpace(latestRun.Conclusion) ? "n/a" : latestRun.Conclusion!;
+        var actual = $"{status}/{conclusion}";
+        var noteParts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(latestRun.Url)) {
+            noteParts.Add(latestRun.Url!);
+        }
+        if (latestRun.CreatedAt.HasValue) {
+            noteParts.Add($"created {latestRun.CreatedAt.Value.UtcDateTime:u}");
+        }
+        if (!string.IsNullOrWhiteSpace(latestRun.HeadBranch)) {
+            noteParts.Add($"branch {latestRun.HeadBranch}");
+        }
+        if (!string.IsNullOrWhiteSpace(latestRun.Event)) {
+            noteParts.Add($"event {latestRun.Event}");
+        }
+
+        result.Checks.Add(new SetupPostApplyCheck {
+            Name = "Latest workflow run",
+            Expected = "observed",
+            Actual = actual,
+            Passed = true,
+            Skipped = false,
+            Note = noteParts.Count == 0 ? null : string.Join(" | ", noteParts)
+        });
     }
 
     private static void AddPullRequestCheck(SetupPostApplyContext context, SetupPostApplyVerification result) {
