@@ -131,6 +131,8 @@ internal sealed partial class WebApi {
                 : SetupApplyOperation.Setup;
         var provider = string.IsNullOrWhiteSpace(request.Provider) ? "openai" : request.Provider!;
         var requestDryRun = dryRun || request.DryRun;
+        var expectOrgSecret = string.Equals(request.SecretTarget, "org", StringComparison.OrdinalIgnoreCase) &&
+                              !string.IsNullOrWhiteSpace(request.SecretOrg);
 
         GitHubRepoClient? verifyClient = null;
         try {
@@ -154,6 +156,8 @@ internal sealed partial class WebApi {
                     KeepSecret = request.KeepSecret,
                     DryRun = effectiveDryRun,
                     ExitSuccess = result.ExitCode == 0,
+                    ExpectOrgSecret = expectOrgSecret,
+                    SecretOrg = expectOrgSecret ? request.SecretOrg : null,
                     Provider = provider,
                     Output = result.Output,
                     PullRequestUrl = result.PullRequestUrl

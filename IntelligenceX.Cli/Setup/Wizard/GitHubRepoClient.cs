@@ -97,8 +97,20 @@ internal sealed class GitHubRepoClient : IDisposable {
             var baseRef = json.GetProperty("base").GetProperty("ref").GetString();
             var url = json.TryGetProperty("html_url", out var htmlUrl) ? htmlUrl.GetString() : null;
             return new PullRequestInfo(number, headRef, baseRef, url);
-        } catch (Exception ex) {
+        } catch (HttpRequestException ex) {
+            Trace.TraceWarning($"GitHub pull request fetch HTTP failure for {owner}/{repo}#{number}: {ex.Message}");
+            return null;
+        } catch (TaskCanceledException ex) {
+            Trace.TraceWarning($"GitHub pull request fetch timeout/cancel for {owner}/{repo}#{number}: {ex.Message}");
+            return null;
+        } catch (JsonException ex) {
+            Trace.TraceWarning($"GitHub pull request fetch JSON parse failure for {owner}/{repo}#{number}: {ex.Message}");
+            return null;
+        } catch (InvalidOperationException ex) {
             Trace.TraceWarning($"GitHub pull request fetch failed for {owner}/{repo}#{number}: {ex.GetType().Name}: {ex.Message}");
+            return null;
+        } catch (KeyNotFoundException ex) {
+            Trace.TraceWarning($"GitHub pull request payload missing fields for {owner}/{repo}#{number}: {ex.Message}");
             return null;
         }
     }
