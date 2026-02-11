@@ -10,6 +10,20 @@ using IntelligenceX.Cli.Setup.Wizard;
 namespace IntelligenceX.Cli.Setup.Web;
 
 internal sealed partial class WebApi {
+    private static string[] BuildSetupArgsForRepo(SetupRequest request, bool routeDryRun, string repo) {
+        var effectiveDryRun = routeDryRun || request.DryRun;
+        return BuildSetupArgs(request, effectiveDryRun, repo);
+    }
+
+    internal static string[] BuildSetupArgsForDryRunPropagationTests(bool routeDryRun, bool requestDryRun) {
+        var request = new SetupRequest {
+            Repo = "owner/repo",
+            GitHubToken = "token",
+            DryRun = requestDryRun
+        };
+        return BuildSetupArgsForRepo(request, routeDryRun, "owner/repo");
+    }
+
     private async Task HandleSetupAsync(System.Net.HttpListenerContext context, bool dryRun) {
         var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
         if (body is null) {
@@ -107,7 +121,7 @@ internal sealed partial class WebApi {
             }
 
             foreach (var repo in repos) {
-                var args = BuildSetupArgs(request, dryRun, repo);
+                var args = BuildSetupArgsForRepo(request, dryRun, repo);
                 var result = await RunSetupAsync(args).ConfigureAwait(false);
                 result.Repo = repo;
                 result.PullRequestUrl = SetupPostApplyVerifier.ExtractPullRequestUrl(result.Output);
