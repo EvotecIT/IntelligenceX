@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.Setup.Wizard;
@@ -162,8 +164,14 @@ internal static class SetupPostApplyVerifier {
             string? defaultBranch = null;
             try {
                 defaultBranch = await client.GetDefaultBranchAsync(owner, repo).ConfigureAwait(false);
-            } catch {
-                // Leave null and continue with best-effort checks.
+            } catch (OperationCanceledException) {
+                throw;
+            } catch (HttpRequestException ex) {
+                Trace.TraceWarning($"GitHub default branch lookup HTTP failure for {owner}/{repo}: {ex.Message}");
+            } catch (JsonException ex) {
+                Trace.TraceWarning($"GitHub default branch lookup JSON parse failure for {owner}/{repo}: {ex.Message}");
+            } catch (InvalidOperationException ex) {
+                Trace.TraceWarning($"GitHub default branch lookup failed for {owner}/{repo}: {ex.GetType().Name}: {ex.Message}");
             }
 
             observed.DefaultBranch = defaultBranch;
@@ -204,17 +212,11 @@ internal static class SetupPostApplyVerifier {
             observed.OrgSecretLookup = await client.TryOrgSecretExistsAsync(context.SecretOrg!, SecretName).ConfigureAwait(false);
         }
 
-        try {
-            var runLookup = await client.ListWorkflowRunsAsync(owner, repo, WorkflowPath, maxCount: 1).ConfigureAwait(false);
-            observed.WorkflowRunLookupStatus = runLookup.Status;
-            observed.WorkflowRunLookupNote = runLookup.Note;
-            if (runLookup.Runs.Count > 0) {
-                observed.LatestWorkflowRun = runLookup.Runs[0];
-            }
-        } catch (OperationCanceledException) {
-            throw;
-        } catch {
-            // Best-effort only; verification should remain deterministic without run metadata.
+        var runLookup = await client.ListWorkflowRunsAsync(owner, repo, WorkflowPath, maxCount: 1).ConfigureAwait(false);
+        observed.WorkflowRunLookupStatus = runLookup.Status;
+        observed.WorkflowRunLookupNote = runLookup.Note;
+        if (runLookup.Runs.Count > 0) {
+            observed.LatestWorkflowRun = runLookup.Runs[0];
         }
 
         return observed;

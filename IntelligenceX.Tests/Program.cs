@@ -74,6 +74,8 @@ internal static partial class Program {
             TestSetupPostApplyVerifyIncludesLatestWorkflowRunLink);
         failed += Run("Setup post-apply verify workflow run lookup failure is not reported as none",
             TestSetupPostApplyVerifyWorkflowRunLookupFailureIsNotReportedAsNone);
+        failed += Run("Setup post-apply verify does not swallow unexpected workflow lookup exceptions",
+            TestSetupPostApplyVerifyDoesNotSwallowUnexpectedWorkflowLookupExceptions);
         failed += Run("Wizard post-apply verify skips callback on failed apply",
             TestWizardPostApplyVerifySkipsCallbackWhenApplyFails);
         failed += Run("CLI dispatch no-args interactive runs manage", TestCliDispatchNoArgsInteractiveRunsManage);

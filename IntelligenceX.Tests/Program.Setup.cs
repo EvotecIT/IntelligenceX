@@ -451,6 +451,21 @@ jobs:
         AssertContainsText(latestRun.Note ?? string.Empty, "403", "post-apply latest workflow run failure note");
     }
 
+    private static void TestSetupPostApplyVerifyDoesNotSwallowUnexpectedWorkflowLookupExceptions() {
+        using var client = CreateGitHubRepoClientForTests((_, _) => throw new NullReferenceException("boom"));
+        var context = new SetupPostApplyContext {
+            Repo = "owner/repo",
+            Operation = SetupApplyOperation.UpdateSecret,
+            Provider = "copilot",
+            ExitSuccess = true,
+            Output = "Secret updated."
+        };
+
+        AssertThrows<NullReferenceException>(() =>
+                SetupPostApplyVerifier.VerifyAsync(client, context).GetAwaiter().GetResult(),
+            "post-apply verify unexpected workflow lookup exception");
+    }
+
     private static void TestWizardPostApplyVerifySkipsCallbackWhenApplyFails() {
         var context = new SetupPostApplyContext {
             Repo = "owner/repo",
