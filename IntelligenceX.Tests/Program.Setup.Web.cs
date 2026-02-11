@@ -93,6 +93,38 @@ internal static partial class Program {
         AssertEqual(null, nonOpenAiProvider.SecretOrg, "web setup org target non-openai provider does not pass org secret");
     }
 
+    private static void TestWebSetupResolveOrgSecretVerificationContextPerRepo() {
+        var firstRepo = IntelligenceX.Cli.Setup.Web.WebApi.ResolveOrgSecretVerificationContextForRepoTests(
+            cleanup: false,
+            updateSecret: false,
+            provider: "openai",
+            repo: "ownerA/repo1",
+            secretTarget: "org",
+            secretOrg: null);
+        AssertEqual(true, firstRepo.ExpectOrgSecret, "web setup per-repo org target expects org secret");
+        AssertEqual("ownerA", firstRepo.SecretOrg, "web setup per-repo org defaults to repo owner");
+
+        var secondRepo = IntelligenceX.Cli.Setup.Web.WebApi.ResolveOrgSecretVerificationContextForRepoTests(
+            cleanup: false,
+            updateSecret: false,
+            provider: "openai",
+            repo: "ownerB/repo2",
+            secretTarget: "org",
+            secretOrg: null);
+        AssertEqual(true, secondRepo.ExpectOrgSecret, "web setup second repo org target expects org secret");
+        AssertEqual("ownerB", secondRepo.SecretOrg, "web setup second repo org defaults to repo owner");
+
+        var explicitOrg = IntelligenceX.Cli.Setup.Web.WebApi.ResolveOrgSecretVerificationContextForRepoTests(
+            cleanup: false,
+            updateSecret: false,
+            provider: "openai",
+            repo: "ownerC/repo3",
+            secretTarget: "org",
+            secretOrg: "SharedOrg");
+        AssertEqual(true, explicitOrg.ExpectOrgSecret, "web setup explicit org target expects org secret");
+        AssertEqual("SharedOrg", explicitOrg.SecretOrg, "web setup explicit org value preserved");
+    }
+
     private static void TestWebSetupRunProcessTimeoutReturnsPromptly() {
         var command = Environment.ProcessPath;
         if (string.IsNullOrWhiteSpace(command)) {
