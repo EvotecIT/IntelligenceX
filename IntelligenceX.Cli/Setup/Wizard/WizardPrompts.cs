@@ -308,7 +308,23 @@ internal static class WizardPrompts {
         return AnsiConsole.Confirm("Fail CI on static analysis findings?", current);
     }
 
-    // Pack validation/normalization lives in SetupAnalysisPacks (shared with web onboarding).
+    public static string? PromptAnalysisExportPath(string? current) {
+        while (true) {
+            var currentHint = string.IsNullOrWhiteSpace(current) ? string.Empty : $" (current: {current})";
+            var raw = AnsiConsole.Prompt(
+                new TextPrompt<string>($"Optional export path for IDE analyzer configs{currentHint} (empty to skip):")
+                    .AllowEmpty());
+            if (string.IsNullOrWhiteSpace(raw)) {
+                return null;
+            }
+            if (SetupAnalysisExportPath.TryNormalize(raw, out var normalized, out var error)) {
+                return normalized;
+            }
+            AnsiConsole.MarkupLine($"[red]{error}[/]");
+        }
+    }
+
+    // Pack/export-path validation is shared with web onboarding helpers.
 
     public static SecretTarget PromptSecretTarget(int selectedRepoCount, bool ownersMatch) {
         if (selectedRepoCount <= 1 || !ownersMatch) {

@@ -10,19 +10,23 @@ internal static class WebSetupAnalysisValidator {
         bool? analysisEnabled,
         bool? analysisGateEnabled,
         string? analysisPacks,
+        string? analysisExportPath,
         out bool? normalizedEnabled,
         out bool? normalizedGateEnabled,
         out string? normalizedPacks,
+        out string? normalizedExportPath,
         out string? error) {
         error = null;
         normalizedEnabled = null;
         normalizedGateEnabled = null;
         normalizedPacks = null;
+        normalizedExportPath = null;
 
         var hasAnyAnalysis =
             analysisEnabled.HasValue ||
             analysisGateEnabled.HasValue ||
-            !string.IsNullOrWhiteSpace(analysisPacks);
+            !string.IsNullOrWhiteSpace(analysisPacks) ||
+            !string.IsNullOrWhiteSpace(analysisExportPath);
 
         var analysisApplies = isSetup && withConfig && !hasConfigOverride;
         if (!analysisApplies) {
@@ -39,18 +43,23 @@ internal static class WebSetupAnalysisValidator {
             if (!SetupAnalysisPacks.TryNormalizeCsv(analysisPacks, out normalizedPacks, out error)) {
                 return false;
             }
+            if (!SetupAnalysisExportPath.TryNormalize(analysisExportPath, out normalizedExportPath, out error)) {
+                return false;
+            }
             return true;
         }
 
-        if (analysisGateEnabled.HasValue || !string.IsNullOrWhiteSpace(analysisPacks)) {
-            error = "analysisGateEnabled/analysisPacks require analysisEnabled=true.";
+        if (analysisGateEnabled.HasValue ||
+            !string.IsNullOrWhiteSpace(analysisPacks) ||
+            !string.IsNullOrWhiteSpace(analysisExportPath)) {
+            error = "analysisGateEnabled/analysisPacks/analysisExportPath require analysisEnabled=true.";
             return false;
         }
 
         // Ensure no stray values accidentally override defaults.
         normalizedGateEnabled = null;
         normalizedPacks = null;
+        normalizedExportPath = null;
         return true;
     }
 }
-

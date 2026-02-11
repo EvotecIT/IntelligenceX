@@ -107,6 +107,11 @@ internal static class SetupArgsBuilder {
             args.Add(plan.AnalysisPacks);
         }
 
+        if (analysisAllowsGateAndPacks && !string.IsNullOrWhiteSpace(plan.AnalysisExportPath)) {
+            args.Add("--analysis-export-path");
+            args.Add(plan.AnalysisExportPath);
+        }
+
         if (plan.SkipSecret) {
             args.Add("--skip-secret");
         }

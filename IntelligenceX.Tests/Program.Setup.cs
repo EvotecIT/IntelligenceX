@@ -25,11 +25,26 @@ internal static partial class Program {
         }, args, "setup args analysis");
     }
 
+    private static void TestSetupArgsIncludeAnalysisExportPath() {
+        var plan = new SetupPlan("owner/repo") {
+            AnalysisEnabled = true,
+            AnalysisExportPath = ".intelligencex/analyzers"
+        };
+
+        var args = SetupArgsBuilder.FromPlan(plan);
+        AssertSequenceEqual(new[] {
+            "--repo", "owner/repo",
+            "--analysis-enabled", "true",
+            "--analysis-export-path", ".intelligencex/analyzers"
+        }, args, "setup args analysis export path");
+    }
+
     private static void TestSetupArgsDisableAnalysisOmitsGateAndPacks() {
         var plan = new SetupPlan("owner/repo") {
             AnalysisEnabled = false,
             AnalysisGateEnabled = true,
-            AnalysisPacks = "all-100"
+            AnalysisPacks = "all-100",
+            AnalysisExportPath = ".intelligencex/analyzers"
         };
 
         var args = SetupArgsBuilder.FromPlan(plan);
@@ -37,6 +52,17 @@ internal static partial class Program {
             "--repo", "owner/repo",
             "--analysis-enabled", "false"
         }, args, "setup args analysis disabled");
+    }
+
+    private static void TestSetupAnalysisExportPathNormalization() {
+        var ok = SetupAnalysisExportPath.TryNormalize(" .intelligencex\\analyzers ", out var normalized, out var error);
+        AssertEqual(true, ok, "analysis export path normalized ok");
+        AssertEqual(null, error, "analysis export path normalized error");
+        AssertEqual(".intelligencex/analyzers", normalized, "analysis export path normalized value");
+
+        var invalid = SetupAnalysisExportPath.TryNormalize("../outside", out _, out var invalidError);
+        AssertEqual(false, invalid, "analysis export path rejects parent");
+        AssertContainsText(invalidError ?? string.Empty, "analysisExportPath", "analysis export path invalid message");
     }
 
     private static void TestSetupAnalysisDisableWritesFalse() {

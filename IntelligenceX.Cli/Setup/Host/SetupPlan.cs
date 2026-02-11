@@ -37,4 +37,5 @@ internal sealed class SetupPlan {
     public bool? AnalysisEnabled { get; init; }
     public bool? AnalysisGateEnabled { get; init; }
     public string? AnalysisPacks { get; init; }
+    public string? AnalysisExportPath { get; init; }
 }

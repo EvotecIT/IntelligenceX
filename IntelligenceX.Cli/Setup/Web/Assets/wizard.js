@@ -67,6 +67,7 @@ const installation = $('installation');
 const analysisEnabled = $('analysisEnabled');
 const analysisGate = $('analysisGate');
 const analysisPacks = $('analysisPacks');
+const analysisExportPath = $('analysisExportPath');
 
 // ── Step navigation ──
 function goToStep(step) {
@@ -465,6 +466,9 @@ function buildReviewTable() {
   const analysisState = selectedOperation !== 'setup' || !withConfigEffective || hasConfigOverride
     ? 'not applicable'
     : (analysisEnabled && analysisEnabled.checked ? 'enabled' : 'disabled');
+  const analysisExportPathValue = analysisState === 'enabled' && analysisExportPath && analysisExportPath.value.trim().length > 0
+    ? analysisExportPath.value.trim()
+    : '';
   const providerLabel = selectedProvider === 'openai' ? 'ChatGPT / OpenAI' : 'GitHub Copilot';
   const profileLabels = {
     balanced: 'Balanced',
@@ -480,6 +484,7 @@ function buildReviewTable() {
   const safeReviewMode = escapeHtml(reviewMode && reviewMode.value ? reviewMode.value : 'default');
   const safeReviewCommentMode = escapeHtml(reviewCommentMode && reviewCommentMode.value ? reviewCommentMode.value : 'default');
   const safeAnalysisState = escapeHtml(analysisState);
+  const safeAnalysisExportPath = escapeHtml(analysisExportPathValue);
   const safeRepoHtml = repos.map(r => `<code>${escapeHtml(r)}</code>`).join(' ');
 
   let html = `
@@ -526,6 +531,11 @@ function buildReviewTable() {
         <span class="review-label">Static analysis</span>
         <span class="review-value">${safeAnalysisState}</span>
       </div>
+      ${analysisExportPathValue ? `
+      <div class="review-item">
+        <span class="review-label">Analysis export path</span>
+        <span class="review-value"><code>${safeAnalysisExportPath}</code></span>
+      </div>` : ''}
     </div>
   `;
 
@@ -602,6 +612,7 @@ function buildRequestBody(dryRun) {
   const analysisEnabledValue = wantAnalysis && analysisEnabled && analysisEnabled.checked ? true : null;
   const analysisOn = analysisEnabledValue === true;
   const packsRaw = analysisPacks ? analysisPacks.value.trim() : '';
+  const exportPathRaw = analysisExportPath ? analysisExportPath.value.trim() : '';
   const body = {
     repos: selectedRepos(),
     gitHubToken: getToken(),
@@ -630,6 +641,7 @@ function buildRequestBody(dryRun) {
     if (analysisOn) {
       body.analysisGateEnabled = !!(analysisGate && analysisGate.checked);
       if (packsRaw.length > 0) body.analysisPacks = packsRaw;
+      if (exportPathRaw.length > 0) body.analysisExportPath = exportPathRaw;
     }
   }
   return body;
@@ -1119,6 +1131,7 @@ function updateAnalysisControls() {
   if (analysisEnabled) analysisEnabled.disabled = !applicable;
   if (analysisGate) analysisGate.disabled = !enabled;
   if (analysisPacks) analysisPacks.disabled = !enabled;
+  if (analysisExportPath) analysisExportPath.disabled = !enabled;
 
   const hint = $('analysisHint');
   if (hint) {

@@ -46,6 +46,8 @@ internal static partial class SetupRunner {
         public bool AnalysisGateEnabledSet { get; set; }
         public string? AnalysisPacks { get; set; }
         public bool AnalysisPacksSet { get; set; }
+        public string? AnalysisExportPath { get; set; }
+        public bool AnalysisExportPathSet { get; set; }
         public bool CleanupEnabled { get; set; }
         public string? CleanupMode { get; set; } = "comment";
         public string? CleanupScope { get; set; } = "pr";
@@ -219,6 +221,10 @@ internal static partial class SetupRunner {
                     case "analysis-packs":
                         options.AnalysisPacks = value;
                         options.AnalysisPacksSet = true;
+                        break;
+                    case "analysis-export-path":
+                        options.AnalysisExportPath = value;
+                        options.AnalysisExportPathSet = true;
                         break;
                     case "config-path":
                         options.ConfigPath = value;
