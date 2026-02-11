@@ -444,6 +444,146 @@ jobs:
         AssertEqual(null, GitHubRepoDetector.TryReadRemoteUrlFromGitConfigText(config, "missing"), "missing remote");
     }
 
+    private static void TestGitHubRepoClientSecretLookupMapsStatusCodes() {
+        static IntelligenceX.Cli.Setup.Wizard.GitHubRepoClient.SecretLookupResult RunLookup(
+            System.Net.HttpStatusCode statusCode,
+            string? reasonPhrase = null) {
+            using var client = CreateGitHubRepoClientForTests((_, _) => {
+                var response = new System.Net.Http.HttpResponseMessage(statusCode);
+                if (reasonPhrase is not null) {
+                    response.ReasonPhrase = reasonPhrase;
+                }
+                return Task.FromResult(response);
+            });
+            return client.TryRepoSecretExistsAsync("owner", "repo", "INTELLIGENCEX_AUTH_B64").GetAwaiter().GetResult();
+        }
+
+        var present = RunLookup(System.Net.HttpStatusCode.OK);
+        AssertEqual("present", present.Status, "repo client secret status present");
+        AssertEqual(true, present.Exists, "repo client secret exists true");
+        AssertEqual(null, present.Note, "repo client secret present note");
+
+        var missing = RunLookup(System.Net.HttpStatusCode.NotFound);
+        AssertEqual("missing", missing.Status, "repo client secret status missing");
+        AssertEqual(false, missing.Exists, "repo client secret exists false");
+        AssertEqual(null, missing.Note, "repo client secret missing note");
+
+        var unauthorized = RunLookup(System.Net.HttpStatusCode.Unauthorized);
+        AssertEqual("unauthorized", unauthorized.Status, "repo client secret status unauthorized");
+        AssertEqual(null, unauthorized.Exists, "repo client secret unauthorized exists unknown");
+        AssertContainsText(unauthorized.Note ?? string.Empty, "401 Unauthorized", "repo client secret unauthorized note");
+
+        var forbidden = RunLookup(System.Net.HttpStatusCode.Forbidden);
+        AssertEqual("forbidden", forbidden.Status, "repo client secret status forbidden");
+        AssertEqual(null, forbidden.Exists, "repo client secret forbidden exists unknown");
+        AssertContainsText(forbidden.Note ?? string.Empty, "403 Forbidden", "repo client secret forbidden note");
+
+        var rateLimited = RunLookup((System.Net.HttpStatusCode)429);
+        AssertEqual("rate_limited", rateLimited.Status, "repo client secret status rate limited");
+        AssertEqual(null, rateLimited.Exists, "repo client secret rate limited exists unknown");
+        AssertContainsText(rateLimited.Note ?? string.Empty, "429 Too Many Requests", "repo client secret rate limited note");
+
+        var unknown = RunLookup(System.Net.HttpStatusCode.InternalServerError, "Boom");
+        AssertEqual("unknown", unknown.Status, "repo client secret status unknown");
+        AssertEqual(null, unknown.Exists, "repo client secret unknown exists unknown");
+        AssertContainsText(unknown.Note ?? string.Empty, "500 Boom", "repo client secret unknown note");
+    }
+
+    private static void TestGitHubRepoClientSecretLookupMapsClientExceptions() {
+        using (var httpFailureClient = CreateGitHubRepoClientForTests((_, _) =>
+                   throw new HttpRequestException("socket failed"))) {
+            var httpFailure = httpFailureClient.TryRepoSecretExistsAsync("owner", "repo", "INTELLIGENCEX_AUTH_B64")
+                .GetAwaiter().GetResult();
+            AssertEqual("unknown", httpFailure.Status, "repo client secret http failure status");
+            AssertEqual(null, httpFailure.Exists, "repo client secret http failure exists");
+            AssertContainsText(httpFailure.Note ?? string.Empty, "HTTP client error", "repo client secret http failure note");
+        }
+
+        using (var invalidOperationClient = CreateGitHubRepoClientForTests((_, _) =>
+                   throw new InvalidOperationException("invalid request uri"))) {
+            var invalidOperation = invalidOperationClient.TryRepoSecretExistsAsync("owner", "repo", "INTELLIGENCEX_AUTH_B64")
+                .GetAwaiter().GetResult();
+            AssertEqual("unknown", invalidOperation.Status, "repo client secret invalid operation status");
+            AssertEqual(null, invalidOperation.Exists, "repo client secret invalid operation exists");
+            AssertContainsText(invalidOperation.Note ?? string.Empty, "configuration error", "repo client secret invalid operation note");
+        }
+    }
+
+    private static void TestGitHubRepoClientSecretLookupCancellationPropagates() {
+        using var client = CreateGitHubRepoClientForTests((_, _) => throw new OperationCanceledException("cancelled"));
+        AssertThrows<OperationCanceledException>(() =>
+                client.TryRepoSecretExistsAsync("owner", "repo", "INTELLIGENCEX_AUTH_B64").GetAwaiter().GetResult(),
+            "repo client secret cancellation");
+    }
+
+    private static void TestGitHubRepoClientFileFetchCancellationPropagates() {
+        using var client = CreateGitHubRepoClientForTests((_, _) => throw new OperationCanceledException("cancelled"));
+        AssertThrows<OperationCanceledException>(() =>
+                client.TryGetFileAsync("owner", "repo", ".intelligencex/reviewer.json", "main").GetAwaiter().GetResult(),
+            "repo client file fetch cancellation");
+    }
+
+    private static void TestGitHubRepoClientFileFetchInvalidBase64ReturnsNull() {
+        using var client = CreateGitHubRepoClientForTests((_, _) => {
+            var payload = """
+{
+  "sha": "abc123",
+  "content": "@@@not-base64@@@"
+}
+""";
+            return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK) {
+                Content = new System.Net.Http.StringContent(payload)
+            });
+        });
+
+        var file = client.TryGetFileAsync("owner", "repo", ".intelligencex/reviewer.json", "main").GetAwaiter().GetResult();
+        AssertEqual(null, file, "repo client file fetch invalid base64");
+    }
+
+    private static void TestGitHubRepoClientInjectedHttpClientAppliesDefaultHeaders() {
+        System.Net.Http.HttpRequestMessage? capturedRequest = null;
+        using var client = CreateGitHubRepoClientForTests((request, _) => {
+            capturedRequest = request;
+            return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
+        }, token: "injected-token");
+
+        var result = client.TryRepoSecretExistsAsync("owner", "repo", "INTELLIGENCEX_AUTH_B64").GetAwaiter().GetResult();
+        AssertEqual("missing", result.Status, "repo client injected headers lookup status");
+        AssertNotNull(capturedRequest, "repo client injected headers captured request");
+        AssertEqual("Bearer", capturedRequest!.Headers.Authorization?.Scheme, "repo client injected headers auth scheme");
+        AssertEqual("injected-token", capturedRequest.Headers.Authorization?.Parameter, "repo client injected headers auth token");
+        AssertEqual(true, capturedRequest.Headers.UserAgent.ToString().Contains("IntelligenceX.Cli"), "repo client injected headers user agent");
+        AssertEqual(true, capturedRequest.Headers.Accept.ToString().Contains("application/vnd.github+json"), "repo client injected headers accept");
+        AssertEqual(true,
+            capturedRequest.Headers.TryGetValues("X-GitHub-Api-Version", out var values)
+            && values.Contains("2022-11-28"),
+            "repo client injected headers api version");
+    }
+
+    private static IntelligenceX.Cli.Setup.Wizard.GitHubRepoClient CreateGitHubRepoClientForTests(
+        Func<System.Net.Http.HttpRequestMessage, CancellationToken, Task<System.Net.Http.HttpResponseMessage>> sendAsync,
+        string token = "test-token") {
+        var http = new System.Net.Http.HttpClient(new DelegateHttpMessageHandler(sendAsync)) {
+            BaseAddress = new Uri("https://api.github.com")
+        };
+        return new IntelligenceX.Cli.Setup.Wizard.GitHubRepoClient(http, token);
+    }
+
+    private sealed class DelegateHttpMessageHandler : System.Net.Http.HttpMessageHandler {
+        private readonly Func<System.Net.Http.HttpRequestMessage, CancellationToken, Task<System.Net.Http.HttpResponseMessage>> _sendAsync;
+
+        public DelegateHttpMessageHandler(
+            Func<System.Net.Http.HttpRequestMessage, CancellationToken, Task<System.Net.Http.HttpResponseMessage>> sendAsync) {
+            _sendAsync = sendAsync;
+        }
+
+        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(
+            System.Net.Http.HttpRequestMessage request,
+            CancellationToken cancellationToken) {
+            return _sendAsync(request, cancellationToken);
+        }
+    }
+
     private static void TestGitHubSecretsRejectEmptyValue() {
         using var client = new GitHubSecretsClient("token");
         AssertThrows<InvalidOperationException>(() =>
