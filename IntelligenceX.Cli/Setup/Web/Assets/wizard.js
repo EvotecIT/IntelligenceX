@@ -691,15 +691,16 @@ function formatResults(data) {
         }
         if (Array.isArray(verify.checks) && verify.checks.length > 0) {
           verify.checks.forEach(check => {
-            const checkStatus = check && check.skipped ? 'skip' : (check && check.passed ? 'ok' : 'fail');
-            const expected = check && check.expected !== null && typeof check.expected !== 'undefined'
-              ? String(check.expected)
+            const safeCheck = check && typeof check === 'object' ? check : null;
+            const checkStatus = safeCheck && safeCheck.skipped === true ? 'skip' : (safeCheck && safeCheck.passed === true ? 'ok' : 'fail');
+            const expected = safeCheck && safeCheck.expected !== null && typeof safeCheck.expected !== 'undefined'
+              ? String(safeCheck.expected)
               : 'n/a';
-            const actual = check && check.actual !== null && typeof check.actual !== 'undefined'
-              ? String(check.actual)
+            const actual = safeCheck && safeCheck.actual !== null && typeof safeCheck.actual !== 'undefined'
+              ? String(safeCheck.actual)
               : 'n/a';
-            const note = check && check.note ? ` (${String(check.note)})` : '';
-            const checkName = check && check.name ? String(check.name) : 'check';
+            const note = safeCheck && safeCheck.note ? ` (${String(safeCheck.note)})` : '';
+            const checkName = safeCheck && safeCheck.name ? String(safeCheck.name) : 'check';
             lines.push(`- ${checkName}: ${checkStatus} (expected ${expected}, actual ${actual})${note}`);
           });
         }
