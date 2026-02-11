@@ -79,6 +79,54 @@ internal static partial class Program {
         AssertEqual(true, gate!["enabled"]?.GetValue<bool>(), "analysis.gate.enabled");
     }
 
+    private static void TestSetupBuildConfigJsonMergePreservesReviewSettingsWhenEnablingAnalysis() {
+        var seed = """
+{
+  "review": {
+    "provider": "openai",
+    "openaiTransport": "native",
+    "model": "gpt-5-mini",
+    "profile": "security",
+    "mode": "summary",
+    "commentMode": "sticky",
+    "includeIssueComments": false,
+    "includeReviewComments": true,
+    "includeRelatedPullRequests": false,
+    "progressUpdates": false,
+    "diagnostics": false,
+    "preflight": true,
+    "preflightTimeoutSeconds": 30,
+    "customReviewFlag": "keep-me"
+  }
+}
+""";
+
+        var content = SetupRunner.BuildReviewerConfigJsonFromSeedForTests(
+            new[] { "--analysis-enabled", "true", "--analysis-gate", "true" },
+            seed);
+        AssertNotNull(content, "config json merge content");
+
+        var root = System.Text.Json.Nodes.JsonNode.Parse(content) as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(root, "config json merge root");
+
+        var review = root!["review"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(review, "config json merge review");
+        AssertEqual("keep-me", review!["customReviewFlag"]?.GetValue<string>(), "config json merge keeps custom review key");
+        AssertEqual("security", review["profile"]?.GetValue<string>(), "config json merge keeps existing profile");
+
+        var analysis = root["analysis"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(analysis, "config json merge analysis object");
+        AssertEqual(true, analysis!["enabled"]?.GetValue<bool>(), "config json merge analysis.enabled");
+
+        var gate = analysis["gate"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(gate, "config json merge analysis.gate");
+        AssertEqual(true, gate!["enabled"]?.GetValue<bool>(), "config json merge analysis.gate.enabled");
+
+        var packsNode = analysis["packs"] as System.Text.Json.Nodes.JsonArray;
+        AssertNotNull(packsNode, "config json merge analysis.packs");
+        AssertEqual(true, packsNode!.Count > 0, "config json merge analysis.packs has values");
+    }
+
     private static void TestGitHubRepoDetectorParsesRemoteUrls() {
         AssertEqual("owner/repo", GitHubRepoDetector.ParseRepoFromRemoteUrl("https://github.com/owner/repo.git"), "https git");
         AssertEqual("owner/repo", GitHubRepoDetector.ParseRepoFromRemoteUrl("https://github.com/owner/repo"), "https no git");

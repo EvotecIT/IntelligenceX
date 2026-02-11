@@ -68,6 +68,13 @@ internal static partial class SetupRunner {
     [Obsolete("Use BuildReviewerConfigJson for production and new call sites.")]
     internal static string BuildReviewerConfigJsonForTests(string[] args) => BuildReviewerConfigJson(args);
 
+    // Test helper for merge coverage against existing reviewer.json content.
+    internal static string BuildReviewerConfigJsonFromSeedForTests(string[] args, string seedContent) {
+        var options = SetupOptions.Parse(args);
+        var plan = PlanConfigChange(options, existingReviewerContent: seedContent, seedContent: seedContent);
+        return plan.Content ?? string.Empty;
+    }
+
     private static string? ReadConfigOverride(SetupOptions options) {
         if (!string.IsNullOrWhiteSpace(options.ConfigJson)) {
             return options.ConfigJson;
