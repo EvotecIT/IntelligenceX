@@ -57,19 +57,7 @@ internal static partial class AnalyzeRunCommand {
         var tempScript = Path.Combine(Path.GetTempPath(), "ix-pssa-" + Guid.NewGuid().ToString("N") + ".ps1");
         try {
             File.WriteAllText(tempScript, BuildPowerShellRunnerScript());
-            var args = new List<string> {
-                "-NoLogo",
-                "-NoProfile",
-                "-NonInteractive",
-                "-File",
-                tempScript,
-                "-Workspace",
-                workspace,
-                "-OutFile",
-                findingsPath,
-                "-SettingsPath",
-                settingsPath
-            };
+            var args = BuildPowerShellRunnerArgs(tempScript, workspace, findingsPath, settingsPath, options.Strict);
             var result = await RunProcessAsync(options.PowerShellCommand, args, workspace).ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(result.StdOut)) {
                 Console.WriteLine(result.StdOut.Trim());
@@ -88,6 +76,41 @@ internal static partial class AnalyzeRunCommand {
             TryDeleteFile(tempScript);
         }
     }
+
+    internal static IReadOnlyList<string> BuildPowerShellRunnerArgsForTests(
+        string tempScript,
+        string workspace,
+        string findingsPath,
+        string settingsPath,
+        bool strict) {
+        return BuildPowerShellRunnerArgs(tempScript, workspace, findingsPath, settingsPath, strict);
+    }
+
+    private static List<string> BuildPowerShellRunnerArgs(
+        string tempScript,
+        string workspace,
+        string findingsPath,
+        string settingsPath,
+        bool strict) {
+        var args = new List<string> {
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-File",
+            tempScript,
+            "-Workspace",
+            workspace,
+            "-OutFile",
+            findingsPath,
+            "-SettingsPath",
+            settingsPath
+        };
+        if (strict) {
+            args.Add("-FailOnAnalyzerErrors");
+        }
+        return args;
+    }
+
     private static TemporaryFileScope? PrepareEditorConfigOverride(AnalysisSettings settings, string workspace,
         string? generatedEditorConfig, List<string> warnings) {
         if (string.IsNullOrWhiteSpace(generatedEditorConfig) || !File.Exists(generatedEditorConfig)) {
