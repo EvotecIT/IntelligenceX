@@ -151,8 +151,12 @@ internal static class AnalyzeGateBaseline {
 
     private static string NormalizePathForBaselineKey(string? path) {
         var normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
-        if (normalized.StartsWith("./", StringComparison.Ordinal)) {
+        var hasDotRelativePrefix = normalized.StartsWith(".", StringComparison.Ordinal);
+        while (normalized.StartsWith("./", StringComparison.Ordinal)) {
             normalized = normalized.Substring(2);
+        }
+        if (hasDotRelativePrefix) {
+            normalized = normalized.TrimStart('/');
         }
         return normalized.ToLowerInvariant();
     }
