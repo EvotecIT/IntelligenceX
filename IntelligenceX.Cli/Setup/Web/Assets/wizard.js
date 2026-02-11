@@ -692,8 +692,12 @@ function formatResults(data) {
         if (Array.isArray(verify.checks) && verify.checks.length > 0) {
           verify.checks.forEach(check => {
             const checkStatus = check && check.skipped ? 'skip' : (check && check.passed ? 'ok' : 'fail');
-            const expected = check && check.expected ? String(check.expected) : 'n/a';
-            const actual = check && check.actual ? String(check.actual) : 'n/a';
+            const expected = check && check.expected !== null && typeof check.expected !== 'undefined'
+              ? String(check.expected)
+              : 'n/a';
+            const actual = check && check.actual !== null && typeof check.actual !== 'undefined'
+              ? String(check.actual)
+              : 'n/a';
             const note = check && check.note ? ` (${String(check.note)})` : '';
             const checkName = check && check.name ? String(check.name) : 'check';
             lines.push(`- ${checkName}: ${checkStatus} (expected ${expected}, actual ${actual})${note}`);
