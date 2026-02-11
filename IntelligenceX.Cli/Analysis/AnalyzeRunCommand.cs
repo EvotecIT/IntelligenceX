@@ -342,6 +342,8 @@ function Get-AnalyzerPaths {
             continue
         } catch [System.IO.DirectoryNotFoundException] {
             continue
+        } catch [System.IO.IOException] {
+            continue
         }
 
         try {
