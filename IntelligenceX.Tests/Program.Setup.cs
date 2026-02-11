@@ -25,6 +25,20 @@ internal static partial class Program {
         }, args, "setup args analysis");
     }
 
+    private static void TestSetupArgsDisableAnalysisOmitsGateAndPacks() {
+        var plan = new SetupPlan("owner/repo") {
+            AnalysisEnabled = false,
+            AnalysisGateEnabled = true,
+            AnalysisPacks = "all-100"
+        };
+
+        var args = SetupArgsBuilder.FromPlan(plan);
+        AssertSequenceEqual(new[] {
+            "--repo", "owner/repo",
+            "--analysis-enabled", "false"
+        }, args, "setup args analysis disabled");
+    }
+
     private static void TestSetupAnalysisDisableWritesFalse() {
         var root = new System.Text.Json.Nodes.JsonObject();
         SetupAnalysisConfig.Apply(

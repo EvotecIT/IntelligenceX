@@ -7,6 +7,8 @@ using Spectre.Console;
 namespace IntelligenceX.Cli.Setup.Wizard;
 
 internal static class WizardPrompts {
+    internal const string DisableAnalysisSelection = "__disable_analysis__";
+
     public static string PromptRepo(string? current) {
         var prompt = new TextPrompt<string>("Repository (owner/name):")
             .Validate(value => value.Contains('/')
@@ -249,6 +251,7 @@ internal static class WizardPrompts {
             "(default: all-50)",
             "all-100",
             "all-500",
+            "none (disable static analysis)",
             "all-security-default",
             "powershell-50",
             "custom (enter pack ids)"
@@ -265,6 +268,9 @@ internal static class WizardPrompts {
                 .AddChoices(choices));
         if (string.Equals(selected, "(default: all-50)", StringComparison.Ordinal)) {
             return null;
+        }
+        if (string.Equals(selected, "none (disable static analysis)", StringComparison.Ordinal)) {
+            return DisableAnalysisSelection;
         }
         if (selected.StartsWith("(keep current:", StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(current)) {
             return current;
