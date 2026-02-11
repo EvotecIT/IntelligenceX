@@ -262,11 +262,16 @@ internal static partial class AnalyzeRunCommand {
         Console.WriteLine("                         [--dotnet-command <path>] [--framework <tfm>] [--pwsh-command <path>] [--strict]");
     }
 
+    internal static string BuildPowerShellRunnerScriptForTests() {
+        return BuildPowerShellRunnerScript();
+    }
+
     private static string BuildPowerShellRunnerScript() {
         return @"param(
     [Parameter(Mandatory=$true)][string]$Workspace,
     [Parameter(Mandatory=$true)][string]$OutFile,
-    [Parameter()][string]$SettingsPath
+    [Parameter()][string]$SettingsPath,
+    [Parameter()][switch]$FailOnAnalyzerErrors
 )
 $ErrorActionPreference = 'Stop'
 
@@ -284,7 +289,25 @@ if ($SettingsPath -and (Test-Path -LiteralPath $SettingsPath)) {
     $invoke['Settings'] = $SettingsPath
 }
 
-$results = Invoke-ScriptAnalyzer @invoke
+$invokeErrors = @()
+$results = @()
+try {
+    $results = @(Invoke-ScriptAnalyzer @invoke -ErrorAction Continue -ErrorVariable +invokeErrors)
+} catch {
+    $invokeErrors += $_
+}
+
+$sawInvokeErrors = $false
+foreach ($invokeError in $invokeErrors) {
+    $sawInvokeErrors = $true
+    $errorText = if ($invokeError.Exception -and $invokeError.Exception.Message) {
+        $invokeError.Exception.Message
+    } else {
+        [string]$invokeError
+    }
+    [Console]::Error.WriteLine('PSScriptAnalyzer engine error: ' + $errorText)
+}
+
 $items = @()
 foreach ($result in $results) {
     if (-not $result.ScriptPath -or -not $result.Message) {
@@ -315,7 +338,11 @@ if ($directory -and -not (Test-Path -LiteralPath $directory)) {
     items = $items
 } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $OutFile -Encoding UTF8
 
-Write-Output ('PSScriptAnalyzer findings: ' + $items.Count)";
+Write-Output ('PSScriptAnalyzer findings: ' + $items.Count)
+if ($sawInvokeErrors -and $FailOnAnalyzerErrors) {
+    [Console]::Error.WriteLine('PSScriptAnalyzer reported one or more engine errors.')
+    exit 2
+}";
     }
 
     private sealed class AnalyzeRunOptions {

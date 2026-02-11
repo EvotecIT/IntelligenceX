@@ -61,6 +61,7 @@ internal static partial class Program {
         failed += Run("Manage external command captures help tail line", TestManageRunExternalCommandCapturesHelpTailLine);
         failed += Run("Manage external command start failure returns promptly", TestManageRunExternalCommandStartFailureReturnsPromptly);
         failed += Run("Manage external command non-timeout failure is not timeout", TestManageRunExternalCommandNonTimeoutFailureIsNotTimeout);
+        failed += Run("Web setup subprocess timeout returns promptly", TestWebSetupRunProcessTimeoutReturnsPromptly);
         failed += Run("Manage GitHub CLI status token authenticated", TestManageGitHubCliStatusWithTokenIsAuthenticated);
         failed += Run("Manage GitHub CLI status exit code zero authenticated", TestManageGitHubCliStatusExitCodeZeroAuthenticated);
         failed += Run("Manage GitHub CLI status exit code non-zero unauthenticated", TestManageGitHubCliStatusExitCodeNonZeroUnauthenticated);
@@ -180,6 +181,8 @@ internal static partial class Program {
         failed += Run("Todo bot feedback parse existing", TestBotFeedbackParseExistingPrBlockExtractsTasks);
         failed += Run("Todo bot feedback merge", TestBotFeedbackMergePreservesManualCheckedStateAndOrder);
         failed += Run("Todo bot feedback update section", TestBotFeedbackUpdateSectionIsDeterministicAndNoDuplicates);
+        failed += Run("Analyze run PowerShell script captures engine errors", TestAnalyzeRunPowerShellScriptCapturesEngineErrors);
+        failed += Run("Analyze run PowerShell strict args include fail switch", TestAnalyzeRunPowerShellStrictArgsIncludeFailSwitch);
         failed += Run("Analyze run disabled writes empty findings", TestAnalyzeRunDisabledWritesEmptyFindings);
         failed += Run("Analyze run internal file size rule", TestAnalyzeRunInternalFileSizeRule);
         failed += Run("Analyze run internal findings use catalog tool metadata",
