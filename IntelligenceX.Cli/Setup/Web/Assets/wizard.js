@@ -669,7 +669,7 @@ function formatResults(data) {
       if (!r || !r.verify) return false;
       const skipped = coerceBoolean(r.verify.skipped);
       const passed = coerceBoolean(r.verify.passed);
-      return skipped !== true && passed !== true;
+      return skipped !== true && passed === false;
     }).length;
     const verifyText = verifyFailed > 0 ? `, verify issues in ${verifyFailed}` : '';
     setSummary(`Results: ${succeeded}/${total} succeeded${failed > 0 ? `, ${failed} failed` : ''}${verifyText}.`);
@@ -699,7 +699,13 @@ function formatResults(data) {
         const verify = result.verify;
         const verifySkipped = coerceBoolean(verify.skipped);
         const verifyPassed = coerceBoolean(verify.passed);
-        const verifyStatus = verifySkipped === true ? 'skipped' : (verifyPassed === true ? 'ok' : 'failed');
+        const verifyStatus = verifySkipped === true
+          ? 'skipped'
+          : verifyPassed === true
+            ? 'ok'
+            : verifyPassed === false
+              ? 'failed'
+              : 'unknown';
         lines.push(`verify: ${verifyStatus}`);
         if (verify.checkedRef && String(verify.checkedRef).trim().length > 0) {
           const source = verify.checkedRefSource ? String(verify.checkedRefSource) : 'ref';
