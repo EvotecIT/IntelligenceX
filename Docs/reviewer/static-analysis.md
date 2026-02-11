@@ -232,6 +232,11 @@ jobs:
         run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- ci changed-files --workspace . --out artifacts/changed-files.txt
       - name: Static analysis gate
         run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze gate --config .intelligencex/reviewer.json --workspace . --changed-files artifacts/changed-files.txt
+      - name: Upload analysis artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ix-analysis
+          path: artifacts
 
   review:
     needs: [analysis]
@@ -246,6 +251,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+      - name: Download analysis artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ix-analysis
+          path: artifacts
       - name: Run reviewer
         run: dotnet run --project IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0
         env:
