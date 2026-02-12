@@ -27,7 +27,9 @@ This file tracks onboarding/cleanup/maintenance unification across CLI, Web, and
 | Drift guard contract tests | Completed | IX + IX.Tools + IX.Chat | Added tests for CLI contract parity and bot/tool contract payload parity (`IntelligenceX.Tests`, `IntelligenceX.Tools.Tests`, `IntelligenceX.Chat.Tests`). |
 | Contract version/fingerprint surfaced by autodetect | Completed | IX Core + IX CLI Web | Added `ContractVersion` + deterministic contract fingerprint in `SetupOnboardingContract`, emitted by `setup autodetect` JSON and Web autodetect API/summary panel. |
 | .Tools: setup pack exposes contract metadata | Completed | IX Tools | `reviewer_setup_pack_info` now emits `contractVersion` + `contractFingerprint` in `setup_hints` for bot-side parity checks. |
+| .Tools: contract verifier tool for autodetect parity | Completed | IX Tools | Added `reviewer_setup_contract_verify` so agents can validate autodetect contract metadata before setup/update-secret/cleanup apply. |
 | .Chat: enforce contract parity in playbook | Completed | IX Chat | Host prompt now requires comparing pack contract metadata with autodetect output before apply/cleanup operations. |
+| .Chat: execute parity via verifier tool | Completed | IX Chat | Host prompt and tests now require using `reviewer_setup_contract_verify` after autodetect and before mutating onboarding commands. |
 | .Chat: autodetect-first onboarding playbook | Completed | IX Chat | Updated `Docs/HostSystemPrompt.md` to require `reviewer_setup_pack_info` + preflight autodetect before path execution. |
 | Docs: diagrams and flow updates | Completed | Docs | Added path-first flow docs and Mermaid diagrams in onboarding pages. |
 | Website FAQ/data updates | Completed | Website | Updated FAQ/features/how-it-works for path-first + auto-detect positioning. |
@@ -46,7 +48,9 @@ None for this unification scope. As of February 12, 2026:
 - `IntelligenceX` PR `#251` is merged.
 - `IntelligenceX` PR `#252` is merged.
 - `IntelligenceX.Tools` PR `#151` is merged.
+- `IntelligenceX.Tools` PR `#152` is merged.
 - `IntelligenceX.Chat` PR `#47` is merged.
+- `IntelligenceX.Chat` PR `#48` is merged.
 
 ## Next Actions
 
