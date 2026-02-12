@@ -6,6 +6,8 @@ namespace IntelligenceX.Tests;
 
 internal static partial class Program {
 #if !NET472
+    private static readonly object SetupAcceptanceGlobalStateLock = new();
+
     private static void TestSetupWizardPlainReachesPullRequestCreatedWithFakeGitHubApi() {
         using var server = new SetupFakeGitHubApiServer("owner", "repo");
         var authB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("{\"kind\":\"test\"}"));
@@ -42,54 +44,60 @@ internal static partial class Program {
             authB64: authB64,
             branchName: "intelligencex-setup/test-web-acceptance");
 
-        var previousApiBaseUrl = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_API_BASE_URL");
-        try {
-            Environment.SetEnvironmentVariable("INTELLIGENCEX_GITHUB_API_BASE_URL", server.BaseUri.ToString().TrimEnd('/'));
-            var (exitCode, output) = RunSetupAndCaptureOutput(args);
-            AssertEqual(0, exitCode, "web setup args fake API exit");
-            AssertContainsText(output, "Setup complete. PR created:", "web setup args pr created message");
-            AssertContainsText(output, server.PullRequestUrl, "web setup args pr url");
-            AssertEqual(1, server.PullRequestCreateCount, "web setup args pr create request count");
-            AssertEqual(true, server.SawWorkflowWrite, "web setup args workflow write");
-            AssertEqual(true, server.SawReviewerConfigWrite, "web setup args reviewer config write");
-        } finally {
-            Environment.SetEnvironmentVariable("INTELLIGENCEX_GITHUB_API_BASE_URL", previousApiBaseUrl);
+        lock (SetupAcceptanceGlobalStateLock) {
+            var previousApiBaseUrl = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_API_BASE_URL");
+            try {
+                Environment.SetEnvironmentVariable("INTELLIGENCEX_GITHUB_API_BASE_URL", server.BaseUri.ToString().TrimEnd('/'));
+                var (exitCode, output) = RunSetupAndCaptureOutput(args);
+                AssertEqual(0, exitCode, "web setup args fake API exit");
+                AssertContainsText(output, "Setup complete. PR created:", "web setup args pr created message");
+                AssertContainsText(output, server.PullRequestUrl, "web setup args pr url");
+                AssertEqual(1, server.PullRequestCreateCount, "web setup args pr create request count");
+                AssertEqual(true, server.SawWorkflowWrite, "web setup args workflow write");
+                AssertEqual(true, server.SawReviewerConfigWrite, "web setup args reviewer config write");
+            } finally {
+                Environment.SetEnvironmentVariable("INTELLIGENCEX_GITHUB_API_BASE_URL", previousApiBaseUrl);
+            }
         }
     }
 
     private static (int ExitCode, string Output) RunWizardAndCaptureOutput(string[] args) {
-        var originalOut = Console.Out;
-        var originalErr = Console.Error;
-        using var outWriter = new StringWriter();
-        using var errWriter = new StringWriter();
-        Console.SetOut(outWriter);
-        Console.SetError(errWriter);
-        try {
-            var exitCode = IntelligenceX.Cli.Setup.Wizard.WizardRunner.RunAsync(args).GetAwaiter().GetResult();
-            outWriter.Flush();
-            errWriter.Flush();
-            return (exitCode, outWriter.ToString() + errWriter.ToString());
-        } finally {
-            Console.SetOut(originalOut);
-            Console.SetError(originalErr);
+        lock (SetupAcceptanceGlobalStateLock) {
+            var originalOut = Console.Out;
+            var originalErr = Console.Error;
+            using var outWriter = new StringWriter();
+            using var errWriter = new StringWriter();
+            Console.SetOut(outWriter);
+            Console.SetError(errWriter);
+            try {
+                var exitCode = IntelligenceX.Cli.Setup.Wizard.WizardRunner.RunAsync(args).GetAwaiter().GetResult();
+                outWriter.Flush();
+                errWriter.Flush();
+                return (exitCode, outWriter.ToString() + errWriter.ToString());
+            } finally {
+                Console.SetOut(originalOut);
+                Console.SetError(originalErr);
+            }
         }
     }
 
     private static (int ExitCode, string Output) RunSetupAndCaptureOutput(string[] args) {
-        var originalOut = Console.Out;
-        var originalErr = Console.Error;
-        using var outWriter = new StringWriter();
-        using var errWriter = new StringWriter();
-        Console.SetOut(outWriter);
-        Console.SetError(errWriter);
-        try {
-            var exitCode = IntelligenceX.Cli.Setup.SetupRunner.RunAsync(args).GetAwaiter().GetResult();
-            outWriter.Flush();
-            errWriter.Flush();
-            return (exitCode, outWriter.ToString() + errWriter.ToString());
-        } finally {
-            Console.SetOut(originalOut);
-            Console.SetError(originalErr);
+        lock (SetupAcceptanceGlobalStateLock) {
+            var originalOut = Console.Out;
+            var originalErr = Console.Error;
+            using var outWriter = new StringWriter();
+            using var errWriter = new StringWriter();
+            Console.SetOut(outWriter);
+            Console.SetError(errWriter);
+            try {
+                var exitCode = IntelligenceX.Cli.Setup.SetupRunner.RunAsync(args).GetAwaiter().GetResult();
+                outWriter.Flush();
+                errWriter.Flush();
+                return (exitCode, outWriter.ToString() + errWriter.ToString());
+            } finally {
+                Console.SetOut(originalOut);
+                Console.SetError(originalErr);
+            }
         }
     }
 
