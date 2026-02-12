@@ -83,6 +83,24 @@ internal static partial class Program {
             "web setup autodetect response fallback check count");
     }
 
+    private static void TestWebSetupAutodetectResponseJsonRejectsUnknownCheckStatus() {
+        var result = new IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingAutoDetectResult {
+            Status = "warn",
+            Workspace = "/tmp/workspace",
+            Checks = new[] {
+                new IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingCheck {
+                    Name = "doctor",
+                    Status = (IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingCheckStatus)999,
+                    Message = "unexpected"
+                }
+            }
+        };
+
+        AssertThrows<ArgumentOutOfRangeException>(() =>
+                IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupAutodetectResponseJsonForTests(result),
+            "web setup autodetect response unknown check status");
+    }
+
     private static void TestWebSetupBuildSetupArgsPropagatesRequestDryRun() {
         var fromRequest = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupArgsForDryRunPropagationTests(
             routeDryRun: false,
