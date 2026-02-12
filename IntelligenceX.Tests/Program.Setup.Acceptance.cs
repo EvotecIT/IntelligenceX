@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Text;
 
 namespace IntelligenceX.Tests;
@@ -35,7 +36,7 @@ internal static partial class Program {
     private static void TestWebSetupArgsCanReachPullRequestCreatedWithFakeGitHubApi() {
         using var server = new SetupFakeGitHubApiServer("owner", "repo");
         var authB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("{\"kind\":\"test\"}"));
-        var args = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupArgsForAcceptanceTests(
+        var args = BuildWebSetupArgsForAcceptance(
             repo: "owner/repo",
             gitHubToken: "test-token",
             withConfig: true,
@@ -59,6 +60,53 @@ internal static partial class Program {
                 Environment.SetEnvironmentVariable("INTELLIGENCEX_GITHUB_API_BASE_URL", previousApiBaseUrl);
             }
         }
+    }
+
+    private static string[] BuildWebSetupArgsForAcceptance(
+        string repo,
+        string gitHubToken,
+        bool withConfig,
+        bool skipSecret,
+        bool manualSecret,
+        string? authB64,
+        string? branchName) {
+        var webApiType = typeof(IntelligenceX.Cli.Setup.Web.WebApi);
+        var setupRequestType = webApiType.GetNestedType("SetupRequest", BindingFlags.NonPublic);
+        if (setupRequestType is null) {
+            throw new InvalidOperationException("WebApi.SetupRequest type not found.");
+        }
+
+        var request = Activator.CreateInstance(setupRequestType);
+        if (request is null) {
+            throw new InvalidOperationException("Failed to create WebApi.SetupRequest.");
+        }
+
+        SetWebSetupRequestProperty(setupRequestType, request, "Repo", repo);
+        SetWebSetupRequestProperty(setupRequestType, request, "GitHubToken", gitHubToken);
+        SetWebSetupRequestProperty(setupRequestType, request, "WithConfig", withConfig);
+        SetWebSetupRequestProperty(setupRequestType, request, "SkipSecret", skipSecret);
+        SetWebSetupRequestProperty(setupRequestType, request, "ManualSecret", manualSecret);
+        SetWebSetupRequestProperty(setupRequestType, request, "AuthB64", authB64);
+        SetWebSetupRequestProperty(setupRequestType, request, "BranchName", branchName);
+
+        var buildMethod = webApiType.GetMethod("BuildSetupArgsForRepo", BindingFlags.NonPublic | BindingFlags.Static);
+        if (buildMethod is null) {
+            throw new InvalidOperationException("WebApi.BuildSetupArgsForRepo method not found.");
+        }
+
+        var result = buildMethod.Invoke(null, new[] { request, (object)false, repo }) as string[];
+        if (result is null) {
+            throw new InvalidOperationException("WebApi.BuildSetupArgsForRepo returned null.");
+        }
+        return result;
+    }
+
+    private static void SetWebSetupRequestProperty(Type requestType, object request, string name, object? value) {
+        var property = requestType.GetProperty(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        if (property is null || !property.CanWrite) {
+            throw new InvalidOperationException($"WebApi.SetupRequest property '{name}' is not writable.");
+        }
+        property.SetValue(request, value);
     }
 
     private static (int ExitCode, string Output) RunWizardAndCaptureOutput(string[] args) {
@@ -109,6 +157,7 @@ internal static partial class Program {
         private readonly TcpListener _listener;
         private readonly Task _loopTask;
         private readonly object _sync = new();
+        private readonly List<Task> _clientTasks = new();
         private readonly HashSet<string> _writtenPaths = new(StringComparer.Ordinal);
         private int _pullRequestCreateCount;
         private bool _disposed;
@@ -158,7 +207,11 @@ internal static partial class Program {
                 } catch (SocketException) when (_disposed) {
                     break;
                 }
-                await HandleClientAsync(client).ConfigureAwait(false);
+
+                var task = Task.Run(() => HandleClientAsync(client));
+                lock (_sync) {
+                    _clientTasks.Add(task);
+                }
             }
         }
 
@@ -334,6 +387,22 @@ internal static partial class Program {
                 throw new TimeoutException("Setup fake GitHub API server did not stop in time.");
             }
             _loopTask.GetAwaiter().GetResult();
+
+            Task[] clientTasks;
+            lock (_sync) {
+                clientTasks = _clientTasks.ToArray();
+            }
+
+            if (clientTasks.Length == 0) {
+                return;
+            }
+
+            var allClients = Task.WhenAll(clientTasks);
+            var allClientsCompleted = Task.WhenAny(allClients, Task.Delay(ShutdownTimeout)).GetAwaiter().GetResult();
+            if (!ReferenceEquals(allClientsCompleted, allClients)) {
+                throw new TimeoutException("Setup fake GitHub API server client tasks did not stop in time.");
+            }
+            allClients.GetAwaiter().GetResult();
         }
     }
 

@@ -28,26 +28,6 @@ internal sealed partial class WebApi {
         return ResolveWithConfigFromArgs(args);
     }
 
-    internal static string[] BuildSetupArgsForAcceptanceTests(
-        string repo,
-        string gitHubToken,
-        bool withConfig,
-        bool skipSecret,
-        bool manualSecret,
-        string? authB64,
-        string? branchName) {
-        var request = new SetupRequest {
-            Repo = repo,
-            GitHubToken = gitHubToken,
-            WithConfig = withConfig,
-            SkipSecret = skipSecret,
-            ManualSecret = manualSecret,
-            AuthB64 = authB64,
-            BranchName = branchName
-        };
-        return BuildSetupArgsForRepo(request, routeDryRun: false, repo);
-    }
-
     internal static (bool ExpectOrgSecret, string? SecretOrg) ResolveOrgSecretVerificationContextForTests(
         bool cleanup,
         bool updateSecret,
