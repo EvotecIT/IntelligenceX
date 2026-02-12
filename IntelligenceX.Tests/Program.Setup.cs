@@ -280,23 +280,17 @@ internal static partial class Program {
         AssertEqual("intelligencex setup --repo owner/name --cleanup",
             commandTemplates.GetProperty("cleanupApply").GetString(),
             "setup autodetect json command template cleanup apply");
+        var expectedPaths = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetPaths(includeMaintenancePath: true);
         var paths = document.RootElement.GetProperty("paths");
-        AssertEqual(4, paths.GetArrayLength(), "setup autodetect json path count");
-        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.NewSetupPathId,
-            paths[0].GetProperty("id").GetString(),
-            "setup autodetect json path[0] id");
-        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.RefreshAuthPathId,
-            paths[1].GetProperty("id").GetString(),
-            "setup autodetect json path[1] id");
-        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.CleanupPathId,
-            paths[2].GetProperty("id").GetString(),
-            "setup autodetect json path[2] id");
-        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.MaintenancePathId,
-            paths[3].GetProperty("id").GetString(),
-            "setup autodetect json path[3] id");
-        AssertEqual("setup", paths[0].GetProperty("operation").GetString(), "setup autodetect json path[0] operation");
-        AssertEqual("update-secret", paths[1].GetProperty("operation").GetString(), "setup autodetect json path[1] operation");
-        AssertEqual("cleanup", paths[2].GetProperty("operation").GetString(), "setup autodetect json path[2] operation");
+        AssertEqual(expectedPaths.Count, paths.GetArrayLength(), "setup autodetect json path count");
+        for (var i = 0; i < expectedPaths.Count; i++) {
+            AssertEqual(expectedPaths[i].Id,
+                paths[i].GetProperty("id").GetString(),
+                $"setup autodetect json path[{i}] id");
+            AssertEqual(expectedPaths[i].Operation,
+                paths[i].GetProperty("operation").GetString(),
+                $"setup autodetect json path[{i}] operation");
+        }
         var checks = document.RootElement.GetProperty("checks");
 
         AssertEqual(System.Text.Json.JsonValueKind.String, checks[0].GetProperty("status").ValueKind,

@@ -52,9 +52,14 @@ internal static partial class Program {
     }
 
     private static void TestWebSetupAutodetectResponseJsonFallbacksForNullPayloads() {
+        var contractPaths = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetPaths(includeMaintenancePath: true);
+        var expectedContractVersion = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.ContractVersion;
+        var expectedContractFingerprint = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetContractFingerprint(includeMaintenancePath: true);
         var result = new IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingAutoDetectResult {
             Status = "ok",
             Workspace = "/tmp/workspace",
+            ContractVersion = string.Empty,
+            ContractFingerprint = string.Empty,
             Paths = null!,
             CommandTemplates = null!,
             Checks = null!
@@ -68,7 +73,11 @@ internal static partial class Program {
         AssertEqual(contractCommands.AutoDetect,
             root.GetProperty("commandTemplates").GetProperty("autoDetect").GetString(),
             "web setup autodetect response fallback command template");
-        AssertEqual(4, root.GetProperty("paths").GetArrayLength(),
+        AssertEqual(expectedContractVersion, root.GetProperty("contractVersion").GetString(),
+            "web setup autodetect response fallback contract version");
+        AssertEqual(expectedContractFingerprint, root.GetProperty("contractFingerprint").GetString(),
+            "web setup autodetect response fallback contract fingerprint");
+        AssertEqual(contractPaths.Count, root.GetProperty("paths").GetArrayLength(),
             "web setup autodetect response fallback path count");
         AssertEqual(0, root.GetProperty("checks").GetArrayLength(),
             "web setup autodetect response fallback check count");
