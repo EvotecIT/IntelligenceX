@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using IntelligenceX.Setup.Onboarding;
 
 namespace IntelligenceX.Cli.Setup.Onboarding;
 
@@ -15,76 +17,24 @@ internal sealed class SetupOnboardingPathDefinition {
 }
 
 internal static class SetupOnboardingPaths {
-    public const string NewSetup = "new-setup";
-    public const string RefreshAuth = "refresh-auth";
-    public const string Cleanup = "cleanup";
-    public const string Maintenance = "maintenance";
+    public const string NewSetup = SetupOnboardingContract.NewSetupPathId;
+    public const string RefreshAuth = SetupOnboardingContract.RefreshAuthPathId;
+    public const string Cleanup = SetupOnboardingContract.CleanupPathId;
+    public const string Maintenance = SetupOnboardingContract.MaintenancePathId;
 
-    private static readonly IReadOnlyList<SetupOnboardingPathDefinition> Paths = new[] {
-        new SetupOnboardingPathDefinition {
-            Id = NewSetup,
-            DisplayName = "New Setup",
-            Description = "Configure workflow and reviewer config for first-time onboarding.",
-            DefaultOperation = SetupApplyOperation.Setup,
-            RequiresGitHubAuth = true,
-            RequiresRepoSelection = true,
-            RequiresAiAuth = true,
-            Flow = new[] {
-                "Authenticate with GitHub",
-                "Select repositories",
-                "Configure workflow and reviewer profile",
-                "Authenticate with AI provider",
-                "Plan, apply, verify"
-            }
-        },
-        new SetupOnboardingPathDefinition {
-            Id = RefreshAuth,
-            DisplayName = "Fix Expired Auth",
-            Description = "Refresh OpenAI/ChatGPT auth and update INTELLIGENCEX_AUTH_B64 secret.",
-            DefaultOperation = SetupApplyOperation.UpdateSecret,
-            RequiresGitHubAuth = true,
-            RequiresRepoSelection = true,
-            RequiresAiAuth = true,
-            Flow = new[] {
-                "Authenticate with GitHub",
-                "Select repositories",
-                "Refresh AI auth bundle",
-                "Apply update-secret",
-                "Verify secret presence"
-            }
-        },
-        new SetupOnboardingPathDefinition {
-            Id = Cleanup,
-            DisplayName = "Cleanup",
-            Description = "Remove workflow/config and optionally remove secrets from repositories.",
-            DefaultOperation = SetupApplyOperation.Cleanup,
-            RequiresGitHubAuth = true,
-            RequiresRepoSelection = true,
-            RequiresAiAuth = false,
-            Flow = new[] {
-                "Authenticate with GitHub",
-                "Select repositories",
-                "Choose cleanup options",
-                "Plan, apply cleanup",
-                "Verify removal"
-            }
-        },
-        new SetupOnboardingPathDefinition {
-            Id = Maintenance,
-            DisplayName = "Maintenance",
-            Description = "Run preflight checks, inspect existing setup, then choose setup/update-secret/cleanup.",
-            DefaultOperation = SetupApplyOperation.Setup,
-            RequiresGitHubAuth = true,
-            RequiresRepoSelection = true,
-            RequiresAiAuth = false,
-            Flow = new[] {
-                "Run auto-detect preflight",
-                "Inspect current workflow/config status",
-                "Select operation based on findings",
-                "Plan, apply, verify"
-            }
-        }
-    };
+    private static readonly IReadOnlyList<SetupOnboardingPathDefinition> Paths = SetupOnboardingContract
+        .GetPaths(includeMaintenancePath: true)
+        .Select(static path => new SetupOnboardingPathDefinition {
+            Id = path.Id,
+            DisplayName = path.DisplayName,
+            Description = path.Description,
+            DefaultOperation = MapOperation(path.Operation),
+            RequiresGitHubAuth = path.RequiresGitHubAuth,
+            RequiresRepoSelection = path.RequiresRepoSelection,
+            RequiresAiAuth = path.RequiresAiAuth,
+            Flow = path.Flow.ToArray()
+        })
+        .ToArray();
 
     public static IReadOnlyList<SetupOnboardingPathDefinition> GetAll() {
         return Paths;
@@ -104,9 +54,19 @@ internal static class SetupOnboardingPaths {
 
     public static string FromOperation(SetupApplyOperation operation) {
         return operation switch {
-            SetupApplyOperation.UpdateSecret => RefreshAuth,
-            SetupApplyOperation.Cleanup => Cleanup,
-            _ => NewSetup
+            SetupApplyOperation.UpdateSecret => SetupOnboardingContract.PathIdFromOperation(SetupOnboardingOperationIds.UpdateSecret),
+            SetupApplyOperation.Cleanup => SetupOnboardingContract.PathIdFromOperation(SetupOnboardingOperationIds.Cleanup),
+            _ => SetupOnboardingContract.PathIdFromOperation(SetupOnboardingOperationIds.Setup)
         };
+    }
+
+    private static SetupApplyOperation MapOperation(string operationId) {
+        if (string.Equals(operationId, SetupOnboardingOperationIds.UpdateSecret, StringComparison.OrdinalIgnoreCase)) {
+            return SetupApplyOperation.UpdateSecret;
+        }
+        if (string.Equals(operationId, SetupOnboardingOperationIds.Cleanup, StringComparison.OrdinalIgnoreCase)) {
+            return SetupApplyOperation.Cleanup;
+        }
+        return SetupApplyOperation.Setup;
     }
 }
