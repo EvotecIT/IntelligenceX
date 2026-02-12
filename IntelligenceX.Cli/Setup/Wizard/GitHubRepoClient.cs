@@ -493,24 +493,25 @@ internal sealed class GitHubRepoClient : IDisposable {
     }
 
     public sealed class WorkflowRunLookupResult {
-        private WorkflowRunLookupResult(string status, bool success, string? note, List<WorkflowRunInfo>? runs = null) {
+        private WorkflowRunLookupResult(string status, string? note, IReadOnlyList<WorkflowRunInfo>? runs = null) {
             Status = status;
-            Success = success;
             Note = note;
-            Runs = runs ?? new List<WorkflowRunInfo>();
+            Runs = runs is null || runs.Count == 0
+                ? Array.Empty<WorkflowRunInfo>()
+                : runs.ToArray();
         }
 
         public string Status { get; }
-        public bool Success { get; }
+        public bool Success => string.Equals(Status, "ok", StringComparison.Ordinal);
         public string? Note { get; }
-        public List<WorkflowRunInfo> Runs { get; }
+        public IReadOnlyList<WorkflowRunInfo> Runs { get; }
 
-        public static WorkflowRunLookupResult Ok(List<WorkflowRunInfo> runs) => new("ok", true, null, runs);
-        public static WorkflowRunLookupResult InvalidArguments(string note) => new("invalid_arguments", false, note);
-        public static WorkflowRunLookupResult Unauthorized(string note) => new("unauthorized", false, note);
-        public static WorkflowRunLookupResult Forbidden(string note) => new("forbidden", false, note);
-        public static WorkflowRunLookupResult RateLimited(string note) => new("rate_limited", false, note);
-        public static WorkflowRunLookupResult HttpError(string note) => new("http_error", false, note);
-        public static WorkflowRunLookupResult ParseError(string note) => new("parse_error", false, note);
+        public static WorkflowRunLookupResult Ok(IReadOnlyList<WorkflowRunInfo> runs) => new("ok", null, runs);
+        public static WorkflowRunLookupResult InvalidArguments(string note) => new("invalid_arguments", note);
+        public static WorkflowRunLookupResult Unauthorized(string note) => new("unauthorized", note);
+        public static WorkflowRunLookupResult Forbidden(string note) => new("forbidden", note);
+        public static WorkflowRunLookupResult RateLimited(string note) => new("rate_limited", note);
+        public static WorkflowRunLookupResult HttpError(string note) => new("http_error", note);
+        public static WorkflowRunLookupResult ParseError(string note) => new("parse_error", note);
     }
 }
