@@ -71,8 +71,10 @@ internal static class WizardPrompts {
     public static string PromptOnboardingPath(string? recommendedPathId, string? recommendedReason) {
         var paths = SetupOnboardingPaths.GetAll();
         var recommended = SetupOnboardingPaths.GetOrDefault(recommendedPathId);
+        var recommendedId = recommended?.Id ?? string.Empty;
+        var recommendedDisplayName = recommended?.DisplayName ?? "New Setup";
         var orderedPaths = paths
-            .OrderBy(path => string.Equals(path.Id, recommended.Id, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .OrderBy(path => string.Equals(path.Id, recommendedId, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
             .ThenBy(path => path.DisplayName, StringComparer.Ordinal)
             .ToArray();
         var prompt = new SelectionPrompt<SetupOnboardingPathDefinition>()
@@ -80,14 +82,14 @@ internal static class WizardPrompts {
             .PageSize(8)
             .AddChoices(orderedPaths)
             .UseConverter(path => {
-                var recommendedSuffix = string.Equals(path.Id, recommended.Id, StringComparison.OrdinalIgnoreCase)
+                var recommendedSuffix = string.Equals(path.Id, recommendedId, StringComparison.OrdinalIgnoreCase)
                     ? " (recommended)"
                     : string.Empty;
                 return $"{path.DisplayName}{recommendedSuffix} - {path.Description}";
             });
         var selected = AnsiConsole.Prompt(prompt);
         if (!string.IsNullOrWhiteSpace(recommendedReason)) {
-            AnsiConsole.MarkupLine($"[grey]Recommendation: {recommended.DisplayName}. {recommendedReason}[/]");
+            AnsiConsole.MarkupLine($"[grey]Recommendation: {recommendedDisplayName}. {recommendedReason}[/]");
         }
 
         return selected.Id;

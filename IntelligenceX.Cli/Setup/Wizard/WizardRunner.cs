@@ -231,6 +231,7 @@ internal static partial class WizardRunner {
 
     private static void RenderAutoDetectSummary(SetupOnboardingAutoDetectResult result) {
         var path = SetupOnboardingPaths.GetOrDefault(result.RecommendedPath);
+        var checks = result.Checks ?? Array.Empty<SetupOnboardingCheck>();
         var status = result.Status.ToLowerInvariant() switch {
             "fail" => "[red]fail[/]",
             "warn" => "[yellow]warn[/]",
@@ -243,10 +244,10 @@ internal static partial class WizardRunner {
             $"Reason: {Markup.Escape(result.RecommendedReason)}"
         };
 
-        if (result.Checks.Count > 0) {
+        if (checks.Count > 0) {
             lines.Add(string.Empty);
             lines.Add("Top checks:");
-            foreach (var check in result.Checks.Take(3)) {
+            foreach (var check in checks.Take(3)) {
                 var checkStatus = check.Status switch {
                     SetupOnboardingCheckStatus.Fail => "[red]FAIL[/]",
                     SetupOnboardingCheckStatus.Warn => "[yellow]WARN[/]",
@@ -254,8 +255,8 @@ internal static partial class WizardRunner {
                 };
                 lines.Add($"- {checkStatus} {Markup.Escape(check.Message)}");
             }
-            if (result.Checks.Count > 3) {
-                lines.Add($"- [grey]... +{result.Checks.Count - 3} more[/]");
+            if (checks.Count > 3) {
+                lines.Add($"- [grey]... +{checks.Count - 3} more[/]");
             }
         }
 
