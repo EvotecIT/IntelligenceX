@@ -275,6 +275,10 @@ internal static partial class Program {
         failed += Run("Analyze gate duplication changed-files scope blocks changed file",
             TestAnalyzeGateDuplicationScopeChangedFilesBlocksChangedFiles);
         failed += Run("Analyze gate duplication new-only suppresses baseline finding", TestAnalyzeGateDuplicationNewOnlySuppressesBaselineFindings);
+        failed += Run("Analysis config reader normalizes duplication ruleIds",
+            TestAnalysisConfigReaderNormalizesDuplicationRuleIds);
+        failed += Run("Analysis config reader keeps default duplication ruleIds on empty input",
+            TestAnalysisConfigReaderKeepsDefaultDuplicationRuleIdsWhenConfiguredListEmpty);
         failed += Run("Analyze gate hotspot state path bound", TestAnalyzeGateHotspotsStatePathIsWorkspaceBound);
         failed += Run("Analyze gate help token", TestAnalyzeGateHelpToken);
         failed += Run("Doctor help", TestDoctorHelp);

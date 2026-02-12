@@ -194,6 +194,10 @@ end="$(perl -MTime::HiRes=time -e 'printf("%.6f", time)')"
 elapsed="$(awk -v s="$start" -v e="$end" 'BEGIN { printf "%.3f", (e - s) }')"
 
 metrics_file="$WORKDIR/artifacts/intelligencex.duplication.json"
+if [[ ! -f "$metrics_file" ]]; then
+  echo "ERROR: expected duplication metrics file was not produced: $metrics_file" >&2
+  exit 1
+fi
 total_significant="$(rg -o '"totalSignificantLines"\s*:\s*[0-9]+' "$metrics_file" | head -n1 | rg -o '[0-9]+' || echo 0)"
 duplicated_significant="$(rg -o '"duplicatedSignificantLines"\s*:\s*[0-9]+' "$metrics_file" | head -n1 | rg -o '[0-9]+' || echo 0)"
 overall_percent="$(rg -o '"overallDuplicatedPercent"\s*:\s*[0-9.]+' "$metrics_file" | head -n1 | rg -o '[0-9.]+' || echo 0)"

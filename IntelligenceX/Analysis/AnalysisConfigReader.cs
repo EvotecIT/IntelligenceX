@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using IntelligenceX.Json;
 
@@ -72,7 +73,10 @@ public static class AnalysisConfigReader {
                     duplication.GetString("metricsPath") ?? settings.Gate.Duplication.MetricsPath;
                 var ruleIds = AnalysisJsonHelpers.ReadStringList(duplication, "ruleIds");
                 if (ruleIds is not null) {
-                    settings.Gate.Duplication.RuleIds = ruleIds;
+                    var normalizedRuleIds = NormalizeRuleIds(ruleIds);
+                    if (normalizedRuleIds.Count > 0) {
+                        settings.Gate.Duplication.RuleIds = normalizedRuleIds;
+                    }
                 }
                 settings.Gate.Duplication.MaxFilePercent = ReadPercentOrDefault(
                     duplication,
@@ -182,5 +186,23 @@ public static class AnalysisConfigReader {
             "changed" => "changed-files",
             _ => fallback
         };
+    }
+
+    private static IReadOnlyList<string> NormalizeRuleIds(IReadOnlyList<string> ruleIds) {
+        var normalized = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var ruleId in ruleIds ?? Array.Empty<string>()) {
+            if (string.IsNullOrWhiteSpace(ruleId)) {
+                continue;
+            }
+            var trimmed = ruleId.Trim();
+            if (trimmed.Length == 0) {
+                continue;
+            }
+            if (seen.Add(trimmed)) {
+                normalized.Add(trimmed);
+            }
+        }
+        return normalized;
     }
 }
