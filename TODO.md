@@ -8,8 +8,8 @@ Status: In progress
 Goal: reviewer + static analysis + onboarding (CLI + Web) feel "done" end-to-end for a new repo.
 
 ### Acceptance (Definition Of Done)
-- [ ] A new user can run `intelligencex setup wizard` on a clean machine and reach "PR created" without manual repo edits.
-- [ ] A new user can run `intelligencex setup web` and reach "PR created" without manual repo edits.
+- [x] A new user can run `intelligencex setup wizard` on a clean machine and reach "PR created" without manual repo edits.
+- [x] A new user can run `intelligencex setup web` and reach "PR created" without manual repo edits.
 - [ ] First merged onboarding PR produces a successful review on the next PR (sticky summary + inline when supported).
 - [ ] Review comment always includes reviewed SHA and an explicit diff-range label (base -> head).
 - [ ] Static analysis runs before review, publishes artifacts, and the review comment always renders analysis status (pass/unavailable) even when findings are zero.

@@ -94,6 +94,10 @@ internal static partial class Program {
             TestSetupPostApplyVerifyWorkflowRunLookupFailureIsNotReportedAsNone);
         failed += Run("Setup post-apply verify does not swallow unexpected workflow lookup exceptions",
             TestSetupPostApplyVerifyDoesNotSwallowUnexpectedWorkflowLookupExceptions);
+        failed += Run("Setup wizard plain reaches PR created with fake GitHub API",
+            TestSetupWizardPlainReachesPullRequestCreatedWithFakeGitHubApi);
+        failed += Run("Web setup args reach PR created with fake GitHub API",
+            TestWebSetupArgsCanReachPullRequestCreatedWithFakeGitHubApi);
         failed += Run("Wizard post-apply verify skips callback on failed apply",
             TestWizardPostApplyVerifySkipsCallbackWhenApplyFails);
         failed += Run("CLI dispatch no-args interactive runs manage", TestCliDispatchNoArgsInteractiveRunsManage);
