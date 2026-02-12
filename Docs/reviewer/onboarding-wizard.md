@@ -65,6 +65,12 @@ intelligencex setup wizard --path refresh-auth --repo owner/name
 intelligencex setup wizard --path cleanup --repo owner/name --dry-run
 ```
 
+If auto-detect preflight fails and you need richer diagnostics:
+
+```powershell
+intelligencex setup wizard --verbose
+```
+
 ## GitHub auth modes
 
 1) GitHub App (installation token)

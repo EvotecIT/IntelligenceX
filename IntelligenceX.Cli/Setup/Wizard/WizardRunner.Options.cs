@@ -24,6 +24,7 @@ internal static partial class WizardRunner {
         Console.WriteLine("  --force");
         Console.WriteLine("  --dry-run");
         Console.WriteLine("  --branch <name>");
+        Console.WriteLine("  --verbose");
         Console.WriteLine("  --plain (disable wizard UI)");
         Console.WriteLine("  --help");
         Console.WriteLine();
@@ -73,6 +74,7 @@ internal static partial class WizardRunner {
         public bool OperationSpecified { get; set; }
         public bool DryRun { get; set; }
         public string? BranchName { get; set; }
+        public bool Verbose { get; set; }
         public bool ForcePlain { get; set; }
         public bool ShowHelp { get; set; }
         public string? ParseError { get; set; }
@@ -132,6 +134,9 @@ internal static partial class WizardRunner {
                         break;
                     case "plain":
                         options.ForcePlain = ParseBool(value, true);
+                        break;
+                    case "verbose":
+                        options.Verbose = ParseBool(value, true);
                         break;
                     case "help":
                         options.ShowHelp = true;

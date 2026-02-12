@@ -73,6 +73,11 @@ internal static class WizardPrompts {
         var recommended = SetupOnboardingPaths.GetOrDefault(recommendedPathId);
         var recommendedId = recommended?.Id ?? string.Empty;
         var recommendedDisplayName = recommended?.DisplayName ?? "New Setup";
+        if (!string.IsNullOrWhiteSpace(recommendedReason)) {
+            AnsiConsole.MarkupLine($"[grey]Recommendation: {recommendedDisplayName}. {recommendedReason}[/]");
+            AnsiConsole.WriteLine();
+        }
+
         var orderedPaths = paths
             .OrderBy(path => string.Equals(path.Id, recommendedId, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
             .ThenBy(path => path.DisplayName, StringComparer.Ordinal)
@@ -88,10 +93,6 @@ internal static class WizardPrompts {
                 return $"{path.DisplayName}{recommendedSuffix} - {path.Description}";
             });
         var selected = AnsiConsole.Prompt(prompt);
-        if (!string.IsNullOrWhiteSpace(recommendedReason)) {
-            AnsiConsole.MarkupLine($"[grey]Recommendation: {recommendedDisplayName}. {recommendedReason}[/]");
-        }
-
         return selected.Id;
     }
 
