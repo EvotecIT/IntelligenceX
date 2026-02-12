@@ -17,15 +17,28 @@ This starts a local web server and opens the wizard in your browser (http://127.
 
 ```text
 1) Start the web UI
-2) Authenticate with GitHub (device flow or app install)
-3) Select repos
-4) Plan + Apply
+2) Choose onboarding path (new setup / fix auth / cleanup / maintenance)
+3) Run auto-detect preflight
+4) Authenticate with GitHub (device flow or app install)
+5) Select repos
+6) Plan + Apply
+```
+
+```mermaid
+flowchart LR
+  A["Path"] --> B["Auto-Detect"]
+  B --> C["GitHub Auth"]
+  C --> D["Repos"]
+  D --> E["Configure/Auth"]
+  E --> F["Plan"]
+  F --> G["Apply + Verify"]
 ```
 
 Operations available:
 - Setup / update workflow + config
 - Update OpenAI secret only (requires auth bundle)
 - Cleanup (remove workflow/config)
+- Maintenance (inspect and choose operation)
 - Optional GitHub App manifest flow (create app + installation token)
 - Load existing config from a repo (manage existing setup)
 - Load workflow preview for the managed workflow
@@ -61,6 +74,7 @@ If you want to avoid personal access tokens, you can use the GitHub App manifest
 
 - Use the "Load workflow preview" button before applying changes.
 - If you want zero secret handling in the UI, enable "Skip OpenAI secret" and paste secrets manually in GitHub.
+- Start with auto-detect to get a recommended path before selecting repositories.
 
 ## Security notes
 

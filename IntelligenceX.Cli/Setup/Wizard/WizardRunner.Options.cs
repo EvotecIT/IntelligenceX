@@ -36,6 +36,7 @@ internal static partial class WizardRunner {
         public bool ManualSecret { get; set; }
         public bool ExplicitSecrets { get; set; }
         public WizardOperation Operation { get; set; }
+        public bool OperationSpecified { get; set; }
         public bool DryRun { get; set; }
         public string? BranchName { get; set; }
         public bool ForcePlain { get; set; }
@@ -77,6 +78,7 @@ internal static partial class WizardRunner {
                         break;
                     case "operation":
                         options.Operation = ParseOperation(value);
+                        options.OperationSpecified = true;
                         break;
                     case "dry-run":
                         options.DryRun = ParseBool(value, true);

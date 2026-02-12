@@ -25,7 +25,17 @@
       {
         "id": "get-started",
         "question": "How do I get started?",
-        "answer": "Run 'intelligencex setup wizard' for guided setup, or 'intelligencex setup web' for a local web UI. Both run entirely on your machine and create a PR with the review workflow."
+        "answer": "Run 'intelligencex setup autodetect' first, then use 'intelligencex setup wizard' or 'intelligencex setup web'. Onboarding is path-first (new setup, fix auth, cleanup, maintenance) and runs entirely on your machine."
+      },
+      {
+        "id": "autodetect",
+        "question": "Can IntelligenceX detect what path I should take?",
+        "answer": "Yes. Auto-detect runs doctor-style checks (auth/config/GitHub access) and suggests a path before repo selection. It helps you choose between first-time setup, auth refresh, or maintenance."
+      },
+      {
+        "id": "cleanup-maintenance",
+        "question": "How do cleanup and maintenance differ?",
+        "answer": "Cleanup removes workflow/config (and optionally secrets). Maintenance inspects current state first, then guides you to setup, update-secret, or cleanup depending on findings."
       },
       {
         "id": "platforms",

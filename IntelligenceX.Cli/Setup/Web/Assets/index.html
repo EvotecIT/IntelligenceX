@@ -64,7 +64,7 @@
         <div class="card">
           <h2>Choose Your Onboarding Path</h2>
           <p class="hint">This pre-fills operation and auth defaults. You can still change everything later.</p>
-          <div class="card-grid cols-3">
+          <div class="card-grid cols-2">
             <div class="option-card selected" data-path="new-setup" onclick="applyOnboardingPath('new-setup')">
               <div class="card-icon">&#x1F680;</div>
               <div class="card-title">New Setup</div>
@@ -80,8 +80,27 @@
               <div class="card-title">Cleanup</div>
               <div class="card-desc">Remove workflow/config from selected repositories.</div>
             </div>
+            <div class="option-card" data-path="maintenance" onclick="applyOnboardingPath('maintenance')">
+              <div class="card-icon">&#x1F527;</div>
+              <div class="card-title">Maintenance</div>
+              <div class="card-desc">Inspect current setup, then choose setup/update-secret/cleanup.</div>
+            </div>
           </div>
           <p class="hint" id="pathHint">Path selected: New Setup. Next: authenticate with GitHub.</p>
+        </div>
+
+        <div class="card">
+          <h2>Auto-Detect (Doctor Preflight)</h2>
+          <p class="hint">Runs local checks before repository selection and suggests the best onboarding path.</p>
+          <div class="row">
+            <button id="runAutodetect" class="secondary">Run auto-detect</button>
+            <button id="applyAutodetectPath" class="secondary" disabled>Apply suggested path</button>
+          </div>
+          <div id="autodetectSummary" class="summary" style="margin-top:8px;">Not run yet.</div>
+          <details style="margin-top:8px;">
+            <summary>Doctor output</summary>
+            <pre class="output" id="autodetectOutput" style="margin-top:8px; max-height:180px;"></pre>
+          </details>
         </div>
 
         <div class="card">

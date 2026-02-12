@@ -15,6 +15,12 @@ After merging onboarding, run the [First PR Checklist](/Docs/reviewer/first-pr-c
 intelligencex setup wizard
 ```
 
+Run preflight auto-detection before onboarding:
+
+```powershell
+intelligencex setup autodetect
+```
+
 ## Web UI (preview)
 
 ```powershell
@@ -38,6 +44,7 @@ See [Web Setup UI](/docs/reviewer/setup-web/) for limitations and security notes
 - Setup / update workflow + config (default)
 - Update OpenAI secret only
 - Cleanup (remove workflow/config)
+- Maintenance (inspect first, then pick setup/update-secret/cleanup)
 
 ## GitHub auth modes
 
