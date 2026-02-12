@@ -26,8 +26,10 @@ This file tracks onboarding/cleanup/maintenance unification across CLI, Web, and
 | Shared canonical onboarding contract | Completed | IX Core | Added `IntelligenceX/Setup/Onboarding/SetupOnboardingContract.cs` as the source of truth for path ids and command templates. |
 | Drift guard contract tests | Completed | IX + IX.Tools + IX.Chat | Added tests for CLI contract parity and bot/tool contract payload parity (`IntelligenceX.Tests`, `IntelligenceX.Tools.Tests`, `IntelligenceX.Chat.Tests`). |
 | Contract version/fingerprint surfaced by autodetect | Completed | IX Core + IX CLI Web | Added `ContractVersion` + deterministic contract fingerprint in `SetupOnboardingContract`, emitted by `setup autodetect` JSON and Web autodetect API/summary panel. |
+| Shared core contract verifier API | Completed | IX Core | Added `SetupOnboardingContractVerification` for canonical autodetect/pack metadata drift checks used by setup surfaces and tools. |
 | .Tools: setup pack exposes contract metadata | Completed | IX Tools | `reviewer_setup_pack_info` now emits `contractVersion` + `contractFingerprint` in `setup_hints` for bot-side parity checks. |
 | .Tools: contract verifier tool for autodetect parity | Completed | IX Tools | Added `reviewer_setup_contract_verify` so agents can validate autodetect contract metadata before setup/update-secret/cleanup apply. |
+| .Tools: verifier uses shared core API | Completed | IX Tools + IX Core | `reviewer_setup_contract_verify` now delegates to `SetupOnboardingContractVerification` to avoid duplicate drift logic. |
 | .Chat: enforce contract parity in playbook | Completed | IX Chat | Host prompt now requires comparing pack contract metadata with autodetect output before apply/cleanup operations. |
 | .Chat: execute parity via verifier tool | Completed | IX Chat | Host prompt and tests now require using `reviewer_setup_contract_verify` after autodetect and before mutating onboarding commands. |
 | .Chat: autodetect-first onboarding playbook | Completed | IX Chat | Updated `Docs/HostSystemPrompt.md` to require `reviewer_setup_pack_info` + preflight autodetect before path execution. |
@@ -47,8 +49,10 @@ None for this unification scope. As of February 12, 2026:
 - `IntelligenceX` PR `#250` is merged.
 - `IntelligenceX` PR `#251` is merged.
 - `IntelligenceX` PR `#252` is merged.
+- `IntelligenceX` PR `#255` is merged.
 - `IntelligenceX.Tools` PR `#151` is merged.
 - `IntelligenceX.Tools` PR `#152` is merged.
+- `IntelligenceX.Tools` PR `#153` is merged.
 - `IntelligenceX.Chat` PR `#47` is merged.
 - `IntelligenceX.Chat` PR `#48` is merged.
 
