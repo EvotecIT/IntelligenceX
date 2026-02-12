@@ -261,6 +261,20 @@ internal static partial class Program {
             TestAnalyzeGateNewIssuesOnlySuppressesLegacyBaselineKeyDotRelativePrefix);
         failed += Run("Analyze gate write baseline contract schema", TestAnalyzeGateWriteBaselineCreatesContractSchema);
         failed += Run("Reviewer schema includes analysis gate baseline properties", TestReviewerSchemaIncludesAnalysisGateBaselineProperties);
+        failed += Run("Analyze gate duplication per-file threshold blocks", TestAnalyzeGateDuplicationFailsOnPerFileThreshold);
+        failed += Run("Analyze gate duplication per-file threshold passes", TestAnalyzeGateDuplicationPassesWhenWithinThreshold);
+        failed += Run("Analyze gate duplication uses per-file configured threshold",
+            TestAnalyzeGateDuplicationUsesPerFileConfiguredThreshold);
+        failed += Run("Analyze gate duplication unavailable can pass when allowed", TestAnalyzeGateDuplicationUnavailableCanPassWhenAllowed);
+        failed += Run("Analyze gate duplication unavailable fails when configured", TestAnalyzeGateDuplicationUnavailableFailsWhenConfigured);
+        failed += Run("Analyze gate duplication overall threshold blocks", TestAnalyzeGateDuplicationFailsOnOverallThreshold);
+        failed += Run("Analyze gate duplication overall new-only suppresses baseline finding",
+            TestAnalyzeGateDuplicationOverallNewOnlySuppressesBaselineFinding);
+        failed += Run("Analyze gate duplication changed-files scope ignores untouched file",
+            TestAnalyzeGateDuplicationScopeChangedFilesIgnoresUnchangedFiles);
+        failed += Run("Analyze gate duplication changed-files scope blocks changed file",
+            TestAnalyzeGateDuplicationScopeChangedFilesBlocksChangedFiles);
+        failed += Run("Analyze gate duplication new-only suppresses baseline finding", TestAnalyzeGateDuplicationNewOnlySuppressesBaselineFindings);
         failed += Run("Analyze gate hotspot state path bound", TestAnalyzeGateHotspotsStatePathIsWorkspaceBound);
         failed += Run("Analyze gate help token", TestAnalyzeGateHelpToken);
         failed += Run("Doctor help", TestDoctorHelp);
@@ -295,6 +309,20 @@ internal static partial class Program {
             TestAnalyzeRunInternalFileSizeRuleWarnsOnUnknownTagPrefixes);
         failed += Run("Analyze run internal generated header scan can be disabled",
             TestAnalyzeRunInternalFileSizeRuleGeneratedHeaderScanCanBeDisabled);
+        failed += Run("Analyze run internal maintainability supports multiple rules",
+            TestAnalyzeRunInternalMaintainabilitySupportsMultipleRules);
+        failed += Run("Analyze run internal duplication threshold",
+            TestAnalyzeRunInternalDuplicationRuleRespectsThreshold);
+        failed += Run("Analyze run internal duplication malformed tags warn",
+            TestAnalyzeRunInternalDuplicationRuleWarnsOnMalformedTags);
+        failed += Run("Analyze run internal duplication tokenized javascript",
+            TestAnalyzeRunInternalDuplicationTokenizesJavaScript);
+        failed += Run("Analyze run internal duplication tokenized python",
+            TestAnalyzeRunInternalDuplicationTokenizesPython);
+        failed += Run("Analyze run include-ext is per-rule",
+            TestAnalyzeRunInternalMaintainabilityIncludeExtIsPerRule);
+        failed += Run("Analyze run duplication language threshold",
+            TestAnalyzeRunInternalDuplicationLanguageSpecificThreshold);
         failed += RunAnalysisPolicyReportingTests();
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);

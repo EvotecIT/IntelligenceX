@@ -158,6 +158,23 @@ internal static partial class Program {
         var baselinePath = gateProps.GetObject("baselinePath");
         AssertNotNull(baselinePath, "reviewer schema baselinePath property");
         AssertEqual("string", baselinePath!.GetString("type") ?? string.Empty, "reviewer schema baselinePath type");
+
+        var duplication = gateProps.GetObject("duplication");
+        AssertNotNull(duplication, "reviewer schema duplication property");
+        var duplicationProps = duplication!.GetObject("properties");
+        AssertNotNull(duplicationProps, "reviewer schema duplication properties");
+
+        var enabled = duplicationProps!.GetObject("enabled");
+        AssertNotNull(enabled, "reviewer schema duplication enabled property");
+        AssertEqual("boolean", enabled!.GetString("type") ?? string.Empty, "reviewer schema duplication enabled type");
+
+        var maxFilePercent = duplicationProps.GetObject("maxFilePercent");
+        AssertNotNull(maxFilePercent, "reviewer schema duplication maxFilePercent property");
+        AssertEqual("number", maxFilePercent!.GetString("type") ?? string.Empty, "reviewer schema duplication maxFilePercent type");
+
+        var scope = duplicationProps.GetObject("scope");
+        AssertNotNull(scope, "reviewer schema duplication scope property");
+        AssertEqual("string", scope!.GetString("type") ?? string.Empty, "reviewer schema duplication scope type");
     }
 }
 #endif
