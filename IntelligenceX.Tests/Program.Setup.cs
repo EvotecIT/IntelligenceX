@@ -292,6 +292,64 @@ internal static partial class Program {
         AssertContainsText(output, "Unknown option: --badflag", "setup autodetect unknown option message");
     }
 
+    private static void TestSetupOnboardingContractCanonicalPaths() {
+        var contractPaths = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetPaths(includeMaintenancePath: true);
+        AssertEqual(4, contractPaths.Count, "setup contract path count with maintenance");
+        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.NewSetupPathId, contractPaths[0].Id, "setup contract path[0] id");
+        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.RefreshAuthPathId, contractPaths[1].Id, "setup contract path[1] id");
+        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.CleanupPathId, contractPaths[2].Id, "setup contract path[2] id");
+        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.MaintenancePathId, contractPaths[3].Id, "setup contract path[3] id");
+
+        var contractPathsNoMaintenance = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetPaths(includeMaintenancePath: false);
+        AssertEqual(3, contractPathsNoMaintenance.Count, "setup contract path count without maintenance");
+        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.NewSetupPathId, contractPathsNoMaintenance[0].Id,
+            "setup contract path[0] id without maintenance");
+        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.RefreshAuthPathId, contractPathsNoMaintenance[1].Id,
+            "setup contract path[1] id without maintenance");
+        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.CleanupPathId, contractPathsNoMaintenance[2].Id,
+            "setup contract path[2] id without maintenance");
+
+        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.NewSetupPathId,
+            IntelligenceX.Setup.Onboarding.SetupOnboardingContract.PathIdFromOperation(IntelligenceX.Setup.Onboarding.SetupOnboardingOperationIds.Setup),
+            "setup contract map setup operation");
+        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.RefreshAuthPathId,
+            IntelligenceX.Setup.Onboarding.SetupOnboardingContract.PathIdFromOperation(IntelligenceX.Setup.Onboarding.SetupOnboardingOperationIds.UpdateSecret),
+            "setup contract map update-secret operation");
+        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.CleanupPathId,
+            IntelligenceX.Setup.Onboarding.SetupOnboardingContract.PathIdFromOperation(IntelligenceX.Setup.Onboarding.SetupOnboardingOperationIds.Cleanup),
+            "setup contract map cleanup operation");
+        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.NewSetupPathId,
+            IntelligenceX.Setup.Onboarding.SetupOnboardingContract.PathIdFromOperation("unknown"),
+            "setup contract map unknown operation");
+
+        var cliPaths = IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.GetAll();
+        AssertEqual(contractPaths.Count, cliPaths.Count, "setup cli path count matches contract");
+        for (var i = 0; i < contractPaths.Count; i++) {
+            AssertEqual(contractPaths[i].Id, cliPaths[i].Id, $"setup cli path[{i}] id matches contract");
+            AssertEqual(contractPaths[i].DisplayName, cliPaths[i].DisplayName, $"setup cli path[{i}] display name matches contract");
+            AssertEqual(contractPaths[i].Description, cliPaths[i].Description, $"setup cli path[{i}] description matches contract");
+            AssertSequenceEqual(contractPaths[i].Flow, cliPaths[i].Flow, $"setup cli path[{i}] flow matches contract");
+        }
+    }
+
+    private static void TestSetupOnboardingContractCommandTemplates() {
+        var templates = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetCommandTemplates();
+        AssertEqual("intelligencex setup autodetect --json", templates.AutoDetect, "setup contract auto-detect template");
+        AssertEqual("intelligencex setup --repo owner/name --with-config --dry-run", templates.NewSetupDryRun,
+            "setup contract new-setup dry-run template");
+        AssertEqual("intelligencex setup --repo owner/name --with-config", templates.NewSetupApply,
+            "setup contract new-setup apply template");
+        AssertEqual("intelligencex setup --repo owner/name --update-secret --auth-b64 <base64> --dry-run", templates.RefreshAuthDryRun,
+            "setup contract refresh-auth dry-run template");
+        AssertEqual("intelligencex setup --repo owner/name --update-secret --auth-b64 <base64>", templates.RefreshAuthApply,
+            "setup contract refresh-auth apply template");
+        AssertEqual("intelligencex setup --repo owner/name --cleanup --dry-run", templates.CleanupDryRun,
+            "setup contract cleanup dry-run template");
+        AssertEqual("intelligencex setup --repo owner/name --cleanup", templates.CleanupApply,
+            "setup contract cleanup apply template");
+        AssertEqual("intelligencex setup web", templates.MaintenanceWizard, "setup contract maintenance wizard template");
+    }
+
     private static void TestSetupWorkflowUpgradePreservesCustomSectionsOutsideManagedBlock() {
         var seed = """
 name: IntelligenceX Review
