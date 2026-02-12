@@ -334,6 +334,68 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeRunInternalDuplicationPythonTripleQuoteCommentHandling() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-py-triple-comment-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["intelligencex-maintainability-default"]
+  }
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXDUP001.json"), """
+{
+  "id": "IXDUP001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXDUP001",
+  "title": "Source files should keep duplicated code below 10%",
+  "description": "Flags files with high duplication percentages.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["max-duplication-percent:10", "dup-window-lines:3", "include-ext:py"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "rules": ["IXDUP001"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "file_a.py"), BuildPythonTripleQuoteHashSample("and"));
+            File.WriteAllText(Path.Combine(temp, "file_b.py"), BuildPythonTripleQuoteHashSample("or"));
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run duplication python triple-quote hash handling exit");
+            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
+            AssertEqual(true, File.Exists(findingsPath), "analyze run duplication python triple-quote hash findings exists");
+            var findings = ReadFindingsRulePathPairs(findingsPath);
+            AssertEqual(false, findings.Any(item => item.RuleId.Equals("IXDUP001", StringComparison.OrdinalIgnoreCase)),
+                "analyze run duplication python triple-quote hash does not produce false positive");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalyzeRunInternalMaintainabilityIncludeExtIsPerRule() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-maint-include-ext-per-rule-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
@@ -546,6 +608,15 @@ def {{functionName}}({{inputName}}):
     total += 5
     return total
 """;
+    }
+
+    private static string BuildPythonTripleQuoteHashSample(string trailingKeyword) {
+        return
+            "def compute(input_value):\n" +
+            "    \"\"\"\n" +
+            $"    shared # {trailingKeyword} {trailingKeyword} {trailingKeyword}\n" +
+            "    \"\"\"\n" +
+            "    return input_value + 1\n";
     }
 
     private static IReadOnlyList<(string RuleId, string Path)> ReadFindingsRulePathPairs(string findingsPath) {

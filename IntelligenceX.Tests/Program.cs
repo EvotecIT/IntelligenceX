@@ -323,6 +323,8 @@ internal static partial class Program {
             TestAnalyzeRunInternalDuplicationTokenizesJavaScript);
         failed += Run("Analyze run internal duplication tokenized python",
             TestAnalyzeRunInternalDuplicationTokenizesPython);
+        failed += Run("Analyze run internal duplication python triple-quote comment handling",
+            TestAnalyzeRunInternalDuplicationPythonTripleQuoteCommentHandling);
         failed += Run("Analyze run include-ext is per-rule",
             TestAnalyzeRunInternalMaintainabilityIncludeExtIsPerRule);
         failed += Run("Analyze run duplication language threshold",

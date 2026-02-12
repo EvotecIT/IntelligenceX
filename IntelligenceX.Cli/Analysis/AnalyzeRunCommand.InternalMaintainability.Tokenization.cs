@@ -320,10 +320,10 @@ internal static partial class AnalyzeRunCommand {
     private static List<SignificantLine> BuildSignificantLinesFromPythonTokens(string content) {
         var result = new List<SignificantLine>();
         var lines = (content ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        var inTripleSingleQuote = false;
+        var inTripleDoubleQuote = false;
         for (var index = 0; index < lines.Length; index++) {
-            if (!TryStripPythonComment(lines[index], out var stripped)) {
-                stripped = lines[index] ?? string.Empty;
-            }
+            var stripped = StripPythonComments(lines[index] ?? string.Empty, ref inTripleSingleQuote, ref inTripleDoubleQuote);
 
             var normalizedTokens = new List<string>();
             foreach (Match match in PythonTokenRegex.Matches(stripped)) {
@@ -345,37 +345,100 @@ internal static partial class AnalyzeRunCommand {
         return result;
     }
 
-    private static bool TryStripPythonComment(string input, out string stripped) {
-        stripped = input ?? string.Empty;
-        if (stripped.Length == 0) {
-            return false;
+    private static string StripPythonComments(string input, ref bool inTripleSingleQuote, ref bool inTripleDoubleQuote) {
+        if (string.IsNullOrEmpty(input)) {
+            return string.Empty;
         }
 
+        var stripped = new StringBuilder(input.Length);
         var inSingleQuote = false;
         var inDoubleQuote = false;
-        for (var i = 0; i < stripped.Length; i++) {
-            var ch = stripped[i];
-            if (ch == '\'' && !inDoubleQuote) {
-                var escaped = i > 0 && stripped[i - 1] == '\\';
-                if (!escaped) {
-                    inSingleQuote = !inSingleQuote;
+        for (var i = 0; i < input.Length; i++) {
+            var ch = input[i];
+
+            if (inTripleSingleQuote) {
+                stripped.Append(ch);
+                if (ch == '\'' && i + 2 < input.Length && input[i + 1] == '\'' && input[i + 2] == '\'') {
+                    stripped.Append(input[i + 1]);
+                    stripped.Append(input[i + 2]);
+                    i += 2;
+                    inTripleSingleQuote = false;
                 }
                 continue;
             }
-            if (ch == '"' && !inSingleQuote) {
-                var escaped = i > 0 && stripped[i - 1] == '\\';
-                if (!escaped) {
-                    inDoubleQuote = !inDoubleQuote;
+            if (inTripleDoubleQuote) {
+                stripped.Append(ch);
+                if (ch == '"' && i + 2 < input.Length && input[i + 1] == '"' && input[i + 2] == '"') {
+                    stripped.Append(input[i + 1]);
+                    stripped.Append(input[i + 2]);
+                    i += 2;
+                    inTripleDoubleQuote = false;
                 }
                 continue;
             }
-            if (ch == '#' && !inSingleQuote && !inDoubleQuote) {
-                stripped = stripped.Substring(0, i);
-                return true;
+
+            if (inSingleQuote) {
+                stripped.Append(ch);
+                if (ch == '\'' && !IsEscapedPythonCharacter(input, i)) {
+                    inSingleQuote = false;
+                }
+                continue;
             }
+            if (inDoubleQuote) {
+                stripped.Append(ch);
+                if (ch == '"' && !IsEscapedPythonCharacter(input, i)) {
+                    inDoubleQuote = false;
+                }
+                continue;
+            }
+
+            if (ch == '#') {
+                break;
+            }
+
+            if (ch == '\'' && i + 2 < input.Length && input[i + 1] == '\'' && input[i + 2] == '\'') {
+                stripped.Append(ch);
+                stripped.Append(input[i + 1]);
+                stripped.Append(input[i + 2]);
+                i += 2;
+                inTripleSingleQuote = true;
+                continue;
+            }
+            if (ch == '"' && i + 2 < input.Length && input[i + 1] == '"' && input[i + 2] == '"') {
+                stripped.Append(ch);
+                stripped.Append(input[i + 1]);
+                stripped.Append(input[i + 2]);
+                i += 2;
+                inTripleDoubleQuote = true;
+                continue;
+            }
+
+            if (ch == '\'') {
+                inSingleQuote = true;
+                stripped.Append(ch);
+                continue;
+            }
+            if (ch == '"') {
+                inDoubleQuote = true;
+                stripped.Append(ch);
+                continue;
+            }
+
+            stripped.Append(ch);
         }
 
-        return false;
+        return stripped.ToString();
+    }
+
+    private static bool IsEscapedPythonCharacter(string input, int index) {
+        if (index <= 0 || string.IsNullOrEmpty(input)) {
+            return false;
+        }
+        var slashCount = 0;
+        for (var i = index - 1; i >= 0 && input[i] == '\\'; i--) {
+            slashCount++;
+        }
+        return (slashCount & 1) == 1;
     }
 
     private static string NormalizePythonToken(string token) {
