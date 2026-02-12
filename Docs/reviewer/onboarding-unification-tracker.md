@@ -22,21 +22,21 @@ This file tracks onboarding/cleanup/maintenance unification across CLI, Web, and
 | Manage hub: include cleanup and auto-detect | Completed | IX CLI | Setup menu now includes both flows. |
 | .Tools: reviewer onboarding tool definitions | Completed | IX Tools | Added `IntelligenceX.Tools.ReviewerSetup` with `reviewer_setup_pack_info` and path/command contract data. |
 | .Chat: expose richer tool metadata | Completed | IX Chat | Added `parametersJson` + `requiredArguments` in tool discovery response for better agent planning. |
-| .Chat: register reviewer setup pack by default | Blocked | IX Chat + IX Tools | Pending after `IntelligenceX.Tools.ReviewerSetup` is available to Chat dependency graph in default checkout. |
+| .Chat: register reviewer setup pack by default | Completed | IX Chat + IX Tools | Chat now registers the reviewer setup tool pack by default through `ToolRegistryReviewerSetupExtensions`. |
 | Docs: diagrams and flow updates | Completed | Docs | Added path-first flow docs and Mermaid diagrams in onboarding pages. |
 | Website FAQ/data updates | Completed | Website | Updated FAQ/features/how-it-works for path-first + auto-detect positioning. |
 
 ## Remaining Blockers
 
-- Chat service cannot yet consume `IntelligenceX.Tools.ReviewerSetup` in the default sibling checkout until the new tools pack is merged/published and referenced by `IntelligenceX.Chat`.
-- Full `IntelligenceX.Chat.sln` and `IntelligenceX.Tools.sln` verification in this environment is blocked by existing external dependency gaps (`ComputerX`, `ADPlayground`, `EventViewerX`, `TestimoX`) unrelated to this change set.
+None for this unification scope. As of February 12, 2026:
+- `IntelligenceX.Tools` PR `#149` is merged.
+- `IntelligenceX.Chat` PR `#43` is merged.
+- `IntelligenceX` PR `#248` is merged.
 
 ## Next Actions
 
-1. Merge/publish `IntelligenceX.Tools.ReviewerSetup`.
-2. Add the tools pack reference + registration in `IntelligenceX.Chat`.
-3. Add an end-to-end chat scenario test: `list_tools` includes `reviewer_setup_pack_info`, then validate returned path ids/command templates.
-4. Mark this tracker as done when Chat wiring and test pass.
+1. Add/expand an end-to-end chat scenario test: `list_tools` includes `reviewer_setup_pack_info`, then validate returned path ids/command templates.
+2. Keep website/docs flow diagrams in sync with future onboarding path changes.
 
 ## Exit Criteria
 
