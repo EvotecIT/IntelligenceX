@@ -2,30 +2,47 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Diagnostics;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace IntelligenceX.Cli.Setup.Wizard;
 
 internal sealed class GitHubRepoClient : IDisposable {
     private readonly HttpClient _http;
+    private readonly bool _ownsHttpClient;
+    private int _disposeState;
 
     public GitHubRepoClient(string token, string apiBaseUrl) {
         _http = new HttpClient {
             BaseAddress = new Uri(apiBaseUrl)
         };
-        _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("IntelligenceX.Cli", "1.0"));
-        _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        _http.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+        _ownsHttpClient = true;
+        ConfigureDefaultHeaders(_http, token);
     }
 
-    public void Dispose() => _http.Dispose();
+    internal GitHubRepoClient(HttpClient httpClient, string token = "test-token", bool ownsHttpClient = false) {
+        ArgumentNullException.ThrowIfNull(httpClient);
+        _http = httpClient;
+        _ownsHttpClient = ownsHttpClient;
+        ConfigureDefaultHeaders(_http, token);
+    }
+
+    public void Dispose() {
+        if (Interlocked.Exchange(ref _disposeState, 1) != 0) {
+            return;
+        }
+        if (_ownsHttpClient) {
+            _http.Dispose();
+        }
+    }
 
     public async Task<List<RepositoryInfo>> ListRepositoriesAsync() {
+        ThrowIfDisposed();
         var repos = new List<RepositoryInfo>();
         var page = 1;
         while (true) {
@@ -48,6 +65,7 @@ internal sealed class GitHubRepoClient : IDisposable {
     }
 
     public async Task<List<RepositoryInfo>> ListInstallationRepositoriesAsync() {
+        ThrowIfDisposed();
         var json = await GetJsonAsync("/installation/repositories").ConfigureAwait(false);
         if (json.ValueKind != JsonValueKind.Object || !json.TryGetProperty("repositories", out var repoArray)) {
             return new List<RepositoryInfo>();
@@ -63,11 +81,13 @@ internal sealed class GitHubRepoClient : IDisposable {
     }
 
     public async Task<string> GetDefaultBranchAsync(string owner, string repo) {
+        ThrowIfDisposed();
         var json = await GetJsonAsync($"/repos/{owner}/{repo}").ConfigureAwait(false);
         return json.GetProperty("default_branch").GetString() ?? "main";
     }
 
     public async Task<RepoFile?> TryGetFileAsync(string owner, string repo, string path, string branch) {
+        ThrowIfDisposed();
         try {
             var json = await GetJsonAsync($"/repos/{owner}/{repo}/contents/{path}?ref={branch}")
                 .ConfigureAwait(false);
@@ -84,9 +104,151 @@ internal sealed class GitHubRepoClient : IDisposable {
             var bytes = Convert.FromBase64String(normalized);
             var text = Encoding.UTF8.GetString(bytes);
             return new RepoFile(sha, text);
-        } catch (Exception ex) {
+        } catch (HttpRequestException ex) {
+            Trace.TraceWarning($"GitHub file fetch HTTP failure for {owner}/{repo}/{path}@{branch}: {ex.Message}");
+            return null;
+        } catch (OperationCanceledException) {
+            // Preserve cancellation semantics for callers that enforce timeouts/cancellation tokens.
+            throw;
+        } catch (JsonException ex) {
+            Trace.TraceWarning($"GitHub file fetch JSON parse failure for {owner}/{repo}/{path}@{branch}: {ex.Message}");
+            return null;
+        } catch (FormatException ex) {
+            Trace.TraceWarning($"GitHub file fetch base64 decode failure for {owner}/{repo}/{path}@{branch}: {ex.Message}");
+            return null;
+        } catch (InvalidOperationException ex) {
             Trace.TraceWarning($"GitHub file fetch failed for {owner}/{repo}/{path}@{branch}: {ex.GetType().Name}: {ex.Message}");
             return null;
+        } catch (KeyNotFoundException ex) {
+            Trace.TraceWarning($"GitHub file fetch payload missing fields for {owner}/{repo}/{path}@{branch}: {ex.Message}");
+            return null;
+        }
+    }
+
+    public async Task<PullRequestInfo?> TryGetPullRequestAsync(string owner, string repo, int number) {
+        ThrowIfDisposed();
+        try {
+            var json = await GetJsonAsync($"/repos/{owner}/{repo}/pulls/{number}").ConfigureAwait(false);
+            var headRef = json.GetProperty("head").GetProperty("ref").GetString();
+            var baseRef = json.GetProperty("base").GetProperty("ref").GetString();
+            var url = json.TryGetProperty("html_url", out var htmlUrl) ? htmlUrl.GetString() : null;
+            return new PullRequestInfo(number, headRef, baseRef, url);
+        } catch (HttpRequestException ex) {
+            Trace.TraceWarning($"GitHub pull request fetch HTTP failure for {owner}/{repo}#{number}: {ex.Message}");
+            return null;
+        } catch (OperationCanceledException) {
+            // Preserve cancellation semantics for callers that enforce timeouts/cancellation tokens.
+            throw;
+        } catch (JsonException ex) {
+            Trace.TraceWarning($"GitHub pull request fetch JSON parse failure for {owner}/{repo}#{number}: {ex.Message}");
+            return null;
+        } catch (InvalidOperationException ex) {
+            Trace.TraceWarning($"GitHub pull request fetch failed for {owner}/{repo}#{number}: {ex.GetType().Name}: {ex.Message}");
+            return null;
+        } catch (KeyNotFoundException ex) {
+            Trace.TraceWarning($"GitHub pull request payload missing fields for {owner}/{repo}#{number}: {ex.Message}");
+            return null;
+        }
+    }
+
+    public Task<SecretLookupResult> TryRepoSecretExistsAsync(string owner, string repo, string name) {
+        ThrowIfDisposed();
+        return TrySecretExistsAsync($"/repos/{owner}/{repo}/actions/secrets/{name}");
+    }
+
+    public Task<SecretLookupResult> TryOrgSecretExistsAsync(string org, string name) {
+        ThrowIfDisposed();
+        return TrySecretExistsAsync($"/orgs/{org}/actions/secrets/{name}");
+    }
+
+    public async Task<WorkflowRunLookupResult> ListWorkflowRunsAsync(string owner, string repo, string workflowFile,
+        int maxCount = 3) {
+        ThrowIfDisposed();
+        var runs = new List<WorkflowRunInfo>();
+        var limit = Math.Clamp(maxCount, 1, 20);
+        var encodedOwner = Uri.EscapeDataString(owner ?? string.Empty);
+        var encodedRepo = Uri.EscapeDataString(repo ?? string.Empty);
+        var encodedWorkflowFile = Uri.EscapeDataString(workflowFile ?? string.Empty);
+        if (string.IsNullOrWhiteSpace(encodedOwner) || string.IsNullOrWhiteSpace(encodedRepo) ||
+            string.IsNullOrWhiteSpace(encodedWorkflowFile)) {
+            return WorkflowRunLookupResult.InvalidArguments("owner, repo, and workflowFile are required.");
+        }
+
+        try {
+            var path = $"/repos/{encodedOwner}/{encodedRepo}/actions/workflows/{encodedWorkflowFile}/runs?per_page={limit}";
+            using var response = await _http.GetAsync(path).ConfigureAwait(false);
+            var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+            if (!response.IsSuccessStatusCode) {
+                var statusCode = (int)response.StatusCode;
+                var reason = string.IsNullOrWhiteSpace(response.ReasonPhrase) ? "Error" : response.ReasonPhrase!;
+                var note = $"GitHub API returned {statusCode} {reason}.";
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) {
+                    return WorkflowRunLookupResult.Unauthorized(note);
+                }
+                if (response.StatusCode == System.Net.HttpStatusCode.Forbidden) {
+                    return WorkflowRunLookupResult.Forbidden(note);
+                }
+                if (statusCode == 429) {
+                    return WorkflowRunLookupResult.RateLimited("GitHub API returned 429 Too Many Requests.");
+                }
+                return WorkflowRunLookupResult.HttpError(note);
+            }
+
+            using var doc = JsonDocument.Parse(content);
+            var json = doc.RootElement;
+            if (!json.TryGetProperty("workflow_runs", out var workflowRuns) ||
+                workflowRuns.ValueKind != JsonValueKind.Array) {
+                return WorkflowRunLookupResult.ParseError("GitHub workflow runs payload is missing workflow_runs array.");
+            }
+
+            foreach (var item in workflowRuns.EnumerateArray()) {
+                if (item.ValueKind != JsonValueKind.Object) {
+                    continue;
+                }
+
+                DateTimeOffset? createdAt = null;
+                if (item.TryGetProperty("created_at", out var createdAtProperty)
+                    && createdAtProperty.ValueKind == JsonValueKind.String
+                    && DateTimeOffset.TryParse(createdAtProperty.GetString(),
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                        out var parsedCreatedAt)) {
+                    createdAt = parsedCreatedAt;
+                }
+
+                runs.Add(new WorkflowRunInfo(
+                    id: item.TryGetProperty("id", out var idProperty) && idProperty.TryGetInt64(out var parsedId) ? parsedId : 0,
+                    url: item.TryGetProperty("html_url", out var urlProperty) && urlProperty.ValueKind == JsonValueKind.String
+                        ? urlProperty.GetString()
+                        : null,
+                    status: item.TryGetProperty("status", out var statusProperty) && statusProperty.ValueKind == JsonValueKind.String
+                        ? statusProperty.GetString()
+                        : null,
+                    conclusion: item.TryGetProperty("conclusion", out var conclusionProperty) && conclusionProperty.ValueKind == JsonValueKind.String
+                        ? conclusionProperty.GetString()
+                        : null,
+                    headBranch: item.TryGetProperty("head_branch", out var headBranchProperty) && headBranchProperty.ValueKind == JsonValueKind.String
+                        ? headBranchProperty.GetString()
+                        : null,
+                    @event: item.TryGetProperty("event", out var eventProperty) && eventProperty.ValueKind == JsonValueKind.String
+                        ? eventProperty.GetString()
+                        : null,
+                    createdAt: createdAt));
+            }
+
+            return WorkflowRunLookupResult.Ok(runs);
+        } catch (HttpRequestException ex) {
+            Trace.TraceWarning($"GitHub workflow run lookup HTTP failure for {owner}/{repo}: {ex.Message}");
+            return WorkflowRunLookupResult.HttpError("GitHub workflow run lookup failed due to an HTTP client error.");
+        } catch (OperationCanceledException) {
+            throw;
+        } catch (JsonException ex) {
+            Trace.TraceWarning($"GitHub workflow run lookup JSON parse failure for {owner}/{repo}: {ex.Message}");
+            return WorkflowRunLookupResult.ParseError("GitHub workflow run lookup failed to parse JSON response.");
+        } catch (InvalidOperationException ex) {
+            Trace.TraceWarning($"GitHub workflow run lookup failed for {owner}/{repo}: {ex.GetType().Name}: {ex.Message}");
+            return WorkflowRunLookupResult.HttpError("GitHub workflow run lookup failed due to an HTTP client configuration error.");
         }
     }
 
@@ -98,6 +260,28 @@ internal sealed class GitHubRepoClient : IDisposable {
         }
         using var doc = JsonDocument.Parse(content);
         return doc.RootElement.Clone();
+    }
+
+    private static void ConfigureDefaultHeaders(HttpClient http, string token) {
+        if (!http.DefaultRequestHeaders.UserAgent.Any(value =>
+                string.Equals(value.Product?.Name, "IntelligenceX.Cli", StringComparison.OrdinalIgnoreCase))) {
+            http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("IntelligenceX.Cli", "1.0"));
+        }
+        if (!http.DefaultRequestHeaders.Accept.Any(value =>
+                string.Equals(value.MediaType, "application/vnd.github+json", StringComparison.OrdinalIgnoreCase))) {
+            http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+        }
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        if (http.DefaultRequestHeaders.Contains("X-GitHub-Api-Version")) {
+            http.DefaultRequestHeaders.Remove("X-GitHub-Api-Version");
+        }
+        http.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+    }
+
+    private void ThrowIfDisposed() {
+        if (Volatile.Read(ref _disposeState) != 0) {
+            throw new ObjectDisposedException(nameof(GitHubRepoClient));
+        }
     }
 
     private static string FormatGitHubFailure(HttpResponseMessage response, string body) {
@@ -115,6 +299,42 @@ internal sealed class GitHubRepoClient : IDisposable {
             }
         }
         return msg;
+    }
+
+    private async Task<SecretLookupResult> TrySecretExistsAsync(string url) {
+        try {
+            using var response = await _http.GetAsync(url).ConfigureAwait(false);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound) {
+                return SecretLookupResult.Missing();
+            }
+            if (response.IsSuccessStatusCode) {
+                return SecretLookupResult.Present();
+            }
+            var statusCode = (int)response.StatusCode;
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) {
+                Trace.TraceWarning($"GitHub secret lookup unauthorized ({statusCode}).");
+                return SecretLookupResult.Unauthorized($"GitHub API returned {statusCode} Unauthorized.");
+            }
+            if (response.StatusCode == System.Net.HttpStatusCode.Forbidden) {
+                Trace.TraceWarning($"GitHub secret lookup forbidden ({statusCode}).");
+                return SecretLookupResult.Forbidden($"GitHub API returned {statusCode} Forbidden.");
+            }
+            if (statusCode == 429) {
+                Trace.TraceWarning("GitHub secret lookup rate limited (429).");
+                return SecretLookupResult.RateLimited("GitHub API returned 429 Too Many Requests.");
+            }
+            Trace.TraceWarning($"GitHub secret lookup failed ({statusCode}).");
+            return SecretLookupResult.Unknown($"GitHub API returned {statusCode} {response.ReasonPhrase ?? "Error"}.");
+        } catch (OperationCanceledException) {
+            // Preserve cancellation semantics for callers that enforce timeouts/cancellation tokens.
+            throw;
+        } catch (HttpRequestException ex) {
+            Trace.TraceWarning($"GitHub secret lookup HTTP failure: {ex.Message}");
+            return SecretLookupResult.Unknown("GitHub secret lookup failed due to an HTTP client error.");
+        } catch (InvalidOperationException ex) {
+            Trace.TraceWarning($"GitHub secret lookup client failure: {ex.Message}");
+            return SecretLookupResult.Unknown("GitHub secret lookup failed due to an HTTP client configuration error.");
+        }
     }
 
     private static bool TryParseRepository(JsonElement item, out RepositoryInfo info) {
@@ -216,5 +436,82 @@ internal sealed class GitHubRepoClient : IDisposable {
         /// Decoded file content.
         /// </summary>
         public string Content { get; }
+    }
+
+    public sealed class PullRequestInfo {
+        public PullRequestInfo(int number, string? headRef, string? baseRef, string? url) {
+            Number = number;
+            HeadRef = headRef;
+            BaseRef = baseRef;
+            Url = url;
+        }
+
+        public int Number { get; }
+        public string? HeadRef { get; }
+        public string? BaseRef { get; }
+        public string? Url { get; }
+    }
+
+    public sealed class SecretLookupResult {
+        private SecretLookupResult(bool? exists, string status, string? note) {
+            Exists = exists;
+            Status = status;
+            Note = note;
+        }
+
+        public bool? Exists { get; }
+        public string Status { get; }
+        public string? Note { get; }
+
+        public static SecretLookupResult Present() => new(true, "present", null);
+        public static SecretLookupResult Missing() => new(false, "missing", null);
+        public static SecretLookupResult Unauthorized(string note) => new(null, "unauthorized", note);
+        public static SecretLookupResult Forbidden(string note) => new(null, "forbidden", note);
+        public static SecretLookupResult RateLimited(string note) => new(null, "rate_limited", note);
+        public static SecretLookupResult Unknown(string note) => new(null, "unknown", note);
+    }
+
+    public sealed class WorkflowRunInfo {
+        public WorkflowRunInfo(long id, string? url, string? status, string? conclusion, string? headBranch, string? @event,
+            DateTimeOffset? createdAt) {
+            Id = id;
+            Url = url;
+            Status = status;
+            Conclusion = conclusion;
+            HeadBranch = headBranch;
+            Event = @event;
+            CreatedAt = createdAt;
+        }
+
+        public long Id { get; }
+        public string? Url { get; }
+        public string? Status { get; }
+        public string? Conclusion { get; }
+        public string? HeadBranch { get; }
+        public string? Event { get; }
+        public DateTimeOffset? CreatedAt { get; }
+    }
+
+    public sealed class WorkflowRunLookupResult {
+        private WorkflowRunLookupResult(string status, string? note, IReadOnlyList<WorkflowRunInfo>? runs = null) {
+            Status = status;
+            Note = note;
+            Runs = runs is null || runs.Count == 0
+                ? Array.Empty<WorkflowRunInfo>()
+                : runs.ToArray();
+        }
+
+        public string Status { get; }
+        public bool Success => string.Equals(Status, "ok", StringComparison.Ordinal);
+        public string? Note { get; }
+        public IReadOnlyList<WorkflowRunInfo> Runs { get; }
+
+        public static WorkflowRunLookupResult Ok(IReadOnlyList<WorkflowRunInfo> runs) => new("ok", null, runs);
+        public static WorkflowRunLookupResult InvalidArguments(string note) => new("invalid_arguments", note);
+        public static WorkflowRunLookupResult Unauthorized(string note) => new("unauthorized", note);
+        public static WorkflowRunLookupResult Forbidden(string note) => new("forbidden", note);
+        public static WorkflowRunLookupResult RateLimited(string note) => new("rate_limited", note);
+        public static WorkflowRunLookupResult HttpError(string note) => new("http_error", note);
+        public static WorkflowRunLookupResult ParseError(string note) => new("parse_error", note);
     }
 }

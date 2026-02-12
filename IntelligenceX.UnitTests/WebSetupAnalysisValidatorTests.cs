@@ -14,9 +14,11 @@ public sealed class WebSetupAnalysisValidatorTests {
             analysisEnabled: true,
             analysisGateEnabled: null,
             analysisPacks: null,
+            analysisExportPath: null,
             normalizedEnabled: out _,
             normalizedGateEnabled: out _,
             normalizedPacks: out _,
+            normalizedExportPath: out _,
             error: out var error);
 
         Assert.False(ok);
@@ -33,9 +35,11 @@ public sealed class WebSetupAnalysisValidatorTests {
             analysisEnabled: true,
             analysisGateEnabled: null,
             analysisPacks: null,
+            analysisExportPath: null,
             normalizedEnabled: out _,
             normalizedGateEnabled: out _,
             normalizedPacks: out _,
+            normalizedExportPath: out _,
             error: out var error);
 
         Assert.False(ok);
@@ -52,9 +56,11 @@ public sealed class WebSetupAnalysisValidatorTests {
             analysisEnabled: null,
             analysisGateEnabled: null,
             analysisPacks: "all-50",
+            analysisExportPath: null,
             normalizedEnabled: out _,
             normalizedGateEnabled: out _,
             normalizedPacks: out _,
+            normalizedExportPath: out _,
             error: out var error);
 
         Assert.False(ok);
@@ -70,9 +76,11 @@ public sealed class WebSetupAnalysisValidatorTests {
             analysisEnabled: true,
             analysisGateEnabled: null,
             analysisPacks: null,
+            analysisExportPath: null,
             normalizedEnabled: out _,
             normalizedGateEnabled: out _,
             normalizedPacks: out _,
+            normalizedExportPath: out _,
             error: out var error);
 
         Assert.False(ok);
@@ -88,9 +96,11 @@ public sealed class WebSetupAnalysisValidatorTests {
             analysisEnabled: true,
             analysisGateEnabled: null,
             analysisPacks: null,
+            analysisExportPath: null,
             normalizedEnabled: out _,
             normalizedGateEnabled: out _,
             normalizedPacks: out _,
+            normalizedExportPath: out _,
             error: out var error);
 
         Assert.False(ok);
@@ -106,9 +116,11 @@ public sealed class WebSetupAnalysisValidatorTests {
             analysisEnabled: null,
             analysisGateEnabled: true,
             analysisPacks: null,
+            analysisExportPath: null,
             normalizedEnabled: out _,
             normalizedGateEnabled: out _,
             normalizedPacks: out _,
+            normalizedExportPath: out _,
             error: out var error);
 
         Assert.False(ok);
@@ -124,9 +136,11 @@ public sealed class WebSetupAnalysisValidatorTests {
             analysisEnabled: false,
             analysisGateEnabled: null,
             analysisPacks: "all-50",
+            analysisExportPath: null,
             normalizedEnabled: out _,
             normalizedGateEnabled: out _,
             normalizedPacks: out _,
+            normalizedExportPath: out _,
             error: out var error);
 
         Assert.False(ok);
@@ -142,9 +156,11 @@ public sealed class WebSetupAnalysisValidatorTests {
             analysisEnabled: false,
             analysisGateEnabled: true,
             analysisPacks: null,
+            analysisExportPath: null,
             normalizedEnabled: out _,
             normalizedGateEnabled: out _,
             normalizedPacks: out _,
+            normalizedExportPath: out _,
             error: out var error);
 
         Assert.False(ok);
@@ -160,9 +176,11 @@ public sealed class WebSetupAnalysisValidatorTests {
             analysisEnabled: null,
             analysisGateEnabled: null,
             analysisPacks: "all-50",
+            analysisExportPath: null,
             normalizedEnabled: out _,
             normalizedGateEnabled: out _,
             normalizedPacks: out _,
+            normalizedExportPath: out _,
             error: out var error);
 
         Assert.False(ok);
@@ -178,9 +196,11 @@ public sealed class WebSetupAnalysisValidatorTests {
             analysisEnabled: true,
             analysisGateEnabled: null,
             analysisPacks: "--force",
+            analysisExportPath: null,
             normalizedEnabled: out _,
             normalizedGateEnabled: out _,
             normalizedPacks: out _,
+            normalizedExportPath: out _,
             error: out var error);
 
         Assert.False(ok);
@@ -196,9 +216,11 @@ public sealed class WebSetupAnalysisValidatorTests {
             analysisEnabled: true,
             analysisGateEnabled: true,
             analysisPacks: " all-50,all-50 , powershell-50 ",
+            analysisExportPath: null,
             normalizedEnabled: out var normalizedEnabled,
             normalizedGateEnabled: out var normalizedGate,
             normalizedPacks: out var normalizedPacks,
+            normalizedExportPath: out _,
             error: out var error);
 
         Assert.True(ok);
@@ -206,6 +228,67 @@ public sealed class WebSetupAnalysisValidatorTests {
         Assert.True(normalizedEnabled);
         Assert.True(normalizedGate);
         Assert.Equal("all-50,powershell-50", normalizedPacks);
+    }
+
+    [Fact]
+    public void AnalysisEnabledTrue_NormalizesExportPath() {
+        var ok = WebSetupAnalysisValidator.TryValidateAndNormalize(
+            isSetup: true,
+            withConfig: true,
+            hasConfigOverride: false,
+            analysisEnabled: true,
+            analysisGateEnabled: null,
+            analysisPacks: null,
+            analysisExportPath: " .intelligencex\\analyzers ",
+            normalizedEnabled: out _,
+            normalizedGateEnabled: out _,
+            normalizedPacks: out _,
+            normalizedExportPath: out var normalizedExportPath,
+            error: out var error);
+
+        Assert.True(ok);
+        Assert.Null(error);
+        Assert.Equal(".intelligencex/analyzers", normalizedExportPath);
+    }
+
+    [Fact]
+    public void AnalysisEnabledFalse_ExportPath_Fails() {
+        var ok = WebSetupAnalysisValidator.TryValidateAndNormalize(
+            isSetup: true,
+            withConfig: true,
+            hasConfigOverride: false,
+            analysisEnabled: false,
+            analysisGateEnabled: null,
+            analysisPacks: null,
+            analysisExportPath: ".intelligencex/analyzers",
+            normalizedEnabled: out _,
+            normalizedGateEnabled: out _,
+            normalizedPacks: out _,
+            normalizedExportPath: out _,
+            error: out var error);
+
+        Assert.False(ok);
+        Assert.Contains("require", error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AnalysisEnabledTrue_InvalidExportPath_Fails() {
+        var ok = WebSetupAnalysisValidator.TryValidateAndNormalize(
+            isSetup: true,
+            withConfig: true,
+            hasConfigOverride: false,
+            analysisEnabled: true,
+            analysisGateEnabled: null,
+            analysisPacks: null,
+            analysisExportPath: "../outside",
+            normalizedEnabled: out _,
+            normalizedGateEnabled: out _,
+            normalizedPacks: out _,
+            normalizedExportPath: out _,
+            error: out var error);
+
+        Assert.False(ok);
+        Assert.Contains("analysisExportPath", error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -217,9 +300,11 @@ public sealed class WebSetupAnalysisValidatorTests {
             analysisEnabled: null,
             analysisGateEnabled: null,
             analysisPacks: null,
+            analysisExportPath: null,
             normalizedEnabled: out var normalizedEnabled,
             normalizedGateEnabled: out var normalizedGate,
             normalizedPacks: out var normalizedPacks,
+            normalizedExportPath: out _,
             error: out var error);
 
         Assert.True(ok);

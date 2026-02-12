@@ -26,10 +26,81 @@ let selectedProvider = 'openai';
 let selectedPresetProfile = 'balanced';
 let secretOption = 'login';   // 'login' | 'paste' | 'file' | 'skip'
 let selectedOnboardingPath = 'new-setup';
+let lastAutodetect = null;
 let deviceState = null;
 let lastRecommendation = null;
 let lastSummaryBase = 'Ready to preview or apply.';
 let lastUsageSummary = null;
+let onboardingContractVersion = null;
+let onboardingContractFingerprint = null;
+
+const FALLBACK_ONBOARDING_PATHS = [
+  {
+    id: 'new-setup',
+    displayName: 'New Setup',
+    description: 'Configure workflow and reviewer config for first-time onboarding.',
+    defaultOperation: 'setup',
+    requiresGitHubAuth: true,
+    requiresRepoSelection: true,
+    requiresAiAuth: true,
+    flow: [
+      'Authenticate with GitHub',
+      'Select repositories',
+      'Configure workflow and reviewer profile',
+      'Authenticate with AI provider',
+      'Plan, apply, verify'
+    ]
+  },
+  {
+    id: 'refresh-auth',
+    displayName: 'Fix Expired Auth',
+    description: 'Refresh OpenAI/ChatGPT auth and update INTELLIGENCEX_AUTH_B64 secret.',
+    defaultOperation: 'update-secret',
+    requiresGitHubAuth: true,
+    requiresRepoSelection: true,
+    requiresAiAuth: true,
+    flow: [
+      'Authenticate with GitHub',
+      'Select repositories',
+      'Refresh AI auth bundle',
+      'Apply update-secret',
+      'Verify secret presence'
+    ]
+  },
+  {
+    id: 'cleanup',
+    displayName: 'Cleanup',
+    description: 'Remove workflow/config and optionally remove secrets from repositories.',
+    defaultOperation: 'cleanup',
+    requiresGitHubAuth: true,
+    requiresRepoSelection: true,
+    requiresAiAuth: false,
+    flow: [
+      'Authenticate with GitHub',
+      'Select repositories',
+      'Choose cleanup options',
+      'Plan, apply cleanup',
+      'Verify removal'
+    ]
+  },
+  {
+    id: 'maintenance',
+    displayName: 'Maintenance',
+    description: 'Run preflight checks, inspect existing setup, then choose setup/update-secret/cleanup.',
+    defaultOperation: 'setup',
+    requiresGitHubAuth: true,
+    requiresRepoSelection: true,
+    requiresAiAuth: false,
+    flow: [
+      'Run auto-detect preflight',
+      'Inspect current workflow/config status',
+      'Select operation based on findings',
+      'Plan, apply, verify'
+    ]
+  }
+];
+let onboardingPaths = FALLBACK_ONBOARDING_PATHS.slice();
+let onboardingPathMap = {};
 
 // Default IntelligenceX GitHub App Client ID
 const DEFAULT_GITHUB_CLIENT_ID = 'Iv23li0wcHDzWa25HKz3';
@@ -67,6 +138,126 @@ const installation = $('installation');
 const analysisEnabled = $('analysisEnabled');
 const analysisGate = $('analysisGate');
 const analysisPacks = $('analysisPacks');
+const analysisExportPath = $('analysisExportPath');
+
+function normalizeOperationId(operation) {
+  const normalized = String(operation || '').trim().toLowerCase();
+  if (normalized === 'update-secret' || normalized === 'refresh-auth') return 'update-secret';
+  if (normalized === 'cleanup') return 'cleanup';
+  return 'setup';
+}
+
+function normalizePathContract(path) {
+  if (!path || typeof path !== 'object') return null;
+  const id = String(path.id || '').trim().toLowerCase();
+  if (!id) return null;
+  const flow = Array.isArray(path.flow)
+    ? path.flow.map(step => String(step || '').trim()).filter(step => step.length > 0)
+    : [];
+  return {
+    id,
+    displayName: String(path.displayName || id),
+    description: String(path.description || ''),
+    defaultOperation: normalizeOperationId(path.defaultOperation || path.operation),
+    requiresGitHubAuth: !!path.requiresGitHubAuth,
+    requiresRepoSelection: !!path.requiresRepoSelection,
+    requiresAiAuth: !!path.requiresAiAuth,
+    flow
+  };
+}
+
+function findPathByOperation(operation, preferredId) {
+  const normalizedOperation = normalizeOperationId(operation);
+  if (preferredId && onboardingPathMap[preferredId]) {
+    const preferred = onboardingPathMap[preferredId];
+    if (preferred.defaultOperation === normalizedOperation) {
+      return preferred.id;
+    }
+  }
+  const match = onboardingPaths.find(path => path.defaultOperation === normalizedOperation);
+  return match ? match.id : 'new-setup';
+}
+
+function getOnboardingPathContract(pathId) {
+  const normalized = normalizeRecommendedPath(pathId);
+  if (onboardingPathMap[normalized]) {
+    return onboardingPathMap[normalized];
+  }
+  return onboardingPaths[0] || FALLBACK_ONBOARDING_PATHS[0];
+}
+
+function renderPathCardsFromContract() {
+  document.querySelectorAll('[data-path]').forEach(card => {
+    const pathId = String(card.dataset.path || '').trim().toLowerCase();
+    const path = onboardingPathMap[pathId];
+    if (!path) return;
+
+    const title = card.querySelector('[data-path-title]');
+    if (title) title.textContent = path.displayName;
+
+    const desc = card.querySelector('[data-path-desc]');
+    if (desc) desc.textContent = path.description;
+  });
+}
+
+function renderPathContractStatus() {
+  const contractEl = $('pathContractVersion');
+  if (!contractEl) return;
+
+  if (!onboardingContractVersion) {
+    contractEl.textContent = 'Contract: local defaults (auto-detect metadata unavailable).';
+    return;
+  }
+
+  const fingerprintPrefix = onboardingContractFingerprint
+    ? ` | fingerprint ${String(onboardingContractFingerprint).slice(0, 8)}`
+    : '';
+  contractEl.textContent = `Contract: ${onboardingContractVersion}${fingerprintPrefix}`;
+}
+
+function renderPathRequirements(path) {
+  const requirementsEl = $('pathRequirements');
+  if (!requirementsEl) return;
+
+  requirementsEl.innerHTML = '';
+  const requirements = [
+    { label: 'GitHub auth', required: !!path.requiresGitHubAuth },
+    { label: 'Repo selection', required: !!path.requiresRepoSelection },
+    { label: 'AI auth', required: !!path.requiresAiAuth }
+  ];
+
+  requirements.forEach(item => {
+    const badge = document.createElement('span');
+    badge.className = `path-requirement ${item.required ? 'required' : 'optional'}`;
+    badge.textContent = `${item.label}: ${item.required ? 'required' : 'optional'}`;
+    requirementsEl.appendChild(badge);
+  });
+}
+
+function setOnboardingPathContracts(paths, contractVersion, contractFingerprint) {
+  const normalizedPaths = Array.isArray(paths)
+    ? paths.map(normalizePathContract).filter(path => !!path)
+    : [];
+
+  onboardingPaths = normalizedPaths.length > 0
+    ? normalizedPaths
+    : FALLBACK_ONBOARDING_PATHS.slice();
+  onboardingPathMap = {};
+  onboardingPaths.forEach(path => {
+    onboardingPathMap[path.id] = path;
+  });
+
+  onboardingContractVersion = contractVersion || null;
+  onboardingContractFingerprint = contractFingerprint || null;
+
+  renderPathCardsFromContract();
+  renderPathContractStatus();
+
+  selectedOnboardingPath = normalizeRecommendedPath(selectedOnboardingPath);
+  if (!onboardingPathMap[selectedOnboardingPath]) {
+    selectedOnboardingPath = onboardingPaths[0] ? onboardingPaths[0].id : 'new-setup';
+  }
+}
 
 // ── Step navigation ──
 function goToStep(step) {
@@ -176,27 +367,25 @@ function getEffectiveClientId() {
 
 // ── Operation selection ──
 function getOnboardingPathForOperation(op) {
-  switch (op) {
+  const normalized = normalizeOperationId(op);
+  switch (normalized) {
     case 'update-secret':
-      return 'refresh-auth';
+      return findPathByOperation('update-secret', 'refresh-auth');
     case 'cleanup':
-      return 'cleanup';
+      return findPathByOperation('cleanup', 'cleanup');
     case 'setup':
     default:
-      return 'new-setup';
+      if (onboardingPathMap['new-setup']) return 'new-setup';
+      return findPathByOperation('setup', null);
   }
 }
 
 function getOnboardingPathHint(path) {
-  switch (path) {
-    case 'refresh-auth':
-      return 'Path selected: Fix Expired Auth. Next: authenticate, choose repos, then run update-secret.';
-    case 'cleanup':
-      return 'Path selected: Cleanup. Next: authenticate, select repos, then preview and remove setup files.';
-    case 'new-setup':
-    default:
-      return 'Path selected: New Setup. Next: authenticate with GitHub, then select repositories.';
-  }
+  const selectedPath = getOnboardingPathContract(path);
+  const flowPreview = selectedPath.flow.length > 0
+    ? selectedPath.flow.slice(0, 3).join(' -> ')
+    : 'Authenticate with GitHub -> Select repositories -> Plan and apply';
+  return `Path selected: ${selectedPath.displayName}. Next: ${flowPreview}.`;
 }
 
 function selectOperation(op) {
@@ -223,11 +412,16 @@ function syncOnboardingPathVisualState() {
   document.querySelectorAll('[data-path]').forEach(c => {
     c.classList.toggle('selected', c.dataset.path === selectedOnboardingPath);
   });
+  const selectedPath = getOnboardingPathContract(selectedOnboardingPath);
   setOnboardingPathHint(getOnboardingPathHint(selectedOnboardingPath));
+  renderPathRequirements(selectedPath);
 }
 
 function applyOnboardingPath(path) {
-  switch (path) {
+  const normalizedPath = normalizeRecommendedPath(path);
+  const effectivePath = getOnboardingPathContract(normalizedPath);
+  const effectivePathId = effectivePath.id;
+  switch (effectivePathId) {
     case 'refresh-auth':
       selectOperation('update-secret');
       selectProvider('openai');
@@ -240,6 +434,12 @@ function applyOnboardingPath(path) {
       selectSecretOption('skip');
       if (withConfig) withConfig.checked = false;
       break;
+    case 'maintenance':
+      selectOperation('setup');
+      selectProvider('openai');
+      selectSecretOption('skip');
+      if (withConfig) withConfig.checked = true;
+      break;
     case 'new-setup':
     default:
       selectOperation('setup');
@@ -248,6 +448,8 @@ function applyOnboardingPath(path) {
       if (withConfig) withConfig.checked = true;
       break;
   }
+
+  selectedOnboardingPath = effectivePathId;
 
   syncOnboardingPathVisualState();
   refreshPathStateAfterOnboardingSelection();
@@ -403,6 +605,119 @@ function getSetupRequestHeaders() {
   };
 }
 
+function normalizeRecommendedPath(path) {
+  const normalized = String(path || '').trim().toLowerCase();
+  if (onboardingPathMap[normalized]) {
+    return normalized;
+  }
+  switch (normalized) {
+    case 'refresh-auth':
+    case 'fix-expired-auth':
+    case 'update-secret':
+      return 'refresh-auth';
+    case 'cleanup':
+      return 'cleanup';
+    case 'maintenance':
+      return 'maintenance';
+    case 'new-setup':
+    case 'setup':
+    default:
+      return 'new-setup';
+  }
+}
+
+function summarizeAutoDetectChecks(checks) {
+  let ok = 0;
+  let warn = 0;
+  let fail = 0;
+  (checks || []).forEach(check => {
+    const status = String(check.status || '').toLowerCase();
+    if (status === 'fail') fail++;
+    else if (status === 'warn') warn++;
+    else ok++;
+  });
+  return { ok, warn, fail };
+}
+
+function formatAutoDetectOutput(data) {
+  const lines = [];
+  lines.push(`status: ${data.status || 'unknown'}`);
+  lines.push(`workspace: ${data.workspace || '-'}`);
+  lines.push(`repo: ${data.repo || '(not detected)'}`);
+  if (data.contractVersion) lines.push(`contract version: ${data.contractVersion}`);
+  if (data.contractFingerprint) lines.push(`contract fingerprint: ${data.contractFingerprint}`);
+  lines.push(`local workflow: ${data.localWorkflowExists ? 'yes' : 'no'}`);
+  lines.push(`local config: ${data.localConfigExists ? 'yes' : 'no'}`);
+  lines.push(`recommended path: ${data.recommendedPath || '-'}`);
+  if (data.recommendedReason) lines.push(`reason: ${data.recommendedReason}`);
+  if (data.commandTemplates) {
+    lines.push(`command auto-detect: ${data.commandTemplates.autoDetect || '-'}`);
+    lines.push(`command setup apply: ${data.commandTemplates.newSetupApply || '-'}`);
+    lines.push(`command update-secret apply: ${data.commandTemplates.refreshAuthApply || '-'}`);
+    lines.push(`command cleanup apply: ${data.commandTemplates.cleanupApply || '-'}`);
+  }
+  lines.push('');
+  lines.push('checks:');
+  (data.checks || []).forEach(check => {
+    lines.push(`- [${check.status || 'ok'}] ${check.message || ''}`);
+  });
+  return lines.join('\n');
+}
+
+function renderAutoDetect(data) {
+  const summaryEl = $('autodetectSummary');
+  const outputEl = $('autodetectOutput');
+  const applyBtn = $('applyAutodetectPath');
+  if (!summaryEl || !outputEl) return;
+
+  const recommendedPath = normalizeRecommendedPath(data.recommendedPath);
+  const counts = summarizeAutoDetectChecks(data.checks);
+  const status = String(data.status || '').toLowerCase();
+  const statusText = status === 'fail'
+    ? 'Fail'
+    : status === 'warn'
+      ? 'Warning'
+      : 'OK';
+  const contractText = data.contractVersion ? ` | contract: ${data.contractVersion}` : '';
+  summaryEl.textContent = `${statusText} | checks: ${counts.ok} ok, ${counts.warn} warn, ${counts.fail} fail | Suggested path: ${recommendedPath}${contractText}. ${data.recommendedReason || ''}`;
+  outputEl.textContent = formatAutoDetectOutput(data);
+  setOnboardingPathContracts(data.paths, data.contractVersion, data.contractFingerprint);
+  syncOnboardingPathVisualState();
+
+  if (applyBtn) {
+    applyBtn.dataset.path = recommendedPath;
+    applyBtn.disabled = !recommendedPath;
+  }
+}
+
+async function runAutoDetect() {
+  const summaryEl = $('autodetectSummary');
+  const outputEl = $('autodetectOutput');
+  const runBtn = $('runAutodetect');
+  const repoInput = $('repo');
+  if (summaryEl) summaryEl.textContent = 'Running doctor preflight...';
+  if (outputEl) outputEl.textContent = '';
+  if (runBtn) runBtn.disabled = true;
+  try {
+    const data = await fetchJsonSafe('/api/setup/autodetect', {
+      method: 'POST',
+      headers: getSetupRequestHeaders(),
+      body: JSON.stringify({
+        repoHint: repoInput ? repoInput.value.trim() : ''
+      })
+    });
+    lastAutodetect = data;
+    renderAutoDetect(data);
+  } catch (e) {
+    setOnboardingPathContracts(null, null, null);
+    syncOnboardingPathVisualState();
+    if (summaryEl) summaryEl.textContent = `Auto-detect failed: ${e.message || e}`;
+    if (outputEl) outputEl.textContent = '';
+  } finally {
+    if (runBtn) runBtn.disabled = false;
+  }
+}
+
 function getToken() {
   return (token ? token.value.trim() : '') || '';
 }
@@ -454,6 +769,17 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function coerceBoolean(value) {
+  if (value === true || value === false) return value;
+  if (typeof value === 'number') return value === 0 ? false : (value === 1 ? true : null);
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1' || normalized === 'yes') return true;
+    if (normalized === 'false' || normalized === '0' || normalized === 'no') return false;
+  }
+  return null;
+}
+
 // ── Build review grid ──
 function buildReviewTable() {
   const grid = $('reviewGrid');
@@ -465,6 +791,9 @@ function buildReviewTable() {
   const analysisState = selectedOperation !== 'setup' || !withConfigEffective || hasConfigOverride
     ? 'not applicable'
     : (analysisEnabled && analysisEnabled.checked ? 'enabled' : 'disabled');
+  const analysisExportPathValue = analysisState === 'enabled' && analysisExportPath && analysisExportPath.value.trim().length > 0
+    ? analysisExportPath.value.trim()
+    : '';
   const providerLabel = selectedProvider === 'openai' ? 'ChatGPT / OpenAI' : 'GitHub Copilot';
   const profileLabels = {
     balanced: 'Balanced',
@@ -480,6 +809,7 @@ function buildReviewTable() {
   const safeReviewMode = escapeHtml(reviewMode && reviewMode.value ? reviewMode.value : 'default');
   const safeReviewCommentMode = escapeHtml(reviewCommentMode && reviewCommentMode.value ? reviewCommentMode.value : 'default');
   const safeAnalysisState = escapeHtml(analysisState);
+  const safeAnalysisExportPath = escapeHtml(analysisExportPathValue);
   const safeRepoHtml = repos.map(r => `<code>${escapeHtml(r)}</code>`).join(' ');
 
   let html = `
@@ -526,6 +856,11 @@ function buildReviewTable() {
         <span class="review-label">Static analysis</span>
         <span class="review-value">${safeAnalysisState}</span>
       </div>
+      ${analysisExportPathValue ? `
+      <div class="review-item">
+        <span class="review-label">Analysis export path</span>
+        <span class="review-value"><code>${safeAnalysisExportPath}</code></span>
+      </div>` : ''}
     </div>
   `;
 
@@ -602,6 +937,7 @@ function buildRequestBody(dryRun) {
   const analysisEnabledValue = wantAnalysis && analysisEnabled && analysisEnabled.checked ? true : null;
   const analysisOn = analysisEnabledValue === true;
   const packsRaw = analysisPacks ? analysisPacks.value.trim() : '';
+  const exportPathRaw = analysisExportPath ? analysisExportPath.value.trim() : '';
   const body = {
     repos: selectedRepos(),
     gitHubToken: getToken(),
@@ -630,6 +966,7 @@ function buildRequestBody(dryRun) {
     if (analysisOn) {
       body.analysisGateEnabled = !!(analysisGate && analysisGate.checked);
       if (packsRaw.length > 0) body.analysisPacks = packsRaw;
+      if (exportPathRaw.length > 0) body.analysisExportPath = exportPathRaw;
     }
   }
   return body;
@@ -642,9 +979,17 @@ function formatResults(data) {
     const total = data.results.length;
     const succeeded = data.results.filter(r => r.exitCode === 0).length;
     const failed = total - succeeded;
-    setSummary(`Results: ${succeeded}/${total} succeeded${failed > 0 ? `, ${failed} failed` : ''}.`);
+    const verifyFailed = data.results.filter(r => {
+      if (!r || !r.verify) return false;
+      const skipped = coerceBoolean(r.verify.skipped);
+      const passed = coerceBoolean(r.verify.passed);
+      return skipped !== true && passed !== true;
+    }).length;
+    const verifyText = verifyFailed > 0 ? `, verify issues in ${verifyFailed}` : '';
+    setSummary(`Results: ${succeeded}/${total} succeeded${failed > 0 ? `, ${failed} failed` : ''}${verifyText}.`);
     lines.push(`Summary: ${succeeded}/${total} succeeded`);
     if (failed > 0) lines.push(`Failures: ${failed}`);
+    if (verifyFailed > 0) lines.push(`Verification issues: ${verifyFailed}`);
     lines.push('');
     data.results.forEach(result => {
       const name = result.repo || 'repo';
@@ -652,13 +997,64 @@ function formatResults(data) {
       lines.push(`== ${name} ==`);
       lines.push(`status: ${status}`);
       if (typeof result.exitCode !== 'undefined') lines.push(`exit: ${result.exitCode}`);
-      if (result.error && result.error.trim().length > 0) {
-        lines.push('error:');
-        lines.push(result.error.trim());
+      const pullRequestUrl = typeof result.pullRequestUrl === 'string' ? result.pullRequestUrl.trim() : '';
+      if (pullRequestUrl.length > 0) {
+        lines.push(`pr: ${pullRequestUrl}`);
       }
-      if (result.output && result.output.trim().length > 0) {
+      const errorText = typeof result.error === 'string' ? result.error.trim() : '';
+      if (errorText.length > 0) {
+        lines.push('error:');
+        lines.push(errorText);
+      }
+      const outputText = typeof result.output === 'string' ? result.output.trim() : '';
+      if (outputText.length > 0) {
         lines.push('output:');
-        lines.push(result.output.trim());
+        lines.push(outputText);
+      }
+      if (result.verify) {
+        const verify = result.verify;
+        const verifySkipped = coerceBoolean(verify.skipped);
+        const verifyPassed = coerceBoolean(verify.passed);
+        const verifyStatus = verifySkipped === true
+          ? 'skipped'
+          : verifyPassed === true
+            ? 'ok'
+            : verifyPassed === false
+              ? 'failed'
+              : 'unknown';
+        lines.push(`verify: ${verifyStatus}`);
+        if (verify.checkedRef && String(verify.checkedRef).trim().length > 0) {
+          const source = verify.checkedRefSource ? String(verify.checkedRefSource) : 'ref';
+          lines.push(`verify-ref: ${source}=${verify.checkedRef}`);
+        }
+        if (verify.note && String(verify.note).trim().length > 0) {
+          lines.push(`verify-note: ${String(verify.note).trim()}`);
+        }
+        if (Array.isArray(verify.checks) && verify.checks.length > 0) {
+          verify.checks.forEach(check => {
+            const safeCheck = check && typeof check === 'object' ? check : null;
+            let checkStatus = 'fail';
+            const checkSkipped = safeCheck ? coerceBoolean(safeCheck.skipped) : null;
+            const checkPassed = safeCheck ? coerceBoolean(safeCheck.passed) : null;
+            if (checkSkipped === true) {
+              checkStatus = 'skip';
+            } else if (checkPassed === true) {
+              checkStatus = 'ok';
+            }
+            const expected = safeCheck && safeCheck.expected != null
+              ? String(safeCheck.expected)
+              : 'n/a';
+            const actual = safeCheck && safeCheck.actual != null
+              ? String(safeCheck.actual)
+              : 'n/a';
+            const checkNoteText = safeCheck && safeCheck.note != null
+              ? String(safeCheck.note).trim()
+              : '';
+            const note = checkNoteText.length > 0 ? ` (${checkNoteText})` : '';
+            const checkName = safeCheck && safeCheck.name ? String(safeCheck.name) : 'check';
+            lines.push(`- ${checkName}: ${checkStatus} (expected ${expected}, actual ${actual})${note}`);
+          });
+        }
       }
       lines.push('');
     });
@@ -1119,11 +1515,12 @@ function updateAnalysisControls() {
   if (analysisEnabled) analysisEnabled.disabled = !applicable;
   if (analysisGate) analysisGate.disabled = !enabled;
   if (analysisPacks) analysisPacks.disabled = !enabled;
+  if (analysisExportPath) analysisExportPath.disabled = !enabled;
 
   const hint = $('analysisHint');
   if (hint) {
     hint.textContent = applicable
-      ? 'Leave empty to use defaults. Examples: all-50, all-100, all-500, all-security-default, powershell-50.'
+      ? 'Leave empty to use defaults. Examples: all-50, all-100, all-500, all-security-default, powershell-50. Browse packs: intelligencex analyze list-rules --workspace <repo-root> --format markdown. Gate semantics/docs: Docs/reviewer/static-analysis.md'
       : 'Static analysis settings apply only when generating config from presets (no Config JSON/path override).';
   }
 }
@@ -1369,4 +1766,19 @@ refreshPresets();
 loadUsageCache();
 updateProgressBar();
 selectSecretOption(secretOption);
+setOnboardingPathContracts(FALLBACK_ONBOARDING_PATHS, null, null);
 syncOnboardingPathVisualState();
+const runAutodetectBtn = $('runAutodetect');
+if (runAutodetectBtn) {
+  runAutodetectBtn.addEventListener('click', async () => {
+    await runAutoDetect();
+  });
+}
+const applyAutodetectPathBtn = $('applyAutodetectPath');
+if (applyAutodetectPathBtn) {
+  applyAutodetectPathBtn.addEventListener('click', () => {
+    const suggested = normalizeRecommendedPath(applyAutodetectPathBtn.dataset.path);
+    applyOnboardingPath(suggested);
+  });
+}
+runAutoDetect();

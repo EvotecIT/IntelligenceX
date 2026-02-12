@@ -66,6 +66,13 @@ internal sealed partial class WebApi {
                 await HandleSetupEffectiveConfigAsync(context).ConfigureAwait(false);
                 return;
             }
+            if (normalizedPath.Equals("/api/setup/autodetect", StringComparison.OrdinalIgnoreCase)) {
+                if (!await EnsureLocalPostSetupRequestAsync(context).ConfigureAwait(false)) {
+                    return;
+                }
+                await HandleSetupAutodetectAsync(context).ConfigureAwait(false);
+                return;
+            }
             if (normalizedPath.Equals("/api/setup/apply", StringComparison.OrdinalIgnoreCase)) {
                 if (!await EnsureLocalPostSetupRequestAsync(context).ConfigureAwait(false)) {
                     return;

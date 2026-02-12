@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="860" viewBox="0 0 1400 860" role="img" aria-labelledby="title desc">
+  <title id="title">IntelligenceX CLI Wizard - Configure step</title>
+  <desc id="desc">Terminal-style screenshot of the CLI wizard Configure step with analysis options and config preview.</desc>
+  <rect width="1400" height="860" fill="#0f1726"/>
+  <rect x="56" y="44" width="1288" height="772" rx="14" fill="#101a2e" stroke="#2a3a57"/>
+  <rect x="56" y="44" width="1288" height="42" rx="14" fill="#1a2740"/>
+  <circle cx="86" cy="65" r="7" fill="#f16d6d"/>
+  <circle cx="110" cy="65" r="7" fill="#f6ca5e"/>
+  <circle cx="134" cy="65" r="7" fill="#69cf84"/>
+  <text x="165" y="70" fill="#b8c8e8" font-size="15" font-family="Consolas, Menlo, monospace">intelligencex setup wizard</text>
+
+  <text x="92" y="120" fill="#dbe7ff" font-size="26" font-family="Consolas, Menlo, monospace">IntelligenceX Setup Wizard</text>
+  <text x="92" y="156" fill="#7ea2df" font-size="18" font-family="Consolas, Menlo, monospace">Step 3/5: Configure</text>
+
+  <text x="92" y="214" fill="#c5d9ff" font-size="18" font-family="Consolas, Menlo, monospace">? Also create .intelligencex/reviewer.json?  Yes</text>
+  <text x="92" y="248" fill="#c5d9ff" font-size="18" font-family="Consolas, Menlo, monospace">? Enable static analysis (recommended)?  Yes</text>
+  <text x="92" y="282" fill="#c5d9ff" font-size="18" font-family="Consolas, Menlo, monospace">? Static analysis pack(s):  (default: all-50)</text>
+  <text x="92" y="316" fill="#c5d9ff" font-size="18" font-family="Consolas, Menlo, monospace">? Fail CI on static analysis findings?  No</text>
+  <text x="92" y="350" fill="#c5d9ff" font-size="18" font-family="Consolas, Menlo, monospace">? Optional export path for IDE analyzer configs:  (empty)</text>
+
+  <rect x="92" y="390" width="1216" height="330" rx="10" fill="#0c1322" stroke="#304463"/>
+  <text x="114" y="428" fill="#e3eeff" font-size="20" font-family="Consolas, Menlo, monospace">Effective config preview</text>
+  <text x="114" y="464" fill="#9fc3ff" font-size="17" font-family="Consolas, Menlo, monospace">review.provider: openai</text>
+  <text x="114" y="494" fill="#9fc3ff" font-size="17" font-family="Consolas, Menlo, monospace">review.mode: inline</text>
+  <text x="114" y="524" fill="#9fc3ff" font-size="17" font-family="Consolas, Menlo, monospace">analysis.enabled: true</text>
+  <text x="114" y="554" fill="#9fc3ff" font-size="17" font-family="Consolas, Menlo, monospace">analysis.packs: all-50</text>
+  <text x="114" y="584" fill="#9fc3ff" font-size="17" font-family="Consolas, Menlo, monospace">analysis.gate.enabled: false</text>
+  <text x="114" y="614" fill="#9fc3ff" font-size="17" font-family="Consolas, Menlo, monospace">analysis.results.inputs: artifacts/**/*.sarif, artifacts/intelligencex.findings.json</text>
+  <text x="114" y="656" fill="#76d48f" font-size="16" font-family="Consolas, Menlo, monospace">[OK] configuration ready for Plan/Apply</text>
+
+  <text x="92" y="770" fill="#7ea2df" font-size="18" font-family="Consolas, Menlo, monospace">Press Enter to continue to Secrets step...</text>
+</svg>

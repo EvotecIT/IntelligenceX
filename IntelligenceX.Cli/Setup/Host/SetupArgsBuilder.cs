@@ -95,14 +95,21 @@ internal static class SetupArgsBuilder {
             args.Add(plan.AnalysisEnabled.Value ? "true" : "false");
         }
 
-        if (plan.AnalysisGateEnabled.HasValue) {
+        var analysisAllowsGateAndPacks = plan.AnalysisEnabled != false;
+
+        if (analysisAllowsGateAndPacks && plan.AnalysisGateEnabled.HasValue) {
             args.Add("--analysis-gate");
             args.Add(plan.AnalysisGateEnabled.Value ? "true" : "false");
         }
 
-        if (!string.IsNullOrWhiteSpace(plan.AnalysisPacks)) {
+        if (analysisAllowsGateAndPacks && !string.IsNullOrWhiteSpace(plan.AnalysisPacks)) {
             args.Add("--analysis-packs");
             args.Add(plan.AnalysisPacks);
+        }
+
+        if (analysisAllowsGateAndPacks && !string.IsNullOrWhiteSpace(plan.AnalysisExportPath)) {
+            args.Add("--analysis-export-path");
+            args.Add(plan.AnalysisExportPath);
         }
 
         if (plan.SkipSecret) {
@@ -149,4 +156,3 @@ internal static class SetupArgsBuilder {
         return args.ToArray();
     }
 }
-

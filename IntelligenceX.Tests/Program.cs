@@ -26,6 +26,9 @@ internal static partial class Program {
         failed += Run("Tool output envelope error string includes meta when provided", TestToolOutputEnvelopeErrorStringIncludesMetaWhenProvided);
         failed += Run("Turn response_id parsing", TestTurnResponseIdParsing);
         failed += Run("Tool definitions ordered", TestToolDefinitionOrdering);
+        failed += Run("Tool definition alias merges tags", TestToolDefinitionAliasMergesTags);
+        failed += Run("Tool registry registers aliases from definition", TestToolRegistryRegistersAliasesFromDefinition);
+        failed += Run("Tool registry register alias override", TestToolRegistryRegisterAliasWithOverrides);
         failed += Run("Tool runner max rounds", TestToolRunnerMaxRounds);
         failed += Run("Tool runner unregistered tool", TestToolRunnerUnregisteredTool);
         failed += Run("Tool runner parallel execution", TestToolRunnerParallelExecution);
@@ -45,14 +48,61 @@ internal static partial class Program {
         failed += Run("Native tool schema fallback uses structured error data", TestNativeToolSchemaFallbackUsesStructuredErrorData);
         failed += Run("Native tool schema fallback ignores unrelated", TestNativeToolSchemaFallbackIgnoresUnrelated);
         failed += Run("Native tool schema serialization switches field name", TestNativeToolSchemaSerializationSwitchesFieldName);
+        failed += Run("Native tool schema serialization includes tags in description", TestNativeToolSchemaSerializationIncludesTagsInDescription);
         failed += Run("Native request body omits previous_response_id", TestNativeRequestBodyOmitsPreviousResponseId);
 #if !NET472
         failed += Run("Setup args reject skip+update", TestSetupArgsRejectSkipUpdate);
         failed += Run("Setup args include analysis options", TestSetupArgsIncludeAnalysisOptions);
+        failed += Run("Setup args include analysis export path", TestSetupArgsIncludeAnalysisExportPath);
+        failed += Run("Setup args disable analysis omits gate and packs", TestSetupArgsDisableAnalysisOmitsGateAndPacks);
+        failed += Run("Setup analysis export path normalization", TestSetupAnalysisExportPathNormalization);
+        failed += Run("Setup analysis export path combine rejects rooted file name", TestSetupAnalysisExportPathCombineRejectsRootedFileName);
+        failed += Run("Setup analysis export catalog prereq validation", TestSetupAnalysisExportCatalogPrereqValidation);
+        failed += Run("Setup analysis export duplicate target detection", TestSetupAnalysisExportDuplicateTargetDetection);
         failed += Run("Setup analysis disable writes enabled=false", TestSetupAnalysisDisableWritesFalse);
         failed += Run("Setup analysis defaults packs to all-50", TestSetupAnalysisDefaultsPacksToAll50);
         failed += Run("Setup config build honors analysis gate", TestSetupBuildConfigJsonHonorsAnalysisGateOnNewConfig);
         failed += Run("Setup config merge preserves review settings when enabling analysis", TestSetupBuildConfigJsonMergePreservesReviewSettingsWhenEnablingAnalysis);
+        failed += Run("Setup autodetect JSON serializes check statuses as lowercase strings",
+            TestSetupAutodetectJsonSerializesCheckStatusesAsLowercaseStrings);
+        failed += Run("Setup autodetect missing workspace value fails", TestSetupAutodetectMissingWorkspaceValueFails);
+        failed += Run("Setup autodetect missing repo value fails", TestSetupAutodetectMissingRepoValueFails);
+        failed += Run("Setup autodetect unknown option fails", TestSetupAutodetectUnknownOptionFails);
+        failed += Run("Setup onboarding contract canonical paths", TestSetupOnboardingContractCanonicalPaths);
+        failed += Run("Setup wizard path id maps to operation", TestSetupWizardPathIdMapsToOperation);
+        failed += Run("Setup wizard operation maps to path id", TestSetupWizardOperationMapsToPathId);
+        failed += Run("Setup wizard auto-detect reason normalization", TestSetupWizardAutoDetectReasonNormalization);
+        failed += Run("Setup wizard auto-detect prompt fallback recommendation", TestSetupWizardAutoDetectPromptRecommendationFallback);
+        failed += Run("Setup wizard auto-detect unavailable message formatting", TestSetupWizardAutoDetectUnavailableMessageFormatting);
+        failed += Run("Setup onboarding contract command templates", TestSetupOnboardingContractCommandTemplates);
+        failed += Run("Setup onboarding contract verification matches canonical values",
+            TestSetupOnboardingContractVerificationMatchesCanonicalValues);
+        failed += Run("Setup onboarding contract verification detects mismatches",
+            TestSetupOnboardingContractVerificationDetectsMismatches);
+        failed += Run("Setup onboarding contract verification rejects missing autodetect metadata",
+            TestSetupOnboardingContractVerificationRejectsMissingAutodetectMetadata);
+        failed += Run("Setup workflow upgrade preserves custom sections outside managed block",
+            TestSetupWorkflowUpgradePreservesCustomSectionsOutsideManagedBlock);
+        failed += Run("Setup workflow upgrade preserves outside managed block verbatim",
+            TestSetupWorkflowUpgradePreservesOutsideManagedBlockVerbatim);
+        failed += Run("Setup post-apply verify passes for managed setup", TestSetupPostApplyVerifySetupPassesWithManagedWorkflowAndSecret);
+        failed += Run("Setup post-apply verify detects residual cleanup config", TestSetupPostApplyVerifyCleanupDetectsResidualConfig);
+        failed += Run("Setup post-apply verify allows unknown branch state when PR exists",
+            TestSetupPostApplyVerifySetupAllowsUnknownBranchStateWithPr);
+        failed += Run("Setup post-apply verify unauthorized secret lookup fails deterministically",
+            TestSetupPostApplyVerifySecretLookupUnauthorizedFailsDeterministically);
+        failed += Run("Setup post-apply verify includes latest workflow run link",
+            TestSetupPostApplyVerifyIncludesLatestWorkflowRunLink);
+        failed += Run("Setup post-apply verify workflow run lookup failure is not reported as none",
+            TestSetupPostApplyVerifyWorkflowRunLookupFailureIsNotReportedAsNone);
+        failed += Run("Setup post-apply verify does not swallow unexpected workflow lookup exceptions",
+            TestSetupPostApplyVerifyDoesNotSwallowUnexpectedWorkflowLookupExceptions);
+        failed += Run("Setup wizard plain reaches PR created with fake GitHub API",
+            TestSetupWizardPlainReachesPullRequestCreatedWithFakeGitHubApi);
+        failed += Run("Web setup args reach PR created with fake GitHub API",
+            TestWebSetupArgsCanReachPullRequestCreatedWithFakeGitHubApi);
+        failed += Run("Wizard post-apply verify skips callback on failed apply",
+            TestWizardPostApplyVerifySkipsCallbackWhenApplyFails);
         failed += Run("CLI dispatch no-args interactive runs manage", TestCliDispatchNoArgsInteractiveRunsManage);
         failed += Run("CLI dispatch no-args non-interactive shows help", TestCliDispatchNoArgsNonInteractiveShowsHelp);
         failed += Run("CLI dispatch manage command routes to manage", TestCliDispatchManageCommandRoutesToManage);
@@ -65,6 +115,18 @@ internal static partial class Program {
         failed += Run("Manage external command captures help tail line", TestManageRunExternalCommandCapturesHelpTailLine);
         failed += Run("Manage external command start failure returns promptly", TestManageRunExternalCommandStartFailureReturnsPromptly);
         failed += Run("Manage external command non-timeout failure is not timeout", TestManageRunExternalCommandNonTimeoutFailureIsNotTimeout);
+        failed += Run("Web setup autodetect response matches shared contract payload",
+            TestWebSetupAutodetectResponseJsonMatchesSharedContractPayload);
+        failed += Run("Web setup autodetect response fallbacks for null payloads",
+            TestWebSetupAutodetectResponseJsonFallbacksForNullPayloads);
+        failed += Run("Web setup autodetect response rejects unknown check status",
+            TestWebSetupAutodetectResponseJsonRejectsUnknownCheckStatus);
+        failed += Run("Web setup args propagate request dry-run", TestWebSetupBuildSetupArgsPropagatesRequestDryRun);
+        failed += Run("Web setup resolves with-config from args", TestWebSetupResolveWithConfigFromArgs);
+        failed += Run("Web setup post-apply verify skips callback on failed apply",
+            TestWebSetupPostApplyVerifySkipsCallbackWhenApplyFails);
+        failed += Run("Web setup resolves org-secret verification context", TestWebSetupResolveOrgSecretVerificationContext);
+        failed += Run("Web setup resolves org-secret verification context per repo", TestWebSetupResolveOrgSecretVerificationContextPerRepo);
         failed += Run("Web setup subprocess timeout returns promptly", TestWebSetupRunProcessTimeoutReturnsPromptly);
         failed += Run("Manage GitHub CLI status token authenticated", TestManageGitHubCliStatusWithTokenIsAuthenticated);
         failed += Run("Manage GitHub CLI status exit code zero authenticated", TestManageGitHubCliStatusExitCodeZeroAuthenticated);
@@ -72,6 +134,27 @@ internal static partial class Program {
         failed += Run("Manage GitHub CLI status missing CLI", TestManageGitHubCliStatusMissingCli);
         failed += Run("GitHub repo detector parses remote urls", TestGitHubRepoDetectorParsesRemoteUrls);
         failed += Run("GitHub repo detector parses git config sections", TestGitHubRepoDetectorParsesGitConfigRemoteSection);
+        failed += Run("GitHub repo client secret lookup maps status codes", TestGitHubRepoClientSecretLookupMapsStatusCodes);
+        failed += Run("GitHub repo client secret lookup maps client exceptions", TestGitHubRepoClientSecretLookupMapsClientExceptions);
+        failed += Run("GitHub repo client secret lookup cancellation propagates", TestGitHubRepoClientSecretLookupCancellationPropagates);
+        failed += Run("GitHub repo client list workflow runs parses latest run",
+            TestGitHubRepoClientListWorkflowRunsParsesLatestRun);
+        failed += Run("GitHub repo client workflow run lookup result uses defensive copy",
+            TestGitHubRepoClientWorkflowRunLookupResultUsesDefensiveCopy);
+        failed += Run("GitHub repo client list workflow runs invalid payload returns empty",
+            TestGitHubRepoClientListWorkflowRunsInvalidPayloadReturnsEmpty);
+        failed += Run("GitHub repo client list workflow runs encodes path segments",
+            TestGitHubRepoClientListWorkflowRunsEncodesPathSegments);
+        failed += Run("GitHub repo client list workflow runs maps unauthorized",
+            TestGitHubRepoClientListWorkflowRunsMapsUnauthorized);
+        failed += Run("GitHub repo client file fetch cancellation propagates", TestGitHubRepoClientFileFetchCancellationPropagates);
+        failed += Run("GitHub repo client file fetch invalid base64 returns null", TestGitHubRepoClientFileFetchInvalidBase64ReturnsNull);
+        failed += Run("GitHub repo client injected http client applies default headers", TestGitHubRepoClientInjectedHttpClientAppliesDefaultHeaders);
+        failed += Run("GitHub repo client reused injected http client remains idempotent", TestGitHubRepoClientReusedInjectedHttpClientRemainsIdempotent);
+        failed += Run("GitHub repo client file fetch missing sha returns null", TestGitHubRepoClientFileFetchMissingShaReturnsNull);
+        failed += Run("GitHub repo client injected ctor null guard", TestGitHubRepoClientInjectedCtorNullGuard);
+        failed += Run("GitHub repo client dispose ownership semantics", TestGitHubRepoClientDisposeOwnershipSemantics);
+        failed += Run("GitHub repo client rejects use after dispose", TestGitHubRepoClientRejectsUseAfterDispose);
         failed += Run("GitHub secrets reject empty value", TestGitHubSecretsRejectEmptyValue);
         failed += Run("Release reviewer env token", TestReleaseReviewerEnvToken);
         failed += Run("CI path safety rejects non-existent directory leaf", TestCiPathSafetyUnderRootPhysicalRejectsNonexistentDirectoryLeaf);
@@ -162,6 +245,8 @@ internal static partial class Program {
         failed += Run("Analyze hotspots help has no side effects", TestAnalyzeHotspotsHelpHasNoSideEffects);
         failed += Run("Analyze hotspots state path is workspace-bound", TestAnalyzeHotspotsStatePathIsWorkspaceBound);
         failed += Run("Analyze validate-catalog command", TestAnalyzeValidateCatalogCommand);
+        failed += Run("Analyze list-packs --ids", TestAnalyzeListPacksIds);
+        failed += Run("Analyze list-packs help", TestAnalyzeListPacksHelp);
         failed += Run("Analyze list-rules markdown format", TestAnalyzeListRulesMarkdownFormat);
         failed += Run("Analyze list-rules json with pack filter", TestAnalyzeListRulesJsonWithPackFilter);
         failed += Run("Analyze list-rules tier counts", TestAnalyzeListRulesTierCounts);

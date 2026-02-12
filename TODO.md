@@ -8,8 +8,8 @@ Status: In progress
 Goal: reviewer + static analysis + onboarding (CLI + Web) feel "done" end-to-end for a new repo.
 
 ### Acceptance (Definition Of Done)
-- [ ] A new user can run `intelligencex setup wizard` on a clean machine and reach "PR created" without manual repo edits.
-- [ ] A new user can run `intelligencex setup web` and reach "PR created" without manual repo edits.
+- [x] A new user can run `intelligencex setup wizard` on a clean machine and reach "PR created" without manual repo edits.
+- [x] A new user can run `intelligencex setup web` and reach "PR created" without manual repo edits.
 - [ ] First merged onboarding PR produces a successful review on the next PR (sticky summary + inline when supported).
 - [ ] Review comment always includes reviewed SHA and an explicit diff-range label (base -> head).
 - [ ] Static analysis runs before review, publishes artifacts, and the review comment always renders analysis status (pass/unavailable) even when findings are zero.
@@ -21,12 +21,12 @@ Goal: reviewer + static analysis + onboarding (CLI + Web) feel "done" end-to-end
 - [x] Web UI: add "Enable static analysis" toggle and pack picker (default `all-50`).
 - [x] CLI + Web: show a final "Effective config" preview (review + analysis) before Apply.
 - [x] CLI + Web: surface the Dependabot secrets limitation in the UI copy (why bot identity may differ).
-- [ ] CLI + Web: add a post-Apply "Verify" step (workflow present, config present if requested, required secrets present, last runs links).
+- [x] CLI + Web: add a post-Apply "Verify" step (workflow present, config present if requested, required secrets present, last runs links).
 
 ### Phase B — Setup Output (Workflow + reviewer.json)
 - [x] Setup config writer: include `analysis` section in `.intelligencex/reviewer.json` when static analysis is enabled (create + merge paths).
-- [ ] Setup presets: define recommended tiers for analysis packs (`all-50`, `all-100`, `all-500`) and a "no analysis" option.
-- [ ] Ensure workflow/config generation stays stable across upgrades (managed block upgrades do not delete user customization outside managed block).
+- [x] Setup presets: define recommended tiers for analysis packs (`all-50`, `all-100`, `all-500`) and a "no analysis" option.
+- [x] Ensure workflow/config generation stays stable across upgrades (managed block upgrades do not delete user customization outside managed block).
 
 ### Phase C — Review Reliability (Reduce Churn, Increase Continuity)
 - [ ] Add a diff range option for incremental review (for example `reviewDiffRange: last-reviewed` uses the last reviewed commit from the sticky summary as base).
@@ -34,15 +34,15 @@ Goal: reviewer + static analysis + onboarding (CLI + Web) feel "done" end-to-end
 - [ ] Ensure thread triage does not repeatedly re-suggest already-addressed items; prefer dedupe and summary stability over rewriting.
 
 ### Phase D — Static Analysis Productization
-- [ ] Wizard: explain analysis gate semantics (which types/severities fail the check) and link to docs.
-- [ ] Add "list packs" affordance in onboarding (CLI and Web) so users can browse available packs.
-- [ ] Provide an optional "export analyzer config" path for IDE support (explicit opt-in, never default).
-- [ ] Add a CI guardrail: `intelligencex analyze validate-catalog` and pack integrity checks run on every PR that touches Analysis/Catalog or Analysis/Packs.
+- [x] Wizard: explain analysis gate semantics (which types/severities fail the check) and link to docs.
+- [x] Add "list packs" affordance in onboarding (CLI and Web) so users can browse available packs.
+- [x] Provide an optional "export analyzer config" path for IDE support (explicit opt-in, never default).
+- [x] Add a CI guardrail: `intelligencex analyze validate-catalog` and pack integrity checks run on every PR that touches Analysis/Catalog or Analysis/Packs.
 
 ### Phase E — Docs + Samples
-- [ ] Promote `Docs/reviewer/static-analysis.md` from Draft to stable docs (align examples with actual wizard output).
-- [ ] Add "First PR checklist" doc: what to expect after merging onboarding PR and how to debug common issues.
-- [ ] Add screenshots (CLI + Web) for the "Configure" step and the "Verify" step.
+- [x] Promote `Docs/reviewer/static-analysis.md` from Draft to stable docs (align examples with actual wizard output).
+- [x] Add "First PR checklist" doc: what to expect after merging onboarding PR and how to debug common issues.
+- [x] Add screenshots (CLI + Web) for the "Configure" step and the "Verify" step.
 
 ### Phase F — End-To-End Tests
 - [x] Add tests for setup plan generation: ensure enabling analysis produces `analysis` in reviewer.json and does not regress existing review settings.
@@ -246,6 +246,10 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [x] PR #74 Fix reviewer backlog items — checklist items: Consider an integration-style test that validates the failure-summary update path in `Program.RunAsync`.. Links: https://github.com/EvotecIT/IntelligenceX/pull/74
 - [ ] PR #208 Manage hub external-command review churn — checklist item keeps reappearing despite early-return startup/read-init failure handling in `IntelligenceX.Cli/Program.Manage.Utility.cs`; treat as churn unless maintainers escalate. Links: https://github.com/EvotecIT/IntelligenceX/pull/208#issuecomment-3880247612
 - [ ] PR #210 CLI/Web onboarding review churn — blocker oscillates between opposite onboarding state models across iterations; treat as churn unless maintainers explicitly escalate. Links: https://github.com/EvotecIT/IntelligenceX/pull/210#issuecomment-3883453782
+- [ ] PR #229 analysis-export duplicate review churn — checklist item still reports missing mixed-separator duplicate normalization after `ce8f1c2`; `TestSetupAnalysisExportDuplicateTargetDetection` now includes `.intelligencex\\analyzers\\.editorconfig` vs `.intelligencex/analyzers/.EDITORCONFIG` and passes locally + CI. Treat as churn unless maintainers escalate. Links: https://github.com/EvotecIT/IntelligenceX/pull/229#issuecomment-3884832998
+- [ ] PR #234 setup post-apply verification churn — latest bot item claims `HandleSetupAsync` still passes `request.SecretOrg`, but code at `IntelligenceX.Cli/Setup/Web/WebApi.Setup.cs:210` already passes `secretOrgForRepo` into `ResolveOrgSecretVerificationContext`; treat as churn unless maintainers escalate. Links: https://github.com/EvotecIT/IntelligenceX/pull/234#issuecomment-3885712980
+- [ ] PR #248 onboarding autodetect review churn — after multiple fix batches (`2dd8482`) and green required checks, bot still reports speculative merge blockers about subprocess strategy/workspace validation not tied to reproducible failures in current diff. Track separately and escalate only if maintainers require additional hardening before merge. Links: https://github.com/EvotecIT/IntelligenceX/pull/248#issuecomment-3889295672
+- [ ] PR #262 onboarding acceptance-path review churn — latest blocker oscillates between opposite recommendations (first rejecting production helper exposure, then rejecting reflection fallback after helper removal) despite green required checks and validated behavior; treat as churn unless maintainers explicitly escalate. Links: https://github.com/EvotecIT/IntelligenceX/pull/262#issuecomment-3890747719
 <details>
 <summary>PR #95 Fix duplicate weekly labels in usage summary</summary>
 

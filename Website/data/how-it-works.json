@@ -7,7 +7,7 @@
   {
     "step": 2,
     "title": "Set Up in Seconds",
-    "description": "Run the CLI wizard or open the local web UI. Pick your repos, choose a review preset (balanced, picky, security, minimal), and IntelligenceX creates a PR with the GitHub Actions workflow."
+    "description": "Run the CLI wizard or local web UI, choose a path (new setup, fix auth, cleanup, maintenance), run auto-detect preflight, then apply setup with guided defaults."
   },
   {
     "step": 3,

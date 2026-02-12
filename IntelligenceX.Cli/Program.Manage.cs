@@ -80,9 +80,11 @@ internal static partial class Program {
     }
 
     private enum SetupAction {
+        AutoDetectPreflight,
         SetupWizard,
         SetupWebUi,
         UpdateSecretOnly,
+        CleanupFlow,
         Back
     }
 
@@ -293,15 +295,26 @@ internal static partial class Program {
                 new SelectionPrompt<SetupAction>()
                     .Title("Choose setup operation")
                     .UseConverter(x => x switch {
+                        SetupAction.AutoDetectPreflight => $"{Icon("stethoscope")} Auto-detect path (doctor preflight)",
                         SetupAction.SetupWizard => $"{Icon("compass")} Start setup wizard",
                         SetupAction.SetupWebUi => $"{Icon("globe")} Start setup web UI",
                         SetupAction.UpdateSecretOnly => $"{Icon("refresh")} Update secret only",
+                        SetupAction.CleanupFlow => $"{Icon("broom")} Cleanup workflow/config",
                         SetupAction.Back => $"{Icon("back")} Back",
                         _ => x.ToString()
                     })
                     .AddChoices(Enum.GetValues<SetupAction>()));
 
             switch (action) {
+                case SetupAction.AutoDetectPreflight:
+                    await RunProcessWithSummaryAsync(state, "Setup auto-detect", new[] {
+                        new ProcessStep {
+                            Title = "Run setup auto-detect",
+                            RunAsync = () => RunSetupAsync(new[] { "autodetect" })
+                        }
+                    }).ConfigureAwait(false);
+                    PauseForMenu();
+                    break;
                 case SetupAction.SetupWizard:
                     await RunProcessWithSummaryAsync(state, "Setup wizard", new[] {
                         new ProcessStep {
@@ -322,6 +335,15 @@ internal static partial class Program {
                     break;
                 case SetupAction.UpdateSecretOnly:
                     await RunUpdateSecretFromLocalAuthAsync(state).ConfigureAwait(false);
+                    break;
+                case SetupAction.CleanupFlow:
+                    await RunProcessWithSummaryAsync(state, "Cleanup wizard", new[] {
+                        new ProcessStep {
+                            Title = "Start setup wizard in cleanup mode",
+                            RunAsync = () => RunSetupAsync(new[] { "wizard", "--operation", "cleanup" })
+                        }
+                    }).ConfigureAwait(false);
+                    PauseForMenu();
                     break;
                 case SetupAction.Back:
                     return;

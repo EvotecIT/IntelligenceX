@@ -2,12 +2,43 @@
 
 The CLI wizard is the fastest way to set up the reviewer across one or more repositories.
 It runs locally, opens any needed browser approvals, and applies changes via PRs by default.
+After merging onboarding, run the [First PR Checklist](/Docs/reviewer/first-pr-checklist.md) on your next PR.
+
+## Screenshots
+
+- Configure step: [Screenshot](../screenshots.md#cli-wizard---configure)
+- Verify step: [Screenshot](../screenshots.md#cli-wizard---verify)
 
 ## Quick start
 
 ```powershell
 intelligencex setup wizard
 ```
+
+The wizard now starts with doctor-based auto-detect and path selection before GitHub auth/repo selection.
+You can still run preflight manually:
+
+```powershell
+intelligencex setup autodetect --json
+```
+
+```mermaid
+flowchart TD
+  A["Run wizard"] --> B["Doctor auto-detect"]
+  B --> C{"Choose path"}
+  C --> D["new-setup"]
+  C --> E["refresh-auth"]
+  C --> F["cleanup"]
+  C --> G["maintenance"]
+  D --> H["GitHub auth and repos"]
+  E --> H
+  F --> H
+  G --> H
+  H --> I["Path-specific configure and auth requirements"]
+  I --> J["Plan apply verify"]
+```
+
+Path requirements and Bot parity flow are documented in [Web Onboarding Flow](/docs/reviewer/web-onboarding/).
 
 ## Web UI (preview)
 
@@ -32,6 +63,21 @@ See [Web Setup UI](/docs/reviewer/setup-web/) for limitations and security notes
 - Setup / update workflow + config (default)
 - Update OpenAI secret only
 - Cleanup (remove workflow/config)
+- Maintenance (inspect first, then pick setup/update-secret/cleanup)
+
+Path-first non-interactive examples:
+
+```powershell
+intelligencex setup wizard --path new-setup --repo owner/name
+intelligencex setup wizard --path refresh-auth --repo owner/name
+intelligencex setup wizard --path cleanup --repo owner/name --dry-run
+```
+
+If auto-detect preflight fails and you need richer diagnostics:
+
+```powershell
+intelligencex setup wizard --verbose
+```
 
 ## GitHub auth modes
 

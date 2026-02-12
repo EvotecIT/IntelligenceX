@@ -1,0 +1,40 @@
+name: Analysis Catalog Guardrail
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'Analysis/Catalog/**'
+      - 'Analysis/Packs/**'
+      - '.github/workflows/analysis-catalog-guardrail.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Validate Analysis Catalog
+    # While the repo is private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
+    # When public, use GitHub-hosted runners by default.
+    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Validate catalog structure and pack integrity
+        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze validate-catalog --workspace .
+
+      - name: Resolve all pack rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          packs="$(dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze list-packs --workspace . --ids | tr '\n' ',' | sed 's/,$//')"
+          if [ -z "${packs}" ]; then
+            echo "No analysis packs found."
+            exit 1
+          fi
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze list-rules --workspace . --format json --packs "${packs}" > /dev/null

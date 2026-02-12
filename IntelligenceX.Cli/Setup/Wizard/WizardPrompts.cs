@@ -2,11 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using IntelligenceX.Cli.Setup;
+using IntelligenceX.Cli.Setup.Onboarding;
 using Spectre.Console;
 
 namespace IntelligenceX.Cli.Setup.Wizard;
 
 internal static class WizardPrompts {
+    internal const string DisableAnalysisSelection = "__disable_analysis__";
+
     public static string PromptRepo(string? current) {
         var prompt = new TextPrompt<string>("Repository (owner/name):")
             .Validate(value => value.Contains('/')
@@ -63,6 +66,34 @@ internal static class WizardPrompts {
                     SetupScope.MultipleRepos => "Multiple repositories",
                     _ => "Manual entry"
                 }));
+    }
+
+    public static string PromptOnboardingPath(string? recommendedPathId, string? recommendedReason) {
+        var paths = SetupOnboardingPaths.GetAll();
+        var recommended = SetupOnboardingPaths.GetOrDefault(recommendedPathId);
+        var recommendedId = recommended?.Id ?? string.Empty;
+        var recommendedDisplayName = recommended?.DisplayName ?? "New Setup";
+        if (!string.IsNullOrWhiteSpace(recommendedReason)) {
+            AnsiConsole.MarkupLine($"[grey]Recommendation: {recommendedDisplayName}. {recommendedReason}[/]");
+            AnsiConsole.WriteLine();
+        }
+
+        var orderedPaths = paths
+            .OrderBy(path => string.Equals(path.Id, recommendedId, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(path => path.DisplayName, StringComparer.Ordinal)
+            .ToArray();
+        var prompt = new SelectionPrompt<SetupOnboardingPathDefinition>()
+            .Title("Choose onboarding path:")
+            .PageSize(8)
+            .AddChoices(orderedPaths)
+            .UseConverter(path => {
+                var recommendedSuffix = string.Equals(path.Id, recommendedId, StringComparison.OrdinalIgnoreCase)
+                    ? " (recommended)"
+                    : string.Empty;
+                return $"{path.DisplayName}{recommendedSuffix} - {path.Description}";
+            });
+        var selected = AnsiConsole.Prompt(prompt);
+        return selected.Id;
     }
 
     public static WizardOperation PromptOperation() {
@@ -245,35 +276,47 @@ internal static class WizardPrompts {
     }
 
     public static string? PromptAnalysisPacks(string? current) {
-        var choices = new List<string> {
-            "(default: all-50)",
-            "all-100",
-            "all-500",
-            "all-security-default",
-            "powershell-50",
-            "custom (enter pack ids)"
-        };
-        if (!string.IsNullOrWhiteSpace(current) &&
-            !choices.Contains(current, StringComparer.Ordinal) &&
-            !string.Equals(current, "all-50", StringComparison.Ordinal)) {
-            choices.Insert(1, $"(keep current: {current})");
-        }
-        var selected = AnsiConsole.Prompt(
-            new SelectionPrompt<string>()
-                .Title("Static analysis pack(s):")
-                .PageSize(10)
-                .AddChoices(choices));
-        if (string.Equals(selected, "(default: all-50)", StringComparison.Ordinal)) {
-            return null;
-        }
-        if (selected.StartsWith("(keep current:", StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(current)) {
-            return current;
-        }
-        if (!string.Equals(selected, "custom (enter pack ids)", StringComparison.Ordinal)) {
-            return selected;
-        }
-
         while (true) {
+            var choices = new List<string> {
+                "(default: all-50)",
+                "all-100",
+                "all-500",
+                "none (disable static analysis)",
+                "all-security-default",
+                "powershell-50",
+                "list available packs",
+                "custom (enter pack ids)"
+            };
+            if (!string.IsNullOrWhiteSpace(current) &&
+                !choices.Contains(current, StringComparer.Ordinal) &&
+                !string.Equals(current, "all-50", StringComparison.Ordinal)) {
+                choices.Insert(1, $"(keep current: {current})");
+            }
+            var selected = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("Static analysis pack(s):")
+                    .PageSize(10)
+                    .AddChoices(choices));
+            if (string.Equals(selected, "(default: all-50)", StringComparison.Ordinal)) {
+                return null;
+            }
+            if (string.Equals(selected, "none (disable static analysis)", StringComparison.Ordinal)) {
+                return DisableAnalysisSelection;
+            }
+            if (selected.StartsWith("(keep current:", StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(current)) {
+                return current;
+            }
+            if (string.Equals(selected, "list available packs", StringComparison.Ordinal)) {
+                AnsiConsole.MarkupLine("[grey]Browse available packs:[/]");
+                AnsiConsole.MarkupLine("[grey]  intelligencex analyze list-rules --workspace . --format markdown[/]");
+                AnsiConsole.MarkupLine("[grey]  intelligencex analyze list-rules --workspace . --pack all-50[/]");
+                AnsiConsole.MarkupLine("[grey]Docs: Docs/reviewer/static-analysis.md[/]");
+                continue;
+            }
+            if (!string.Equals(selected, "custom (enter pack ids)", StringComparison.Ordinal)) {
+                return selected;
+            }
+
             var currentHint = string.IsNullOrWhiteSpace(current) ? string.Empty : $" (current: {current})";
             var prompt = new TextPrompt<string>($"Pack ids (comma-separated, empty for default){currentHint}:")
                 .AllowEmpty();
@@ -290,10 +333,27 @@ internal static class WizardPrompts {
     }
 
     public static bool PromptAnalysisGateEnabled(bool current) {
+        AnsiConsole.MarkupLine("[grey]Gate semantics: fail when enabled rules report vulnerability/bug findings at warning+ severity. Docs: Docs/reviewer/static-analysis.md[/]");
         return AnsiConsole.Confirm("Fail CI on static analysis findings?", current);
     }
 
-    // Pack validation/normalization lives in SetupAnalysisPacks (shared with web onboarding).
+    public static string? PromptAnalysisExportPath(string? current) {
+        while (true) {
+            var currentHint = string.IsNullOrWhiteSpace(current) ? string.Empty : $" (current: {current})";
+            var raw = AnsiConsole.Prompt(
+                new TextPrompt<string>($"Optional export path for IDE analyzer configs{currentHint} (empty to skip):")
+                    .AllowEmpty());
+            if (string.IsNullOrWhiteSpace(raw)) {
+                return null;
+            }
+            if (SetupAnalysisExportPath.TryNormalize(raw, out var normalized, out var error)) {
+                return normalized;
+            }
+            AnsiConsole.MarkupLine($"[red]{error}[/]");
+        }
+    }
+
+    // Pack/export-path validation is shared with web onboarding helpers.
 
     public static SecretTarget PromptSecretTarget(int selectedRepoCount, bool ownersMatch) {
         if (selectedRepoCount <= 1 || !ownersMatch) {

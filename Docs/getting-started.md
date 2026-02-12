@@ -22,11 +22,14 @@ intelligencex setup wizard
 
 The wizard guides you through:
 
-1. Authenticating with ChatGPT or Copilot (your own account)
-2. Connecting to GitHub (OAuth, PAT, or your own GitHub App)
-3. Selecting repositories for review
-4. Choosing a review preset (balanced, picky, security, minimal, etc.)
-5. Creating a PR with the GitHub Actions workflow
+1. Running preflight auto-detect (recommended): `intelligencex setup autodetect`
+2. Choosing your path (new setup, fix expired auth, cleanup, maintenance)
+3. Connecting to GitHub (OAuth, PAT, or your own GitHub App)
+4. Selecting repositories for review
+5. Choosing a review preset (balanced, picky, security, minimal, etc.)
+6. Creating a PR with the GitHub Actions workflow
+
+See [Web Onboarding Flow](/docs/reviewer/web-onboarding/) for the canonical path/auth requirements matrix and Bot contract-check flow.
 
 ## Option 2 - Local Web UI (Preview)
 
@@ -63,6 +66,8 @@ Once the workflow is in place, IntelligenceX automatically reviews every PR:
 - Summary review with overall assessment
 - Hybrid mode combines both
 - Auto-resolve cleans up stale bot threads
+
+After merging your onboarding PR, run the [First PR Checklist](/Docs/reviewer/first-pr-checklist.md) on the next PR.
 
 ## Configuring the Reviewer
 

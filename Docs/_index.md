@@ -18,6 +18,7 @@ Welcome to the IntelligenceX documentation.
 - [Overview](/docs/reviewer/overview/)
 - [Onboarding Wizard](/docs/reviewer/onboarding-wizard/)
 - [Web Setup UI](/docs/reviewer/setup-web/)
+- [Onboarding Unification Tracker](/docs/reviewer/onboarding-unification-tracker/)
 - [Configuration](/docs/reviewer/configuration/)
 - [Security & Trust](/docs/reviewer/security-trust/)
 - [Static Analysis](/docs/reviewer/static-analysis/)
@@ -47,7 +48,7 @@ Welcome to the IntelligenceX documentation.
 - [Examples](/docs/examples/)
 - [Troubleshooting](/docs/troubleshooting/)
 - [FAQ](/docs/faq/)
-- [Screenshots (Planned)](/docs/screenshots/)
+- [Screenshots](/docs/screenshots/)
 
 ## Apps (Planned)
 

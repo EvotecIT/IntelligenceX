@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="860" viewBox="0 0 1400 860" role="img" aria-labelledby="title desc">
+  <title id="title">IntelligenceX CLI Wizard - Verify step</title>
+  <desc id="desc">Terminal-style screenshot of post-apply verification output in the CLI onboarding flow.</desc>
+  <rect width="1400" height="860" fill="#0f1726"/>
+  <rect x="56" y="44" width="1288" height="772" rx="14" fill="#101a2e" stroke="#2a3a57"/>
+  <rect x="56" y="44" width="1288" height="42" rx="14" fill="#1a2740"/>
+  <circle cx="86" cy="65" r="7" fill="#f16d6d"/>
+  <circle cx="110" cy="65" r="7" fill="#f6ca5e"/>
+  <circle cx="134" cy="65" r="7" fill="#69cf84"/>
+  <text x="165" y="70" fill="#b8c8e8" font-size="15" font-family="Consolas, Menlo, monospace">intelligencex setup wizard</text>
+
+  <text x="92" y="120" fill="#dbe7ff" font-size="26" font-family="Consolas, Menlo, monospace">Apply Summary + Verify</text>
+  <text x="92" y="156" fill="#7ea2df" font-size="18" font-family="Consolas, Menlo, monospace">Post-apply checks (managed setup)</text>
+
+  <rect x="92" y="188" width="1216" height="514" rx="10" fill="#0c1322" stroke="#304463"/>
+  <text x="114" y="228" fill="#76d48f" font-size="18" font-family="Consolas, Menlo, monospace">[PASS] workflow file created: .github/workflows/review-intelligencex.yml</text>
+  <text x="114" y="260" fill="#76d48f" font-size="18" font-family="Consolas, Menlo, monospace">[PASS] reviewer config present: .intelligencex/reviewer.json</text>
+  <text x="114" y="292" fill="#76d48f" font-size="18" font-family="Consolas, Menlo, monospace">[PASS] required secrets available</text>
+  <text x="114" y="324" fill="#76d48f" font-size="18" font-family="Consolas, Menlo, monospace">[PASS] PR created and pushed</text>
+  <text x="114" y="356" fill="#76d48f" font-size="18" font-family="Consolas, Menlo, monospace">[PASS] verification completed</text>
+
+  <text x="114" y="412" fill="#9fc3ff" font-size="17" font-family="Consolas, Menlo, monospace">PR URL: https://github.com/org/repo/pull/123</text>
+  <text x="114" y="444" fill="#9fc3ff" font-size="17" font-family="Consolas, Menlo, monospace">Latest run: https://github.com/org/repo/actions/runs/123456789</text>
+
+  <text x="114" y="500" fill="#e3eeff" font-size="18" font-family="Consolas, Menlo, monospace">Next actions:</text>
+  <text x="114" y="532" fill="#9fc3ff" font-size="17" font-family="Consolas, Menlo, monospace">1) Merge onboarding PR</text>
+  <text x="114" y="564" fill="#9fc3ff" font-size="17" font-family="Consolas, Menlo, monospace">2) Open a small follow-up PR</text>
+  <text x="114" y="596" fill="#9fc3ff" font-size="17" font-family="Consolas, Menlo, monospace">3) Confirm Static Analysis Gate + AI Review checks</text>
+  <text x="114" y="628" fill="#9fc3ff" font-size="17" font-family="Consolas, Menlo, monospace">4) Verify review comment includes reviewed SHA and diff range</text>
+
+  <text x="92" y="770" fill="#7ea2df" font-size="18" font-family="Consolas, Menlo, monospace">Setup complete.</text>
+</svg>

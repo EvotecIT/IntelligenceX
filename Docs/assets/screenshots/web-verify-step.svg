@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="860" viewBox="0 0 1400 860" role="img" aria-labelledby="title desc">
+  <title id="title">IntelligenceX Setup Web UI - Verify step</title>
+  <desc id="desc">Screenshot-style mock of the Review and post-apply Verify step in the local web onboarding wizard.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#eef7f0"/>
+      <stop offset="100%" stop-color="#e3f0f8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1400" height="860" fill="url(#bg)"/>
+  <rect x="70" y="46" width="1260" height="768" rx="16" fill="#ffffff" stroke="#d7dfed"/>
+  <rect x="70" y="46" width="1260" height="54" rx="16" fill="#1f3048"/>
+  <text x="104" y="80" fill="#f8fbff" font-size="21" font-family="Segoe UI, Arial, sans-serif">IntelligenceX Setup Wizard (Web)</text>
+  <rect x="110" y="134" width="1160" height="60" rx="10" fill="#f2f6ff" stroke="#d9e4ff"/>
+  <text x="140" y="170" fill="#2c476f" font-size="18" font-family="Segoe UI, Arial, sans-serif">Auth  ->  Repos  ->  Configure  ->  Secrets  ->  Review</text>
+  <rect x="1120" y="146" width="120" height="36" rx="18" fill="#2f7cf5"/>
+  <text x="1152" y="170" fill="#ffffff" font-size="16" font-family="Segoe UI, Arial, sans-serif">Review</text>
+
+  <rect x="110" y="222" width="760" height="520" rx="12" fill="#fbfcff" stroke="#dce5f4"/>
+  <text x="142" y="262" fill="#203a5d" font-size="28" font-family="Segoe UI, Arial, sans-serif">Apply + Verify</text>
+  <text x="142" y="298" fill="#516989" font-size="17" font-family="Segoe UI, Arial, sans-serif">Post-apply checks confirm workflow, config, secrets, and run readiness.</text>
+
+  <rect x="142" y="330" width="696" height="250" rx="9" fill="#f6fbf8" stroke="#cbe5d4"/>
+  <text x="164" y="362" fill="#2d5f3f" font-size="19" font-family="Segoe UI, Arial, sans-serif">Verification results</text>
+  <text x="164" y="392" fill="#2e6a43" font-size="16" font-family="Consolas, Menlo, monospace">[PASS] workflow file exists</text>
+  <text x="164" y="420" fill="#2e6a43" font-size="16" font-family="Consolas, Menlo, monospace">[PASS] reviewer config present</text>
+  <text x="164" y="448" fill="#2e6a43" font-size="16" font-family="Consolas, Menlo, monospace">[PASS] required secrets available</text>
+  <text x="164" y="476" fill="#2e6a43" font-size="16" font-family="Consolas, Menlo, monospace">[PASS] PR created successfully</text>
+  <text x="164" y="504" fill="#2e6a43" font-size="16" font-family="Consolas, Menlo, monospace">[PASS] links to latest workflow runs</text>
+
+  <rect x="142" y="600" width="696" height="112" rx="9" fill="#ffffff" stroke="#d9e2f2"/>
+  <text x="164" y="632" fill="#2f4b74" font-size="16" font-family="Segoe UI, Arial, sans-serif">Created PR</text>
+  <text x="164" y="662" fill="#1b4f93" font-size="17" font-family="Consolas, Menlo, monospace">https://github.com/org/repo/pull/123</text>
+  <text x="164" y="688" fill="#4e6689" font-size="14" font-family="Segoe UI, Arial, sans-serif">Next: open PR checks and confirm first review comment.</text>
+
+  <rect x="900" y="222" width="370" height="520" rx="12" fill="#fbfdff" stroke="#dce5f4"/>
+  <text x="928" y="262" fill="#203a5d" font-size="24" font-family="Segoe UI, Arial, sans-serif">Status Badges</text>
+  <rect x="928" y="286" width="312" height="46" rx="8" fill="#e8f6ed"/>
+  <text x="952" y="315" fill="#2e6a43" font-size="16" font-family="Segoe UI, Arial, sans-serif">Auth: ready</text>
+  <rect x="928" y="344" width="312" height="46" rx="8" fill="#e8f6ed"/>
+  <text x="952" y="373" fill="#2e6a43" font-size="16" font-family="Segoe UI, Arial, sans-serif">Repos: selected</text>
+  <rect x="928" y="402" width="312" height="46" rx="8" fill="#e8f6ed"/>
+  <text x="952" y="431" fill="#2e6a43" font-size="16" font-family="Segoe UI, Arial, sans-serif">Secret bundle: available</text>
+
+  <rect x="900" y="666" width="170" height="52" rx="8" fill="#e6edf8"/>
+  <text x="960" y="699" fill="#2b486f" font-size="18" font-family="Segoe UI, Arial, sans-serif">Back</text>
+  <rect x="1090" y="666" width="180" height="52" rx="8" fill="#2f7cf5"/>
+  <text x="1141" y="699" fill="#ffffff" font-size="18" font-family="Segoe UI, Arial, sans-serif">Apply</text>
+</svg>

@@ -75,6 +75,13 @@ internal static partial class SetupRunner {
         return plan.Content ?? string.Empty;
     }
 
+    // Test helper for workflow upgrade coverage against existing workflow content.
+    internal static string BuildWorkflowYamlFromSeedForTests(string[] args, string seedContent) {
+        var options = SetupOptions.Parse(args);
+        var plan = PlanWorkflowChange(options, seedContent);
+        return plan.Content ?? seedContent;
+    }
+
     private static string? ReadConfigOverride(SetupOptions options) {
         if (!string.IsNullOrWhiteSpace(options.ConfigJson)) {
             return options.ConfigJson;
@@ -601,102 +608,5 @@ internal static partial class SetupRunner {
         }
         return content.IndexOf("review-intelligencex.yml", StringComparison.OrdinalIgnoreCase) >= 0 ||
                content.IndexOf("IntelligenceX Review", StringComparison.OrdinalIgnoreCase) >= 0;
-    }
-
-    private static void WriteHelp() {
-        Console.WriteLine("IntelligenceX setup");
-        Console.WriteLine();
-        Console.WriteLine("Options:");
-        Console.WriteLine("  --repo <owner/name>");
-        Console.WriteLine("  --github-client-id <id>");
-        Console.WriteLine("  --github-token <token>");
-        Console.WriteLine("  --github-api-base-url <url> (default https://api.github.com)");
-        Console.WriteLine("  --github-auth-base-url <url> (default https://github.com)");
-        Console.WriteLine("  --actions-repo <owner/repo> (default evotecit/github-actions)");
-        Console.WriteLine("  --actions-ref <ref> (default master)");
-        Console.WriteLine("  --runs-on <json-array> (default [\"self-hosted\",\"ubuntu\"])");
-        Console.WriteLine("  --reviewer-source <source|release> (default release)");
-        Console.WriteLine("  --reviewer-release-repo <owner/repo> (default EvotecIT/github-actions)");
-        Console.WriteLine("  --reviewer-release-tag <tag> (default latest)");
-        Console.WriteLine("  --reviewer-release-asset <name>");
-        Console.WriteLine("  --reviewer-release-url <url>");
-        Console.WriteLine("  --provider <openai|copilot> (default openai)");
-        Console.WriteLine("  --openai-model <model>");
-        Console.WriteLine("  --openai-transport <native|appserver>");
-        Console.WriteLine("  --openai-account-id <id> (pin ChatGPT account when multiple are present)");
-        Console.WriteLine("  --include-issue-comments <true|false>");
-        Console.WriteLine("  --include-review-comments <true|false>");
-        Console.WriteLine("  --include-related-prs <true|false>");
-        Console.WriteLine("  --progress-updates <true|false>");
-        Console.WriteLine("  --review-profile <balanced|picky|highlevel|security|performance|tests|minimal>");
-        Console.WriteLine("  --review-mode <hybrid|summary|inline>");
-        Console.WriteLine("  --review-comment-mode <sticky|fresh>");
-        Console.WriteLine("  --analysis-enabled <true|false> (write analysis section into reviewer.json)");
-        Console.WriteLine("  --analysis-gate <true|false> (when true, analysis gate can fail CI; default false)");
-        Console.WriteLine("  --analysis-packs <id1,id2> (default all-50 when analysis is enabled)");
-        Console.WriteLine("  --config-path <path> (use custom config.json content)");
-        Console.WriteLine("  --config-json <json> (use inline config.json content)");
-        Console.WriteLine("  --auth-b64 <value> (use pre-exported auth bundle)");
-        Console.WriteLine("  --auth-b64-path <path> (read pre-exported auth bundle)");
-        Console.WriteLine("  --diagnostics <true|false>");
-        Console.WriteLine("  --preflight <true|false>");
-        Console.WriteLine("  --preflight-timeout-seconds <number>");
-        Console.WriteLine("  --cleanup-enabled <true|false>");
-        Console.WriteLine("  --cleanup-mode <comment|edit|hybrid>");
-        Console.WriteLine("  --cleanup-scope <pr|issue|both>");
-        Console.WriteLine("  --cleanup-require-label <label>");
-        Console.WriteLine("  --cleanup-min-confidence <0-1>");
-        Console.WriteLine("  --cleanup-allowed-edits <comma-list>");
-        Console.WriteLine("  --cleanup-post-edit-comment <true|false>");
-        Console.WriteLine("  --with-config (also write .intelligencex/reviewer.json)");
-        Console.WriteLine("  --upgrade (update managed sections instead of skipping)");
-        Console.WriteLine("  --update-secret (refresh INTELLIGENCEX_AUTH_B64 only)");
-        Console.WriteLine("  --skip-secret (skip secret update during setup)");
-        Console.WriteLine("  --manual-secret (print secret instead of uploading)");
-        Console.WriteLine("  --cleanup (remove workflow/config and optionally secret)");
-        Console.WriteLine("  --keep-secret (do not delete secret during cleanup)");
-        Console.WriteLine("  --branch <name>");
-        Console.WriteLine("  --force (overwrite existing files)");
-        Console.WriteLine("  --dry-run (show changes only)");
-        Console.WriteLine("  --explicit-secrets (use explicit secrets block in workflow)");
-        Console.WriteLine("  --help");
-        Console.WriteLine();
-        Console.WriteLine("Environment:");
-        Console.WriteLine("  INTELLIGENCEX_GITHUB_CLIENT_ID");
-        Console.WriteLine("  INTELLIGENCEX_GITHUB_TOKEN (or GITHUB_TOKEN / GH_TOKEN)");
-        Console.WriteLine("  INTELLIGENCEX_GITHUB_API_BASE_URL");
-        Console.WriteLine("  INTELLIGENCEX_GITHUB_AUTH_BASE_URL");
-        Console.WriteLine("  INTELLIGENCEX_OPENAI_ACCOUNT_ID");
-    }
-
-    private static bool ParseBool(string value, bool fallback) {
-        if (string.IsNullOrWhiteSpace(value)) {
-            return fallback;
-        }
-        return value.Trim().ToLowerInvariant() switch {
-            "true" or "1" or "yes" or "y" or "on" => true,
-            "false" or "0" or "no" or "n" or "off" => false,
-            _ => fallback
-        };
-    }
-
-    private static double ParseDouble(string value, double fallback) {
-        if (string.IsNullOrWhiteSpace(value)) {
-            return fallback;
-        }
-        if (double.TryParse(value.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)) {
-            return parsed;
-        }
-        return fallback;
-    }
-
-    private static int ParseInt(string value, int fallback) {
-        if (string.IsNullOrWhiteSpace(value)) {
-            return fallback;
-        }
-        if (int.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)) {
-            return parsed;
-        }
-        return fallback;
     }
 }

@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using IntelligenceX.Cli.Setup;
 using IntelligenceX.Cli.Setup.Host;
+using IntelligenceX.Cli.Setup.Onboarding;
 using Spectre.Console;
 
 namespace IntelligenceX.Cli.Setup.Wizard;
@@ -13,6 +15,11 @@ internal static partial class WizardRunner {
 
     public static async Task<int> RunAsync(string[] args) {
         var options = WizardOptions.Parse(args);
+        if (!string.IsNullOrWhiteSpace(options.ParseError)) {
+            Console.Error.WriteLine(options.ParseError);
+            WriteHelp();
+            return 1;
+        }
         if (options.ShowHelp) {
             WriteHelp();
             return 0;
@@ -38,10 +45,40 @@ internal static partial class WizardRunner {
             Upgrade = options.Upgrade,
             Force = options.Force,
             Operation = options.Operation,
+            OnboardingPathId = options.PathSpecified
+                ? options.PathId!
+                : ResolvePathIdFromOperation(options.Operation),
             AuthBundlePath = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH")
         };
 
-        state.Operation = WizardPrompts.PromptOperation();
+        if (options.PathSpecified) {
+            state.Operation = ResolveOperationFromPathId(state.OnboardingPathId);
+        } else if (options.OperationSpecified) {
+            state.OnboardingPathId = ResolvePathIdFromOperation(state.Operation);
+        } else {
+            SetupOnboardingAutoDetectResult? autoDetect = null;
+            try {
+                await AnsiConsole.Status()
+                    .Spinner(Spinner.Known.Dots)
+                    .StartAsync("Running auto-detect preflight...", async _ => {
+                        autoDetect = await SetupOnboardingAutoDetectRunner
+                            .RunAsync(Environment.CurrentDirectory, options.RepoFullName)
+                            .ConfigureAwait(false);
+                    }).ConfigureAwait(false);
+            } catch (Exception ex) {
+                AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(FormatAutoDetectUnavailableMessage(ex, options.Verbose))}[/]");
+            }
+
+            if (autoDetect is not null) {
+                RenderAutoDetectSummary(autoDetect);
+            } else {
+                AnsiConsole.MarkupLine("[yellow]Auto-detect preflight unavailable. Choose onboarding path manually.[/]");
+            }
+
+            var (recommendedPathId, recommendedReason) = ResolveAutoDetectPromptRecommendation(autoDetect);
+            state.OnboardingPathId = WizardPrompts.PromptOnboardingPath(recommendedPathId, recommendedReason);
+            state.Operation = ResolveOperationFromPathId(state.OnboardingPathId);
+        }
 
         // Show trust info before auth mode selection
         WizardPrompts.ShowTrustInfo();
@@ -138,24 +175,45 @@ internal static partial class WizardRunner {
         }
 
         var failures = 0;
+        var verifyFailures = 0;
         var prLinks = new List<(string Repo, string Url)>();
+        var verifyResults = new List<SetupPostApplyVerification>();
         var host = new SetupHost();
-        await AnsiConsole.Status()
-            .Spinner(Spinner.Known.Dots)
-            .StartAsync("Applying setup...", async _ => {
-                foreach (var repoPlan in state.SelectedRepos.Select(repo => BuildPlan(state, repo))) {
-                    var result = await host.ApplyWithOutputAsync(repoPlan).ConfigureAwait(false);
-                    if (result.ExitCode != 0) {
-                        failures++;
+        GitHubRepoClient? verifyClient = null;
+        try {
+            if (!state.DryRun && !string.IsNullOrWhiteSpace(state.GitHubToken)) {
+                verifyClient = new GitHubRepoClient(state.GitHubToken!, DefaultGitHubApi);
+            }
+
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .StartAsync("Applying setup...", async _ => {
+                    foreach (var repoPlan in state.SelectedRepos.Select(repo => BuildPlan(state, repo))) {
+                        var result = await host.ApplyWithOutputAsync(repoPlan).ConfigureAwait(false);
+                        if (result.ExitCode != 0) {
+                            failures++;
+                        }
+
+                        var prUrl = SetupPostApplyVerifier.ExtractPullRequestUrl(result.Output);
+                        if (!string.IsNullOrWhiteSpace(prUrl)) {
+                            prLinks.Add((repoPlan.RepoFullName, prUrl!));
+                        }
+
+                        var verifyContext = BuildPostApplyVerifyContext(state, repoPlan, result, prUrl);
+                        var verifyResult = await ResolvePostApplyVerificationAsync(
+                            verifyContext,
+                            () => SetupPostApplyVerifier.VerifyAsync(verifyClient, verifyContext)).ConfigureAwait(false);
+                        verifyResults.Add(verifyResult);
                     }
-                    var prUrl = ExtractPullRequestUrl(result.Output);
-                    if (!string.IsNullOrWhiteSpace(prUrl)) {
-                        prLinks.Add((repoPlan.RepoFullName, prUrl!));
-                    }
-                }
-            }).ConfigureAwait(false);
+                }).ConfigureAwait(false);
+        } finally {
+            verifyClient?.Dispose();
+        }
 
         if (failures > 0) {
+            if (verifyResults.Count > 0) {
+                RenderPostApplyVerificationSummary(verifyResults);
+            }
             AnsiConsole.MarkupLine($"[red]Setup completed with {failures} failure(s).[/]");
             return 1;
         }
@@ -163,9 +221,104 @@ internal static partial class WizardRunner {
         if (prLinks.Count > 0) {
             RenderPullRequestSummary(prLinks);
         }
+        if (verifyResults.Count > 0) {
+            RenderPostApplyVerificationSummary(verifyResults);
+            verifyFailures = verifyResults.Count(verify => !verify.Skipped && !verify.Passed);
+            if (verifyFailures > 0) {
+                AnsiConsole.MarkupLine($"[red]Post-apply verification detected {verifyFailures} issue(s).[/]");
+                return 1;
+            }
+        }
 
         AnsiConsole.MarkupLine("[green]Setup completed successfully.[/]");
         await TryShowUsageAsync(state).ConfigureAwait(false);
         return 0;
+    }
+
+    private static void RenderAutoDetectSummary(SetupOnboardingAutoDetectResult result) {
+        var path = SetupOnboardingPaths.GetOrDefault(result.RecommendedPath);
+        var checks = result.Checks ?? Array.Empty<SetupOnboardingCheck>();
+        var recommendedReason = NormalizeAutoDetectRecommendedReason(result.RecommendedReason);
+        var status = result.Status.ToLowerInvariant() switch {
+            "fail" => "[red]fail[/]",
+            "warn" => "[yellow]warn[/]",
+            _ => "[green]ok[/]"
+        };
+
+        var lines = new List<string> {
+            $"Status: {status}",
+            $"Recommended path: [cyan]{Markup.Escape(path.DisplayName)}[/]",
+            $"Reason: {Markup.Escape(recommendedReason)}"
+        };
+        if (string.Equals(result.Status, "fail", StringComparison.OrdinalIgnoreCase)) {
+            lines.Add("Run `intelligencex setup autodetect --json` for full preflight diagnostics.");
+        }
+
+        if (checks.Count > 0) {
+            lines.Add(string.Empty);
+            lines.Add("Top checks:");
+            foreach (var check in checks.Take(3)) {
+                var checkStatus = check.Status switch {
+                    SetupOnboardingCheckStatus.Fail => "[red]FAIL[/]",
+                    SetupOnboardingCheckStatus.Warn => "[yellow]WARN[/]",
+                    _ => "[green]OK[/]"
+                };
+                lines.Add($"- {checkStatus} {Markup.Escape(check.Message)}");
+            }
+            if (checks.Count > 3) {
+                lines.Add($"- [grey]... +{checks.Count - 3} more[/]");
+            }
+        }
+
+        var panel = new Panel(string.Join(Environment.NewLine, lines)) {
+            Header = new PanelHeader("[blue]Auto-Detect (Doctor Preflight)[/]"),
+            Border = BoxBorder.Rounded
+        };
+        AnsiConsole.Write(panel);
+        AnsiConsole.WriteLine();
+    }
+
+    internal static string NormalizeAutoDetectRecommendedReasonForTests(string? recommendedReason) {
+        return NormalizeAutoDetectRecommendedReason(recommendedReason);
+    }
+
+    internal static string FormatAutoDetectUnavailableMessageForTests(Exception? exception, bool verbose) {
+        return FormatAutoDetectUnavailableMessage(exception, verbose);
+    }
+
+    internal static (string RecommendedPathId, string RecommendedReason) ResolveAutoDetectPromptRecommendationForTests(
+        SetupOnboardingAutoDetectResult? autoDetect) {
+        return ResolveAutoDetectPromptRecommendation(autoDetect);
+    }
+
+    private static string NormalizeAutoDetectRecommendedReason(string? recommendedReason) {
+        return string.IsNullOrWhiteSpace(recommendedReason)
+            ? "No recommendation details provided."
+            : recommendedReason.Trim();
+    }
+
+    private static string FormatAutoDetectUnavailableMessage(Exception? exception, bool verbose) {
+        if (exception is null) {
+            return "Auto-detect unavailable. Continuing with manual path selection.";
+        }
+
+        if (verbose) {
+            return $"Auto-detect unavailable ({exception.GetType().Name}): {exception}";
+        }
+
+        return $"Auto-detect unavailable: {exception.Message}. Re-run with --verbose for full exception details.";
+    }
+
+    private static (string RecommendedPathId, string RecommendedReason) ResolveAutoDetectPromptRecommendation(
+        SetupOnboardingAutoDetectResult? autoDetect) {
+        if (autoDetect is null) {
+            return (
+                SetupOnboardingPaths.NewSetup,
+                "Auto-detect unavailable. Choose onboarding path manually.");
+        }
+
+        return (
+            autoDetect.RecommendedPath,
+            NormalizeAutoDetectRecommendedReason(autoDetect.RecommendedReason));
     }
 }

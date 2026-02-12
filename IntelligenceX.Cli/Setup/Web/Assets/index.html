@@ -64,24 +64,45 @@
         <div class="card">
           <h2>Choose Your Onboarding Path</h2>
           <p class="hint">This pre-fills operation and auth defaults. You can still change everything later.</p>
-          <div class="card-grid cols-3">
+          <div class="card-grid cols-2">
             <div class="option-card selected" data-path="new-setup" onclick="applyOnboardingPath('new-setup')">
               <div class="card-icon">&#x1F680;</div>
-              <div class="card-title">New Setup</div>
-              <div class="card-desc">Configure workflow + secrets for first-time onboarding.</div>
+              <div class="card-title" data-path-title>New Setup</div>
+              <div class="card-desc" data-path-desc>Configure workflow + secrets for first-time onboarding.</div>
             </div>
             <div class="option-card" data-path="refresh-auth" onclick="applyOnboardingPath('refresh-auth')">
               <div class="card-icon">&#x1F504;</div>
-              <div class="card-title">Fix Expired Auth</div>
-              <div class="card-desc">Refresh OpenAI auth and update the repository secret.</div>
+              <div class="card-title" data-path-title>Fix Expired Auth</div>
+              <div class="card-desc" data-path-desc>Refresh OpenAI auth and update the repository secret.</div>
             </div>
             <div class="option-card" data-path="cleanup" onclick="applyOnboardingPath('cleanup')">
               <div class="card-icon">&#x1F9F9;</div>
-              <div class="card-title">Cleanup</div>
-              <div class="card-desc">Remove workflow/config from selected repositories.</div>
+              <div class="card-title" data-path-title>Cleanup</div>
+              <div class="card-desc" data-path-desc>Remove workflow/config from selected repositories.</div>
+            </div>
+            <div class="option-card" data-path="maintenance" onclick="applyOnboardingPath('maintenance')">
+              <div class="card-icon">&#x1F527;</div>
+              <div class="card-title" data-path-title>Maintenance</div>
+              <div class="card-desc" data-path-desc>Inspect current setup, then choose setup/update-secret/cleanup.</div>
             </div>
           </div>
           <p class="hint" id="pathHint">Path selected: New Setup. Next: authenticate with GitHub.</p>
+          <div class="path-requirements" id="pathRequirements"></div>
+          <p class="hint" id="pathContractVersion">Contract: loading...</p>
+        </div>
+
+        <div class="card">
+          <h2>Auto-Detect (Doctor Preflight)</h2>
+          <p class="hint">Runs local checks before repository selection and suggests the best onboarding path.</p>
+          <div class="row">
+            <button id="runAutodetect" class="secondary">Run auto-detect</button>
+            <button id="applyAutodetectPath" class="secondary" disabled>Apply suggested path</button>
+          </div>
+          <div id="autodetectSummary" class="summary" style="margin-top:8px;">Not run yet.</div>
+          <details style="margin-top:8px;">
+            <summary>Doctor output</summary>
+            <pre class="output" id="autodetectOutput" style="margin-top:8px; max-height:180px;"></pre>
+          </details>
         </div>
 
         <div class="card">
@@ -278,11 +299,14 @@
             <h3 style="margin: 12px 0 8px 0;">Static analysis</h3>
             <div class="row">
               <label class="inline"><input type="checkbox" id="analysisEnabled" /> Enable static analysis</label>
-              <label class="inline"><input type="checkbox" id="analysisGate" /> Fail PR on findings</label>
+              <label class="inline"><input type="checkbox" id="analysisGate" /> Fail PR on findings (vulnerability/bug at warning+)</label>
             </div>
             <label>Analysis pack ids (comma-separated)</label>
             <input id="analysisPacks" placeholder="(default: all-50)" />
-            <p class="hint" id="analysisHint">Leave empty to use defaults. Examples: all-50, all-100, all-500, all-security-default, powershell-50.</p>
+            <p class="hint" id="analysisHint">Leave empty to use defaults. Examples: all-50, all-100, all-500, all-security-default, powershell-50. Browse packs: `intelligencex analyze list-rules --workspace &lt;repo-root&gt; --format markdown`. Gate semantics/docs: Docs/reviewer/static-analysis.md</p>
+            <label>Analyzer export path for IDE support (optional)</label>
+            <input id="analysisExportPath" placeholder=".intelligencex/analyzers" />
+            <p class="hint">Explicit opt-in only. When set, setup PR also exports analyzer configs into this repo path.</p>
 
             <label>Branch name (optional)</label>
             <input id="branchName" placeholder="setup/intelligencex" />
@@ -418,7 +442,7 @@
 
         <div class="card action-card">
           <h2>Run Setup</h2>
-          <p class="hint">First check existing setup, then preview changes before applying.</p>
+          <p class="hint">First check existing setup, then preview changes before applying. After apply, review the Verify section (workflow/config/secrets/latest run link).</p>
           <div class="action-buttons">
             <button class="action-btn secondary" onclick="doInspect()">
               <span class="action-icon">&#x1F50D;</span>

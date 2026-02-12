@@ -255,6 +255,29 @@ internal static partial class Program {
         AssertEqual(true, nestedFunctionSchema.TryGetValue("input_schema", out _), "input_schema present");
     }
 
+    private static void TestNativeToolSchemaSerializationIncludesTagsInDescription() {
+        var ix = typeof(IntelligenceXClient).Assembly;
+        var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
+
+        var enumType = transportType.GetNestedType("ToolWireFormat", BindingFlags.NonPublic);
+        AssertNotNull(enumType, "ToolWireFormat enum");
+
+        var serialize = transportType.GetMethod("SerializeToolDefinition", BindingFlags.NonPublic | BindingFlags.Static);
+        AssertNotNull(serialize, "SerializeToolDefinition method");
+
+        var tool = new ToolDefinition(
+            name: "ad_search",
+            description: "Search Active Directory.",
+            parameters: new JsonObject().Add("type", "object"),
+            tags: new[] { "ad", "ldap" });
+
+        var customParameters = Enum.Parse(enumType!, "CustomParameters");
+        var serialized = (JsonObject)serialize!.Invoke(null, new object?[] { tool, customParameters })!;
+        var description = serialized.GetString("description") ?? string.Empty;
+        AssertContainsText(description, "Search Active Directory.", "description");
+        AssertContainsText(description, "tags: ad, ldap", "description");
+    }
+
     private static string DetectFallbackKind(string message) {
         var ix = typeof(IntelligenceXClient).Assembly;
         var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;

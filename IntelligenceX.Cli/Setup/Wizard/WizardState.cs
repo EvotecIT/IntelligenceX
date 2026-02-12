@@ -59,6 +59,7 @@ internal enum ConfigPreset {
 }
 
 internal sealed class WizardState {
+    public string OnboardingPathId { get; set; } = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.NewSetupPathId;
     public string? RepoFullName { get; set; }
     public List<string> SelectedRepos { get; } = new();
     public string? GitHubClientId { get; set; }
@@ -91,6 +92,7 @@ internal sealed class WizardState {
     public bool? AnalysisEnabled { get; set; } = true;
     public bool? AnalysisGateEnabled { get; set; } = false;
     public string? AnalysisPacks { get; set; }
+    public string? AnalysisExportPath { get; set; }
     public bool Force { get; set; }
     public bool Upgrade { get; set; }
     public WizardOperation Operation { get; set; } = WizardOperation.Setup;
