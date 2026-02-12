@@ -141,18 +141,16 @@ internal static partial class Program {
         }
 
         private async Task LoopAsync() {
-            try {
-                while (true) {
-                    TcpClient client;
-                    try {
-                        client = await _listener.AcceptTcpClientAsync().ConfigureAwait(false);
-                    } catch (ObjectDisposedException) {
-                        break;
-                    }
-                    _ = Task.Run(() => HandleClientAsync(client));
+            while (true) {
+                TcpClient client;
+                try {
+                    client = await _listener.AcceptTcpClientAsync().ConfigureAwait(false);
+                } catch (ObjectDisposedException) {
+                    break;
+                } catch (SocketException) when (_disposed) {
+                    break;
                 }
-            } catch {
-                // Best effort local server for deterministic test coverage.
+                await HandleClientAsync(client).ConfigureAwait(false);
             }
         }
 
@@ -323,14 +321,11 @@ internal static partial class Program {
 
             _disposed = true;
             _listener.Stop();
-            try {
-                var completed = Task.WhenAny(_loopTask, Task.Delay(ShutdownTimeout)).GetAwaiter().GetResult();
-                if (ReferenceEquals(completed, _loopTask)) {
-                    _loopTask.GetAwaiter().GetResult();
-                }
-            } catch {
-                // ignored
+            var completed = Task.WhenAny(_loopTask, Task.Delay(ShutdownTimeout)).GetAwaiter().GetResult();
+            if (!ReferenceEquals(completed, _loopTask)) {
+                throw new TimeoutException("Setup fake GitHub API server did not stop in time.");
             }
+            _loopTask.GetAwaiter().GetResult();
         }
     }
 
