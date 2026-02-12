@@ -63,7 +63,6 @@ internal sealed partial class WebApi {
                 status = check.Status.ToString().ToLowerInvariant(),
                 message = check.Message
             }).ToArray(),
-            rawDoctorOutput = result.RawDoctorOutput,
             paths
         }).ConfigureAwait(false);
     }
