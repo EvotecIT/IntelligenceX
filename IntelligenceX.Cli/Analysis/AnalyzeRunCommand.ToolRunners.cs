@@ -77,6 +77,80 @@ internal static partial class AnalyzeRunCommand {
         }
     }
 
+    private static async Task<RunnerResult> RunJavaScriptAsync(AnalyzeRunOptions options, string workspace, string outputDirectory,
+        List<string> warnings) {
+        var sarifPath = Path.Combine(outputDirectory, "intelligencex.eslint.sarif");
+        var args = new List<string> {
+            "--yes",
+            "eslint",
+            ".",
+            "--ext",
+            ".js,.jsx,.mjs,.cjs,.ts,.tsx",
+            "--format",
+            "sarif",
+            "--output-file",
+            sarifPath
+        };
+
+        var result = await RunProcessAsync(options.NpxCommand, args, workspace).ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(result.StdOut)) {
+            Console.WriteLine(result.StdOut.Trim());
+        }
+        if (!string.IsNullOrWhiteSpace(result.StdErr)) {
+            Console.WriteLine(result.StdErr.Trim());
+        }
+
+        // ESLint returns 1 when findings are present; this is not a runner failure.
+        if (result.ExitCode != 0 && result.ExitCode != 1) {
+            return new RunnerResult(false,
+                $"JavaScript/TypeScript analysis returned exit code {result.ExitCode}.");
+        }
+
+        if (!File.Exists(sarifPath)) {
+            warnings.Add("ESLint SARIF file was not generated.");
+            return new RunnerResult(true, string.Empty);
+        }
+
+        Console.WriteLine($"ESLint SARIF: {sarifPath}");
+        return new RunnerResult(true, string.Empty);
+    }
+
+    private static async Task<RunnerResult> RunPythonAsync(AnalyzeRunOptions options, string workspace, string outputDirectory,
+        List<string> warnings) {
+        var sarifPath = Path.Combine(outputDirectory, "intelligencex.ruff.sarif");
+        var args = new List<string> {
+            "check",
+            ".",
+            "--output-format",
+            "sarif"
+        };
+
+        var result = await RunProcessAsync(options.RuffCommand, args, workspace).ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(result.StdErr)) {
+            Console.WriteLine(result.StdErr.Trim());
+        }
+
+        // Ruff returns 1 when findings are present; this is not a runner failure.
+        if (result.ExitCode != 0 && result.ExitCode != 1) {
+            return new RunnerResult(false, $"Python analysis returned exit code {result.ExitCode}.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.StdOut)) {
+            var payload = result.StdOut.Trim();
+            if (!string.IsNullOrWhiteSpace(payload) && payload.StartsWith("{", StringComparison.Ordinal)) {
+                File.WriteAllText(sarifPath, payload + Environment.NewLine);
+            }
+        }
+
+        if (!File.Exists(sarifPath)) {
+            warnings.Add("Ruff SARIF file was not generated.");
+            return new RunnerResult(true, string.Empty);
+        }
+
+        Console.WriteLine($"Ruff SARIF: {sarifPath}");
+        return new RunnerResult(true, string.Empty);
+    }
+
     internal static IReadOnlyList<string> BuildPowerShellRunnerArgsForTests(
         string tempScript,
         string workspace,

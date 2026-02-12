@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -13,6 +14,7 @@ internal static class AnalyzeGateCommand {
     private const int ExitSuccess = 0;
     private const int ExitError = 1;
     private const int ExitGateFailed = 2;
+    private const string DuplicationOverallPath = ".intelligencex/duplication-overall";
 
     public static Task<int> RunAsync(string[] args) {
         var options = ParseArgs(args, out var error);
@@ -95,6 +97,7 @@ internal static class AnalyzeGateCommand {
             Console.WriteLine(changedFilesError);
             return Task.FromResult(ExitError);
         }
+        var changedPathSet = BuildChangedPathSet(prFiles);
         var reviewSettings = new ReviewSettings();
         reviewSettings.Analysis.Enabled = true;
         reviewSettings.Analysis.Results.Inputs = analysisSettings.Results.Inputs;
@@ -168,12 +171,28 @@ internal static class AnalyzeGateCommand {
             includeAllTypes);
         var hasHotspotFailures = hotspotFailures.Count > 0;
         var useNewIssuesOnly = options.NewIssuesOnly || analysisSettings.Gate.NewIssuesOnly;
+        var duplicationEnabled = analysisSettings.Gate.Duplication.Enabled;
+        var duplicationUseNewIssuesOnly = duplicationEnabled &&
+            (useNewIssuesOnly || analysisSettings.Gate.Duplication.NewIssuesOnly);
         var configuredBaselinePath = !string.IsNullOrWhiteSpace(options.BaselinePath)
             ? options.BaselinePath
             : analysisSettings.Gate.BaselinePath;
+        var baselineRequired = useNewIssuesOnly || duplicationUseNewIssuesOnly;
         var baselineSuppressed = 0;
+        var duplicationBaselineSuppressed = 0;
         var baselineLoadedCount = 0;
         var baselinePathResolved = string.Empty;
+        var duplicationEvaluation = duplicationEnabled
+            ? EvaluateDuplicationGate(analysisSettings, workspace, changedPathSet)
+            : DuplicationGateEvaluation.Disabled;
+        var duplicationViolations = duplicationEvaluation.Violations?.ToList() ?? new List<AnalysisFinding>();
+
+        if (duplicationEnabled && !duplicationEvaluation.Available) {
+            Console.WriteLine($"Static analysis duplication gate: unavailable ({duplicationEvaluation.UnavailableReason}).");
+            if (analysisSettings.Gate.Duplication.FailOnUnavailable) {
+                return Task.FromResult(ExitGateFailed);
+            }
+        }
 
         if (!string.IsNullOrWhiteSpace(options.WriteBaselinePath)) {
             var writePath = ResolveWorkspaceBoundPath(workspace, options.WriteBaselinePath!);
@@ -181,24 +200,28 @@ internal static class AnalyzeGateCommand {
                 Console.WriteLine($"Invalid baseline output path outside workspace: {options.WriteBaselinePath}");
                 return Task.FromResult(ExitError);
             }
-            var writeResult = AnalyzeGateBaseline.TryWriteBaselineFile(writePath, violations, out var writeError);
+            var baselineItems = new List<AnalysisFinding>(violations);
+            if (duplicationEvaluation.Available) {
+                baselineItems.AddRange(duplicationViolations);
+            }
+            var writeResult = AnalyzeGateBaseline.TryWriteBaselineFile(writePath, baselineItems, out var writeError);
             if (!writeResult) {
                 Console.WriteLine($"Failed to write baseline: {writeError}");
                 return Task.FromResult(ExitError);
             }
-            Console.WriteLine($"Static analysis baseline updated: {writePath} ({violations.Count} item(s) considered).");
+            Console.WriteLine($"Static analysis baseline updated: {writePath} ({baselineItems.Count} item(s) considered).");
         }
 
-        if (useNewIssuesOnly) {
+        if (baselineRequired) {
             if (string.IsNullOrWhiteSpace(configuredBaselinePath)) {
                 Console.WriteLine("Static analysis gate: unavailable (new-issues mode requires analysis.gate.baselinePath).");
-                return Task.FromResult(analysisSettings.Gate.FailOnUnavailable ? ExitGateFailed : ExitSuccess);
+                return Task.FromResult(ResolveUnavailableExit(analysisSettings, useNewIssuesOnly, duplicationUseNewIssuesOnly));
             }
 
             var baselinePath = ResolveWorkspaceBoundPath(workspace, configuredBaselinePath);
             if (baselinePath is null) {
                 Console.WriteLine($"Static analysis gate: unavailable (baseline path resolves outside workspace: {configuredBaselinePath}).");
-                return Task.FromResult(analysisSettings.Gate.FailOnUnavailable ? ExitGateFailed : ExitSuccess);
+                return Task.FromResult(ResolveUnavailableExit(analysisSettings, useNewIssuesOnly, duplicationUseNewIssuesOnly));
             }
             baselinePathResolved = baselinePath;
 
@@ -210,7 +233,7 @@ internal static class AnalyzeGateCommand {
                 out var baselineError);
             if (!baselineResult) {
                 Console.WriteLine($"Static analysis gate: unavailable ({baselineError}).");
-                return Task.FromResult(analysisSettings.Gate.FailOnUnavailable ? ExitGateFailed : ExitSuccess);
+                return Task.FromResult(ResolveUnavailableExit(analysisSettings, useNewIssuesOnly, duplicationUseNewIssuesOnly));
             }
             if (baselineSchemaInferred) {
                 Console.WriteLine($"Static analysis baseline schema inferred as '{baselineSchema}' (schema property missing).");
@@ -218,26 +241,55 @@ internal static class AnalyzeGateCommand {
             baselineLoadedCount = baselineKeys.Count;
             Console.WriteLine($"Static analysis baseline loaded: {baselinePath} (schema={baselineSchema}, items={baselineLoadedCount}).");
 
-            var newViolations = new List<AnalysisFinding>();
-            foreach (var violation in violations) {
-                var key = AnalyzeGateBaseline.BuildBaselineKey(violation);
-                if (baselineKeys.Contains(key)) {
-                    baselineSuppressed++;
-                    continue;
+            if (useNewIssuesOnly) {
+                var newViolations = new List<AnalysisFinding>();
+                foreach (var violation in violations) {
+                    var key = AnalyzeGateBaseline.BuildBaselineKey(violation);
+                    if (baselineKeys.Contains(key)) {
+                        baselineSuppressed++;
+                        continue;
+                    }
+                    newViolations.Add(violation);
                 }
-                newViolations.Add(violation);
+                violations = newViolations;
             }
-            violations = newViolations;
+
+            if (duplicationUseNewIssuesOnly && duplicationEvaluation.Available) {
+                var newDuplicationViolations = new List<AnalysisFinding>();
+                foreach (var violation in duplicationViolations) {
+                    var key = AnalyzeGateBaseline.BuildBaselineKey(violation);
+                    if (baselineKeys.Contains(key)) {
+                        duplicationBaselineSuppressed++;
+                        continue;
+                    }
+                    newDuplicationViolations.Add(violation);
+                }
+                duplicationViolations = newDuplicationViolations;
+            }
         }
 
-        if (violations.Count == 0 && !hasHotspotFailures) {
+        if (violations.Count == 0 && !hasHotspotFailures && duplicationViolations.Count == 0) {
             Console.WriteLine("Static analysis gate: pass");
             Console.WriteLine($"- Findings considered: {allFindings.Count}");
             Console.WriteLine($"- Violations: 0");
-            if (useNewIssuesOnly) {
+            if (duplicationEnabled) {
+                if (duplicationEvaluation.Available) {
+                    Console.WriteLine($"- Duplication rules evaluated: {duplicationEvaluation.RulesEvaluated}");
+                    Console.WriteLine($"- Duplication scope: {duplicationEvaluation.Scope}");
+                    Console.WriteLine("- Duplication violations: 0");
+                } else {
+                    Console.WriteLine("- Duplication checks: unavailable (skipped)");
+                }
+            }
+            if (baselineRequired) {
                 Console.WriteLine("- Baseline mode: new-only");
                 Console.WriteLine($"- Baseline items loaded: {baselineLoadedCount}");
-                Console.WriteLine($"- Existing findings suppressed by baseline: {baselineSuppressed}");
+                if (useNewIssuesOnly) {
+                    Console.WriteLine($"- Existing findings suppressed by baseline: {baselineSuppressed}");
+                }
+                if (duplicationUseNewIssuesOnly) {
+                    Console.WriteLine($"- Existing duplication violations suppressed by baseline: {duplicationBaselineSuppressed}");
+                }
                 if (!string.IsNullOrWhiteSpace(baselinePathResolved)) {
                     Console.WriteLine($"- Baseline file: {baselinePathResolved}");
                 }
@@ -250,11 +302,26 @@ internal static class AnalyzeGateCommand {
 
         Console.WriteLine("Static analysis gate: fail");
         Console.WriteLine($"- Findings considered: {allFindings.Count}");
-        Console.WriteLine($"- Violations: {violations.Count}" + (hasHotspotFailures ? $", hotspots to-review: {hotspotFailures.Count}" : string.Empty));
-        if (useNewIssuesOnly) {
+        Console.WriteLine($"- Violations: {violations.Count}" +
+                          (duplicationEnabled ? $", duplication: {duplicationViolations.Count}" : string.Empty) +
+                          (hasHotspotFailures ? $", hotspots to-review: {hotspotFailures.Count}" : string.Empty));
+        if (duplicationEnabled) {
+            if (duplicationEvaluation.Available) {
+                Console.WriteLine($"- Duplication rules evaluated: {duplicationEvaluation.RulesEvaluated}");
+                Console.WriteLine($"- Duplication scope: {duplicationEvaluation.Scope}");
+            } else {
+                Console.WriteLine("- Duplication checks: unavailable (skipped)");
+            }
+        }
+        if (baselineRequired) {
             Console.WriteLine("- Baseline mode: new-only");
             Console.WriteLine($"- Baseline items loaded: {baselineLoadedCount}");
-            Console.WriteLine($"- Existing findings suppressed by baseline: {baselineSuppressed}");
+            if (useNewIssuesOnly) {
+                Console.WriteLine($"- Existing findings suppressed by baseline: {baselineSuppressed}");
+            }
+            if (duplicationUseNewIssuesOnly) {
+                Console.WriteLine($"- Existing duplication violations suppressed by baseline: {duplicationBaselineSuppressed}");
+            }
             if (!string.IsNullOrWhiteSpace(baselinePathResolved)) {
                 Console.WriteLine($"- Baseline file: {baselinePathResolved}");
             }
@@ -264,6 +331,7 @@ internal static class AnalyzeGateCommand {
         }
 
         PrintViolationSummary(violations, catalog, maxRules: 10, maxItems: 20);
+        PrintDuplicationViolationSummary(duplicationViolations, maxItems: 20);
         if (hasHotspotFailures) {
             Console.WriteLine();
             Console.WriteLine("Hotspots to-review (blocking):");
@@ -319,6 +387,165 @@ internal static class AnalyzeGateCommand {
         if (violations.Count > maxItems) {
             Console.WriteLine($"- (truncated, {violations.Count - maxItems} more)");
         }
+    }
+
+    private static void PrintDuplicationViolationSummary(IReadOnlyList<AnalysisFinding> violations, int maxItems) {
+        if (violations is null || violations.Count == 0) {
+            return;
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("Duplication gate violations:");
+        foreach (var finding in violations
+                     .OrderBy(f => f.RuleId, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(f => f.Path, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(f => f.Line)
+                     .Take(maxItems)) {
+            Console.WriteLine($"- {finding.RuleId} {finding.Path}:{finding.Line} {finding.Message}");
+        }
+        if (violations.Count > maxItems) {
+            Console.WriteLine($"- (truncated, {violations.Count - maxItems} more)");
+        }
+    }
+
+    private static DuplicationGateEvaluation EvaluateDuplicationGate(AnalysisSettings settings, string workspace,
+        IReadOnlySet<string> changedPaths) {
+        if (settings is null || settings.Gate?.Duplication?.Enabled != true) {
+            return DuplicationGateEvaluation.Disabled;
+        }
+
+        var duplication = settings.Gate.Duplication;
+        var scope = NormalizeDuplicationScope(duplication.Scope);
+        var useChangedFileScope = scope == "changed-files" && changedPaths is { Count: > 0 };
+        var metricsPath = ResolveWorkspaceBoundFilePath(workspace, duplication.MetricsPath);
+        if (metricsPath is null) {
+            return DuplicationGateEvaluation.Unavailable($"metrics path resolves outside workspace: {duplication.MetricsPath}");
+        }
+
+        if (!DuplicationMetricsStore.TryRead(metricsPath, out var metrics, out var readError) || metrics is null) {
+            return DuplicationGateEvaluation.Unavailable(readError ?? "could not load duplication metrics");
+        }
+
+        var configuredRuleIds = NormalizeRuleIds(duplication.RuleIds);
+        var availableRules = metrics.Rules ?? new List<DuplicationRuleMetrics>();
+        var selectedRules = availableRules
+            .Where(rule => !string.IsNullOrWhiteSpace(rule.RuleId))
+            .Where(rule => configuredRuleIds.Count == 0 || configuredRuleIds.Contains(rule.RuleId.Trim()))
+            .ToList();
+        if (selectedRules.Count == 0) {
+            var reason = configuredRuleIds.Count == 0
+                ? $"no duplication rule metrics found in {metricsPath}"
+                : $"no duplication metrics matched configured ruleIds ({string.Join(", ", configuredRuleIds)})";
+            return DuplicationGateEvaluation.Unavailable(reason);
+        }
+
+        var violations = new List<AnalysisFinding>();
+        foreach (var rule in selectedRules) {
+            var ruleId = rule.RuleId.Trim();
+            var tool = string.IsNullOrWhiteSpace(rule.Tool) ? "IntelligenceX.Maintainability" : rule.Tool.Trim();
+            var files = (rule.Files ?? new List<DuplicationFileMetrics>())
+                .Where(static file => !string.IsNullOrWhiteSpace(file.Path))
+                .Where(file => !useChangedFileScope || changedPaths.Contains(NormalizeChangedPath(file.Path)))
+                .ToList();
+            foreach (var file in files) {
+                var fileThreshold = duplication.MaxFilePercent ??
+                                    file.ConfiguredMaxPercent ??
+                                    rule.ConfiguredMaxPercent;
+                if (file.SignificantLines <= 0 || file.DuplicatedLines <= 0) {
+                    continue;
+                }
+                if (file.DuplicatedPercent - fileThreshold <= double.Epsilon) {
+                    continue;
+                }
+
+                var path = file.Path.Replace('\\', '/');
+                var line = file.FirstDuplicatedLine > 0 ? file.FirstDuplicatedLine : 1;
+                var fingerprint = !string.IsNullOrWhiteSpace(file.Fingerprint)
+                    ? file.Fingerprint
+                    : $"{ruleId}:{path}:{file.DuplicatedLines}:{file.SignificantLines}:{rule.WindowLines}";
+                var message =
+                    $"Duplicated significant lines: {file.DuplicatedLines}/{file.SignificantLines} ({FormatPercent(file.DuplicatedPercent)}%) exceeds limit {FormatPercent(fileThreshold)}%.";
+                violations.Add(new AnalysisFinding(path, line, message, "warning", ruleId, tool, fingerprint));
+            }
+
+            var scopedTotalSignificantLines = files.Sum(file => Math.Max(file.SignificantLines, 0));
+            var scopedDuplicatedSignificantLines = files.Sum(file => Math.Max(file.DuplicatedLines, 0));
+            var scopedOverallPercent = scopedTotalSignificantLines <= 0
+                ? 0
+                : Math.Round((scopedDuplicatedSignificantLines * 100.0) / scopedTotalSignificantLines, 2,
+                    MidpointRounding.AwayFromZero);
+            if (duplication.MaxOverallPercent.HasValue &&
+                scopedTotalSignificantLines > 0 &&
+                scopedDuplicatedSignificantLines > 0 &&
+                scopedOverallPercent - duplication.MaxOverallPercent.Value > double.Epsilon) {
+                var overallThreshold = duplication.MaxOverallPercent.Value;
+                var overallScopeSuffix = useChangedFileScope ? ":scope:changed-files" : string.Empty;
+                var overallFingerprint =
+                    $"{ruleId}:overall:{scopedDuplicatedSignificantLines}:{scopedTotalSignificantLines}:{rule.WindowLines}{overallScopeSuffix}";
+                var scopeLabel = useChangedFileScope ? " (scope=changed-files)" : string.Empty;
+                var overallMessage =
+                    $"Overall duplicated significant lines{scopeLabel}: {scopedDuplicatedSignificantLines}/{scopedTotalSignificantLines} ({FormatPercent(scopedOverallPercent)}%) exceeds limit {FormatPercent(overallThreshold)}%.";
+                violations.Add(new AnalysisFinding(DuplicationOverallPath, 0, overallMessage, "warning", ruleId, tool,
+                    overallFingerprint));
+            }
+        }
+
+        return DuplicationGateEvaluation.WithData(metricsPath, selectedRules.Count, violations, scope);
+    }
+
+    private static int ResolveUnavailableExit(AnalysisSettings settings, bool findingsRequireBaseline,
+        bool duplicationRequiresBaseline) {
+        var failOnUnavailable = (findingsRequireBaseline && settings.Gate.FailOnUnavailable) ||
+                                (duplicationRequiresBaseline && settings.Gate.Duplication.FailOnUnavailable);
+        return failOnUnavailable ? ExitGateFailed : ExitSuccess;
+    }
+
+    private static HashSet<string> NormalizeRuleIds(IReadOnlyList<string>? ruleIds) {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var ruleId in ruleIds ?? Array.Empty<string>()) {
+            if (string.IsNullOrWhiteSpace(ruleId)) {
+                continue;
+            }
+            set.Add(ruleId.Trim());
+        }
+        return set;
+    }
+
+    private static string NormalizeDuplicationScope(string? scope) {
+        if (string.IsNullOrWhiteSpace(scope)) {
+            return "changed-files";
+        }
+        var normalized = scope.Trim().ToLowerInvariant();
+        return normalized switch {
+            "all" => "all",
+            "changedfiles" => "changed-files",
+            "changed-files" => "changed-files",
+            "changed" => "changed-files",
+            _ => "changed-files"
+        };
+    }
+
+    private static HashSet<string> BuildChangedPathSet(IReadOnlyList<PullRequestFile> files) {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in files ?? Array.Empty<PullRequestFile>()) {
+            if (string.IsNullOrWhiteSpace(file.Filename)) {
+                continue;
+            }
+            set.Add(NormalizeChangedPath(file.Filename));
+        }
+        return set;
+    }
+
+    private static string NormalizeChangedPath(string path) {
+        var normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
+        while (normalized.StartsWith("./", StringComparison.Ordinal)) {
+            normalized = normalized.Substring(2);
+        }
+        return normalized;
+    }
+
+    private static string FormatPercent(double value) {
+        return value.ToString("0.##", CultureInfo.InvariantCulture);
     }
 
     private static string DescribeRule(string ruleId, AnalysisCatalog catalog) {
@@ -603,6 +830,43 @@ internal static class AnalyzeGateCommand {
         return value.Equals("help", StringComparison.OrdinalIgnoreCase) ||
                value.Equals("-h", StringComparison.OrdinalIgnoreCase) ||
                value.Equals("--help", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed record DuplicationGateEvaluation(
+        bool Available,
+        string? MetricsPath,
+        int RulesEvaluated,
+        IReadOnlyList<AnalysisFinding> Violations,
+        string Scope,
+        string? UnavailableReason) {
+        public static DuplicationGateEvaluation Disabled => new(
+            Available: true,
+            MetricsPath: null,
+            RulesEvaluated: 0,
+            Violations: Array.Empty<AnalysisFinding>(),
+            Scope: "changed-files",
+            UnavailableReason: null);
+
+        public static DuplicationGateEvaluation WithData(string metricsPath, int rulesEvaluated,
+            IReadOnlyList<AnalysisFinding> violations, string scope) {
+            return new DuplicationGateEvaluation(
+                Available: true,
+                MetricsPath: metricsPath,
+                RulesEvaluated: rulesEvaluated,
+                Violations: violations ?? Array.Empty<AnalysisFinding>(),
+                Scope: scope,
+                UnavailableReason: null);
+        }
+
+        public static DuplicationGateEvaluation Unavailable(string reason) {
+            return new DuplicationGateEvaluation(
+                Available: false,
+                MetricsPath: null,
+                RulesEvaluated: 0,
+                Violations: Array.Empty<AnalysisFinding>(),
+                Scope: "changed-files",
+                UnavailableReason: reason);
+        }
     }
 
     private sealed class GateOptions {
