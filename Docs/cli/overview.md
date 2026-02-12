@@ -9,6 +9,7 @@ Quickstart: [CLI Quickstart](/docs/cli/quickstart/)
 ```bash
 intelligencex auth login
 intelligencex auth export --format store-base64
+intelligencex setup autodetect
 intelligencex setup wizard
 intelligencex setup web
 intelligencex reviewer run

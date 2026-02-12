@@ -22,11 +22,12 @@ intelligencex setup wizard
 
 The wizard guides you through:
 
-1. Authenticating with ChatGPT or Copilot (your own account)
-2. Connecting to GitHub (OAuth, PAT, or your own GitHub App)
-3. Selecting repositories for review
-4. Choosing a review preset (balanced, picky, security, minimal, etc.)
-5. Creating a PR with the GitHub Actions workflow
+1. Running preflight auto-detect (recommended): `intelligencex setup autodetect`
+2. Choosing your path (new setup, fix expired auth, cleanup, maintenance)
+3. Connecting to GitHub (OAuth, PAT, or your own GitHub App)
+4. Selecting repositories for review
+5. Choosing a review preset (balanced, picky, security, minimal, etc.)
+6. Creating a PR with the GitHub Actions workflow
 
 ## Option 2 - Local Web UI (Preview)
 

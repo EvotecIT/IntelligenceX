@@ -113,6 +113,11 @@ internal sealed partial class WebApi {
         public string? BranchName { get; set; }
     }
 
+    private sealed class SetupAutodetectRequest {
+        public string? Workspace { get; set; }
+        public string? RepoHint { get; set; }
+    }
+
     private sealed class UsageRequest {
         public string? AuthB64 { get; set; }
         public string? AuthB64Path { get; set; }

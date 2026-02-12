@@ -19,6 +19,7 @@ internal static partial class Program {
         Console.WriteLine("  intelligencex setup [options]");
         Console.WriteLine("  intelligencex setup wizard [options]");
         Console.WriteLine("  intelligencex setup web [url]");
+        Console.WriteLine("  intelligencex setup autodetect [options]");
         Console.WriteLine("  intelligencex manage [options]");
         Console.WriteLine("  intelligencex doctor [options]");
         Console.WriteLine("  intelligencex todo <command>");
@@ -30,6 +31,7 @@ internal static partial class Program {
         Console.WriteLine();
         Console.WriteLine("Onboarding quick start:");
         Console.WriteLine("  intelligencex setup web                              # guided browser onboarding");
+        Console.WriteLine("  intelligencex setup autodetect --json               # run preflight and get path recommendation");
         Console.WriteLine("  intelligencex setup wizard --operation setup --repo owner/name");
         Console.WriteLine("  intelligencex setup wizard --operation update-secret --repo owner/name");
         Console.WriteLine();

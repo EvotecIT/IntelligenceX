@@ -81,23 +81,15 @@ Practical configuration examples for common IntelligenceX setups.
 ## Multi-Repo Setup
 
 ```bash
-intelligencex setup wizard --repos org/repo1 org/repo2 org/repo3
+intelligencex setup wizard
 ```
 
-Or with a file:
+Then select multiple repositories in the wizard "Select Repositories" step.
+
+For preflight path recommendation before selecting repos:
 
 ```bash
-intelligencex setup wizard --config repos.json
-```
-
-```json
-{
-  "repositories": [
-    { "owner": "myorg", "name": "frontend", "preset": "balanced" },
-    { "owner": "myorg", "name": "backend", "preset": "picky" },
-    { "owner": "myorg", "name": "docs", "preset": "minimal" }
-  ]
-}
+intelligencex setup autodetect --json
 ```
 
 ## Workflow Example

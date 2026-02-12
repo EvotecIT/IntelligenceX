@@ -26,6 +26,7 @@ let selectedProvider = 'openai';
 let selectedPresetProfile = 'balanced';
 let secretOption = 'login';   // 'login' | 'paste' | 'file' | 'skip'
 let selectedOnboardingPath = 'new-setup';
+let lastAutodetect = null;
 let deviceState = null;
 let lastRecommendation = null;
 let lastSummaryBase = 'Ready to preview or apply.';
@@ -194,6 +195,8 @@ function getOnboardingPathHint(path) {
       return 'Path selected: Fix Expired Auth. Next: authenticate, choose repos, then run update-secret.';
     case 'cleanup':
       return 'Path selected: Cleanup. Next: authenticate, select repos, then preview and remove setup files.';
+    case 'maintenance':
+      return 'Path selected: Maintenance. Next: run auto-detect, inspect repos, then choose setup/update-secret/cleanup.';
     case 'new-setup':
     default:
       return 'Path selected: New Setup. Next: authenticate with GitHub, then select repositories.';
@@ -240,6 +243,12 @@ function applyOnboardingPath(path) {
       selectProvider('openai');
       selectSecretOption('skip');
       if (withConfig) withConfig.checked = false;
+      break;
+    case 'maintenance':
+      selectOperation('setup');
+      selectProvider('openai');
+      selectSecretOption('skip');
+      if (withConfig) withConfig.checked = true;
       break;
     case 'new-setup':
     default:
@@ -402,6 +411,103 @@ function getSetupRequestHeaders() {
     'Content-Type': 'application/json',
     'X-IntelligenceX-Setup-Request': '1'
   };
+}
+
+function normalizeRecommendedPath(path) {
+  const normalized = String(path || '').trim().toLowerCase();
+  switch (normalized) {
+    case 'refresh-auth':
+    case 'fix-expired-auth':
+    case 'update-secret':
+      return 'refresh-auth';
+    case 'cleanup':
+      return 'cleanup';
+    case 'maintenance':
+      return 'maintenance';
+    case 'new-setup':
+    case 'setup':
+    default:
+      return 'new-setup';
+  }
+}
+
+function summarizeAutoDetectChecks(checks) {
+  let ok = 0;
+  let warn = 0;
+  let fail = 0;
+  (checks || []).forEach(check => {
+    const status = String(check.status || '').toLowerCase();
+    if (status === 'fail') fail++;
+    else if (status === 'warn') warn++;
+    else ok++;
+  });
+  return { ok, warn, fail };
+}
+
+function formatAutoDetectOutput(data) {
+  const lines = [];
+  lines.push(`status: ${data.status || 'unknown'}`);
+  lines.push(`workspace: ${data.workspace || '-'}`);
+  lines.push(`repo: ${data.repo || '(not detected)'}`);
+  lines.push(`local workflow: ${data.localWorkflowExists ? 'yes' : 'no'}`);
+  lines.push(`local config: ${data.localConfigExists ? 'yes' : 'no'}`);
+  lines.push(`recommended path: ${data.recommendedPath || '-'}`);
+  if (data.recommendedReason) lines.push(`reason: ${data.recommendedReason}`);
+  lines.push('');
+  lines.push('checks:');
+  (data.checks || []).forEach(check => {
+    lines.push(`- [${check.status || 'ok'}] ${check.message || ''}`);
+  });
+  return lines.join('\n');
+}
+
+function renderAutoDetect(data) {
+  const summaryEl = $('autodetectSummary');
+  const outputEl = $('autodetectOutput');
+  const applyBtn = $('applyAutodetectPath');
+  if (!summaryEl || !outputEl) return;
+
+  const recommendedPath = normalizeRecommendedPath(data.recommendedPath);
+  const counts = summarizeAutoDetectChecks(data.checks);
+  const status = String(data.status || '').toLowerCase();
+  const statusText = status === 'fail'
+    ? 'Fail'
+    : status === 'warn'
+      ? 'Warning'
+      : 'OK';
+  summaryEl.textContent = `${statusText} | checks: ${counts.ok} ok, ${counts.warn} warn, ${counts.fail} fail | Suggested path: ${recommendedPath}. ${data.recommendedReason || ''}`;
+  outputEl.textContent = formatAutoDetectOutput(data);
+
+  if (applyBtn) {
+    applyBtn.dataset.path = recommendedPath;
+    applyBtn.disabled = !recommendedPath;
+  }
+}
+
+async function runAutoDetect() {
+  const summaryEl = $('autodetectSummary');
+  const outputEl = $('autodetectOutput');
+  const runBtn = $('runAutodetect');
+  const repoInput = $('repo');
+  if (summaryEl) summaryEl.textContent = 'Running doctor preflight...';
+  if (outputEl) outputEl.textContent = '';
+  if (runBtn) runBtn.disabled = true;
+  try {
+    const data = await fetchJsonSafe('/api/setup/autodetect', {
+      method: 'POST',
+      headers: getSetupRequestHeaders(),
+      body: JSON.stringify({
+        repoHint: repoInput ? repoInput.value.trim() : ''
+      })
+    });
+    lastAutodetect = data;
+    renderAutoDetect(data);
+  } catch (e) {
+    if (summaryEl) summaryEl.textContent = `Auto-detect failed: ${e.message || e}`;
+    if (outputEl) outputEl.textContent = '';
+  } finally {
+    if (runBtn) runBtn.disabled = false;
+  }
 }
 
 function getToken() {
@@ -1453,3 +1559,17 @@ loadUsageCache();
 updateProgressBar();
 selectSecretOption(secretOption);
 syncOnboardingPathVisualState();
+const runAutodetectBtn = $('runAutodetect');
+if (runAutodetectBtn) {
+  runAutodetectBtn.addEventListener('click', async () => {
+    await runAutoDetect();
+  });
+}
+const applyAutodetectPathBtn = $('applyAutodetectPath');
+if (applyAutodetectPathBtn) {
+  applyAutodetectPathBtn.addEventListener('click', () => {
+    const suggested = normalizeRecommendedPath(applyAutodetectPathBtn.dataset.path);
+    applyOnboardingPath(suggested);
+  });
+}
+runAutoDetect();

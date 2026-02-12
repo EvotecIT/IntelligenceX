@@ -9,7 +9,7 @@
   },
   {
     "title": "CLI Tools",
-    "description": "One-command onboarding with the setup wizard. Local web UI for visual configuration. Multi-repo support, auth management, secret rotation, and usage tracking.",
+    "description": "Path-first onboarding in CLI and local Web UI. Built-in auto-detect preflight (doctor), multi-repo setup, auth refresh, cleanup, and maintenance flows.",
     "icon": "cli",
     "link": "/docs/cli/overview/",
     "tag": "Setup"

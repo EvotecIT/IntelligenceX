@@ -42,7 +42,9 @@ internal static partial class WizardRunner {
             AuthBundlePath = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH")
         };
 
-        state.Operation = WizardPrompts.PromptOperation();
+        if (!options.OperationSpecified) {
+            state.Operation = WizardPrompts.PromptOperation();
+        }
 
         // Show trust info before auth mode selection
         WizardPrompts.ShowTrustInfo();

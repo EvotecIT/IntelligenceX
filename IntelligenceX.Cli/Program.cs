@@ -137,6 +137,10 @@ internal static partial class Program {
             var rest = args.Skip(1).ToArray();
             return await Setup.Web.WebRunner.RunAsync(rest).ConfigureAwait(false);
         }
+        if (args.Length > 0 && args[0].Equals("autodetect", StringComparison.OrdinalIgnoreCase)) {
+            var rest = args.Skip(1).ToArray();
+            return await Setup.Onboarding.SetupOnboardingAutoDetectCliRunner.RunAsync(rest).ConfigureAwait(false);
+        }
         return await Setup.SetupRunner.RunAsync(args).ConfigureAwait(false);
     }
 

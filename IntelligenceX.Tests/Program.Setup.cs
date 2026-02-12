@@ -233,6 +233,65 @@ internal static partial class Program {
         AssertEqual(true, packsNode!.Count > 0, "config json merge analysis.packs has values");
     }
 
+    private static void TestSetupAutodetectJsonSerializesCheckStatusesAsLowercaseStrings() {
+        var result = new IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingAutoDetectResult {
+            Status = "warn",
+            Workspace = "/tmp/workspace",
+            RecommendedPath = IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.RefreshAuth,
+            RecommendedReason = "Auth requires refresh",
+            Checks = new[] {
+                new IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingCheck {
+                    Name = "doctor",
+                    Status = IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingCheckStatus.Ok,
+                    Message = "ok"
+                },
+                new IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingCheck {
+                    Name = "doctor",
+                    Status = IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingCheckStatus.Warn,
+                    Message = "warn"
+                },
+                new IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingCheck {
+                    Name = "doctor",
+                    Status = IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingCheckStatus.Fail,
+                    Message = "fail"
+                }
+            }
+        };
+
+        var json = IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingAutoDetectCliRunner.SerializeForTests(result);
+        using var document = System.Text.Json.JsonDocument.Parse(json);
+        AssertEqual(false, document.RootElement.TryGetProperty("Checks", out _),
+            "setup autodetect json root does not use PascalCase");
+        var checks = document.RootElement.GetProperty("checks");
+
+        AssertEqual(System.Text.Json.JsonValueKind.String, checks[0].GetProperty("status").ValueKind,
+            "setup autodetect json status value kind[0]");
+        AssertEqual("ok", checks[0].GetProperty("status").GetString(),
+            "setup autodetect json status value[0]");
+        AssertEqual("warn", checks[1].GetProperty("status").GetString(),
+            "setup autodetect json status value[1]");
+        AssertEqual("fail", checks[2].GetProperty("status").GetString(),
+            "setup autodetect json status value[2]");
+    }
+
+    private static void TestSetupAutodetectMissingWorkspaceValueFails() {
+        var (exitCode, output) = RunSetupAutodetectAndCaptureOutput(new[] { "--workspace" });
+        AssertEqual(1, exitCode, "setup autodetect missing workspace exit");
+        AssertContainsText(output, "Missing value for --workspace.", "setup autodetect missing workspace message");
+    }
+
+    private static void TestSetupAutodetectMissingRepoValueFails() {
+        var (exitCode, output) = RunSetupAutodetectAndCaptureOutput(new[] { "--repo" });
+        AssertEqual(1, exitCode, "setup autodetect missing repo exit");
+        AssertContainsText(output, "Missing value for --repo.", "setup autodetect missing repo message");
+    }
+
+    private static void TestSetupAutodetectUnknownOptionFails() {
+        var (exitCode, output) = RunSetupAutodetectAndCaptureOutput(new[] { "--badflag" });
+        AssertEqual(1, exitCode, "setup autodetect unknown option exit");
+        AssertContainsText(output, "Unknown option: --badflag", "setup autodetect unknown option message");
+    }
+
     private static void TestSetupWorkflowUpgradePreservesCustomSectionsOutsideManagedBlock() {
         var seed = """
 name: IntelligenceX Review
@@ -816,6 +875,25 @@ jobs:
             BaseAddress = new Uri("https://api.github.com")
         };
         return new IntelligenceX.Cli.Setup.Wizard.GitHubRepoClient(http, token);
+    }
+
+    private static (int ExitCode, string Output) RunSetupAutodetectAndCaptureOutput(string[] args) {
+        var originalOut = Console.Out;
+        var originalErr = Console.Error;
+        using var outWriter = new StringWriter();
+        using var errWriter = new StringWriter();
+        Console.SetOut(outWriter);
+        Console.SetError(errWriter);
+        try {
+            var exitCode = IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingAutoDetectCliRunner.RunAsync(args)
+                .GetAwaiter().GetResult();
+            outWriter.Flush();
+            errWriter.Flush();
+            return (exitCode, outWriter.ToString() + errWriter.ToString());
+        } finally {
+            Console.SetOut(originalOut);
+            Console.SetError(originalErr);
+        }
     }
 
     private sealed class DelegateHttpMessageHandler : System.Net.Http.HttpMessageHandler {
