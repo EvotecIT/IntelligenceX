@@ -267,6 +267,36 @@ internal static partial class Program {
             "setup autodetect json contract version");
         var contractFingerprint = document.RootElement.GetProperty("contractFingerprint").GetString() ?? string.Empty;
         AssertEqual(64, contractFingerprint.Length, "setup autodetect json contract fingerprint length");
+        var commandTemplates = document.RootElement.GetProperty("commandTemplates");
+        AssertEqual("intelligencex setup autodetect --json",
+            commandTemplates.GetProperty("autoDetect").GetString(),
+            "setup autodetect json command template auto-detect");
+        AssertEqual("intelligencex setup --repo owner/name --with-config",
+            commandTemplates.GetProperty("newSetupApply").GetString(),
+            "setup autodetect json command template setup apply");
+        AssertEqual("intelligencex setup --repo owner/name --update-secret --auth-b64 <base64>",
+            commandTemplates.GetProperty("refreshAuthApply").GetString(),
+            "setup autodetect json command template update-secret apply");
+        AssertEqual("intelligencex setup --repo owner/name --cleanup",
+            commandTemplates.GetProperty("cleanupApply").GetString(),
+            "setup autodetect json command template cleanup apply");
+        var paths = document.RootElement.GetProperty("paths");
+        AssertEqual(4, paths.GetArrayLength(), "setup autodetect json path count");
+        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.NewSetupPathId,
+            paths[0].GetProperty("id").GetString(),
+            "setup autodetect json path[0] id");
+        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.RefreshAuthPathId,
+            paths[1].GetProperty("id").GetString(),
+            "setup autodetect json path[1] id");
+        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.CleanupPathId,
+            paths[2].GetProperty("id").GetString(),
+            "setup autodetect json path[2] id");
+        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.MaintenancePathId,
+            paths[3].GetProperty("id").GetString(),
+            "setup autodetect json path[3] id");
+        AssertEqual("setup", paths[0].GetProperty("operation").GetString(), "setup autodetect json path[0] operation");
+        AssertEqual("update-secret", paths[1].GetProperty("operation").GetString(), "setup autodetect json path[1] operation");
+        AssertEqual("cleanup", paths[2].GetProperty("operation").GetString(), "setup autodetect json path[2] operation");
         var checks = document.RootElement.GetProperty("checks");
 
         AssertEqual(System.Text.Json.JsonValueKind.String, checks[0].GetProperty("status").ValueKind,
