@@ -94,6 +94,8 @@ internal static partial class Program {
     }
 
     private sealed class SetupFakeGitHubApiServer : IDisposable {
+        private static readonly TimeSpan RequestReadTimeout = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(2);
         private readonly string _repoPrefix;
         private readonly string _pullRequestUrl;
         private readonly TcpListener _listener;
@@ -157,7 +159,13 @@ internal static partial class Program {
         private async Task HandleClientAsync(TcpClient client) {
             using (client) {
                 using var stream = client.GetStream();
-                var request = await ReadRequestAsync(stream).ConfigureAwait(false);
+                using var readCts = new CancellationTokenSource(RequestReadTimeout);
+                SetupFakeHttpRequest? request;
+                try {
+                    request = await ReadRequestAsync(stream, readCts.Token).ConfigureAwait(false);
+                } catch (OperationCanceledException) {
+                    return;
+                }
                 if (request is null) {
                     return;
                 }
@@ -225,14 +233,14 @@ internal static partial class Program {
             return new SetupFakeHttpResponse(404, "Not Found", "{\"message\":\"Not Found\"}");
         }
 
-        private static async Task<SetupFakeHttpRequest?> ReadRequestAsync(NetworkStream stream) {
+        private static async Task<SetupFakeHttpRequest?> ReadRequestAsync(NetworkStream stream, CancellationToken cancellationToken) {
             var headerBytes = new List<byte>(1024);
             var delimiter = new byte[] { 13, 10, 13, 10 };
             var matched = 0;
             var singleByte = new byte[1];
 
             while (true) {
-                var read = await stream.ReadAsync(singleByte, 0, 1).ConfigureAwait(false);
+                var read = await stream.ReadAsync(singleByte, 0, 1, cancellationToken).ConfigureAwait(false);
                 if (read == 0) {
                     return null;
                 }
@@ -278,7 +286,8 @@ internal static partial class Program {
                 var bodyBytes = new byte[contentLength];
                 var read = 0;
                 while (read < contentLength) {
-                    var count = await stream.ReadAsync(bodyBytes, read, contentLength - read).ConfigureAwait(false);
+                    var count = await stream.ReadAsync(bodyBytes, read, contentLength - read, cancellationToken)
+                        .ConfigureAwait(false);
                     if (count == 0) {
                         break;
                     }
@@ -315,7 +324,10 @@ internal static partial class Program {
             _disposed = true;
             _listener.Stop();
             try {
-                _loopTask.GetAwaiter().GetResult();
+                var completed = Task.WhenAny(_loopTask, Task.Delay(ShutdownTimeout)).GetAwaiter().GetResult();
+                if (ReferenceEquals(completed, _loopTask)) {
+                    _loopTask.GetAwaiter().GetResult();
+                }
             } catch {
                 // ignored
             }
