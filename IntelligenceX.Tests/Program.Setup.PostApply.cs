@@ -52,7 +52,7 @@ internal static partial class Program {
         var verify = SetupPostApplyVerifier.EvaluateForTests(context, observed);
         AssertEqual(false, verify.Passed, "post-apply cleanup verify failed");
 
-        var configCheck = verify.Checks.Find(check => check.Name == "Reviewer config");
+        var configCheck = verify.Checks.Find(check => check.Name == SetupPostApplyCheckNames.ReviewerConfig);
         AssertNotNull(configCheck, "post-apply cleanup config check exists");
         AssertEqual(false, configCheck!.Passed, "post-apply cleanup config check failed");
     }
@@ -80,7 +80,7 @@ internal static partial class Program {
 
         var verify = SetupPostApplyVerifier.EvaluateForTests(context, observed);
         AssertEqual(true, verify.Passed, "post-apply setup verify passes when PR exists and branch state is unknown");
-        AssertEqual(true, verify.Checks.Exists(check => check.Name == "Workflow" && check.Skipped),
+        AssertEqual(true, verify.Checks.Exists(check => check.Name == SetupPostApplyCheckNames.Workflow && check.Skipped),
             "post-apply setup workflow check skipped when branch state unknown");
     }
 
@@ -99,11 +99,11 @@ internal static partial class Program {
 
         var verify = SetupPostApplyVerifier.EvaluateForTests(context, observed);
         AssertEqual(false, verify.Passed, "post-apply unauthorized secret lookup fails");
-        var secretCheck = verify.Checks.Find(check => check.Name == "Repo secret");
+        var secretCheck = verify.Checks.Find(check => check.Name == SetupPostApplyCheckNames.RepoSecret);
         AssertNotNull(secretCheck, "post-apply unauthorized secret check exists");
         AssertEqual(false, secretCheck!.Skipped, "post-apply unauthorized secret check not skipped");
         AssertEqual(false, secretCheck.Passed, "post-apply unauthorized secret check failed");
-        AssertEqual("unauthorized", secretCheck.Actual, "post-apply unauthorized secret check actual");
+        AssertEqual(SetupPostApplyCheckValues.Unauthorized, secretCheck.Actual, "post-apply unauthorized secret check actual");
     }
 
     private static void TestSetupPostApplyVerifyIncludesLatestWorkflowRunLink() {
@@ -131,11 +131,11 @@ internal static partial class Program {
                 conclusion: "success",
                 headBranch: "main",
                 @event: "pull_request",
-                createdAt: DateTimeOffset.Parse("2026-02-11T19:45:00Z", System.Globalization.CultureInfo.InvariantCulture))
+                createdAt: new DateTimeOffset(2026, 2, 11, 19, 45, 00, TimeSpan.Zero))
         };
 
         var verify = SetupPostApplyVerifier.EvaluateForTests(context, observed);
-        var latestRun = verify.Checks.Find(check => check.Name == "Latest workflow run");
+        var latestRun = verify.Checks.Find(check => check.Name == SetupPostApplyCheckNames.LatestWorkflowRun);
         AssertNotNull(latestRun, "post-apply latest workflow run check exists");
         AssertEqual(false, latestRun!.Skipped, "post-apply latest workflow run check not skipped");
         AssertEqual(true, latestRun.Passed, "post-apply latest workflow run check passed");
@@ -160,15 +160,15 @@ internal static partial class Program {
             WorkflowExists = true,
             WorkflowManaged = true,
             ConfigExists = true,
-            WorkflowRunLookupStatus = "forbidden",
+            WorkflowRunLookupStatus = SetupPostApplyCheckValues.Forbidden,
             WorkflowRunLookupNote = "GitHub API returned 403 Forbidden."
         };
 
         var verify = SetupPostApplyVerifier.EvaluateForTests(context, observed);
-        var latestRun = verify.Checks.Find(check => check.Name == "Latest workflow run");
+        var latestRun = verify.Checks.Find(check => check.Name == SetupPostApplyCheckNames.LatestWorkflowRun);
         AssertNotNull(latestRun, "post-apply latest workflow run failure check exists");
         AssertEqual(true, latestRun!.Skipped, "post-apply latest workflow run failure check skipped");
-        AssertEqual("forbidden", latestRun.Actual, "post-apply latest workflow run failure status");
+        AssertEqual(SetupPostApplyCheckValues.Forbidden, latestRun.Actual, "post-apply latest workflow run failure status");
         AssertContainsText(latestRun.Note ?? string.Empty, "403", "post-apply latest workflow run failure note");
     }
 
