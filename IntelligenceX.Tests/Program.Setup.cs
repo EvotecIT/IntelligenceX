@@ -356,6 +356,39 @@ internal static partial class Program {
         AssertEqual(originalFlowStep, freshPaths[0].Flow[0], "setup contract returns defensive path copies");
     }
 
+    private static void TestSetupWizardPathIdMapsToOperation() {
+        AssertEqual(IntelligenceX.Cli.Setup.Wizard.WizardOperation.Setup,
+            IntelligenceX.Cli.Setup.Wizard.WizardRunner.ResolveOperationFromPathIdForTests(
+                IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.NewSetup),
+            "setup wizard path new-setup maps to setup operation");
+        AssertEqual(IntelligenceX.Cli.Setup.Wizard.WizardOperation.UpdateSecret,
+            IntelligenceX.Cli.Setup.Wizard.WizardRunner.ResolveOperationFromPathIdForTests(
+                IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.RefreshAuth),
+            "setup wizard path refresh-auth maps to update-secret operation");
+        AssertEqual(IntelligenceX.Cli.Setup.Wizard.WizardOperation.Cleanup,
+            IntelligenceX.Cli.Setup.Wizard.WizardRunner.ResolveOperationFromPathIdForTests(
+                IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.Cleanup),
+            "setup wizard path cleanup maps to cleanup operation");
+        AssertEqual(IntelligenceX.Cli.Setup.Wizard.WizardOperation.Setup,
+            IntelligenceX.Cli.Setup.Wizard.WizardRunner.ResolveOperationFromPathIdForTests("unknown-path"),
+            "setup wizard unknown path falls back to setup operation");
+    }
+
+    private static void TestSetupWizardOperationMapsToPathId() {
+        AssertEqual(IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.NewSetup,
+            IntelligenceX.Cli.Setup.Wizard.WizardRunner.ResolvePathIdFromOperationForTests(
+                IntelligenceX.Cli.Setup.Wizard.WizardOperation.Setup),
+            "setup wizard setup operation maps to new-setup path");
+        AssertEqual(IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.RefreshAuth,
+            IntelligenceX.Cli.Setup.Wizard.WizardRunner.ResolvePathIdFromOperationForTests(
+                IntelligenceX.Cli.Setup.Wizard.WizardOperation.UpdateSecret),
+            "setup wizard update-secret operation maps to refresh-auth path");
+        AssertEqual(IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.Cleanup,
+            IntelligenceX.Cli.Setup.Wizard.WizardRunner.ResolvePathIdFromOperationForTests(
+                IntelligenceX.Cli.Setup.Wizard.WizardOperation.Cleanup),
+            "setup wizard cleanup operation maps to cleanup path");
+    }
+
     private static void TestSetupOnboardingContractCommandTemplates() {
         var templates = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetCommandTemplates();
         AssertEqual("intelligencex setup autodetect --json", templates.AutoDetect, "setup contract auto-detect template");

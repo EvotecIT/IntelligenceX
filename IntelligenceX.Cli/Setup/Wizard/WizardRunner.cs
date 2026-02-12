@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.Setup;
 using IntelligenceX.Cli.Setup.Host;
+using IntelligenceX.Cli.Setup.Onboarding;
 using Spectre.Console;
 
 namespace IntelligenceX.Cli.Setup.Wizard;
@@ -14,6 +15,11 @@ internal static partial class WizardRunner {
 
     public static async Task<int> RunAsync(string[] args) {
         var options = WizardOptions.Parse(args);
+        if (!string.IsNullOrWhiteSpace(options.ParseError)) {
+            Console.Error.WriteLine(options.ParseError);
+            WriteHelp();
+            return 1;
+        }
         if (options.ShowHelp) {
             WriteHelp();
             return 0;
@@ -39,11 +45,33 @@ internal static partial class WizardRunner {
             Upgrade = options.Upgrade,
             Force = options.Force,
             Operation = options.Operation,
+            OnboardingPathId = options.PathSpecified
+                ? options.PathId!
+                : ResolvePathIdFromOperation(options.Operation),
             AuthBundlePath = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH")
         };
 
-        if (!options.OperationSpecified) {
-            state.Operation = WizardPrompts.PromptOperation();
+        if (options.PathSpecified) {
+            state.Operation = ResolveOperationFromPathId(state.OnboardingPathId);
+        } else if (options.OperationSpecified) {
+            state.OnboardingPathId = ResolvePathIdFromOperation(state.Operation);
+        } else {
+            SetupOnboardingAutoDetectResult? autoDetect = null;
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .StartAsync("Running auto-detect preflight...", async _ => {
+                    autoDetect = await SetupOnboardingAutoDetectRunner
+                        .RunAsync(Environment.CurrentDirectory, options.RepoFullName)
+                        .ConfigureAwait(false);
+                }).ConfigureAwait(false);
+
+            if (autoDetect is not null) {
+                RenderAutoDetectSummary(autoDetect);
+                state.OnboardingPathId = WizardPrompts.PromptOnboardingPath(
+                    autoDetect.RecommendedPath,
+                    autoDetect.RecommendedReason);
+                state.Operation = ResolveOperationFromPathId(state.OnboardingPathId);
+            }
         }
 
         // Show trust info before auth mode selection
@@ -199,5 +227,43 @@ internal static partial class WizardRunner {
         AnsiConsole.MarkupLine("[green]Setup completed successfully.[/]");
         await TryShowUsageAsync(state).ConfigureAwait(false);
         return 0;
+    }
+
+    private static void RenderAutoDetectSummary(SetupOnboardingAutoDetectResult result) {
+        var path = SetupOnboardingPaths.GetOrDefault(result.RecommendedPath);
+        var status = result.Status.ToLowerInvariant() switch {
+            "fail" => "[red]fail[/]",
+            "warn" => "[yellow]warn[/]",
+            _ => "[green]ok[/]"
+        };
+
+        var lines = new List<string> {
+            $"Status: {status}",
+            $"Recommended path: [cyan]{Markup.Escape(path.DisplayName)}[/]",
+            $"Reason: {Markup.Escape(result.RecommendedReason)}"
+        };
+
+        if (result.Checks.Count > 0) {
+            lines.Add(string.Empty);
+            lines.Add("Top checks:");
+            foreach (var check in result.Checks.Take(3)) {
+                var checkStatus = check.Status switch {
+                    SetupOnboardingCheckStatus.Fail => "[red]FAIL[/]",
+                    SetupOnboardingCheckStatus.Warn => "[yellow]WARN[/]",
+                    _ => "[green]OK[/]"
+                };
+                lines.Add($"- {checkStatus} {Markup.Escape(check.Message)}");
+            }
+            if (result.Checks.Count > 3) {
+                lines.Add($"- [grey]... +{result.Checks.Count - 3} more[/]");
+            }
+        }
+
+        var panel = new Panel(string.Join(Environment.NewLine, lines)) {
+            Header = new PanelHeader("[blue]Auto-Detect (Doctor Preflight)[/]"),
+            Border = BoxBorder.Rounded
+        };
+        AnsiConsole.Write(panel);
+        AnsiConsole.WriteLine();
     }
 }

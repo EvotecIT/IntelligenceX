@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using IntelligenceX.Cli.Setup;
+using IntelligenceX.Cli.Setup.Onboarding;
 using Spectre.Console;
 
 namespace IntelligenceX.Cli.Setup.Wizard;
@@ -65,6 +66,31 @@ internal static class WizardPrompts {
                     SetupScope.MultipleRepos => "Multiple repositories",
                     _ => "Manual entry"
                 }));
+    }
+
+    public static string PromptOnboardingPath(string? recommendedPathId, string? recommendedReason) {
+        var paths = SetupOnboardingPaths.GetAll();
+        var recommended = SetupOnboardingPaths.GetOrDefault(recommendedPathId);
+        var orderedPaths = paths
+            .OrderBy(path => string.Equals(path.Id, recommended.Id, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(path => path.DisplayName, StringComparer.Ordinal)
+            .ToArray();
+        var prompt = new SelectionPrompt<SetupOnboardingPathDefinition>()
+            .Title("Choose onboarding path:")
+            .PageSize(8)
+            .AddChoices(orderedPaths)
+            .UseConverter(path => {
+                var recommendedSuffix = string.Equals(path.Id, recommended.Id, StringComparison.OrdinalIgnoreCase)
+                    ? " (recommended)"
+                    : string.Empty;
+                return $"{path.DisplayName}{recommendedSuffix} - {path.Description}";
+            });
+        var selected = AnsiConsole.Prompt(prompt);
+        if (!string.IsNullOrWhiteSpace(recommendedReason)) {
+            AnsiConsole.MarkupLine($"[grey]Recommendation: {recommended.DisplayName}. {recommendedReason}[/]");
+        }
+
+        return selected.Id;
     }
 
     public static WizardOperation PromptOperation() {

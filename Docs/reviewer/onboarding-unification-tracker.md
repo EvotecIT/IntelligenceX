@@ -17,6 +17,7 @@ This file tracks onboarding/cleanup/maintenance unification across CLI, Web, and
 | Add shared onboarding path catalog | Completed | IX CLI | Added runtime catalog in `IntelligenceX.Cli/Setup/Onboarding/SetupOnboardingPaths.cs` and reused in Web API path payloads. |
 | Add auto-detect preflight (doctor-based) | Completed | IX CLI | Added `setup autodetect` + Web API endpoint `/api/setup/autodetect` + Manage menu entry. |
 | Web: path-first + maintenance + auto-detect panel | Completed | IX CLI Web | Added maintenance path card and auto-detect panel before repo selection. |
+| CLI wizard: path-first + auto-detect first step | Completed | IX CLI | Wizard now runs doctor-based auto-detect summary and path selection before auth/repo steps, with `--path` support for non-interactive path preselection. |
 | Web/CLI: centralize setup arg building | Completed | IX CLI | Web now builds args via `SetupPlan` + `SetupArgsBuilder`. |
 | CLI wizard: honor preselected operation | Completed | IX CLI | `--operation` now skips re-prompt. |
 | Manage hub: include cleanup and auto-detect | Completed | IX CLI | Setup menu now includes both flows. |
