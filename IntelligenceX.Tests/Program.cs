@@ -64,6 +64,7 @@ internal static partial class Program {
             TestSetupAutodetectJsonSerializesCheckStatusesAsLowercaseStrings);
         failed += Run("Setup autodetect missing workspace value fails", TestSetupAutodetectMissingWorkspaceValueFails);
         failed += Run("Setup autodetect missing repo value fails", TestSetupAutodetectMissingRepoValueFails);
+        failed += Run("Setup autodetect unknown option fails", TestSetupAutodetectUnknownOptionFails);
         failed += Run("Setup workflow upgrade preserves custom sections outside managed block",
             TestSetupWorkflowUpgradePreservesCustomSectionsOutsideManagedBlock);
         failed += Run("Setup workflow upgrade preserves outside managed block verbatim",

@@ -329,8 +329,8 @@ internal static class SetupOnboardingAutoDetectCliRunner {
                     options.Json = true;
                     break;
                 default:
-                    options.ShowHelp = true;
-                    break;
+                    options.ParseError = $"Unknown option: {arg}";
+                    return options;
             }
         }
         return options;

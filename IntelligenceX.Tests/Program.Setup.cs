@@ -286,6 +286,12 @@ internal static partial class Program {
         AssertContainsText(output, "Missing value for --repo.", "setup autodetect missing repo message");
     }
 
+    private static void TestSetupAutodetectUnknownOptionFails() {
+        var (exitCode, output) = RunSetupAutodetectAndCaptureOutput(new[] { "--badflag" });
+        AssertEqual(1, exitCode, "setup autodetect unknown option exit");
+        AssertContainsText(output, "Unknown option: --badflag", "setup autodetect unknown option message");
+    }
+
     private static void TestSetupWorkflowUpgradePreservesCustomSectionsOutsideManagedBlock() {
         var seed = """
 name: IntelligenceX Review
