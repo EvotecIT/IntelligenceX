@@ -16,6 +16,9 @@ Verify the token scope or ensure the GitHub App is installed on those repos.
 ### Can onboarding auto-detect what I should do first?
 Yes. Run `intelligencex setup autodetect` (or use the Web auto-detect panel in step 1). It runs doctor-style checks and suggests a path (`new-setup`, `refresh-auth`, or `maintenance`) before repo selection.
 
+### Why does the Web UI show a contract version/fingerprint?
+It comes from the shared onboarding contract used by CLI/Web/Bot tooling. If your Bot tools compare this metadata before apply (`reviewer_setup_contract_verify`), they can stop on contract drift instead of running outdated commands.
+
 ### PRs were not created
 Check that the GitHub token includes write permissions for `contents` and `pull_requests`.
 
@@ -31,3 +34,6 @@ Use `dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release 
 
 ### How do I run cleanup from the guided flow?
 Use `intelligencex setup wizard --operation cleanup` for CLI, or pick the Cleanup path in `intelligencex setup web`.
+
+### Which paths require AI auth?
+`new-setup` and `refresh-auth` require AI auth. `cleanup` and `maintenance` do not require AI auth by default.

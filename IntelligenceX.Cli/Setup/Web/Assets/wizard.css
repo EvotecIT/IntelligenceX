@@ -711,6 +711,35 @@ details summary:hover {
   margin-top: 6px;
 }
 
+.path-requirements {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.path-requirement {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  border: 1px solid var(--pf-border);
+  background: var(--pf-bg-alt);
+  color: var(--pf-muted);
+}
+
+.path-requirement.required {
+  border-color: rgba(16, 185, 129, 0.35);
+  color: var(--pf-success);
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.path-requirement.optional {
+  border-color: rgba(148, 163, 184, 0.45);
+  color: var(--pf-muted);
+}
+
 /* ── Status area ── */
 .status {
   display: flex;

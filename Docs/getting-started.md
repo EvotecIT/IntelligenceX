@@ -29,6 +29,8 @@ The wizard guides you through:
 5. Choosing a review preset (balanced, picky, security, minimal, etc.)
 6. Creating a PR with the GitHub Actions workflow
 
+See [Web Onboarding Flow](/docs/reviewer/web-onboarding/) for the canonical path/auth requirements matrix and Bot contract-check flow.
+
 ## Option 2 - Local Web UI (Preview)
 
 For a visual setup experience:
