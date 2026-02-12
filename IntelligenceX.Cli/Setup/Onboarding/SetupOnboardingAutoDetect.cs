@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Cli;
 using IntelligenceX.Cli.Doctor;
+using IntelligenceX.Setup.Onboarding;
 
 namespace IntelligenceX.Cli.Setup.Onboarding;
 
@@ -31,6 +32,8 @@ internal sealed class SetupOnboardingAutoDetectResult {
     public string? Repo { get; set; }
     public bool LocalWorkflowExists { get; set; }
     public bool LocalConfigExists { get; set; }
+    public string ContractVersion { get; set; } = SetupOnboardingContract.ContractVersion;
+    public string ContractFingerprint { get; set; } = SetupOnboardingContract.GetContractFingerprint(includeMaintenancePath: true);
     public string RecommendedPath { get; set; } = SetupOnboardingPaths.NewSetup;
     public string RecommendedReason { get; set; } = string.Empty;
     public IReadOnlyList<SetupOnboardingCheck> Checks { get; set; } = Array.Empty<SetupOnboardingCheck>();
@@ -69,6 +72,8 @@ internal static class SetupOnboardingAutoDetectRunner {
             Repo = repo,
             LocalWorkflowExists = localWorkflowExists,
             LocalConfigExists = localConfigExists,
+            ContractVersion = SetupOnboardingContract.ContractVersion,
+            ContractFingerprint = SetupOnboardingContract.GetContractFingerprint(includeMaintenancePath: true),
             RecommendedPath = recommendedPath,
             RecommendedReason = reason,
             Checks = checks,

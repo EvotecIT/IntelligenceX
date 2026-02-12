@@ -51,6 +51,8 @@ internal sealed partial class WebApi {
         }).ToArray();
 
         await WriteJsonOkAsync(context, new {
+            contractVersion = result.ContractVersion,
+            contractFingerprint = result.ContractFingerprint,
             status = result.Status,
             workspace = result.Workspace,
             repo = result.Repo,

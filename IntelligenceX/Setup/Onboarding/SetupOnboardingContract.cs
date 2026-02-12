@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace IntelligenceX.Setup.Onboarding;
 
@@ -181,6 +183,11 @@ public static class SetupOnboardingContract {
     /// </summary>
     public const string MaintenancePathId = "maintenance";
 
+    /// <summary>
+    /// Semantic onboarding contract version.
+    /// </summary>
+    public const string ContractVersion = "2026-02-12.3";
+
     private static readonly IReadOnlyList<SetupOnboardingPathContract> PathsWithMaintenance = new[] {
         new SetupOnboardingPathContract(
             id: NewSetupPathId,
@@ -259,11 +266,14 @@ public static class SetupOnboardingContract {
         cleanupApply: "intelligencex setup --repo owner/name --cleanup",
         maintenanceWizard: "intelligencex setup web");
 
+    private static readonly string FingerprintWithMaintenance = ComputeFingerprint(includeMaintenancePath: true);
+    private static readonly string FingerprintWithoutMaintenance = ComputeFingerprint(includeMaintenancePath: false);
+
     /// <summary>
     /// Returns onboarding paths.
     /// </summary>
     public static IReadOnlyList<SetupOnboardingPathContract> GetPaths(bool includeMaintenancePath = true) {
-        return includeMaintenancePath ? PathsWithMaintenance : PathsWithoutMaintenance;
+        return ClonePaths(includeMaintenancePath ? PathsWithMaintenance : PathsWithoutMaintenance);
     }
 
     /// <summary>
@@ -299,6 +309,93 @@ public static class SetupOnboardingContract {
     /// Returns canonical command templates.
     /// </summary>
     public static SetupOnboardingCommandTemplates GetCommandTemplates() {
-        return CommandTemplates;
+        return new SetupOnboardingCommandTemplates(
+            autoDetect: CommandTemplates.AutoDetect,
+            newSetupDryRun: CommandTemplates.NewSetupDryRun,
+            newSetupApply: CommandTemplates.NewSetupApply,
+            refreshAuthDryRun: CommandTemplates.RefreshAuthDryRun,
+            refreshAuthApply: CommandTemplates.RefreshAuthApply,
+            cleanupDryRun: CommandTemplates.CleanupDryRun,
+            cleanupApply: CommandTemplates.CleanupApply,
+            maintenanceWizard: CommandTemplates.MaintenanceWizard);
+    }
+
+    /// <summary>
+    /// Returns deterministic contract fingerprint for drift checks.
+    /// </summary>
+    public static string GetContractFingerprint(bool includeMaintenancePath = true) {
+        return includeMaintenancePath ? FingerprintWithMaintenance : FingerprintWithoutMaintenance;
+    }
+
+    private static IReadOnlyList<SetupOnboardingPathContract> ClonePaths(IReadOnlyList<SetupOnboardingPathContract> source) {
+        var copy = new SetupOnboardingPathContract[source.Count];
+        for (var i = 0; i < source.Count; i++) {
+            var path = source[i];
+            var flowCopy = new string[path.Flow.Count];
+            for (var j = 0; j < path.Flow.Count; j++) {
+                flowCopy[j] = path.Flow[j];
+            }
+
+            copy[i] = new SetupOnboardingPathContract(
+                id: path.Id,
+                displayName: path.DisplayName,
+                description: path.Description,
+                operation: path.Operation,
+                requiresGitHubAuth: path.RequiresGitHubAuth,
+                requiresRepoSelection: path.RequiresRepoSelection,
+                requiresAiAuth: path.RequiresAiAuth,
+                flow: flowCopy);
+        }
+
+        return copy;
+    }
+
+    private static string ComputeFingerprint(bool includeMaintenancePath) {
+        var data = includeMaintenancePath ? PathsWithMaintenance : PathsWithoutMaintenance;
+        var builder = new StringBuilder();
+        builder.Append("version=").Append(ContractVersion).Append('\n');
+        for (var i = 0; i < data.Count; i++) {
+            var path = data[i];
+            builder.Append(path.Id).Append('|')
+                .Append(path.DisplayName).Append('|')
+                .Append(path.Description).Append('|')
+                .Append(path.Operation).Append('|')
+                .Append(path.RequiresGitHubAuth ? '1' : '0').Append('|')
+                .Append(path.RequiresRepoSelection ? '1' : '0').Append('|')
+                .Append(path.RequiresAiAuth ? '1' : '0').Append('\n');
+            for (var j = 0; j < path.Flow.Count; j++) {
+                builder.Append('>').Append(path.Flow[j]).Append('\n');
+            }
+        }
+
+        builder.Append("autoDetect=").Append(CommandTemplates.AutoDetect).Append('\n');
+        builder.Append("newSetupDryRun=").Append(CommandTemplates.NewSetupDryRun).Append('\n');
+        builder.Append("newSetupApply=").Append(CommandTemplates.NewSetupApply).Append('\n');
+        builder.Append("refreshAuthDryRun=").Append(CommandTemplates.RefreshAuthDryRun).Append('\n');
+        builder.Append("refreshAuthApply=").Append(CommandTemplates.RefreshAuthApply).Append('\n');
+        builder.Append("cleanupDryRun=").Append(CommandTemplates.CleanupDryRun).Append('\n');
+        builder.Append("cleanupApply=").Append(CommandTemplates.CleanupApply).Append('\n');
+        builder.Append("maintenanceWizard=").Append(CommandTemplates.MaintenanceWizard).Append('\n');
+
+        using var hash = SHA256.Create();
+        var digest = hash.ComputeHash(Encoding.UTF8.GetBytes(builder.ToString()));
+        return ToHexLower(digest);
+    }
+
+    private static string ToHexLower(byte[] bytes) {
+        var chars = new char[bytes.Length * 2];
+        var index = 0;
+        for (var i = 0; i < bytes.Length; i++) {
+            var b = bytes[i];
+            chars[index++] = ToHexNibbleLower((b >> 4) & 0xF);
+            chars[index++] = ToHexNibbleLower(b & 0xF);
+        }
+        return new string(chars);
+    }
+
+    private static char ToHexNibbleLower(int value) {
+        return value < 10
+            ? (char)('0' + value)
+            : (char)('a' + (value - 10));
     }
 }

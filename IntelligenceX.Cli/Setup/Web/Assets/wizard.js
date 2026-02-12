@@ -449,6 +449,8 @@ function formatAutoDetectOutput(data) {
   lines.push(`status: ${data.status || 'unknown'}`);
   lines.push(`workspace: ${data.workspace || '-'}`);
   lines.push(`repo: ${data.repo || '(not detected)'}`);
+  if (data.contractVersion) lines.push(`contract version: ${data.contractVersion}`);
+  if (data.contractFingerprint) lines.push(`contract fingerprint: ${data.contractFingerprint}`);
   lines.push(`local workflow: ${data.localWorkflowExists ? 'yes' : 'no'}`);
   lines.push(`local config: ${data.localConfigExists ? 'yes' : 'no'}`);
   lines.push(`recommended path: ${data.recommendedPath || '-'}`);
@@ -475,7 +477,8 @@ function renderAutoDetect(data) {
     : status === 'warn'
       ? 'Warning'
       : 'OK';
-  summaryEl.textContent = `${statusText} | checks: ${counts.ok} ok, ${counts.warn} warn, ${counts.fail} fail | Suggested path: ${recommendedPath}. ${data.recommendedReason || ''}`;
+  const contractText = data.contractVersion ? ` | contract: ${data.contractVersion}` : '';
+  summaryEl.textContent = `${statusText} | checks: ${counts.ok} ok, ${counts.warn} warn, ${counts.fail} fail | Suggested path: ${recommendedPath}${contractText}. ${data.recommendedReason || ''}`;
   outputEl.textContent = formatAutoDetectOutput(data);
 
   if (applyBtn) {
