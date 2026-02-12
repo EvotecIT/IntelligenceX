@@ -112,6 +112,10 @@ internal static partial class Program {
         failed += Run("Manage external command captures help tail line", TestManageRunExternalCommandCapturesHelpTailLine);
         failed += Run("Manage external command start failure returns promptly", TestManageRunExternalCommandStartFailureReturnsPromptly);
         failed += Run("Manage external command non-timeout failure is not timeout", TestManageRunExternalCommandNonTimeoutFailureIsNotTimeout);
+        failed += Run("Web setup autodetect response matches shared contract payload",
+            TestWebSetupAutodetectResponseJsonMatchesSharedContractPayload);
+        failed += Run("Web setup autodetect response fallbacks for null payloads",
+            TestWebSetupAutodetectResponseJsonFallbacksForNullPayloads);
         failed += Run("Web setup args propagate request dry-run", TestWebSetupBuildSetupArgsPropagatesRequestDryRun);
         failed += Run("Web setup resolves with-config from args", TestWebSetupResolveWithConfigFromArgs);
         failed += Run("Web setup post-apply verify skips callback on failed apply",

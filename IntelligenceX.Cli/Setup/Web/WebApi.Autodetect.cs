@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.Setup.Onboarding;
+using IntelligenceX.Setup.Onboarding;
 
 namespace IntelligenceX.Cli.Setup.Web;
 
@@ -39,7 +40,22 @@ internal sealed partial class WebApi {
             ConsoleLock.Release();
         }
 
-        var paths = result.Paths.Select(path => new {
+        await WriteJsonOkAsync(context, BuildSetupAutodetectResponsePayload(result)).ConfigureAwait(false);
+    }
+
+    internal static string BuildSetupAutodetectResponseJsonForTests(SetupOnboardingAutoDetectResult result) {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        return JsonSerializer.Serialize(BuildSetupAutodetectResponsePayload(result), options);
+    }
+
+    private static object BuildSetupAutodetectResponsePayload(SetupOnboardingAutoDetectResult result) {
+        ArgumentNullException.ThrowIfNull(result);
+
+        var pathContracts = result.Paths ?? SetupOnboardingContract.GetPaths(includeMaintenancePath: true);
+        var commands = result.CommandTemplates ?? SetupOnboardingContract.GetCommandTemplates();
+        var checks = result.Checks ?? Array.Empty<SetupOnboardingCheck>();
+
+        var paths = pathContracts.Select(path => new {
             id = path.Id,
             displayName = path.DisplayName,
             description = path.Description,
@@ -49,9 +65,7 @@ internal sealed partial class WebApi {
             requiresAiAuth = path.RequiresAiAuth,
             flow = path.Flow
         }).ToArray();
-        var commands = result.CommandTemplates;
-
-        await WriteJsonOkAsync(context, new {
+        return new {
             contractVersion = result.ContractVersion,
             contractFingerprint = result.ContractFingerprint,
             commandTemplates = new {
@@ -71,12 +85,12 @@ internal sealed partial class WebApi {
             localConfigExists = result.LocalConfigExists,
             recommendedPath = result.RecommendedPath,
             recommendedReason = result.RecommendedReason,
-            checks = result.Checks.Select(check => new {
+            checks = checks.Select(check => new {
                 name = check.Name,
                 status = check.Status.ToString().ToLowerInvariant(),
                 message = check.Message
             }).ToArray(),
             paths
-        }).ConfigureAwait(false);
+        };
     }
 }

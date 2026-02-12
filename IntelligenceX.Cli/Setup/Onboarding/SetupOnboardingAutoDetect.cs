@@ -21,25 +21,25 @@ internal enum SetupOnboardingCheckStatus {
 }
 
 internal sealed class SetupOnboardingCheck {
-    public string Name { get; set; } = string.Empty;
-    public SetupOnboardingCheckStatus Status { get; set; }
-    public string Message { get; set; } = string.Empty;
+    public string Name { get; init; } = string.Empty;
+    public SetupOnboardingCheckStatus Status { get; init; }
+    public string Message { get; init; } = string.Empty;
 }
 
 internal sealed class SetupOnboardingAutoDetectResult {
-    public string Status { get; set; } = "ok";
-    public string Workspace { get; set; } = string.Empty;
-    public string? Repo { get; set; }
-    public bool LocalWorkflowExists { get; set; }
-    public bool LocalConfigExists { get; set; }
-    public string ContractVersion { get; set; } = SetupOnboardingContract.ContractVersion;
-    public string ContractFingerprint { get; set; } = SetupOnboardingContract.GetContractFingerprint(includeMaintenancePath: true);
-    public SetupOnboardingCommandTemplates CommandTemplates { get; set; } = SetupOnboardingContract.GetCommandTemplates();
-    public string RecommendedPath { get; set; } = SetupOnboardingPaths.NewSetup;
-    public string RecommendedReason { get; set; } = string.Empty;
-    public IReadOnlyList<SetupOnboardingPathContract> Paths { get; set; } = SetupOnboardingContract.GetPaths(includeMaintenancePath: true);
-    public IReadOnlyList<SetupOnboardingCheck> Checks { get; set; } = Array.Empty<SetupOnboardingCheck>();
-    public string RawDoctorOutput { get; set; } = string.Empty;
+    public string Status { get; init; } = "ok";
+    public string Workspace { get; init; } = string.Empty;
+    public string? Repo { get; init; }
+    public bool LocalWorkflowExists { get; init; }
+    public bool LocalConfigExists { get; init; }
+    public string ContractVersion { get; init; } = SetupOnboardingContract.ContractVersion;
+    public string ContractFingerprint { get; init; } = SetupOnboardingContract.GetContractFingerprint(includeMaintenancePath: true);
+    public SetupOnboardingCommandTemplates CommandTemplates { get; init; } = SetupOnboardingContract.GetCommandTemplates();
+    public string RecommendedPath { get; init; } = SetupOnboardingPaths.NewSetup;
+    public string RecommendedReason { get; init; } = string.Empty;
+    public IReadOnlyList<SetupOnboardingPathContract> Paths { get; init; } = SetupOnboardingContract.GetPaths(includeMaintenancePath: true);
+    public IReadOnlyList<SetupOnboardingCheck> Checks { get; init; } = Array.Empty<SetupOnboardingCheck>();
+    public string RawDoctorOutput { get; init; } = string.Empty;
 }
 
 internal static class SetupOnboardingAutoDetectRunner {
