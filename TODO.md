@@ -8,8 +8,8 @@ Status: In progress
 Goal: reviewer + static analysis + onboarding (CLI + Web) feel "done" end-to-end for a new repo.
 
 ### Acceptance (Definition Of Done)
-- [ ] A new user can run `intelligencex setup wizard` on a clean machine and reach "PR created" without manual repo edits.
-- [ ] A new user can run `intelligencex setup web` and reach "PR created" without manual repo edits.
+- [x] A new user can run `intelligencex setup wizard` on a clean machine and reach "PR created" without manual repo edits.
+- [x] A new user can run `intelligencex setup web` and reach "PR created" without manual repo edits.
 - [ ] First merged onboarding PR produces a successful review on the next PR (sticky summary + inline when supported).
 - [ ] Review comment always includes reviewed SHA and an explicit diff-range label (base -> head).
 - [ ] Static analysis runs before review, publishes artifacts, and the review comment always renders analysis status (pass/unavailable) even when findings are zero.
@@ -249,6 +249,7 @@ Collapsed by PR. Includes only explicit checklist items found in bot reviews/com
 - [ ] PR #229 analysis-export duplicate review churn — checklist item still reports missing mixed-separator duplicate normalization after `ce8f1c2`; `TestSetupAnalysisExportDuplicateTargetDetection` now includes `.intelligencex\\analyzers\\.editorconfig` vs `.intelligencex/analyzers/.EDITORCONFIG` and passes locally + CI. Treat as churn unless maintainers escalate. Links: https://github.com/EvotecIT/IntelligenceX/pull/229#issuecomment-3884832998
 - [ ] PR #234 setup post-apply verification churn — latest bot item claims `HandleSetupAsync` still passes `request.SecretOrg`, but code at `IntelligenceX.Cli/Setup/Web/WebApi.Setup.cs:210` already passes `secretOrgForRepo` into `ResolveOrgSecretVerificationContext`; treat as churn unless maintainers escalate. Links: https://github.com/EvotecIT/IntelligenceX/pull/234#issuecomment-3885712980
 - [ ] PR #248 onboarding autodetect review churn — after multiple fix batches (`2dd8482`) and green required checks, bot still reports speculative merge blockers about subprocess strategy/workspace validation not tied to reproducible failures in current diff. Track separately and escalate only if maintainers require additional hardening before merge. Links: https://github.com/EvotecIT/IntelligenceX/pull/248#issuecomment-3889295672
+- [ ] PR #262 onboarding acceptance-path review churn — latest blocker oscillates between opposite recommendations (first rejecting production helper exposure, then rejecting reflection fallback after helper removal) despite green required checks and validated behavior; treat as churn unless maintainers explicitly escalate. Links: https://github.com/EvotecIT/IntelligenceX/pull/262#issuecomment-3890747719
 <details>
 <summary>PR #95 Fix duplicate weekly labels in usage summary</summary>
 

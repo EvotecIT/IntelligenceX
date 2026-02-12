@@ -37,6 +37,7 @@ This file tracks onboarding/cleanup/maintenance unification across CLI, Web, and
 | .Chat: autodetect-first onboarding playbook | Completed | IX Chat | Updated `Docs/HostSystemPrompt.md` to require `reviewer_setup_pack_info` + preflight autodetect before path execution. |
 | Docs: diagrams and flow updates | Completed | Docs | Added path-first flow docs and Mermaid diagrams in onboarding pages. |
 | Website FAQ/data updates | Completed | Website | Updated FAQ/features/how-it-works for path-first + auto-detect positioning. |
+| CLI/Web clean-machine acceptance coverage | Completed | IX Tests | Added deterministic fake-GitHub acceptance tests for wizard (`--plain`) and web setup args paths to assert `"PR created"` flow without manual repo edits. |
 
 ## Remaining Blockers
 
