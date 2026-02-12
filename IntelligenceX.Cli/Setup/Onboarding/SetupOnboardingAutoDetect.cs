@@ -34,8 +34,10 @@ internal sealed class SetupOnboardingAutoDetectResult {
     public bool LocalConfigExists { get; set; }
     public string ContractVersion { get; set; } = SetupOnboardingContract.ContractVersion;
     public string ContractFingerprint { get; set; } = SetupOnboardingContract.GetContractFingerprint(includeMaintenancePath: true);
+    public SetupOnboardingCommandTemplates CommandTemplates { get; set; } = SetupOnboardingContract.GetCommandTemplates();
     public string RecommendedPath { get; set; } = SetupOnboardingPaths.NewSetup;
     public string RecommendedReason { get; set; } = string.Empty;
+    public IReadOnlyList<SetupOnboardingPathContract> Paths { get; set; } = SetupOnboardingContract.GetPaths(includeMaintenancePath: true);
     public IReadOnlyList<SetupOnboardingCheck> Checks { get; set; } = Array.Empty<SetupOnboardingCheck>();
     public string RawDoctorOutput { get; set; } = string.Empty;
 }
@@ -74,8 +76,10 @@ internal static class SetupOnboardingAutoDetectRunner {
             LocalConfigExists = localConfigExists,
             ContractVersion = SetupOnboardingContract.ContractVersion,
             ContractFingerprint = SetupOnboardingContract.GetContractFingerprint(includeMaintenancePath: true),
+            CommandTemplates = SetupOnboardingContract.GetCommandTemplates(),
             RecommendedPath = recommendedPath,
             RecommendedReason = reason,
+            Paths = SetupOnboardingContract.GetPaths(includeMaintenancePath: true),
             Checks = checks,
             RawDoctorOutput = output
         };

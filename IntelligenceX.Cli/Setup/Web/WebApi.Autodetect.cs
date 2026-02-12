@@ -3,7 +3,6 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.Setup.Onboarding;
-using IntelligenceX.Setup.Onboarding;
 
 namespace IntelligenceX.Cli.Setup.Web;
 
@@ -40,7 +39,7 @@ internal sealed partial class WebApi {
             ConsoleLock.Release();
         }
 
-        var paths = SetupOnboardingContract.GetPaths(includeMaintenancePath: true).Select(path => new {
+        var paths = result.Paths.Select(path => new {
             id = path.Id,
             displayName = path.DisplayName,
             description = path.Description,
@@ -50,7 +49,7 @@ internal sealed partial class WebApi {
             requiresAiAuth = path.RequiresAiAuth,
             flow = path.Flow
         }).ToArray();
-        var commands = SetupOnboardingContract.GetCommandTemplates();
+        var commands = result.CommandTemplates;
 
         await WriteJsonOkAsync(context, new {
             contractVersion = result.ContractVersion,
