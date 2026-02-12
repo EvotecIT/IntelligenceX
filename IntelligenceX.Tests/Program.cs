@@ -67,6 +67,12 @@ internal static partial class Program {
         failed += Run("Setup autodetect unknown option fails", TestSetupAutodetectUnknownOptionFails);
         failed += Run("Setup onboarding contract canonical paths", TestSetupOnboardingContractCanonicalPaths);
         failed += Run("Setup onboarding contract command templates", TestSetupOnboardingContractCommandTemplates);
+        failed += Run("Setup onboarding contract verification matches canonical values",
+            TestSetupOnboardingContractVerificationMatchesCanonicalValues);
+        failed += Run("Setup onboarding contract verification detects mismatches",
+            TestSetupOnboardingContractVerificationDetectsMismatches);
+        failed += Run("Setup onboarding contract verification rejects missing autodetect metadata",
+            TestSetupOnboardingContractVerificationRejectsMissingAutodetectMetadata);
         failed += Run("Setup workflow upgrade preserves custom sections outside managed block",
             TestSetupWorkflowUpgradePreservesCustomSectionsOutsideManagedBlock);
         failed += Run("Setup workflow upgrade preserves outside managed block verbatim",

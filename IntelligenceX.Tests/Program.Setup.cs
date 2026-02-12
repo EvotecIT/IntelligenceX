@@ -384,6 +384,60 @@ internal static partial class Program {
         AssertEqual(true, IsLowerHex(fingerprintWithoutMaintenance), "setup contract fingerprint without maintenance is lowercase hex");
     }
 
+    private static void TestSetupOnboardingContractVerificationMatchesCanonicalValues() {
+        var result = IntelligenceX.Setup.Onboarding.SetupOnboardingContractVerification.Verify(
+            autodetectContractVersion: IntelligenceX.Setup.Onboarding.SetupOnboardingContract.ContractVersion,
+            autodetectContractFingerprint: IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetContractFingerprint(includeMaintenancePath: true),
+            packContractVersion: IntelligenceX.Setup.Onboarding.SetupOnboardingContract.ContractVersion,
+            packContractFingerprint: IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetContractFingerprint(includeMaintenancePath: true),
+            includeMaintenancePath: true);
+
+        AssertEqual(true, result.IsMatch, "setup contract verification is match");
+        AssertEqual(0, result.MismatchCount, "setup contract verification mismatch count");
+        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.ContractVersion, result.ExpectedContractVersion,
+            "setup contract verification expected version");
+    }
+
+    private static void TestSetupOnboardingContractVerificationDetectsMismatches() {
+        var result = IntelligenceX.Setup.Onboarding.SetupOnboardingContractVerification.Verify(
+            autodetectContractVersion: "1900-01-01.0",
+            autodetectContractFingerprint: IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetContractFingerprint(includeMaintenancePath: true),
+            packContractVersion: IntelligenceX.Setup.Onboarding.SetupOnboardingContract.ContractVersion,
+            packContractFingerprint: "not-the-right-fingerprint",
+            includeMaintenancePath: true);
+
+        AssertEqual(false, result.IsMatch, "setup contract verification mismatch state");
+        AssertEqual(true, result.MismatchCount >= 2, "setup contract verification mismatch count");
+
+        var hasVersionMismatch = false;
+        var hasFingerprintMismatch = false;
+        for (var i = 0; i < result.Mismatches.Count; i++) {
+            var mismatch = result.Mismatches[i];
+            if (string.Equals(mismatch.Field, "contract_version", StringComparison.Ordinal)) {
+                hasVersionMismatch = true;
+            }
+            if (string.Equals(mismatch.Field, "contract_fingerprint", StringComparison.Ordinal)) {
+                hasFingerprintMismatch = true;
+            }
+        }
+
+        AssertEqual(true, hasVersionMismatch, "setup contract verification version mismatch captured");
+        AssertEqual(true, hasFingerprintMismatch, "setup contract verification fingerprint mismatch captured");
+    }
+
+    private static void TestSetupOnboardingContractVerificationRejectsMissingAutodetectMetadata() {
+        AssertThrows<ArgumentException>(() =>
+            IntelligenceX.Setup.Onboarding.SetupOnboardingContractVerification.Verify(
+                autodetectContractVersion: "",
+                autodetectContractFingerprint: "abc"),
+            "setup contract verification missing autodetect version");
+        AssertThrows<ArgumentException>(() =>
+            IntelligenceX.Setup.Onboarding.SetupOnboardingContractVerification.Verify(
+                autodetectContractVersion: IntelligenceX.Setup.Onboarding.SetupOnboardingContract.ContractVersion,
+                autodetectContractFingerprint: ""),
+            "setup contract verification missing autodetect fingerprint");
+    }
+
     private static bool IsLowerHex(string value) {
         if (string.IsNullOrWhiteSpace(value)) {
             return false;
