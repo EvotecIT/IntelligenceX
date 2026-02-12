@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Cli;
 using IntelligenceX.Cli.Doctor;
@@ -74,27 +77,77 @@ internal static class SetupOnboardingAutoDetectRunner {
     }
 
     private static async Task<(int ExitCode, string Output)> RunDoctorWithCaptureAsync(string workspace, string? repo) {
-        var args = new List<string> {
-            "--workspace", workspace
-        };
-        if (!string.IsNullOrWhiteSpace(repo)) {
-            args.Add("--repo");
-            args.Add(repo);
+        var executablePath = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(executablePath)) {
+            executablePath = "dotnet";
         }
 
-        using var stdout = new StringWriter();
-        using var stderr = new StringWriter();
-        var originalOut = Console.Out;
-        var originalErr = Console.Error;
+        var cliAssemblyPath = typeof(DoctorRunner).Assembly.Location;
+        if (string.IsNullOrWhiteSpace(cliAssemblyPath)) {
+            cliAssemblyPath = Assembly.GetExecutingAssembly().Location;
+        }
+
+        var processStartInfo = new ProcessStartInfo {
+            FileName = executablePath,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+            WorkingDirectory = workspace
+        };
+
+        var isDotNetHost = Path.GetFileNameWithoutExtension(executablePath)
+            .Equals("dotnet", StringComparison.OrdinalIgnoreCase);
+        if (isDotNetHost) {
+            processStartInfo.ArgumentList.Add(cliAssemblyPath);
+        }
+
+        processStartInfo.ArgumentList.Add("doctor");
+        processStartInfo.ArgumentList.Add("--workspace");
+        processStartInfo.ArgumentList.Add(workspace);
+        if (!string.IsNullOrWhiteSpace(repo)) {
+            processStartInfo.ArgumentList.Add("--repo");
+            processStartInfo.ArgumentList.Add(repo);
+        }
+
         try {
-            Console.SetOut(stdout);
-            Console.SetError(stderr);
-            var exitCode = await DoctorRunner.RunAsync(args.ToArray()).ConfigureAwait(false);
-            var mergedOutput = stdout.ToString() + Environment.NewLine + stderr.ToString();
+            using var process = Process.Start(processStartInfo);
+            if (process is null) {
+                return (1, "Failed to start doctor process.");
+            }
+
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            var timedOut = false;
+            try {
+                using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+                await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+            } catch (OperationCanceledException) {
+                timedOut = true;
+                TryKillProcess(process);
+            }
+
+            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+            var mergedOutput = stdoutTask.Result + Environment.NewLine + stderrTask.Result;
+            if (timedOut) {
+                mergedOutput = mergedOutput + Environment.NewLine + "Doctor process timed out after 120 seconds.";
+                return (1, mergedOutput.Trim());
+            }
+
+            var exitCode = process.ExitCode;
             return (exitCode, mergedOutput.Trim());
-        } finally {
-            Console.SetOut(originalOut);
-            Console.SetError(originalErr);
+        } catch (Exception ex) {
+            return (1, $"Doctor process failed to run: {ex.Message}");
+        }
+    }
+
+    private static void TryKillProcess(Process process) {
+        try {
+            if (!process.HasExited) {
+                process.Kill(entireProcessTree: true);
+            }
+        } catch {
+            // Best-effort cleanup on timeout.
         }
     }
 
