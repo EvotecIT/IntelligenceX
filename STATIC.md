@@ -58,7 +58,7 @@ For the deep-dive design notes (catalog schema, packs, config modes), see:
 
 ### Phase 1: Catalog Quality + Expansion
 - Expand PowerShell rules beyond `powershell-default` toward an actual `powershell-50` list.
-- Expand internal maintainability rules beyond `IXLOC001`.
+- Expand internal maintainability rules beyond `IXLOC001` / `IXDUP001`.
 - Add consistent metadata:
   - `docs`, `tags`, `category`, default severity, and (where applicable) CWE/OWASP mappings.
 - Provide “our style” overrides for titles/descriptions when upstream wording is weak.
@@ -68,6 +68,9 @@ For the deep-dive design notes (catalog schema, packs, config modes), see:
   - changed-files scoping (default on for PRs)
   - severity thresholds per pack/rule
   - “new issues only” baselining mode (for adopting strict packs gradually)
+- Add maintainable performance validation for internal duplication checks:
+  - Use `.agents/skills/intelligencex-analysis-gate/scripts/benchmark-duplication.sh`
+    for repeatable synthetic throughput runs across supported languages.
 
 ### Phase 3: Security Hotspots (Stateful Review)
 - Define “hotspot” rule list (IDs/tags) and state file format.
