@@ -1,0 +1,43 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0-windows;net10.0-windows</TargetFrameworks>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>IntelligenceX.Tools.System</AssemblyName>
+    <PackageId>IntelligenceX.Tools.System</PackageId>
+    <Authors>Przemyslaw Klys</Authors>
+    <Company>Evotec</Company>
+    <Description>System-related tool implementations for IntelligenceX tool calling.</Description>
+    <RepositoryUrl>https://github.com/EvotecIT/IntelligenceX.Tools</RepositoryUrl>
+    <IsPackable>true</IsPackable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Local development: supports either a sibling checkout or an IntelligenceX worktree. -->
+    <ProjectReference Include="..\..\..\IntelligenceX\IntelligenceX\IntelligenceX.csproj"
+                      Condition="Exists('..\\..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj')" />
+    <ProjectReference Include="..\..\IntelligenceX\IntelligenceX\IntelligenceX.csproj"
+                      Condition="!Exists('..\\..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND Exists('..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj')" />
+    <ProjectReference Include="..\..\IntelligenceX-worktrees\tools-contract-namespace\IntelligenceX\IntelligenceX.csproj"
+                      Condition="!Exists('..\\..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND !Exists('..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND Exists('..\\..\\IntelligenceX-worktrees\\tools-contract-namespace\\IntelligenceX\\IntelligenceX.csproj')" />
+    <ProjectReference Include="..\..\..\IntelligenceX-worktrees\tools-contract-namespace\IntelligenceX\IntelligenceX.csproj"
+                      Condition="!Exists('..\\..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND !Exists('..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND !Exists('..\\..\\IntelligenceX-worktrees\\tools-contract-namespace\\IntelligenceX\\IntelligenceX.csproj') AND Exists('..\\..\\..\\IntelligenceX-worktrees\\tools-contract-namespace\\IntelligenceX\\IntelligenceX.csproj')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\IntelligenceX.Tools.Common\IntelligenceX.Tools.Common.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- System tools are engine-first and rely on ComputerX on Windows. -->
+    <ProjectReference Include="$(TestimoXRoot)ComputerX\\ComputerX.csproj"
+                      Condition="Exists('$(TestimoXRoot)ComputerX\\ComputerX.csproj')" />
+  </ItemGroup>
+
+</Project>

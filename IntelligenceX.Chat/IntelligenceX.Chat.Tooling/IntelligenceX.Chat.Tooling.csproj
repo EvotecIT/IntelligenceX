@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>IntelligenceX.Chat.Tooling</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Local development: supports either a sibling checkout or an IntelligenceX worktree. -->
+    <ProjectReference Include="..\..\..\IntelligenceX\IntelligenceX\IntelligenceX.csproj"
+                      Condition="Exists('..\\..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj')" />
+    <ProjectReference Include="..\..\IntelligenceX\IntelligenceX\IntelligenceX.csproj"
+                      Condition="!Exists('..\\..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND Exists('..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj')" />
+    <ProjectReference Include="..\..\IntelligenceX-worktrees\tools-contract-namespace\IntelligenceX\IntelligenceX.csproj"
+                      Condition="!Exists('..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND !Exists('..\\..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND Exists('..\\..\\IntelligenceX-worktrees\\tools-contract-namespace\\IntelligenceX\\IntelligenceX.csproj')" />
+    <ProjectReference Include="..\..\..\IntelligenceX-worktrees\tools-contract-namespace\IntelligenceX\IntelligenceX.csproj"
+                      Condition="!Exists('..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND !Exists('..\\..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND !Exists('..\\..\\IntelligenceX-worktrees\\tools-contract-namespace\\IntelligenceX\\IntelligenceX.csproj') AND Exists('..\\..\\..\\IntelligenceX-worktrees\\tools-contract-namespace\\IntelligenceX\\IntelligenceX.csproj')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Engine-first: the tooling layer composes tool packs into a single shared bootstrap surface. -->
+    <ProjectReference Include="..\..\IntelligenceX.Tools\IntelligenceX.Tools.FileSystem\IntelligenceX.Tools.FileSystem.csproj"
+                      Condition="!Exists('..\\..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.FileSystem\\IntelligenceX.Tools.FileSystem.csproj') AND Exists('..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.FileSystem\\IntelligenceX.Tools.FileSystem.csproj')" />
+    <ProjectReference Include="..\..\IntelligenceX.Tools\IntelligenceX.Tools.EventLog\IntelligenceX.Tools.EventLog.csproj"
+                      Condition="!Exists('..\\..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.EventLog\\IntelligenceX.Tools.EventLog.csproj') AND Exists('..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.EventLog\\IntelligenceX.Tools.EventLog.csproj')" />
+    <ProjectReference Include="..\..\IntelligenceX.Tools\IntelligenceX.Tools.ActiveDirectory\IntelligenceX.Tools.ActiveDirectory.csproj"
+                      Condition="!Exists('..\\..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.ActiveDirectory\\IntelligenceX.Tools.ActiveDirectory.csproj') AND Exists('..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.ActiveDirectory\\IntelligenceX.Tools.ActiveDirectory.csproj')" />
+    <ProjectReference Include="..\..\IntelligenceX.Tools\IntelligenceX.Tools.System\IntelligenceX.Tools.System.csproj"
+                      Condition="!Exists('..\\..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.System\\IntelligenceX.Tools.System.csproj') AND Exists('..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.System\\IntelligenceX.Tools.System.csproj')" />
+    <ProjectReference Include="..\..\IntelligenceX.Tools\IntelligenceX.Tools.PowerShell\IntelligenceX.Tools.PowerShell.csproj"
+                      Condition="!Exists('..\\..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.PowerShell\\IntelligenceX.Tools.PowerShell.csproj') AND Exists('..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.PowerShell\\IntelligenceX.Tools.PowerShell.csproj')" />
+    <ProjectReference Include="..\..\IntelligenceX.Tools\IntelligenceX.Tools.TestimoX\IntelligenceX.Tools.TestimoX.csproj"
+                      Condition="!Exists('..\\..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.TestimoX\\IntelligenceX.Tools.TestimoX.csproj') AND Exists('..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.TestimoX\\IntelligenceX.Tools.TestimoX.csproj')" />
+    <ProjectReference Include="..\..\IntelligenceX.Tools\IntelligenceX.Tools.ReviewerSetup\IntelligenceX.Tools.ReviewerSetup.csproj"
+                      Condition="!Exists('..\\..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.ReviewerSetup\\IntelligenceX.Tools.ReviewerSetup.csproj') AND Exists('..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.ReviewerSetup\\IntelligenceX.Tools.ReviewerSetup.csproj')" />
+
+    <ProjectReference Include="..\..\..\IntelligenceX.Tools\IntelligenceX.Tools.FileSystem\IntelligenceX.Tools.FileSystem.csproj"
+                      Condition="Exists('..\\..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.FileSystem\\IntelligenceX.Tools.FileSystem.csproj')" />
+    <ProjectReference Include="..\..\..\IntelligenceX.Tools\IntelligenceX.Tools.EventLog\IntelligenceX.Tools.EventLog.csproj"
+                      Condition="Exists('..\\..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.EventLog\\IntelligenceX.Tools.EventLog.csproj')" />
+    <ProjectReference Include="..\..\..\IntelligenceX.Tools\IntelligenceX.Tools.ActiveDirectory\IntelligenceX.Tools.ActiveDirectory.csproj"
+                      Condition="Exists('..\\..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.ActiveDirectory\\IntelligenceX.Tools.ActiveDirectory.csproj')" />
+    <ProjectReference Include="..\..\..\IntelligenceX.Tools\IntelligenceX.Tools.System\IntelligenceX.Tools.System.csproj"
+                      Condition="Exists('..\\..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.System\\IntelligenceX.Tools.System.csproj')" />
+    <ProjectReference Include="..\..\..\IntelligenceX.Tools\IntelligenceX.Tools.PowerShell\IntelligenceX.Tools.PowerShell.csproj"
+                      Condition="Exists('..\\..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.PowerShell\\IntelligenceX.Tools.PowerShell.csproj')" />
+    <ProjectReference Include="..\..\..\IntelligenceX.Tools\IntelligenceX.Tools.TestimoX\IntelligenceX.Tools.TestimoX.csproj"
+                      Condition="Exists('..\\..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.TestimoX\\IntelligenceX.Tools.TestimoX.csproj')" />
+    <ProjectReference Include="..\..\..\IntelligenceX.Tools\IntelligenceX.Tools.ReviewerSetup\IntelligenceX.Tools.ReviewerSetup.csproj"
+                      Condition="Exists('..\\..\\..\\IntelligenceX.Tools\\IntelligenceX.Tools.ReviewerSetup\\IntelligenceX.Tools.ReviewerSetup.csproj')" />
+  </ItemGroup>
+
+</Project>

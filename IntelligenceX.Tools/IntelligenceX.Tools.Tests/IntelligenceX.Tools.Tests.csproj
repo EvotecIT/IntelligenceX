@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\IntelligenceX.Tools.Common\IntelligenceX.Tools.Common.csproj" />
+    <ProjectReference Include="..\IntelligenceX.Tools.System\IntelligenceX.Tools.System.csproj" />
+    <ProjectReference Include="..\IntelligenceX.Tools.PowerShell\IntelligenceX.Tools.PowerShell.csproj" />
+    <ProjectReference Include="..\IntelligenceX.Tools.TestimoX\IntelligenceX.Tools.TestimoX.csproj" />
+    <ProjectReference Include="..\IntelligenceX.Tools.FileSystem\IntelligenceX.Tools.FileSystem.csproj" />
+    <ProjectReference Include="..\IntelligenceX.Tools.EventLog\IntelligenceX.Tools.EventLog.csproj" />
+    <ProjectReference Include="..\IntelligenceX.Tools.Email\IntelligenceX.Tools.Email.csproj" />
+    <ProjectReference Include="..\IntelligenceX.Tools.ActiveDirectory\IntelligenceX.Tools.ActiveDirectory.csproj" />
+    <ProjectReference Include="..\IntelligenceX.Tools.ReviewerSetup\IntelligenceX.Tools.ReviewerSetup.csproj" />
+  </ItemGroup>
+
+</Project>

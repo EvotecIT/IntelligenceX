@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>IntelligenceX.Chat.Service</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Local development: supports either a sibling checkout or an IntelligenceX worktree. -->
+    <ProjectReference Include="..\..\..\IntelligenceX\IntelligenceX\IntelligenceX.csproj"
+                      Condition="Exists('..\\..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj')" />
+    <ProjectReference Include="..\..\IntelligenceX\IntelligenceX\IntelligenceX.csproj"
+                      Condition="!Exists('..\\..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND Exists('..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj')" />
+    <ProjectReference Include="..\..\IntelligenceX-worktrees\tools-contract-namespace\IntelligenceX\IntelligenceX.csproj"
+                      Condition="!Exists('..\\..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND !Exists('..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND Exists('..\\..\\IntelligenceX-worktrees\\tools-contract-namespace\\IntelligenceX\\IntelligenceX.csproj')" />
+    <ProjectReference Include="..\..\..\IntelligenceX-worktrees\tools-contract-namespace\IntelligenceX\IntelligenceX.csproj"
+                      Condition="!Exists('..\\..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND !Exists('..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND !Exists('..\\..\\IntelligenceX-worktrees\\tools-contract-namespace\\IntelligenceX\\IntelligenceX.csproj') AND Exists('..\\..\\..\\IntelligenceX-worktrees\\tools-contract-namespace\\IntelligenceX\\IntelligenceX.csproj')" />
+    <ProjectReference Include="..\IntelligenceX.Chat.Abstractions\IntelligenceX.Chat.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Engine-first: the service build includes tool packs and profiles. -->
+    <ProjectReference Include="..\..\..\DbaClientX\DbaClientX.SQLite\DbaClientX.SQLite.csproj"
+                      Condition="Exists('..\\..\\..\\DbaClientX\\DbaClientX.SQLite\\DbaClientX.SQLite.csproj')" />
+    <ProjectReference Include="..\..\DbaClientX\DbaClientX.SQLite\DbaClientX.SQLite.csproj"
+                      Condition="!Exists('..\\..\\..\\DbaClientX\\DbaClientX.SQLite\\DbaClientX.SQLite.csproj') AND Exists('..\\..\\DbaClientX\\DbaClientX.SQLite\\DbaClientX.SQLite.csproj')" />
+    <ProjectReference Include="..\IntelligenceX.Chat.Tooling\IntelligenceX.Chat.Tooling.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\\Docs\\HostSystemPrompt.md" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -18,13 +18,15 @@ Status: Active development | APIs in flux | Actions in beta
 - CLI + local web wizard for onboarding and auth
 - .NET library for Codex app-server + Copilot JSON-RPC
 - PowerShell module (binary cmdlets)
-- Optional tool contract + tool calling, with tool packs living in a separate repo (`EvotecIT/IntelligenceX.Tools`)
+- Optional tool contract + tool calling, with tool packs now mirrored in-repo under `IntelligenceX.Tools`
 
-## Ecosystem repos
+## Repo layout
 
 - `EvotecIT/IntelligenceX` (this repo): core library + reviewer + CLI
-- `EvotecIT/IntelligenceX.Tools`: optional tool packs (Email/FileSystem/System, future AD/EventLog, etc.)
-- `EvotecIT/IntelligenceX.Chat`: planned Windows tray chat app (UI) that hosts providers + tool packs
+- `IntelligenceX.Tools/`: in-repo tool packs snapshot (source of current migration work)
+- `IntelligenceX.Chat/`: in-repo chat host/service snapshot (source of current migration work)
+
+Standalone `EvotecIT/IntelligenceX.Tools` and `EvotecIT/IntelligenceX.Chat` remain as separate repos temporarily during migration.
 
 ## Choose your path
 
@@ -70,16 +72,18 @@ Start here: `Docs/index.md`
 
 ## Build
 
-Full build check:
+Core CI-equivalent build check (temporary migration baseline):
 
 ```powershell
-dotnet build IntelligenceX.sln -c Release
-dotnet test IntelligenceX.sln -c Release
+dotnet build IntelligenceX.CI.slnf -c Release
+dotnet test IntelligenceX.CI.slnf -c Release
 
 # CI also runs the executable test harness (recommended locally before pushing):
 dotnet ./IntelligenceX.Tests/bin/Release/net8.0/IntelligenceX.Tests.dll
 dotnet ./IntelligenceX.Tests/bin/Release/net10.0/IntelligenceX.Tests.dll
 ```
+
+`IntelligenceX.sln` now includes Chat/Tools projects for local integration work. CI intentionally uses `IntelligenceX.CI.slnf` while engine-backed tool projects are being migrated.
 
 Publish the CLI (self-contained single-file):
 

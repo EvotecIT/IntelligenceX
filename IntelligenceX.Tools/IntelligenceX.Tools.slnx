@@ -1,0 +1,12 @@
+<Solution>
+  <Project Path="IntelligenceX.Tools.ActiveDirectory/IntelligenceX.Tools.ActiveDirectory.csproj" />
+  <Project Path="IntelligenceX.Tools.Common/IntelligenceX.Tools.Common.csproj" />
+  <Project Path="IntelligenceX.Tools.Email/IntelligenceX.Tools.Email.csproj" />
+  <Project Path="IntelligenceX.Tools.EventLog/IntelligenceX.Tools.EventLog.csproj" />
+  <Project Path="IntelligenceX.Tools.FileSystem/IntelligenceX.Tools.FileSystem.csproj" />
+  <Project Path="IntelligenceX.Tools.PowerShell/IntelligenceX.Tools.PowerShell.csproj" />
+  <Project Path="IntelligenceX.Tools.ReviewerSetup/IntelligenceX.Tools.ReviewerSetup.csproj" />
+  <Project Path="IntelligenceX.Tools.TestimoX/IntelligenceX.Tools.TestimoX.csproj" />
+  <Project Path="IntelligenceX.Tools.System/IntelligenceX.Tools.System.csproj" />
+  <Project Path="IntelligenceX.Tools.Tests/IntelligenceX.Tools.Tests.csproj" />
+</Solution>

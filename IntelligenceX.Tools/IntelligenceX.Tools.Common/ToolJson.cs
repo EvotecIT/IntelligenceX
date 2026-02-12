@@ -1,0 +1,125 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using IntelligenceX.Json;
+
+namespace IntelligenceX.Tools.Common;
+
+/// <summary>
+/// Common JSON helpers shared by tool implementations.
+/// </summary>
+public static class ToolJson {
+    private static readonly JsonSerializerOptions SnakeCaseSerializerOptions = new() {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        // Keep dictionary keys as-is. Many tool payloads carry provider-defined keys (event data names, LDAP attribute names, headers)
+        // and callers expect exact casing/spelling. Prefer modeling standardized outputs as lists/records instead of dictionaries.
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
+    /// <summary>
+    /// Maps an enumerable to a <see cref="JsonArray"/> using <see cref="JsonMapper"/>.
+     /// </summary>
+    public static JsonArray ToJsonArray(IEnumerable values) => JsonMapper.FromEnumerable(values);
+
+    /// <summary>
+    /// Maps an enumerable to a <see cref="JsonArray"/> using <see cref="JsonMapper"/>.
+    /// </summary>
+    public static JsonArray ToJsonArray<T>(IEnumerable<T> values) => JsonMapper.FromEnumerable(values);
+
+    /// <summary>
+    /// Adds optional UTC start/end keys to a JSON object using the tool contract keys.
+    /// </summary>
+    public static void AddUtcRange(JsonObject obj, DateTime? startUtc, DateTime? endUtc) {
+        if (obj is null) throw new ArgumentNullException(nameof(obj));
+
+        if (startUtc.HasValue) {
+            obj.Add("start_time_utc", startUtc.Value.ToString("O"));
+        }
+        if (endUtc.HasValue) {
+            obj.Add("end_time_utc", endUtc.Value.ToString("O"));
+        }
+    }
+
+    /// <summary>
+    /// Converts a string dictionary into an <see cref="JsonObject"/> without renaming keys.
+    /// </summary>
+    /// <remarks>
+    /// This is intentionally not snake_case: many tool payloads contain provider-defined keys (event data, headers, etc.)
+    /// where the original key names should be preserved.
+    /// </remarks>
+    public static JsonObject ToJsonObject(IReadOnlyDictionary<string, string>? dict) {
+        var obj = new JsonObject(StringComparer.Ordinal);
+        if (dict is null || dict.Count == 0) {
+            return obj;
+        }
+        foreach (var kvp in dict) {
+            obj.Add(kvp.Key, kvp.Value ?? string.Empty);
+        }
+        return obj;
+    }
+
+    /// <summary>
+    /// Converts a typed object graph into an <see cref="JsonObject"/> using snake_case keys.
+    /// </summary>
+    /// <remarks>
+    /// Intended to reduce per-tool manual <c>new JsonObject().Add(...)</c> boilerplate while keeping tool outputs
+    /// consistent with the UI/tool contract naming convention.
+    /// </remarks>
+    public static JsonObject ToJsonObjectSnakeCase(object? value) {
+        if (value is null) {
+            return new JsonObject(StringComparer.Ordinal);
+        }
+        if (value is JsonObject obj) {
+            return obj;
+        }
+
+        var node = JsonSerializer.SerializeToNode(value, SnakeCaseSerializerOptions);
+        var converted = ConvertNode(node);
+
+        if (converted is JsonObject root) {
+            return root;
+        }
+
+        // ToolResponse expects object-shaped root payload fields. Wrap non-object values.
+        return new JsonObject(StringComparer.Ordinal).Add("value", JsonMapper.FromObject(converted ?? string.Empty));
+    }
+
+    private static object? ConvertNode(System.Text.Json.Nodes.JsonNode? node) {
+        if (node is null) {
+            return null;
+        }
+
+        if (node is System.Text.Json.Nodes.JsonObject obj) {
+            var root = new JsonObject(StringComparer.Ordinal);
+            foreach (var kvp in obj) {
+                root.Add(kvp.Key, JsonMapper.FromObject(ConvertNode(kvp.Value)));
+            }
+            return root;
+        }
+
+        if (node is System.Text.Json.Nodes.JsonArray arr) {
+            var root = new JsonArray();
+            foreach (var v in arr) {
+                root.Add(JsonMapper.FromObject(ConvertNode(v)));
+            }
+            return root;
+        }
+
+        if (node is System.Text.Json.Nodes.JsonValue val) {
+            if (val.TryGetValue<string>(out var s)) return s;
+            if (val.TryGetValue<bool>(out var b)) return b;
+            if (val.TryGetValue<int>(out var i)) return i;
+            if (val.TryGetValue<long>(out var l)) return l;
+            if (val.TryGetValue<double>(out var d)) return d;
+            if (val.TryGetValue<decimal>(out var dec)) return (double)dec;
+            if (val.TryGetValue<DateTimeOffset>(out var dto)) return dto.ToUniversalTime().ToString("O");
+            if (val.TryGetValue<DateTime>(out var dt)) return dt.ToUniversalTime().ToString("O");
+
+            return val.ToJsonString();
+        }
+
+        return node.ToJsonString();
+    }
+}
