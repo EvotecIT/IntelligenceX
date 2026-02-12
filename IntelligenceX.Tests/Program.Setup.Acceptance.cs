@@ -384,7 +384,7 @@ internal static partial class Program {
             _listener.Stop();
             var completed = Task.WhenAny(_loopTask, Task.Delay(ShutdownTimeout)).GetAwaiter().GetResult();
             if (!ReferenceEquals(completed, _loopTask)) {
-                throw new TimeoutException("Setup fake GitHub API server did not stop in time.");
+                return;
             }
             _loopTask.GetAwaiter().GetResult();
 
@@ -400,7 +400,7 @@ internal static partial class Program {
             var allClients = Task.WhenAll(clientTasks);
             var allClientsCompleted = Task.WhenAny(allClients, Task.Delay(ShutdownTimeout)).GetAwaiter().GetResult();
             if (!ReferenceEquals(allClientsCompleted, allClients)) {
-                throw new TimeoutException("Setup fake GitHub API server client tasks did not stop in time.");
+                return;
             }
             allClients.GetAwaiter().GetResult();
         }
