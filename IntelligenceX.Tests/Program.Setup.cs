@@ -233,6 +233,45 @@ internal static partial class Program {
         AssertEqual(true, packsNode!.Count > 0, "config json merge analysis.packs has values");
     }
 
+    private static void TestSetupAutodetectJsonSerializesCheckStatusesAsLowercaseStrings() {
+        var result = new IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingAutoDetectResult {
+            Status = "warn",
+            Workspace = "/tmp/workspace",
+            RecommendedPath = IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.RefreshAuth,
+            RecommendedReason = "Auth requires refresh",
+            Checks = new[] {
+                new IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingCheck {
+                    Name = "doctor",
+                    Status = IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingCheckStatus.Ok,
+                    Message = "ok"
+                },
+                new IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingCheck {
+                    Name = "doctor",
+                    Status = IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingCheckStatus.Warn,
+                    Message = "warn"
+                },
+                new IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingCheck {
+                    Name = "doctor",
+                    Status = IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingCheckStatus.Fail,
+                    Message = "fail"
+                }
+            }
+        };
+
+        var json = IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingAutoDetectCliRunner.SerializeForTests(result);
+        using var document = System.Text.Json.JsonDocument.Parse(json);
+        var checks = document.RootElement.GetProperty("Checks");
+
+        AssertEqual(System.Text.Json.JsonValueKind.String, checks[0].GetProperty("Status").ValueKind,
+            "setup autodetect json status value kind[0]");
+        AssertEqual("ok", checks[0].GetProperty("Status").GetString(),
+            "setup autodetect json status value[0]");
+        AssertEqual("warn", checks[1].GetProperty("Status").GetString(),
+            "setup autodetect json status value[1]");
+        AssertEqual("fail", checks[2].GetProperty("Status").GetString(),
+            "setup autodetect json status value[2]");
+    }
+
     private static void TestSetupWorkflowUpgradePreservesCustomSectionsOutsideManagedBlock() {
         var seed = """
 name: IntelligenceX Review

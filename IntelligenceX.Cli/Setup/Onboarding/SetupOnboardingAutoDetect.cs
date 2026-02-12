@@ -10,7 +10,6 @@ using IntelligenceX.Cli.Doctor;
 
 namespace IntelligenceX.Cli.Setup.Onboarding;
 
-[JsonConverter(typeof(JsonStringEnumConverter<SetupOnboardingCheckStatus>))]
 internal enum SetupOnboardingCheckStatus {
     Ok,
     Warn,
@@ -199,9 +198,7 @@ internal static class SetupOnboardingAutoDetectCliRunner {
 
         var result = await SetupOnboardingAutoDetectRunner.RunAsync(options.Workspace, options.Repo).ConfigureAwait(false);
         if (options.Json) {
-            var json = JsonSerializer.Serialize(result, new JsonSerializerOptions {
-                WriteIndented = true
-            });
+            var json = SerializeForTests(result);
             Console.WriteLine(json);
         } else {
             Console.WriteLine($"Status: {result.Status}");
@@ -219,6 +216,10 @@ internal static class SetupOnboardingAutoDetectCliRunner {
         }
 
         return string.Equals(result.Status, "fail", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+    }
+
+    internal static string SerializeForTests(SetupOnboardingAutoDetectResult result) {
+        return JsonSerializer.Serialize(result, CreateJsonOptions());
     }
 
     private static Options Parse(string[] args) {
@@ -248,6 +249,14 @@ internal static class SetupOnboardingAutoDetectCliRunner {
                     break;
             }
         }
+        return options;
+    }
+
+    private static JsonSerializerOptions CreateJsonOptions() {
+        var options = new JsonSerializerOptions {
+            WriteIndented = true
+        };
+        options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
         return options;
     }
 
