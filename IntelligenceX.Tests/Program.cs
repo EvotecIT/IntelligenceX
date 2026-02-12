@@ -116,6 +116,8 @@ internal static partial class Program {
             TestWebSetupAutodetectResponseJsonMatchesSharedContractPayload);
         failed += Run("Web setup autodetect response fallbacks for null payloads",
             TestWebSetupAutodetectResponseJsonFallbacksForNullPayloads);
+        failed += Run("Web setup autodetect response rejects unknown check status",
+            TestWebSetupAutodetectResponseJsonRejectsUnknownCheckStatus);
         failed += Run("Web setup args propagate request dry-run", TestWebSetupBuildSetupArgsPropagatesRequestDryRun);
         failed += Run("Web setup resolves with-config from args", TestWebSetupResolveWithConfigFromArgs);
         failed += Run("Web setup post-apply verify skips callback on failed apply",

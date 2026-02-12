@@ -52,6 +52,7 @@ internal sealed partial class WebApi {
         ArgumentNullException.ThrowIfNull(result);
 
         var pathContracts = result.Paths ?? SetupOnboardingContract.GetPaths(includeMaintenancePath: true);
+        // Fingerprint selection must reflect the effective path set projected to clients.
         var includeMaintenancePath = pathContracts.Any(path =>
             string.Equals(path.Id, SetupOnboardingContract.MaintenancePathId, StringComparison.Ordinal));
         var commands = result.CommandTemplates ?? SetupOnboardingContract.GetCommandTemplates();
@@ -107,7 +108,8 @@ internal sealed partial class WebApi {
             SetupOnboardingCheckStatus.Ok => "ok",
             SetupOnboardingCheckStatus.Warn => "warn",
             SetupOnboardingCheckStatus.Fail => "fail",
-            _ => status.ToString().ToLowerInvariant()
+            _ => throw new ArgumentOutOfRangeException(nameof(status), status,
+                "Unknown setup onboarding check status.")
         };
     }
 }
