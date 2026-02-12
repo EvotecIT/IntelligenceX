@@ -59,6 +59,7 @@ internal enum ConfigPreset {
 }
 
 internal sealed class WizardState {
+    public string OnboardingPathId { get; set; } = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.NewSetupPathId;
     public string? RepoFullName { get; set; }
     public List<string> SelectedRepos { get; } = new();
     public string? GitHubClientId { get; set; }

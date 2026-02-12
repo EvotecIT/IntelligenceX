@@ -66,6 +66,10 @@ internal static partial class Program {
         failed += Run("Setup autodetect missing repo value fails", TestSetupAutodetectMissingRepoValueFails);
         failed += Run("Setup autodetect unknown option fails", TestSetupAutodetectUnknownOptionFails);
         failed += Run("Setup onboarding contract canonical paths", TestSetupOnboardingContractCanonicalPaths);
+        failed += Run("Setup wizard path id maps to operation", TestSetupWizardPathIdMapsToOperation);
+        failed += Run("Setup wizard operation maps to path id", TestSetupWizardOperationMapsToPathId);
+        failed += Run("Setup wizard auto-detect reason normalization", TestSetupWizardAutoDetectReasonNormalization);
+        failed += Run("Setup wizard auto-detect prompt fallback recommendation", TestSetupWizardAutoDetectPromptRecommendationFallback);
         failed += Run("Setup onboarding contract command templates", TestSetupOnboardingContractCommandTemplates);
         failed += Run("Setup onboarding contract verification matches canonical values",
             TestSetupOnboardingContractVerificationMatchesCanonicalValues);

@@ -356,6 +356,69 @@ internal static partial class Program {
         AssertEqual(originalFlowStep, freshPaths[0].Flow[0], "setup contract returns defensive path copies");
     }
 
+    private static void TestSetupWizardPathIdMapsToOperation() {
+        AssertEqual(IntelligenceX.Cli.Setup.Wizard.WizardOperation.Setup,
+            IntelligenceX.Cli.Setup.Wizard.WizardRunner.ResolveOperationFromPathIdForTests(
+                IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.NewSetup),
+            "setup wizard path new-setup maps to setup operation");
+        AssertEqual(IntelligenceX.Cli.Setup.Wizard.WizardOperation.UpdateSecret,
+            IntelligenceX.Cli.Setup.Wizard.WizardRunner.ResolveOperationFromPathIdForTests(
+                IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.RefreshAuth),
+            "setup wizard path refresh-auth maps to update-secret operation");
+        AssertEqual(IntelligenceX.Cli.Setup.Wizard.WizardOperation.Cleanup,
+            IntelligenceX.Cli.Setup.Wizard.WizardRunner.ResolveOperationFromPathIdForTests(
+                IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.Cleanup),
+            "setup wizard path cleanup maps to cleanup operation");
+        AssertEqual(IntelligenceX.Cli.Setup.Wizard.WizardOperation.Setup,
+            IntelligenceX.Cli.Setup.Wizard.WizardRunner.ResolveOperationFromPathIdForTests("unknown-path"),
+            "setup wizard unknown path falls back to setup operation");
+    }
+
+    private static void TestSetupWizardOperationMapsToPathId() {
+        AssertEqual(IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.NewSetup,
+            IntelligenceX.Cli.Setup.Wizard.WizardRunner.ResolvePathIdFromOperationForTests(
+                IntelligenceX.Cli.Setup.Wizard.WizardOperation.Setup),
+            "setup wizard setup operation maps to new-setup path");
+        AssertEqual(IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.RefreshAuth,
+            IntelligenceX.Cli.Setup.Wizard.WizardRunner.ResolvePathIdFromOperationForTests(
+                IntelligenceX.Cli.Setup.Wizard.WizardOperation.UpdateSecret),
+            "setup wizard update-secret operation maps to refresh-auth path");
+        AssertEqual(IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.Cleanup,
+            IntelligenceX.Cli.Setup.Wizard.WizardRunner.ResolvePathIdFromOperationForTests(
+                IntelligenceX.Cli.Setup.Wizard.WizardOperation.Cleanup),
+            "setup wizard cleanup operation maps to cleanup path");
+    }
+
+    private static void TestSetupWizardAutoDetectReasonNormalization() {
+        AssertEqual("No recommendation details provided.",
+            IntelligenceX.Cli.Setup.Wizard.WizardRunner.NormalizeAutoDetectRecommendedReasonForTests(null),
+            "setup wizard auto-detect reason normalization null");
+        AssertEqual("No recommendation details provided.",
+            IntelligenceX.Cli.Setup.Wizard.WizardRunner.NormalizeAutoDetectRecommendedReasonForTests("  "),
+            "setup wizard auto-detect reason normalization whitespace");
+        AssertEqual("Detected existing setup.",
+            IntelligenceX.Cli.Setup.Wizard.WizardRunner.NormalizeAutoDetectRecommendedReasonForTests("  Detected existing setup. "),
+            "setup wizard auto-detect reason normalization trim");
+    }
+
+    private static void TestSetupWizardAutoDetectPromptRecommendationFallback() {
+        var fallback = IntelligenceX.Cli.Setup.Wizard.WizardRunner.ResolveAutoDetectPromptRecommendationForTests(null);
+        AssertEqual(IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.NewSetup, fallback.RecommendedPathId,
+            "setup wizard auto-detect prompt fallback path id");
+        AssertEqual("Auto-detect unavailable. Choose onboarding path manually.", fallback.RecommendedReason,
+            "setup wizard auto-detect prompt fallback reason");
+
+        var detected = IntelligenceX.Cli.Setup.Wizard.WizardRunner.ResolveAutoDetectPromptRecommendationForTests(
+            new IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingAutoDetectResult {
+                RecommendedPath = IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.RefreshAuth,
+                RecommendedReason = "  Refresh auth required. "
+            });
+        AssertEqual(IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.RefreshAuth, detected.RecommendedPathId,
+            "setup wizard auto-detect prompt detected path id");
+        AssertEqual("Refresh auth required.", detected.RecommendedReason,
+            "setup wizard auto-detect prompt detected reason normalized");
+    }
+
     private static void TestSetupOnboardingContractCommandTemplates() {
         var templates = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetCommandTemplates();
         AssertEqual("intelligencex setup autodetect --json", templates.AutoDetect, "setup contract auto-detect template");

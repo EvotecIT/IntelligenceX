@@ -15,10 +15,21 @@ After merging onboarding, run the [First PR Checklist](/Docs/reviewer/first-pr-c
 intelligencex setup wizard
 ```
 
-Run preflight auto-detection before onboarding:
+The wizard now starts with doctor-based auto-detect and path selection before GitHub auth/repo selection.
+You can still run preflight manually:
 
 ```powershell
 intelligencex setup autodetect
+```
+
+```mermaid
+flowchart LR
+  A["Auto-Detect"] --> B["Choose Path"]
+  B --> C["GitHub Auth"]
+  C --> D["Repos"]
+  D --> E["Configure/Auth"]
+  E --> F["Plan"]
+  F --> G["Apply + Verify"]
 ```
 
 ## Web UI (preview)
@@ -45,6 +56,14 @@ See [Web Setup UI](/docs/reviewer/setup-web/) for limitations and security notes
 - Update OpenAI secret only
 - Cleanup (remove workflow/config)
 - Maintenance (inspect first, then pick setup/update-secret/cleanup)
+
+Path-first non-interactive examples:
+
+```powershell
+intelligencex setup wizard --path new-setup --repo owner/name
+intelligencex setup wizard --path refresh-auth --repo owner/name
+intelligencex setup wizard --path cleanup --repo owner/name --dry-run
+```
 
 ## GitHub auth modes
 
