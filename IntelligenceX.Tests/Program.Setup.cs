@@ -389,6 +389,18 @@ internal static partial class Program {
             "setup wizard cleanup operation maps to cleanup path");
     }
 
+    private static void TestSetupWizardAutoDetectReasonNormalization() {
+        AssertEqual("No recommendation details provided.",
+            IntelligenceX.Cli.Setup.Wizard.WizardRunner.NormalizeAutoDetectRecommendedReasonForTests(null),
+            "setup wizard auto-detect reason normalization null");
+        AssertEqual("No recommendation details provided.",
+            IntelligenceX.Cli.Setup.Wizard.WizardRunner.NormalizeAutoDetectRecommendedReasonForTests("  "),
+            "setup wizard auto-detect reason normalization whitespace");
+        AssertEqual("Detected existing setup.",
+            IntelligenceX.Cli.Setup.Wizard.WizardRunner.NormalizeAutoDetectRecommendedReasonForTests("  Detected existing setup. "),
+            "setup wizard auto-detect reason normalization trim");
+    }
+
     private static void TestSetupOnboardingContractCommandTemplates() {
         var templates = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetCommandTemplates();
         AssertEqual("intelligencex setup autodetect --json", templates.AutoDetect, "setup contract auto-detect template");

@@ -232,6 +232,7 @@ internal static partial class WizardRunner {
     private static void RenderAutoDetectSummary(SetupOnboardingAutoDetectResult result) {
         var path = SetupOnboardingPaths.GetOrDefault(result.RecommendedPath);
         var checks = result.Checks ?? Array.Empty<SetupOnboardingCheck>();
+        var recommendedReason = NormalizeAutoDetectRecommendedReason(result.RecommendedReason);
         var status = result.Status.ToLowerInvariant() switch {
             "fail" => "[red]fail[/]",
             "warn" => "[yellow]warn[/]",
@@ -241,7 +242,7 @@ internal static partial class WizardRunner {
         var lines = new List<string> {
             $"Status: {status}",
             $"Recommended path: [cyan]{Markup.Escape(path.DisplayName)}[/]",
-            $"Reason: {Markup.Escape(result.RecommendedReason)}"
+            $"Reason: {Markup.Escape(recommendedReason)}"
         };
 
         if (checks.Count > 0) {
@@ -266,5 +267,15 @@ internal static partial class WizardRunner {
         };
         AnsiConsole.Write(panel);
         AnsiConsole.WriteLine();
+    }
+
+    internal static string NormalizeAutoDetectRecommendedReasonForTests(string? recommendedReason) {
+        return NormalizeAutoDetectRecommendedReason(recommendedReason);
+    }
+
+    private static string NormalizeAutoDetectRecommendedReason(string? recommendedReason) {
+        return string.IsNullOrWhiteSpace(recommendedReason)
+            ? "No recommendation details provided."
+            : recommendedReason.Trim();
     }
 }
