@@ -401,6 +401,24 @@ internal static partial class Program {
             "setup wizard auto-detect reason normalization trim");
     }
 
+    private static void TestSetupWizardAutoDetectPromptRecommendationFallback() {
+        var fallback = IntelligenceX.Cli.Setup.Wizard.WizardRunner.ResolveAutoDetectPromptRecommendationForTests(null);
+        AssertEqual(IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.NewSetup, fallback.RecommendedPathId,
+            "setup wizard auto-detect prompt fallback path id");
+        AssertEqual("Auto-detect unavailable. Choose onboarding path manually.", fallback.RecommendedReason,
+            "setup wizard auto-detect prompt fallback reason");
+
+        var detected = IntelligenceX.Cli.Setup.Wizard.WizardRunner.ResolveAutoDetectPromptRecommendationForTests(
+            new IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingAutoDetectResult {
+                RecommendedPath = IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.RefreshAuth,
+                RecommendedReason = "  Refresh auth required. "
+            });
+        AssertEqual(IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingPaths.RefreshAuth, detected.RecommendedPathId,
+            "setup wizard auto-detect prompt detected path id");
+        AssertEqual("Refresh auth required.", detected.RecommendedReason,
+            "setup wizard auto-detect prompt detected reason normalized");
+    }
+
     private static void TestSetupOnboardingContractCommandTemplates() {
         var templates = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetCommandTemplates();
         AssertEqual("intelligencex setup autodetect --json", templates.AutoDetect, "setup contract auto-detect template");

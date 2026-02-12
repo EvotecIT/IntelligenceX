@@ -57,21 +57,27 @@ internal static partial class WizardRunner {
             state.OnboardingPathId = ResolvePathIdFromOperation(state.Operation);
         } else {
             SetupOnboardingAutoDetectResult? autoDetect = null;
-            await AnsiConsole.Status()
-                .Spinner(Spinner.Known.Dots)
-                .StartAsync("Running auto-detect preflight...", async _ => {
-                    autoDetect = await SetupOnboardingAutoDetectRunner
-                        .RunAsync(Environment.CurrentDirectory, options.RepoFullName)
-                        .ConfigureAwait(false);
-                }).ConfigureAwait(false);
+            try {
+                await AnsiConsole.Status()
+                    .Spinner(Spinner.Known.Dots)
+                    .StartAsync("Running auto-detect preflight...", async _ => {
+                        autoDetect = await SetupOnboardingAutoDetectRunner
+                            .RunAsync(Environment.CurrentDirectory, options.RepoFullName)
+                            .ConfigureAwait(false);
+                    }).ConfigureAwait(false);
+            } catch (Exception ex) {
+                AnsiConsole.MarkupLine($"[yellow]Auto-detect unavailable: {Markup.Escape(ex.Message)}[/]");
+            }
 
             if (autoDetect is not null) {
                 RenderAutoDetectSummary(autoDetect);
-                state.OnboardingPathId = WizardPrompts.PromptOnboardingPath(
-                    autoDetect.RecommendedPath,
-                    autoDetect.RecommendedReason);
-                state.Operation = ResolveOperationFromPathId(state.OnboardingPathId);
+            } else {
+                AnsiConsole.MarkupLine("[yellow]Auto-detect preflight unavailable. Choose onboarding path manually.[/]");
             }
+
+            var (recommendedPathId, recommendedReason) = ResolveAutoDetectPromptRecommendation(autoDetect);
+            state.OnboardingPathId = WizardPrompts.PromptOnboardingPath(recommendedPathId, recommendedReason);
+            state.Operation = ResolveOperationFromPathId(state.OnboardingPathId);
         }
 
         // Show trust info before auth mode selection
@@ -273,9 +279,27 @@ internal static partial class WizardRunner {
         return NormalizeAutoDetectRecommendedReason(recommendedReason);
     }
 
+    internal static (string RecommendedPathId, string RecommendedReason) ResolveAutoDetectPromptRecommendationForTests(
+        SetupOnboardingAutoDetectResult? autoDetect) {
+        return ResolveAutoDetectPromptRecommendation(autoDetect);
+    }
+
     private static string NormalizeAutoDetectRecommendedReason(string? recommendedReason) {
         return string.IsNullOrWhiteSpace(recommendedReason)
             ? "No recommendation details provided."
             : recommendedReason.Trim();
+    }
+
+    private static (string RecommendedPathId, string RecommendedReason) ResolveAutoDetectPromptRecommendation(
+        SetupOnboardingAutoDetectResult? autoDetect) {
+        if (autoDetect is null) {
+            return (
+                SetupOnboardingPaths.NewSetup,
+                "Auto-detect unavailable. Choose onboarding path manually.");
+        }
+
+        return (
+            autoDetect.RecommendedPath,
+            NormalizeAutoDetectRecommendedReason(autoDetect.RecommendedReason));
     }
 }
