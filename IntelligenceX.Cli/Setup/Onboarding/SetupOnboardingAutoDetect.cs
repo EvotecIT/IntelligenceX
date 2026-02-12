@@ -82,10 +82,7 @@ internal static class SetupOnboardingAutoDetectRunner {
             executablePath = "dotnet";
         }
 
-        var cliAssemblyPath = typeof(DoctorRunner).Assembly.Location;
-        if (string.IsNullOrWhiteSpace(cliAssemblyPath)) {
-            cliAssemblyPath = Assembly.GetExecutingAssembly().Location;
-        }
+        var cliAssemblyPath = ResolveCliAssemblyPath();
 
         var processStartInfo = new ProcessStartInfo {
             FileName = executablePath,
@@ -99,6 +96,9 @@ internal static class SetupOnboardingAutoDetectRunner {
         var isDotNetHost = Path.GetFileNameWithoutExtension(executablePath)
             .Equals("dotnet", StringComparison.OrdinalIgnoreCase);
         if (isDotNetHost) {
+            if (string.IsNullOrWhiteSpace(cliAssemblyPath)) {
+                return (1, "Failed to resolve IntelligenceX.Cli assembly path for doctor process.");
+            }
             processStartInfo.ArgumentList.Add(cliAssemblyPath);
         }
 
@@ -139,6 +139,25 @@ internal static class SetupOnboardingAutoDetectRunner {
         } catch (Exception ex) {
             return (1, $"Doctor process failed to run: {ex.Message}");
         }
+    }
+
+    private static string ResolveCliAssemblyPath() {
+        var doctorAssemblyPath = typeof(DoctorRunner).Assembly.Location;
+        if (!string.IsNullOrWhiteSpace(doctorAssemblyPath) && File.Exists(doctorAssemblyPath)) {
+            return doctorAssemblyPath;
+        }
+
+        var executingAssemblyPath = Assembly.GetExecutingAssembly().Location;
+        if (!string.IsNullOrWhiteSpace(executingAssemblyPath) && File.Exists(executingAssemblyPath)) {
+            return executingAssemblyPath;
+        }
+
+        var defaultCandidate = Path.Combine(AppContext.BaseDirectory, "IntelligenceX.Cli.dll");
+        if (File.Exists(defaultCandidate)) {
+            return defaultCandidate;
+        }
+
+        return string.Empty;
     }
 
     private static void TryKillProcess(Process process) {
