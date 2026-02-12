@@ -262,6 +262,11 @@ internal static partial class Program {
         using var document = System.Text.Json.JsonDocument.Parse(json);
         AssertEqual(false, document.RootElement.TryGetProperty("Checks", out _),
             "setup autodetect json root does not use PascalCase");
+        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.ContractVersion,
+            document.RootElement.GetProperty("contractVersion").GetString(),
+            "setup autodetect json contract version");
+        var contractFingerprint = document.RootElement.GetProperty("contractFingerprint").GetString() ?? string.Empty;
+        AssertEqual(64, contractFingerprint.Length, "setup autodetect json contract fingerprint length");
         var checks = document.RootElement.GetProperty("checks");
 
         AssertEqual(System.Text.Json.JsonValueKind.String, checks[0].GetProperty("status").ValueKind,
@@ -328,8 +333,27 @@ internal static partial class Program {
             AssertEqual(contractPaths[i].Id, cliPaths[i].Id, $"setup cli path[{i}] id matches contract");
             AssertEqual(contractPaths[i].DisplayName, cliPaths[i].DisplayName, $"setup cli path[{i}] display name matches contract");
             AssertEqual(contractPaths[i].Description, cliPaths[i].Description, $"setup cli path[{i}] description matches contract");
+            AssertEqual(contractPaths[i].RequiresGitHubAuth, cliPaths[i].RequiresGitHubAuth,
+                $"setup cli path[{i}] requires github auth matches contract");
+            AssertEqual(contractPaths[i].RequiresRepoSelection, cliPaths[i].RequiresRepoSelection,
+                $"setup cli path[{i}] requires repo selection matches contract");
+            AssertEqual(contractPaths[i].RequiresAiAuth, cliPaths[i].RequiresAiAuth,
+                $"setup cli path[{i}] requires ai auth matches contract");
+            var expectedOperation = contractPaths[i].Operation switch {
+                "update-secret" => SetupApplyOperation.UpdateSecret,
+                "cleanup" => SetupApplyOperation.Cleanup,
+                _ => SetupApplyOperation.Setup
+            };
+            AssertEqual(expectedOperation, cliPaths[i].DefaultOperation, $"setup cli path[{i}] operation matches contract");
             AssertSequenceEqual(contractPaths[i].Flow, cliPaths[i].Flow, $"setup cli path[{i}] flow matches contract");
         }
+
+        var mutableFlow = contractPaths[0].Flow as string[];
+        AssertNotNull(mutableFlow, "setup contract flow returns concrete array for defensive copy check");
+        var originalFlowStep = mutableFlow![0];
+        mutableFlow[0] = "Mutated step";
+        var freshPaths = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetPaths(includeMaintenancePath: true);
+        AssertEqual(originalFlowStep, freshPaths[0].Flow[0], "setup contract returns defensive path copies");
     }
 
     private static void TestSetupOnboardingContractCommandTemplates() {
@@ -348,6 +372,31 @@ internal static partial class Program {
         AssertEqual("intelligencex setup --repo owner/name --cleanup", templates.CleanupApply,
             "setup contract cleanup apply template");
         AssertEqual("intelligencex setup web", templates.MaintenanceWizard, "setup contract maintenance wizard template");
+
+        var fingerprintWithMaintenance = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetContractFingerprint(includeMaintenancePath: true);
+        var fingerprintWithoutMaintenance = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetContractFingerprint(includeMaintenancePath: false);
+        AssertEqual(64, fingerprintWithMaintenance.Length, "setup contract fingerprint with maintenance length");
+        AssertEqual(64, fingerprintWithoutMaintenance.Length, "setup contract fingerprint without maintenance length");
+        AssertEqual(false, string.Equals(fingerprintWithMaintenance, fingerprintWithoutMaintenance, StringComparison.Ordinal),
+            "setup contract fingerprint differs by maintenance mode");
+
+        AssertEqual(true, IsLowerHex(fingerprintWithMaintenance), "setup contract fingerprint with maintenance is lowercase hex");
+        AssertEqual(true, IsLowerHex(fingerprintWithoutMaintenance), "setup contract fingerprint without maintenance is lowercase hex");
+    }
+
+    private static bool IsLowerHex(string value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return false;
+        }
+        for (var i = 0; i < value.Length; i++) {
+            var c = value[i];
+            var isDigit = c >= '0' && c <= '9';
+            var isLowerHexLetter = c >= 'a' && c <= 'f';
+            if (!isDigit && !isLowerHexLetter) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static void TestSetupWorkflowUpgradePreservesCustomSectionsOutsideManagedBlock() {
