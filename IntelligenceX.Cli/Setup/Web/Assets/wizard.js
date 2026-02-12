@@ -458,11 +458,6 @@ function formatAutoDetectOutput(data) {
   (data.checks || []).forEach(check => {
     lines.push(`- [${check.status || 'ok'}] ${check.message || ''}`);
   });
-  if (data.rawDoctorOutput && String(data.rawDoctorOutput).trim().length > 0) {
-    lines.push('');
-    lines.push('doctor output:');
-    lines.push(String(data.rawDoctorOutput).trim());
-  }
   return lines.join('\n');
 }
 
