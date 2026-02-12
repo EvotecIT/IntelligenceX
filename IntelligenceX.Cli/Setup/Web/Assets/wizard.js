@@ -493,6 +493,7 @@ async function runAutoDetect() {
   const summaryEl = $('autodetectSummary');
   const outputEl = $('autodetectOutput');
   const runBtn = $('runAutodetect');
+  const repoInput = $('repo');
   if (summaryEl) summaryEl.textContent = 'Running doctor preflight...';
   if (outputEl) outputEl.textContent = '';
   if (runBtn) runBtn.disabled = true;
@@ -501,7 +502,7 @@ async function runAutoDetect() {
       method: 'POST',
       headers: getSetupRequestHeaders(),
       body: JSON.stringify({
-        repoHint: repo ? repo.value.trim() : ''
+        repoHint: repoInput ? repoInput.value.trim() : ''
       })
     });
     lastAutodetect = data;
