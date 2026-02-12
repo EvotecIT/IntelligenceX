@@ -21,6 +21,9 @@ internal static partial class Program {
         failed += Run("Tool call parsing", TestToolCallParsing);
         failed += Run("Tool call invalid JSON", TestToolCallParsingInvalidJson);
         failed += Run("Tool output input", TestToolOutputInput);
+        failed += Run("Tool output envelope error omits meta when null", TestToolOutputEnvelopeErrorOmitsMetaWhenNull);
+        failed += Run("Tool output envelope error includes meta when provided", TestToolOutputEnvelopeErrorIncludesMetaWhenProvided);
+        failed += Run("Tool output envelope error string includes meta when provided", TestToolOutputEnvelopeErrorStringIncludesMetaWhenProvided);
         failed += Run("Turn response_id parsing", TestTurnResponseIdParsing);
         failed += Run("Tool definitions ordered", TestToolDefinitionOrdering);
         failed += Run("Tool runner max rounds", TestToolRunnerMaxRounds);
