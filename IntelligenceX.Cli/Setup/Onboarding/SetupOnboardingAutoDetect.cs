@@ -240,10 +240,16 @@ internal static class SetupOnboardingAutoDetectCliRunner {
         public string? Repo { get; set; }
         public bool Json { get; set; }
         public bool ShowHelp { get; set; }
+        public string? ParseError { get; set; }
     }
 
     public static async Task<int> RunAsync(string[] args) {
         var options = Parse(args);
+        if (!string.IsNullOrWhiteSpace(options.ParseError)) {
+            Console.Error.WriteLine(options.ParseError);
+            PrintHelp();
+            return 1;
+        }
         if (options.ShowHelp) {
             PrintHelp();
             return 0;
@@ -285,13 +291,19 @@ internal static class SetupOnboardingAutoDetectCliRunner {
                     options.ShowHelp = true;
                     break;
                 case "--workspace":
-                    if (i + 1 < args.Length) {
-                        options.Workspace = args[++i];
+                    if (TryGetOptionValue(args, ref i, out var workspace)) {
+                        options.Workspace = workspace;
+                    } else {
+                        options.ParseError = "Missing value for --workspace.";
+                        return options;
                     }
                     break;
                 case "--repo":
-                    if (i + 1 < args.Length) {
-                        options.Repo = args[++i];
+                    if (TryGetOptionValue(args, ref i, out var repo)) {
+                        options.Repo = repo;
+                    } else {
+                        options.ParseError = "Missing value for --repo.";
+                        return options;
                     }
                     break;
                 case "--json":
@@ -305,9 +317,26 @@ internal static class SetupOnboardingAutoDetectCliRunner {
         return options;
     }
 
+    private static bool TryGetOptionValue(string[] args, ref int index, out string value) {
+        value = string.Empty;
+        if (index + 1 >= args.Length) {
+            return false;
+        }
+
+        var candidate = args[index + 1];
+        if (string.IsNullOrWhiteSpace(candidate) || candidate.StartsWith("-", StringComparison.Ordinal)) {
+            return false;
+        }
+
+        index++;
+        value = candidate;
+        return true;
+    }
+
     private static JsonSerializerOptions CreateJsonOptions() {
         var options = new JsonSerializerOptions {
-            WriteIndented = true
+            WriteIndented = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
         };
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
         return options;

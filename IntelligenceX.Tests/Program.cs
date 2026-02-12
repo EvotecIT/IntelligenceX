@@ -62,6 +62,8 @@ internal static partial class Program {
         failed += Run("Setup config merge preserves review settings when enabling analysis", TestSetupBuildConfigJsonMergePreservesReviewSettingsWhenEnablingAnalysis);
         failed += Run("Setup autodetect JSON serializes check statuses as lowercase strings",
             TestSetupAutodetectJsonSerializesCheckStatusesAsLowercaseStrings);
+        failed += Run("Setup autodetect missing workspace value fails", TestSetupAutodetectMissingWorkspaceValueFails);
+        failed += Run("Setup autodetect missing repo value fails", TestSetupAutodetectMissingRepoValueFails);
         failed += Run("Setup workflow upgrade preserves custom sections outside managed block",
             TestSetupWorkflowUpgradePreservesCustomSectionsOutsideManagedBlock);
         failed += Run("Setup workflow upgrade preserves outside managed block verbatim",
