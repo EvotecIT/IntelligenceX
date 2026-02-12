@@ -419,6 +419,20 @@ internal static partial class Program {
             "setup wizard auto-detect prompt detected reason normalized");
     }
 
+    private static void TestSetupWizardAutoDetectUnavailableMessageFormatting() {
+        var exception = new InvalidOperationException("doctor failed");
+        var compact = IntelligenceX.Cli.Setup.Wizard.WizardRunner.FormatAutoDetectUnavailableMessageForTests(exception, verbose: false);
+        AssertContainsText(compact, "Auto-detect unavailable: doctor failed.", "setup wizard auto-detect unavailable compact prefix");
+        AssertContainsText(compact, "--verbose", "setup wizard auto-detect unavailable compact hint");
+
+        var verbose = IntelligenceX.Cli.Setup.Wizard.WizardRunner.FormatAutoDetectUnavailableMessageForTests(exception, verbose: true);
+        AssertContainsText(verbose, "InvalidOperationException", "setup wizard auto-detect unavailable verbose type");
+        AssertContainsText(verbose, "doctor failed", "setup wizard auto-detect unavailable verbose message");
+
+        var nullException = IntelligenceX.Cli.Setup.Wizard.WizardRunner.FormatAutoDetectUnavailableMessageForTests(null, verbose: false);
+        AssertContainsText(nullException, "manual path selection", "setup wizard auto-detect unavailable null exception fallback");
+    }
+
     private static void TestSetupOnboardingContractCommandTemplates() {
         var templates = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetCommandTemplates();
         AssertEqual("intelligencex setup autodetect --json", templates.AutoDetect, "setup contract auto-detect template");

@@ -66,7 +66,7 @@ internal static partial class WizardRunner {
                             .ConfigureAwait(false);
                     }).ConfigureAwait(false);
             } catch (Exception ex) {
-                AnsiConsole.MarkupLine($"[yellow]Auto-detect unavailable: {Markup.Escape(ex.Message)}[/]");
+                AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(FormatAutoDetectUnavailableMessage(ex, options.Verbose))}[/]");
             }
 
             if (autoDetect is not null) {
@@ -250,6 +250,9 @@ internal static partial class WizardRunner {
             $"Recommended path: [cyan]{Markup.Escape(path.DisplayName)}[/]",
             $"Reason: {Markup.Escape(recommendedReason)}"
         };
+        if (string.Equals(result.Status, "fail", StringComparison.OrdinalIgnoreCase)) {
+            lines.Add("Run `intelligencex setup autodetect --json` for full preflight diagnostics.");
+        }
 
         if (checks.Count > 0) {
             lines.Add(string.Empty);
@@ -279,6 +282,10 @@ internal static partial class WizardRunner {
         return NormalizeAutoDetectRecommendedReason(recommendedReason);
     }
 
+    internal static string FormatAutoDetectUnavailableMessageForTests(Exception? exception, bool verbose) {
+        return FormatAutoDetectUnavailableMessage(exception, verbose);
+    }
+
     internal static (string RecommendedPathId, string RecommendedReason) ResolveAutoDetectPromptRecommendationForTests(
         SetupOnboardingAutoDetectResult? autoDetect) {
         return ResolveAutoDetectPromptRecommendation(autoDetect);
@@ -288,6 +295,18 @@ internal static partial class WizardRunner {
         return string.IsNullOrWhiteSpace(recommendedReason)
             ? "No recommendation details provided."
             : recommendedReason.Trim();
+    }
+
+    private static string FormatAutoDetectUnavailableMessage(Exception? exception, bool verbose) {
+        if (exception is null) {
+            return "Auto-detect unavailable. Continuing with manual path selection.";
+        }
+
+        if (verbose) {
+            return $"Auto-detect unavailable ({exception.GetType().Name}): {exception}";
+        }
+
+        return $"Auto-detect unavailable: {exception.Message}. Re-run with --verbose for full exception details.";
     }
 
     private static (string RecommendedPathId, string RecommendedReason) ResolveAutoDetectPromptRecommendation(
