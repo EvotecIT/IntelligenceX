@@ -234,7 +234,7 @@ function renderPathRequirements(path) {
   });
 }
 
-function setOnboardingPathContracts(paths, commandTemplates, contractVersion, contractFingerprint) {
+function setOnboardingPathContracts(paths, contractVersion, contractFingerprint) {
   const normalizedPaths = Array.isArray(paths)
     ? paths.map(normalizePathContract).filter(path => !!path)
     : [];
@@ -419,7 +419,9 @@ function syncOnboardingPathVisualState() {
 
 function applyOnboardingPath(path) {
   const normalizedPath = normalizeRecommendedPath(path);
-  switch (normalizedPath) {
+  const effectivePath = getOnboardingPathContract(normalizedPath);
+  const effectivePathId = effectivePath.id;
+  switch (effectivePathId) {
     case 'refresh-auth':
       selectOperation('update-secret');
       selectProvider('openai');
@@ -447,7 +449,7 @@ function applyOnboardingPath(path) {
       break;
   }
 
-  selectedOnboardingPath = normalizedPath;
+  selectedOnboardingPath = effectivePathId;
 
   syncOnboardingPathVisualState();
   refreshPathStateAfterOnboardingSelection();
@@ -679,7 +681,7 @@ function renderAutoDetect(data) {
   const contractText = data.contractVersion ? ` | contract: ${data.contractVersion}` : '';
   summaryEl.textContent = `${statusText} | checks: ${counts.ok} ok, ${counts.warn} warn, ${counts.fail} fail | Suggested path: ${recommendedPath}${contractText}. ${data.recommendedReason || ''}`;
   outputEl.textContent = formatAutoDetectOutput(data);
-  setOnboardingPathContracts(data.paths, data.commandTemplates, data.contractVersion, data.contractFingerprint);
+  setOnboardingPathContracts(data.paths, data.contractVersion, data.contractFingerprint);
   syncOnboardingPathVisualState();
 
   if (applyBtn) {
@@ -707,7 +709,7 @@ async function runAutoDetect() {
     lastAutodetect = data;
     renderAutoDetect(data);
   } catch (e) {
-    setOnboardingPathContracts(null, null, null, null);
+    setOnboardingPathContracts(null, null, null);
     syncOnboardingPathVisualState();
     if (summaryEl) summaryEl.textContent = `Auto-detect failed: ${e.message || e}`;
     if (outputEl) outputEl.textContent = '';
@@ -1764,7 +1766,7 @@ refreshPresets();
 loadUsageCache();
 updateProgressBar();
 selectSecretOption(secretOption);
-setOnboardingPathContracts(FALLBACK_ONBOARDING_PATHS, null, null, null);
+setOnboardingPathContracts(FALLBACK_ONBOARDING_PATHS, null, null);
 syncOnboardingPathVisualState();
 const runAutodetectBtn = $('runAutodetect');
 if (runAutodetectBtn) {
