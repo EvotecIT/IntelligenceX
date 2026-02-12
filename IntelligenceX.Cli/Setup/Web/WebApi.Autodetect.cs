@@ -52,8 +52,16 @@ internal sealed partial class WebApi {
         ArgumentNullException.ThrowIfNull(result);
 
         var pathContracts = result.Paths ?? SetupOnboardingContract.GetPaths(includeMaintenancePath: true);
+        var includeMaintenancePath = pathContracts.Any(path =>
+            string.Equals(path.Id, SetupOnboardingContract.MaintenancePathId, StringComparison.Ordinal));
         var commands = result.CommandTemplates ?? SetupOnboardingContract.GetCommandTemplates();
         var checks = result.Checks ?? Array.Empty<SetupOnboardingCheck>();
+        var contractVersion = string.IsNullOrWhiteSpace(result.ContractVersion)
+            ? SetupOnboardingContract.ContractVersion
+            : result.ContractVersion;
+        var contractFingerprint = string.IsNullOrWhiteSpace(result.ContractFingerprint)
+            ? SetupOnboardingContract.GetContractFingerprint(includeMaintenancePath)
+            : result.ContractFingerprint;
 
         var paths = pathContracts.Select(path => new {
             id = path.Id,
@@ -66,8 +74,8 @@ internal sealed partial class WebApi {
             flow = path.Flow
         }).ToArray();
         return new {
-            contractVersion = result.ContractVersion,
-            contractFingerprint = result.ContractFingerprint,
+            contractVersion,
+            contractFingerprint,
             commandTemplates = new {
                 autoDetect = commands.AutoDetect,
                 newSetupDryRun = commands.NewSetupDryRun,
@@ -87,10 +95,19 @@ internal sealed partial class WebApi {
             recommendedReason = result.RecommendedReason,
             checks = checks.Select(check => new {
                 name = check.Name,
-                status = check.Status.ToString().ToLowerInvariant(),
+                status = ToWireCheckStatus(check.Status),
                 message = check.Message
             }).ToArray(),
             paths
+        };
+    }
+
+    private static string ToWireCheckStatus(SetupOnboardingCheckStatus status) {
+        return status switch {
+            SetupOnboardingCheckStatus.Ok => "ok",
+            SetupOnboardingCheckStatus.Warn => "warn",
+            SetupOnboardingCheckStatus.Fail => "fail",
+            _ => status.ToString().ToLowerInvariant()
         };
     }
 }
