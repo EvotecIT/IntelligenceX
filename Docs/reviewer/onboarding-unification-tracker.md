@@ -23,6 +23,9 @@ This file tracks onboarding/cleanup/maintenance unification across CLI, Web, and
 | .Tools: reviewer onboarding tool definitions | Completed | IX Tools | Added `IntelligenceX.Tools.ReviewerSetup` with `reviewer_setup_pack_info` and path/command contract data. |
 | .Chat: expose richer tool metadata | Completed | IX Chat | Added `parametersJson` + `requiredArguments` in tool discovery response for better agent planning. |
 | .Chat: register reviewer setup pack by default | Completed | IX Chat + IX Tools | Chat now registers the reviewer setup tool pack by default through `ToolRegistryReviewerSetupExtensions`. |
+| Shared canonical onboarding contract | Completed | IX Core | Added `IntelligenceX/Setup/Onboarding/SetupOnboardingContract.cs` as the source of truth for path ids and command templates. |
+| Drift guard contract tests | Completed | IX + IX.Tools + IX.Chat | Added tests for CLI contract parity and bot/tool contract payload parity (`IntelligenceX.Tests`, `IntelligenceX.Tools.Tests`, `IntelligenceX.Chat.Tests`). |
+| .Chat: autodetect-first onboarding playbook | Completed | IX Chat | Updated `Docs/HostSystemPrompt.md` to require `reviewer_setup_pack_info` + preflight autodetect before path execution. |
 | Docs: diagrams and flow updates | Completed | Docs | Added path-first flow docs and Mermaid diagrams in onboarding pages. |
 | Website FAQ/data updates | Completed | Website | Updated FAQ/features/how-it-works for path-first + auto-detect positioning. |
 
@@ -30,13 +33,18 @@ This file tracks onboarding/cleanup/maintenance unification across CLI, Web, and
 
 None for this unification scope. As of February 12, 2026:
 - `IntelligenceX.Tools` PR `#149` is merged.
+- `IntelligenceX.Tools` PR `#150` is merged.
 - `IntelligenceX.Chat` PR `#43` is merged.
+- `IntelligenceX.Chat` PR `#44` is merged.
+- `IntelligenceX.Chat` PR `#46` is merged.
 - `IntelligenceX` PR `#248` is merged.
+- `IntelligenceX` PR `#249` is merged.
+- `IntelligenceX` PR `#250` is merged.
 
 ## Next Actions
 
-1. Add/expand an end-to-end chat scenario test: `list_tools` includes `reviewer_setup_pack_info`, then validate returned path ids/command templates.
-2. Keep website/docs flow diagrams in sync with future onboarding path changes.
+1. Keep website/docs flow diagrams and FAQ data synchronized with future onboarding path or command-template changes.
+2. Consider adding a CI automation that periodically verifies all repos consume the latest onboarding contract version.
 
 ## Exit Criteria
 
