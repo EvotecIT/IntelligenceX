@@ -462,13 +462,13 @@ internal sealed class ChatServiceSession {
 
         try {
             using var doc = JsonDocument.Parse(parametersJson);
-            if (!doc.RootElement.TryGetProperty("required", out var required) || required.ValueKind != JsonValueKind.Array) {
+            if (!doc.RootElement.TryGetProperty("required", out var required) || required.ValueKind != System.Text.Json.JsonValueKind.Array) {
                 return Array.Empty<string>();
             }
 
             var list = new List<string>();
             foreach (var item in required.EnumerateArray()) {
-                if (item.ValueKind != JsonValueKind.String) {
+                if (item.ValueKind != System.Text.Json.JsonValueKind.String) {
                     continue;
                 }
                 var value = item.GetString();
@@ -825,11 +825,13 @@ internal sealed class ChatServiceSession {
             });
         }
 
+        var dangerousEnabled = packList.Exists(static p => p.IsDangerous || p.Tier == CapabilityTier.DangerousWrite);
+
         return new SessionPolicyDto {
-            ReadOnly = true,
+            ReadOnly = !dangerousEnabled,
             AllowedRoots = roots,
             Packs = packList.ToArray(),
-            DangerousToolsEnabled = false,
+            DangerousToolsEnabled = dangerousEnabled,
             ToolTimeoutSeconds = options.ToolTimeoutSeconds <= 0 ? null : options.ToolTimeoutSeconds,
             TurnTimeoutSeconds = options.TurnTimeoutSeconds <= 0 ? null : options.TurnTimeoutSeconds,
             MaxToolRounds = options.MaxToolRounds,

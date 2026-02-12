@@ -180,7 +180,8 @@ public sealed class SystemFirewallRulesTool : SystemToolBase, ITool {
             });
         return Task.FromResult(response);
     }
-private static string ProfileToString(FirewallProfileKind profile) {
+
+    private static string ProfileToString(FirewallProfileKind profile) {
         if (ProfileNames.TryGetValue(profile, out var direct)) {
             return direct;
         }
@@ -200,7 +201,4 @@ private static string ProfileToString(FirewallProfileKind profile) {
             ? ((int)profile).ToString(CultureInfo.InvariantCulture)
             : string.Join("|", parts);
     }
-
 }
-
-
