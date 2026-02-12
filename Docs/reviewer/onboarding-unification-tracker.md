@@ -37,6 +37,8 @@ This file tracks onboarding/cleanup/maintenance unification across CLI, Web, and
 | .Chat: autodetect-first onboarding playbook | Completed | IX Chat | Updated `Docs/HostSystemPrompt.md` to require `reviewer_setup_pack_info` + preflight autodetect before path execution. |
 | Web UI: path hints from shared contract metadata | Completed | IX CLI Web | Step-1 path cards/hints/requirements now hydrate from autodetect `paths` + `contractVersion`/`contractFingerprint` instead of hardcoded path text. |
 | Web API: include command templates in autodetect payload | Completed | IX CLI Web | `/api/setup/autodetect` now returns `commandTemplates` sourced from `SetupOnboardingContract` for CLI/Web/Bot parity. |
+| Web API: autodetect response parity regression coverage | Completed | IX Tests + IX CLI Web | Added web-response contract parity tests (`BuildSetupAutodetectResponseJsonForTests`) and null-safe fallbacks for `paths`/`commandTemplates` projection. |
+| Autodetect contract payload immutability hardening | Completed | IX CLI | Switched `SetupOnboardingAutoDetectResult` and `SetupOnboardingCheck` to `init`-based properties to reduce post-construction mutation risk. |
 | Docs: canonical path matrix + Bot contract-check diagram | Completed | Docs | `Docs/reviewer/web-onboarding.md` now includes per-path auth/operation matrix and Mermaid flow for tool-driven parity verification. |
 | Docs: diagrams and flow updates | Completed | Docs | Added path-first flow docs and Mermaid diagrams in onboarding pages. |
 | Website FAQ/data updates | Completed | Website | Updated FAQ/features/how-it-works for path-first + auto-detect positioning. |

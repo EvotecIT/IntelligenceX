@@ -2,6 +2,78 @@ namespace IntelligenceX.Tests;
 
 internal static partial class Program {
 #if !NET472
+    private static void TestWebSetupAutodetectResponseJsonMatchesSharedContractPayload() {
+        var contractCommands = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetCommandTemplates();
+        var contractPaths = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetPaths(includeMaintenancePath: true);
+        var result = new IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingAutoDetectResult {
+            Status = "warn",
+            Workspace = "/tmp/workspace",
+            Repo = "owner/repo",
+            ContractVersion = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.ContractVersion,
+            ContractFingerprint = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetContractFingerprint(includeMaintenancePath: true),
+            CommandTemplates = contractCommands,
+            RecommendedPath = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.RefreshAuthPathId,
+            RecommendedReason = "Auth refresh required.",
+            Paths = contractPaths,
+            Checks = new[] {
+                new IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingCheck {
+                    Name = "doctor",
+                    Status = IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingCheckStatus.Warn,
+                    Message = "warn"
+                }
+            }
+        };
+
+        var json = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupAutodetectResponseJsonForTests(result);
+        using var document = System.Text.Json.JsonDocument.Parse(json);
+        var root = document.RootElement;
+
+        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.ContractVersion,
+            root.GetProperty("contractVersion").GetString(),
+            "web setup autodetect response contract version");
+        AssertEqual(contractCommands.AutoDetect,
+            root.GetProperty("commandTemplates").GetProperty("autoDetect").GetString(),
+            "web setup autodetect response auto-detect template");
+        AssertEqual(contractCommands.NewSetupApply,
+            root.GetProperty("commandTemplates").GetProperty("newSetupApply").GetString(),
+            "web setup autodetect response setup apply template");
+        AssertEqual(contractPaths.Count, root.GetProperty("paths").GetArrayLength(),
+            "web setup autodetect response path count");
+        AssertEqual(IntelligenceX.Setup.Onboarding.SetupOnboardingContract.NewSetupPathId,
+            root.GetProperty("paths")[0].GetProperty("id").GetString(),
+            "web setup autodetect response first path id");
+        AssertEqual("setup",
+            root.GetProperty("paths")[0].GetProperty("defaultOperation").GetString(),
+            "web setup autodetect response first path default operation");
+        AssertEqual(System.Text.Json.JsonValueKind.String, root.GetProperty("checks")[0].GetProperty("status").ValueKind,
+            "web setup autodetect response check status type");
+        AssertEqual("warn", root.GetProperty("checks")[0].GetProperty("status").GetString(),
+            "web setup autodetect response check status lowercase");
+    }
+
+    private static void TestWebSetupAutodetectResponseJsonFallbacksForNullPayloads() {
+        var result = new IntelligenceX.Cli.Setup.Onboarding.SetupOnboardingAutoDetectResult {
+            Status = "ok",
+            Workspace = "/tmp/workspace",
+            Paths = null!,
+            CommandTemplates = null!,
+            Checks = null!
+        };
+
+        var json = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupAutodetectResponseJsonForTests(result);
+        using var document = System.Text.Json.JsonDocument.Parse(json);
+        var root = document.RootElement;
+        var contractCommands = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetCommandTemplates();
+
+        AssertEqual(contractCommands.AutoDetect,
+            root.GetProperty("commandTemplates").GetProperty("autoDetect").GetString(),
+            "web setup autodetect response fallback command template");
+        AssertEqual(4, root.GetProperty("paths").GetArrayLength(),
+            "web setup autodetect response fallback path count");
+        AssertEqual(0, root.GetProperty("checks").GetArrayLength(),
+            "web setup autodetect response fallback check count");
+    }
+
     private static void TestWebSetupBuildSetupArgsPropagatesRequestDryRun() {
         var fromRequest = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupArgsForDryRunPropagationTests(
             routeDryRun: false,
