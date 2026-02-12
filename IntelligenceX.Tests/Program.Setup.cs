@@ -630,6 +630,27 @@ jobs:
         AssertContainsText(lookup.Runs[0].Url ?? string.Empty, "actions/runs/42", "repo client workflow run url");
     }
 
+    private static void TestGitHubRepoClientWorkflowRunLookupResultUsesDefensiveCopy() {
+        var sourceRuns = new List<IntelligenceX.Cli.Setup.Wizard.GitHubRepoClient.WorkflowRunInfo> {
+            new(
+                id: 7,
+                url: "https://github.com/owner/repo/actions/runs/7",
+                status: "completed",
+                conclusion: "success",
+                headBranch: "main",
+                @event: "pull_request",
+                createdAt: DateTimeOffset.Parse("2026-02-11T20:00:00Z", System.Globalization.CultureInfo.InvariantCulture))
+        };
+        var lookup = IntelligenceX.Cli.Setup.Wizard.GitHubRepoClient.WorkflowRunLookupResult.Ok(sourceRuns);
+        sourceRuns.Clear();
+
+        AssertEqual("ok", lookup.Status, "repo client workflow runs defensive copy status");
+        AssertEqual(true, lookup.Success, "repo client workflow runs defensive copy success");
+        AssertEqual(1, lookup.Runs.Count, "repo client workflow runs defensive copy count");
+        AssertEqual(false, lookup.Runs is List<IntelligenceX.Cli.Setup.Wizard.GitHubRepoClient.WorkflowRunInfo>,
+            "repo client workflow runs defensive copy list exposure");
+    }
+
     private static void TestGitHubRepoClientListWorkflowRunsInvalidPayloadReturnsEmpty() {
         using var client = CreateGitHubRepoClientForTests((_, _) => {
             var payload = """

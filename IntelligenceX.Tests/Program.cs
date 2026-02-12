@@ -108,6 +108,8 @@ internal static partial class Program {
         failed += Run("GitHub repo client secret lookup cancellation propagates", TestGitHubRepoClientSecretLookupCancellationPropagates);
         failed += Run("GitHub repo client list workflow runs parses latest run",
             TestGitHubRepoClientListWorkflowRunsParsesLatestRun);
+        failed += Run("GitHub repo client workflow run lookup result uses defensive copy",
+            TestGitHubRepoClientWorkflowRunLookupResultUsesDefensiveCopy);
         failed += Run("GitHub repo client list workflow runs invalid payload returns empty",
             TestGitHubRepoClientListWorkflowRunsInvalidPayloadReturnsEmpty);
         failed += Run("GitHub repo client list workflow runs encodes path segments",
