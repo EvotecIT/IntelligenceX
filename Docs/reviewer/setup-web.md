@@ -34,6 +34,8 @@ flowchart LR
   F --> G["Apply + Verify"]
 ```
 
+Path requirements (GitHub/repo/AI auth) and Bot contract checks are defined in [Web Onboarding Flow](/docs/reviewer/web-onboarding/).
+
 Operations available:
 - Setup / update workflow + config
 - Update OpenAI secret only (requires auth bundle)
@@ -75,6 +77,7 @@ If you want to avoid personal access tokens, you can use the GitHub App manifest
 - Use the "Load workflow preview" button before applying changes.
 - If you want zero secret handling in the UI, enable "Skip OpenAI secret" and paste secrets manually in GitHub.
 - Start with auto-detect to get a recommended path before selecting repositories.
+- If you automate setup with Bot tools, verify `contractVersion` + `contractFingerprint` match before apply.
 
 ## Security notes
 

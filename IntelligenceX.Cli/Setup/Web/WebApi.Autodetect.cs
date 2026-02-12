@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.Setup.Onboarding;
+using IntelligenceX.Setup.Onboarding;
 
 namespace IntelligenceX.Cli.Setup.Web;
 
@@ -39,20 +40,31 @@ internal sealed partial class WebApi {
             ConsoleLock.Release();
         }
 
-        var paths = SetupOnboardingPaths.GetAll().Select(path => new {
+        var paths = SetupOnboardingContract.GetPaths(includeMaintenancePath: true).Select(path => new {
             id = path.Id,
             displayName = path.DisplayName,
             description = path.Description,
-            defaultOperation = path.DefaultOperation.ToString().ToLowerInvariant(),
+            defaultOperation = path.Operation,
             requiresGitHubAuth = path.RequiresGitHubAuth,
             requiresRepoSelection = path.RequiresRepoSelection,
             requiresAiAuth = path.RequiresAiAuth,
             flow = path.Flow
         }).ToArray();
+        var commands = SetupOnboardingContract.GetCommandTemplates();
 
         await WriteJsonOkAsync(context, new {
             contractVersion = result.ContractVersion,
             contractFingerprint = result.ContractFingerprint,
+            commandTemplates = new {
+                autoDetect = commands.AutoDetect,
+                newSetupDryRun = commands.NewSetupDryRun,
+                newSetupApply = commands.NewSetupApply,
+                refreshAuthDryRun = commands.RefreshAuthDryRun,
+                refreshAuthApply = commands.RefreshAuthApply,
+                cleanupDryRun = commands.CleanupDryRun,
+                cleanupApply = commands.CleanupApply,
+                maintenanceWizard = commands.MaintenanceWizard
+            },
             status = result.Status,
             workspace = result.Workspace,
             repo = result.Repo,

@@ -19,18 +19,26 @@ The wizard now starts with doctor-based auto-detect and path selection before Gi
 You can still run preflight manually:
 
 ```powershell
-intelligencex setup autodetect
+intelligencex setup autodetect --json
 ```
 
 ```mermaid
-flowchart LR
-  A["Auto-Detect"] --> B["Choose Path"]
-  B --> C["GitHub Auth"]
-  C --> D["Repos"]
-  D --> E["Configure/Auth"]
-  E --> F["Plan"]
-  F --> G["Apply + Verify"]
+flowchart TD
+  A["Run wizard"] --> B["Doctor auto-detect"]
+  B --> C{"Choose path"}
+  C --> D["new-setup"]
+  C --> E["refresh-auth"]
+  C --> F["cleanup"]
+  C --> G["maintenance"]
+  D --> H["GitHub auth and repos"]
+  E --> H
+  F --> H
+  G --> H
+  H --> I["Path-specific configure and auth requirements"]
+  I --> J["Plan apply verify"]
 ```
+
+Path requirements and Bot parity flow are documented in [Web Onboarding Flow](/docs/reviewer/web-onboarding/).
 
 ## Web UI (preview)
 

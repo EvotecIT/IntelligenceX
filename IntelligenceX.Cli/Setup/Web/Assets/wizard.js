@@ -31,6 +31,76 @@ let deviceState = null;
 let lastRecommendation = null;
 let lastSummaryBase = 'Ready to preview or apply.';
 let lastUsageSummary = null;
+let onboardingContractVersion = null;
+let onboardingContractFingerprint = null;
+
+const FALLBACK_ONBOARDING_PATHS = [
+  {
+    id: 'new-setup',
+    displayName: 'New Setup',
+    description: 'Configure workflow and reviewer config for first-time onboarding.',
+    defaultOperation: 'setup',
+    requiresGitHubAuth: true,
+    requiresRepoSelection: true,
+    requiresAiAuth: true,
+    flow: [
+      'Authenticate with GitHub',
+      'Select repositories',
+      'Configure workflow and reviewer profile',
+      'Authenticate with AI provider',
+      'Plan, apply, verify'
+    ]
+  },
+  {
+    id: 'refresh-auth',
+    displayName: 'Fix Expired Auth',
+    description: 'Refresh OpenAI/ChatGPT auth and update INTELLIGENCEX_AUTH_B64 secret.',
+    defaultOperation: 'update-secret',
+    requiresGitHubAuth: true,
+    requiresRepoSelection: true,
+    requiresAiAuth: true,
+    flow: [
+      'Authenticate with GitHub',
+      'Select repositories',
+      'Refresh AI auth bundle',
+      'Apply update-secret',
+      'Verify secret presence'
+    ]
+  },
+  {
+    id: 'cleanup',
+    displayName: 'Cleanup',
+    description: 'Remove workflow/config and optionally remove secrets from repositories.',
+    defaultOperation: 'cleanup',
+    requiresGitHubAuth: true,
+    requiresRepoSelection: true,
+    requiresAiAuth: false,
+    flow: [
+      'Authenticate with GitHub',
+      'Select repositories',
+      'Choose cleanup options',
+      'Plan, apply cleanup',
+      'Verify removal'
+    ]
+  },
+  {
+    id: 'maintenance',
+    displayName: 'Maintenance',
+    description: 'Run preflight checks, inspect existing setup, then choose setup/update-secret/cleanup.',
+    defaultOperation: 'setup',
+    requiresGitHubAuth: true,
+    requiresRepoSelection: true,
+    requiresAiAuth: false,
+    flow: [
+      'Run auto-detect preflight',
+      'Inspect current workflow/config status',
+      'Select operation based on findings',
+      'Plan, apply, verify'
+    ]
+  }
+];
+let onboardingPaths = FALLBACK_ONBOARDING_PATHS.slice();
+let onboardingPathMap = {};
 
 // Default IntelligenceX GitHub App Client ID
 const DEFAULT_GITHUB_CLIENT_ID = 'Iv23li0wcHDzWa25HKz3';
@@ -69,6 +139,125 @@ const analysisEnabled = $('analysisEnabled');
 const analysisGate = $('analysisGate');
 const analysisPacks = $('analysisPacks');
 const analysisExportPath = $('analysisExportPath');
+
+function normalizeOperationId(operation) {
+  const normalized = String(operation || '').trim().toLowerCase();
+  if (normalized === 'update-secret' || normalized === 'refresh-auth') return 'update-secret';
+  if (normalized === 'cleanup') return 'cleanup';
+  return 'setup';
+}
+
+function normalizePathContract(path) {
+  if (!path || typeof path !== 'object') return null;
+  const id = String(path.id || '').trim().toLowerCase();
+  if (!id) return null;
+  const flow = Array.isArray(path.flow)
+    ? path.flow.map(step => String(step || '').trim()).filter(step => step.length > 0)
+    : [];
+  return {
+    id,
+    displayName: String(path.displayName || id),
+    description: String(path.description || ''),
+    defaultOperation: normalizeOperationId(path.defaultOperation || path.operation),
+    requiresGitHubAuth: !!path.requiresGitHubAuth,
+    requiresRepoSelection: !!path.requiresRepoSelection,
+    requiresAiAuth: !!path.requiresAiAuth,
+    flow
+  };
+}
+
+function findPathByOperation(operation, preferredId) {
+  const normalizedOperation = normalizeOperationId(operation);
+  if (preferredId && onboardingPathMap[preferredId]) {
+    const preferred = onboardingPathMap[preferredId];
+    if (preferred.defaultOperation === normalizedOperation) {
+      return preferred.id;
+    }
+  }
+  const match = onboardingPaths.find(path => path.defaultOperation === normalizedOperation);
+  return match ? match.id : 'new-setup';
+}
+
+function getOnboardingPathContract(pathId) {
+  const normalized = normalizeRecommendedPath(pathId);
+  if (onboardingPathMap[normalized]) {
+    return onboardingPathMap[normalized];
+  }
+  return onboardingPaths[0] || FALLBACK_ONBOARDING_PATHS[0];
+}
+
+function renderPathCardsFromContract() {
+  document.querySelectorAll('[data-path]').forEach(card => {
+    const pathId = String(card.dataset.path || '').trim().toLowerCase();
+    const path = onboardingPathMap[pathId];
+    if (!path) return;
+
+    const title = card.querySelector('[data-path-title]');
+    if (title) title.textContent = path.displayName;
+
+    const desc = card.querySelector('[data-path-desc]');
+    if (desc) desc.textContent = path.description;
+  });
+}
+
+function renderPathContractStatus() {
+  const contractEl = $('pathContractVersion');
+  if (!contractEl) return;
+
+  if (!onboardingContractVersion) {
+    contractEl.textContent = 'Contract: local defaults (auto-detect metadata unavailable).';
+    return;
+  }
+
+  const fingerprintPrefix = onboardingContractFingerprint
+    ? ` | fingerprint ${String(onboardingContractFingerprint).slice(0, 8)}`
+    : '';
+  contractEl.textContent = `Contract: ${onboardingContractVersion}${fingerprintPrefix}`;
+}
+
+function renderPathRequirements(path) {
+  const requirementsEl = $('pathRequirements');
+  if (!requirementsEl) return;
+
+  requirementsEl.innerHTML = '';
+  const requirements = [
+    { label: 'GitHub auth', required: !!path.requiresGitHubAuth },
+    { label: 'Repo selection', required: !!path.requiresRepoSelection },
+    { label: 'AI auth', required: !!path.requiresAiAuth }
+  ];
+
+  requirements.forEach(item => {
+    const badge = document.createElement('span');
+    badge.className = `path-requirement ${item.required ? 'required' : 'optional'}`;
+    badge.textContent = `${item.label}: ${item.required ? 'required' : 'optional'}`;
+    requirementsEl.appendChild(badge);
+  });
+}
+
+function setOnboardingPathContracts(paths, contractVersion, contractFingerprint) {
+  const normalizedPaths = Array.isArray(paths)
+    ? paths.map(normalizePathContract).filter(path => !!path)
+    : [];
+
+  onboardingPaths = normalizedPaths.length > 0
+    ? normalizedPaths
+    : FALLBACK_ONBOARDING_PATHS.slice();
+  onboardingPathMap = {};
+  onboardingPaths.forEach(path => {
+    onboardingPathMap[path.id] = path;
+  });
+
+  onboardingContractVersion = contractVersion || null;
+  onboardingContractFingerprint = contractFingerprint || null;
+
+  renderPathCardsFromContract();
+  renderPathContractStatus();
+
+  selectedOnboardingPath = normalizeRecommendedPath(selectedOnboardingPath);
+  if (!onboardingPathMap[selectedOnboardingPath]) {
+    selectedOnboardingPath = onboardingPaths[0] ? onboardingPaths[0].id : 'new-setup';
+  }
+}
 
 // ── Step navigation ──
 function goToStep(step) {
@@ -178,29 +367,25 @@ function getEffectiveClientId() {
 
 // ── Operation selection ──
 function getOnboardingPathForOperation(op) {
-  switch (op) {
+  const normalized = normalizeOperationId(op);
+  switch (normalized) {
     case 'update-secret':
-      return 'refresh-auth';
+      return findPathByOperation('update-secret', 'refresh-auth');
     case 'cleanup':
-      return 'cleanup';
+      return findPathByOperation('cleanup', 'cleanup');
     case 'setup':
     default:
-      return 'new-setup';
+      if (onboardingPathMap['new-setup']) return 'new-setup';
+      return findPathByOperation('setup', null);
   }
 }
 
 function getOnboardingPathHint(path) {
-  switch (path) {
-    case 'refresh-auth':
-      return 'Path selected: Fix Expired Auth. Next: authenticate, choose repos, then run update-secret.';
-    case 'cleanup':
-      return 'Path selected: Cleanup. Next: authenticate, select repos, then preview and remove setup files.';
-    case 'maintenance':
-      return 'Path selected: Maintenance. Next: run auto-detect, inspect repos, then choose setup/update-secret/cleanup.';
-    case 'new-setup':
-    default:
-      return 'Path selected: New Setup. Next: authenticate with GitHub, then select repositories.';
-  }
+  const selectedPath = getOnboardingPathContract(path);
+  const flowPreview = selectedPath.flow.length > 0
+    ? selectedPath.flow.slice(0, 3).join(' -> ')
+    : 'Authenticate with GitHub -> Select repositories -> Plan and apply';
+  return `Path selected: ${selectedPath.displayName}. Next: ${flowPreview}.`;
 }
 
 function selectOperation(op) {
@@ -227,11 +412,16 @@ function syncOnboardingPathVisualState() {
   document.querySelectorAll('[data-path]').forEach(c => {
     c.classList.toggle('selected', c.dataset.path === selectedOnboardingPath);
   });
+  const selectedPath = getOnboardingPathContract(selectedOnboardingPath);
   setOnboardingPathHint(getOnboardingPathHint(selectedOnboardingPath));
+  renderPathRequirements(selectedPath);
 }
 
 function applyOnboardingPath(path) {
-  switch (path) {
+  const normalizedPath = normalizeRecommendedPath(path);
+  const effectivePath = getOnboardingPathContract(normalizedPath);
+  const effectivePathId = effectivePath.id;
+  switch (effectivePathId) {
     case 'refresh-auth':
       selectOperation('update-secret');
       selectProvider('openai');
@@ -258,6 +448,8 @@ function applyOnboardingPath(path) {
       if (withConfig) withConfig.checked = true;
       break;
   }
+
+  selectedOnboardingPath = effectivePathId;
 
   syncOnboardingPathVisualState();
   refreshPathStateAfterOnboardingSelection();
@@ -415,6 +607,9 @@ function getSetupRequestHeaders() {
 
 function normalizeRecommendedPath(path) {
   const normalized = String(path || '').trim().toLowerCase();
+  if (onboardingPathMap[normalized]) {
+    return normalized;
+  }
   switch (normalized) {
     case 'refresh-auth':
     case 'fix-expired-auth':
@@ -455,6 +650,12 @@ function formatAutoDetectOutput(data) {
   lines.push(`local config: ${data.localConfigExists ? 'yes' : 'no'}`);
   lines.push(`recommended path: ${data.recommendedPath || '-'}`);
   if (data.recommendedReason) lines.push(`reason: ${data.recommendedReason}`);
+  if (data.commandTemplates) {
+    lines.push(`command auto-detect: ${data.commandTemplates.autoDetect || '-'}`);
+    lines.push(`command setup apply: ${data.commandTemplates.newSetupApply || '-'}`);
+    lines.push(`command update-secret apply: ${data.commandTemplates.refreshAuthApply || '-'}`);
+    lines.push(`command cleanup apply: ${data.commandTemplates.cleanupApply || '-'}`);
+  }
   lines.push('');
   lines.push('checks:');
   (data.checks || []).forEach(check => {
@@ -480,6 +681,8 @@ function renderAutoDetect(data) {
   const contractText = data.contractVersion ? ` | contract: ${data.contractVersion}` : '';
   summaryEl.textContent = `${statusText} | checks: ${counts.ok} ok, ${counts.warn} warn, ${counts.fail} fail | Suggested path: ${recommendedPath}${contractText}. ${data.recommendedReason || ''}`;
   outputEl.textContent = formatAutoDetectOutput(data);
+  setOnboardingPathContracts(data.paths, data.contractVersion, data.contractFingerprint);
+  syncOnboardingPathVisualState();
 
   if (applyBtn) {
     applyBtn.dataset.path = recommendedPath;
@@ -506,6 +709,8 @@ async function runAutoDetect() {
     lastAutodetect = data;
     renderAutoDetect(data);
   } catch (e) {
+    setOnboardingPathContracts(null, null, null);
+    syncOnboardingPathVisualState();
     if (summaryEl) summaryEl.textContent = `Auto-detect failed: ${e.message || e}`;
     if (outputEl) outputEl.textContent = '';
   } finally {
@@ -1561,6 +1766,7 @@ refreshPresets();
 loadUsageCache();
 updateProgressBar();
 selectSecretOption(secretOption);
+setOnboardingPathContracts(FALLBACK_ONBOARDING_PATHS, null, null);
 syncOnboardingPathVisualState();
 const runAutodetectBtn = $('runAutodetect');
 if (runAutodetectBtn) {

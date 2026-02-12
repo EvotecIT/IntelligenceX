@@ -32,8 +32,9 @@ internal static partial class Program {
         Console.WriteLine("Onboarding quick start:");
         Console.WriteLine("  intelligencex setup web                              # guided browser onboarding");
         Console.WriteLine("  intelligencex setup autodetect --json               # run preflight and get path recommendation");
-        Console.WriteLine("  intelligencex setup wizard --operation setup --repo owner/name");
-        Console.WriteLine("  intelligencex setup wizard --operation update-secret --repo owner/name");
+        Console.WriteLine("  intelligencex setup wizard --path new-setup --repo owner/name");
+        Console.WriteLine("  intelligencex setup wizard --path refresh-auth --repo owner/name");
+        Console.WriteLine("  intelligencex setup wizard --path cleanup --repo owner/name --dry-run");
         Console.WriteLine();
         Console.WriteLine("Auth commands:");
         Console.WriteLine("  auth login       Start OAuth login flow and store credentials");
