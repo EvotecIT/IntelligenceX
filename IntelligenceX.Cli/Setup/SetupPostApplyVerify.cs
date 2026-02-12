@@ -65,6 +65,26 @@ internal sealed class SetupPostApplyVerification {
     public List<SetupPostApplyCheck> Checks { get; set; } = new();
 }
 
+internal static class SetupPostApplyCheckNames {
+    public const string PullRequest = "Pull request";
+    public const string Workflow = "Workflow";
+    public const string ReviewerConfig = "Reviewer config";
+    public const string RepoSecret = "Repo secret";
+    public const string OrgSecret = "Org secret";
+    public const string LatestWorkflowRun = "Latest workflow run";
+}
+
+internal static class SetupPostApplyCheckValues {
+    public const string Ok = "ok";
+    public const string Unknown = "unknown";
+    public const string NotChecked = "not checked";
+    public const string Observed = "observed";
+    public const string None = "none";
+    public const string Unauthorized = "unauthorized";
+    public const string Forbidden = "forbidden";
+    public const string RateLimited = "rate_limited";
+}
+
 internal static class SetupPostApplyVerifier {
     private const string WorkflowPath = ".github/workflows/review-intelligencex.yml";
     private const string ConfigPath = ".intelligencex/reviewer.json";
@@ -270,14 +290,14 @@ internal static class SetupPostApplyVerifier {
         if (context.WithConfig) {
             AddPresenceCheck(
                 result,
-                "Reviewer config",
+                SetupPostApplyCheckNames.ReviewerConfig,
                 expected: "present",
                 observedValue: observed.ConfigExists,
                 whenTrue: "present",
                 whenFalse: "missing",
                 note: "Expected on setup branch.");
         } else {
-            AddSkippedCheck(result, "Reviewer config", "not requested", "not checked",
+            AddSkippedCheck(result, SetupPostApplyCheckNames.ReviewerConfig, "not requested", SetupPostApplyCheckValues.NotChecked,
                 "with-config was disabled.");
         }
 
@@ -290,7 +310,7 @@ internal static class SetupPostApplyVerifier {
 
         AddPresenceCheck(
             result,
-            "Reviewer config",
+            SetupPostApplyCheckNames.ReviewerConfig,
             expected: "missing",
             observedValue: observed.ConfigExists,
             whenTrue: "present",
@@ -298,14 +318,14 @@ internal static class SetupPostApplyVerifier {
             note: "Expected to be removed on cleanup branch.");
 
         if (!IsOpenAiProvider(context.Provider)) {
-            AddSkippedCheck(result, "Repo secret", "not applicable", "not checked",
+            AddSkippedCheck(result, SetupPostApplyCheckNames.RepoSecret, "not applicable", SetupPostApplyCheckValues.NotChecked,
                 "Provider does not require OpenAI auth secret.");
             return;
         }
 
         AddSecretPresenceCheck(
             result,
-            "Repo secret",
+            SetupPostApplyCheckNames.RepoSecret,
             expected: context.KeepSecret ? "present" : "missing",
             lookup: observed.RepoSecretLookup,
             note: context.KeepSecret ? "keep-secret enabled." : "cleanup deletes repo secret by default.");
@@ -314,7 +334,7 @@ internal static class SetupPostApplyVerifier {
     private static void AddUpdateSecretChecks(SetupPostApplyContext context, SetupPostApplyObservedState observed,
         SetupPostApplyVerification result) {
         if (!IsOpenAiProvider(context.Provider)) {
-            AddSkippedCheck(result, "Repo secret", "not applicable", "not checked",
+            AddSkippedCheck(result, SetupPostApplyCheckNames.RepoSecret, "not applicable", SetupPostApplyCheckValues.NotChecked,
                 "Provider does not require OpenAI auth secret.");
             return;
         }
@@ -322,7 +342,7 @@ internal static class SetupPostApplyVerifier {
         if (context.ExpectOrgSecret && !string.IsNullOrWhiteSpace(context.SecretOrg)) {
             AddSecretPresenceCheck(
                 result,
-                "Org secret",
+                SetupPostApplyCheckNames.OrgSecret,
                 expected: "present",
                 lookup: observed.OrgSecretLookup,
                 note: $"Organization: {context.SecretOrg}");
@@ -331,7 +351,7 @@ internal static class SetupPostApplyVerifier {
 
         AddSecretPresenceCheck(
             result,
-            "Repo secret",
+            SetupPostApplyCheckNames.RepoSecret,
             expected: "present",
             lookup: observed.RepoSecretLookup,
             note: "Update-secret should refresh this value.");
@@ -340,7 +360,7 @@ internal static class SetupPostApplyVerifier {
     private static void AddSecretCheckForSetup(SetupPostApplyContext context, SetupPostApplyObservedState observed,
         SetupPostApplyVerification result) {
         if (!IsOpenAiProvider(context.Provider)) {
-            AddSkippedCheck(result, "Repo secret", "not applicable", "not checked",
+            AddSkippedCheck(result, SetupPostApplyCheckNames.RepoSecret, "not applicable", SetupPostApplyCheckValues.NotChecked,
                 "Provider does not require OpenAI auth secret.");
             return;
         }
@@ -348,7 +368,7 @@ internal static class SetupPostApplyVerifier {
         if (context.ExpectOrgSecret && !string.IsNullOrWhiteSpace(context.SecretOrg)) {
             AddSecretPresenceCheck(
                 result,
-                "Org secret",
+                SetupPostApplyCheckNames.OrgSecret,
                 expected: "present",
                 lookup: observed.OrgSecretLookup,
                 note: $"Organization: {context.SecretOrg}");
@@ -356,20 +376,20 @@ internal static class SetupPostApplyVerifier {
         }
 
         if (context.ManualSecret) {
-            AddSkippedCheck(result, "Repo secret", "manual", "not checked",
+            AddSkippedCheck(result, SetupPostApplyCheckNames.RepoSecret, "manual", SetupPostApplyCheckValues.NotChecked,
                 "Manual secret mode requires user-managed secret upload.");
             return;
         }
 
         if (context.SkipSecret) {
-            AddSkippedCheck(result, "Repo secret", "skipped", "not checked",
+            AddSkippedCheck(result, SetupPostApplyCheckNames.RepoSecret, "skipped", SetupPostApplyCheckValues.NotChecked,
                 "skip-secret enabled.");
             return;
         }
 
         AddSecretPresenceCheck(
             result,
-            "Repo secret",
+            SetupPostApplyCheckNames.RepoSecret,
             expected: "present",
             lookup: observed.RepoSecretLookup,
             note: "Setup should create or update this secret.");
@@ -377,18 +397,18 @@ internal static class SetupPostApplyVerifier {
 
     private static void AddLatestWorkflowRunCheck(SetupPostApplyObservedState observed, SetupPostApplyVerification result) {
         var lookupStatus = string.IsNullOrWhiteSpace(observed.WorkflowRunLookupStatus)
-            ? "unknown"
+            ? SetupPostApplyCheckValues.Unknown
             : observed.WorkflowRunLookupStatus!;
         if (observed.LatestWorkflowRun is null) {
-            if (!string.Equals(lookupStatus, "ok", StringComparison.OrdinalIgnoreCase)) {
+            if (!string.Equals(lookupStatus, SetupPostApplyCheckValues.Ok, StringComparison.OrdinalIgnoreCase)) {
                 var lookupNote = string.IsNullOrWhiteSpace(observed.WorkflowRunLookupNote)
                     ? "Workflow run lookup failed."
                     : observed.WorkflowRunLookupNote!;
-                AddSkippedCheck(result, "Latest workflow run", "observed", lookupStatus, lookupNote);
+                AddSkippedCheck(result, SetupPostApplyCheckNames.LatestWorkflowRun, SetupPostApplyCheckValues.Observed, lookupStatus, lookupNote);
                 return;
             }
 
-            AddSkippedCheck(result, "Latest workflow run", "observed", "none",
+            AddSkippedCheck(result, SetupPostApplyCheckNames.LatestWorkflowRun, SetupPostApplyCheckValues.Observed, SetupPostApplyCheckValues.None,
                 "No workflow runs found for review-intelligencex.yml.");
             return;
         }
@@ -412,8 +432,8 @@ internal static class SetupPostApplyVerifier {
         }
 
         result.Checks.Add(new SetupPostApplyCheck {
-            Name = "Latest workflow run",
-            Expected = "observed",
+            Name = SetupPostApplyCheckNames.LatestWorkflowRun,
+            Expected = SetupPostApplyCheckValues.Observed,
             Actual = actual,
             Passed = true,
             Skipped = false,
@@ -423,7 +443,7 @@ internal static class SetupPostApplyVerifier {
 
     private static void AddPullRequestCheck(SetupPostApplyContext context, SetupPostApplyVerification result) {
         if (context.Operation == SetupApplyOperation.UpdateSecret) {
-            AddSkippedCheck(result, "Pull request", "not applicable", "not checked",
+            AddSkippedCheck(result, SetupPostApplyCheckNames.PullRequest, "not applicable", SetupPostApplyCheckValues.NotChecked,
                 "update-secret does not create a pull request.");
             return;
         }
@@ -431,7 +451,7 @@ internal static class SetupPostApplyVerifier {
         var hasPr = !string.IsNullOrWhiteSpace(context.PullRequestUrl);
         if (hasPr) {
             result.Checks.Add(new SetupPostApplyCheck {
-                Name = "Pull request",
+                Name = SetupPostApplyCheckNames.PullRequest,
                 Expected = "created",
                 Actual = "created",
                 Passed = true,
@@ -444,7 +464,7 @@ internal static class SetupPostApplyVerifier {
         var output = context.Output ?? string.Empty;
         if (ContainsAny(output, "No files changed. Skipping PR creation.", "No files found to remove. Skipping PR creation.")) {
             result.Checks.Add(new SetupPostApplyCheck {
-                Name = "Pull request",
+                Name = SetupPostApplyCheckNames.PullRequest,
                 Expected = "not required",
                 Actual = "not created (no file changes)",
                 Passed = true,
@@ -457,7 +477,7 @@ internal static class SetupPostApplyVerifier {
                 "Files updated on branch, but PR was not created.",
                 "Cleanup complete. Files removed on branch, but PR was not created.")) {
             result.Checks.Add(new SetupPostApplyCheck {
-                Name = "Pull request",
+                Name = SetupPostApplyCheckNames.PullRequest,
                 Expected = "created",
                 Actual = "not created",
                 Passed = false,
@@ -467,14 +487,14 @@ internal static class SetupPostApplyVerifier {
             return;
         }
 
-        AddSkippedCheck(result, "Pull request", "unknown", "unknown",
+        AddSkippedCheck(result, SetupPostApplyCheckNames.PullRequest, SetupPostApplyCheckValues.Unknown, SetupPostApplyCheckValues.Unknown,
             "PR state could not be inferred from command output.");
     }
 
     private static void AddManagedWorkflowCheck(SetupPostApplyObservedState observed, bool expectedPresent,
         SetupPostApplyVerification result) {
         if (observed.WorkflowExists is null || observed.WorkflowManaged is null) {
-            AddSkippedCheck(result, "Workflow", expectedPresent ? "managed" : "missing", "unknown",
+            AddSkippedCheck(result, SetupPostApplyCheckNames.Workflow, expectedPresent ? "managed" : "missing", SetupPostApplyCheckValues.Unknown,
                 "Repository branch state unavailable.");
             return;
         }
@@ -488,7 +508,7 @@ internal static class SetupPostApplyVerifier {
             : !observed.WorkflowExists.Value;
 
         result.Checks.Add(new SetupPostApplyCheck {
-            Name = "Workflow",
+            Name = SetupPostApplyCheckNames.Workflow,
             Expected = expectedPresent ? "managed" : "missing",
             Actual = actual,
             Passed = passed,
@@ -503,7 +523,7 @@ internal static class SetupPostApplyVerifier {
         GitHubRepoClient.SecretLookupResult? lookup,
         string? note = null) {
         if (lookup is null) {
-            AddSkippedCheck(result, name, expected, "unknown", "State unavailable from GitHub API.");
+            AddSkippedCheck(result, name, expected, SetupPostApplyCheckValues.Unknown, "State unavailable from GitHub API.");
             return;
         }
 
@@ -521,9 +541,9 @@ internal static class SetupPostApplyVerifier {
             return;
         }
 
-        if (string.Equals(lookup.Status, "unauthorized", StringComparison.Ordinal) ||
-            string.Equals(lookup.Status, "forbidden", StringComparison.Ordinal) ||
-            string.Equals(lookup.Status, "rate_limited", StringComparison.Ordinal)) {
+        if (string.Equals(lookup.Status, SetupPostApplyCheckValues.Unauthorized, StringComparison.Ordinal) ||
+            string.Equals(lookup.Status, SetupPostApplyCheckValues.Forbidden, StringComparison.Ordinal) ||
+            string.Equals(lookup.Status, SetupPostApplyCheckValues.RateLimited, StringComparison.Ordinal)) {
             result.Checks.Add(new SetupPostApplyCheck {
                 Name = name,
                 Expected = expected,
@@ -547,7 +567,7 @@ internal static class SetupPostApplyVerifier {
         string whenFalse,
         string? note = null) {
         if (!observedValue.HasValue) {
-            AddSkippedCheck(result, name, expected, "unknown", "State unavailable from GitHub API.");
+            AddSkippedCheck(result, name, expected, SetupPostApplyCheckValues.Unknown, "State unavailable from GitHub API.");
             return;
         }
 
