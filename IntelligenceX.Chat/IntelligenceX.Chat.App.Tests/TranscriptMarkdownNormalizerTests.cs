@@ -31,7 +31,8 @@ public sealed class TranscriptMarkdownNormalizerTests {
 
         var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
 
-        Assert.Contains("**Status: HEALTHY**\n- **Servers checked:** 5 - **Replication edges:** 62", normalized);
+        Assert.Contains("Status **HEALTHY**\n- Servers checked **5**", normalized);
+        Assert.Contains("\n- Replication edges **62**", normalized);
     }
 
     /// <summary>
@@ -56,5 +57,43 @@ public sealed class TranscriptMarkdownNormalizerTests {
         var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
 
         Assert.Equal("\r\n  line  \r\n", normalized);
+    }
+
+    /// <summary>
+    /// Ensures malformed collapsed status chains are expanded into markdown list lines.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_ExpandsMalformedStatusMetricChains() {
+        var text = "**Status: HEALTHY** - **Servers checked:**5 -**Replication edges:**62 -*Failed edges:**0 -*Stale edges (>24h):**0 - **Servers with failures:**0";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Contains("Status **HEALTHY**", normalized);
+        Assert.Contains("- Servers checked **5**", normalized);
+        Assert.Contains("- Replication edges **62**", normalized);
+        Assert.Contains("- Failed edges **0**", normalized);
+        Assert.Contains("- Stale edges (>24h) **0**", normalized);
+        Assert.Contains("- Servers with failures **0**", normalized);
+        Assert.DoesNotContain("-**", normalized);
+        Assert.DoesNotContain(":**0", normalized);
+        Assert.DoesNotContain(":**5", normalized);
+        Assert.DoesNotContain("**Servers checked:**", normalized);
+    }
+
+    /// <summary>
+    /// Ensures legacy repair only triggers for malformed transcript artifacts.
+    /// </summary>
+    [Fact]
+    public void TryRepairLegacyTranscript_RepairsOnlyWhenLegacyArtifactsDetected() {
+        var malformed = "**Status: HEALTHY** - **Servers checked:**5 -**Replication edges:**62";
+        var clean = "Quick AD replication check\n- Servers checked **5**";
+
+        var repaired = TranscriptMarkdownNormalizer.TryRepairLegacyTranscript(malformed, out var fixedText);
+        var cleanChanged = TranscriptMarkdownNormalizer.TryRepairLegacyTranscript(clean, out var cleanText);
+
+        Assert.True(repaired);
+        Assert.Contains("Status **HEALTHY**", fixedText);
+        Assert.False(cleanChanged);
+        Assert.Equal(clean, cleanText);
     }
 }

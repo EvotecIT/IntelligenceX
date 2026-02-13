@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
+using IntelligenceX.Chat.App.Rendering;
 using IntelligenceX.Chat.Client;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
@@ -27,7 +28,8 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
-    private void LoadConversationsFromState(ChatAppState state) {
+    private bool LoadConversationsFromState(ChatAppState state) {
+        var repaired = false;
         _conversations.Clear();
         if (state.Conversations is { Count: > 0 }) {
             foreach (var stored in state.Conversations) {
@@ -48,8 +50,14 @@ public sealed partial class MainWindow : Window {
                             continue;
                         }
 
+                        var repairedText = RepairLegacyTranscriptText(message.Text, out var messageWasRepaired);
+                        if (messageWasRepaired) {
+                            message.Text = repairedText;
+                            repaired = true;
+                        }
+
                         var local = EnsureUtc(message.TimeUtc).ToLocalTime();
-                        conversation.Messages.Add((message.Role ?? "System", message.Text, local));
+                        conversation.Messages.Add((message.Role ?? "System", repairedText, local));
                     }
                 }
 
@@ -77,8 +85,14 @@ public sealed partial class MainWindow : Window {
                         continue;
                     }
 
+                    var repairedText = RepairLegacyTranscriptText(message.Text, out var messageWasRepaired);
+                    if (messageWasRepaired) {
+                        message.Text = repairedText;
+                        repaired = true;
+                    }
+
                     var local = EnsureUtc(message.TimeUtc).ToLocalTime();
-                    legacy.Messages.Add((message.Role ?? "System", message.Text, local));
+                    legacy.Messages.Add((message.Role ?? "System", repairedText, local));
                 }
             }
             legacy.Title = ComputeConversationTitle(legacy.Title, legacy.Messages);
@@ -96,6 +110,18 @@ public sealed partial class MainWindow : Window {
         if (_conversations.Count > MaxConversations) {
             _conversations.RemoveRange(MaxConversations, _conversations.Count - MaxConversations);
         }
+
+        return repaired;
+    }
+
+    private static string RepairLegacyTranscriptText(string text, out bool repaired) {
+        if (!TranscriptMarkdownNormalizer.TryRepairLegacyTranscript(text, out var normalized)) {
+            repaired = false;
+            return text;
+        }
+
+        repaired = true;
+        return normalized;
     }
 
     private string ResolveInitialConversationId(ChatAppState state) {

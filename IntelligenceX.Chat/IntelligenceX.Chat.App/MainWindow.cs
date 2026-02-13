@@ -682,8 +682,11 @@ public sealed partial class MainWindow : Window {
         _lastExportDirectory = ExportPreferencesContract.NormalizeDirectory(_appState.ExportLastDirectory);
         _appState.ExportLastDirectory = _lastExportDirectory;
 
-        LoadConversationsFromState(_appState);
+        var repairedLegacyTranscriptState = LoadConversationsFromState(_appState);
         ActivateConversation(ResolveInitialConversationId(_appState));
+        if (repairedLegacyTranscriptState) {
+            await PersistAppStateAsync().ConfigureAwait(false);
+        }
 
         var knownToolNames = new List<string>(_toolDescriptions.Keys);
         _modelKickoffAttempted = _messages.Count > 0;

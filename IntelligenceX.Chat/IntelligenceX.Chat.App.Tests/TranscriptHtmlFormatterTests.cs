@@ -91,4 +91,25 @@ public sealed class TranscriptHtmlFormatterTests {
         Assert.DoesNotContain("✅I", html);
         Assert.DoesNotContain("or2)", html);
     }
+
+    /// <summary>
+    /// Ensures malformed collapsed status metrics render as proper bullet rows rather than literal markdown markers.
+    /// </summary>
+    [Fact]
+    public void Format_RepairsCollapsedStatusMetricMarkdownBeforeRender() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 13, 19, 25, 24, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", "**Status: HEALTHY** - **Servers checked:**5 -**Replication edges:**62 -*Failed edges:**0 -*Stale edges (>24h):**0 - **Servers with failures:**0", now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("Status <strong>HEALTHY</strong>", html);
+        Assert.Contains("<li>Servers checked <strong>5</strong></li>", html);
+        Assert.Contains("<li>Replication edges <strong>62</strong></li>", html);
+        Assert.Contains("<li>Failed edges <strong>0</strong></li>", html);
+        Assert.Contains("<li>Stale edges (&gt;24h) <strong>0</strong></li>", html);
+        Assert.Contains("<li>Servers with failures <strong>0</strong></li>", html);
+        Assert.DoesNotContain("**Servers checked:**", html);
+        Assert.DoesNotContain("**Replication edges:**", html);
+    }
 }
