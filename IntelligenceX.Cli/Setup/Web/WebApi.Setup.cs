@@ -202,7 +202,8 @@ internal sealed partial class WebApi {
         request.OpenAIAccountIds = normalizedIds.Count == 0
             ? null
             : string.Join(",", normalizedIds);
-        if (normalizedIds.Count == 0) {
+        var hasConfiguredAccounts = !string.IsNullOrWhiteSpace(request.OpenAIAccountId) || normalizedIds.Count > 0;
+        if (!hasConfiguredAccounts) {
             request.OpenAIAccountRotation = null;
             request.OpenAIAccountFailover = null;
             return true;

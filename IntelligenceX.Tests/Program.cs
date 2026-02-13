@@ -67,6 +67,8 @@ internal static partial class Program {
         failed += Run("Setup args disable analysis omits gate and packs", TestSetupArgsDisableAnalysisOmitsGateAndPacks);
         failed += Run("Setup args include OpenAI account routing", TestSetupArgsIncludeOpenAiAccountRouting);
         failed += Run("Setup config rejects invalid OpenAI account rotation", TestSetupConfigRejectsInvalidOpenAiAccountRotation);
+        failed += Run("Setup config merge rejects invalid OpenAI account rotation from snapshot",
+            TestSetupConfigMergeRejectsInvalidOpenAiAccountRotationFromSnapshot);
         failed += Run("Setup analysis export path normalization", TestSetupAnalysisExportPathNormalization);
         failed += Run("Setup analysis export path combine rejects rooted file name", TestSetupAnalysisExportPathCombineRejectsRootedFileName);
         failed += Run("Setup analysis export catalog prereq validation", TestSetupAnalysisExportCatalogPrereqValidation);
@@ -151,6 +153,8 @@ internal static partial class Program {
         failed += Run("Web setup resolves with-config from args", TestWebSetupResolveWithConfigFromArgs);
         failed += Run("Web setup OpenAI routing validation rejects config override",
             TestWebSetupOpenAiRoutingValidationRejectsConfigOverride);
+        failed += Run("Web setup OpenAI routing validation rejects invalid rotation with primary only",
+            TestWebSetupOpenAiRoutingValidationRejectsInvalidRotationWithPrimaryOnly);
         failed += Run("Web setup post-apply verify skips callback on failed apply",
             TestWebSetupPostApplyVerifySkipsCallbackWhenApplyFails);
         failed += Run("Web setup resolves org-secret verification context", TestWebSetupResolveOrgSecretVerificationContext);

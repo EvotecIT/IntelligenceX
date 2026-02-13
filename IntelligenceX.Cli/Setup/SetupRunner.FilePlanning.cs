@@ -234,19 +234,13 @@ internal static partial class SetupRunner {
         }
         // Precedence: CLI arg (--openai-account-rotation) > existing config snapshot > environment default.
         if (options.OpenAIAccountRotationSet && !string.IsNullOrWhiteSpace(options.OpenAIAccountRotation)) {
-            settings.OpenAIAccountRotation = options.OpenAIAccountRotation!.Trim().ToLowerInvariant() switch {
-                "first" or "first-available" or "first_available" or "ordered" => "first-available",
-                "round-robin" or "round_robin" or "rr" or "rotate" => "round-robin",
-                "sticky" or "pin" or "pinned" => "sticky",
-                _ => settings.OpenAIAccountRotation
-            };
+            settings.OpenAIAccountRotation = NormalizeOpenAiAccountRotationStrict(
+                options.OpenAIAccountRotation!,
+                "--openai-account-rotation");
         } else if (!string.IsNullOrWhiteSpace(snapshot.OpenAIAccountRotation)) {
-            settings.OpenAIAccountRotation = snapshot.OpenAIAccountRotation!.Trim().ToLowerInvariant() switch {
-                "first" or "first-available" or "first_available" or "ordered" => "first-available",
-                "round-robin" or "round_robin" or "rr" or "rotate" => "round-robin",
-                "sticky" or "pin" or "pinned" => "sticky",
-                _ => settings.OpenAIAccountRotation
-            };
+            settings.OpenAIAccountRotation = NormalizeOpenAiAccountRotationStrict(
+                snapshot.OpenAIAccountRotation!,
+                "openaiAccountRotation in existing config");
         }
         // Precedence: CLI arg (--openai-account-failover) > existing config snapshot > environment default.
         if (options.OpenAIAccountFailoverSet) {
@@ -318,6 +312,20 @@ internal static partial class SetupRunner {
                 .Select(id => id.Trim()))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static string NormalizeOpenAiAccountRotationStrict(string value, string sourceLabel) {
+        var normalized = value.Trim().ToLowerInvariant() switch {
+            "first" or "first-available" or "first_available" or "ordered" => "first-available",
+            "round-robin" or "round_robin" or "rr" or "rotate" => "round-robin",
+            "sticky" or "pin" or "pinned" => "sticky",
+            _ => string.Empty
+        };
+        if (!string.IsNullOrWhiteSpace(normalized)) {
+            return normalized;
+        }
+        throw new InvalidOperationException(
+            $"Invalid {sourceLabel} value. Use first-available, round-robin, or sticky.");
     }
 
     private static string BuildConfigJson(ConfigSettings settings) {

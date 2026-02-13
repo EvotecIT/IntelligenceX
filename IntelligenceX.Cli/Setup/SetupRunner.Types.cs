@@ -455,7 +455,7 @@ internal static partial class SetupRunner {
                 OpenAIAccountId = string.IsNullOrWhiteSpace(options.OpenAIAccountId) ? null : options.OpenAIAccountId!.Trim(),
                 OpenAIAccountIdsSet = options.OpenAIAccountIdsSet,
                 OpenAIAccountIds = SplitCsv(options.OpenAIAccountIds),
-                OpenAIAccountRotation = NormalizeOpenAiAccountRotation(options.OpenAIAccountRotation, options.OpenAIAccountRotationSet),
+                OpenAIAccountRotation = NormalizeOpenAiAccountRotation(options.OpenAIAccountRotation, strict: true),
                 OpenAIAccountFailover = options.OpenAIAccountFailover,
                 Profile = options.ReviewProfile ?? "balanced",
                 Mode = options.ReviewMode ?? "hybrid",

@@ -183,6 +183,22 @@ internal static partial class Program {
             "web setup openai routing with-config error");
     }
 
+    private static void TestWebSetupOpenAiRoutingValidationRejectsInvalidRotationWithPrimaryOnly() {
+        var result = IntelligenceX.Cli.Setup.Web.WebApi.ValidateOpenAiAccountRoutingForTests(
+            provider: "openai",
+            openAiAccountId: "acc-primary",
+            openAiAccountIds: null,
+            openAiAccountRotation: "invalid-value",
+            openAiAccountFailover: null,
+            isSetup: true,
+            withConfig: true,
+            hasConfigOverride: false);
+        AssertEqual(false, result.Success, "web setup openai routing invalid rotation primary-only rejected");
+        AssertContainsText(result.Error ?? string.Empty,
+            "rotation must be one of",
+            "web setup openai routing invalid rotation primary-only error");
+    }
+
     private static void TestWebSetupPostApplyVerifySkipsCallbackWhenApplyFails() {
         var context = new SetupPostApplyContext {
             Repo = "owner/repo",

@@ -83,6 +83,22 @@ internal static partial class Program {
             }), "setup invalid openai account rotation");
     }
 
+    private static void TestSetupConfigMergeRejectsInvalidOpenAiAccountRotationFromSnapshot() {
+        var seed = """
+{
+  "review": {
+    "provider": "openai",
+    "openaiAccountId": "acc-primary",
+    "openaiAccountRotation": "invalid-value"
+  }
+}
+""";
+        AssertThrows<InvalidOperationException>(() =>
+            SetupRunner.BuildReviewerConfigJsonFromSeedForTests(
+                new[] { "--analysis-enabled", "true" },
+                seed), "setup merge invalid openai account rotation from snapshot");
+    }
+
     private static void TestSetupAnalysisExportPathNormalization() {
         var ok = SetupAnalysisExportPath.TryNormalize(" .intelligencex\\analyzers ", out var normalized, out var error);
         AssertEqual(true, ok, "analysis export path normalized ok");
