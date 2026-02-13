@@ -368,6 +368,16 @@ FodyWeavers.xsd
 .vscode/*
 
 build/*
+!Build/Build-Workspace.ps1
+!Build/Cleanup-Workspace.ps1
+!Build/Export-PluginFolders.ps1
+!Build/Package-Portable.ps1
+!Build/Publish-Chat.ps1
+!Build/Publish-Cli.ps1
+!Build/Publish-Plugins.ps1
+!Build/Run-Chat.ps1
+!Build/Run-ChatApp.ps1
+!Build/Run-ChatService.ps1
 
 # Allow release command sources under IntelligenceX.Cli/Release
 !IntelligenceX.Cli/Release/

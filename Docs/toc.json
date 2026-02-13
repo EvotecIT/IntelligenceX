@@ -9,6 +9,8 @@
       { "title": "Overview", "href": "/docs/reviewer/overview/" },
       { "title": "Understanding Reviewer Output", "href": "/docs/reviewer/review-output/" },
       { "title": "Onboarding Wizard", "href": "/docs/reviewer/onboarding-wizard/" },
+      { "title": "First PR Checklist", "href": "/docs/reviewer/first-pr-checklist/" },
+      { "title": "Onboarding Unification Tracker", "href": "/docs/reviewer/onboarding-unification-tracker/" },
       { "title": "Web Setup UI", "href": "/docs/reviewer/setup-web/" },
       { "title": "Web Onboarding Flow", "href": "/docs/reviewer/web-onboarding/" },
       { "title": "Configuration", "href": "/docs/reviewer/configuration/" },

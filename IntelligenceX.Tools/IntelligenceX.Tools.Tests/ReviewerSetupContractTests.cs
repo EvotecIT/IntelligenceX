@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -163,11 +164,25 @@ public class ReviewerSetupContractTests {
     }
 
     private static string[] ReadStringArray(JsonElement element) {
-        return element
-            .EnumerateArray()
-            .Select(static node => node.GetString())
-            .Where(static value => !string.IsNullOrWhiteSpace(value))
-            .Select(static value => value!.Trim())
-            .ToArray();
+        if (element.ValueKind != global::System.Text.Json.JsonValueKind.Array) {
+            return Array.Empty<string>();
+        }
+
+        var values = new List<string>();
+        foreach (var node in element.EnumerateArray()) {
+            string? value = node.ValueKind switch {
+                global::System.Text.Json.JsonValueKind.String => node.GetString(),
+                global::System.Text.Json.JsonValueKind.Object when node.TryGetProperty("name", out var nameNode)
+                                                                    && nameNode.ValueKind == global::System.Text.Json.JsonValueKind.String =>
+                    nameNode.GetString(),
+                _ => null
+            };
+
+            if (!string.IsNullOrWhiteSpace(value)) {
+                values.Add(value.Trim());
+            }
+        }
+
+        return values.ToArray();
     }
 }

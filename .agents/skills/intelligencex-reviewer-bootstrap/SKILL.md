@@ -1,3 +1,10 @@
+---
+name: intelligencex-reviewer-bootstrap
+description: Use when setting up or validating reviewer bootstrap artifacts such as reviewer.json, managed workflow YAML blocks, setup dry-runs, and post-apply verification.
+metadata:
+  short-description: Reviewer bootstrap validation
+---
+
 # Skill: intelligencex-reviewer-bootstrap
 
 Use this skill when setting up or validating IntelligenceX Reviewer onboarding in a target repo, especially:

@@ -54,6 +54,6 @@ gh run view <run-id> --log
 
 ## Related Docs
 
-- [Onboarding Wizard](./onboarding-wizard.md)
-- [Static Analysis](./static-analysis.md)
-- [Reviewer Configuration](./configuration.md)
+- [Onboarding Wizard](/docs/reviewer/onboarding-wizard/)
+- [Static Analysis](/docs/reviewer/static-analysis/)
+- [Reviewer Configuration](/docs/reviewer/configuration/)

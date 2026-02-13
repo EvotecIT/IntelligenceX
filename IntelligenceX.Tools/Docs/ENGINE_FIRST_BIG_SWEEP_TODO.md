@@ -127,9 +127,9 @@ Reduce all tool projects to thin wrappers:
 | `IntelligenceX.Tools.FileSystem/ToolRegistryFileSystemExtensions.cs` | `L5` | Keep | `IntelligenceX.Tools.FileSystem` | `todo` |
 | `IntelligenceX.Tools.FileSystem/FileSystemToolOptions.cs` | `L5` | Keep | `IntelligenceX.Tools.FileSystem` | `todo` |
 | `IntelligenceX.Tools.FileSystem/FileSystemToolBase.cs` | `L4` | Keep; centralize any duplicated path error mapping here only | `IntelligenceX.Tools.FileSystem` | `todo` |
-| `IntelligenceX.Tools.FileSystem/FsListTool.cs` | `L5` | Thin wrapper over `ComputerX.FileSystem` + auto-column projection | `ComputerX` | `done` |
-| `IntelligenceX.Tools.FileSystem/FsReadTool.cs` | `L5` | Keep thin wrapper over `ComputerX.FileSystem` | `ComputerX` | `todo` |
-| `IntelligenceX.Tools.FileSystem/FsSearchTool.cs` | `L5` | Thin wrapper over `ComputerX.FileSystem` + auto-column projection | `ComputerX` | `done` |
+| `IntelligenceX.Tools.FileSystem/FsListTool.cs` | `L5` | Thin wrapper over `IntelligenceX.Engines.FileSystem` + auto-column projection | `IntelligenceX.Engines.FileSystem` | `done` |
+| `IntelligenceX.Tools.FileSystem/FsReadTool.cs` | `L5` | Keep thin wrapper over `IntelligenceX.Engines.FileSystem` | `IntelligenceX.Engines.FileSystem` | `todo` |
+| `IntelligenceX.Tools.FileSystem/FsSearchTool.cs` | `L5` | Thin wrapper over `IntelligenceX.Engines.FileSystem` + auto-column projection | `IntelligenceX.Engines.FileSystem` | `done` |
 
 ## Email Project
 | File | Lane | Action | Target | Status |

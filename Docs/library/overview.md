@@ -6,6 +6,8 @@ Quickstart: [Library Quickstart](/docs/library/quickstart/)
 Providers: [Provider Setup](/docs/library/providers/)  
 Tools: [Tool Calling](/docs/library/tools/)
 Tool packs: [Tool Packs](/docs/library/tool-packs/)
+Build and publish: [Build and Publish](/docs/library/build-publish/)
+Plugin model: [Plugin Rollout](/docs/library/plugin-rollout-draft/)
 
 ## Quick start (app-server)
 

@@ -45,6 +45,11 @@ internal static class Program {
         Console.WriteLine($"IX.PowerShell pack: {(options.EnablePowerShellPack ? "enabled (dangerous)" : "disabled")}");
         Console.WriteLine($"IX.TestimoX pack: {(options.EnableTestimoXPack ? "enabled" : "disabled")}");
         Console.WriteLine($"Allowed roots: {(options.AllowedRoots.Count == 0 ? "(none)" : string.Join("; ", options.AllowedRoots))}");
+        var pluginPaths = ToolPackBootstrap.GetPluginSearchPaths(new ToolPackBootstrapOptions {
+            EnableDefaultPluginPaths = options.EnableDefaultPluginPaths,
+            PluginPaths = options.PluginPaths.ToArray()
+        });
+        Console.WriteLine($"Plugin paths: {(pluginPaths.Count == 0 ? "(disabled)" : string.Join("; ", pluginPaths))}");
         var authPath = ResolveAuthPath(options);
         if (!string.IsNullOrWhiteSpace(authPath)) {
             Console.WriteLine($"Auth store: {authPath}");
@@ -56,7 +61,10 @@ internal static class Program {
             AdDefaultSearchBaseDn = options.AdDefaultSearchBaseDn,
             AdMaxResults = options.AdMaxResults,
             EnablePowerShellPack = options.EnablePowerShellPack,
-            EnableTestimoXPack = options.EnableTestimoXPack
+            EnableTestimoXPack = options.EnableTestimoXPack,
+            EnableDefaultPluginPaths = options.EnableDefaultPluginPaths,
+            PluginPaths = options.PluginPaths.ToArray(),
+            OnBootstrapWarning = warning => Console.WriteLine($"[pack warning] {warning}")
         });
         WritePolicyBanner(options, packs);
         Console.WriteLine();
@@ -148,9 +156,21 @@ internal static class Program {
                 continue;
             }
 
-            var result = await session.AskAsync(line, cancellationToken).ConfigureAwait(false);
-            WriteTurnResult(result, options);
-            Console.WriteLine();
+            try {
+                var result = await session.AskAsync(line, cancellationToken).ConfigureAwait(false);
+                WriteTurnResult(result, options);
+                Console.WriteLine();
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Request failed: {ex.GetType().Name}: {ex.Message}");
+                if (!string.IsNullOrWhiteSpace(ex.Message) &&
+                    (ex.Message.Contains("usage limit", StringComparison.OrdinalIgnoreCase) ||
+                     ex.Message.Contains("(429)", StringComparison.OrdinalIgnoreCase))) {
+                    Console.Error.WriteLine("Tip: check account usage/limits or switch credentials, then retry.");
+                } else {
+                    Console.Error.WriteLine("Tip: retry with a simpler prompt or run with --echo-tool-outputs for additional diagnostics.");
+                }
+                Console.WriteLine();
+            }
         }
     }
 
@@ -324,6 +344,8 @@ internal static class Program {
         Console.WriteLine("  --enable-powershell-pack  Enable dangerous IX.PowerShell runtime tools (default: off).");
         Console.WriteLine("  --enable-testimox-pack  Enable IX.TestimoX diagnostics tools (default: on).");
         Console.WriteLine("  --disable-testimox-pack Disable IX.TestimoX diagnostics tools.");
+        Console.WriteLine("  --plugin-path <PATH>    Additional folder-based plugin path (repeatable).");
+        Console.WriteLine("  --no-default-plugin-paths Disable default plugin paths (%LOCALAPPDATA% and app ./plugins).");
         Console.WriteLine("  --max-table-rows <N>    Max rows to show in table-like output (0 = no limit; default: 20).");
         Console.WriteLine("  --max-sample <N>        Max sample items to show from long lists (0 = no limit; default: 10).");
         Console.WriteLine("  --redact                Best-effort redact output for display/logging (default: off).");
@@ -589,6 +611,8 @@ internal static class Program {
         public int AdMaxResults { get; set; } = 1000;
         public bool EnablePowerShellPack { get; set; }
         public bool EnableTestimoXPack { get; set; } = true;
+        public bool EnableDefaultPluginPaths { get; set; } = true;
+        public List<string> PluginPaths { get; } = new();
 
         public static ReplOptions Parse(string[] args, out string? error) {
             error = null;
@@ -658,6 +682,15 @@ internal static class Program {
                         break;
                     case "--disable-testimox-pack":
                         options.EnableTestimoXPack = false;
+                        break;
+                    case "--plugin-path":
+                        if (!TryGetValue(args, ref i, out var pluginPath, out error)) {
+                            return options;
+                        }
+                        options.PluginPaths.Add(pluginPath);
+                        break;
+                    case "--no-default-plugin-paths":
+                        options.EnableDefaultPluginPaths = false;
                         break;
                     case "--max-table-rows":
                         if (!TryGetValue(args, ref i, out var maxRows, out error)) {

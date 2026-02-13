@@ -17,6 +17,7 @@ namespace IntelligenceX.Chat.Abstractions.Protocol;
 [JsonDerivedType(typeof(ChatGptLoginPromptMessage), "chatgpt_login_prompt")]
 [JsonDerivedType(typeof(ChatGptLoginCompletedMessage), "chatgpt_login_completed")]
 [JsonDerivedType(typeof(ToolListMessage), "tool_list")]
+[JsonDerivedType(typeof(InvokeToolResultMessage), "invoke_tool_result")]
 [JsonDerivedType(typeof(ChatStatusMessage), "chat_status")]
 [JsonDerivedType(typeof(ChatDeltaMessage), "chat_delta")]
 [JsonDerivedType(typeof(ChatResultMessage), "chat_result")]
@@ -167,6 +168,21 @@ public sealed record ToolListMessage : ChatServiceMessage {
     /// Tool definitions registered by the service.
     /// </summary>
     public ToolDefinitionDto[] Tools { get; init; } = Array.Empty<ToolDefinitionDto>();
+}
+
+/// <summary>
+/// Response message for <see cref="InvokeToolRequest"/>.
+/// </summary>
+public sealed record InvokeToolResultMessage : ChatServiceMessage {
+    /// <summary>
+    /// Tool name that was invoked.
+    /// </summary>
+    public required string ToolName { get; init; }
+
+    /// <summary>
+    /// Tool output envelope/result.
+    /// </summary>
+    public required ToolOutputDto Output { get; init; }
 }
 
 /// <summary>

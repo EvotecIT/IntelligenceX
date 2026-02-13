@@ -2,6 +2,21 @@
 
 Goal: a Windows systray app with a chat-like interface that can run tools (files, Event Log, AD, etc.) and render rich outputs (tables, code blocks, expandable tool traces).
 
+## Current Mono-Repo Run Commands
+
+Use repo-root `Build\` scripts as the canonical entrypoints:
+
+```powershell
+# Console host (recommended default runtime)
+pwsh .\Build\Run-Chat.ps1 -AllowRoot C:\Support\GitHub
+
+# WinUI app
+pwsh .\Build\Run-ChatApp.ps1 -Configuration Release
+
+# Service-only mode (advanced/debug)
+pwsh .\Build\Run-ChatService.ps1 -AllowRoot C:\Support\GitHub
+```
+
 Recommended split:
 - Core library: `EvotecIT/IntelligenceX` (public)
 - Tool packs: `EvotecIT/IntelligenceX.Tools` (private until stable; publish selectively later)
@@ -33,4 +48,3 @@ Why:
 Keep these out of the core repo and out of cross-platform packs:
 - `IntelligenceX.Tools.ActiveDirectory` (ADPlayground)
 - `IntelligenceX.Tools.EventLog` (EventViewerX / PSEventViewer)
-

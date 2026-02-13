@@ -1,3 +1,10 @@
+---
+name: intelligencex-pr-unblock-loop
+description: Use for PR triage and unblock loops where checks or bot feedback require iterative actionable fixes, infra-blocked classification, and merge-readiness validation.
+metadata:
+  short-description: PR unblock loop
+---
+
 # Skill: intelligencex-pr-unblock-loop
 
 Use this skill when a PR must be unblocked/merged and checks or bot comments require iteration.

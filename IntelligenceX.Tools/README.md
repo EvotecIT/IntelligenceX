@@ -24,9 +24,9 @@ so tool packs stay thin wrappers around the real engines.
 ## Tool packs in this repo
 
 - `IntelligenceX.Tools.FileSystem`
-  - Cross-platform file querying primitives intended for AI consumption
+  - File querying primitives intended for AI consumption
   - Includes `fs_pack_info` guidance tool
-  - Dependencies: .NET only
+  - Dependencies: `IntelligenceX.Engines.FileSystem`
 - `IntelligenceX.Tools.Email`
   - IMAP search/get + SMTP send helpers
   - Includes `email_pack_info` guidance tool
@@ -38,7 +38,7 @@ so tool packs stay thin wrappers around the real engines.
   - Dedicated IX.PowerShell runtime pack for `powershell.exe` / `pwsh` execution (opt-in, dangerous)
   - Includes `powershell_pack_info`, `powershell_environment_discover`, `powershell_hosts`, and `powershell_run`
   - `powershell_run` uses explicit `intent` (`read_only`/`read_write`) with policy-gated write controls
-  - Engine-first via `ComputerX.PowerShellRuntime`
+  - Engine-first via `IntelligenceX.Engines.PowerShell`
 - `IntelligenceX.Tools.TestimoX`
   - Native TestimoX diagnostics pack for rule discovery and focused rule execution
   - Includes `testimox_pack_info`, `testimox_rules_list`, and `testimox_rules_run`

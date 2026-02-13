@@ -1,3 +1,10 @@
+---
+name: intelligencex-analysis-gate
+description: Use when changing analysis behavior, static-analysis policy, analyzer orchestration, or analysis gate/reporting flows in Analysis, CLI analyze commands, or reviewer analysis logic.
+metadata:
+  short-description: Analysis gate workflow
+---
+
 # Skill: intelligencex-analysis-gate
 
 Use this skill when changing analysis behavior or static-analysis policy:

@@ -91,6 +91,28 @@ Publish the CLI (self-contained single-file):
 pwsh ./Build/Publish-Cli.ps1 -Runtime win-x64 -Configuration Release -Framework net8.0
 ```
 
+Publish Chat as a single-app host artifact (recommended default for end users):
+
+```powershell
+pwsh ./scripts/publish-chat.ps1 -Mode Host -Runtime win-x64 -Configuration Release
+```
+
+Run Chat from central build scripts:
+
+```powershell
+# Console host
+pwsh ./Build/Run-Chat.ps1 -AllowRoot C:\Support\GitHub
+
+# WinUI app
+pwsh ./Build/Run-ChatApp.ps1 -Configuration Release
+```
+
+Pack portable tool plugins (NuGet):
+
+```powershell
+pwsh ./scripts/pack-tools.ps1 -Profile Portable -Configuration Release
+```
+
 ## License
 
 MIT

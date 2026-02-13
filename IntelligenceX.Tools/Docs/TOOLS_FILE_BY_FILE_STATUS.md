@@ -75,13 +75,13 @@ Status values:
 | File | Status | Notes |
 |---|---|---|
 | `IntelligenceX.Tools.PowerShell/PowerShellToolOptions.cs` | `keep` | Runtime enablement/caps for dangerous shell execution. |
-| `IntelligenceX.Tools.PowerShell/PowerShellToolBase.cs` | `keep` | Shared ComputerX.PowerShellRuntime failure mapping/plumbing. |
+| `IntelligenceX.Tools.PowerShell/PowerShellToolBase.cs` | `keep` | Shared IntelligenceX.Engines.PowerShell failure mapping/plumbing. |
 | `IntelligenceX.Tools.PowerShell/PowerShellToolPack.cs` | `done` | Dedicated `IX.PowerShell` descriptor (`DangerousWrite`). |
 | `IntelligenceX.Tools.PowerShell/ToolRegistryPowerShellExtensions.cs` | `done` | Single registration source; exposes tool names and runtime-derived tool catalog metadata. |
 | `IntelligenceX.Tools.PowerShell/PowerShellPackInfoTool.cs` | `done` | Model-facing dangerous-capability guidance via shared contract. |
 | `IntelligenceX.Tools.PowerShell/PowerShellEnvironmentDiscoverTool.cs` | `done` | Policy + runtime autodiscovery wrapper for agent planning (`enabled`, write policy, host availability, limits). |
 | `IntelligenceX.Tools.PowerShell/PowerShellHostsTool.cs` | `done` | Engine host discovery wrapper (`pwsh` / `windows_powershell`). |
-| `IntelligenceX.Tools.PowerShell/PowerShellRunTool.cs` | `done` | Thin runtime execution wrapper over `ComputerX.PowerShellRuntime`. |
+| `IntelligenceX.Tools.PowerShell/PowerShellRunTool.cs` | `done` | Thin runtime execution wrapper over `IntelligenceX.Engines.PowerShell`. |
 
 ## TestimoX
 | File | Status | Notes |

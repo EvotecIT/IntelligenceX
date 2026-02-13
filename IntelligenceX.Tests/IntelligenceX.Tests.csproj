@@ -29,4 +29,8 @@
         <ProjectReference Include="..\IntelligenceX.Reviewer\IntelligenceX.Reviewer.csproj" />
         <ProjectReference Include="..\IntelligenceX.Cli\IntelligenceX.Cli.csproj" />
     </ItemGroup>
+
+    <ItemGroup Condition=" '$(TargetFramework)' == 'net472' ">
+        <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    </ItemGroup>
 </Project>

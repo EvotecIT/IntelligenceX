@@ -1,3 +1,10 @@
+---
+name: intelligencex-onboarding-setup
+description: Use when work touches onboarding and setup UX/flows in IntelligenceX CLI setup commands, setup web, onboarding docs, and first-run experience validation.
+metadata:
+  short-description: Onboarding setup workflow
+---
+
 # Skill: intelligencex-onboarding-setup
 
 Use this skill when work touches onboarding/setup behavior in:

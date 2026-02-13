@@ -12,9 +12,10 @@ Core idea:
   - Provider clients (`IntelligenceX.OpenAI.*`, `IntelligenceX.Copilot.*`)
   - Tool contract (`IntelligenceX.Tools` namespace)
   - Provider-specific tool-calling orchestration (for example `IntelligenceX.OpenAI.ToolCalling`)
+  - Engine projects (`IntelligenceX.Engines.*`) for reusable runtime/query code
 
 - `EvotecIT/IntelligenceX.Tools` (tool packs)
-  - `IntelligenceX.Tools.FileSystem` (cross-platform)
+  - `IntelligenceX.Tools.FileSystem` (engine-backed via `IntelligenceX.Engines.FileSystem`)
   - `IntelligenceX.Tools.Email` (depends on Mailozaurr/MailKit/MimeKit)
   - `IntelligenceX.Tools.System` (OS-specific helpers; keep isolated)
   - Future Windows-only packs (recommended): `IntelligenceX.Tools.ActiveDirectory`, `IntelligenceX.Tools.EventLog`, etc.
@@ -41,6 +42,18 @@ These are the preferred building blocks for tool packs (so behavior is consisten
 - Windows-only capabilities must be isolated by:
   - separate package and `net8.0-windows` target (or runtime OS checks), and
   - no transitive dependency pulled into cross-platform packs.
+
+## Public vs private packs
+
+Use package-first boundaries:
+- Public packs should build in OSS CI and publish to public feeds.
+- Private packs should live with their private engines (for example inside `TestimoX`) and publish to private feeds.
+
+Practical split used here:
+- Public-friendly: `Common`, `FileSystem`, `PowerShell`, `Email`, `EventLog`, `ReviewerSetup`
+- Private/internal: `System`, `TestimoX`, `ActiveDirectory`
+
+This allows open-source consumers to build and run without private source checkouts, while maintainers keep private development velocity.
 
 ## AOT guidance
 

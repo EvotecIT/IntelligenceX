@@ -1,3 +1,10 @@
+---
+name: intelligencex-first-pr-rollout
+description: Use to validate first post-onboarding reviewer rollout quality for a target PR, including workflow presence, checks health, sticky summary markers, and analysis section expectations.
+metadata:
+  short-description: First PR rollout validation
+---
+
 # Skill: intelligencex-first-pr-rollout
 
 Use this skill to verify the first live reviewer run after onboarding/setup is healthy and complete.
