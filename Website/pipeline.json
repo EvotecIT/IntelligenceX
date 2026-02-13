@@ -112,7 +112,9 @@
       "baseUrl": "https://intelligencex.dev",
       "entriesJson": "./data/sitemap.entries.json",
       "json": true,
+      "jsonOut": "./_site/sitemap/index.json",
       "html": true,
+      "htmlOutput": "./_site/sitemap/index.html",
       "htmlTitle": "IntelligenceX Sitemap"
     },
     {
@@ -160,7 +162,7 @@
       "navCanonicalRequired": true,
       "navRequiredLinks": "/,/docs/,/api/",
       "minNavCoveragePercent": 99,
-      "requiredRoutes": "/,/docs/,/404.html,/api/",
+      "requiredRoutes": "/,/docs/,/404.html,/api/,/search/,/sitemap/",
       "failOnCategories": "budget,nav,link,asset,rendered-console-error,rendered-request-failure",
       "rendered": true,
       "renderedEnsureInstalled": false,
