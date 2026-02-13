@@ -90,7 +90,9 @@ public static class ChatGptUsageCache {
     /// <param name="accountId">Optional ChatGPT account id.</param>
     public static string ResolveCachePath(string? accountId) {
         var overridePath = Environment.GetEnvironmentVariable("INTELLIGENCEX_USAGE_PATH");
-        var basePath = string.IsNullOrWhiteSpace(overridePath) ? ResolveDefaultCachePath() : overridePath!;
+        var basePath = string.IsNullOrWhiteSpace(overridePath)
+            ? ResolveDefaultCachePath()
+            : NormalizeOverridePath(overridePath!);
         if (string.IsNullOrWhiteSpace(accountId)) {
             return basePath;
         }
@@ -199,6 +201,25 @@ public static class ChatGptUsageCache {
             home = ".";
         }
         return Path.Combine(home, ".intelligencex", "usage.json");
+    }
+
+    private static string NormalizeOverridePath(string overridePath) {
+        var trimmed = overridePath.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed)) {
+            return ResolveDefaultCachePath();
+        }
+        if (LooksLikeDirectoryPath(trimmed) || Directory.Exists(trimmed)) {
+            return Path.Combine(trimmed, "usage.json");
+        }
+        return trimmed;
+    }
+
+    private static bool LooksLikeDirectoryPath(string path) {
+        if (path.Length == 0) {
+            return false;
+        }
+        var last = path[path.Length - 1];
+        return last == Path.DirectorySeparatorChar || last == Path.AltDirectorySeparatorChar;
     }
 
     private static string AppendAccountSuffix(string basePath, string accountId) {

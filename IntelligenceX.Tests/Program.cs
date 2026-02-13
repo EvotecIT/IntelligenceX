@@ -19,6 +19,9 @@ internal static partial class Program {
         failed += Run("ChatGPT usage parse", TestChatGptUsageParse);
         failed += Run("ChatGPT usage cache invalid JSON", TestChatGptUsageCacheInvalidJson);
         failed += Run("ChatGPT usage cache account path", TestChatGptUsageCacheAccountPath);
+        failed += Run("ChatGPT usage cache directory override path", TestChatGptUsageCacheDirectoryOverridePath);
+        failed += Run("ChatGPT usage cache trailing separator override path",
+            TestChatGptUsageCacheTrailingSeparatorOverridePath);
         failed += Run("EasySession forwards auth account id", TestEasySessionBuildClientOptionsCarriesAuthAccountId);
 #if !NET472
         failed += Run("Usage options parse account id", TestUsageOptionsParseAccountId);

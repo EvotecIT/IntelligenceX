@@ -390,6 +390,51 @@ internal static partial class Program {
         AssertContainsText(Path.GetFileName(accountPath), "acct-demo", "account cache path suffix");
     }
 
+    private static void TestChatGptUsageCacheDirectoryOverridePath() {
+        var previous = Environment.GetEnvironmentVariable("INTELLIGENCEX_USAGE_PATH");
+        var tempDir = Path.Combine(Path.GetTempPath(), $"ix-usage-cache-dir-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_USAGE_PATH", tempDir);
+            var defaultPath = ChatGptUsageCache.ResolveCachePath();
+            var accountPath = ChatGptUsageCache.ResolveCachePath("acct-demo");
+            AssertEqual(Path.Combine(tempDir, "usage.json"), defaultPath,
+                "usage cache default path from directory override");
+            AssertEqual(Path.Combine(tempDir, "usage-acct-demo.json"), accountPath,
+                "usage cache account path from directory override");
+        } finally {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_USAGE_PATH", previous);
+            try {
+                Directory.Delete(tempDir, recursive: true);
+            } catch {
+                // best-effort cleanup
+            }
+        }
+    }
+
+    private static void TestChatGptUsageCacheTrailingSeparatorOverridePath() {
+        var previous = Environment.GetEnvironmentVariable("INTELLIGENCEX_USAGE_PATH");
+        var tempDir = Path.Combine(Path.GetTempPath(), $"ix-usage-cache-trailing-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_USAGE_PATH",
+                tempDir + Path.DirectorySeparatorChar);
+            var defaultPath = ChatGptUsageCache.ResolveCachePath();
+            var accountPath = ChatGptUsageCache.ResolveCachePath("acct-demo");
+            AssertEqual(Path.Combine(tempDir, "usage.json"), defaultPath,
+                "usage cache default path from trailing separator override");
+            AssertEqual(Path.Combine(tempDir, "usage-acct-demo.json"), accountPath,
+                "usage cache account path from trailing separator override");
+        } finally {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_USAGE_PATH", previous);
+            try {
+                Directory.Delete(tempDir, recursive: true);
+            } catch {
+                // best-effort cleanup
+            }
+        }
+    }
+
     private static void TestEasySessionBuildClientOptionsCarriesAuthAccountId() {
         var options = new EasySessionOptions();
         options.NativeOptions.AuthAccountId = "acct-123";
