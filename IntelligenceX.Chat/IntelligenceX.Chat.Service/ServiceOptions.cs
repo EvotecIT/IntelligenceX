@@ -299,7 +299,7 @@ internal sealed class ServiceOptions {
         Console.WriteLine("  --max-table-rows <N>    Max rows to show in table-like output (0 = no limit; default: 20).");
         Console.WriteLine("  --max-sample <N>        Max sample items to show from long lists (0 = no limit; default: 10).");
         Console.WriteLine("  --redact                Best-effort redact output for display/logging (default: off).");
-        Console.WriteLine("  --exit-on-disconnect    Exit when parent app disconnects (sidecar mode).");
+        Console.WriteLine("  --exit-on-disconnect    Exit when parent app disconnects (runtime-managed mode).");
         Console.WriteLine("  --parent-pid <PID>      Parent process id used with --exit-on-disconnect.");
         Console.WriteLine("  -h, --help              Show help.");
     }

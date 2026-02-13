@@ -4,11 +4,11 @@ using System.Collections.Generic;
 namespace IntelligenceX.Chat.App.Launch;
 
 /// <summary>
-/// Provides typed construction of service sidecar launch arguments.
+/// Provides typed construction of local runtime service launch arguments.
 /// </summary>
 internal static class ServiceLaunchArguments {
     /// <summary>
-    /// Builds service-sidecar arguments for the configured pipe and lifecycle mode.
+    /// Builds runtime service arguments for the configured pipe and lifecycle mode.
     /// </summary>
     /// <param name="pipeName">Named-pipe identifier.</param>
     /// <param name="detachedServiceMode">Whether service is detached from app lifetime.</param>
