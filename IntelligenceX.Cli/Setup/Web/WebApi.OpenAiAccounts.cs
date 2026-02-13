@@ -54,7 +54,7 @@ internal sealed partial class WebApi {
             }
 
             var rawStore = await File.ReadAllTextAsync(authPath).ConfigureAwait(false);
-            var decrypted = AuthStoreUtils.DecryptAuthStoreIfNeeded(rawStore);
+            var decrypted = AuthStoreUtils.DecryptAuthStoreIfNeeded(rawStore, request.AuthKey);
             var entries = AuthStoreUtils.ParseAuthStoreEntries(decrypted);
 
             var byAccount = new Dictionary<string, OpenAIAccountItem>(StringComparer.OrdinalIgnoreCase);
