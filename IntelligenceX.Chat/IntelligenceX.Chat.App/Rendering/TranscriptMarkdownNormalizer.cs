@@ -23,7 +23,7 @@ internal static class TranscriptMarkdownNormalizer {
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public static string NormalizeForRendering(string? text) {
-        var normalized = (text ?? string.Empty).Trim();
+        var normalized = text ?? string.Empty;
         if (normalized.Length == 0) {
             return string.Empty;
         }

@@ -593,7 +593,7 @@ public sealed partial class MainWindow : Window {
     private bool IsActiveTurnRequest(string? requestId) {
         var id = NormalizeRequestId(requestId);
         if (id.Length == 0) {
-            return _isSending && !string.IsNullOrWhiteSpace(_activeTurnRequestId);
+            return false;
         }
 
         return !string.IsNullOrWhiteSpace(_activeTurnRequestId)
@@ -603,9 +603,7 @@ public sealed partial class MainWindow : Window {
     private bool IsActiveKickoffRequest(string? requestId) {
         var id = NormalizeRequestId(requestId);
         if (id.Length == 0) {
-            return !_isSending
-                   && _modelKickoffInProgress
-                   && !string.IsNullOrWhiteSpace(_activeKickoffRequestId);
+            return false;
         }
 
         return !string.IsNullOrWhiteSpace(_activeKickoffRequestId)

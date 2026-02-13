@@ -33,4 +33,16 @@ public sealed class TranscriptMarkdownNormalizerTests {
 
         Assert.Contains("**Status: HEALTHY**\n- **Servers checked:** 5\n- **Replication edges:** 62", normalized);
     }
+
+    /// <summary>
+    /// Ensures normalization preserves intentional leading/trailing whitespace and newlines.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_PreservesEdgeWhitespace() {
+        var text = "\n  line  \n";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal("\n  line  \n", normalized);
+    }
 }
