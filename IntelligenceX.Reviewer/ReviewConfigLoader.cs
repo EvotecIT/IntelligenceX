@@ -100,7 +100,8 @@ internal static class ReviewConfigLoader {
             ?? obj.GetString("openAiAccountId")
             ?? obj.GetString("authAccountId")
             ?? settings.OpenAiAccountId;
-        var openAiAccountRotation = obj.GetString("openaiAccountRotation");
+        var openAiAccountRotation = obj.GetString("openaiAccountRotation")
+            ?? obj.GetString("openAiAccountRotation");
         if (!string.IsNullOrWhiteSpace(openAiAccountRotation)) {
             settings.OpenAiAccountRotation =
                 ReviewSettings.NormalizeOpenAiAccountRotation(openAiAccountRotation, settings.OpenAiAccountRotation);

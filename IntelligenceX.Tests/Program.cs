@@ -353,6 +353,8 @@ internal static partial class Program {
         failed += Run("Review provider alias parsing", TestReviewProviderAliasParsing);
         failed += Run("Review provider contract capabilities", TestReviewProviderContractCapabilities);
         failed += Run("Review provider config alias", TestReviewProviderConfigAlias);
+        failed += Run("Review config loader reads openaiAccountRotation camelCase",
+            TestReviewConfigLoaderReadsOpenAiAccountRotationCamelCase);
         failed += Run("Review provider fallback env", TestReviewProviderFallbackEnv);
         failed += Run("Review provider fallback config", TestReviewProviderFallbackConfig);
         failed += Run("Review provider fallback plan", TestReviewProviderFallbackPlan);
