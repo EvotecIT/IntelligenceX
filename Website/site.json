@@ -104,6 +104,13 @@
     "ExternalTarget": "_blank",
     "AddExternalIcon": true
   },
+  "Xref": {
+    "Enabled": true,
+    "MapFiles": ["data/xrefmap.json"],
+    "WarnOnMissing": true,
+    "EmitMap": true,
+    "MaxWarnings": 25
+  },
   "Navigation": {
     "Surfaces": [
       { "Name": "main", "Path": "/", "PrimaryMenu": "main" },
