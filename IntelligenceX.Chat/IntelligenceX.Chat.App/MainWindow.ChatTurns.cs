@@ -132,13 +132,72 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task ApplyTurnFailureAsync(ChatTurnContext turn, AssistantTurnOutcome outcome) {
-        ReplaceLastAssistantText(turn.Conversation, AssistantTurnOutcomeFormatter.Format(outcome));
+        if (TryGetPartialTurnFailureNotice(turn.Conversation, outcome, out var notice)) {
+            turn.Conversation.Messages.Add(("System", notice, DateTime.Now));
+        } else {
+            ReplaceLastAssistantText(turn.Conversation, AssistantTurnOutcomeFormatter.Format(outcome));
+        }
+
         turn.Conversation.UpdatedUtc = DateTime.UtcNow;
         if (string.Equals(turn.Conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
             await RenderTranscriptAsync().ConfigureAwait(false);
         }
 
         await PersistAppStateAsync().ConfigureAwait(false);
+    }
+
+    private bool TryGetPartialTurnFailureNotice(ConversationRuntime conversation, AssistantTurnOutcome outcome, out string notice) {
+        notice = string.Empty;
+        if (_assistantStreaming.Length == 0) {
+            return false;
+        }
+
+        if (!TryGetLastAssistantText(conversation, out var assistantText)) {
+            return false;
+        }
+
+        var normalizedAssistant = (assistantText ?? string.Empty).Trim();
+        if (normalizedAssistant.Length == 0 || StartsWithOutcomeMarker(normalizedAssistant)) {
+            return false;
+        }
+
+        notice = outcome.Kind switch {
+            AssistantTurnOutcomeKind.ToolRoundLimit =>
+                "Partial response shown above. The turn hit the tool safety limit before completion. "
+                + "Say \"continue\" to keep going, or narrow scope (one DC / one OU).",
+            AssistantTurnOutcomeKind.UsageLimit =>
+                "Partial response shown above. The turn then hit your account usage limit. "
+                + "Switch account or try again later.",
+            AssistantTurnOutcomeKind.Canceled =>
+                "Partial response shown above. Turn was canceled before completion.",
+            AssistantTurnOutcomeKind.Disconnected =>
+                "Partial response shown above. Connection dropped before the turn could finish.",
+            _ =>
+                "Partial response shown above. The turn ended before completion."
+        };
+        return true;
+    }
+
+    private static bool TryGetLastAssistantText(ConversationRuntime conversation, out string text) {
+        for (var i = conversation.Messages.Count - 1; i >= 0; i--) {
+            var entry = conversation.Messages[i];
+            if (!string.Equals(entry.Role, "Assistant", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            text = entry.Text;
+            return true;
+        }
+
+        text = string.Empty;
+        return false;
+    }
+
+    private static bool StartsWithOutcomeMarker(string text) {
+        return text.StartsWith("[error]", StringComparison.OrdinalIgnoreCase)
+               || text.StartsWith("[warning]", StringComparison.OrdinalIgnoreCase)
+               || text.StartsWith("[limit]", StringComparison.OrdinalIgnoreCase)
+               || text.StartsWith("[canceled]", StringComparison.OrdinalIgnoreCase);
     }
 
     private AssistantTurnOutcome ResolveTurnOutcome(string requestId, Exception ex, bool disconnectedFallback) {

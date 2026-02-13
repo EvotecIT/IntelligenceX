@@ -79,7 +79,8 @@ internal static class AssistantTurnOutcomeFormatter {
         var roundsText = maxRounds.HasValue ? maxRounds.Value.ToString() : "current";
 
         return
-            "I hit the in-session tool safety limit while chaining checks"
+            "[warning] Tool safety limit reached.\n\n"
+            + "I hit the in-session tool safety limit while chaining checks"
             + " (max rounds: " + roundsText + ").\n\n"
             + "I can continue right away if we narrow one step:\n"
             + "1. Ask for one target query first (for example one DC / one group / one OU).\n"

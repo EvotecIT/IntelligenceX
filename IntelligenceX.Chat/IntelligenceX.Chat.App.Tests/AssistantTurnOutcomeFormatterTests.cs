@@ -61,6 +61,7 @@ public sealed class AssistantTurnOutcomeFormatterTests {
         var text = AssistantTurnOutcomeFormatter.Format(
             AssistantTurnOutcome.ToolRoundLimit("Chat failed: Tool runner exceeded max rounds (3)."));
 
+        Assert.StartsWith("[warning] Tool safety limit reached.", text);
         Assert.Contains("tool safety limit", text);
         Assert.Contains("max rounds: 3", text);
         Assert.Contains("continue", text);
