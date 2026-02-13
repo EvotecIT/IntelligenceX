@@ -47,13 +47,13 @@ Recommended manifest file: `ix-plugin.json` at package root.
 }
 ```
 
-If `entryType` is omitted, loader can fallback to discovered `IToolPack` types in `entryAssembly`.
+If `entryType` is omitted, loader can fall back to discovered `IToolPack` types in `entryAssembly`.
 
 ## 3. Discovery and Load Order
 
 Load order should be deterministic:
 1. built-in packs (public, always available)
-2. user plugin path: `%LOCALAPPDATA%/IntelligenceX.Chat/plugins`
+2. user plugin path: `%LOCALAPPDATA%\IntelligenceX.Chat\plugins`
 3. portable plugin path: `./plugins` (relative to app executable)
 4. optional extra paths from profile/config
 
@@ -92,7 +92,7 @@ Default OSS profile guidance:
 
 Use package-first development, not source-first coupling:
 1. private repos publish prerelease packages to private feed on every merge (for example `-alpha.*`)
-2. `IntelligenceX` consumes package versions via `Directory.Packages.props`
+2. `IntelligenceX` consumes package versions via central package management (`Directory.Packages.props`) or explicit `PackageReference` versions
 3. local override mode for maintainers:
    - optional `NuGet.Config` for private feed auth
    - optional local source mapping when intentionally developing pack + host together
