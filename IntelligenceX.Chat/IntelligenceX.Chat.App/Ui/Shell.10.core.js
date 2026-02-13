@@ -31,6 +31,8 @@
   var state = {
     status: "Starting runtime...",
     statusTone: "warn",
+    usageLimitSwitchRecommended: false,
+    queuedPromptPending: false,
     connected: false,
     authenticated: false,
     loginInProgress: false,
@@ -431,6 +433,7 @@
     var debugDivider = byId("menuDebugDivider");
     var authenticated = normalizeBool(state.authenticated);
     var loginInProgress = normalizeBool(state.loginInProgress);
+    var switchRecommended = normalizeBool(state.usageLimitSwitchRecommended) || normalizeBool(state.queuedPromptPending);
     var debugToolsEnabled = normalizeBool(state.options.debugToolsEnabled);
 
     signIn.hidden = false;
@@ -439,14 +442,16 @@
       signIn.textContent = loginInProgress ? "Signing In..." : "Sign In Again";
       signIn.setAttribute("data-cmd", "relogin");
     } else {
-      signIn.textContent = loginInProgress ? "Signing In..." : "Sign In";
+      signIn.textContent = loginInProgress
+        ? "Signing In..."
+        : (switchRecommended ? "Sign In (retry queued prompt)" : "Sign In");
       signIn.setAttribute("data-cmd", "login");
     }
 
     if (switchAccount) {
       switchAccount.hidden = false;
       switchAccount.disabled = loginInProgress;
-      switchAccount.textContent = authenticated ? "Switch Account" : "Switch Account";
+      switchAccount.textContent = switchRecommended ? "Switch Account (Recommended)" : "Switch Account";
     }
 
     reconnect.textContent = normalizeBool(state.connected) ? "Reconnect runtime" : "Start runtime";

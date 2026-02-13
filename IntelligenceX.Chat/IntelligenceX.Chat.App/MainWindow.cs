@@ -130,6 +130,7 @@ public sealed partial class MainWindow : Window {
     private bool _isConnected;
     private string _statusText = SessionStatusFormatter.Format(SessionStatus.Disconnected());
     private SessionStatusTone _statusTone = SessionStatusToneResolver.Resolve(SessionStatus.Disconnected());
+    private bool _usageLimitSwitchRecommended;
     private string _timestampMode = ResolveTimestampMode(Environment.GetEnvironmentVariable("IXCHAT_TIME_FORMAT"));
     private string _timestampFormat = ResolveTimestampFormat(Environment.GetEnvironmentVariable("IXCHAT_TIME_FORMAT"));
     private int? _autonomyMaxToolRounds;
