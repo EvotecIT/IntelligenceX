@@ -49,13 +49,23 @@ public sealed partial class MainWindow : Window {
 
     private void AppendSystem(string text) {
         var conversation = GetActiveConversation();
+        AppendSystem(conversation, text);
+    }
+
+    private void AppendSystem(ConversationRuntime conversation, string text) {
         conversation.Messages.Add(("System", text, DateTime.Now));
         conversation.UpdatedUtc = DateTime.UtcNow;
-        _ = RenderTranscriptAsync();
+        if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
+            _ = RenderTranscriptAsync();
+        }
     }
 
     private void AppendSystem(SystemNotice notice) {
         AppendSystem(SystemNoticeFormatter.Format(notice));
+    }
+
+    private void AppendSystem(ConversationRuntime conversation, SystemNotice notice) {
+        AppendSystem(conversation, SystemNoticeFormatter.Format(notice));
     }
 
     private async Task RenderTranscriptAsync() {

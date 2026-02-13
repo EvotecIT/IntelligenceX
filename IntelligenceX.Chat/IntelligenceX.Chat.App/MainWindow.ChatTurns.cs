@@ -77,9 +77,13 @@ public sealed partial class MainWindow : Window {
                         await ExecuteChatTurnAsync(retryClient, turn).ConfigureAwait(false);
                         return;
                     } catch (Exception retryEx) {
+                        var promptQueued = false;
                         if (IsUsageLimitError(retryEx)) {
-                            QueuePromptAfterSignIn(turn.RequestText, turn.ConversationId);
+                            promptQueued = QueuePromptAfterSignIn(turn.RequestText, turn.ConversationId);
                             await SetStatusAsync(SessionStatus.UsageLimitReached()).ConfigureAwait(false);
+                            if (promptQueued) {
+                                AppendSystem(turn.Conversation, SystemNotice.PromptQueuedAfterUsageLimit());
+                            }
                         }
                         await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, retryEx, disconnectedFallback: false)).ConfigureAwait(false);
                         return;
@@ -89,9 +93,13 @@ public sealed partial class MainWindow : Window {
                 await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, ex, disconnectedFallback: true)).ConfigureAwait(false);
                 return;
             } catch (Exception ex) {
+                var promptQueued = false;
                 if (IsUsageLimitError(ex)) {
-                    QueuePromptAfterSignIn(turn.RequestText, turn.ConversationId);
+                    promptQueued = QueuePromptAfterSignIn(turn.RequestText, turn.ConversationId);
                     await SetStatusAsync(SessionStatus.UsageLimitReached()).ConfigureAwait(false);
+                    if (promptQueued) {
+                        AppendSystem(turn.Conversation, SystemNotice.PromptQueuedAfterUsageLimit());
+                    }
                 }
                 await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, ex, disconnectedFallback: false)).ConfigureAwait(false);
                 return;
@@ -205,14 +213,15 @@ public sealed partial class MainWindow : Window {
                || text.StartsWith("[canceled]", StringComparison.OrdinalIgnoreCase);
     }
 
-    private void QueuePromptAfterSignIn(string requestText, string conversationId) {
+    private bool QueuePromptAfterSignIn(string requestText, string conversationId) {
         var text = (requestText ?? string.Empty).Trim();
         if (text.Length == 0) {
-            return;
+            return false;
         }
 
         _queuedPromptAfterLogin = text;
         _queuedPromptAfterLoginConversationId = (conversationId ?? string.Empty).Trim();
+        return true;
     }
 
     private AssistantTurnOutcome ResolveTurnOutcome(string requestId, Exception ex, bool disconnectedFallback) {

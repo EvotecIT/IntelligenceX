@@ -33,6 +33,9 @@ public sealed class SystemNoticeFormatterTests {
         Assert.Equal("Local runtime is unavailable.", SystemNoticeFormatter.Format(SystemNotice.ServiceSidecarUnavailable()));
         Assert.Equal("Export failed: missing rows payload.", SystemNoticeFormatter.Format(SystemNotice.ExportMissingRowsPayload()));
         Assert.Equal("[service] exited", SystemNoticeFormatter.Format(SystemNotice.ServiceExited()));
+        Assert.Equal(
+            "Prompt queued for retry. Use **Switch Account** in the top-right menu; after sign-in, the prompt will run automatically.",
+            SystemNoticeFormatter.Format(SystemNotice.PromptQueuedAfterUsageLimit()));
     }
 
     /// <summary>
