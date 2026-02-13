@@ -41,6 +41,7 @@ public sealed partial class MainWindow : Window {
         await ApplyUserProfileIntentAsync(text).ConfigureAwait(false);
 
         _assistantStreaming.Clear();
+        _activeTurnReceivedDelta = false;
         var now = DateTime.Now;
         conversation.Messages.Add(("User", text, now));
         conversation.Messages.Add(("Assistant", string.Empty, now));
@@ -118,6 +119,7 @@ public sealed partial class MainWindow : Window {
 
         var assistantText = await ApplyAssistantProfileUpdateAsync(result.Text).ConfigureAwait(false);
         ReplaceLastAssistantText(conversation, assistantText);
+        _activeTurnReceivedDelta = false;
         if (_debugMode && result.Tools is not null && (result.Tools.Calls.Count > 0 || result.Tools.Outputs.Count > 0)) {
             conversation.Messages.Add(("Tools", BuildToolRunMarkdown(result.Tools), DateTime.Now));
         }
@@ -148,7 +150,7 @@ public sealed partial class MainWindow : Window {
 
     private bool TryGetPartialTurnFailureNotice(ConversationRuntime conversation, AssistantTurnOutcome outcome, out string notice) {
         notice = string.Empty;
-        if (_assistantStreaming.Length == 0) {
+        if (!_activeTurnReceivedDelta) {
             return false;
         }
 
@@ -175,6 +177,7 @@ public sealed partial class MainWindow : Window {
             _ =>
                 "Partial response shown above. The turn ended before completion."
         };
+        _activeTurnReceivedDelta = false;
         return true;
     }
 

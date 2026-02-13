@@ -40,16 +40,17 @@ internal static class TranscriptHtmlFormatter {
         var messageIndex = 0;
 
         foreach (var message in messages) {
-            if (string.IsNullOrWhiteSpace(message.Text)) {
+            var normalizedText = TranscriptMarkdownNormalizer.NormalizeForRendering(message.Text);
+            if (string.IsNullOrWhiteSpace(normalizedText)) {
                 messageIndex++;
                 continue;
             }
 
             var role = ResolveRoleStyle(message.Role);
             var isContinuation = string.Equals(previousRoleClass, role.RoleClass, StringComparison.Ordinal);
-            var bodyHtml = RenderBodyHtml(message.Text, markdownOptions);
+            var bodyHtml = RenderBodyHtml(normalizedText, markdownOptions);
             var bubbleClass = "bubble";
-            if (TryRenderAssistantOutcomeCallout(message.Role, message.Text, markdownOptions, out var calloutHtml)) {
+            if (TryRenderAssistantOutcomeCallout(message.Role, normalizedText, markdownOptions, out var calloutHtml)) {
                 bodyHtml = calloutHtml;
                 bubbleClass = "bubble bubble-callout";
             }

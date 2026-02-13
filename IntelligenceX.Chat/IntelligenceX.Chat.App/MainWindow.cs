@@ -157,6 +157,7 @@ public sealed partial class MainWindow : Window {
     private string? _activeTurnRequestId;
     private string? _activeKickoffRequestId;
     private string? _cancelRequestedTurnRequestId;
+    private bool _activeTurnReceivedDelta;
     private bool _modelKickoffAttempted;
     private bool _modelKickoffInProgress;
     private bool _autoSignInAttempted;

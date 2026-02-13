@@ -470,6 +470,7 @@ public sealed partial class MainWindow : Window {
             _activeTurnRequestId = null;
             _cancelRequestedTurnRequestId = null;
             _activeRequestConversationId = null;
+            _activeTurnReceivedDelta = false;
             await PublishSessionStateAsync().ConfigureAwait(false);
             await PublishOptionsStateAsync().ConfigureAwait(false);
         }
@@ -585,23 +586,39 @@ public sealed partial class MainWindow : Window {
         await ConnectAsync(fromUserAction: true).ConfigureAwait(true);
     }
 
+    private static string NormalizeRequestId(string? requestId) {
+        return (requestId ?? string.Empty).Trim();
+    }
+
+    private bool IsActiveTurnRequest(string? requestId) {
+        var id = NormalizeRequestId(requestId);
+        if (id.Length == 0) {
+            return _isSending && !string.IsNullOrWhiteSpace(_activeTurnRequestId);
+        }
+
+        return !string.IsNullOrWhiteSpace(_activeTurnRequestId)
+               && string.Equals(id, _activeTurnRequestId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsActiveKickoffRequest(string? requestId) {
+        var id = NormalizeRequestId(requestId);
+        if (id.Length == 0) {
+            return !_isSending
+                   && _modelKickoffInProgress
+                   && !string.IsNullOrWhiteSpace(_activeKickoffRequestId);
+        }
+
+        return !string.IsNullOrWhiteSpace(_activeKickoffRequestId)
+               && string.Equals(id, _activeKickoffRequestId, StringComparison.OrdinalIgnoreCase);
+    }
+
     private bool ShouldProcessLiveRequestMessage(string? requestId) {
-        var id = (requestId ?? string.Empty).Trim();
+        var id = NormalizeRequestId(requestId);
         if (id.Length == 0) {
             return _isSending || _modelKickoffInProgress;
         }
 
-        if (!string.IsNullOrWhiteSpace(_activeTurnRequestId) &&
-            string.Equals(id, _activeTurnRequestId, StringComparison.OrdinalIgnoreCase)) {
-            return true;
-        }
-
-        if (!string.IsNullOrWhiteSpace(_activeKickoffRequestId) &&
-            string.Equals(id, _activeKickoffRequestId, StringComparison.OrdinalIgnoreCase)) {
-            return true;
-        }
-
-        return false;
+        return IsActiveTurnRequest(id) || IsActiveKickoffRequest(id);
     }
 
     private static bool IsTerminalChatStatus(string? status) {
@@ -623,8 +640,13 @@ public sealed partial class MainWindow : Window {
                     if (!ShouldProcessLiveRequestMessage(delta.RequestId)) {
                         break;
                     }
+                    if (!IsActiveTurnRequest(delta.RequestId)) {
+                        // Kickoff/background deltas must not overwrite an existing assistant bubble.
+                        break;
+                    }
 
                     _assistantStreaming.Append(delta.Text);
+                    _activeTurnReceivedDelta = true;
                     ReplaceLastAssistantText(requestConversation, _assistantStreaming.ToString());
                     requestConversation.UpdatedUtc = DateTime.UtcNow;
                     if (string.Equals(requestConversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
