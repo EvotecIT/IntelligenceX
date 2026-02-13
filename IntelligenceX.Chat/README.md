@@ -30,6 +30,10 @@ WinUI app:
 pwsh .\Build\Run-ChatApp.ps1 -Configuration Release
 ```
 
+Markdown renderer dependency resolution is automatic:
+- Dev: if sibling local source exists (`..\OfficeIMO`), Chat builds against that local project.
+- Fallback: if local source is not present (CI/clean OSS checkout), Chat uses the NuGet package.
+
 `Run-ChatApp.ps1` launches only the app. The local chat service sidecar is auto-started and auto-restarted by the app.
 
 Service-only mode (advanced):
