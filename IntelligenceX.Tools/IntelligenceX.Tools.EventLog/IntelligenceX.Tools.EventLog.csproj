@@ -34,7 +34,7 @@
     <!-- Prefer local EventViewerX sources in dev; fall back to NuGet for CI/consumers. -->
     <ProjectReference Include="$(PSEventViewerRoot)Sources\\EventViewerX\\EventViewerX.csproj"
                       Condition="Exists('$(PSEventViewerRoot)Sources\\EventViewerX\\EventViewerX.csproj')" />
-    <PackageReference Include="EventViewerX" Version="3.2.0"
+    <PackageReference Include="EventViewerX" Version="3.3.0"
                       Condition="!Exists('$(PSEventViewerRoot)Sources\\EventViewerX\\EventViewerX.csproj')" />
   </ItemGroup>
 
