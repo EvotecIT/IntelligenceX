@@ -555,7 +555,7 @@ public static class FileSystemQuery {
 
         if (continuationCount == 0) {
             var trailingLeadSize = GetUtf8LeadSize(data[data.Length - 1]);
-            return trailingLeadSize > 1 ? data.Length - 1 : data.Length;
+            return trailingLeadSize == 1 ? data.Length : data.Length - 1;
         }
 
         if (index < 0) {
@@ -564,12 +564,15 @@ public static class FileSystemQuery {
 
         var leadSize = GetUtf8LeadSize(data[index]);
         if (leadSize <= 0) {
-            return data.Length;
+            return index;
         }
 
         var actualSequenceLength = continuationCount + 1;
         if (actualSequenceLength < leadSize) {
             return index;
+        }
+        if (actualSequenceLength > leadSize) {
+            return index + leadSize;
         }
 
         return data.Length;

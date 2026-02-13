@@ -209,4 +209,29 @@ public sealed class EngineQueryBehaviorTests {
             }
         }
     }
+
+    [Fact]
+    public void FileSystemReadText_InvalidUtf8LeadTail_IsTrimmedWithoutReplacementCharacter() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-fs-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var filePath = Path.Combine(root, "utf8-invalid-tail.bin");
+        File.WriteAllBytes(filePath, new byte[] { 0x61, 0x62, 0xF8, 0x80 });
+
+        try {
+            var result = FileSystemQuery.ReadText(new FileTextReadRequest {
+                Path = filePath,
+                MaxBytes = 4
+            });
+
+            Assert.True(result.Truncated);
+            Assert.DoesNotContain('\uFFFD', result.Text);
+            Assert.Equal("ab", result.Text);
+        } finally {
+            try {
+                Directory.Delete(root, recursive: true);
+            } catch {
+                // Ignore cleanup failure.
+            }
+        }
+    }
 }
