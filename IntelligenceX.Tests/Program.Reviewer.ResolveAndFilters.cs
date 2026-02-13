@@ -40,6 +40,16 @@ internal static partial class Program {
         AssertSequenceEqual(new[] { "acc-3", "acc-1", "acc-2" }, ordered.ToArray(), "openai account order sticky");
     }
 
+    private static void TestNormalizeAccountIdListDedupesCaseInsensitive() {
+        var normalized = ReviewSettings.NormalizeAccountIdList(new[] {
+            "acc-1",
+            "ACC-1",
+            " acc-2 ",
+            "Acc-2"
+        });
+        AssertSequenceEqual(new[] { "acc-1", "acc-2" }, normalized.ToArray(), "normalize account id list dedupe");
+    }
+
     private static void TestTryResolveOpenAiAccountStoresRotatedOrder() {
         var tempDir = Path.Combine(Path.GetTempPath(), $"ix-openai-accounts-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
