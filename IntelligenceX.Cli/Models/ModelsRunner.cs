@@ -24,13 +24,14 @@ internal static class ModelsRunner {
     }
 
     public static async Task<int> RunAsync(string[] args) {
+        if (args.Length > 0 &&
+            (args[0] is "-h" or "--help" || args[0].Equals("help", StringComparison.OrdinalIgnoreCase))) {
+            PrintHelp();
+            return 0;
+        }
         if (args.Length == 0 || args[0].Equals("list", StringComparison.OrdinalIgnoreCase)) {
             var rest = args.Length == 0 ? Array.Empty<string>() : args.Skip(1).ToArray();
             return await RunListAsync(rest).ConfigureAwait(false);
-        }
-        if (args[0] is "-h" or "--help" || args[0].Equals("help", StringComparison.OrdinalIgnoreCase)) {
-            PrintHelp();
-            return 0;
         }
         PrintHelp();
         return 1;
