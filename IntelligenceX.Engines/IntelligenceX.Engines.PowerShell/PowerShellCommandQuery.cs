@@ -315,6 +315,13 @@ public static class PowerShellCommandQueryExecutor {
         var timeoutTask = Task.Delay(request.TimeoutMs, timeoutCts.Token);
         var completed = await Task.WhenAny(waitForExitTask, timeoutTask).ConfigureAwait(false);
         if (ReferenceEquals(completed, timeoutTask)) {
+            // If caller cancellation won a race around the timeout tick, preserve cancellation semantics.
+            cancellationToken.ThrowIfCancellationRequested();
+            if (waitForExitTask.IsCompleted) {
+                timeoutCts.Cancel();
+                await waitForExitTask.ConfigureAwait(false);
+            }
+
             timedOut = true;
             TryKillProcess(process);
             await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
@@ -605,7 +612,15 @@ public static class PowerShellCommandQueryExecutor {
     private static void TryKillProcess(Process process) {
         try {
             if (!process.HasExited) {
-                process.Kill();
+                process.Kill(entireProcessTree: true);
+            }
+        } catch (PlatformNotSupportedException) {
+            try {
+                if (!process.HasExited) {
+                    process.Kill();
+                }
+            } catch {
+                // best effort
             }
         } catch {
             // best effort

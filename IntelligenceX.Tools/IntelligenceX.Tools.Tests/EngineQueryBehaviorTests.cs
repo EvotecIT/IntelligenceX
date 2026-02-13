@@ -162,6 +162,26 @@ public sealed class EngineQueryBehaviorTests {
     }
 
     [Fact]
+    public async Task PowerShellTryExecuteAsync_TimeoutIsNotReportedAsCancelled() {
+        if (PowerShellCommandQueryExecutor.GetAvailableHosts().Count == 0) {
+            return;
+        }
+
+        var request = new PowerShellCommandQueryRequest {
+            Script = "Start-Sleep -Seconds 10; 'done'",
+            TimeoutMs = 150,
+            MaxOutputChars = 2_000,
+            IncludeErrorStream = true
+        };
+
+        var result = await PowerShellCommandQueryExecutor.TryExecuteAsync(request, CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.NotNull(result.Failure);
+        Assert.Equal(PowerShellCommandQueryFailureCode.Timeout, result.Failure!.Code);
+    }
+
+    [Fact]
     public void FileSystemReadText_TruncatedUtf8_DoesNotReturnReplacementCharacter() {
         var root = Path.Combine(Path.GetTempPath(), "ix-fs-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
