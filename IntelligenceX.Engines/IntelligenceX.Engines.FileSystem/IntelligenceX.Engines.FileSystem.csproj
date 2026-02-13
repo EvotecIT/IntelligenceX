@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <AssemblyName>IntelligenceX.Engines.FileSystem</AssemblyName>
+    <PackageId>IntelligenceX.Engines.FileSystem</PackageId>
+    <Authors>Przemyslaw Klys</Authors>
+    <Company>Evotec</Company>
+    <Description>Engine-level filesystem query primitives for IntelligenceX tool packs.</Description>
+    <RepositoryUrl>https://github.com/EvotecIT/IntelligenceX</RepositoryUrl>
+    <IsPackable>true</IsPackable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>

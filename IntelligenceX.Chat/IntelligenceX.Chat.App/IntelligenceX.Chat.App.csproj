@@ -18,18 +18,38 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <OfficeImoMarkdownRendererProject>$(OfficeImoRepoRoot)\OfficeIMO.MarkdownRenderer\OfficeIMO.MarkdownRenderer.csproj</OfficeImoMarkdownRendererProject>
-    <OfficeImoMarkdownRendererDll>$(OfficeImoRepoRoot)\OfficeIMO.MarkdownRenderer\bin\$(Configuration)\net8.0\OfficeIMO.MarkdownRenderer.dll</OfficeImoMarkdownRendererDll>
-    <OfficeImoMarkdownDll>$(OfficeImoRepoRoot)\OfficeIMO.Markdown\bin\$(Configuration)\net8.0\OfficeIMO.Markdown.dll</OfficeImoMarkdownDll>
+    <DbaClientXProjectOverride>$(DbaClientXRepoRoot)DbaClientX.SQLite\DbaClientX.SQLite.csproj</DbaClientXProjectOverride>
+    <DbaClientXProjectCandidate1>$(DbaClientXRepoRootCandidate1)DbaClientX.SQLite\DbaClientX.SQLite.csproj</DbaClientXProjectCandidate1>
+    <DbaClientXProjectCandidate2>$(DbaClientXRepoRootCandidate2)DbaClientX.SQLite\DbaClientX.SQLite.csproj</DbaClientXProjectCandidate2>
+
+    <OfficeImoMarkdownRendererProjectOverride>$(OfficeImoRepoRoot)\OfficeIMO.MarkdownRenderer\OfficeIMO.MarkdownRenderer.csproj</OfficeImoMarkdownRendererProjectOverride>
+    <OfficeImoMarkdownRendererProjectCandidate1>$(OfficeImoRepoRootCandidate1)OfficeIMO.MarkdownRenderer\OfficeIMO.MarkdownRenderer.csproj</OfficeImoMarkdownRendererProjectCandidate1>
+    <OfficeImoMarkdownRendererProjectCandidate2>$(OfficeImoRepoRootCandidate2)OfficeIMO.MarkdownRenderer\OfficeIMO.MarkdownRenderer.csproj</OfficeImoMarkdownRendererProjectCandidate2>
+    <OfficeImoMarkdownRendererProject Condition="Exists('$(OfficeImoMarkdownRendererProjectOverride)')">$(OfficeImoMarkdownRendererProjectOverride)</OfficeImoMarkdownRendererProject>
+    <OfficeImoMarkdownRendererProject Condition="'$(OfficeImoMarkdownRendererProject)' == '' and Exists('$(OfficeImoMarkdownRendererProjectCandidate1)')">$(OfficeImoMarkdownRendererProjectCandidate1)</OfficeImoMarkdownRendererProject>
+    <OfficeImoMarkdownRendererProject Condition="'$(OfficeImoMarkdownRendererProject)' == '' and Exists('$(OfficeImoMarkdownRendererProjectCandidate2)')">$(OfficeImoMarkdownRendererProjectCandidate2)</OfficeImoMarkdownRendererProject>
+
+    <OfficeImoMarkdownRendererDllCandidate1>$(OfficeImoRepoRootCandidate1)OfficeIMO.MarkdownRenderer\bin\$(Configuration)\net8.0\OfficeIMO.MarkdownRenderer.dll</OfficeImoMarkdownRendererDllCandidate1>
+    <OfficeImoMarkdownRendererDllCandidate2>$(OfficeImoRepoRootCandidate2)OfficeIMO.MarkdownRenderer\bin\$(Configuration)\net8.0\OfficeIMO.MarkdownRenderer.dll</OfficeImoMarkdownRendererDllCandidate2>
+    <OfficeImoMarkdownDllCandidate1>$(OfficeImoRepoRootCandidate1)OfficeIMO.Markdown\bin\$(Configuration)\net8.0\OfficeIMO.Markdown.dll</OfficeImoMarkdownDllCandidate1>
+    <OfficeImoMarkdownDllCandidate2>$(OfficeImoRepoRootCandidate2)OfficeIMO.Markdown\bin\$(Configuration)\net8.0\OfficeIMO.Markdown.dll</OfficeImoMarkdownDllCandidate2>
+    <OfficeImoMarkdownRendererDll Condition="Exists('$(OfficeImoMarkdownRendererDllCandidate1)')">$(OfficeImoMarkdownRendererDllCandidate1)</OfficeImoMarkdownRendererDll>
+    <OfficeImoMarkdownRendererDll Condition="'$(OfficeImoMarkdownRendererDll)' == '' and Exists('$(OfficeImoMarkdownRendererDllCandidate2)')">$(OfficeImoMarkdownRendererDllCandidate2)</OfficeImoMarkdownRendererDll>
+    <OfficeImoMarkdownDll Condition="Exists('$(OfficeImoMarkdownDllCandidate1)')">$(OfficeImoMarkdownDllCandidate1)</OfficeImoMarkdownDll>
+    <OfficeImoMarkdownDll Condition="'$(OfficeImoMarkdownDll)' == '' and Exists('$(OfficeImoMarkdownDllCandidate2)')">$(OfficeImoMarkdownDllCandidate2)</OfficeImoMarkdownDll>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\\IntelligenceX.Chat.Abstractions\\IntelligenceX.Chat.Abstractions.csproj" />
     <ProjectReference Include="..\\IntelligenceX.Chat.Client\\IntelligenceX.Chat.Client.csproj" />
-    <ProjectReference Include="$(DbaClientXRepoRoot)DbaClientX.SQLite\\DbaClientX.SQLite.csproj"
-                      Condition="Exists('$(DbaClientXRepoRoot)DbaClientX.SQLite\\DbaClientX.SQLite.csproj')" />
+    <ProjectReference Include="$(DbaClientXProjectOverride)"
+                      Condition="Exists('$(DbaClientXProjectOverride)')" />
+    <ProjectReference Include="$(DbaClientXProjectCandidate1)"
+                      Condition="!Exists('$(DbaClientXProjectOverride)') and Exists('$(DbaClientXProjectCandidate1)')" />
+    <ProjectReference Include="$(DbaClientXProjectCandidate2)"
+                      Condition="!Exists('$(DbaClientXProjectOverride)') and !Exists('$(DbaClientXProjectCandidate1)') and Exists('$(DbaClientXProjectCandidate2)')" />
     <PackageReference Include="DBAClientX.SQLite" Version="0.1.1"
-                      Condition="!Exists('$(DbaClientXRepoRoot)DbaClientX.SQLite\\DbaClientX.SQLite.csproj')" />
+                      Condition="!Exists('$(DbaClientXProjectOverride)') and !Exists('$(DbaClientXProjectCandidate1)') and !Exists('$(DbaClientXProjectCandidate2)')" />
   </ItemGroup>
 
   <ItemGroup>
