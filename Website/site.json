@@ -105,6 +105,12 @@
     "AddExternalIcon": true
   },
   "Navigation": {
+    "Surfaces": [
+      { "Name": "main", "Path": "/", "PrimaryMenu": "main" },
+      { "Name": "docs", "Path": "/docs/", "Collection": "docs", "Layout": "docs", "PrimaryMenu": "main", "SidebarMenu": "docs" },
+      { "Name": "apidocs", "Path": "/api/", "Layout": "apiDocs", "PrimaryMenu": "main", "SidebarMenu": "docs" },
+      { "Name": "notFound", "Path": "/404/", "PrimaryMenu": "main" }
+    ],
     "Auto": [
       { "Collection": "docs", "Menu": "docs", "Sort": "order,title" }
     ],
