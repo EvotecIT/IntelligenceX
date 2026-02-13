@@ -34,7 +34,7 @@ Markdown renderer dependency resolution is automatic:
 - Dev: if sibling local source exists (`..\OfficeIMO`), Chat builds against that local project.
 - Fallback: if local source is not present (CI/clean OSS checkout), Chat uses the NuGet package.
 
-`Run-ChatApp.ps1` launches only the app. The local chat service sidecar is auto-started and auto-restarted by the app.
+`Run-ChatApp.ps1` launches only the app. The local runtime service is auto-started and auto-restarted by the app.
 
 Service-only mode (advanced):
 
@@ -54,7 +54,7 @@ By default, Host + Service + WinUI app share auth and use separate local state s
   - Override: `INTELLIGENCEX_AUTH_PATH`
 - WinUI app state (profiles, chats, UI options): `%LOCALAPPDATA%\\IntelligenceX.Chat\\app-state.db`
 - Service profile state (service CLI profiles): `%LOCALAPPDATA%\\IntelligenceX.Chat\\state.db`
-- Sidecar staging (temporary service runtime copy): `%TEMP%\\IntelligenceX.Chat\\service-runtime\\<guid>`
+- Runtime staging (temporary service runtime copy): `%TEMP%\\IntelligenceX.Chat\\service-runtime\\<guid>`
 - IPC channel: named pipe `intelligencex.chat`
 
 Status-chip behavior is connection/auth based:
