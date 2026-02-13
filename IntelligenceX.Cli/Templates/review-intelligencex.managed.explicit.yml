@@ -18,6 +18,13 @@ review:
     provider: {{Provider}}
     model: {{Model}}
     openai_transport: {{OpenAITransport}}
+    openai_account_id: ${{ inputs.openai_account_id }}
+    openai_account_ids: ${{ inputs.openai_account_ids }}
+    openai_account_rotation: ${{ inputs.openai_account_rotation }}
+    openai_account_failover: ${{ inputs.openai_account_failover }}
+    usage_budget_guard: ${{ inputs.usage_budget_guard }}
+    usage_budget_allow_credits: ${{ inputs.usage_budget_allow_credits }}
+    usage_budget_allow_weekly_limit: ${{ inputs.usage_budget_allow_weekly_limit }}
     include_issue_comments: {{IncludeIssueComments}}
     include_review_comments: {{IncludeReviewComments}}
     include_related_prs: {{IncludeRelatedPullRequests}}

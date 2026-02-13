@@ -112,6 +112,20 @@ internal sealed partial class ReviewSettings {
             settings.ReviewUsageSummaryTimeoutSeconds =
                 Math.Max(1, ParseNonNegativeInt(usageTimeoutSeconds, settings.ReviewUsageSummaryTimeoutSeconds));
         }
+        var usageBudgetGuard = GetInput("usage_budget_guard", "REVIEW_USAGE_BUDGET_GUARD");
+        if (!string.IsNullOrWhiteSpace(usageBudgetGuard)) {
+            settings.ReviewUsageBudgetGuard = ParseBoolean(usageBudgetGuard, settings.ReviewUsageBudgetGuard);
+        }
+        var usageBudgetAllowCredits = GetInput("usage_budget_allow_credits", "REVIEW_USAGE_BUDGET_ALLOW_CREDITS");
+        if (!string.IsNullOrWhiteSpace(usageBudgetAllowCredits)) {
+            settings.ReviewUsageBudgetAllowCredits =
+                ParseBoolean(usageBudgetAllowCredits, settings.ReviewUsageBudgetAllowCredits);
+        }
+        var usageBudgetAllowWeekly = GetInput("usage_budget_allow_weekly_limit", "REVIEW_USAGE_BUDGET_ALLOW_WEEKLY_LIMIT");
+        if (!string.IsNullOrWhiteSpace(usageBudgetAllowWeekly)) {
+            settings.ReviewUsageBudgetAllowWeeklyLimit =
+                ParseBoolean(usageBudgetAllowWeekly, settings.ReviewUsageBudgetAllowWeeklyLimit);
+        }
         var structuredFindings = GetInput("structured_findings", "REVIEW_STRUCTURED_FINDINGS");
         if (!string.IsNullOrWhiteSpace(structuredFindings)) {
             settings.StructuredFindings = ParseBoolean(structuredFindings, settings.StructuredFindings);
@@ -124,6 +138,19 @@ internal sealed partial class ReviewSettings {
         var openAiAccountId = GetInput("openai_account_id", "REVIEW_OPENAI_ACCOUNT_ID", "INTELLIGENCEX_OPENAI_ACCOUNT_ID");
         if (!string.IsNullOrWhiteSpace(openAiAccountId)) {
             settings.OpenAiAccountId = openAiAccountId;
+        }
+        var openAiAccountIds = GetInput("openai_account_ids", "REVIEW_OPENAI_ACCOUNT_IDS", "INTELLIGENCEX_OPENAI_ACCOUNT_IDS");
+        if (!string.IsNullOrWhiteSpace(openAiAccountIds)) {
+            settings.OpenAiAccountIds = NormalizeAccountIdList(ParseList(openAiAccountIds));
+        }
+        var openAiAccountRotation = GetInput("openai_account_rotation", "REVIEW_OPENAI_ACCOUNT_ROTATION");
+        if (!string.IsNullOrWhiteSpace(openAiAccountRotation)) {
+            settings.OpenAiAccountRotation =
+                NormalizeOpenAiAccountRotation(openAiAccountRotation, settings.OpenAiAccountRotation);
+        }
+        var openAiAccountFailover = GetInput("openai_account_failover", "REVIEW_OPENAI_ACCOUNT_FAILOVER");
+        if (!string.IsNullOrWhiteSpace(openAiAccountFailover)) {
+            settings.OpenAiAccountFailover = ParseBoolean(openAiAccountFailover, settings.OpenAiAccountFailover);
         }
 
         var overwriteSummary = GetInput("overwrite_summary", "OVERWRITE_SUMMARY");

@@ -77,6 +77,10 @@ internal sealed class WizardState {
     public bool DryRun { get; set; }
     public string? BranchName { get; set; }
     public string Provider { get; set; } = "openai";
+    public string? OpenAiAccountId { get; set; }
+    public string? OpenAiAccountIds { get; set; }
+    public string OpenAiAccountRotation { get; set; } = "first-available";
+    public bool OpenAiAccountFailover { get; set; } = true;
     public SecretTarget SecretTarget { get; set; } = SecretTarget.Repo;
     public string? SecretOrg { get; set; }
     public string SecretVisibility { get; set; } = "all";

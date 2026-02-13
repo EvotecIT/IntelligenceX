@@ -409,6 +409,63 @@ internal static class WizardPrompts {
         return string.IsNullOrWhiteSpace(selection) ? current : selection;
     }
 
+    public static string? PromptOpenAiAccountId(string? current) {
+        var prompt = new TextPrompt<string>("Primary OpenAI account id (optional):")
+            .AllowEmpty();
+        if (!string.IsNullOrWhiteSpace(current)) {
+            prompt.DefaultValue(current);
+        }
+        var value = AnsiConsole.Prompt(prompt);
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    public static string? PromptOpenAiAccountIds(string? current, string? primaryAccountId) {
+        var prompt = new TextPrompt<string>("OpenAI account ids (comma-separated, optional):")
+            .AllowEmpty();
+        if (!string.IsNullOrWhiteSpace(current)) {
+            prompt.DefaultValue(current);
+        } else if (!string.IsNullOrWhiteSpace(primaryAccountId)) {
+            prompt.DefaultValue(primaryAccountId);
+        }
+        var raw = AnsiConsole.Prompt(prompt);
+        if (string.IsNullOrWhiteSpace(raw) && string.IsNullOrWhiteSpace(primaryAccountId)) {
+            return null;
+        }
+        var values = (raw ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (!string.IsNullOrWhiteSpace(primaryAccountId) &&
+            !values.Any(value => string.Equals(value, primaryAccountId, StringComparison.OrdinalIgnoreCase))) {
+            values.Insert(0, primaryAccountId!);
+        }
+        return values.Count == 0 ? null : string.Join(",", values);
+    }
+
+    public static string PromptOpenAiAccountRotation(string current) {
+        var normalizedCurrent = string.IsNullOrWhiteSpace(current) ? "first-available" : current.Trim().ToLowerInvariant();
+        var choices = new List<string> { "first-available", "round-robin", "sticky" };
+        if (choices.Contains(normalizedCurrent, StringComparer.OrdinalIgnoreCase)) {
+            choices.RemoveAll(value => string.Equals(value, normalizedCurrent, StringComparison.OrdinalIgnoreCase));
+            choices.Insert(0, normalizedCurrent);
+        }
+        var prompt = new SelectionPrompt<string>()
+            .Title("OpenAI account rotation:")
+            .AddChoices(choices)
+            .UseConverter(value => value switch {
+                "first-available" => "first-available (use first account, fallback optional)",
+                "round-robin" => "round-robin (rotate by workflow run id)",
+                "sticky" => "sticky (prefer primary account id)",
+                _ => value
+            });
+        return AnsiConsole.Prompt(prompt);
+    }
+
+    public static bool PromptOpenAiAccountFailover(bool current) {
+        return AnsiConsole.Confirm("Enable OpenAI account failover?", current);
+    }
+
     public static bool PromptForceOverwrite(bool current) {
         return AnsiConsole.Confirm("Force overwrite existing workflow/config?", current);
     }

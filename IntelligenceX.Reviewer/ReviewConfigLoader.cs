@@ -100,6 +100,11 @@ internal static class ReviewConfigLoader {
             ?? obj.GetString("openAiAccountId")
             ?? obj.GetString("authAccountId")
             ?? settings.OpenAiAccountId;
+        var openAiAccountRotation = obj.GetString("openaiAccountRotation");
+        if (!string.IsNullOrWhiteSpace(openAiAccountRotation)) {
+            settings.OpenAiAccountRotation =
+                ReviewSettings.NormalizeOpenAiAccountRotation(openAiAccountRotation, settings.OpenAiAccountRotation);
+        }
         var reviewDiffRange = obj.GetString("reviewDiffRange");
         if (!string.IsNullOrWhiteSpace(reviewDiffRange)) {
             settings.ReviewDiffRange = ReviewSettings.NormalizeDiffRange(reviewDiffRange, settings.ReviewDiffRange);
@@ -166,6 +171,10 @@ internal static class ReviewConfigLoader {
         if (includePaths is not null) {
             settings.IncludePaths = includePaths;
         }
+        var openAiAccountIds = ReadStringList(obj, "openaiAccountIds");
+        if (openAiAccountIds is not null) {
+            settings.OpenAiAccountIds = ReviewSettings.NormalizeAccountIdList(openAiAccountIds);
+        }
 
         var excludePaths = ReadStringList(obj, "excludePaths");
         if (excludePaths is not null) {
@@ -226,6 +235,12 @@ internal static class ReviewConfigLoader {
         settings.FailOpen = ReadBool(obj, "failOpen", settings.FailOpen);
         settings.FailOpenTransientOnly = ReadBool(obj, "failOpenTransientOnly", settings.FailOpenTransientOnly);
         settings.ReviewUsageSummary = ReadBool(obj, "reviewUsageSummary", settings.ReviewUsageSummary);
+        settings.OpenAiAccountFailover = ReadBool(obj, "openaiAccountFailover", settings.OpenAiAccountFailover);
+        settings.ReviewUsageBudgetGuard = ReadBool(obj, "reviewUsageBudgetGuard", settings.ReviewUsageBudgetGuard);
+        settings.ReviewUsageBudgetAllowCredits =
+            ReadBool(obj, "reviewUsageBudgetAllowCredits", settings.ReviewUsageBudgetAllowCredits);
+        settings.ReviewUsageBudgetAllowWeeklyLimit =
+            ReadBool(obj, "reviewUsageBudgetAllowWeeklyLimit", settings.ReviewUsageBudgetAllowWeeklyLimit);
         settings.StructuredFindings = ReadBool(obj, "structuredFindings", settings.StructuredFindings);
         settings.TriageOnly = ReadBool(obj, "triageOnly", settings.TriageOnly);
         settings.UntrustedPrAllowSecrets = ReadBool(obj, "untrustedPrAllowSecrets", settings.UntrustedPrAllowSecrets);

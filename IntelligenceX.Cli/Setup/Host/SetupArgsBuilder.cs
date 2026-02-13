@@ -74,6 +74,22 @@ internal static class SetupArgsBuilder {
             args.Add("--provider");
             args.Add(plan.Provider);
         }
+        if (!string.IsNullOrWhiteSpace(plan.OpenAIAccountId)) {
+            args.Add("--openai-account-id");
+            args.Add(plan.OpenAIAccountId);
+        }
+        if (!string.IsNullOrWhiteSpace(plan.OpenAIAccountIds)) {
+            args.Add("--openai-account-ids");
+            args.Add(plan.OpenAIAccountIds);
+        }
+        if (!string.IsNullOrWhiteSpace(plan.OpenAIAccountRotation)) {
+            args.Add("--openai-account-rotation");
+            args.Add(plan.OpenAIAccountRotation);
+        }
+        if (plan.OpenAIAccountFailover.HasValue) {
+            args.Add("--openai-account-failover");
+            args.Add(plan.OpenAIAccountFailover.Value ? "true" : "false");
+        }
 
         if (!string.IsNullOrWhiteSpace(plan.ReviewProfile)) {
             args.Add("--review-profile");

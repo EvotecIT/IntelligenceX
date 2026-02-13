@@ -18,10 +18,22 @@ internal static partial class Program {
         failed += Run("Copilot idle event", TestCopilotIdleEvent);
         failed += Run("ChatGPT usage parse", TestChatGptUsageParse);
         failed += Run("ChatGPT usage cache invalid JSON", TestChatGptUsageCacheInvalidJson);
+        failed += Run("ChatGPT usage cache account path", TestChatGptUsageCacheAccountPath);
+        failed += Run("EasySession forwards auth account id", TestEasySessionBuildClientOptionsCarriesAuthAccountId);
+#if !NET472
+        failed += Run("Usage options parse account id", TestUsageOptionsParseAccountId);
+        failed += Run("Usage options parse by-surface", TestUsageOptionsParseBySurface);
+        failed += Run("Usage surface summary json buckets", TestUsageSurfaceSummaryJsonBuckets);
+        failed += Run("CLI auth sync-codex help options", TestCliAuthSyncCodexHelpSupportsOptions);
+        failed += Run("CLI models help routes", TestCliModelsHelpRoutes);
+#endif
         failed += Run("Tool call parsing", TestToolCallParsing);
         failed += Run("Tool call invalid JSON", TestToolCallParsingInvalidJson);
         failed += Run("Tool output input", TestToolOutputInput);
         failed += Run("Turn response_id parsing", TestTurnResponseIdParsing);
+        failed += Run("Turn usage parsing", TestTurnUsageParsing);
+        failed += Run("Thread usage summary parsing", TestThreadUsageSummaryParsing);
+        failed += Run("Native thread state usage accumulation", TestNativeThreadStateUsageAccumulation);
         failed += Run("Tool definitions ordered", TestToolDefinitionOrdering);
         failed += Run("Tool definition alias merges tags", TestToolDefinitionAliasMergesTags);
         failed += Run("Tool registry registers aliases from definition", TestToolRegistryRegistersAliasesFromDefinition);
@@ -52,6 +64,7 @@ internal static partial class Program {
         failed += Run("Setup args include analysis options", TestSetupArgsIncludeAnalysisOptions);
         failed += Run("Setup args include analysis export path", TestSetupArgsIncludeAnalysisExportPath);
         failed += Run("Setup args disable analysis omits gate and packs", TestSetupArgsDisableAnalysisOmitsGateAndPacks);
+        failed += Run("Setup args include OpenAI account routing", TestSetupArgsIncludeOpenAiAccountRouting);
         failed += Run("Setup analysis export path normalization", TestSetupAnalysisExportPathNormalization);
         failed += Run("Setup analysis export path combine rejects rooted file name", TestSetupAnalysisExportPathCombineRejectsRootedFileName);
         failed += Run("Setup analysis export catalog prereq validation", TestSetupAnalysisExportCatalogPrereqValidation);
@@ -59,6 +72,9 @@ internal static partial class Program {
         failed += Run("Setup analysis disable writes enabled=false", TestSetupAnalysisDisableWritesFalse);
         failed += Run("Setup analysis defaults packs to all-50", TestSetupAnalysisDefaultsPacksToAll50);
         failed += Run("Setup config build honors analysis gate", TestSetupBuildConfigJsonHonorsAnalysisGateOnNewConfig);
+        failed += Run("Setup config build includes OpenAI account routing", TestSetupBuildConfigJsonIncludesOpenAiAccountRouting);
+        failed += Run("Setup config normalizes OpenAI primary into account ids",
+            TestSetupBuildConfigJsonNormalizesOpenAiPrimaryInAccountIds);
         failed += Run("Setup config merge preserves review settings when enabling analysis", TestSetupBuildConfigJsonMergePreservesReviewSettingsWhenEnablingAnalysis);
         failed += Run("Setup autodetect JSON serializes check statuses as lowercase strings",
             TestSetupAutodetectJsonSerializesCheckStatusesAsLowercaseStrings);
@@ -82,6 +98,8 @@ internal static partial class Program {
             TestSetupWorkflowUpgradePreservesCustomSectionsOutsideManagedBlock);
         failed += Run("Setup workflow upgrade preserves outside managed block verbatim",
             TestSetupWorkflowUpgradePreservesOutsideManagedBlockVerbatim);
+        failed += Run("Setup workflow template includes OpenAI account routing pass-through",
+            TestSetupWorkflowTemplateIncludesOpenAiAccountRoutingPassThrough);
         failed += Run("Setup post-apply verify passes for managed setup", TestSetupPostApplyVerifySetupPassesWithManagedWorkflowAndSecret);
         failed += Run("Setup post-apply verify detects residual cleanup config", TestSetupPostApplyVerifyCleanupDetectsResidualConfig);
         failed += Run("Setup post-apply verify allows unknown branch state when PR exists",
@@ -119,6 +137,7 @@ internal static partial class Program {
         failed += Run("Web setup autodetect response rejects unknown check status",
             TestWebSetupAutodetectResponseJsonRejectsUnknownCheckStatus);
         failed += Run("Web setup args propagate request dry-run", TestWebSetupBuildSetupArgsPropagatesRequestDryRun);
+        failed += Run("Web setup args propagate OpenAI account routing", TestWebSetupBuildSetupArgsPropagatesOpenAiAccountRouting);
         failed += Run("Web setup resolves with-config from args", TestWebSetupResolveWithConfigFromArgs);
         failed += Run("Web setup post-apply verify skips callback on failed apply",
             TestWebSetupPostApplyVerifySkipsCallbackWhenApplyFails);
@@ -353,6 +372,8 @@ internal static partial class Program {
         failed += Run("Copilot CLI url validation", TestCopilotCliUrlValidation);
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
+        failed += Run("OpenAI account order round-robin", TestOpenAiAccountOrderRoundRobin);
+        failed += Run("OpenAI account order sticky", TestOpenAiAccountOrderSticky);
         failed += Run("Filter files include-only", TestFilterFilesIncludeOnly);
         failed += Run("Filter files exclude-only", TestFilterFilesExcludeOnly);
         failed += Run("Filter files include+exclude", TestFilterFilesIncludeExclude);
@@ -397,6 +418,8 @@ internal static partial class Program {
         failed += Run("Review usage summary disambiguates code review weekly", TestReviewUsageSummaryDisambiguatesCodeReviewWeekly);
         failed += Run("Review usage summary disambiguates code review weekly secondary", TestReviewUsageSummaryDisambiguatesCodeReviewWeeklySecondary);
         failed += Run("Review usage summary prefixes non-weekly code review", TestReviewUsageSummaryPrefixesNonWeeklyCodeReview);
+        failed += Run("Review usage budget guard blocks exhausted credits and weekly", TestReviewUsageBudgetGuardBlocksWhenCreditsAndWeeklyExhausted);
+        failed += Run("Review usage budget guard allows credits fallback", TestReviewUsageBudgetGuardAllowsCreditsFallback);
 #endif
 
         Console.WriteLine(failed == 0 ? "All tests passed." : $"{failed} test(s) failed.");

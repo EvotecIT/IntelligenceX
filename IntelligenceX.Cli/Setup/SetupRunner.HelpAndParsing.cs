@@ -25,6 +25,9 @@ internal static partial class SetupRunner {
         Console.WriteLine("  --openai-model <model>");
         Console.WriteLine("  --openai-transport <native|appserver>");
         Console.WriteLine("  --openai-account-id <id> (pin ChatGPT account when multiple are present)");
+        Console.WriteLine("  --openai-account-ids <id1,id2,...> (ordered account rotation/failover list)");
+        Console.WriteLine("  --openai-account-rotation <first-available|round-robin|sticky>");
+        Console.WriteLine("  --openai-account-failover <true|false>");
         Console.WriteLine("  --include-issue-comments <true|false>");
         Console.WriteLine("  --include-review-comments <true|false>");
         Console.WriteLine("  --include-related-prs <true|false>");
@@ -69,6 +72,9 @@ internal static partial class SetupRunner {
         Console.WriteLine("  INTELLIGENCEX_GITHUB_API_BASE_URL");
         Console.WriteLine("  INTELLIGENCEX_GITHUB_AUTH_BASE_URL");
         Console.WriteLine("  INTELLIGENCEX_OPENAI_ACCOUNT_ID");
+        Console.WriteLine("  INTELLIGENCEX_OPENAI_ACCOUNT_IDS");
+        Console.WriteLine("  INTELLIGENCEX_OPENAI_ACCOUNT_ROTATION");
+        Console.WriteLine("  INTELLIGENCEX_OPENAI_ACCOUNT_FAILOVER");
     }
 
     private static bool ParseBool(string? value, bool fallback) {

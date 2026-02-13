@@ -21,6 +21,12 @@ internal static partial class SetupRunner {
         public string? OpenAITransport { get; set; } = "native";
         public string? OpenAIAccountId { get; set; }
         public bool OpenAIAccountIdSet { get; set; }
+        public string? OpenAIAccountIds { get; set; }
+        public bool OpenAIAccountIdsSet { get; set; }
+        public string? OpenAIAccountRotation { get; set; } = "first-available";
+        public bool OpenAIAccountRotationSet { get; set; }
+        public bool OpenAIAccountFailover { get; set; } = true;
+        public bool OpenAIAccountFailoverSet { get; set; }
         public string? ReviewerSource { get; set; } = "release";
         public string? ReviewerReleaseRepo { get; set; } = "EvotecIT/github-actions";
         public string? ReviewerReleaseTag { get; set; } = "latest";
@@ -104,6 +110,11 @@ internal static partial class SetupRunner {
                     ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN")
                     ?? Environment.GetEnvironmentVariable("GH_TOKEN"),
                 OpenAIAccountId = Environment.GetEnvironmentVariable("INTELLIGENCEX_OPENAI_ACCOUNT_ID"),
+                OpenAIAccountIds = Environment.GetEnvironmentVariable("INTELLIGENCEX_OPENAI_ACCOUNT_IDS"),
+                OpenAIAccountRotation = Environment.GetEnvironmentVariable("INTELLIGENCEX_OPENAI_ACCOUNT_ROTATION")
+                    ?? "first-available",
+                OpenAIAccountFailover = ParseBool(
+                    Environment.GetEnvironmentVariable("INTELLIGENCEX_OPENAI_ACCOUNT_FAILOVER"), true),
                 GitHubApiBaseUrl = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_API_BASE_URL") ?? "https://api.github.com",
                 GitHubAuthBaseUrl = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_AUTH_BASE_URL") ?? "https://github.com"
             };
@@ -161,6 +172,18 @@ internal static partial class SetupRunner {
                     case "openai-account-id":
                         options.OpenAIAccountId = value;
                         options.OpenAIAccountIdSet = true;
+                        break;
+                    case "openai-account-ids":
+                        options.OpenAIAccountIds = value;
+                        options.OpenAIAccountIdsSet = true;
+                        break;
+                    case "openai-account-rotation":
+                        options.OpenAIAccountRotation = value;
+                        options.OpenAIAccountRotationSet = true;
+                        break;
+                    case "openai-account-failover":
+                        options.OpenAIAccountFailover = ParseBool(value, options.OpenAIAccountFailover);
+                        options.OpenAIAccountFailoverSet = true;
                         break;
                     case "reviewer-source":
                         options.ReviewerSource = value;
@@ -403,6 +426,9 @@ internal static partial class SetupRunner {
         public string OpenAITransport { get; set; } = "native";
         public string OpenAIModel { get; set; } = "gpt-5.3-codex";
         public string? OpenAIAccountId { get; set; }
+        public string[] OpenAIAccountIds { get; set; } = Array.Empty<string>();
+        public string OpenAIAccountRotation { get; set; } = "first-available";
+        public bool OpenAIAccountFailover { get; set; } = true;
         public string Profile { get; set; } = "balanced";
         public string Mode { get; set; } = "hybrid";
         public string CommentMode { get; set; } = "sticky";
@@ -426,6 +452,9 @@ internal static partial class SetupRunner {
                 OpenAITransport = options.OpenAITransport ?? "native",
                 OpenAIModel = options.OpenAIModel ?? "gpt-5.3-codex",
                 OpenAIAccountId = string.IsNullOrWhiteSpace(options.OpenAIAccountId) ? null : options.OpenAIAccountId!.Trim(),
+                OpenAIAccountIds = SplitCsv(options.OpenAIAccountIds),
+                OpenAIAccountRotation = NormalizeOpenAiAccountRotation(options.OpenAIAccountRotation),
+                OpenAIAccountFailover = options.OpenAIAccountFailover,
                 Profile = options.ReviewProfile ?? "balanced",
                 Mode = options.ReviewMode ?? "hybrid",
                 CommentMode = options.ReviewCommentMode ?? "sticky",
@@ -451,7 +480,20 @@ internal static partial class SetupRunner {
             }
             return raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+        }
+
+        private static string NormalizeOpenAiAccountRotation(string? value) {
+            if (string.IsNullOrWhiteSpace(value)) {
+                return "first-available";
+            }
+            return value.Trim().ToLowerInvariant() switch {
+                "first" or "first-available" or "first_available" or "ordered" => "first-available",
+                "round-robin" or "round_robin" or "rr" or "rotate" => "round-robin",
+                "sticky" or "pin" or "pinned" => "sticky",
+                _ => "first-available"
+            };
         }
     }
 
@@ -515,6 +557,9 @@ internal static partial class SetupRunner {
         public string? OpenAITransport { get; set; }
         public string? OpenAIModel { get; set; }
         public string? OpenAIAccountId { get; set; }
+        public string[] OpenAIAccountIds { get; set; } = Array.Empty<string>();
+        public string? OpenAIAccountRotation { get; set; }
+        public bool? OpenAIAccountFailover { get; set; }
         public string? Profile { get; set; }
         public string? Mode { get; set; }
         public string? CommentMode { get; set; }
@@ -534,6 +579,9 @@ internal static partial class SetupRunner {
             OpenAITransport is not null ||
             OpenAIModel is not null ||
             OpenAIAccountId is not null ||
+            OpenAIAccountIds.Length > 0 ||
+            OpenAIAccountRotation is not null ||
+            OpenAIAccountFailover.HasValue ||
             Profile is not null ||
             Mode is not null ||
             CommentMode is not null ||

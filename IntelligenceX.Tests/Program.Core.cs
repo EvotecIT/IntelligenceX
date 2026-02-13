@@ -108,6 +108,71 @@ internal static partial class Program {
         AssertEqual("resp_snake", turn.ResponseId, "response_id");
     }
 
+    private static void TestTurnUsageParsing() {
+        var turn = TurnInfo.FromJson(new JsonObject()
+            .Add("id", "turn-usage")
+            .Add("response", new JsonObject()
+                .Add("id", "resp-usage")
+                .Add("usage", new JsonObject()
+                    .Add("input_tokens", 120L)
+                    .Add("output_tokens", 30L)
+                    .Add("total_tokens", 150L)
+                    .Add("input_tokens_details", new JsonObject().Add("cached_tokens", 50L))
+                    .Add("output_tokens_details", new JsonObject().Add("reasoning_tokens", 12L)))));
+
+        AssertNotNull(turn.Usage, "turn usage");
+        AssertEqual(120L, turn.Usage!.InputTokens, "turn usage input");
+        AssertEqual(30L, turn.Usage.OutputTokens, "turn usage output");
+        AssertEqual(150L, turn.Usage.TotalTokens, "turn usage total");
+        AssertEqual(50L, turn.Usage.CachedInputTokens, "turn usage cached");
+        AssertEqual(12L, turn.Usage.ReasoningTokens, "turn usage reasoning");
+    }
+
+    private static void TestThreadUsageSummaryParsing() {
+        var thread = ThreadInfo.FromJson(new JsonObject()
+            .Add("id", "thread-usage")
+            .Add("usageSummary", new JsonObject()
+                .Add("turns", 3)
+                .Add("input_tokens", 300L)
+                .Add("output_tokens", 90L)
+                .Add("total_tokens", 390L)));
+
+        AssertNotNull(thread.UsageSummary, "thread usage summary");
+        AssertEqual(3, thread.UsageSummary!.Turns, "thread usage turns");
+        AssertEqual(300L, thread.UsageSummary.InputTokens, "thread usage input");
+        AssertEqual(90L, thread.UsageSummary.OutputTokens, "thread usage output");
+        AssertEqual(390L, thread.UsageSummary.TotalTokens, "thread usage total");
+    }
+
+    private static void TestNativeThreadStateUsageAccumulation() {
+        var ixAssembly = typeof(IntelligenceXClient).Assembly;
+        var stateType = ixAssembly.GetType("IntelligenceX.OpenAI.Native.NativeThreadState", throwOnError: true);
+        AssertNotNull(stateType, "native thread state type");
+        var createMethod = stateType!.GetMethod("Create", BindingFlags.Public | BindingFlags.Static);
+        AssertNotNull(createMethod, "native thread state create");
+        var state = createMethod!.Invoke(null, new object?[] { "gpt-5.3-codex", null });
+        AssertNotNull(state, "native thread state instance");
+
+        var addUsageMethod = stateType.GetMethod("AddUsage", BindingFlags.Public | BindingFlags.Instance);
+        AssertNotNull(addUsageMethod, "native thread state AddUsage");
+
+        var usage = TurnUsage.FromJson(new JsonObject()
+            .Add("input_tokens", 11L)
+            .Add("output_tokens", 7L)
+            .Add("total_tokens", 18L));
+        addUsageMethod!.Invoke(state, new object?[] { usage });
+
+        var toThreadInfoMethod = stateType.GetMethod("ToThreadInfo", BindingFlags.Public | BindingFlags.Instance);
+        AssertNotNull(toThreadInfoMethod, "native thread state ToThreadInfo");
+        var thread = toThreadInfoMethod!.Invoke(state, Array.Empty<object>()) as ThreadInfo;
+        AssertNotNull(thread, "thread info from native state");
+        AssertNotNull(thread!.UsageSummary, "thread usage summary from native state");
+        AssertEqual(1, thread.UsageSummary!.Turns, "native state usage turns");
+        AssertEqual(11L, thread.UsageSummary.InputTokens, "native state usage input");
+        AssertEqual(7L, thread.UsageSummary.OutputTokens, "native state usage output");
+        AssertEqual(18L, thread.UsageSummary.TotalTokens, "native state usage total");
+    }
+
     private static void TestToolDefinitionOrdering() {
         var registry = new ToolRegistry();
         registry.Register(new TestTool("zeta"));
@@ -317,6 +382,82 @@ internal static partial class Program {
             }
         }
     }
+
+    private static void TestChatGptUsageCacheAccountPath() {
+        var defaultPath = ChatGptUsageCache.ResolveCachePath();
+        var accountPath = ChatGptUsageCache.ResolveCachePath("acct-demo");
+        AssertEqual(false, string.Equals(defaultPath, accountPath, StringComparison.Ordinal), "account cache path differs from default");
+        AssertContainsText(Path.GetFileName(accountPath), "acct-demo", "account cache path suffix");
+    }
+
+    private static void TestEasySessionBuildClientOptionsCarriesAuthAccountId() {
+        var options = new EasySessionOptions();
+        options.NativeOptions.AuthAccountId = "acct-123";
+        var method = typeof(EasySession).GetMethod("BuildClientOptions", BindingFlags.NonPublic | BindingFlags.Static);
+        AssertNotNull(method, "EasySession.BuildClientOptions method");
+        var result = method!.Invoke(null, new object?[] { options }) as IntelligenceXClientOptions;
+        AssertNotNull(result, "EasySession client options");
+        AssertEqual("acct-123", result!.NativeOptions.AuthAccountId, "EasySession auth account id");
+    }
+
+#if !NET472
+    private static void TestUsageOptionsParseAccountId() {
+        var cliAssembly = typeof(global::IntelligenceX.Cli.Program).Assembly;
+        var usageOptionsType = cliAssembly.GetType("IntelligenceX.Cli.Usage.UsageOptions", throwOnError: true);
+        AssertNotNull(usageOptionsType, "UsageOptions type");
+        var parseMethod = usageOptionsType!.GetMethod("Parse", BindingFlags.Public | BindingFlags.Static);
+        AssertNotNull(parseMethod, "UsageOptions.Parse method");
+        var parsed = parseMethod!.Invoke(null, new object[] { new[] { "--account-id", "acct-77", "--json" } });
+        AssertNotNull(parsed, "UsageOptions parsed instance");
+        var accountProp = usageOptionsType.GetProperty("AccountId", BindingFlags.Public | BindingFlags.Instance);
+        AssertNotNull(accountProp, "UsageOptions.AccountId property");
+        var value = accountProp!.GetValue(parsed) as string;
+        AssertEqual("acct-77", value, "UsageOptions account id");
+    }
+
+    private static void TestUsageOptionsParseBySurface() {
+        var cliAssembly = typeof(global::IntelligenceX.Cli.Program).Assembly;
+        var usageOptionsType = cliAssembly.GetType("IntelligenceX.Cli.Usage.UsageOptions", throwOnError: true);
+        AssertNotNull(usageOptionsType, "UsageOptions type by-surface");
+        var parseMethod = usageOptionsType!.GetMethod("Parse", BindingFlags.Public | BindingFlags.Static);
+        AssertNotNull(parseMethod, "UsageOptions.Parse method by-surface");
+        var parsed = parseMethod!.Invoke(null, new object[] { new[] { "--by-surface", "--json" } });
+        AssertNotNull(parsed, "UsageOptions parsed instance by-surface");
+        var bySurfaceProp = usageOptionsType.GetProperty("BySurface", BindingFlags.Public | BindingFlags.Instance);
+        AssertNotNull(bySurfaceProp, "UsageOptions.BySurface property");
+        var bySurface = bySurfaceProp!.GetValue(parsed) is bool value && value;
+        AssertEqual(true, bySurface, "UsageOptions by surface");
+    }
+
+    private static void TestUsageSurfaceSummaryJsonBuckets() {
+        var cliAssembly = typeof(global::IntelligenceX.Cli.Program).Assembly;
+        var runnerType = cliAssembly.GetType("IntelligenceX.Cli.Usage.UsageRunner", throwOnError: true);
+        AssertNotNull(runnerType, "UsageRunner type");
+        var method = runnerType!.GetMethod("BuildSurfaceSummaryJsonArray", BindingFlags.NonPublic | BindingFlags.Static);
+        AssertNotNull(method, "BuildSurfaceSummaryJsonArray method");
+
+        var events = new[] {
+            new ChatGptCreditUsageEvent("2026-02-12", "codex-cli", 1.25, "u1", new JsonObject(), null),
+            new ChatGptCreditUsageEvent("2026-02-12", "spark-web", 0.50, "u2", new JsonObject(), null),
+            new ChatGptCreditUsageEvent("2026-02-13", "codex-cli", 2.75, "u3", new JsonObject(), null)
+        };
+        var result = method!.Invoke(null, new object[] { events }) as JsonArray;
+        AssertNotNull(result, "surface summary json");
+        var array = result!;
+        AssertEqual(2, array.Count, "surface summary bucket count");
+
+        var first = array[0].AsObject();
+        AssertNotNull(first, "surface summary first bucket");
+        AssertEqual("codex", first!.GetString("surface"), "surface summary first surface");
+        AssertEqual(2L, first.GetInt64("events"), "surface summary first event count");
+        AssertEqual(4.0, first.GetDouble("credits"), "surface summary first credits");
+
+        var second = array[1].AsObject();
+        AssertNotNull(second, "surface summary second bucket");
+        AssertEqual("spark", second!.GetString("surface"), "surface summary second surface");
+        AssertEqual(1L, second.GetInt64("events"), "surface summary second event count");
+    }
+#endif
 
     private static void TestEscapeHandling() {
         const string json = "{\"text\":\"line1\\nline2\\t\\\\\"}";

@@ -54,6 +54,26 @@ internal static partial class Program {
         }, args, "setup args analysis disabled");
     }
 
+    private static void TestSetupArgsIncludeOpenAiAccountRouting() {
+        var plan = new SetupPlan("owner/repo") {
+            Provider = "openai",
+            OpenAIAccountId = "acc-primary",
+            OpenAIAccountIds = "acc-primary,acc-backup",
+            OpenAIAccountRotation = "round-robin",
+            OpenAIAccountFailover = false
+        };
+
+        var args = SetupArgsBuilder.FromPlan(plan);
+        AssertSequenceEqual(new[] {
+            "--repo", "owner/repo",
+            "--provider", "openai",
+            "--openai-account-id", "acc-primary",
+            "--openai-account-ids", "acc-primary,acc-backup",
+            "--openai-account-rotation", "round-robin",
+            "--openai-account-failover", "false"
+        }, args, "setup args openai account routing");
+    }
+
     private static void TestSetupAnalysisExportPathNormalization() {
         var ok = SetupAnalysisExportPath.TryNormalize(" .intelligencex\\analyzers ", out var normalized, out var error);
         AssertEqual(true, ok, "analysis export path normalized ok");
@@ -185,6 +205,50 @@ internal static partial class Program {
         AssertEqual(true, gate!["enabled"]?.GetValue<bool>(), "analysis.gate.enabled");
     }
 
+    private static void TestSetupBuildConfigJsonIncludesOpenAiAccountRouting() {
+        var content = SetupRunner.BuildReviewerConfigJson(new[] {
+            "--openai-account-id", "acc-primary",
+            "--openai-account-ids", "acc-primary,acc-backup",
+            "--openai-account-rotation", "round-robin",
+            "--openai-account-failover", "false"
+        });
+        AssertNotNull(content, "config json openai account routing content");
+
+        var root = System.Text.Json.Nodes.JsonNode.Parse(content) as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(root, "config json openai account routing root");
+
+        var review = root!["review"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(review, "config json openai account routing review");
+        AssertEqual("acc-primary", review!["openaiAccountId"]?.GetValue<string>(),
+            "config json openai account routing primary account");
+        AssertEqual("round-robin", review["openaiAccountRotation"]?.GetValue<string>(),
+            "config json openai account routing rotation");
+        AssertEqual(false, review["openaiAccountFailover"]?.GetValue<bool>(),
+            "config json openai account routing failover");
+
+        var ids = review["openaiAccountIds"] as System.Text.Json.Nodes.JsonArray;
+        AssertNotNull(ids, "config json openai account routing account ids");
+        AssertEqual(2, ids!.Count, "config json openai account routing account ids count");
+        AssertEqual("acc-primary", ids[0]?.GetValue<string>(), "config json openai account routing first id");
+        AssertEqual("acc-backup", ids[1]?.GetValue<string>(), "config json openai account routing second id");
+    }
+
+    private static void TestSetupBuildConfigJsonNormalizesOpenAiPrimaryInAccountIds() {
+        var content = SetupRunner.BuildReviewerConfigJson(new[] {
+            "--openai-account-id", "acc-primary",
+            "--openai-account-ids", "acc-backup,acc-team"
+        });
+        AssertNotNull(content, "config json openai primary normalization content");
+
+        var root = System.Text.Json.Nodes.JsonNode.Parse(content) as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(root, "config json openai primary normalization root");
+        var review = root!["review"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(review, "config json openai primary normalization review");
+        var ids = review!["openaiAccountIds"] as System.Text.Json.Nodes.JsonArray;
+        AssertNotNull(ids, "config json openai primary normalization account ids");
+        AssertEqual("acc-primary", ids![0]?.GetValue<string>(), "config json openai primary normalization first id");
+    }
+
     private static void TestSetupBuildConfigJsonMergePreservesReviewSettingsWhenEnablingAnalysis() {
         var seed = """
 {
@@ -279,6 +343,48 @@ jobs:
             new[] { "--provider", "copilot" },
             content);
         AssertEqual(content, secondPass, "workflow upgrade idempotent on second pass");
+    }
+
+    private static void TestSetupWorkflowTemplateIncludesOpenAiAccountRoutingPassThrough() {
+        var seed = """
+name: IntelligenceX Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  review:
+    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@master
+    with:
+      provider: openai
+      model: gpt-5.3-codex
+""";
+
+        var content = SetupRunner.BuildWorkflowYamlFromSeedForTests(Array.Empty<string>(), seed);
+
+        AssertContainsText(content, "openai_account_id:", "workflow template openai account id input");
+        AssertContainsText(content, "openai_account_ids:", "workflow template openai account ids input");
+        AssertContainsText(content, "openai_account_rotation:", "workflow template openai account rotation input");
+        AssertContainsText(content, "openai_account_failover:", "workflow template openai account failover input");
+        AssertContainsText(content, "usage_budget_guard:", "workflow template usage budget guard input");
+        AssertContainsText(content, "usage_budget_allow_credits:", "workflow template usage budget credits input");
+        AssertContainsText(content, "usage_budget_allow_weekly_limit:",
+            "workflow template usage budget weekly input");
+        AssertContainsText(content, "openai_account_id: ${{ inputs.openai_account_id }}",
+            "workflow template openai account id pass-through");
+        AssertContainsText(content, "openai_account_ids: ${{ inputs.openai_account_ids }}",
+            "workflow template openai account ids pass-through");
+        AssertContainsText(content, "openai_account_rotation: ${{ inputs.openai_account_rotation }}",
+            "workflow template openai account rotation pass-through");
+        AssertContainsText(content, "openai_account_failover: ${{ inputs.openai_account_failover }}",
+            "workflow template openai account failover pass-through");
+        AssertContainsText(content, "usage_budget_guard: ${{ inputs.usage_budget_guard }}",
+            "workflow template usage budget guard pass-through");
+        AssertContainsText(content, "usage_budget_allow_credits: ${{ inputs.usage_budget_allow_credits }}",
+            "workflow template usage budget credits pass-through");
+        AssertContainsText(content, "usage_budget_allow_weekly_limit: ${{ inputs.usage_budget_allow_weekly_limit }}",
+            "workflow template usage budget weekly pass-through");
     }
 
     private static void TestGitHubRepoDetectorParsesRemoteUrls() {

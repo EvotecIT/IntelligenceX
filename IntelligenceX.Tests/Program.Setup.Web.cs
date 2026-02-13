@@ -118,6 +118,30 @@ internal static partial class Program {
         AssertEqual(false, Array.IndexOf(none, "--dry-run") >= 0, "web setup args no dry-run");
     }
 
+    private static void TestWebSetupBuildSetupArgsPropagatesOpenAiAccountRouting() {
+        var args = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupArgsForOpenAiAccountRoutingTests(
+            openAiAccountId: "acc-primary",
+            openAiAccountIds: "acc-primary,acc-backup",
+            openAiAccountRotation: "round-robin",
+            openAiAccountFailover: false);
+
+        AssertEqual(true, Array.IndexOf(args, "--openai-account-id") >= 0, "web setup args openai account id flag");
+        AssertEqual(true, Array.IndexOf(args, "--openai-account-ids") >= 0, "web setup args openai account ids flag");
+        AssertEqual(true, Array.IndexOf(args, "--openai-account-rotation") >= 0,
+            "web setup args openai account rotation flag");
+        AssertEqual(true, Array.IndexOf(args, "--openai-account-failover") >= 0,
+            "web setup args openai account failover flag");
+
+        var idIndex = Array.IndexOf(args, "--openai-account-id");
+        AssertEqual("acc-primary", args[idIndex + 1], "web setup args openai account id value");
+        var idsIndex = Array.IndexOf(args, "--openai-account-ids");
+        AssertEqual("acc-primary,acc-backup", args[idsIndex + 1], "web setup args openai account ids value");
+        var rotationIndex = Array.IndexOf(args, "--openai-account-rotation");
+        AssertEqual("round-robin", args[rotationIndex + 1], "web setup args openai account rotation value");
+        var failoverIndex = Array.IndexOf(args, "--openai-account-failover");
+        AssertEqual("false", args[failoverIndex + 1], "web setup args openai account failover value");
+    }
+
     private static void TestWebSetupResolveWithConfigFromArgs() {
         AssertEqual(true, IntelligenceX.Cli.Setup.Web.WebApi.ResolveWithConfigFromArgsForTests(
             "--repo", "owner/repo", "--with-config"), "web setup resolve with-config flag");

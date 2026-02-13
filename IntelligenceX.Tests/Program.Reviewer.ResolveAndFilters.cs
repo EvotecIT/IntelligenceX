@@ -22,6 +22,24 @@ internal static partial class Program {
         AssertEqual("copilot-pull-request-reviewer", options.BotLogins[1], "bot login 2");
     }
 
+    private static void TestOpenAiAccountOrderRoundRobin() {
+        var ordered = CallOrderOpenAiAccounts(
+            new[] { "acc-1", "acc-2", "acc-3" },
+            rotation: "round-robin",
+            stickyAccountId: null,
+            rotationSeed: 4);
+        AssertSequenceEqual(new[] { "acc-2", "acc-3", "acc-1" }, ordered.ToArray(), "openai account order round-robin");
+    }
+
+    private static void TestOpenAiAccountOrderSticky() {
+        var ordered = CallOrderOpenAiAccounts(
+            new[] { "acc-1", "acc-2", "acc-3" },
+            rotation: "sticky",
+            stickyAccountId: "acc-3",
+            rotationSeed: 0);
+        AssertSequenceEqual(new[] { "acc-3", "acc-1", "acc-2" }, ordered.ToArray(), "openai account order sticky");
+    }
+
     private static void TestResolveThreadsEndpointResolution() {
         var (baseUri, graphQlPath) = IntelligenceX.Cli.ReviewThreads.ReviewThreadResolveRunner.ResolveGraphQlEndpoint("https://github.company.local/api/v3");
         AssertEqual("https://github.company.local/api/v3", baseUri.ToString(), "base uri");
@@ -635,6 +653,44 @@ internal static partial class Program {
         AssertContains(parts, "5h limit: 90% remaining", "general non-weekly label");
         AssertContains(parts, "code review 5h limit: 75% remaining", "code review non-weekly label");
         AssertEqual(false, ContainsUsageSummaryPart(parts, "5h limit: 75% remaining"), "plain non-weekly code review label removed");
+    }
+
+    private static void TestReviewUsageBudgetGuardBlocksWhenCreditsAndWeeklyExhausted() {
+        const string json = "{"
+            + "\"rate_limit\":{\"allowed\":false,\"limit_reached\":true,"
+            + "\"secondary_window\":{\"used_percent\":100.0,\"limit_window_seconds\":604800,\"reset_after_seconds\":600}},"
+            + "\"code_review_rate_limit\":{\"allowed\":false,\"limit_reached\":true,"
+            + "\"secondary_window\":{\"used_percent\":100.0,\"limit_window_seconds\":604800,\"reset_after_seconds\":600}},"
+            + "\"credits\":{\"has_credits\":false,\"unlimited\":false,\"balance\":0}"
+            + "}";
+        var obj = JsonLite.Parse(json).AsObject();
+        AssertNotNull(obj, "usage budget block json");
+        var snapshot = ChatGptUsageSnapshot.FromJson(obj!);
+        var settings = new ReviewSettings {
+            ReviewUsageBudgetAllowCredits = true,
+            ReviewUsageBudgetAllowWeeklyLimit = true
+        };
+        var failure = CallEvaluateUsageBudgetGuardFailure(settings, snapshot);
+        AssertNotNull(failure, "usage budget block message");
+        AssertContainsText(failure!, "credits exhausted", "usage budget block credits detail");
+        AssertContainsText(failure!, "weekly limit", "usage budget block weekly detail");
+    }
+
+    private static void TestReviewUsageBudgetGuardAllowsCreditsFallback() {
+        const string json = "{"
+            + "\"rate_limit\":{\"allowed\":false,\"limit_reached\":true,"
+            + "\"secondary_window\":{\"used_percent\":100.0,\"limit_window_seconds\":604800,\"reset_after_seconds\":600}},"
+            + "\"credits\":{\"has_credits\":true,\"unlimited\":false,\"balance\":1.5}"
+            + "}";
+        var obj = JsonLite.Parse(json).AsObject();
+        AssertNotNull(obj, "usage budget credits json");
+        var snapshot = ChatGptUsageSnapshot.FromJson(obj!);
+        var settings = new ReviewSettings {
+            ReviewUsageBudgetAllowCredits = true,
+            ReviewUsageBudgetAllowWeeklyLimit = true
+        };
+        var failure = CallEvaluateUsageBudgetGuardFailure(settings, snapshot);
+        AssertEqual(null, failure, "usage budget allows credits fallback");
     }
 }
 #endif

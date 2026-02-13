@@ -8,14 +8,36 @@ Schema: `../../Schemas/reviewer.schema.json`
 The reviewer validates `.intelligencex/reviewer.json` against the schema at runtime.
 Unknown properties emit warnings; invalid types or enum values fail the run.
 
-## Multiple ChatGPT accounts
+## Multiple ChatGPT accounts (rotation + failover)
 
-If your auth store contains more than one ChatGPT login, set `review.openaiAccountId` to select which account to use.
+If your auth store contains more than one ChatGPT login, you can pin a primary account and optionally rotate/fail over to additional accounts.
 List available account ids with:
 
 ```powershell
 intelligencex auth list
 ```
+
+```json
+{
+  "review": {
+    "openaiAccountId": "acc-primary",
+    "openaiAccountIds": ["acc-primary", "acc-backup", "acc-team"],
+    "openaiAccountRotation": "round-robin",
+    "openaiAccountFailover": true
+  }
+}
+```
+
+`openaiAccountRotation` supports:
+- `first-available`: preserve configured order
+- `round-robin`: rotate by workflow run seed (`GITHUB_RUN_NUMBER`, then `GITHUB_RUN_ID`, then `GITHUB_RUN_ATTEMPT`)
+- `sticky`: prefer `openaiAccountId` first, then preserve remaining order
+
+GitHub Actions input/env aliases:
+- `openai_account_id` / `REVIEW_OPENAI_ACCOUNT_ID` / `INTELLIGENCEX_OPENAI_ACCOUNT_ID`
+- `openai_account_ids` / `REVIEW_OPENAI_ACCOUNT_IDS` / `INTELLIGENCEX_OPENAI_ACCOUNT_IDS`
+- `openai_account_rotation` / `REVIEW_OPENAI_ACCOUNT_ROTATION`
+- `openai_account_failover` / `REVIEW_OPENAI_ACCOUNT_FAILOVER`
 
 ## Minimal example
 
@@ -196,6 +218,25 @@ Use this to skip the main review and only assess existing review threads.
 ```
 
 When code-review rate-limit windows are present, their labels are prefixed with `code review` in the usage line so they remain distinct from general limits.
+
+## Usage budget guard (credits vs weekly limit)
+
+Use this to fail early when selected usage budget sources are exhausted, and explicitly choose whether credits and/or weekly windows are allowed to keep runs going.
+
+```json
+{
+  "review": {
+    "reviewUsageBudgetGuard": true,
+    "reviewUsageBudgetAllowCredits": true,
+    "reviewUsageBudgetAllowWeeklyLimit": true
+  }
+}
+```
+
+GitHub Actions input/env aliases:
+- `usage_budget_guard` / `REVIEW_USAGE_BUDGET_GUARD`
+- `usage_budget_allow_credits` / `REVIEW_USAGE_BUDGET_ALLOW_CREDITS`
+- `usage_budget_allow_weekly_limit` / `REVIEW_USAGE_BUDGET_ALLOW_WEEKLY_LIMIT`
 
 ## Budget summary note
 
@@ -416,6 +457,13 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `reviewDiffRange`: `current`, `pr-base`, or `first-review`
 - `outputStyle`: rendering style preset
 - `reviewUsageSummary`: append usage line to the footer (ChatGPT auth only)
+- `openaiAccountId`: pin a preferred ChatGPT account id
+- `openaiAccountIds`: ordered account ids used for rotation/failover
+- `openaiAccountRotation`: `first-available`, `round-robin`, or `sticky`
+- `openaiAccountFailover`: allow trying additional accounts when the selected account is blocked/unavailable
+- `reviewUsageBudgetGuard`: fail early when configured usage budget sources are exhausted
+- `reviewUsageBudgetAllowCredits`: allow runs when credits are available
+- `reviewUsageBudgetAllowWeeklyLimit`: allow runs when weekly limit capacity is available
 - `githubMaxConcurrency`: limit concurrent GitHub API requests (default 4)
 - `languageHints`: include language-aware hint block in the prompt
 - `reviewBudgetSummary`: include a note when review context is truncated
@@ -445,7 +493,8 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `reviewThreadsAutoResolveRequireEvidence`: require a diff evidence snippet to resolve threads
 - `reviewThreadsAutoResolveSummaryAlways`: always append a triage summary line to the main review comment
 - `reviewThreadsAutoResolveSummaryComment`: post a standalone summary comment for auto-resolve decisions
-- `reviewThreadsAutoResolveAIEmbedPlacement`: `top` or `bottom` placement for embedded triage blocks- `azureOrg`/`azureProject`/`azureRepo`: Azure DevOps identifiers
+- `reviewThreadsAutoResolveAIEmbedPlacement`: `top` or `bottom` placement for embedded triage blocks
+- `azureOrg`/`azureProject`/`azureRepo`: Azure DevOps identifiers
 - `azureBaseUrl`: override Azure DevOps base URL (defaults to `SYSTEM_COLLECTIONURI` or `https://dev.azure.com/{org}`)
 - `azureTokenEnv`: env var name that contains the ADO token (default `SYSTEM_ACCESSTOKEN` if set)
 - `azureAuthScheme`: `bearer` (System.AccessToken/JWT) or `basic`/`pat`

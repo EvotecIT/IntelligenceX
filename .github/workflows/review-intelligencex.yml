@@ -13,6 +13,34 @@ on:
         description: 'Pull request number for manual runs'
         required: false
         default: ''
+      openai_account_id:
+        description: 'Override OpenAI account id for this run'
+        required: false
+        default: ''
+      openai_account_ids:
+        description: 'Override ordered OpenAI account ids (CSV) for this run'
+        required: false
+        default: ''
+      openai_account_rotation:
+        description: 'Override OpenAI account rotation (first-available|round-robin|sticky) for this run'
+        required: false
+        default: ''
+      openai_account_failover:
+        description: 'Override OpenAI account failover (true|false) for this run'
+        required: false
+        default: ''
+      usage_budget_guard:
+        description: 'Override usage budget guard (true|false) for this run'
+        required: false
+        default: ''
+      usage_budget_allow_credits:
+        description: 'Override credits budget allowance (true|false) for this run'
+        required: false
+        default: ''
+      usage_budget_allow_weekly_limit:
+        description: 'Override weekly-limit budget allowance (true|false) for this run'
+        required: false
+        default: ''
 
 jobs:
   # INTELLIGENCEX:BEGIN
@@ -122,6 +150,13 @@ jobs:
           INPUT_PROVIDER: openai
           INPUT_MODEL: gpt-5.3-codex
           INPUT_OPENAI_TRANSPORT: native
+          INPUT_OPENAI_ACCOUNT_ID: ${{ inputs.openai_account_id }}
+          INPUT_OPENAI_ACCOUNT_IDS: ${{ inputs.openai_account_ids }}
+          INPUT_OPENAI_ACCOUNT_ROTATION: ${{ inputs.openai_account_rotation }}
+          INPUT_OPENAI_ACCOUNT_FAILOVER: ${{ inputs.openai_account_failover }}
+          INPUT_USAGE_BUDGET_GUARD: ${{ inputs.usage_budget_guard }}
+          INPUT_USAGE_BUDGET_ALLOW_CREDITS: ${{ inputs.usage_budget_allow_credits }}
+          INPUT_USAGE_BUDGET_ALLOW_WEEKLY_LIMIT: ${{ inputs.usage_budget_allow_weekly_limit }}
           INPUT_LENGTH: medium
           INPUT_STYLE: direct
           INPUT_MODE: inline

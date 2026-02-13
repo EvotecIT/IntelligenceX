@@ -13,6 +13,34 @@ on:
         description: 'Pull request number for manual runs'
         required: false
         default: ''
+      openai_account_id:
+        description: 'Override OpenAI account id for this run'
+        required: false
+        default: ''
+      openai_account_ids:
+        description: 'Override ordered OpenAI account ids (CSV) for this run'
+        required: false
+        default: ''
+      openai_account_rotation:
+        description: 'Override OpenAI account rotation (first-available|round-robin|sticky) for this run'
+        required: false
+        default: ''
+      openai_account_failover:
+        description: 'Override OpenAI account failover (true|false) for this run'
+        required: false
+        default: ''
+      usage_budget_guard:
+        description: 'Override usage budget guard (true|false) for this run'
+        required: false
+        default: ''
+      usage_budget_allow_credits:
+        description: 'Override credits budget allowance (true|false) for this run'
+        required: false
+        default: ''
+      usage_budget_allow_weekly_limit:
+        description: 'Override weekly-limit budget allowance (true|false) for this run'
+        required: false
+        default: ''
 
 jobs:
 {{ManagedBlock}}

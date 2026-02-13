@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
+using IntelligenceX.Cli.Models;
 using IntelligenceX.Cli.Auth;
 using IntelligenceX.Cli.Usage;
 using IntelligenceX.OpenAI.Auth;
@@ -49,6 +50,7 @@ internal static partial class Program {
             "doctor" => await Doctor.DoctorRunner.RunAsync(rest).ConfigureAwait(false),
             "todo" => await Todo.TodoRunner.RunAsync(rest).ConfigureAwait(false),
             "release" => await RunReleaseAsync(rest).ConfigureAwait(false),
+            "models" => await ModelsRunner.RunAsync(rest).ConfigureAwait(false),
             "usage" => await UsageRunner.RunAsync(rest).ConfigureAwait(false),
             "help" or "-h" or "--help" => PrintHelpReturn(),
             _ => PrintHelpReturn()
@@ -96,7 +98,7 @@ internal static partial class Program {
             "login" => await RunLoginAsync(args.Skip(1).ToArray()).ConfigureAwait(false),
             "list" => await RunListAsync(args.Skip(1).ToArray()).ConfigureAwait(false),
             "export" => await RunExportAsync(args.Skip(1).ToArray()).ConfigureAwait(false),
-            "sync-codex" => await RunSyncCodexAsync().ConfigureAwait(false),
+            "sync-codex" => await RunSyncCodexAsync(args.Skip(1).ToArray()).ConfigureAwait(false),
             "help" or "-h" or "--help" => PrintAuthHelpReturn(),
             _ => PrintAuthHelpReturn()
         };
@@ -328,12 +330,36 @@ internal static partial class Program {
         }
     }
 
-    private static async Task<int> RunSyncCodexAsync() {
+    private static async Task<int> RunSyncCodexAsync(string[] args) {
         try {
+            var provider = "openai-codex";
+            string? accountId = null;
+            for (var i = 0; i < args.Length; i++) {
+                var arg = args[i];
+                if (arg is "-h" or "--help") {
+                    PrintSyncCodexHelp();
+                    return 0;
+                }
+                switch (arg) {
+                    case "--provider":
+                        provider = ReadRequiredValue(args, ref i);
+                        break;
+                    case "--account-id":
+                        accountId = ReadRequiredValue(args, ref i);
+                        break;
+                    default:
+                        Console.Error.WriteLine($"Unknown option or unexpected argument: {arg}");
+                        PrintSyncCodexHelp();
+                        return 1;
+                }
+            }
+
             var store = new FileAuthBundleStore();
-            var bundle = await store.GetAsync("openai-codex").ConfigureAwait(false);
+            var bundle = await store.GetAsync(provider, accountId).ConfigureAwait(false);
             if (bundle is null) {
-                Console.Error.WriteLine("No auth bundle found.");
+                Console.Error.WriteLine(string.IsNullOrWhiteSpace(accountId)
+                    ? $"No auth bundle found for provider '{provider}'."
+                    : $"No auth bundle found for provider '{provider}' and account '{accountId}'.");
                 return 1;
             }
             CodexAuthStore.WriteAuthJson(bundle, null, DateTimeOffset.UtcNow);
@@ -343,6 +369,15 @@ internal static partial class Program {
             Console.Error.WriteLine(ex.Message);
             return 1;
         }
+    }
+
+    private static void PrintSyncCodexHelp() {
+        Console.WriteLine("Usage:");
+        Console.WriteLine("  intelligencex auth sync-codex [options]");
+        Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --provider <id>     Provider id to export (default: openai-codex)");
+        Console.WriteLine("  --account-id <id>   Account id when multiple bundles exist");
     }
 
     private static string? ResolveExportFormat(string[] args) {
@@ -446,6 +481,18 @@ internal static partial class Program {
             return value.StartsWith("--", StringComparison.Ordinal) ? string.Empty : value;
         }
         return null;
+    }
+
+    private static string ReadRequiredValue(string[] args, ref int index) {
+        if (index + 1 >= args.Length) {
+            throw new InvalidOperationException($"Missing value for {args[index]}.");
+        }
+        index++;
+        var value = args[index];
+        if (value.StartsWith("--", StringComparison.Ordinal)) {
+            throw new InvalidOperationException($"Missing value for {args[index - 1]}.");
+        }
+        return value;
     }
 
     private static async Task<string?> ExportAuthStoreContentAsync(string format) {

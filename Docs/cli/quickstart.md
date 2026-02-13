@@ -30,6 +30,16 @@ intelligencex setup web
 intelligencex setup --repo owner/name --with-config
 ```
 
+## Single repository (non-interactive, multi-account routing)
+
+```powershell
+intelligencex setup --repo owner/name --with-config `
+  --openai-account-id acc-primary `
+  --openai-account-ids acc-primary,acc-backup,acc-team `
+  --openai-account-rotation round-robin `
+  --openai-account-failover true
+```
+
 ## Update only the auth secret
 
 ```powershell
@@ -54,6 +64,26 @@ intelligencex usage --events
 
 ```powershell
 intelligencex usage --json --no-cache
+```
+
+## Usage snapshot by surface (codex vs spark)
+
+```powershell
+intelligencex usage --events --by-surface
+```
+
+## Manual GitHub workflow run with account override
+
+```powershell
+gh workflow run review-intelligencex.yml `
+  -f repo=owner/name `
+  -f pr_number=123 `
+  -f openai_account_ids=acc-primary,acc-backup `
+  -f openai_account_rotation=round-robin `
+  -f openai_account_failover=true `
+  -f usage_budget_guard=true `
+  -f usage_budget_allow_credits=true `
+  -f usage_budget_allow_weekly_limit=false
 ```
 
 ## Manual secret flow

@@ -24,6 +24,7 @@ internal static partial class Program {
         Console.WriteLine("  intelligencex doctor [options]");
         Console.WriteLine("  intelligencex todo <command>");
         Console.WriteLine("  intelligencex release <command>");
+        Console.WriteLine("  intelligencex models <command>");
         Console.WriteLine("  intelligencex usage [options]");
         Console.WriteLine();
         Console.WriteLine("Tip:");
@@ -68,6 +69,9 @@ internal static partial class Program {
         Console.WriteLine("  release notes    Generate release notes from git tags/commits");
         Console.WriteLine("  release reviewer Build and publish reviewer release assets");
         Console.WriteLine();
+        Console.WriteLine("Model commands:");
+        Console.WriteLine("  models list      List available models and supported options");
+        Console.WriteLine();
         Console.WriteLine("Environment variables (optional overrides):");
         Console.WriteLine("  OPENAI_AUTH_AUTHORIZE_URL, OPENAI_AUTH_TOKEN_URL, OPENAI_AUTH_CLIENT_ID");
         Console.WriteLine("  OPENAI_AUTH_SCOPES, OPENAI_AUTH_REDIRECT_URL");
@@ -86,7 +90,7 @@ internal static partial class Program {
         Console.WriteLine("  intelligencex auth login [options]");
         Console.WriteLine("  intelligencex auth list");
         Console.WriteLine("  intelligencex auth export");
-        Console.WriteLine("  intelligencex auth sync-codex");
+        Console.WriteLine("  intelligencex auth sync-codex [options]");
         Console.WriteLine();
         Console.WriteLine("Auth login options:");
         Console.WriteLine("  --export [format]              Export auth store after login (default: store-base64)");
@@ -102,6 +106,10 @@ internal static partial class Program {
         Console.WriteLine("  --format <json|base64|store|store-base64>");
         Console.WriteLine("  --provider <id>                Filter to a provider (e.g. openai-codex)");
         Console.WriteLine("  --account-id <id>              Filter to a ChatGPT account id");
+        Console.WriteLine();
+        Console.WriteLine("Auth sync-codex options:");
+        Console.WriteLine("  --provider <id>                Provider to export to CODEX_HOME/auth.json");
+        Console.WriteLine("  --account-id <id>              Select a specific account id");
     }
 
     private static void PrintReviewerHelp() {

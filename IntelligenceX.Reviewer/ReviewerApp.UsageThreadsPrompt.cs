@@ -168,9 +168,199 @@ public static partial class ReviewerApp {
         }
     }
 
-    private static async Task<ChatGptUsageSnapshot?> TryGetUsageSnapshotAsync(ReviewSettings settings) {
+    private static async Task<string?> TryBuildUsageBudgetGuardFailureAsync(ReviewSettings settings, ReviewProvider providerKind) {
+        if (!settings.ReviewUsageBudgetGuard) {
+            return null;
+        }
+        if (!settings.ReviewUsageBudgetAllowCredits && !settings.ReviewUsageBudgetAllowWeeklyLimit) {
+            return null;
+        }
+        var provider = ReviewProviderContracts.Get(providerKind);
+        if (!provider.SupportsUsageApi) {
+            return null;
+        }
+
+        try {
+            var snapshot = await TryGetUsageSnapshotAsync(settings).ConfigureAwait(false);
+            if (snapshot is null) {
+                return null;
+            }
+            return EvaluateUsageBudgetGuardFailure(settings, snapshot);
+        } catch (Exception ex) {
+            if (settings.Diagnostics) {
+                Console.Error.WriteLine($"Usage budget guard skipped: {ex.Message}");
+            }
+            return null;
+        }
+    }
+
+    private static string? EvaluateUsageBudgetGuardFailure(ReviewSettings settings, ChatGptUsageSnapshot snapshot) {
+        var checks = new List<(BudgetAvailability Availability, string Detail)>();
+        if (settings.ReviewUsageBudgetAllowCredits) {
+            var credits = EvaluateCreditsBudget(snapshot, out var creditsDetail);
+            checks.Add((credits, creditsDetail));
+        }
+        if (settings.ReviewUsageBudgetAllowWeeklyLimit) {
+            var weekly = EvaluateWeeklyBudget(snapshot, out var weeklyDetail);
+            checks.Add((weekly, weeklyDetail));
+        }
+        if (checks.Count == 0) {
+            return null;
+        }
+        if (checks.Any(static c => c.Availability == BudgetAvailability.Available)) {
+            return null;
+        }
+        if (checks.Any(static c => c.Availability == BudgetAvailability.Unknown)) {
+            return null;
+        }
+
+        var detail = string.Join("; ", checks.Select(static c => c.Detail));
+        return "Usage budget guard blocked review run: "
+               + detail
+               + ". Configure reviewUsageBudgetAllowCredits/reviewUsageBudgetAllowWeeklyLimit "
+               + "(or REVIEW_USAGE_BUDGET_ALLOW_CREDITS/REVIEW_USAGE_BUDGET_ALLOW_WEEKLY_LIMIT), "
+               + "or disable REVIEW_USAGE_BUDGET_GUARD.";
+    }
+
+    private enum BudgetAvailability {
+        Unknown,
+        Available,
+        Unavailable
+    }
+
+    private static BudgetAvailability EvaluateCreditsBudget(ChatGptUsageSnapshot snapshot, out string detail) {
+        var credits = snapshot.Credits;
+        if (credits is null) {
+            detail = "credits unavailable";
+            return BudgetAvailability.Unknown;
+        }
+        if (credits.Unlimited) {
+            detail = "credits available (unlimited)";
+            return BudgetAvailability.Available;
+        }
+        if (credits.Balance.HasValue) {
+            var balance = credits.Balance.Value;
+            if (balance > 0) {
+                detail = $"credits available ({balance.ToString("0.####", CultureInfo.InvariantCulture)})";
+                return BudgetAvailability.Available;
+            }
+            if (!credits.HasCredits) {
+                detail = "credits exhausted (balance 0)";
+                return BudgetAvailability.Unavailable;
+            }
+            detail = "credits available";
+            return BudgetAvailability.Available;
+        }
+        if (credits.HasCredits) {
+            detail = "credits available";
+            return BudgetAvailability.Available;
+        }
+        detail = "credits exhausted";
+        return BudgetAvailability.Unavailable;
+    }
+
+    private static BudgetAvailability EvaluateWeeklyBudget(ChatGptUsageSnapshot snapshot, out string detail) {
+        var observations = new List<(BudgetAvailability Availability, string Detail)>();
+        AddWeeklyObservations(snapshot.RateLimit, string.Empty, observations);
+        AddWeeklyObservations(snapshot.CodeReviewRateLimit, CodeReviewPrefix.Trim(), observations);
+        if (observations.Count == 0) {
+            detail = "weekly limit unavailable";
+            return BudgetAvailability.Unknown;
+        }
+        if (observations.Any(static o => o.Availability == BudgetAvailability.Available)) {
+            detail = "weekly limit available";
+            return BudgetAvailability.Available;
+        }
+        if (observations.All(static o => o.Availability == BudgetAvailability.Unavailable)) {
+            detail = string.Join("; ", observations.Select(static o => o.Detail));
+            return BudgetAvailability.Unavailable;
+        }
+        detail = "weekly limit unavailable";
+        return BudgetAvailability.Unknown;
+    }
+
+    private static void AddWeeklyObservations(ChatGptRateLimitStatus? status, string prefix,
+        List<(BudgetAvailability Availability, string Detail)> observations) {
+        if (status is null) {
+            return;
+        }
+
+        AddWeeklyWindowObservation(status, status.PrimaryWindow, prefix, observations);
+        AddWeeklyWindowObservation(status, status.SecondaryWindow, prefix, observations);
+    }
+
+    private static void AddWeeklyWindowObservation(ChatGptRateLimitStatus status, ChatGptRateLimitWindow? window, string prefix,
+        List<(BudgetAvailability Availability, string Detail)> observations) {
+        if (window is null || !IsWeeklyWindow(window)) {
+            return;
+        }
+
+        var label = string.IsNullOrWhiteSpace(prefix) ? "weekly limit" : $"{prefix} weekly limit";
+        var remaining = ResolveRemainingPercent(window);
+        if (remaining.HasValue) {
+            if (remaining.Value > 0) {
+                observations.Add((BudgetAvailability.Available, $"{label} available ({remaining.Value:0.#}% remaining)"));
+                return;
+            }
+            observations.Add((BudgetAvailability.Unavailable, $"{label} exhausted{FormatWindowResetSuffix(window)}"));
+            return;
+        }
+
+        if (status.Allowed && !status.LimitReached) {
+            observations.Add((BudgetAvailability.Available, $"{label} available"));
+            return;
+        }
+        if (!status.Allowed || status.LimitReached) {
+            observations.Add((BudgetAvailability.Unavailable, $"{label} exhausted{FormatWindowResetSuffix(window)}"));
+            return;
+        }
+        observations.Add((BudgetAvailability.Unknown, $"{label} unavailable"));
+    }
+
+    private static bool IsWeeklyWindow(ChatGptRateLimitWindow window) {
+        return window.LimitWindowSeconds.HasValue && IsWithin(window.LimitWindowSeconds.Value, 7 * 24 * 3600, 3600);
+    }
+
+    private static double? ResolveRemainingPercent(ChatGptRateLimitWindow window) {
+        if (!window.UsedPercent.HasValue) {
+            return null;
+        }
+        return Math.Max(0, 100 - window.UsedPercent.Value);
+    }
+
+    private static string FormatWindowResetSuffix(ChatGptRateLimitWindow window) {
+        var resetIn = ResolveWindowResetIn(window);
+        if (resetIn.HasValue) {
+            return $" (resets in {FormatDuration((long)Math.Round(resetIn.Value.TotalSeconds))})";
+        }
+        if (window.ResetAtUnixSeconds.HasValue) {
+            var resetAt = DateTimeOffset.FromUnixTimeSeconds(window.ResetAtUnixSeconds.Value).ToUniversalTime();
+            return $" (resets at {resetAt.ToString("u", CultureInfo.InvariantCulture)})";
+        }
+        return string.Empty;
+    }
+
+    private static TimeSpan? ResolveWindowResetIn(ChatGptRateLimitWindow window) {
+        if (window.ResetAfterSeconds.HasValue) {
+            return TimeSpan.FromSeconds(Math.Max(0, window.ResetAfterSeconds.Value));
+        }
+        if (window.ResetAtUnixSeconds.HasValue) {
+            var resetAt = DateTimeOffset.FromUnixTimeSeconds(window.ResetAtUnixSeconds.Value).ToUniversalTime();
+            var delta = resetAt - DateTimeOffset.UtcNow;
+            return delta < TimeSpan.Zero ? TimeSpan.Zero : delta;
+        }
+        return null;
+    }
+
+    private static Task<ChatGptUsageSnapshot?> TryGetUsageSnapshotAsync(ReviewSettings settings) {
+        return TryGetUsageSnapshotAsync(settings, settings.OpenAiAccountId);
+    }
+
+    private static async Task<ChatGptUsageSnapshot?> TryGetUsageSnapshotAsync(ReviewSettings settings, string? accountId) {
+        var configuredAccountId = NormalizeAccountId(accountId);
+        var cachePath = ChatGptUsageCache.ResolveCachePath(configuredAccountId);
         var cacheMinutes = Math.Max(0, settings.ReviewUsageSummaryCacheMinutes);
-        if (cacheMinutes > 0 && ChatGptUsageCache.TryLoad(out var entry) && entry is not null) {
+        if (cacheMinutes > 0 && ChatGptUsageCache.TryLoad(out var entry, cachePath) && entry is not null) {
             var age = DateTimeOffset.UtcNow - entry.UpdatedAt;
             if (age <= TimeSpan.FromMinutes(cacheMinutes)) {
                 return entry.Snapshot;
@@ -180,16 +370,28 @@ public static partial class ReviewerApp {
         using var cts = new CancellationTokenSource(
             TimeSpan.FromSeconds(Math.Max(1, settings.ReviewUsageSummaryTimeoutSeconds)));
         var options = new OpenAINativeOptions {
-            AuthStore = new FileAuthBundleStore()
+            AuthStore = new FileAuthBundleStore(),
+            AuthAccountId = configuredAccountId
         };
         using var service = new ChatGptUsageService(options);
         var snapshot = await service.GetUsageSnapshotAsync(cts.Token).ConfigureAwait(false);
         try {
-            ChatGptUsageCache.Save(snapshot);
+            var snapshotAccountId = NormalizeAccountId(snapshot.AccountId);
+            var savePath = ChatGptUsageCache.ResolveCachePath(configuredAccountId is null
+                ? null
+                : snapshotAccountId ?? configuredAccountId);
+            ChatGptUsageCache.Save(snapshot, savePath);
         } catch {
             // Best-effort cache.
         }
         return snapshot;
+    }
+
+    private static string? NormalizeAccountId(string? accountId) {
+        if (string.IsNullOrWhiteSpace(accountId)) {
+            return null;
+        }
+        return accountId.Trim();
     }
 
     private static string FormatUsageSummary(ChatGptUsageSnapshot snapshot) {

@@ -321,6 +321,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         }
 
         var responseId = completedResponse?.GetString("id");
+        var usage = completedResponse?.GetObject("usage");
         var rawTurn = new JsonObject()
             .Add("id", turnId)
             .Add("status", status ?? "completed")
@@ -329,7 +330,13 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         if (!string.IsNullOrWhiteSpace(responseId)) {
             rawTurn.Add("responseId", responseId);
         }
-        return TurnInfo.FromJson(rawTurn);
+        if (usage is not null) {
+            rawTurn.Add("usage", usage);
+        }
+
+        var turn = TurnInfo.FromJson(rawTurn);
+        state.AddUsage(turn.Usage);
+        return turn;
     }
 
     private async Task<TurnInfo> SendWithModelFallbackAsync(JsonObject body, IReadOnlyList<JsonObject> requestMessages,
@@ -340,7 +347,9 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
                     model, turnId, options, cancellationToken)
                 .ConfigureAwait(false);
         } catch (InvalidOperationException ex) when (IsModelNotSupportedForChatGpt(ex)) {
-            foreach (var fallback in GetChatGptFallbackModels(model)) {
+            var fallbackCandidates = await GetChatGptFallbackModelsAsync(model, accessToken, accountId, cancellationToken)
+                .ConfigureAwait(false);
+            foreach (var fallback in fallbackCandidates) {
                 state.Touch(fallback);
                 var retryBody = BuildRequestBody(fallback, requestMessages, state.SessionId, options);
                 try {
@@ -481,13 +490,108 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
                message.IndexOf("chatgpt account", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
-    private static IEnumerable<string> GetChatGptFallbackModels(string currentModel) {
-        var candidates = new[] { "gpt-5.3-codex", "gpt-5.3", "gpt-5.2-codex", "gpt-5.2", "gpt-5.1-codex", "gpt-5.1" };
-        foreach (var candidate in candidates) {
-            if (!string.Equals(candidate, currentModel, StringComparison.OrdinalIgnoreCase)) {
-                yield return candidate;
+    private async Task<IReadOnlyList<string>> GetChatGptFallbackModelsAsync(string currentModel, string accessToken, string accountId,
+        CancellationToken cancellationToken) {
+        var candidates = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void AddCandidate(string? candidate) {
+            if (string.IsNullOrWhiteSpace(candidate)) {
+                return;
+            }
+            var normalized = NormalizeModelId(candidate, candidate);
+            if (string.IsNullOrWhiteSpace(normalized)) {
+                return;
+            }
+            if (string.Equals(normalized, currentModel, StringComparison.OrdinalIgnoreCase)) {
+                return;
+            }
+            if (seen.Add(normalized)) {
+                candidates.Add(normalized);
             }
         }
+
+        // Baseline fallback sequence for predictable behavior even when model discovery fails.
+        AddCandidate("gpt-5.3-codex");
+        AddCandidate("gpt-5.3");
+        AddCandidate("gpt-5.2-codex");
+        AddCandidate("gpt-5.2");
+        AddCandidate("gpt-5.1-codex");
+        AddCandidate("gpt-5.1");
+
+        // Dynamic discovery can expose account-specific variants (including spark-capable models).
+        try {
+            var discovered = await DiscoverModelIdsAsync(accessToken, accountId, cancellationToken).ConfigureAwait(false);
+            foreach (var model in discovered) {
+                AddCandidate(model);
+            }
+        } catch {
+            // Keep baseline candidates when discovery is unavailable.
+        }
+
+        candidates.Sort((left, right) => CompareFallbackPriority(currentModel, left, right));
+        return candidates;
+    }
+
+    private async Task<IReadOnlyList<string>> DiscoverModelIdsAsync(string accessToken, string accountId, CancellationToken cancellationToken) {
+        var discovered = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var url in _options.ModelUrls) {
+            if (string.IsNullOrWhiteSpace(url)) {
+                continue;
+            }
+            try {
+                var result = await FetchModelsAsync(AddClientVersion(url), accessToken, accountId, cancellationToken).ConfigureAwait(false);
+                foreach (var model in result.Models) {
+                    if (!string.IsNullOrWhiteSpace(model.Model) && seen.Add(model.Model)) {
+                        discovered.Add(model.Model);
+                    }
+                    if (!string.IsNullOrWhiteSpace(model.Id) && seen.Add(model.Id)) {
+                        discovered.Add(model.Id);
+                    }
+                }
+            } catch {
+                // Ignore individual endpoint failures.
+            }
+        }
+        return discovered;
+    }
+
+    private static int CompareFallbackPriority(string currentModel, string left, string right) {
+        var leftScore = GetFallbackScore(currentModel, left);
+        var rightScore = GetFallbackScore(currentModel, right);
+        if (leftScore != rightScore) {
+            return rightScore.CompareTo(leftScore);
+        }
+        return string.CompareOrdinal(left, right);
+    }
+
+    private static int GetFallbackScore(string currentModel, string candidate) {
+        var score = 0;
+        var normalized = candidate.ToLowerInvariant();
+        var current = currentModel.ToLowerInvariant();
+
+        if (normalized.IndexOf("codex", StringComparison.Ordinal) >= 0) {
+            score += 40;
+        }
+        if (normalized.IndexOf("gpt-5.3", StringComparison.Ordinal) >= 0) {
+            score += 35;
+        } else if (normalized.IndexOf("gpt-5.2", StringComparison.Ordinal) >= 0) {
+            score += 25;
+        } else if (normalized.IndexOf("gpt-5.1", StringComparison.Ordinal) >= 0) {
+            score += 15;
+        } else if (normalized.IndexOf("gpt-5", StringComparison.Ordinal) >= 0) {
+            score += 10;
+        }
+
+        var currentSpark = current.IndexOf("spark", StringComparison.Ordinal) >= 0;
+        var candidateSpark = normalized.IndexOf("spark", StringComparison.Ordinal) >= 0;
+        if (currentSpark == candidateSpark) {
+            score += 20;
+        } else if (!currentSpark && candidateSpark) {
+            score -= 10;
+        }
+        return score;
     }
 
     private static List<JsonObject> BuildOutputsFromDelta(string text) {

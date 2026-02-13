@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -197,6 +198,7 @@ internal static partial class SetupRunner {
         parsed = false;
         var settings = ConfigSettings.FromOptions(options);
         if (string.IsNullOrWhiteSpace(existingContent)) {
+            NormalizeOpenAiAccountRouting(settings);
             return settings;
         }
 
@@ -220,6 +222,39 @@ internal static partial class SetupRunner {
         } else if (!string.IsNullOrWhiteSpace(snapshot.OpenAIAccountId)) {
             settings.OpenAIAccountId = snapshot.OpenAIAccountId;
         }
+        // Precedence: CLI arg (--openai-account-ids) > existing config snapshot > environment default.
+        if (options.OpenAIAccountIdsSet) {
+            settings.OpenAIAccountIds = (options.OpenAIAccountIds ?? string.Empty)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        } else if (snapshot.OpenAIAccountIds is { Length: > 0 }) {
+            settings.OpenAIAccountIds = snapshot.OpenAIAccountIds;
+        }
+        // Precedence: CLI arg (--openai-account-rotation) > existing config snapshot > environment default.
+        if (options.OpenAIAccountRotationSet && !string.IsNullOrWhiteSpace(options.OpenAIAccountRotation)) {
+            settings.OpenAIAccountRotation = options.OpenAIAccountRotation!.Trim().ToLowerInvariant() switch {
+                "first" or "first-available" or "first_available" or "ordered" => "first-available",
+                "round-robin" or "round_robin" or "rr" or "rotate" => "round-robin",
+                "sticky" or "pin" or "pinned" => "sticky",
+                _ => settings.OpenAIAccountRotation
+            };
+        } else if (!string.IsNullOrWhiteSpace(snapshot.OpenAIAccountRotation)) {
+            settings.OpenAIAccountRotation = snapshot.OpenAIAccountRotation!.Trim().ToLowerInvariant() switch {
+                "first" or "first-available" or "first_available" or "ordered" => "first-available",
+                "round-robin" or "round_robin" or "rr" or "rotate" => "round-robin",
+                "sticky" or "pin" or "pinned" => "sticky",
+                _ => settings.OpenAIAccountRotation
+            };
+        }
+        // Precedence: CLI arg (--openai-account-failover) > existing config snapshot > environment default.
+        if (options.OpenAIAccountFailoverSet) {
+            settings.OpenAIAccountFailover = options.OpenAIAccountFailover;
+        } else if (snapshot.OpenAIAccountFailover.HasValue) {
+            settings.OpenAIAccountFailover = snapshot.OpenAIAccountFailover.Value;
+        }
+        NormalizeOpenAiAccountRouting(settings);
         if (!options.ReviewProfileSet && !string.IsNullOrWhiteSpace(snapshot.Profile)) {
             settings.Profile = snapshot.Profile!;
         }
@@ -263,6 +298,22 @@ internal static partial class SetupRunner {
         return settings;
     }
 
+    private static void NormalizeOpenAiAccountRouting(ConfigSettings settings) {
+        if (string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
+            return;
+        }
+
+        if (settings.OpenAIAccountIds.Length == 0) {
+            settings.OpenAIAccountIds = new[] { settings.OpenAIAccountId! };
+            return;
+        }
+
+        settings.OpenAIAccountIds = new[] { settings.OpenAIAccountId! }
+            .Concat(settings.OpenAIAccountIds)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     private static string BuildConfigJson(ConfigSettings settings) {
         var root = new JsonObject {
             ["review"] = new JsonObject {
@@ -283,6 +334,16 @@ internal static partial class SetupRunner {
         };
         if (!string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
             ((JsonObject)root["review"]!)["openaiAccountId"] = settings.OpenAIAccountId;
+        }
+        if (settings.OpenAIAccountIds.Length > 0) {
+            var accountIds = new JsonArray();
+            foreach (var accountId in settings.OpenAIAccountIds) {
+                accountIds.Add(accountId);
+            }
+            var review = (JsonObject)root["review"]!;
+            review["openaiAccountIds"] = accountIds;
+            review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
+            review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
         }
         if (settings.AnalysisEnabledSet || settings.AnalysisGateEnabledSet || settings.AnalysisPacksSet) {
             SetupAnalysisConfig.Apply(root,
@@ -306,6 +367,15 @@ internal static partial class SetupRunner {
         review["model"] = settings.OpenAIModel;
         if (!string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
             review["openaiAccountId"] = settings.OpenAIAccountId;
+        }
+        if (settings.OpenAIAccountIds.Length > 0) {
+            var accountIds = new JsonArray();
+            foreach (var accountId in settings.OpenAIAccountIds) {
+                accountIds.Add(accountId);
+            }
+            review["openaiAccountIds"] = accountIds;
+            review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
+            review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
         }
         review["profile"] = settings.Profile;
         review["mode"] = settings.Mode;
@@ -548,6 +618,16 @@ internal static partial class SetupRunner {
                 snapshot.OpenAITransport = ReadJsonString(review, "openaiTransport");
                 snapshot.OpenAIModel = ReadJsonString(review, "model") ?? ReadJsonString(review, "openaiModel");
                 snapshot.OpenAIAccountId = ReadJsonString(review, "openaiAccountId") ?? ReadJsonString(review, "authAccountId");
+                snapshot.OpenAIAccountIds = ReadJsonStringArray(review, "openaiAccountIds");
+                if (snapshot.OpenAIAccountIds.Length == 0) {
+                    snapshot.OpenAIAccountIds = ReadJsonStringArray(review, "openAiAccountIds");
+                }
+                snapshot.OpenAIAccountRotation =
+                    ReadJsonString(review, "openaiAccountRotation") ??
+                    ReadJsonString(review, "openAiAccountRotation");
+                snapshot.OpenAIAccountFailover =
+                    ReadJsonBool(review, "openaiAccountFailover") ??
+                    ReadJsonBool(review, "openAiAccountFailover");
                 snapshot.Profile = ReadJsonString(review, "profile");
                 snapshot.Mode = ReadJsonString(review, "mode");
                 snapshot.CommentMode = ReadJsonString(review, "commentMode");
@@ -596,6 +676,29 @@ internal static partial class SetupRunner {
             return result;
         }
         return null;
+    }
+
+    private static string[] ReadJsonStringArray(JsonObject obj, string key) {
+        if (!obj.TryGetPropertyValue(key, out var value) || value is not JsonArray array) {
+            return Array.Empty<string>();
+        }
+        var result = new List<string>();
+        foreach (var node in array) {
+            if (node is null) {
+                continue;
+            }
+            try {
+                var text = node.GetValue<string>();
+                if (!string.IsNullOrWhiteSpace(text)) {
+                    result.Add(text.Trim());
+                }
+            } catch {
+                // Skip non-string values.
+            }
+        }
+        return result
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private static string NormalizeLineEndings(string value) {
