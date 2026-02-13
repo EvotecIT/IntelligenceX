@@ -33,6 +33,8 @@ internal sealed class ServiceOptions {
     public int MaxTableRows { get; set; } = 20;
     public int MaxSample { get; set; } = 10;
     public bool Redact { get; set; }
+    public bool ExitOnDisconnect { get; set; }
+    public int? ParentProcessId { get; set; }
 
     public static ServiceOptions Parse(string[] args, out string? error) {
         error = null;
@@ -218,6 +220,21 @@ internal sealed class ServiceOptions {
                 options.Redact = true;
                 continue;
             }
+            if (arg is "--exit-on-disconnect") {
+                options.ExitOnDisconnect = true;
+                continue;
+            }
+            if (arg is "--parent-pid") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!int.TryParse(value, out var pid) || pid <= 0) {
+                    error = "--parent-pid must be a positive integer.";
+                    return options;
+                }
+                options.ParentProcessId = pid;
+                continue;
+            }
 
             error = $"Unknown argument: {arg}";
             return options;
@@ -267,6 +284,8 @@ internal sealed class ServiceOptions {
         Console.WriteLine("  --max-table-rows <N>    Max rows to show in table-like output (0 = no limit; default: 20).");
         Console.WriteLine("  --max-sample <N>        Max sample items to show from long lists (0 = no limit; default: 10).");
         Console.WriteLine("  --redact                Best-effort redact output for display/logging (default: off).");
+        Console.WriteLine("  --exit-on-disconnect    Exit when parent app disconnects (sidecar mode).");
+        Console.WriteLine("  --parent-pid <PID>      Parent process id used with --exit-on-disconnect.");
         Console.WriteLine("  -h, --help              Show help.");
     }
 
