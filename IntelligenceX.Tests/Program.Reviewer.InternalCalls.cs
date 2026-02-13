@@ -61,6 +61,19 @@ internal static partial class Program {
         return method.Invoke(null, new object?[] { settings, snapshot }) as string;
     }
 
+    private static string? CallTryBuildUsageBudgetGuardFailure(ReviewSettings settings, ReviewProvider provider) {
+        var method = typeof(ReviewerApp).GetMethod("TryBuildUsageBudgetGuardFailureAsync",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("TryBuildUsageBudgetGuardFailureAsync method not found.");
+        }
+        var task = method.Invoke(null, new object?[] { settings, provider });
+        if (task is Task<string?> typedTask) {
+            return typedTask.GetAwaiter().GetResult();
+        }
+        throw new InvalidOperationException("TryBuildUsageBudgetGuardFailureAsync returned unexpected result.");
+    }
+
     private static IReadOnlyList<string> CallOrderOpenAiAccounts(
         IReadOnlyList<string> accountIds,
         string rotation,

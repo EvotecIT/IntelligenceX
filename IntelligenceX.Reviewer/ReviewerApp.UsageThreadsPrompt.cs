@@ -173,7 +173,10 @@ public static partial class ReviewerApp {
             return null;
         }
         if (!settings.ReviewUsageBudgetAllowCredits && !settings.ReviewUsageBudgetAllowWeeklyLimit) {
-            return null;
+            return "Usage budget guard blocked review run: both credits and weekly budget allowances are disabled. "
+                   + "Enable reviewUsageBudgetAllowCredits or reviewUsageBudgetAllowWeeklyLimit "
+                   + "(or REVIEW_USAGE_BUDGET_ALLOW_CREDITS/REVIEW_USAGE_BUDGET_ALLOW_WEEKLY_LIMIT), "
+                   + "or disable REVIEW_USAGE_BUDGET_GUARD.";
         }
         var provider = ReviewProviderContracts.Get(providerKind);
         if (!provider.SupportsUsageApi) {
@@ -205,7 +208,10 @@ public static partial class ReviewerApp {
             checks.Add((weekly, weeklyDetail));
         }
         if (checks.Count == 0) {
-            return null;
+            return "Usage budget guard blocked review run: both credits and weekly budget allowances are disabled. "
+                   + "Enable reviewUsageBudgetAllowCredits or reviewUsageBudgetAllowWeeklyLimit "
+                   + "(or REVIEW_USAGE_BUDGET_ALLOW_CREDITS/REVIEW_USAGE_BUDGET_ALLOW_WEEKLY_LIMIT), "
+                   + "or disable REVIEW_USAGE_BUDGET_GUARD.";
         }
         if (checks.Any(static c => c.Availability == BudgetAvailability.Available)) {
             return null;

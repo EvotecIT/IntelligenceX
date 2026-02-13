@@ -795,5 +795,17 @@ internal static partial class Program {
         var failure = CallEvaluateUsageBudgetGuardFailure(settings, snapshot);
         AssertEqual(null, failure, "usage budget allows credits fallback");
     }
+
+    private static void TestReviewUsageBudgetGuardBlocksWhenNoBudgetSourcesAllowed() {
+        var settings = new ReviewSettings {
+            ReviewUsageBudgetGuard = true,
+            ReviewUsageBudgetAllowCredits = false,
+            ReviewUsageBudgetAllowWeeklyLimit = false
+        };
+        var failure = CallTryBuildUsageBudgetGuardFailure(settings, ReviewProvider.OpenAI);
+        AssertNotNull(failure, "usage budget strict mode block message");
+        AssertContainsText(failure!, "both credits and weekly budget allowances are disabled",
+            "usage budget strict mode block detail");
+    }
 }
 #endif

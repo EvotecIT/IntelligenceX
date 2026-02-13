@@ -436,6 +436,8 @@ internal static partial class Program {
         failed += Run("Review usage summary prefixes non-weekly code review", TestReviewUsageSummaryPrefixesNonWeeklyCodeReview);
         failed += Run("Review usage budget guard blocks exhausted credits and weekly", TestReviewUsageBudgetGuardBlocksWhenCreditsAndWeeklyExhausted);
         failed += Run("Review usage budget guard allows credits fallback", TestReviewUsageBudgetGuardAllowsCreditsFallback);
+        failed += Run("Review usage budget guard blocks when no budget sources are allowed",
+            TestReviewUsageBudgetGuardBlocksWhenNoBudgetSourcesAllowed);
 #endif
 
         Console.WriteLine(failed == 0 ? "All tests passed." : $"{failed} test(s) failed.");
