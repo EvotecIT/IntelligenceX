@@ -87,6 +87,8 @@ internal static partial class Program {
             TestSetupBuildConfigJsonMergePreservesOpenAiRoutingWhenAccountIdsAbsent);
         failed += Run("Setup config merge clears OpenAI routing when account ids explicitly empty",
             TestSetupBuildConfigJsonMergeClearsOpenAiRoutingWhenAccountIdsExplicitlyEmpty);
+        failed += Run("Setup config merge clears OpenAI ids but keeps routing with primary",
+            TestSetupBuildConfigJsonMergeClearsOpenAiIdsButKeepsRoutingWithPrimary);
         failed += Run("Setup config merge preserves review settings when enabling analysis", TestSetupBuildConfigJsonMergePreservesReviewSettingsWhenEnablingAnalysis);
         failed += Run("Setup autodetect JSON serializes check statuses as lowercase strings",
             TestSetupAutodetectJsonSerializesCheckStatusesAsLowercaseStrings);

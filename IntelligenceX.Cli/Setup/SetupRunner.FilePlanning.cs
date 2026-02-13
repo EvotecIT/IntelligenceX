@@ -394,10 +394,15 @@ internal static partial class SetupRunner {
             review["openaiAccountIds"] = accountIds;
             review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
             review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
-        } else if (settings.OpenAIAccountIdsSet && string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
+        } else if (settings.OpenAIAccountIdsSet) {
             review.Remove("openaiAccountIds");
-            review.Remove("openaiAccountRotation");
-            review.Remove("openaiAccountFailover");
+            if (string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
+                review.Remove("openaiAccountRotation");
+                review.Remove("openaiAccountFailover");
+            } else {
+                review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
+                review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
+            }
         } else if (!string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
             review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
             review["openaiAccountFailover"] = settings.OpenAIAccountFailover;

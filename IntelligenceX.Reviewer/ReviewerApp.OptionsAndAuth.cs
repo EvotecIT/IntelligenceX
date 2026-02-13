@@ -297,15 +297,15 @@ public static partial class ReviewerApp {
         }
     }
 
-    private static async Task<(bool Success, string? Error)> TryResolveOpenAiAccountAsync(ReviewSettings settings) {
+    private static async Task<(bool Success, string? Error, bool BudgetGuardEvaluated)> TryResolveOpenAiAccountAsync(ReviewSettings settings) {
         var provider = ReviewProviderContracts.Get(settings.Provider);
         if (!provider.RequiresOpenAiAuthStore) {
-            return (true, null);
+            return (true, null, false);
         }
 
         var configuredCandidates = ResolveConfiguredOpenAiAccountCandidates(settings);
         if (configuredCandidates.Count == 0) {
-            return (true, null);
+            return (true, null, false);
         }
 
         var store = new FileAuthBundleStore();
@@ -321,7 +321,7 @@ public static partial class ReviewerApp {
 
         if (available.Count == 0) {
             return (false,
-                $"No OpenAI auth bundles found for configured account ids ({string.Join(", ", configuredCandidates)}).");
+                $"No OpenAI auth bundles found for configured account ids ({string.Join(", ", configuredCandidates)}).", false);
         }
 
         if (missing.Count > 0) {
@@ -332,7 +332,7 @@ public static partial class ReviewerApp {
         var ordered = OrderOpenAiAccounts(available, settings.OpenAiAccountRotation, settings.OpenAiAccountId,
             ResolveOpenAiRotationSeed());
         if (ordered.Count == 0) {
-            return (false, "No OpenAI accounts available after applying account rotation policy.");
+            return (false, "No OpenAI accounts available after applying account rotation policy.", false);
         }
 
         settings.OpenAiAccountIds = ordered;
@@ -342,7 +342,7 @@ public static partial class ReviewerApp {
         if (!requiresBudgetEvaluation) {
             settings.OpenAiAccountId = ordered[0];
             AnnounceSelectedOpenAiAccount(settings, ordered[0], "configured rotation");
-            return (true, null);
+            return (true, null, false);
         }
 
         var candidates = settings.OpenAiAccountFailover
@@ -354,14 +354,14 @@ public static partial class ReviewerApp {
             if (snapshot is null) {
                 settings.OpenAiAccountId = accountId;
                 AnnounceSelectedOpenAiAccount(settings, accountId, "usage unavailable (allow)");
-                return (true, null);
+                return (true, null, true);
             }
 
             var budgetFailure = EvaluateUsageBudgetGuardFailure(settings, snapshot);
             if (string.IsNullOrWhiteSpace(budgetFailure)) {
                 settings.OpenAiAccountId = accountId;
                 AnnounceSelectedOpenAiAccount(settings, accountId, "usage budget available");
-                return (true, null);
+                return (true, null, true);
             }
 
             blocked.Add($"[{accountId}] {TrimUsageBudgetFailureMessage(budgetFailure)}");
@@ -370,10 +370,10 @@ public static partial class ReviewerApp {
         if (!settings.OpenAiAccountFailover && ordered.Count > 1) {
             return (false, $"Primary OpenAI account '{ordered[0]}' is blocked by usage budget guard. " +
                            "Enable review.openaiAccountFailover to allow automatic fallback. " +
-                           string.Join(" ", blocked));
+                           string.Join(" ", blocked), true);
         }
 
-        return (false, "All configured OpenAI accounts are blocked by usage budget guard. " + string.Join(" ", blocked));
+        return (false, "All configured OpenAI accounts are blocked by usage budget guard. " + string.Join(" ", blocked), true);
     }
 
     private static IReadOnlyList<string> ResolveConfiguredOpenAiAccountCandidates(ReviewSettings settings) {

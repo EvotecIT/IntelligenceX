@@ -218,11 +218,13 @@ public static partial class ReviewerApp {
                 Console.Error.WriteLine(accountSelection.Error);
                 return 1;
             }
-            var usageBudgetFailure = await TryBuildUsageBudgetGuardFailureAsync(settings, settings.Provider)
-                .ConfigureAwait(false);
-            if (!string.IsNullOrWhiteSpace(usageBudgetFailure)) {
-                Console.Error.WriteLine(usageBudgetFailure);
-                return 1;
+            if (!accountSelection.BudgetGuardEvaluated) {
+                var usageBudgetFailure = await TryBuildUsageBudgetGuardFailureAsync(settings, settings.Provider)
+                    .ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(usageBudgetFailure)) {
+                    Console.Error.WriteLine(usageBudgetFailure);
+                    return 1;
+                }
             }
 
             allowWrites = !isUntrusted || settings.UntrustedPrAllowWrites;

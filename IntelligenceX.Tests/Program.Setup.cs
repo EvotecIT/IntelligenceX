@@ -385,6 +385,41 @@ internal static partial class Program {
         AssertEqual(null, review["openaiAccountFailover"], "config json openai merge clear failover");
     }
 
+    private static void TestSetupBuildConfigJsonMergeClearsOpenAiIdsButKeepsRoutingWithPrimary() {
+        var seed = """
+{
+  "review": {
+    "provider": "openai",
+    "openaiAccountIds": [
+      "acc-old-primary",
+      "acc-old-backup"
+    ],
+    "openaiAccountRotation": "sticky",
+    "openaiAccountFailover": false
+  }
+}
+""";
+        var content = SetupRunner.BuildReviewerConfigJsonFromSeedForTests(
+            new[] {
+                "--openai-account-id", "acc-primary",
+                "--openai-account-ids", string.Empty
+            },
+            seed);
+        AssertNotNull(content, "config json openai merge explicit-empty ids with primary content");
+
+        var root = System.Text.Json.Nodes.JsonNode.Parse(content) as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(root, "config json openai merge explicit-empty ids with primary root");
+        var review = root!["review"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(review, "config json openai merge explicit-empty ids with primary review");
+        AssertEqual("acc-primary", review!["openaiAccountId"]?.GetValue<string>(),
+            "config json openai merge explicit-empty ids with primary account");
+        AssertEqual(null, review["openaiAccountIds"], "config json openai merge explicit-empty ids removes ids");
+        AssertEqual("sticky", review["openaiAccountRotation"]?.GetValue<string>(),
+            "config json openai merge explicit-empty ids keeps rotation");
+        AssertEqual(false, review["openaiAccountFailover"]?.GetValue<bool>(),
+            "config json openai merge explicit-empty ids keeps failover");
+    }
+
     private static void TestSetupBuildConfigJsonMergePreservesReviewSettingsWhenEnablingAnalysis() {
         var seed = """
 {
