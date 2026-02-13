@@ -163,9 +163,13 @@ During analysis runs, configs are generated to a temporary directory and cleaned
 Current built-in runners in `analyze run`:
 - C#: Roslyn via `dotnet build` (SARIF output).
 - PowerShell: PSScriptAnalyzer via `pwsh` (IntelligenceX findings JSON output).
+- JS/TS: ESLint via `npx` when JavaScript/TypeScript rules are selected (SARIF output).
+- Python: Ruff via `ruff` when Python rules are selected (SARIF output).
 - Internal: IntelligenceX maintainability checks (for example `IXLOC001`).
   - `IXLOC001` reads `max-lines:<n>` rule tags (default `700`) and supports configurable generated suffix tags (`generated-suffix:<value>`), generated header marker tags (`generated-marker:<value>`), optional generated header scan depth tags (`generated-header-lines:<n>`, `0` disables header scanning), and additional excluded directory segments (`exclude-dir:<segment>`).
-  - Generated marker/suffix defaults are defined in the rule catalog tags (`Analysis/Catalog/rules/internal/IXLOC001.json`).
+  - `IXDUP001` measures per-file duplicated significant-line percentage and supports `max-duplication-percent:<0-100>` (default `25`), `dup-window-lines:<n>` (default `8`), and optional language-specific thresholds `max-duplication-percent-<language>:<0-100>` (`language`: `csharp|powershell|javascript|typescript|python` plus short aliases `cs|ps|js|ts|py`).
+  - Internal maintainability checks support `include-ext:<extension>` tags to scope analyzed file extensions per rule (default: `.cs`, `.ps1`, `.psm1`, `.psd1`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.py`).
+  - Generated marker/suffix defaults are defined in rule catalog tags (for example `Analysis/Catalog/rules/internal/IXLOC001.json` and `Analysis/Catalog/rules/internal/IXDUP001.json`).
   - Unknown or malformed maintainability tags are ignored with explicit warnings in `analyze run` output.
   - Tag warnings are aggregated per prefix/type to avoid log spam on large tag sets.
   - Generated suffix and marker tags are additive; defaults remain enabled unless you disable the rule.
@@ -209,8 +213,44 @@ For JS/TS and Python today, teams can still produce SARIF with their preferred t
 
 ## Migration Note
 If you enable `intelligencex-maintainability-default` in an existing repository, expect new warnings for large source files.
+`IXDUP001` defaults to `info` severity, so it is visible in findings but does not fail warning-level gates unless you raise severity.
 Use `analysis.disabledRules` or `analysis.severityOverrides` in `.intelligencex/reviewer.json` to phase in enforcement.
 IntelligenceX does not push analysis configuration into existing user repositories; policy only changes when the repository configuration is updated explicitly.
+
+## Duplication Gate
+`intelligencex analyze run` writes `artifacts/intelligencex.duplication.json` (schema `intelligencex.duplication.v2`) alongside findings.
+`intelligencex analyze gate` can enforce duplication thresholds via `analysis.gate.duplication`:
+- `enabled`: enable duplication gate checks.
+- `metricsPath`: duplication metrics file path (default `artifacts/intelligencex.duplication.json`).
+- `ruleIds`: duplication rule IDs to evaluate (default `IXDUP001`).
+- `maxFilePercent`: optional per-file threshold override (else each rule's configured max is used).
+- `maxOverallPercent`: optional overall threshold for each evaluated rule.
+- `scope`: `changed-files` (default) or `all` for duplication gate evaluation scope.
+- `newIssuesOnly`: apply baseline suppression to duplication violations.
+- `failOnUnavailable`: fail or skip when duplication metrics are unavailable.
+
+Example:
+
+```json
+{
+  "analysis": {
+    "gate": {
+      "enabled": true,
+      "baselinePath": ".intelligencex/analysis-baseline.json",
+      "duplication": {
+        "enabled": true,
+        "metricsPath": "artifacts/intelligencex.duplication.json",
+        "ruleIds": ["IXDUP001"],
+        "maxFilePercent": 30,
+        "maxOverallPercent": 25,
+        "scope": "changed-files",
+        "newIssuesOnly": true,
+        "failOnUnavailable": true
+      }
+    }
+  }
+}
+```
 
 ## Workflow Integration (Example)
 Analysis runs before review and publishes findings as artifacts. The reviewer reads those artifacts and merges findings into the summary and optional inline comments.

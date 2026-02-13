@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -9,10 +10,11 @@ using IntelligenceX.Reviewer;
 
 namespace IntelligenceX.Cli.Analysis;
 
-internal static class AnalyzeGateCommand {
+internal static partial class AnalyzeGateCommand {
     private const int ExitSuccess = 0;
     private const int ExitError = 1;
     private const int ExitGateFailed = 2;
+    private const string DuplicationOverallPath = ".intelligencex/duplication-overall";
 
     public static Task<int> RunAsync(string[] args) {
         var options = ParseArgs(args, out var error);
@@ -95,6 +97,7 @@ internal static class AnalyzeGateCommand {
             Console.WriteLine(changedFilesError);
             return Task.FromResult(ExitError);
         }
+        var changedPathSet = BuildChangedPathSet(prFiles);
         var reviewSettings = new ReviewSettings();
         reviewSettings.Analysis.Enabled = true;
         reviewSettings.Analysis.Results.Inputs = analysisSettings.Results.Inputs;
@@ -168,12 +171,28 @@ internal static class AnalyzeGateCommand {
             includeAllTypes);
         var hasHotspotFailures = hotspotFailures.Count > 0;
         var useNewIssuesOnly = options.NewIssuesOnly || analysisSettings.Gate.NewIssuesOnly;
+        var duplicationEnabled = analysisSettings.Gate.Duplication.Enabled;
+        var duplicationUseNewIssuesOnly = duplicationEnabled &&
+            (useNewIssuesOnly || analysisSettings.Gate.Duplication.NewIssuesOnly);
         var configuredBaselinePath = !string.IsNullOrWhiteSpace(options.BaselinePath)
             ? options.BaselinePath
             : analysisSettings.Gate.BaselinePath;
+        var baselineRequired = useNewIssuesOnly || duplicationUseNewIssuesOnly;
         var baselineSuppressed = 0;
+        var duplicationBaselineSuppressed = 0;
         var baselineLoadedCount = 0;
         var baselinePathResolved = string.Empty;
+        var duplicationEvaluation = duplicationEnabled
+            ? EvaluateDuplicationGate(analysisSettings, workspace, changedPathSet)
+            : DuplicationGateEvaluation.Disabled;
+        var duplicationViolations = duplicationEvaluation.Violations?.ToList() ?? new List<AnalysisFinding>();
+
+        if (duplicationEnabled && !duplicationEvaluation.Available) {
+            Console.WriteLine($"Static analysis duplication gate: unavailable ({duplicationEvaluation.UnavailableReason}).");
+            if (analysisSettings.Gate.Duplication.FailOnUnavailable) {
+                return Task.FromResult(ExitGateFailed);
+            }
+        }
 
         if (!string.IsNullOrWhiteSpace(options.WriteBaselinePath)) {
             var writePath = ResolveWorkspaceBoundPath(workspace, options.WriteBaselinePath!);
@@ -181,24 +200,28 @@ internal static class AnalyzeGateCommand {
                 Console.WriteLine($"Invalid baseline output path outside workspace: {options.WriteBaselinePath}");
                 return Task.FromResult(ExitError);
             }
-            var writeResult = AnalyzeGateBaseline.TryWriteBaselineFile(writePath, violations, out var writeError);
+            var baselineItems = new List<AnalysisFinding>(violations);
+            if (duplicationEvaluation.Available) {
+                baselineItems.AddRange(duplicationViolations);
+            }
+            var writeResult = AnalyzeGateBaseline.TryWriteBaselineFile(writePath, baselineItems, out var writeError);
             if (!writeResult) {
                 Console.WriteLine($"Failed to write baseline: {writeError}");
                 return Task.FromResult(ExitError);
             }
-            Console.WriteLine($"Static analysis baseline updated: {writePath} ({violations.Count} item(s) considered).");
+            Console.WriteLine($"Static analysis baseline updated: {writePath} ({baselineItems.Count} item(s) considered).");
         }
 
-        if (useNewIssuesOnly) {
+        if (baselineRequired) {
             if (string.IsNullOrWhiteSpace(configuredBaselinePath)) {
                 Console.WriteLine("Static analysis gate: unavailable (new-issues mode requires analysis.gate.baselinePath).");
-                return Task.FromResult(analysisSettings.Gate.FailOnUnavailable ? ExitGateFailed : ExitSuccess);
+                return Task.FromResult(ResolveUnavailableExit(analysisSettings, useNewIssuesOnly, duplicationUseNewIssuesOnly));
             }
 
             var baselinePath = ResolveWorkspaceBoundPath(workspace, configuredBaselinePath);
             if (baselinePath is null) {
                 Console.WriteLine($"Static analysis gate: unavailable (baseline path resolves outside workspace: {configuredBaselinePath}).");
-                return Task.FromResult(analysisSettings.Gate.FailOnUnavailable ? ExitGateFailed : ExitSuccess);
+                return Task.FromResult(ResolveUnavailableExit(analysisSettings, useNewIssuesOnly, duplicationUseNewIssuesOnly));
             }
             baselinePathResolved = baselinePath;
 
@@ -210,7 +233,7 @@ internal static class AnalyzeGateCommand {
                 out var baselineError);
             if (!baselineResult) {
                 Console.WriteLine($"Static analysis gate: unavailable ({baselineError}).");
-                return Task.FromResult(analysisSettings.Gate.FailOnUnavailable ? ExitGateFailed : ExitSuccess);
+                return Task.FromResult(ResolveUnavailableExit(analysisSettings, useNewIssuesOnly, duplicationUseNewIssuesOnly));
             }
             if (baselineSchemaInferred) {
                 Console.WriteLine($"Static analysis baseline schema inferred as '{baselineSchema}' (schema property missing).");
@@ -218,26 +241,55 @@ internal static class AnalyzeGateCommand {
             baselineLoadedCount = baselineKeys.Count;
             Console.WriteLine($"Static analysis baseline loaded: {baselinePath} (schema={baselineSchema}, items={baselineLoadedCount}).");
 
-            var newViolations = new List<AnalysisFinding>();
-            foreach (var violation in violations) {
-                var key = AnalyzeGateBaseline.BuildBaselineKey(violation);
-                if (baselineKeys.Contains(key)) {
-                    baselineSuppressed++;
-                    continue;
+            if (useNewIssuesOnly) {
+                var newViolations = new List<AnalysisFinding>();
+                foreach (var violation in violations) {
+                    var key = AnalyzeGateBaseline.BuildBaselineKey(violation);
+                    if (baselineKeys.Contains(key)) {
+                        baselineSuppressed++;
+                        continue;
+                    }
+                    newViolations.Add(violation);
                 }
-                newViolations.Add(violation);
+                violations = newViolations;
             }
-            violations = newViolations;
+
+            if (duplicationUseNewIssuesOnly && duplicationEvaluation.Available) {
+                var newDuplicationViolations = new List<AnalysisFinding>();
+                foreach (var violation in duplicationViolations) {
+                    var key = AnalyzeGateBaseline.BuildBaselineKey(violation);
+                    if (baselineKeys.Contains(key)) {
+                        duplicationBaselineSuppressed++;
+                        continue;
+                    }
+                    newDuplicationViolations.Add(violation);
+                }
+                duplicationViolations = newDuplicationViolations;
+            }
         }
 
-        if (violations.Count == 0 && !hasHotspotFailures) {
+        if (violations.Count == 0 && !hasHotspotFailures && duplicationViolations.Count == 0) {
             Console.WriteLine("Static analysis gate: pass");
             Console.WriteLine($"- Findings considered: {allFindings.Count}");
             Console.WriteLine($"- Violations: 0");
-            if (useNewIssuesOnly) {
+            if (duplicationEnabled) {
+                if (duplicationEvaluation.Available) {
+                    Console.WriteLine($"- Duplication rules evaluated: {duplicationEvaluation.RulesEvaluated}");
+                    Console.WriteLine($"- Duplication scope: {duplicationEvaluation.Scope}");
+                    Console.WriteLine("- Duplication violations: 0");
+                } else {
+                    Console.WriteLine("- Duplication checks: unavailable (skipped)");
+                }
+            }
+            if (baselineRequired) {
                 Console.WriteLine("- Baseline mode: new-only");
                 Console.WriteLine($"- Baseline items loaded: {baselineLoadedCount}");
-                Console.WriteLine($"- Existing findings suppressed by baseline: {baselineSuppressed}");
+                if (useNewIssuesOnly) {
+                    Console.WriteLine($"- Existing findings suppressed by baseline: {baselineSuppressed}");
+                }
+                if (duplicationUseNewIssuesOnly) {
+                    Console.WriteLine($"- Existing duplication violations suppressed by baseline: {duplicationBaselineSuppressed}");
+                }
                 if (!string.IsNullOrWhiteSpace(baselinePathResolved)) {
                     Console.WriteLine($"- Baseline file: {baselinePathResolved}");
                 }
@@ -250,11 +302,26 @@ internal static class AnalyzeGateCommand {
 
         Console.WriteLine("Static analysis gate: fail");
         Console.WriteLine($"- Findings considered: {allFindings.Count}");
-        Console.WriteLine($"- Violations: {violations.Count}" + (hasHotspotFailures ? $", hotspots to-review: {hotspotFailures.Count}" : string.Empty));
-        if (useNewIssuesOnly) {
+        Console.WriteLine($"- Violations: {violations.Count}" +
+                          (duplicationEnabled ? $", duplication: {duplicationViolations.Count}" : string.Empty) +
+                          (hasHotspotFailures ? $", hotspots to-review: {hotspotFailures.Count}" : string.Empty));
+        if (duplicationEnabled) {
+            if (duplicationEvaluation.Available) {
+                Console.WriteLine($"- Duplication rules evaluated: {duplicationEvaluation.RulesEvaluated}");
+                Console.WriteLine($"- Duplication scope: {duplicationEvaluation.Scope}");
+            } else {
+                Console.WriteLine("- Duplication checks: unavailable (skipped)");
+            }
+        }
+        if (baselineRequired) {
             Console.WriteLine("- Baseline mode: new-only");
             Console.WriteLine($"- Baseline items loaded: {baselineLoadedCount}");
-            Console.WriteLine($"- Existing findings suppressed by baseline: {baselineSuppressed}");
+            if (useNewIssuesOnly) {
+                Console.WriteLine($"- Existing findings suppressed by baseline: {baselineSuppressed}");
+            }
+            if (duplicationUseNewIssuesOnly) {
+                Console.WriteLine($"- Existing duplication violations suppressed by baseline: {duplicationBaselineSuppressed}");
+            }
             if (!string.IsNullOrWhiteSpace(baselinePathResolved)) {
                 Console.WriteLine($"- Baseline file: {baselinePathResolved}");
             }
@@ -264,6 +331,7 @@ internal static class AnalyzeGateCommand {
         }
 
         PrintViolationSummary(violations, catalog, maxRules: 10, maxItems: 20);
+        PrintDuplicationViolationSummary(duplicationViolations, maxItems: 20);
         if (hasHotspotFailures) {
             Console.WriteLine();
             Console.WriteLine("Hotspots to-review (blocking):");
@@ -276,342 +344,5 @@ internal static class AnalyzeGateCommand {
         }
 
         return Task.FromResult(ExitGateFailed);
-    }
-
-    public static void PrintHelp() {
-        Console.WriteLine("  intelligencex analyze gate [--workspace <path>] [--config <path>] [--changed-files <path>]");
-        Console.WriteLine("                             [--new-only] [--baseline <path>] [--write-baseline <path>]");
-    }
-
-    private static void PrintViolationSummary(IReadOnlyList<AnalysisFinding> violations, AnalysisCatalog catalog,
-        int maxRules, int maxItems) {
-        if (violations is null || violations.Count == 0) {
-            return;
-        }
-
-        var byRule = violations
-            .Where(v => !string.IsNullOrWhiteSpace(v.RuleId))
-            .GroupBy(v => v.RuleId!.Trim(), StringComparer.OrdinalIgnoreCase)
-            .Select(g => (RuleId: g.Key, Count: g.Count()))
-            .OrderByDescending(x => x.Count)
-            .ThenBy(x => x.RuleId, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        Console.WriteLine();
-        Console.WriteLine("Violations by rule:");
-        foreach (var item in byRule.Take(maxRules)) {
-            Console.WriteLine($"- {DescribeRule(item.RuleId, catalog)}={item.Count}");
-        }
-        if (byRule.Count > maxRules) {
-            Console.WriteLine($"- (truncated, {byRule.Count - maxRules} more)");
-        }
-
-        Console.WriteLine();
-        Console.WriteLine("Top violations:");
-        foreach (var finding in violations
-                     .OrderByDescending(f => AnalysisSeverity.Rank(f.Severity))
-                     .ThenBy(f => f.Path, StringComparer.OrdinalIgnoreCase)
-                     .ThenBy(f => f.Line)
-                     .Take(maxItems)) {
-            var sev = AnalysisSeverity.Normalize(finding.Severity);
-            Console.WriteLine($"- {finding.Path}:{finding.Line} {finding.RuleId} {sev} {finding.Message}");
-        }
-        if (violations.Count > maxItems) {
-            Console.WriteLine($"- (truncated, {violations.Count - maxItems} more)");
-        }
-    }
-
-    private static string DescribeRule(string ruleId, AnalysisCatalog catalog) {
-        if (catalog is not null && catalog.TryGetRule(ruleId, out var rule) && !string.IsNullOrWhiteSpace(rule.Title)) {
-            return $"{rule.Id} ({rule.Title})";
-        }
-        return ruleId;
-    }
-
-    private static string ResolveRuleType(string ruleId, AnalysisCatalog catalog, string fallback) {
-        if (catalog is null || string.IsNullOrWhiteSpace(ruleId)) {
-            return fallback;
-        }
-        if (catalog.TryGetRule(ruleId, out var rule) && !string.IsNullOrWhiteSpace(rule.Type)) {
-            return rule.Type.Trim().ToLowerInvariant();
-        }
-        return fallback;
-    }
-
-    private static HashSet<string> NormalizeTypes(IReadOnlyList<string>? types) {
-        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var type in types ?? Array.Empty<string>()) {
-            if (string.IsNullOrWhiteSpace(type)) {
-                continue;
-            }
-            set.Add(type.Trim().ToLowerInvariant());
-        }
-        return set;
-    }
-
-    private static IReadOnlyList<PullRequestFile> LoadChangedFiles(string? path, string workspace, out string? error) {
-        error = null;
-        if (string.IsNullOrWhiteSpace(path)) {
-            return Array.Empty<PullRequestFile>();
-        }
-        var resolved = ResolveWorkspaceBoundFilePath(workspace, path);
-        if (resolved is null) {
-            error = $"Invalid changed files list path outside workspace: {path}";
-            return Array.Empty<PullRequestFile>();
-        }
-        if (!File.Exists(resolved)) {
-            Console.WriteLine($"Warning: changed files list not found: {resolved}");
-            return Array.Empty<PullRequestFile>();
-        }
-        var list = new List<PullRequestFile>();
-        var fullWorkspace = Path.GetFullPath(workspace);
-        foreach (var line in File.ReadAllLines(resolved)) {
-            var file = (line ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(file) || file.StartsWith("#", StringComparison.Ordinal)) {
-                continue;
-            }
-            if (Path.IsPathRooted(file)) {
-                string relative;
-                try {
-                    var full = Path.GetFullPath(file);
-                    relative = Path.GetRelativePath(fullWorkspace, full);
-                } catch (Exception ex) {
-                    error = $"Invalid changed file entry '{file}': {ex.Message}";
-                    return Array.Empty<PullRequestFile>();
-                }
-                var normalizedRel = relative.Replace('\\', '/');
-                if (Path.IsPathRooted(relative) ||
-                    normalizedRel.Equals("..", StringComparison.Ordinal) ||
-                    normalizedRel.StartsWith("../", StringComparison.Ordinal)) {
-                    error = $"Invalid changed file entry outside workspace: {file}";
-                    return Array.Empty<PullRequestFile>();
-                }
-                file = normalizedRel;
-            } else {
-                file = file.Replace('\\', '/');
-            }
-            if (file.StartsWith("./", StringComparison.Ordinal)) {
-                file = file.Substring(2);
-            }
-            if (string.IsNullOrWhiteSpace(file)) {
-                continue;
-            }
-            list.Add(new PullRequestFile(file, "modified", patch: null));
-        }
-        return list;
-    }
-
-    private static List<string> EvaluateHotspotsToReview(
-        AnalysisSettings settings,
-        string workspace,
-        AnalysisCatalog catalog,
-        IReadOnlyList<AnalysisFinding> findings,
-        HashSet<string> enabledRuleIds,
-        int minRank,
-        HashSet<string> allowedTypes,
-        bool includeAllTypes) {
-        var list = new List<string>();
-        if (settings?.Gate?.FailOnHotspotsToReview != true) {
-            return list;
-        }
-        if (findings is null || findings.Count == 0) {
-            return list;
-        }
-
-        var hotspotFindings = new List<AnalysisFinding>();
-        foreach (var finding in findings) {
-            if (AnalysisSeverity.Rank(finding.Severity) < minRank) {
-                continue;
-            }
-            if (string.IsNullOrWhiteSpace(finding.RuleId)) {
-                continue;
-            }
-
-            var ruleId = finding.RuleId!.Trim();
-            var resolvedType = ResolveRuleType(
-                ruleId,
-                catalog,
-                fallback: ruleId.StartsWith("IXHOT", StringComparison.OrdinalIgnoreCase) ? "security-hotspot" : string.Empty);
-            var isHotspot = resolvedType == "security-hotspot" || ruleId.StartsWith("IXHOT", StringComparison.OrdinalIgnoreCase);
-            if (!isHotspot) {
-                continue;
-            }
-            if (!includeAllTypes && !allowedTypes.Contains(resolvedType)) {
-                continue;
-            }
-
-            var isEnabled = enabledRuleIds is not null && enabledRuleIds.Contains(ruleId);
-            if (!isEnabled && settings.Gate.IncludeOutsidePackRules != true) {
-                continue;
-            }
-
-            hotspotFindings.Add(finding);
-        }
-        if (hotspotFindings.Count == 0) {
-            return list;
-        }
-
-        var statePath = ResolveWorkspaceBoundPath(workspace, settings.Hotspots.StatePath);
-        if (statePath is null) {
-            // When hotspot gating is enabled, treat an out-of-workspace path as a hard failure signal.
-            list.Add("hotspots statePath resolves outside workspace");
-            return list;
-        }
-        var stateFile = HotspotStateStore.TryLoad(statePath);
-        var map = HotspotStateStore.ToMap(stateFile.Items);
-
-        foreach (var finding in hotspotFindings) {
-            var key = AnalysisHotspots.ComputeHotspotKey(finding);
-            if (string.IsNullOrWhiteSpace(key)) {
-                continue;
-            }
-            if (map.TryGetValue(key, out var entry)) {
-                var status = AnalysisHotspots.NormalizeStatus(entry.Status);
-                if (string.Equals(status, "to-review", StringComparison.OrdinalIgnoreCase)) {
-                    list.Add($"{finding.RuleId}:{finding.Path}:{finding.Line} ({key})");
-                }
-            } else {
-                // Missing entry should be handled by hotspots sync-state --check; treat as to-review to be safe.
-                list.Add($"{finding.RuleId}:{finding.Path}:{finding.Line} ({key})");
-            }
-        }
-        return list;
-    }
-
-    private static string? ResolveWorkspaceBoundFilePath(string workspace, string configuredPath) {
-        if (string.IsNullOrWhiteSpace(configuredPath)) {
-            return null;
-        }
-        var resolved = Path.IsPathRooted(configuredPath)
-            ? configuredPath
-            : Path.Combine(workspace, configuredPath);
-        try {
-            var fullWorkspace = Path.GetFullPath(workspace);
-            var full = Path.GetFullPath(resolved);
-            var relative = Path.GetRelativePath(fullWorkspace, full);
-            if (string.IsNullOrWhiteSpace(relative)) {
-                relative = ".";
-            }
-            var normalized = relative.Replace('\\', '/');
-            if (normalized.Equals(".", StringComparison.Ordinal)) {
-                return full;
-            }
-            if (Path.IsPathRooted(relative) ||
-                normalized.Equals("..", StringComparison.Ordinal) ||
-                normalized.StartsWith("../", StringComparison.Ordinal)) {
-                return null;
-            }
-            return full;
-        } catch {
-            return null;
-        }
-    }
-
-    private static string? ResolveWorkspaceBoundPath(string workspace, string configuredPath) {
-        if (string.IsNullOrWhiteSpace(configuredPath)) {
-            configuredPath = ".intelligencex/hotspots.json";
-        }
-        var resolved = Path.IsPathRooted(configuredPath)
-            ? configuredPath
-            : Path.Combine(workspace, configuredPath);
-        try {
-            var fullWorkspace = Path.GetFullPath(workspace);
-            var full = Path.GetFullPath(resolved);
-
-            // Use relative path computation to avoid prefix-matching bypasses (e.g. /ws2 matching /ws).
-            var relative = Path.GetRelativePath(fullWorkspace, full);
-            if (string.IsNullOrWhiteSpace(relative)) {
-                relative = ".";
-            }
-            var normalized = relative.Replace('\\', '/');
-            if (normalized.Equals(".", StringComparison.Ordinal)) {
-                return full;
-            }
-            if (normalized.Equals("..", StringComparison.Ordinal) || normalized.StartsWith("../", StringComparison.Ordinal)) {
-                return null;
-            }
-            if (Path.IsPathRooted(relative)) {
-                return null;
-            }
-
-            return full;
-        } catch {
-            return null;
-        }
-    }
-
-    private static GateOptions ParseArgs(string[] args, out string? error) {
-        error = null;
-        var options = new GateOptions();
-        for (var i = 0; i < args.Length; i++) {
-            var arg = args[i];
-            if (IsHelpToken(arg)) {
-                options.ShowHelp = true;
-                return options;
-            }
-            if (arg.Equals("--workspace", StringComparison.OrdinalIgnoreCase)) {
-                if (i + 1 >= args.Length) {
-                    error = "Missing value for --workspace.";
-                    return options;
-                }
-                options.Workspace = args[++i];
-                continue;
-            }
-            if (arg.Equals("--config", StringComparison.OrdinalIgnoreCase)) {
-                if (i + 1 >= args.Length) {
-                    error = "Missing value for --config.";
-                    return options;
-                }
-                options.ConfigPath = args[++i];
-                continue;
-            }
-            if (arg.Equals("--changed-files", StringComparison.OrdinalIgnoreCase)) {
-                if (i + 1 >= args.Length) {
-                    error = "Missing value for --changed-files.";
-                    return options;
-                }
-                options.ChangedFilesPath = args[++i];
-                continue;
-            }
-            if (arg.Equals("--new-only", StringComparison.OrdinalIgnoreCase)) {
-                options.NewIssuesOnly = true;
-                continue;
-            }
-            if (arg.Equals("--baseline", StringComparison.OrdinalIgnoreCase)) {
-                if (i + 1 >= args.Length) {
-                    error = "Missing value for --baseline.";
-                    return options;
-                }
-                options.BaselinePath = args[++i];
-                continue;
-            }
-            if (arg.Equals("--write-baseline", StringComparison.OrdinalIgnoreCase)) {
-                if (i + 1 >= args.Length) {
-                    error = "Missing value for --write-baseline.";
-                    return options;
-                }
-                options.WriteBaselinePath = args[++i];
-                continue;
-            }
-            error = $"Unknown option '{arg}' for gate.";
-            return options;
-        }
-        return options;
-    }
-
-    private static bool IsHelpToken(string value) {
-        return value.Equals("help", StringComparison.OrdinalIgnoreCase) ||
-               value.Equals("-h", StringComparison.OrdinalIgnoreCase) ||
-               value.Equals("--help", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private sealed class GateOptions {
-        public bool ShowHelp { get; set; }
-        public string? Workspace { get; set; }
-        public string? ConfigPath { get; set; }
-        public string? ChangedFilesPath { get; set; }
-        public bool NewIssuesOnly { get; set; }
-        public string? BaselinePath { get; set; }
-        public string? WriteBaselinePath { get; set; }
     }
 }

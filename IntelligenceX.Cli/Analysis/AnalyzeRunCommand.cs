@@ -13,6 +13,7 @@ namespace IntelligenceX.Cli.Analysis;
 
 internal static partial class AnalyzeRunCommand {
     private const string DefaultOutputDirectory = "artifacts";
+    private const string DuplicationMetricsFileName = "intelligencex.duplication.json";
     private const int DefaultMaxFileLinesLimit = 700;
     private const string MaxLinesTagPrefix = "max-lines:";
     private const int GeneratedHeaderLinesToInspect = 80;
@@ -70,9 +71,11 @@ internal static partial class AnalyzeRunCommand {
         Directory.CreateDirectory(outputDirectory);
 
         var findingsPath = Path.Combine(outputDirectory, "intelligencex.findings.json");
+        var duplicationMetricsPath = Path.Combine(outputDirectory, DuplicationMetricsFileName);
         if (!settings.Enabled) {
             Console.WriteLine("analysis.enabled is false. Writing empty findings output.");
             WriteFindingsJson(findingsPath, Array.Empty<AnalysisFindingItem>());
+            DuplicationMetricsStore.Write(duplicationMetricsPath, Array.Empty<DuplicationRuleMetrics>());
             return 0;
         }
 
@@ -85,15 +88,19 @@ internal static partial class AnalyzeRunCommand {
         if (policy.Rules.Count == 0) {
             Console.WriteLine("No rules selected from analysis packs. Writing empty findings output.");
             WriteFindingsJson(findingsPath, Array.Empty<AnalysisFindingItem>());
+            DuplicationMetricsStore.Write(duplicationMetricsPath, Array.Empty<DuplicationRuleMetrics>());
             return 0;
         }
 
         var csharpRules = policy.SelectByLanguage("csharp", "cs");
         var powershellRules = policy.SelectByLanguage("powershell", "ps");
+        var javascriptRules = policy.SelectByLanguage("javascript", "js", "typescript", "ts");
+        var pythonRules = policy.SelectByLanguage("python", "py");
         var internalRules = policy.SelectByLanguage("internal");
         var runWarnings = new List<string>();
         var runFailures = new List<string>();
         var findings = new List<AnalysisFindingItem>();
+        var duplicationRuleMetrics = new List<DuplicationRuleMetrics>();
 
         var tempConfigDirectory = Path.Combine(Path.GetTempPath(), "ix-analysis-run-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempConfigDirectory);
@@ -125,8 +132,22 @@ internal static partial class AnalyzeRunCommand {
                     findings.AddRange(psResult.Findings);
                 }
             }
+            if (javascriptRules.Count > 0) {
+                var jsResult = await RunJavaScriptAsync(options, workspace, outputDirectory, runWarnings).ConfigureAwait(false);
+                if (!jsResult.Success) {
+                    runFailures.Add(jsResult.Message);
+                }
+            }
+            if (pythonRules.Count > 0) {
+                var pyResult = await RunPythonAsync(options, workspace, outputDirectory, runWarnings).ConfigureAwait(false);
+                if (!pyResult.Success) {
+                    runFailures.Add(pyResult.Message);
+                }
+            }
             if (internalRules.Count > 0) {
-                findings.AddRange(RunInternalMaintainabilityChecks(workspace, outputDirectory, internalRules, runWarnings));
+                var internalResult = RunInternalMaintainabilityChecks(workspace, outputDirectory, internalRules, runWarnings);
+                findings.AddRange(internalResult.Findings);
+                duplicationRuleMetrics.AddRange(internalResult.DuplicationRuleMetrics);
             }
 
             if (csharpRules.Count == 0) {
@@ -140,12 +161,14 @@ internal static partial class AnalyzeRunCommand {
         }
 
         WriteFindingsJson(findingsPath, findings);
+        DuplicationMetricsStore.Write(duplicationMetricsPath, duplicationRuleMetrics);
 
         foreach (var warning in runWarnings.Distinct(StringComparer.OrdinalIgnoreCase)) {
             Console.WriteLine($"Warning: {warning}");
         }
         if (runFailures.Count == 0) {
             Console.WriteLine($"Analysis complete. Findings JSON: {findingsPath}");
+            Console.WriteLine($"Duplication metrics JSON: {duplicationMetricsPath}");
             return 0;
         }
 
@@ -247,6 +270,14 @@ internal static partial class AnalyzeRunCommand {
                 options.PowerShellCommand = args[++i];
                 continue;
             }
+            if (arg.Equals("--npx-command", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length) {
+                options.NpxCommand = args[++i];
+                continue;
+            }
+            if (arg.Equals("--ruff-command", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length) {
+                options.RuffCommand = args[++i];
+                continue;
+            }
             if (arg.Equals("--strict", StringComparison.OrdinalIgnoreCase)) {
                 options.Strict = true;
                 continue;
@@ -259,7 +290,8 @@ internal static partial class AnalyzeRunCommand {
 
     public static void PrintHelp() {
         Console.WriteLine("  intelligencex analyze run [--config <path>] [--workspace <path>] [--out <dir>]");
-        Console.WriteLine("                         [--dotnet-command <path>] [--framework <tfm>] [--pwsh-command <path>] [--strict]");
+        Console.WriteLine("                         [--dotnet-command <path>] [--framework <tfm>] [--pwsh-command <path>]");
+        Console.WriteLine("                         [--npx-command <path>] [--ruff-command <path>] [--strict]");
     }
 
     internal static string BuildPowerShellRunnerScriptForTests() {
@@ -320,7 +352,7 @@ function Get-AnalyzerPaths {
                 }
 
                 try {
-                    $attributes = [System.IO.Directory]::GetAttributes($subdirectory)
+                    $attributes = [System.IO.File]::GetAttributes($subdirectory)
                     if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
                         continue
                     }
@@ -467,6 +499,8 @@ if ($sawInvokeErrors -and $FailOnAnalyzerErrors) {
         public string DotnetCommand { get; set; } = "dotnet";
         public string? DotnetFramework { get; set; }
         public string PowerShellCommand { get; set; } = "pwsh";
+        public string NpxCommand { get; set; } = "npx";
+        public string RuffCommand { get; set; } = "ruff";
         public bool Strict { get; set; }
     }
 

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using IntelligenceX.Json;
 
@@ -64,6 +65,37 @@ public static class AnalysisConfigReader {
             settings.Gate.FailOnHotspotsToReview = ReadBool(gate, "failOnHotspotsToReview", settings.Gate.FailOnHotspotsToReview);
             settings.Gate.NewIssuesOnly = ReadBool(gate, "newIssuesOnly", settings.Gate.NewIssuesOnly);
             settings.Gate.BaselinePath = gate.GetString("baselinePath") ?? settings.Gate.BaselinePath;
+
+            var duplication = gate.GetObject("duplication");
+            if (duplication is not null) {
+                settings.Gate.Duplication.Enabled = ReadBool(duplication, "enabled", settings.Gate.Duplication.Enabled);
+                settings.Gate.Duplication.MetricsPath =
+                    duplication.GetString("metricsPath") ?? settings.Gate.Duplication.MetricsPath;
+                var ruleIds = AnalysisJsonHelpers.ReadStringList(duplication, "ruleIds");
+                if (ruleIds is not null) {
+                    var normalizedRuleIds = NormalizeRuleIds(ruleIds);
+                    if (normalizedRuleIds.Count > 0) {
+                        settings.Gate.Duplication.RuleIds = normalizedRuleIds;
+                    }
+                }
+                settings.Gate.Duplication.MaxFilePercent = ReadPercentOrDefault(
+                    duplication,
+                    "maxFilePercent",
+                    settings.Gate.Duplication.MaxFilePercent);
+                settings.Gate.Duplication.MaxOverallPercent = ReadPercentOrDefault(
+                    duplication,
+                    "maxOverallPercent",
+                    settings.Gate.Duplication.MaxOverallPercent);
+                settings.Gate.Duplication.Scope = NormalizeDuplicationScope(
+                    duplication.GetString("scope"),
+                    settings.Gate.Duplication.Scope);
+                settings.Gate.Duplication.NewIssuesOnly =
+                    ReadBool(duplication, "newIssuesOnly", settings.Gate.Duplication.NewIssuesOnly);
+                settings.Gate.Duplication.FailOnUnavailable = ReadBool(
+                    duplication,
+                    "failOnUnavailable",
+                    settings.Gate.FailOnUnavailable);
+            }
         }
 
         var results = analysis.GetObject("results");
@@ -110,6 +142,17 @@ public static class AnalysisConfigReader {
         return (int)value.Value;
     }
 
+    private static double? ReadPercentOrDefault(JsonObject obj, string key, double? fallback) {
+        var value = obj.GetDouble(key);
+        if (!value.HasValue) {
+            return fallback;
+        }
+        if (value.Value is < 0 or > 100) {
+            return fallback;
+        }
+        return value.Value;
+    }
+
     private static bool ReadBool(JsonObject obj, string key, bool fallback) {
         if (obj.TryGetValue(key, out var value)) {
             return value?.AsBoolean(fallback) ?? fallback;
@@ -129,5 +172,37 @@ public static class AnalysisConfigReader {
             "below" => "below",
             _ => fallback
         };
+    }
+
+    private static string NormalizeDuplicationScope(string? value, string fallback) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return fallback;
+        }
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "all" => "all",
+            "changedfiles" => "changed-files",
+            "changed-files" => "changed-files",
+            "changed" => "changed-files",
+            _ => fallback
+        };
+    }
+
+    private static IReadOnlyList<string> NormalizeRuleIds(IReadOnlyList<string> ruleIds) {
+        var normalized = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var ruleId in ruleIds ?? Array.Empty<string>()) {
+            if (string.IsNullOrWhiteSpace(ruleId)) {
+                continue;
+            }
+            var trimmed = ruleId.Trim();
+            if (trimmed.Length == 0) {
+                continue;
+            }
+            if (seen.Add(trimmed)) {
+                normalized.Add(trimmed);
+            }
+        }
+        return normalized;
     }
 }

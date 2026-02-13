@@ -24,6 +24,9 @@ Use this skill when changing analysis behavior or static-analysis policy:
 - Run suite:
   - `.agents/skills/intelligencex-analysis-gate/scripts/run-analysis-suite.sh fast`
   - `.agents/skills/intelligencex-analysis-gate/scripts/run-analysis-suite.sh full`
+- Optional duplication performance benchmark:
+  - `.agents/skills/intelligencex-analysis-gate/scripts/benchmark-duplication.sh`
+  - Environment knobs: `FILES`, `LINES`, `LANGUAGE`, `FRAMEWORK`, `KEEP_WORKDIR`, `WORKDIR`
 
 ## Fail-Fast Rules
 - Fail if catalog validation is not clean.

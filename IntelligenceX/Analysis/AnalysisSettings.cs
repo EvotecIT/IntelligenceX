@@ -140,6 +140,48 @@ public sealed class AnalysisGateSettings {
     /// Relative or absolute path to the findings baseline used when <see cref="NewIssuesOnly"/> is enabled.
     /// </summary>
     public string BaselinePath { get; set; } = ".intelligencex/analysis-baseline.json";
+    /// <summary>
+    /// Duplication-specific gate settings.
+    /// </summary>
+    public AnalysisGateDuplicationSettings Duplication { get; } = new AnalysisGateDuplicationSettings();
+}
+
+/// <summary>
+/// Settings that control duplication-specific gate behavior.
+/// </summary>
+public sealed class AnalysisGateDuplicationSettings {
+    /// <summary>
+    /// Enables duplication gate checks based on duplication metrics produced by <c>analyze run</c>.
+    /// </summary>
+    public bool Enabled { get; set; }
+    /// <summary>
+    /// Path to duplication metrics JSON emitted by <c>analyze run</c>.
+    /// </summary>
+    public string MetricsPath { get; set; } = "artifacts/intelligencex.duplication.json";
+    /// <summary>
+    /// Rule IDs to evaluate from the duplication metrics payload.
+    /// </summary>
+    public IReadOnlyList<string> RuleIds { get; set; } = new[] { "IXDUP001" };
+    /// <summary>
+    /// Optional per-file duplication threshold override (0-100). When null, each rule's configured threshold is used.
+    /// </summary>
+    public double? MaxFilePercent { get; set; }
+    /// <summary>
+    /// Optional overall duplication threshold (0-100) across all significant lines.
+    /// </summary>
+    public double? MaxOverallPercent { get; set; }
+    /// <summary>
+    /// Scope used for duplication gating. Supported values: <c>changed-files</c> (default) and <c>all</c>.
+    /// </summary>
+    public string Scope { get; set; } = "changed-files";
+    /// <summary>
+    /// When true, duplication gate checks honor baseline/new-only suppression semantics.
+    /// </summary>
+    public bool NewIssuesOnly { get; set; }
+    /// <summary>
+    /// When true, unavailable duplication metrics fail the gate.
+    /// </summary>
+    public bool FailOnUnavailable { get; set; }
 }
 
 /// <summary>

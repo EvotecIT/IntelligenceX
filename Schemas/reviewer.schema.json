@@ -152,7 +152,21 @@
             "failOnNoEnabledRules": { "type": "boolean" },
             "failOnHotspotsToReview": { "type": "boolean" },
             "newIssuesOnly": { "type": "boolean" },
-            "baselinePath": { "type": "string" }
+            "baselinePath": { "type": "string" },
+            "duplication": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "metricsPath": { "type": "string" },
+                "ruleIds": { "type": "array", "items": { "type": "string" } },
+                "maxFilePercent": { "type": "number", "minimum": 0, "maximum": 100 },
+                "maxOverallPercent": { "type": "number", "minimum": 0, "maximum": 100 },
+                "scope": { "type": "string", "enum": ["changed-files", "all"] },
+                "newIssuesOnly": { "type": "boolean" },
+                "failOnUnavailable": { "type": "boolean" }
+              }
+            }
           }
         },
         "results": {
