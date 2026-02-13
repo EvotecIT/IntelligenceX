@@ -868,7 +868,19 @@
   }
 
   function normalizePackId(value) {
-    return (value || "").toLowerCase().replace(/[\s_]/g, "-");
+    var normalized = String(value || "").toLowerCase().replace(/[\s_.]/g, "-");
+    if (normalized.indexOf("ix-") === 0) {
+      normalized = normalized.substring(3);
+    } else if (normalized.indexOf("intelligencex-") === 0) {
+      normalized = normalized.substring("intelligencex-".length);
+    }
+
+    if (normalized === "active-directory" || normalized === "activedirectory" || normalized === "adplayground") return "ad";
+    if (normalized === "computerx") return "system";
+    if (normalized === "event-log") return "eventlog";
+    if (normalized === "file-system" || normalized === "filesystem") return "fs";
+    if (normalized === "reviewersetup") return "reviewer-setup";
+    return normalized;
   }
 
   function findPackById(packId) {
@@ -884,8 +896,11 @@
 
   function mapCategoryToPackId(category) {
     var normalized = normalizePackId(category);
+    if (normalized === "ad") return "ad";
     if (normalized === "active-directory") return "ad";
+    if (normalized === "eventlog") return "eventlog";
     if (normalized === "event-log") return "eventlog";
+    if (normalized === "fs") return "fs";
     if (normalized === "file-system") return "fs";
     if (normalized === "system") return "system";
     if (normalized === "email") return "email";

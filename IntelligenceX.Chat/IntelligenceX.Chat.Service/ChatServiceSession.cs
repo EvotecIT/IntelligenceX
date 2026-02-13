@@ -727,6 +727,7 @@ internal sealed class ChatServiceSession {
                 toolDefs = filtered;
             }
         }
+        toolDefs = SanitizeToolDefinitions(toolDefs);
 
         var parallelTools = request.Options?.ParallelTools ?? _options.ParallelTools;
         var maxRounds = request.Options?.MaxToolRounds ?? _options.MaxToolRounds;
@@ -743,7 +744,7 @@ internal sealed class ChatServiceSession {
         };
 
         await TryWriteStatusAsync(writer, request.RequestId, threadId, status: "thinking").ConfigureAwait(false);
-        TurnInfo turn = await client.ChatAsync(ChatInput.FromText(request.Text), options, turnToken).ConfigureAwait(false);
+        TurnInfo turn = await ChatWithToolSchemaRecoveryAsync(client, ChatInput.FromText(request.Text), options, turnToken).ConfigureAwait(false);
 
         for (var round = 0; round < Math.Max(1, maxRounds); round++) {
             var extracted = ToolCallParser.Extract(turn);
@@ -785,10 +786,60 @@ internal sealed class ChatServiceSession {
             }
             options.NewThread = false;
             await TryWriteStatusAsync(writer, request.RequestId, threadId, status: "thinking").ConfigureAwait(false);
-            turn = await client.ChatAsync(next, options, turnToken).ConfigureAwait(false);
+            turn = await ChatWithToolSchemaRecoveryAsync(client, next, options, turnToken).ConfigureAwait(false);
         }
 
         throw new InvalidOperationException($"Tool runner exceeded max rounds ({maxRounds}).");
+    }
+
+    private static IReadOnlyList<ToolDefinition> SanitizeToolDefinitions(IReadOnlyList<ToolDefinition> definitions) {
+        if (definitions.Count == 0) {
+            return Array.Empty<ToolDefinition>();
+        }
+
+        var sanitized = new List<ToolDefinition>(definitions.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            if (definition is null) {
+                continue;
+            }
+
+            var normalizedName = (definition.Name ?? string.Empty).Trim();
+            if (normalizedName.Length == 0 || !seen.Add(normalizedName)) {
+                continue;
+            }
+
+            sanitized.Add(definition);
+        }
+
+        return sanitized.Count == 0 ? Array.Empty<ToolDefinition>() : sanitized;
+    }
+
+    private static async Task<TurnInfo> ChatWithToolSchemaRecoveryAsync(IntelligenceXClient client, ChatInput input, ChatOptions options,
+        CancellationToken cancellationToken) {
+        try {
+            return await client.ChatAsync(input, options, cancellationToken).ConfigureAwait(false);
+        } catch (Exception ex) when (ShouldRetryWithoutTools(ex, options)) {
+            options.Tools = null;
+            options.ToolChoice = null;
+            return await client.ChatAsync(input, options, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static bool ShouldRetryWithoutTools(Exception ex, ChatOptions options) {
+        if (options.Tools is not { Count: > 0 }) {
+            return false;
+        }
+
+        var message = ex.Message ?? string.Empty;
+        if (message.Length == 0) {
+            return false;
+        }
+
+        return message.IndexOf("missing required parameter", StringComparison.OrdinalIgnoreCase) >= 0
+               && message.IndexOf("tools", StringComparison.OrdinalIgnoreCase) >= 0
+               && message.IndexOf(".name", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private async Task<IReadOnlyList<ToolOutputDto>> ExecuteToolsAsync(StreamWriter writer, string requestId, string threadId, IReadOnlyList<ToolCall> calls,
@@ -1078,7 +1129,7 @@ internal sealed class ChatServiceSession {
     }
 
     private static string ResolvePackDisplayName(string? descriptorId, string? fallbackName) {
-        var packId = (descriptorId ?? string.Empty).Trim().ToLowerInvariant();
+        var packId = NormalizePackId(descriptorId);
         return packId switch {
             "system" => "ComputerX",
             "ad" => "ADPlayground",
@@ -1099,17 +1150,42 @@ internal sealed class ChatServiceSession {
             return ToolPackSourceKind.OpenSource;
         }
 
-        var packId = (descriptorId ?? string.Empty).Trim().ToLowerInvariant();
+        var packId = NormalizePackId(descriptorId);
         return packId switch {
             "eventlog" => ToolPackSourceKind.Builtin,
             "fs" => ToolPackSourceKind.Builtin,
             "powershell" => ToolPackSourceKind.Builtin,
-            "reviewer_setup" => ToolPackSourceKind.Builtin,
+            "reviewersetup" => ToolPackSourceKind.Builtin,
             "email" => ToolPackSourceKind.Builtin,
             "system" => ToolPackSourceKind.ClosedSource,
             "ad" => ToolPackSourceKind.ClosedSource,
             "testimox" => ToolPackSourceKind.ClosedSource,
             _ => ToolPackSourceKind.OpenSource
+        };
+    }
+
+    private static string NormalizePackId(string? descriptorId) {
+        var normalized = (descriptorId ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        normalized = normalized.Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .Replace(".", string.Empty, StringComparison.Ordinal);
+
+        if (normalized.StartsWith("ix", StringComparison.Ordinal)) {
+            normalized = normalized[2..];
+        } else if (normalized.StartsWith("intelligencex", StringComparison.Ordinal)) {
+            normalized = normalized["intelligencex".Length..];
+        }
+
+        return normalized switch {
+            "computerx" => "system",
+            "adplayground" => "ad",
+            "activedirectory" => "ad",
+            "filesystem" => "fs",
+            _ => normalized
         };
     }
 

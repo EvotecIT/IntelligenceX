@@ -42,6 +42,7 @@ public sealed partial class MainWindow : Window {
     private const int MaxConversations = 40;
     private const int MaxMessagesPerConversation = 250;
     private const string DefaultConversationTitle = "New Chat";
+    private static readonly TimeSpan StreamingTranscriptRenderCadence = TimeSpan.FromMilliseconds(80);
     private static readonly Regex UserNameIntentRegex = new(@"\b(?:you can call me|call me|my name is|name is|set my name to|change my name to)\s+(?<value>[^,\.\!\?\r\n]{1,64})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex PersonaIntentRegex = new(@"\b(?:assistant\s+persona|persona|style|tone|mode)\s*(?:is|to|=|:)\s*(?<value>[^,\.\!\?\r\n]{2,180})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex PersonaUseIntentRegex = new(@"\b(?:use|switch to|go with)\s+(?<value>[^,\.\!\?\r\n]{2,180})\s+(?:persona|style|tone|mode)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
@@ -168,6 +169,9 @@ public sealed partial class MainWindow : Window {
     private readonly List<ConversationRuntime> _conversations = new();
     private List<(string Role, string Text, DateTime Time)> _messages = new();
     private readonly StringBuilder _assistantStreaming = new();
+    private readonly SemaphoreSlim _transcriptRenderGate = new(1, 1);
+    private long _transcriptRenderGeneration;
+    private long _transcriptLastRenderUtcTicks;
 
     private Process? _serviceProcess;
     private string? _servicePipeName;

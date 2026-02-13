@@ -236,6 +236,17 @@ internal static partial class Program {
         ok = (bool)method!.Invoke(null, new object?[] { rawOnly })!;
         AssertEqual(true, ok, "native error raw-text missing tools[].name triggers fallback");
 
+        var rawDiagnosticOnly = (Exception)nativeCtor!.Invoke(new object?[] {
+            "Request validation failed.",
+            "Missing required parameter: 'tools[0].name'.",
+            null,
+            null,
+            System.Net.HttpStatusCode.BadRequest,
+            false
+        })!;
+        ok = (bool)method!.Invoke(null, new object?[] { rawDiagnosticOnly })!;
+        AssertEqual(true, ok, "native error diagnostic raw-text missing tools[].name triggers fallback");
+
         var unrelated = new InvalidOperationException("Missing required parameter: 'input'.");
         ok = (bool)method!.Invoke(null, new object?[] { unrelated })!;
         AssertEqual(false, ok, "unrelated missing parameter does not trigger fallback");

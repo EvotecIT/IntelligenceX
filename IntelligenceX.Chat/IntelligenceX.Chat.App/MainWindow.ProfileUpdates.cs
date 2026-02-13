@@ -153,8 +153,11 @@ public sealed partial class MainWindow : Window {
 
     private static string MapCategoryToPackId(string category) {
         return NormalizePackId(category) switch {
+            "ad" => "ad",
             "active-directory" => "ad",
+            "eventlog" => "eventlog",
             "event-log" => "eventlog",
+            "fs" => "fs",
             "file-system" => "fs",
             "system" => "system",
             "email" => "email",
@@ -171,7 +174,29 @@ public sealed partial class MainWindow : Window {
             return string.Empty;
         }
 
-        return normalized.Replace("_", "-", StringComparison.Ordinal).Replace(" ", "-", StringComparison.Ordinal);
+        normalized = normalized
+            .Replace("_", "-", StringComparison.Ordinal)
+            .Replace(".", "-", StringComparison.Ordinal)
+            .Replace(" ", "-", StringComparison.Ordinal);
+
+        if (normalized.StartsWith("ix-", StringComparison.Ordinal)) {
+            normalized = normalized[3..];
+        } else if (normalized.StartsWith("intelligencex-", StringComparison.Ordinal)) {
+            normalized = normalized["intelligencex-".Length..];
+        }
+
+        return normalized switch {
+            "active-directory" => "ad",
+            "activedirectory" => "ad",
+            "adplayground" => "ad",
+            "computerx" => "system",
+            "event-log" => "eventlog",
+            "filesystem" => "fs",
+            "file-system" => "fs",
+            "reviewersetup" => "reviewer-setup",
+            "reviewer-setup" => "reviewer-setup",
+            _ => normalized
+        };
     }
 
     private async Task SetTimeModeAsync(string value) {

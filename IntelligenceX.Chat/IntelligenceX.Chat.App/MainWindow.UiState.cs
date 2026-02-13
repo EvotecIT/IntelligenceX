@@ -63,9 +63,36 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        var html = BuildMessagesHtml(_messages, _timestampFormat);
-        var json = JsonSerializer.Serialize(html);
-        await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetTranscript(" + json + ");").AsTask()).ConfigureAwait(false);
+        var requestedGeneration = Interlocked.Increment(ref _transcriptRenderGeneration);
+        await _transcriptRenderGate.WaitAsync().ConfigureAwait(false);
+        try {
+            var latestGeneration = Interlocked.Read(ref _transcriptRenderGeneration);
+            if (requestedGeneration < latestGeneration) {
+                return;
+            }
+
+            if (_isSending && _assistantStreaming.Length > 0) {
+                var previousTicks = Interlocked.Read(ref _transcriptLastRenderUtcTicks);
+                if (previousTicks > 0) {
+                    var elapsedTicks = DateTime.UtcNow.Ticks - previousTicks;
+                    var minimumTicks = StreamingTranscriptRenderCadence.Ticks;
+                    if (elapsedTicks < minimumTicks) {
+                        await Task.Delay(TimeSpan.FromTicks(minimumTicks - elapsedTicks)).ConfigureAwait(false);
+                        latestGeneration = Interlocked.Read(ref _transcriptRenderGeneration);
+                        if (requestedGeneration < latestGeneration) {
+                            return;
+                        }
+                    }
+                }
+            }
+
+            var html = BuildMessagesHtml(_messages, _timestampFormat);
+            var json = JsonSerializer.Serialize(html);
+            await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetTranscript(" + json + ");").AsTask()).ConfigureAwait(false);
+            Interlocked.Exchange(ref _transcriptLastRenderUtcTicks, DateTime.UtcNow.Ticks);
+        } finally {
+            _transcriptRenderGate.Release();
+        }
     }
 
     private async Task SetStatusAsync(string text) {
@@ -196,9 +223,10 @@ public sealed partial class MainWindow : Window {
     private static object[] BuildPackState(ToolPackInfoDto[] packs) {
         var list = new List<object>(packs.Length);
         foreach (var pack in packs) {
+            var normalizedPackId = NormalizePackId(pack.Id);
             list.Add(new {
-                id = pack.Id,
-                name = ResolvePackDisplayName(pack.Id, pack.Name),
+                id = string.IsNullOrWhiteSpace(normalizedPackId) ? pack.Id : normalizedPackId,
+                name = ResolvePackDisplayName(normalizedPackId, pack.Name),
                 tier = pack.Tier.ToString(),
                 enabled = pack.Enabled,
                 isDangerous = pack.IsDangerous,
@@ -213,7 +241,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private static string ResolvePackDisplayName(string? id, string? fallbackName) {
-        var normalized = (id ?? string.Empty).Trim().ToLowerInvariant();
+        var normalized = NormalizePackId(id);
         return normalized switch {
             "system" => "ComputerX",
             "ad" => "ADPlayground",
@@ -238,13 +266,14 @@ public sealed partial class MainWindow : Window {
             _toolPackIds.TryGetValue(name, out var packId);
             _toolPackNames.TryGetValue(name, out var packName);
             _toolStates.TryGetValue(name, out var enabled);
-            var normalizedPackName = ResolvePackDisplayName(packId, packName);
+            var normalizedPackId = NormalizePackId(packId);
+            var normalizedPackName = ResolvePackDisplayName(normalizedPackId, packName);
             list.Add(new {
                 name,
                 displayName = string.IsNullOrWhiteSpace(displayName) ? FormatToolDisplayName(name) : displayName,
                 description = description ?? string.Empty,
                 category = string.IsNullOrWhiteSpace(category) ? InferToolCategory(name) : category,
-                packId = string.IsNullOrWhiteSpace(packId) ? null : packId,
+                packId = string.IsNullOrWhiteSpace(normalizedPackId) ? null : normalizedPackId,
                 packName = string.IsNullOrWhiteSpace(normalizedPackName) ? null : normalizedPackName,
                 tags = tags ?? Array.Empty<string>(),
                 enabled
