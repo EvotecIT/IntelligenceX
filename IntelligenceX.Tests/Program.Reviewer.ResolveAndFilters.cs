@@ -40,6 +40,54 @@ internal static partial class Program {
         AssertSequenceEqual(new[] { "acc-3", "acc-1", "acc-2" }, ordered.ToArray(), "openai account order sticky");
     }
 
+    private static void TestTryResolveOpenAiAccountStoresRotatedOrder() {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"ix-openai-accounts-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        var authPath = Path.Combine(tempDir, "auth-store.json");
+        var previousAuthPath = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH");
+        var previousRunNumber = Environment.GetEnvironmentVariable("GITHUB_RUN_NUMBER");
+
+        try {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH", authPath);
+            Environment.SetEnvironmentVariable("GITHUB_RUN_NUMBER", "4");
+
+            var store = new IntelligenceX.OpenAI.Auth.FileAuthBundleStore(authPath);
+            store.SaveAsync(new IntelligenceX.OpenAI.Auth.AuthBundle("openai-codex", "token-1", "refresh-1",
+                    DateTimeOffset.UtcNow.AddHours(1)) {
+                    AccountId = "acc-1"
+                }).GetAwaiter().GetResult();
+            store.SaveAsync(new IntelligenceX.OpenAI.Auth.AuthBundle("openai-codex", "token-2", "refresh-2",
+                    DateTimeOffset.UtcNow.AddHours(1)) {
+                    AccountId = "acc-2"
+                }).GetAwaiter().GetResult();
+            store.SaveAsync(new IntelligenceX.OpenAI.Auth.AuthBundle("openai-codex", "token-3", "refresh-3",
+                    DateTimeOffset.UtcNow.AddHours(1)) {
+                    AccountId = "acc-3"
+                }).GetAwaiter().GetResult();
+
+            var settings = new ReviewSettings {
+                Provider = ReviewProvider.OpenAI,
+                OpenAiAccountIds = new[] { "acc-1", "acc-2", "acc-3" },
+                OpenAiAccountRotation = "round-robin",
+                ReviewUsageBudgetGuard = false
+            };
+
+            var result = CallTryResolveOpenAiAccount(settings);
+            AssertEqual(true, result.Success, "try resolve openai account success");
+            AssertEqual("acc-2", settings.OpenAiAccountId, "try resolve openai account selected");
+            AssertSequenceEqual(new[] { "acc-2", "acc-3", "acc-1" }, settings.OpenAiAccountIds.ToArray(),
+                "try resolve openai account rotated order");
+        } finally {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH", previousAuthPath);
+            Environment.SetEnvironmentVariable("GITHUB_RUN_NUMBER", previousRunNumber);
+            try {
+                Directory.Delete(tempDir, recursive: true);
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
+    }
+
     private static void TestResolveThreadsEndpointResolution() {
         var (baseUri, graphQlPath) = IntelligenceX.Cli.ReviewThreads.ReviewThreadResolveRunner.ResolveGraphQlEndpoint("https://github.company.local/api/v3");
         AssertEqual("https://github.company.local/api/v3", baseUri.ToString(), "base uri");

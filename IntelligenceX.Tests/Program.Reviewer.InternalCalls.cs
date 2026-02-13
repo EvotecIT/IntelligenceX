@@ -78,6 +78,19 @@ internal static partial class Program {
         throw new InvalidOperationException("OrderOpenAiAccounts returned unexpected result.");
     }
 
+    private static (bool Success, string? Error) CallTryResolveOpenAiAccount(ReviewSettings settings) {
+        var method = typeof(ReviewerApp).GetMethod("TryResolveOpenAiAccountAsync",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("TryResolveOpenAiAccountAsync method not found.");
+        }
+        var task = method.Invoke(null, new object?[] { settings });
+        if (task is Task<ValueTuple<bool, string?>> typedTask) {
+            return typedTask.GetAwaiter().GetResult();
+        }
+        throw new InvalidOperationException("TryResolveOpenAiAccountAsync returned unexpected result.");
+    }
+
     private static void CallPreflightNativeConnectivity(OpenAINativeOptions options, TimeSpan timeout) {
         var runner = new ReviewRunner(new ReviewSettings());
         var method = typeof(ReviewRunner).GetMethod("PreflightNativeConnectivityAsync",

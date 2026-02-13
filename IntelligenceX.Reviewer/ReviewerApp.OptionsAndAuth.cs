@@ -335,7 +335,7 @@ public static partial class ReviewerApp {
             return (false, "No OpenAI accounts available after applying account rotation policy.");
         }
 
-        settings.OpenAiAccountIds = available;
+        settings.OpenAiAccountIds = ordered;
         var requiresBudgetEvaluation = settings.ReviewUsageBudgetGuard &&
                                        (settings.ReviewUsageBudgetAllowCredits ||
                                         settings.ReviewUsageBudgetAllowWeeklyLimit);

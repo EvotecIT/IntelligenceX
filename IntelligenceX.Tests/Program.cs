@@ -75,6 +75,8 @@ internal static partial class Program {
         failed += Run("Setup config build includes OpenAI account routing", TestSetupBuildConfigJsonIncludesOpenAiAccountRouting);
         failed += Run("Setup config normalizes OpenAI primary into account ids",
             TestSetupBuildConfigJsonNormalizesOpenAiPrimaryInAccountIds);
+        failed += Run("Setup config merge preserves OpenAI routing when account ids absent",
+            TestSetupBuildConfigJsonMergePreservesOpenAiRoutingWhenAccountIdsAbsent);
         failed += Run("Setup config merge preserves review settings when enabling analysis", TestSetupBuildConfigJsonMergePreservesReviewSettingsWhenEnablingAnalysis);
         failed += Run("Setup autodetect JSON serializes check statuses as lowercase strings",
             TestSetupAutodetectJsonSerializesCheckStatusesAsLowercaseStrings);
@@ -374,6 +376,7 @@ internal static partial class Program {
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
         failed += Run("OpenAI account order round-robin", TestOpenAiAccountOrderRoundRobin);
         failed += Run("OpenAI account order sticky", TestOpenAiAccountOrderSticky);
+        failed += Run("Try resolve OpenAI account stores rotated order", TestTryResolveOpenAiAccountStoresRotatedOrder);
         failed += Run("Filter files include-only", TestFilterFilesIncludeOnly);
         failed += Run("Filter files exclude-only", TestFilterFilesExcludeOnly);
         failed += Run("Filter files include+exclude", TestFilterFilesIncludeExclude);

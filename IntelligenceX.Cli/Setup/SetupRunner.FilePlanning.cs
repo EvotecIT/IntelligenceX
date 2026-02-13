@@ -304,7 +304,6 @@ internal static partial class SetupRunner {
         }
 
         if (settings.OpenAIAccountIds.Length == 0) {
-            settings.OpenAIAccountIds = new[] { settings.OpenAIAccountId! };
             return;
         }
 

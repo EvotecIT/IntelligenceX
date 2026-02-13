@@ -249,6 +249,33 @@ internal static partial class Program {
         AssertEqual("acc-primary", ids![0]?.GetValue<string>(), "config json openai primary normalization first id");
     }
 
+    private static void TestSetupBuildConfigJsonMergePreservesOpenAiRoutingWhenAccountIdsAbsent() {
+        var seed = """
+{
+  "review": {
+    "provider": "openai",
+    "openaiAccountId": "acc-primary",
+    "openaiAccountRotation": "sticky",
+    "openaiAccountFailover": false
+  }
+}
+""";
+        var content = SetupRunner.BuildReviewerConfigJsonFromSeedForTests(
+            new[] { "--analysis-enabled", "true" },
+            seed);
+        AssertNotNull(content, "config json openai merge preserve content");
+
+        var root = System.Text.Json.Nodes.JsonNode.Parse(content) as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(root, "config json openai merge preserve root");
+        var review = root!["review"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(review, "config json openai merge preserve review");
+        AssertEqual("sticky", review!["openaiAccountRotation"]?.GetValue<string>(),
+            "config json openai merge preserve rotation");
+        AssertEqual(false, review["openaiAccountFailover"]?.GetValue<bool>(),
+            "config json openai merge preserve failover");
+        AssertEqual(null, review["openaiAccountIds"], "config json openai merge preserve no synthesized ids");
+    }
+
     private static void TestSetupBuildConfigJsonMergePreservesReviewSettingsWhenEnablingAnalysis() {
         var seed = """
 {
