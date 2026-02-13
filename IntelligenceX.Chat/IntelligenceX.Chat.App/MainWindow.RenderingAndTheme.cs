@@ -1,0 +1,215 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
+using System.Net;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.App.Conversation;
+using IntelligenceX.Chat.App.Markdown;
+using IntelligenceX.Chat.App.Rendering;
+using IntelligenceX.Chat.App.Theming;
+using IntelligenceX.Chat.Client;
+using Microsoft.UI;
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using OfficeIMO.MarkdownRenderer;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.Graphics;
+
+namespace IntelligenceX.Chat.App;
+
+public sealed partial class MainWindow : Window {
+    private void ExportTranscript() {
+        var conversation = GetActiveConversation();
+        var md = BuildTranscriptMarkdown(conversation.Messages, _timestampFormat);
+        if (string.IsNullOrWhiteSpace(md)) {
+            return;
+        }
+
+        var dir = Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat", "exports");
+        Directory.CreateDirectory(dir);
+
+        var ts = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        var baseName = string.IsNullOrWhiteSpace(conversation.ThreadId) ? conversation.Id : conversation.ThreadId!;
+        var filePath = Path.Combine(dir, $"transcript-{SanitizeFileName(baseName)}-{ts}.md");
+
+        File.WriteAllText(filePath, md, Encoding.UTF8);
+        AppendSystem(SystemNotice.TranscriptExported(filePath));
+    }
+
+    private void CopyTranscript() {
+        var md = BuildTranscriptMarkdown(GetActiveConversation().Messages, _timestampFormat);
+        if (string.IsNullOrWhiteSpace(md)) {
+            return;
+        }
+
+        var dp = new DataPackage();
+        dp.SetText(md);
+        Clipboard.SetContent(dp);
+        Clipboard.Flush();
+    }
+
+    private static string BuildTranscriptMarkdown(IEnumerable<(string Role, string Text, DateTime Time)> messages, string timestampFormat) {
+        return TranscriptMarkdownFormatter.Format(messages, timestampFormat);
+    }
+
+    private static string BuildMessagesHtml(IEnumerable<(string Role, string Text, DateTime Time)> messages, string timestampFormat) {
+        return TranscriptHtmlFormatter.Format(messages, timestampFormat, MarkdownOptions);
+    }
+
+    private static string SanitizeFileName(string value) {
+        foreach (var c in Path.GetInvalidFileNameChars()) {
+            value = value.Replace(c, '_');
+        }
+        return value;
+    }
+
+    private static string BuildShellHtml() {
+        return UiShellAssets.Load();
+    }
+
+    private static string EnsureAppIcon() {
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "app.ico");
+        if (File.Exists(iconPath)) {
+            return iconPath;
+        }
+
+        var tempPath = Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat", "app.ico");
+        if (File.Exists(tempPath)) {
+            return tempPath;
+        }
+
+        try {
+            var bytes = BuildBrandedIco();
+            try {
+                File.WriteAllBytes(iconPath, bytes);
+                return iconPath;
+            } catch {
+                Directory.CreateDirectory(Path.GetDirectoryName(tempPath)!);
+                File.WriteAllBytes(tempPath, bytes);
+                return tempPath;
+            }
+        } catch {
+            return string.Empty;
+        }
+    }
+
+    private static byte[] BuildBrandedIco() {
+        var img16 = BuildIconBitmap(16, 3);
+        var img32 = BuildIconBitmap(32, 6);
+
+        using var ms = new MemoryStream();
+        using var bw = new BinaryWriter(ms);
+
+        // ICONDIR
+        bw.Write((short)0);  // Reserved
+        bw.Write((short)1);  // Type: ICO
+        bw.Write((short)2);  // Image count
+
+        // Directory entries
+        int offset = 6 + 16 * 2;
+        WriteIconDirEntry(bw, 16, img16.Length, offset);
+        offset += img16.Length;
+        WriteIconDirEntry(bw, 32, img32.Length, offset);
+
+        // Image data
+        bw.Write(img16);
+        bw.Write(img32);
+
+        return ms.ToArray();
+    }
+
+    private static void WriteIconDirEntry(BinaryWriter bw, int size, int dataSize, int offset) {
+        bw.Write((byte)size);   // Width
+        bw.Write((byte)size);   // Height
+        bw.Write((byte)0);      // Colors
+        bw.Write((byte)0);      // Reserved
+        bw.Write((short)1);     // Planes
+        bw.Write((short)32);    // BPP
+        bw.Write(dataSize);
+        bw.Write(offset);
+    }
+
+    private static byte[] BuildIconBitmap(int size, int radius) {
+        int andRowBytes = ((size + 31) / 32) * 4;
+        int andSize = andRowBytes * size;
+        int xorSize = size * size * 4;
+
+        using var ms = new MemoryStream();
+        using var bw = new BinaryWriter(ms);
+
+        // BITMAPINFOHEADER
+        bw.Write(40);            // biSize
+        bw.Write(size);          // biWidth
+        bw.Write(size * 2);      // biHeight (doubled for ICO XOR+AND)
+        bw.Write((short)1);      // biPlanes
+        bw.Write((short)32);     // biBitCount
+        bw.Write(0);             // biCompression
+        bw.Write(xorSize + andSize);
+        bw.Write(0);             // biXPelsPerMeter
+        bw.Write(0);             // biYPelsPerMeter
+        bw.Write(0);             // biClrUsed
+        bw.Write(0);             // biClrImportant
+
+        // XOR bitmap — bottom-up scanlines, BGRA
+        // Brand color #4CC3FF
+        const byte colR = 76, colG = 195, colB = 255;
+        for (int row = size - 1; row >= 0; row--) {
+            for (int col = 0; col < size; col++) {
+                byte alpha = IsInsideRoundedRect(col, row, size, radius) ? (byte)255 : (byte)0;
+                bw.Write(colB);
+                bw.Write(colG);
+                bw.Write(colR);
+                bw.Write(alpha);
+            }
+        }
+
+        // AND mask (all zero — alpha channel handles transparency)
+        bw.Write(new byte[andSize]);
+
+        return ms.ToArray();
+    }
+
+    private static bool IsInsideRoundedRect(int x, int y, int size, int radius) {
+        if (x >= radius && x < size - radius) {
+            return true;
+        }
+        if (y >= radius && y < size - radius) {
+            return true;
+        }
+        int cx = x < radius ? radius : size - radius - 1;
+        int cy = y < radius ? radius : size - radius - 1;
+        int dx = x - cx, dy = y - cy;
+        return dx * dx + dy * dy <= radius * radius;
+    }
+
+    private async Task SetThemeAsync(string presetName) {
+        if (!_webViewReady) {
+            return;
+        }
+
+        var normalized = NormalizeTheme(presetName) ?? "default";
+        if (string.Equals(normalized, "default", StringComparison.OrdinalIgnoreCase)) {
+            await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixResetTheme && window.ixResetTheme();").AsTask()).ConfigureAwait(false);
+            return;
+        }
+
+        if (!ThemeRegistry.TryGetVariables(normalized, out var vars) || vars.Count == 0) {
+            return;
+        }
+
+        var json = JsonSerializer.Serialize(vars);
+        await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetTheme(" + json + ");").AsTask()).ConfigureAwait(false);
+    }
+}
