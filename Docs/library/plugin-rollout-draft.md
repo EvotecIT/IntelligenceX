@@ -67,11 +67,11 @@ On load failure, do not crash startup. Emit explicit diagnostics:
 
 ### Public (open-source friendly)
 - `IntelligenceX.Tools.FileSystem`
-- `IntelligenceX.Tools.System`
 - `IntelligenceX.Tools.EventLog` (after NuGet-ready dependency cleanup)
 - `IntelligenceX.Tools.Email` (Mailozaurr-based)
 
 ### Private-capable (your use case)
+- `IntelligenceX.Tools.System`
 - `IntelligenceX.Tools.TestimoX`
 - `IntelligenceX.Tools.ActiveDirectory` (if backed by private ADPlayground/TestimoX engines)
 - future `IntelligenceX.Tools.ComputerX`
@@ -82,6 +82,11 @@ Recommendation:
 - keep open-source `IntelligenceX` core independent from private package references
 
 This lets you keep developing private packs without blocking open-source CI.
+
+Default OSS profile guidance:
+- include only public packs by default
+- do not hard-fail when private pack ids are configured but unavailable
+- show clear startup warning with feed/auth remediation
 
 ## 5. Development Against Private Repos
 
@@ -121,7 +126,7 @@ Avoid naming runtime/plugin packages as `Contract` unless they only contain cont
 ## 8. Migration Plan
 
 1. Finalize plugin manifest + loader contract in IntelligenceX.
-2. Move private packs (`TestimoX`, `AD`, `ComputerX`) to TestimoX repo and publish from there.
+2. Move private packs (`System`, `TestimoX`, `AD`, `ComputerX`) to TestimoX repo and publish from there.
 3. Replace local source dependencies in OSS tool packs with NuGet package refs.
 4. Ship single-app startup (`intelligencex chat`) with built-in profile and plugin diagnostics.
 5. Add portable package artifact and docs.
@@ -134,4 +139,3 @@ Avoid naming runtime/plugin packages as `Contract` unless they only contain cont
 - [ ] internal CI passes with private feeds and private plugins enabled
 - [ ] EventViewerX/Mailozaurr/DbaClientX packages consumed from NuGet in plugin packs
 - [ ] documentation includes private plugin recipe for downstream users
-
