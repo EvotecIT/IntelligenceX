@@ -1,0 +1,81 @@
+{
+  "entries": [
+    {
+      "path": "/",
+      "title": "Home",
+      "section": "Product",
+      "priority": "1.0",
+      "changefreq": "weekly"
+    },
+    {
+      "path": "/docs/",
+      "title": "Documentation",
+      "section": "Docs",
+      "priority": "0.9",
+      "changefreq": "weekly"
+    },
+    {
+      "path": "/docs/getting-started/",
+      "title": "Getting Started",
+      "section": "Docs",
+      "priority": "0.9",
+      "changefreq": "weekly"
+    },
+    {
+      "path": "/docs/security/",
+      "title": "Security and Trust",
+      "section": "Docs",
+      "priority": "0.8",
+      "changefreq": "monthly"
+    },
+    {
+      "path": "/docs/reviewer/overview/",
+      "title": "Reviewer Overview",
+      "section": "Docs",
+      "priority": "0.9",
+      "changefreq": "weekly"
+    },
+    {
+      "path": "/docs/cli/overview/",
+      "title": "CLI Overview",
+      "section": "Docs",
+      "priority": "0.8",
+      "changefreq": "weekly"
+    },
+    {
+      "path": "/docs/library/overview/",
+      "title": ".NET Library Overview",
+      "section": "Docs",
+      "priority": "0.8",
+      "changefreq": "weekly"
+    },
+    {
+      "path": "/docs/powershell/overview/",
+      "title": "PowerShell Overview",
+      "section": "Docs",
+      "priority": "0.8",
+      "changefreq": "weekly"
+    },
+    {
+      "path": "/faq/",
+      "title": "FAQ",
+      "section": "Resources",
+      "priority": "0.7",
+      "changefreq": "monthly"
+    },
+    {
+      "path": "/changelog/",
+      "title": "Changelog",
+      "section": "Resources",
+      "priority": "0.6",
+      "changefreq": "weekly"
+    },
+    {
+      "path": "/api/",
+      "title": "API Reference",
+      "section": "API",
+      "priority": "0.8",
+      "changefreq": "weekly"
+    }
+  ]
+}
