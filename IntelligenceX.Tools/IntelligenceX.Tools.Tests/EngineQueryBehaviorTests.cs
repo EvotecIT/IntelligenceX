@@ -121,6 +121,36 @@ public sealed class EngineQueryBehaviorTests {
     }
 
     [Fact]
+    public void FileSystemList_FilterDeniesRoot_ReturnsNoEntries() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-fs-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(Path.Combine(root, "child"));
+        File.WriteAllText(Path.Combine(root, "child.txt"), "x");
+
+        try {
+            var result = FileSystemQuery.List(
+                new FileSystemListRequest {
+                    Path = root,
+                    Recursive = true,
+                    IncludeDirectories = true,
+                    IncludeFiles = true,
+                    MaxResults = 100
+                },
+                canDescendOrIncludePath: path => !string.Equals(path, Path.GetFullPath(root), StringComparison.OrdinalIgnoreCase));
+
+            Assert.False(result.Truncated);
+            Assert.Equal(0, result.Count);
+            Assert.Empty(result.Entries);
+        } finally {
+            try {
+                Directory.Delete(root, recursive: true);
+            } catch {
+                // Ignore cleanup failure.
+            }
+        }
+    }
+
+    [Fact]
     public async Task PowerShellExecuteAsync_ReturnsWithoutBlockingCaller() {
         if (PowerShellCommandQueryExecutor.GetAvailableHosts().Count == 0) {
             return;

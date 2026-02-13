@@ -275,6 +275,14 @@ public static class FileSystemQuery {
         var count = 0;
         var truncated = false;
         var emittedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (canDescendOrIncludePath != null && !canDescendOrIncludePath(rootPath)) {
+            return new FileSystemListResult {
+                Path = rootPath,
+                Count = 0,
+                Truncated = false,
+                Entries = entries
+            };
+        }
 
         var stack = new Stack<string>();
         stack.Push(rootPath);
