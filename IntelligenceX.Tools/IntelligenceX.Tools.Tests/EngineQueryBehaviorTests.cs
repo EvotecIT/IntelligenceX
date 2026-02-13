@@ -186,4 +186,27 @@ public sealed class EngineQueryBehaviorTests {
             }
         }
     }
+
+    [Fact]
+    public void FileSystemSearchText_InfiniteRegexTimeout_IsRejected() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-fs-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try {
+            var ex = Assert.Throws<ArgumentOutOfRangeException>(() =>
+                FileSystemQuery.SearchText(new FileTextSearchRequest {
+                    Path = root,
+                    Pattern = "abc",
+                    RegexTimeout = Timeout.InfiniteTimeSpan
+                }));
+
+            Assert.Equal("RegexTimeout", ex.ParamName);
+        } finally {
+            try {
+                Directory.Delete(root, recursive: true);
+            } catch {
+                // Ignore cleanup failure.
+            }
+        }
+    }
 }

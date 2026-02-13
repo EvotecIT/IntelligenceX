@@ -187,7 +187,7 @@ public sealed class FileTextSearchRequest {
         if (MaxFileBytes <= 0) {
             throw new ArgumentOutOfRangeException(nameof(MaxFileBytes), "MaxFileBytes must be positive.");
         }
-        if (RegexTimeout <= TimeSpan.Zero) {
+        if (RegexTimeout <= TimeSpan.Zero || RegexTimeout == Timeout.InfiniteTimeSpan) {
             throw new ArgumentOutOfRangeException(nameof(RegexTimeout), "RegexTimeout must be positive.");
         }
     }
