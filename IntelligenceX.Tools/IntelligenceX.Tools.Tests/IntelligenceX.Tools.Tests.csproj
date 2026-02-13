@@ -19,6 +19,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\IntelligenceX.Engines\IntelligenceX.Engines.FileSystem\IntelligenceX.Engines.FileSystem.csproj" />
+    <ProjectReference Include="..\..\IntelligenceX.Engines\IntelligenceX.Engines.PowerShell\IntelligenceX.Engines.PowerShell.csproj" />
     <ProjectReference Include="..\IntelligenceX.Tools.Common\IntelligenceX.Tools.Common.csproj" />
     <ProjectReference Include="..\IntelligenceX.Tools.System\IntelligenceX.Tools.System.csproj" />
     <ProjectReference Include="..\IntelligenceX.Tools.PowerShell\IntelligenceX.Tools.PowerShell.csproj" />

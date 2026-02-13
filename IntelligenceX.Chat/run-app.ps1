@@ -46,4 +46,4 @@ if ($NoBuild) {
 
 Write-Host "Starting IntelligenceX.Chat.App ($Configuration) from $appProject" -ForegroundColor Cyan
 & dotnet @dotnetArgs
-exit $LASTEXITCODE`r`n
+exit $LASTEXITCODE

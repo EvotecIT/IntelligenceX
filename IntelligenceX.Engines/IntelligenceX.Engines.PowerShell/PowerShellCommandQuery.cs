@@ -250,6 +250,14 @@ public static class PowerShellCommandQueryExecutor {
     /// <returns>Typed execution result.</returns>
     public static PowerShellCommandQueryResult Execute(
         PowerShellCommandQueryRequest request,
+        CancellationToken cancellationToken = default) =>
+        ExecuteAsync(request, cancellationToken).ConfigureAwait(false).GetAwaiter().GetResult();
+
+    /// <summary>
+    /// Executes a PowerShell command/query asynchronously.
+    /// </summary>
+    public static async Task<PowerShellCommandQueryResult> ExecuteAsync(
+        PowerShellCommandQueryRequest request,
         CancellationToken cancellationToken = default) {
         if (request is null) {
             throw new ArgumentNullException(nameof(request));
@@ -294,24 +302,30 @@ public static class PowerShellCommandQueryExecutor {
         var stopwatch = Stopwatch.StartNew();
 
         using (var stdin = process.StandardInput) {
-            stdin.Write(scriptText);
+            await stdin.WriteAsync(scriptText).ConfigureAwait(false);
+            await stdin.FlushAsync().ConfigureAwait(false);
         }
 
         var stdOutTask = process.StandardOutput.ReadToEndAsync();
         var stdErrTask = process.StandardError.ReadToEndAsync();
 
         var timedOut = false;
-        if (!process.WaitForExit(request.TimeoutMs)) {
+        var waitForExitTask = process.WaitForExitAsync(cancellationToken);
+        var timeoutTask = Task.Delay(request.TimeoutMs, cancellationToken);
+        var completed = await Task.WhenAny(waitForExitTask, timeoutTask).ConfigureAwait(false);
+        if (!ReferenceEquals(completed, waitForExitTask)) {
             timedOut = true;
             TryKillProcess(process);
-            process.WaitForExit();
+            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+        } else {
+            await waitForExitTask.ConfigureAwait(false);
         }
 
         stopwatch.Stop();
         cancellationToken.ThrowIfCancellationRequested();
 
-        var stdOut = stdOutTask.GetAwaiter().GetResult() ?? string.Empty;
-        var stdErr = stdErrTask.GetAwaiter().GetResult() ?? string.Empty;
+        var stdOut = await stdOutTask.ConfigureAwait(false) ?? string.Empty;
+        var stdErr = await stdErrTask.ConfigureAwait(false) ?? string.Empty;
         var combined = BuildCombinedOutput(stdOut, stdErr, request.IncludeErrorStream);
         var output = ApplyMaxChars(combined, request.MaxOutputChars, out var truncated);
 
@@ -334,14 +348,6 @@ public static class PowerShellCommandQueryExecutor {
             OutputLength = combined.Length
         };
     }
-
-    /// <summary>
-    /// Executes a PowerShell command/query asynchronously.
-    /// </summary>
-    public static Task<PowerShellCommandQueryResult> ExecuteAsync(
-        PowerShellCommandQueryRequest request,
-        CancellationToken cancellationToken = default) =>
-        Task.FromResult(Execute(request, cancellationToken));
 
     /// <summary>
     /// Non-throwing PowerShell command/query wrapper.
@@ -381,10 +387,37 @@ public static class PowerShellCommandQueryExecutor {
     /// <summary>
     /// Asynchronous non-throwing wrapper.
     /// </summary>
-    public static Task<PowerShellCommandQueryTryResult> TryExecuteAsync(
+    public static async Task<PowerShellCommandQueryTryResult> TryExecuteAsync(
         PowerShellCommandQueryRequest? request,
-        CancellationToken cancellationToken = default) =>
-        Task.FromResult(TryExecute(request, cancellationToken));
+        CancellationToken cancellationToken = default) {
+        if (request is null) {
+            return new PowerShellCommandQueryTryResult {
+                Success = false,
+                Failure = new PowerShellCommandQueryFailure {
+                    Code = PowerShellCommandQueryFailureCode.InvalidRequest,
+                    Message = "Request is required."
+                }
+            };
+        }
+
+        try {
+            var result = await ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
+            return new PowerShellCommandQueryTryResult {
+                Success = true,
+                Result = result
+            };
+        } catch (ArgumentException ex) {
+            return Fail(PowerShellCommandQueryFailureCode.InvalidRequest, request, ex);
+        } catch (OperationCanceledException ex) {
+            return Fail(PowerShellCommandQueryFailureCode.Cancelled, request, ex);
+        } catch (HostNotAvailableException ex) {
+            return Fail(PowerShellCommandQueryFailureCode.HostNotAvailable, request, ex);
+        } catch (TimeoutException ex) {
+            return Fail(PowerShellCommandQueryFailureCode.Timeout, request, ex);
+        } catch (Exception ex) {
+            return Fail(PowerShellCommandQueryFailureCode.QueryFailed, request, ex);
+        }
+    }
 
     private static PowerShellCommandQueryTryResult Fail(
         PowerShellCommandQueryFailureCode code,

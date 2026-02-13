@@ -274,6 +274,7 @@ public static class FileSystemQuery {
         var entries = new List<FileSystemListEntry>();
         var count = 0;
         var truncated = false;
+        var emittedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var stack = new Stack<string>();
         stack.Push(rootPath);
@@ -283,7 +284,7 @@ public static class FileSystemQuery {
             var dir = stack.Pop();
 
             if (request.IncludeDirectories && !string.Equals(dir, rootPath, StringComparison.OrdinalIgnoreCase)) {
-                if (!TryAddEntry(entries, new FileSystemListEntry { Type = "dir", Path = dir }, request.MaxResults, ref count, ref truncated)) {
+                if (!TryAddDirectoryEntry(entries, emittedDirectories, dir, request.MaxResults, ref count, ref truncated)) {
                     break;
                 }
             }
@@ -329,7 +330,7 @@ public static class FileSystemQuery {
                     if (canDescendOrIncludePath != null && !canDescendOrIncludePath(sub)) {
                         continue;
                     }
-                    if (!TryAddEntry(entries, new FileSystemListEntry { Type = "dir", Path = sub }, request.MaxResults, ref count, ref truncated)) {
+                    if (!TryAddDirectoryEntry(entries, emittedDirectories, sub, request.MaxResults, ref count, ref truncated)) {
                         break;
                     }
                 }
@@ -346,6 +347,25 @@ public static class FileSystemQuery {
             Truncated = truncated,
             Entries = entries
         };
+    }
+
+    private static bool TryAddDirectoryEntry(
+        List<FileSystemListEntry> entries,
+        HashSet<string> emittedDirectories,
+        string path,
+        int maxResults,
+        ref int count,
+        ref bool truncated) {
+        if (!emittedDirectories.Add(path)) {
+            return true;
+        }
+
+        return TryAddEntry(
+            entries,
+            new FileSystemListEntry { Type = "dir", Path = path },
+            maxResults,
+            ref count,
+            ref truncated);
     }
 
     /// <summary>
