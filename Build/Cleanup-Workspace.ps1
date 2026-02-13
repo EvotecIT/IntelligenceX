@@ -21,6 +21,31 @@ function Write-Step($text)   { Write-Host "[+] $text" -ForegroundColor Yellow }
 function Write-Ok($text)     { Write-Host "[OK] $text" -ForegroundColor Green }
 function Write-Warn($text)   { Write-Host "[!] $text" -ForegroundColor DarkYellow }
 
+function Expand-DelimitedValues {
+    param([string[]] $Values)
+
+    if ($null -eq $Values -or $Values.Count -eq 0) {
+        return [string[]] @()
+    }
+
+    $list = [System.Collections.Generic.List[string]]::new()
+    foreach ($raw in $Values) {
+        if ([string]::IsNullOrWhiteSpace($raw)) {
+            continue
+        }
+
+        foreach ($part in ($raw -split '[,;]')) {
+            $normalized = ($part ?? '').Trim()
+            if ([string]::IsNullOrWhiteSpace($normalized)) {
+                continue
+            }
+            $list.Add($normalized)
+        }
+    }
+
+    return $list.ToArray()
+}
+
 function Invoke-Git {
     param(
         [Parameter(Mandatory)]
@@ -319,6 +344,9 @@ if ($targetRepos.Count -eq 0) {
     throw 'No valid git repositories selected for cleanup.'
 }
 
+$mergedBranchPrefix = ($MergedBranchPrefix ?? '').Trim()
+$skipMergedBranchPrefixesResolved = Expand-DelimitedValues -Values $SkipMergedBranchPrefixes
+
 $summary = [ordered]@{
     MergedWorktreesRemoved     = 0
     MergedBranchesDeleted      = 0
@@ -343,7 +371,10 @@ foreach ($repoPath in $targetRepos) {
     $null = Invoke-Git -RepoPath $repoPath -Args @('worktree', 'list')
 
     if ($RemoveMergedWorktrees) {
-        Write-Step "Scanning for merged worktrees (branch prefix: '$MergedBranchPrefix', target: $MergedIntoRef)"
+        Write-Step "Scanning for merged worktrees (branch prefix: '$mergedBranchPrefix', target: $MergedIntoRef)"
+        if ($skipMergedBranchPrefixesResolved.Count -gt 0) {
+            Write-Step "Skip branch prefixes: $($skipMergedBranchPrefixesResolved -join ', ')"
+        }
         if (-not (Test-RevisionExists -RepoPath $repoPath -Revision $MergedIntoRef)) {
             Write-Warn "Merge target '$MergedIntoRef' does not exist in $repoPath. Skipping merged-worktree cleanup for this repo."
         } else {
@@ -366,13 +397,13 @@ foreach ($repoPath in $targetRepos) {
                     continue
                 }
 
-                if (-not [string]::IsNullOrWhiteSpace($MergedBranchPrefix) -and
-                    -not $branchName.StartsWith($MergedBranchPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                if (-not [string]::IsNullOrWhiteSpace($mergedBranchPrefix) -and
+                    -not $branchName.StartsWith($mergedBranchPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
                     continue
                 }
 
                 $skipBranch = $false
-                foreach ($skipPrefix in $SkipMergedBranchPrefixes) {
+                foreach ($skipPrefix in $skipMergedBranchPrefixesResolved) {
                     if ([string]::IsNullOrWhiteSpace($skipPrefix)) {
                         continue
                     }
