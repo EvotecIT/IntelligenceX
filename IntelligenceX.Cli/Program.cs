@@ -342,10 +342,20 @@ internal static partial class Program {
                 }
                 switch (arg) {
                     case "--provider":
-                        provider = ReadRequiredValue(args, ref i);
+                        if (!TryReadRequiredValue(args, ref i, out var parsedProvider, out var providerError)) {
+                            Console.Error.WriteLine(providerError);
+                            PrintSyncCodexHelp();
+                            return 1;
+                        }
+                        provider = parsedProvider;
                         break;
                     case "--account-id":
-                        accountId = ReadRequiredValue(args, ref i);
+                        if (!TryReadRequiredValue(args, ref i, out var parsedAccountId, out var accountError)) {
+                            Console.Error.WriteLine(accountError);
+                            PrintSyncCodexHelp();
+                            return 1;
+                        }
+                        accountId = parsedAccountId;
                         break;
                     default:
                         Console.Error.WriteLine($"Unknown option or unexpected argument: {arg}");
@@ -483,16 +493,22 @@ internal static partial class Program {
         return null;
     }
 
-    private static string ReadRequiredValue(string[] args, ref int index) {
+    private static bool TryReadRequiredValue(string[] args, ref int index, out string value, out string? error) {
         if (index + 1 >= args.Length) {
-            throw new InvalidOperationException($"Missing value for {args[index]}.");
+            value = string.Empty;
+            error = $"Missing value for {args[index]}.";
+            return false;
+        }
+        var candidate = args[index + 1];
+        if (candidate.StartsWith("--", StringComparison.Ordinal)) {
+            value = string.Empty;
+            error = $"Missing value for {args[index]}.";
+            return false;
         }
         index++;
-        var value = args[index];
-        if (value.StartsWith("--", StringComparison.Ordinal)) {
-            throw new InvalidOperationException($"Missing value for {args[index - 1]}.");
-        }
-        return value;
+        value = candidate;
+        error = null;
+        return true;
     }
 
     private static async Task<string?> ExportAuthStoreContentAsync(string format) {

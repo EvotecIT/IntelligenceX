@@ -133,6 +133,17 @@ internal static partial class Program {
         AssertEqual(string.Empty, stderr, "auth sync-codex help stderr");
     }
 
+    private static void TestCliAuthSyncCodexMissingProviderValueShowsHelp() {
+        var (exit, stdout, stderr) = RunCliDispatchWithCapturedOutput(
+            new[] { "auth", "sync-codex", "--provider" },
+            () => false,
+            _ => Task.FromResult(0));
+
+        AssertEqual(1, exit, "auth sync-codex missing provider exit");
+        AssertContainsText(stderr, "Missing value for --provider.", "auth sync-codex missing provider stderr");
+        AssertContainsText(stdout, "Usage:", "auth sync-codex missing provider help");
+    }
+
     private static void TestCliModelsHelpRoutes() {
         var (exitRoot, stdoutRoot, stderrRoot) = RunCliDispatchWithCapturedOutput(
             new[] { "models", "--help" },

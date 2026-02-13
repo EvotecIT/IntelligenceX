@@ -153,6 +153,36 @@ internal static partial class Program {
             "--repo", "owner/repo"), "web setup resolve with-config none");
     }
 
+    private static void TestWebSetupOpenAiRoutingValidationRejectsConfigOverride() {
+        var resultWithOverride = IntelligenceX.Cli.Setup.Web.WebApi.ValidateOpenAiAccountRoutingForTests(
+            provider: "openai",
+            openAiAccountId: null,
+            openAiAccountIds: "acc-primary,acc-backup",
+            openAiAccountRotation: "round-robin",
+            openAiAccountFailover: null,
+            isSetup: true,
+            withConfig: true,
+            hasConfigOverride: true);
+        AssertEqual(false, resultWithOverride.Success, "web setup openai routing config override rejected");
+        AssertContainsText(resultWithOverride.Error ?? string.Empty,
+            "not supported when configJson/configPath override is used",
+            "web setup openai routing config override error");
+
+        var resultWithoutConfig = IntelligenceX.Cli.Setup.Web.WebApi.ValidateOpenAiAccountRoutingForTests(
+            provider: "openai",
+            openAiAccountId: null,
+            openAiAccountIds: "acc-primary,acc-backup",
+            openAiAccountRotation: "round-robin",
+            openAiAccountFailover: null,
+            isSetup: true,
+            withConfig: false,
+            hasConfigOverride: false);
+        AssertEqual(false, resultWithoutConfig.Success, "web setup openai routing without with-config rejected");
+        AssertContainsText(resultWithoutConfig.Error ?? string.Empty,
+            "require withConfig=true",
+            "web setup openai routing with-config error");
+    }
+
     private static void TestWebSetupPostApplyVerifySkipsCallbackWhenApplyFails() {
         var context = new SetupPostApplyContext {
             Repo = "owner/repo",

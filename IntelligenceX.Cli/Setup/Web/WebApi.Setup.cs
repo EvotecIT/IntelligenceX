@@ -47,6 +47,31 @@ internal sealed partial class WebApi {
         return ResolveWithConfigFromArgs(args);
     }
 
+    internal static (bool Success, string? Error) ValidateOpenAiAccountRoutingForTests(
+        string provider,
+        string? openAiAccountId,
+        string? openAiAccountIds,
+        string? openAiAccountRotation,
+        bool? openAiAccountFailover,
+        bool isSetup,
+        bool withConfig,
+        bool hasConfigOverride) {
+        var request = new SetupRequest {
+            Provider = provider,
+            OpenAIAccountId = openAiAccountId,
+            OpenAIAccountIds = openAiAccountIds,
+            OpenAIAccountRotation = openAiAccountRotation,
+            OpenAIAccountFailover = openAiAccountFailover
+        };
+        var success = TryValidateAndNormalizeOpenAiAccountRouting(
+            request,
+            isSetup,
+            withConfig,
+            hasConfigOverride,
+            out var error);
+        return (success, error);
+    }
+
     internal static (bool ExpectOrgSecret, string? SecretOrg) ResolveOrgSecretVerificationContextForTests(
         bool cleanup,
         bool updateSecret,
@@ -152,12 +177,12 @@ internal sealed partial class WebApi {
             error = "OpenAI account routing options are only supported for setup operation.";
             return false;
         }
-        if (!withConfig) {
-            error = "OpenAI account routing options require withConfig=true (or configJson/configPath).";
+        if (hasConfigOverride) {
+            error = "OpenAI account routing options are not supported when configJson/configPath override is used.";
             return false;
         }
-        if (hasConfigOverride) {
-            error = "OpenAI account routing options are ignored when configJson/configPath override is used.";
+        if (!withConfig) {
+            error = "OpenAI account routing options require withConfig=true.";
             return false;
         }
 

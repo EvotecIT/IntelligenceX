@@ -25,6 +25,7 @@ internal static partial class Program {
         failed += Run("Usage options parse by-surface", TestUsageOptionsParseBySurface);
         failed += Run("Usage surface summary json buckets", TestUsageSurfaceSummaryJsonBuckets);
         failed += Run("CLI auth sync-codex help options", TestCliAuthSyncCodexHelpSupportsOptions);
+        failed += Run("CLI auth sync-codex missing provider value shows help", TestCliAuthSyncCodexMissingProviderValueShowsHelp);
         failed += Run("CLI models help routes", TestCliModelsHelpRoutes);
 #endif
         failed += Run("Tool call parsing", TestToolCallParsing);
@@ -141,6 +142,8 @@ internal static partial class Program {
         failed += Run("Web setup args propagate request dry-run", TestWebSetupBuildSetupArgsPropagatesRequestDryRun);
         failed += Run("Web setup args propagate OpenAI account routing", TestWebSetupBuildSetupArgsPropagatesOpenAiAccountRouting);
         failed += Run("Web setup resolves with-config from args", TestWebSetupResolveWithConfigFromArgs);
+        failed += Run("Web setup OpenAI routing validation rejects config override",
+            TestWebSetupOpenAiRoutingValidationRejectsConfigOverride);
         failed += Run("Web setup post-apply verify skips callback on failed apply",
             TestWebSetupPostApplyVerifySkipsCallbackWhenApplyFails);
         failed += Run("Web setup resolves org-secret verification context", TestWebSetupResolveOrgSecretVerificationContext);
