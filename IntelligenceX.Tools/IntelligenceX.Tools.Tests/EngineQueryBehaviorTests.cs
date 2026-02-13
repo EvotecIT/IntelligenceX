@@ -81,6 +81,45 @@ public sealed class EngineQueryBehaviorTests {
     }
 
     [Fact]
+    public void FileSystemList_Recursive_DirectoryEntriesAreUniqueAcrossTraversal() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-fs-test-" + Guid.NewGuid().ToString("N"));
+        var childA = Path.Combine(root, "a");
+        var childB = Path.Combine(root, "b");
+        var childA1 = Path.Combine(childA, "a1");
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(childA);
+        Directory.CreateDirectory(childB);
+        Directory.CreateDirectory(childA1);
+
+        try {
+            var result = FileSystemQuery.List(new FileSystemListRequest {
+                Path = root,
+                Recursive = true,
+                IncludeDirectories = true,
+                IncludeFiles = false,
+                MaxResults = 100
+            });
+
+            var dirs = result.Entries
+                .Where(static entry => string.Equals(entry.Type, "dir", StringComparison.OrdinalIgnoreCase))
+                .Select(static entry => entry.Path)
+                .ToArray();
+
+            Assert.Equal(dirs.Length, dirs.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+            Assert.Contains(Path.GetFullPath(root), dirs, StringComparer.OrdinalIgnoreCase);
+            Assert.Contains(childA, dirs, StringComparer.OrdinalIgnoreCase);
+            Assert.Contains(childB, dirs, StringComparer.OrdinalIgnoreCase);
+            Assert.Contains(childA1, dirs, StringComparer.OrdinalIgnoreCase);
+        } finally {
+            try {
+                Directory.Delete(root, recursive: true);
+            } catch {
+                // Ignore cleanup failure.
+            }
+        }
+    }
+
+    [Fact]
     public async Task PowerShellExecuteAsync_ReturnsWithoutBlockingCaller() {
         if (PowerShellCommandQueryExecutor.GetAvailableHosts().Count == 0) {
             return;

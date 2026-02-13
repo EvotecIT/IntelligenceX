@@ -302,8 +302,8 @@ public static class PowerShellCommandQueryExecutor {
         var stopwatch = Stopwatch.StartNew();
 
         using (var stdin = process.StandardInput) {
-            await stdin.WriteAsync(scriptText).ConfigureAwait(false);
-            await stdin.FlushAsync().ConfigureAwait(false);
+            await stdin.WriteAsync(scriptText.AsMemory(), cancellationToken).ConfigureAwait(false);
+            await stdin.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
 
         var stdOutTask = process.StandardOutput.ReadToEndAsync();
