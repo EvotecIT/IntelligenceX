@@ -6,30 +6,63 @@ App name (planned): **IntelligenceX Chat**.
 
 Primary goal: a **premium Windows systray** chat UI that can run local tools (files, Event Log, Active Directory, etc.), display rich outputs (tables, code blocks), and iterate with an LLM safely.
 
-Status: planning + docs scaffold (no app implementation yet).
+Status: active migration in mono-repo (Host + Service + WinUI App in progress).
 
-## Starter Host
+## Runtime Entry Points
 
-This repo includes a small buildable starter host:
+Use scripts from repo root `Build\` as the canonical entrypoint surface:
 
-- `IntelligenceX.Chat.sln`
-- `IntelligenceX.Chat.Host` (console app, `net10.0` + `net10.0-windows`)
-
-This is intentionally minimal and exists to:
-- give agents a compile-clean entry point
-- later host providers + tool packs outside the UI process
+- `Build\Run-Chat.ps1` - Console host (recommended default runtime)
+- `Build\Run-ChatApp.ps1` - WinUI app (desktop UI)
+- `Build\Run-ChatService.ps1` - Service-only mode (advanced/debug)
 
 ### Run
 
-Because `IntelligenceX.Chat.Host` targets multiple frameworks, specify the framework when running:
+Console host (recommended):
 
 ```powershell
-dotnet run --project .\\IntelligenceX.Chat.Host --framework net10.0-windows -- --allow-root C:\\Support\\GitHub --parallel-tools --echo-tool-outputs
+pwsh .\Build\Run-Chat.ps1 -AllowRoot C:\Support\GitHub
+```
+
+WinUI app:
+
+```powershell
+pwsh .\Build\Run-ChatApp.ps1 -Configuration Release
+```
+
+`Run-ChatApp.ps1` launches only the app. The local chat service sidecar is auto-started and auto-restarted by the app.
+
+Service-only mode (advanced):
+
+```powershell
+pwsh .\Build\Run-ChatService.ps1 -AllowRoot C:\Support\GitHub
 ```
 
 ChatGPT login is cached under `%USERPROFILE%\\.intelligencex\\auth.json` by default, so after the first login the host should show:
 
 `ChatGPT login: using cached token.`
+
+## Runtime State And Storage
+
+By default, Host + Service + WinUI app share auth and use separate local state stores:
+
+- Auth token cache (shared): `%USERPROFILE%\\.intelligencex\\auth.json`
+  - Override: `INTELLIGENCEX_AUTH_PATH`
+- WinUI app state (profiles, chats, UI options): `%LOCALAPPDATA%\\IntelligenceX.Chat\\app-state.db`
+- Service profile state (service CLI profiles): `%LOCALAPPDATA%\\IntelligenceX.Chat\\state.db`
+- Sidecar staging (temporary service runtime copy): `%TEMP%\\IntelligenceX.Chat\\service-runtime\\<guid>`
+- IPC channel: named pipe `intelligencex.chat`
+
+Status-chip behavior is connection/auth based:
+
+- `Starting...`: app is bringing up or reconnecting local runtime
+- `Service unavailable`: local runtime failed to start or connect
+- `Sign in to continue`: local runtime is reachable, auth cache is missing/invalid
+- `Ready`: local runtime is reachable and authenticated
+
+### Compatibility Wrappers
+
+`IntelligenceX.Chat\run-host.ps1`, `IntelligenceX.Chat\run-app.ps1`, and `IntelligenceX.Chat\run-service.ps1` remain available and now delegate to `Build\` scripts.
 
 ## Chat Service
 
@@ -38,7 +71,7 @@ This repo also includes a minimal local execution service:
 - `IntelligenceX.Chat.Abstractions` (typed NDJSON protocol + `System.Text.Json` source generation, AOT-friendly)
 - `IntelligenceX.Chat.Service` (named-pipe server, OpenAI native provider, tool execution)
 
-Run (named pipe; default pipe name is `intelligencex.chat`):
+Direct run (named pipe; default pipe name is `intelligencex.chat`):
 
 ```powershell
 dotnet run --project .\\IntelligenceX.Chat.Service --framework net10.0-windows -- --allow-root C:\\Support\\GitHub
