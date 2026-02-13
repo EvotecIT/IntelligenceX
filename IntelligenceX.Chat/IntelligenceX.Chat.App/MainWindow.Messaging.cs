@@ -326,6 +326,7 @@ public sealed partial class MainWindow : Window {
         try {
             if (_client is not null && await IsClientAliveAsync(_client).ConfigureAwait(false)) {
                 _isConnected = true;
+                StopAutoReconnectLoop();
                 await SetStatusAsync(SessionStatus.ForConnectedAuth(_isAuthenticated)).ConfigureAwait(false);
                 return;
             }
@@ -358,6 +359,7 @@ public sealed partial class MainWindow : Window {
                         await client.DisposeAsync().ConfigureAwait(false);
                         _isConnected = false;
                         await SetStatusAsync(SessionStatus.ConnectFailed()).ConfigureAwait(false);
+                        EnsureAutoReconnectLoop();
                         if (VerboseServiceLogs || _debugMode) {
                             AppendSystem(SystemNotice.ConnectProbeFailed(FormatConnectError(initialConnectException)));
                         }
@@ -370,6 +372,7 @@ public sealed partial class MainWindow : Window {
                     await client.DisposeAsync().ConfigureAwait(false);
                     _isConnected = false;
                     await SetStatusAsync(SessionStatus.ConnectFailed()).ConfigureAwait(false);
+                    EnsureAutoReconnectLoop();
                     if (fromUserAction || _debugMode) {
                         AppendSystem(SystemNotice.ConnectFailed(FormatConnectError(initialConnectException)));
                         AppendSystem(SystemNotice.ServiceSidecarUnavailable());
@@ -380,6 +383,7 @@ public sealed partial class MainWindow : Window {
 
             _client = client;
             _isConnected = true;
+            StopAutoReconnectLoop();
             await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
 
             try {
@@ -559,6 +563,7 @@ public sealed partial class MainWindow : Window {
         _isConnected = false;
         _isAuthenticated = false;
         _loginInProgress = false;
+        StopAutoReconnectLoop();
         await SetStatusAsync(SessionStatus.Connecting()).ConfigureAwait(true);
         await DisposeClientAsync().ConfigureAwait(true);
         StopServiceIfOwned();
@@ -639,6 +644,7 @@ public sealed partial class MainWindow : Window {
                 StopServiceIfOwned();
             }
             await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
+            EnsureAutoReconnectLoop();
         });
     }
 

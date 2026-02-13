@@ -170,6 +170,9 @@ public sealed partial class MainWindow : Window {
     private Process? _serviceProcess;
     private string? _servicePipeName;
     private string? _stagedServiceDir;
+    private readonly object _autoReconnectSync = new();
+    private CancellationTokenSource? _autoReconnectCts;
+    private Task? _autoReconnectTask;
 
     private sealed class ConversationRuntime {
         public required string Id { get; init; }
@@ -233,6 +236,7 @@ public sealed partial class MainWindow : Window {
         };
 
         Closed += async (_, _) => {
+            StopAutoReconnectLoop();
             await PersistAppStateAsync().ConfigureAwait(false);
             await DisposeClientAsync().ConfigureAwait(false);
             StopServiceIfOwned();

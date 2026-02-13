@@ -13,7 +13,7 @@ public sealed class SessionStatusFormatterTests {
     [Fact]
     public void ForConnection_Disconnected_UsesDisconnectedText() {
         var status = SessionStatus.ForConnection(isConnected: false, isAuthenticated: true);
-        Assert.Equal("Disconnected", SessionStatusFormatter.Format(status));
+        Assert.Equal("Starting...", SessionStatusFormatter.Format(status));
     }
 
     /// <summary>
@@ -22,7 +22,7 @@ public sealed class SessionStatusFormatterTests {
     [Fact]
     public void ForConnection_ConnectedAuthenticated_UsesConnectedText() {
         var status = SessionStatus.ForConnection(isConnected: true, isAuthenticated: true);
-        Assert.Equal("Connected", SessionStatusFormatter.Format(status));
+        Assert.Equal("Ready", SessionStatusFormatter.Format(status));
     }
 
     /// <summary>
@@ -31,7 +31,7 @@ public sealed class SessionStatusFormatterTests {
     [Fact]
     public void ForConnection_ConnectedUnauthenticated_UsesSignInRequiredText() {
         var status = SessionStatus.ForConnection(isConnected: true, isAuthenticated: false);
-        Assert.Equal("Sign in required", SessionStatusFormatter.Format(status));
+        Assert.Equal("Sign in to continue", SessionStatusFormatter.Format(status));
     }
 
     /// <summary>
@@ -41,6 +41,7 @@ public sealed class SessionStatusFormatterTests {
     public void Format_UsesStableValues_ForCommonStates() {
         Assert.Equal("Debug mode on", SessionStatusFormatter.Format(SessionStatus.DebugModeOn()));
         Assert.Equal("Opening sign-in...", SessionStatusFormatter.Format(SessionStatus.OpeningSignIn()));
+        Assert.Equal("Service unavailable", SessionStatusFormatter.Format(SessionStatus.ConnectFailed()));
         Assert.Equal("Usage limit reached", SessionStatusFormatter.Format(SessionStatus.UsageLimitReached()));
         Assert.Equal("Exporting...", SessionStatusFormatter.Format(SessionStatus.Exporting()));
     }

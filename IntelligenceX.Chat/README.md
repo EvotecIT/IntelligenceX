@@ -30,6 +30,8 @@ WinUI app:
 pwsh .\Build\Run-ChatApp.ps1 -Configuration Release
 ```
 
+`Run-ChatApp.ps1` launches only the app. The local chat service sidecar is auto-started and auto-restarted by the app.
+
 Service-only mode (advanced):
 
 ```powershell
@@ -53,9 +55,10 @@ By default, Host + Service + WinUI app share auth and use separate local state s
 
 Status-chip behavior is connection/auth based:
 
-- `Disconnected`: app cannot reach local service pipe
-- `Sign in required`: service is reachable, auth cache is missing/invalid
-- `Connected`: service reachable and authenticated
+- `Starting...`: app is bringing up or reconnecting local runtime
+- `Service unavailable`: local runtime failed to start or connect
+- `Sign in to continue`: local runtime is reachable, auth cache is missing/invalid
+- `Ready`: local runtime is reachable and authenticated
 
 ### Compatibility Wrappers
 

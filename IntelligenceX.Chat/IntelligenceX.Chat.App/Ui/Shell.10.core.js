@@ -377,11 +377,11 @@
 
     statusEl.textContent = value;
     statusEl.classList.remove("ok", "warn", "bad");
-    if (lower.indexOf("disconnected") >= 0 || lower.indexOf("failed") >= 0 || lower.indexOf("error") >= 0 || lower.indexOf("limit") >= 0 || lower.indexOf("quota") >= 0) {
+    if (lower.indexOf("failed") >= 0 || lower.indexOf("error") >= 0 || lower.indexOf("limit") >= 0 || lower.indexOf("quota") >= 0 || lower.indexOf("unavailable") >= 0) {
       statusEl.classList.add("bad");
     } else if (lower.indexOf("connected") >= 0 || lower.indexOf("ready") >= 0) {
       statusEl.classList.add("ok");
-    } else if (lower.indexOf("sign") >= 0 || lower.indexOf("wait") >= 0 || lower.indexOf("open") >= 0 || lower.indexOf("connect") >= 0) {
+    } else if (lower.indexOf("sign") >= 0 || lower.indexOf("wait") >= 0 || lower.indexOf("open") >= 0 || lower.indexOf("start") >= 0) {
       statusEl.classList.add("warn");
     }
   }
@@ -418,7 +418,7 @@
       signIn.textContent = normalizeBool(state.loginInProgress) ? "Signing In..." : "Sign In";
     }
 
-    reconnect.textContent = normalizeBool(state.connected) ? "Reconnect" : "Connect";
+    reconnect.textContent = normalizeBool(state.connected) ? "Refresh session" : "Retry now";
     if (debug) {
       debug.hidden = !debugToolsEnabled;
       debug.textContent = normalizeBool(state.debugMode) ? "Disable Debug" : "Enable Debug";

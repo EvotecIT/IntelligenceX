@@ -60,18 +60,18 @@ internal enum SessionStatusKind {
 internal static class SessionStatusFormatter {
     public static string Format(SessionStatus status) {
         return status.Kind switch {
-            SessionStatusKind.Connected => "Connected",
-            SessionStatusKind.SignInRequired => "Sign in required",
-            SessionStatusKind.Disconnected => "Disconnected",
-            SessionStatusKind.Connecting => "Connecting...",
-            SessionStatusKind.ConnectFailed => "Connect failed",
+            SessionStatusKind.Connected => "Ready",
+            SessionStatusKind.SignInRequired => "Sign in to continue",
+            SessionStatusKind.Disconnected => "Starting...",
+            SessionStatusKind.Connecting => "Starting...",
+            SessionStatusKind.ConnectFailed => "Service unavailable",
             SessionStatusKind.PreviousRequestStillRunning => "Previous request still running...",
             SessionStatusKind.WaitingForSignIn => "Waiting for sign-in...",
             SessionStatusKind.NoActiveTurnToCancel => "No active turn to cancel",
             SessionStatusKind.Canceling => "Canceling...",
             SessionStatusKind.ClipboardHasNoText => "Clipboard has no text",
             SessionStatusKind.ClipboardEmpty => "Clipboard empty",
-            SessionStatusKind.CompleteSignInInBrowser => "Complete sign-in in browser...",
+            SessionStatusKind.CompleteSignInInBrowser => "Finish sign-in in browser...",
             SessionStatusKind.SignInFailed => "Sign in failed",
             SessionStatusKind.DebugModeOn => "Debug mode on",
             SessionStatusKind.CannotDeleteActiveConversationDuringTurn => "Cannot delete active conversation during a running turn",
@@ -79,7 +79,7 @@ internal static class SessionStatusFormatter {
             SessionStatusKind.UsageLimitReached => "Usage limit reached",
             SessionStatusKind.ExportFailed => "Export failed",
             SessionStatusKind.Exporting => "Exporting...",
-            _ => "Disconnected"
+            _ => "Starting..."
         };
     }
 }

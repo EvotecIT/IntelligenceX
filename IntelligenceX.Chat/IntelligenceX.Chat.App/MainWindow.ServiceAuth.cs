@@ -38,6 +38,76 @@ public sealed partial class MainWindow : Window {
         }
     }
 
+    private void EnsureAutoReconnectLoop() {
+        lock (_autoReconnectSync) {
+            if (_autoReconnectTask is { IsCompleted: false }) {
+                return;
+            }
+
+            _autoReconnectCts?.Cancel();
+            _autoReconnectCts = new CancellationTokenSource();
+            var token = _autoReconnectCts.Token;
+            _autoReconnectTask = Task.Run(() => AutoReconnectLoopAsync(token), token);
+        }
+    }
+
+    private void StopAutoReconnectLoop() {
+        CancellationTokenSource? cts;
+        lock (_autoReconnectSync) {
+            cts = _autoReconnectCts;
+            _autoReconnectCts = null;
+            _autoReconnectTask = null;
+        }
+
+        if (cts is null) {
+            return;
+        }
+
+        try {
+            cts.Cancel();
+        } catch {
+            // Ignore.
+        } finally {
+            cts.Dispose();
+        }
+    }
+
+    private async Task AutoReconnectLoopAsync(CancellationToken cancellationToken) {
+        var delays = new[] {
+            TimeSpan.FromSeconds(2),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromSeconds(20),
+            TimeSpan.FromSeconds(30)
+        };
+        var attempt = 0;
+
+        while (!cancellationToken.IsCancellationRequested) {
+            if (_client is not null && await IsClientAliveAsync(_client).ConfigureAwait(false)) {
+                return;
+            }
+
+            var delay = delays[Math.Min(attempt, delays.Length - 1)];
+            attempt++;
+
+            try {
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+            } catch (OperationCanceledException) {
+                return;
+            }
+
+            if (cancellationToken.IsCancellationRequested) {
+                return;
+            }
+
+            await ConnectAsync(fromUserAction: false).ConfigureAwait(false);
+
+            if (_client is not null && await IsClientAliveAsync(_client).ConfigureAwait(false)) {
+                return;
+            }
+        }
+    }
+
     private async Task<bool> RefreshAuthenticationStateAsync(bool updateStatus) {
         var client = _client;
         if (client is null) {
@@ -242,6 +312,7 @@ public sealed partial class MainWindow : Window {
                     _isAuthenticated = false;
                     _loginInProgress = false;
                     _ = SetStatusAsync(SessionStatus.Disconnected());
+                    EnsureAutoReconnectLoop();
                 });
             };
 
