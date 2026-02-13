@@ -1,5 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <TargetFrameworks>net8.0-windows;net10.0-windows</TargetFrameworks>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
@@ -13,29 +12,16 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
-
   <ItemGroup>
-    <!-- Local development: supports either a sibling checkout or an IntelligenceX worktree. -->
-    <ProjectReference Include="..\..\..\IntelligenceX\IntelligenceX\IntelligenceX.csproj"
-                      Condition="Exists('..\\..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj')" />
-    <ProjectReference Include="..\..\IntelligenceX\IntelligenceX\IntelligenceX.csproj"
-                      Condition="!Exists('..\\..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND Exists('..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj')" />
-    <ProjectReference Include="..\..\IntelligenceX-worktrees\tools-contract-namespace\IntelligenceX\IntelligenceX.csproj"
-                      Condition="!Exists('..\\..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND !Exists('..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND Exists('..\\..\\IntelligenceX-worktrees\\tools-contract-namespace\\IntelligenceX\\IntelligenceX.csproj')" />
-    <ProjectReference Include="..\..\..\IntelligenceX-worktrees\tools-contract-namespace\IntelligenceX\IntelligenceX.csproj"
-                      Condition="!Exists('..\\..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND !Exists('..\\..\\IntelligenceX\\IntelligenceX\\IntelligenceX.csproj') AND !Exists('..\\..\\IntelligenceX-worktrees\\tools-contract-namespace\\IntelligenceX\\IntelligenceX.csproj') AND Exists('..\\..\\..\\IntelligenceX-worktrees\\tools-contract-namespace\\IntelligenceX\\IntelligenceX.csproj')" />
+    <!-- Shared core contract reference; path resolved in IntelligenceX.Tools/Directory.Build.props. -->
+    <ProjectReference Include="$(IntelligenceXCoreProject)" Condition="'$(IntelligenceXCoreProject)'!='' AND Exists('$(IntelligenceXCoreProject)')" />
   </ItemGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\IntelligenceX.Tools.Common\IntelligenceX.Tools.Common.csproj" />
   </ItemGroup>
-
   <ItemGroup>
     <!-- Prefer local EventViewerX sources in dev; fall back to NuGet for CI/consumers. -->
-    <ProjectReference Include="$(PSEventViewerRoot)Sources\\EventViewerX\\EventViewerX.csproj"
-                      Condition="Exists('$(PSEventViewerRoot)Sources\\EventViewerX\\EventViewerX.csproj')" />
-    <PackageReference Include="EventViewerX" Version="3.3.0"
-                      Condition="!Exists('$(PSEventViewerRoot)Sources\\EventViewerX\\EventViewerX.csproj')" />
+    <ProjectReference Include="$(PSEventViewerRoot)Sources\\EventViewerX\\EventViewerX.csproj" Condition="Exists('$(PSEventViewerRoot)Sources\\EventViewerX\\EventViewerX.csproj')" />
+    <PackageReference Include="EventViewerX" Version="3.3.0" Condition="!Exists('$(PSEventViewerRoot)Sources\\EventViewerX\\EventViewerX.csproj')" />
   </ItemGroup>
-
 </Project>
