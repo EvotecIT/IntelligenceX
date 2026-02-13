@@ -247,7 +247,9 @@ public sealed partial class MainWindow : Window {
                 turnTimeoutSeconds = _sessionPolicy.TurnTimeoutSeconds,
                 toolTimeoutSeconds = _sessionPolicy.ToolTimeoutSeconds,
                 maxToolRounds = _sessionPolicy.MaxToolRounds,
-                parallelTools = _sessionPolicy.ParallelTools
+                parallelTools = _sessionPolicy.ParallelTools,
+                startupWarnings = _sessionPolicy.StartupWarnings,
+                pluginSearchPaths = _sessionPolicy.PluginSearchPaths
             }
         });
 

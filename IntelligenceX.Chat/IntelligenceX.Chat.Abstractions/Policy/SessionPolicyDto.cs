@@ -53,4 +53,14 @@ public sealed record SessionPolicyDto {
     /// Whether outputs should be redacted (best-effort) for display/logging.
     /// </summary>
     public bool Redact { get; init; }
+
+    /// <summary>
+    /// Startup/bootstrap notices (for example plugin load warnings).
+    /// </summary>
+    public string[] StartupWarnings { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Effective plugin search roots used by the runtime.
+    /// </summary>
+    public string[] PluginSearchPaths { get; init; } = Array.Empty<string>();
 }

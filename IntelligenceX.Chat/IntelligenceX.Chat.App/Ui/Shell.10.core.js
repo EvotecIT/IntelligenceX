@@ -79,6 +79,27 @@
     return value === true;
   }
 
+  function toStringArray(value) {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    var list = [];
+    for (var i = 0; i < value.length; i++) {
+      if (typeof value[i] !== "string") {
+        continue;
+      }
+
+      var normalized = value[i].trim();
+      if (!normalized) {
+        continue;
+      }
+
+      list.push(normalized);
+    }
+    return list;
+  }
+
   function normalizeProfileApplyMode(value) {
     return value === "profile" ? "profile" : "session";
   }
@@ -494,20 +515,34 @@
 
   function renderPolicy() {
     var policyEl = byId("policyInfo");
+    var startupWarningsEl = byId("policyStartupWarnings");
+    var pluginRootsEl = byId("policyPluginRoots");
     policyEl.innerHTML = "";
 
     var p = state.options.policy;
     if (!p) {
       policyEl.innerHTML = "<span class='options-k'>Policy</span><span class='options-v'>Not available</span>";
+      if (startupWarningsEl) {
+        startupWarningsEl.hidden = true;
+        startupWarningsEl.innerHTML = "";
+      }
+      if (pluginRootsEl) {
+        pluginRootsEl.hidden = true;
+        pluginRootsEl.innerHTML = "";
+      }
       return;
     }
 
+    var startupWarnings = toStringArray(p.startupWarnings);
+    var pluginSearchPaths = toStringArray(p.pluginSearchPaths);
     var rows = [
       ["Read-only", p.readOnly ? "Yes" : "No"],
       ["Parallel tools", p.parallelTools ? "Yes" : "No"],
       ["Max tool rounds", p.maxToolRounds == null ? "Default" : String(p.maxToolRounds)],
       ["Turn timeout", p.turnTimeoutSeconds == null ? "Default" : (String(p.turnTimeoutSeconds) + "s")],
-      ["Tool timeout", p.toolTimeoutSeconds == null ? "Default" : (String(p.toolTimeoutSeconds) + "s")]
+      ["Tool timeout", p.toolTimeoutSeconds == null ? "Default" : (String(p.toolTimeoutSeconds) + "s")],
+      ["Plugin roots", pluginSearchPaths.length === 0 ? "None" : String(pluginSearchPaths.length)],
+      ["Runtime notices", startupWarnings.length === 0 ? "None" : String(startupWarnings.length)]
     ];
 
     for (var i = 0; i < rows.length; i++) {
@@ -520,6 +555,37 @@
       policyEl.appendChild(k);
       policyEl.appendChild(v);
     }
+
+    renderPolicyList(pluginRootsEl, pluginSearchPaths, "Plugin search roots");
+    renderPolicyList(startupWarningsEl, startupWarnings, startupWarnings.length === 1 ? "Runtime notice" : "Runtime notices");
+  }
+
+  function renderPolicyList(host, values, title) {
+    if (!host) {
+      return;
+    }
+
+    host.innerHTML = "";
+    if (!values || values.length === 0) {
+      host.hidden = true;
+      return;
+    }
+
+    host.hidden = false;
+
+    var heading = document.createElement("div");
+    heading.className = "options-policy-list-title";
+    heading.textContent = title;
+    host.appendChild(heading);
+
+    var list = document.createElement("ul");
+    list.className = "options-policy-list";
+    for (var i = 0; i < values.length; i++) {
+      var item = document.createElement("li");
+      item.textContent = values[i];
+      list.appendChild(item);
+    }
+    host.appendChild(list);
   }
 
   function conversationTitle(item) {

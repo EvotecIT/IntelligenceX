@@ -26,6 +26,8 @@ internal sealed class ChatServiceSession {
     private readonly Stream _stream;
     private readonly ToolRegistry _registry;
     private readonly IReadOnlyList<IToolPack> _packs;
+    private readonly string[] _startupWarnings;
+    private readonly string[] _pluginSearchPaths;
 
     private readonly JsonSerializerOptions _json;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
@@ -38,7 +40,8 @@ internal sealed class ChatServiceSession {
     public ChatServiceSession(ServiceOptions options, Stream stream) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
-        _packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+        var startupWarnings = new List<string>();
+        var bootstrapOptions = new ToolPackBootstrapOptions {
             AllowedRoots = _options.AllowedRoots.ToArray(),
             AdDomainController = _options.AdDomainController,
             AdDefaultSearchBaseDn = _options.AdDefaultSearchBaseDn,
@@ -48,8 +51,12 @@ internal sealed class ChatServiceSession {
             EnableTestimoXPack = _options.EnableTestimoXPack,
             EnableDefaultPluginPaths = _options.EnableDefaultPluginPaths,
             PluginPaths = _options.PluginPaths.ToArray(),
-            OnBootstrapWarning = warning => Console.Error.WriteLine($"[pack warning] {warning}")
-        });
+            OnBootstrapWarning = warning => RecordBootstrapWarning(startupWarnings, warning)
+        };
+
+        _packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(bootstrapOptions);
+        _pluginSearchPaths = NormalizeDistinctStrings(ToolPackBootstrap.GetPluginSearchPaths(bootstrapOptions), maxItems: 32);
+        _startupWarnings = NormalizeDistinctStrings(startupWarnings, maxItems: 64);
         _registry = new ToolRegistry();
         ToolPackBootstrap.RegisterAll(_registry, _packs);
 
@@ -109,7 +116,7 @@ internal sealed class ChatServiceSession {
                             Name = "IntelligenceX.Chat.Service",
                             Version = typeof(ChatServiceSession).Assembly.GetName().Version?.ToString() ?? "0.0.0",
                             ProcessId = Environment.ProcessId.ToString(),
-                            Policy = BuildSessionPolicy(_options, _packs)
+                            Policy = BuildSessionPolicy(_options, _packs, _startupWarnings, _pluginSearchPaths)
                         }, cancellationToken).ConfigureAwait(false);
                         break;
 
@@ -1137,7 +1144,8 @@ internal sealed class ChatServiceSession {
     // Tool errors are returned as JSON strings to the model. Use the shared contract helper so
     // tool packs and hosts converge on the same envelope over time.
 
-    private static SessionPolicyDto BuildSessionPolicy(ServiceOptions options, IEnumerable<IToolPack> packs) {
+    private static SessionPolicyDto BuildSessionPolicy(ServiceOptions options, IEnumerable<IToolPack> packs, IReadOnlyList<string> startupWarnings,
+        IReadOnlyList<string> pluginSearchPaths) {
         var roots = options.AllowedRoots.Count == 0 ? Array.Empty<string>() : options.AllowedRoots.ToArray();
 
         var packList = new List<ToolPackInfoDto>();
@@ -1165,8 +1173,46 @@ internal sealed class ChatServiceSession {
             ParallelTools = options.ParallelTools,
             MaxTableRows = options.MaxTableRows <= 0 ? null : options.MaxTableRows,
             MaxSample = options.MaxSample <= 0 ? null : options.MaxSample,
-            Redact = options.Redact
+            Redact = options.Redact,
+            StartupWarnings = startupWarnings.Count == 0 ? Array.Empty<string>() : startupWarnings.ToArray(),
+            PluginSearchPaths = pluginSearchPaths.Count == 0 ? Array.Empty<string>() : pluginSearchPaths.ToArray()
         };
+    }
+
+    private static void RecordBootstrapWarning(ICollection<string> sink, string? warning) {
+        var normalized = (warning ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return;
+        }
+
+        sink.Add(normalized);
+        Console.Error.WriteLine($"[pack warning] {normalized}");
+    }
+
+    private static string[] NormalizeDistinctStrings(IEnumerable<string> values, int maxItems) {
+        if (values is null) {
+            return Array.Empty<string>();
+        }
+
+        var dedupe = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var list = new List<string>();
+        foreach (var value in values) {
+            var normalized = (value ?? string.Empty).Trim();
+            if (normalized.Length == 0) {
+                continue;
+            }
+
+            if (!dedupe.Add(normalized)) {
+                continue;
+            }
+
+            list.Add(normalized);
+            if (maxItems > 0 && list.Count >= maxItems) {
+                break;
+            }
+        }
+
+        return list.Count == 0 ? Array.Empty<string>() : list.ToArray();
     }
 
     private static CapabilityTier MapTier(ToolCapabilityTier tier) {
