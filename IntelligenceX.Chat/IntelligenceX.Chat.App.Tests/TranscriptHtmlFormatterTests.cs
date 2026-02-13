@@ -75,4 +75,21 @@ public sealed class TranscriptHtmlFormatterTests {
         Assert.Contains("usage limit reached", html, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Ensures transcript rendering normalizes common token-join artifacts before markdown conversion.
+    /// </summary>
+    [Fact]
+    public void Format_NormalizesCommonMarkdownSpacingArtifacts() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 13, 19, 25, 24, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", "✅I can run 1) LDAP checks, or2) cert checks.", now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("✅ I", html);
+        Assert.Contains("or 2)", html);
+        Assert.DoesNotContain("✅I", html);
+        Assert.DoesNotContain("or2)", html);
+    }
+
 }
