@@ -49,13 +49,23 @@ public sealed partial class MainWindow : Window {
 
     private void AppendSystem(string text) {
         var conversation = GetActiveConversation();
+        AppendSystem(conversation, text);
+    }
+
+    private void AppendSystem(ConversationRuntime conversation, string text) {
         conversation.Messages.Add(("System", text, DateTime.Now));
         conversation.UpdatedUtc = DateTime.UtcNow;
-        _ = RenderTranscriptAsync();
+        if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
+            _ = RenderTranscriptAsync();
+        }
     }
 
     private void AppendSystem(SystemNotice notice) {
         AppendSystem(SystemNoticeFormatter.Format(notice));
+    }
+
+    private void AppendSystem(ConversationRuntime conversation, SystemNotice notice) {
+        AppendSystem(conversation, SystemNoticeFormatter.Format(notice));
     }
 
     private async Task RenderTranscriptAsync() {
@@ -95,20 +105,25 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private async Task SetStatusAsync(string text) {
+    private async Task SetStatusAsync(string text, SessionStatusTone? tone = null) {
         _statusText = text ?? string.Empty;
+        _statusTone = tone ?? InferStatusTone(_statusText);
         if (!_webViewReady) {
             return;
         }
 
-        var json = JsonSerializer.Serialize(_statusText);
-        await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetStatus(" + json + ");").AsTask()).ConfigureAwait(false);
+        var textJson = JsonSerializer.Serialize(_statusText);
+        var toneJson = JsonSerializer.Serialize(MapStatusTone(_statusTone));
+        await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetStatus(" + textJson + "," + toneJson + ");").AsTask())
+            .ConfigureAwait(false);
         await PublishSessionStateAsync().ConfigureAwait(false);
         await PublishOptionsStateAsync().ConfigureAwait(false);
     }
 
     private Task SetStatusAsync(SessionStatus status) {
-        return SetStatusAsync(SessionStatusFormatter.Format(status));
+        return SetStatusAsync(
+            SessionStatusFormatter.Format(status),
+            SessionStatusToneResolver.Resolve(status));
     }
 
     private async Task PublishSessionStateAsync() {
@@ -118,6 +133,7 @@ public sealed partial class MainWindow : Window {
 
         var json = JsonSerializer.Serialize(new {
             status = _statusText,
+            statusTone = MapStatusTone(_statusTone),
             connected = _isConnected,
             authenticated = _isAuthenticated,
             loginInProgress = _loginInProgress,
@@ -128,6 +144,45 @@ public sealed partial class MainWindow : Window {
             windowMaximized = IsWindowMaximized()
         });
         await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetSessionState(" + json + ");").AsTask()).ConfigureAwait(false);
+    }
+
+    private static string MapStatusTone(SessionStatusTone tone) {
+        return tone switch {
+            SessionStatusTone.Ok => "ok",
+            SessionStatusTone.Warn => "warn",
+            SessionStatusTone.Bad => "bad",
+            _ => "neutral"
+        };
+    }
+
+    private static SessionStatusTone InferStatusTone(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return SessionStatusTone.Neutral;
+        }
+
+        if (normalized.Contains("failed", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("error", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("limit", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("quota", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("unavailable", StringComparison.OrdinalIgnoreCase)) {
+            return SessionStatusTone.Bad;
+        }
+
+        if (normalized.Contains("ready", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("connected", StringComparison.OrdinalIgnoreCase)) {
+            return SessionStatusTone.Ok;
+        }
+
+        if (normalized.Contains("sign", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("wait", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("open", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("start", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("connecting", StringComparison.OrdinalIgnoreCase)) {
+            return SessionStatusTone.Warn;
+        }
+
+        return SessionStatusTone.Neutral;
     }
 
     private async Task PublishOptionsStateAsync() {

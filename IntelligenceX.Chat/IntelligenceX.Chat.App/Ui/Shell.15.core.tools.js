@@ -583,15 +583,21 @@
     }
   };
 
-  window.ixSetStatus = function(text) {
+  window.ixSetStatus = function(text, tone) {
     state.status = text || "";
-    updateStatusVisual(state.status);
+    if (typeof tone === "string") {
+      state.statusTone = tone;
+    }
+    updateStatusVisual(state.status, state.statusTone);
   };
 
   window.ixSetSessionState = function(nextState) {
     nextState = nextState || {};
     if (typeof nextState.status === "string") {
       state.status = nextState.status;
+    }
+    if (typeof nextState.statusTone === "string") {
+      state.statusTone = nextState.statusTone;
     }
     if (typeof nextState.connected === "boolean") {
       state.connected = nextState.connected;
@@ -618,7 +624,7 @@
       state.windowMaximized = nextState.windowMaximized;
     }
 
-    updateStatusVisual(state.status);
+    updateStatusVisual(state.status, state.statusTone);
     updateWindowControlsState();
     updateMenuState();
     updateComposerState();
@@ -859,5 +865,3 @@
       transcript.scrollTop = previousTop;
     }
   };
-
-

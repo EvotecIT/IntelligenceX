@@ -54,5 +54,33 @@ internal static partial class Program {
         AssertEqual("environment", root.GetProperty("meta").GetProperty("error").GetProperty("category").GetString() ?? string.Empty,
             "meta.error.category");
     }
+
+    private static void TestToolOutputEnvelopeErrorIncludesFailureObject() {
+        var envelope = ToolOutputEnvelope.ErrorObject(
+            errorCode: "tool_timeout",
+            error: "Tool timed out.",
+            hints: new[] { "Retry with tighter scope." },
+            isTransient: true);
+
+        var failure = envelope.GetObject("failure");
+        AssertNotNull(failure, "failure object");
+        AssertEqual("tool_timeout", failure!.GetString("code") ?? string.Empty, "failure.code");
+        AssertEqual("Tool timed out.", failure.GetString("message") ?? string.Empty, "failure.message");
+        AssertEqual(true, failure.GetBoolean("is_transient"), "failure.is_transient");
+    }
+
+    private static void TestToolOutputEnvelopeErrorStringIncludesFailureObject() {
+        var json = ToolOutputEnvelope.Error(
+            errorCode: "tool_exception",
+            error: "Unexpected failure.",
+            hints: new[] { "Capture args/output and retry." },
+            isTransient: false);
+
+        using var doc = JsonDocument.Parse(json);
+        var failure = doc.RootElement.GetProperty("failure");
+        AssertEqual("tool_exception", failure.GetProperty("code").GetString() ?? string.Empty, "failure.code");
+        AssertEqual("Unexpected failure.", failure.GetProperty("message").GetString() ?? string.Empty, "failure.message");
+        AssertEqual(false, failure.GetProperty("is_transient").GetBoolean(), "failure.is_transient");
+    }
 }
 #endif

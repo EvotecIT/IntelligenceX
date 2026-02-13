@@ -32,16 +32,17 @@ internal static class ToolRunMarkdownFormatter {
             var toolLabel = namesByCallId.TryGetValue(output.CallId, out var name)
                 ? name
                 : $"Call {output.CallId}";
+            var hasError = !string.IsNullOrWhiteSpace(output.Error) || !string.IsNullOrWhiteSpace(output.ErrorCode) || output.Ok == false;
 
             markdown.Heading(toolLabel, 4);
-            if (!string.IsNullOrWhiteSpace(output.Error)) {
-                markdown.Quote("error: " + output.Error.Trim());
+            if (hasError) {
+                AppendFailureContract(markdown, output);
             }
 
             var summary = NormalizeSummaryMarkdown(output.SummaryMarkdown, toolLabel);
-            if (ShouldIncludeSummary(summary, hasError: !string.IsNullOrWhiteSpace(output.Error))) {
+            if (ShouldIncludeSummary(summary, hasError)) {
                 markdown.Raw(summary);
-            } else if (string.IsNullOrWhiteSpace(output.Error)) {
+            } else if (!hasError) {
                 markdown.Paragraph("completed");
             }
 
@@ -141,5 +142,37 @@ internal static class ToolRunMarkdownFormatter {
         }
 
         return hasPipe;
+    }
+
+    private static void AppendFailureContract(MarkdownComposer markdown, ToolOutputDto output) {
+        var detailParts = new List<string>();
+        var errorCode = (output.ErrorCode ?? string.Empty).Trim();
+        var errorMessage = (output.Error ?? string.Empty).Trim();
+
+        if (errorCode.Length > 0) {
+            detailParts.Add("code: `" + errorCode + "`");
+        }
+        if (output.IsTransient.HasValue) {
+            detailParts.Add("retryable: " + (output.IsTransient.Value ? "yes" : "no"));
+        }
+        if (detailParts.Count > 0) {
+            markdown.Quote("failure contract: " + string.Join(" | ", detailParts));
+        }
+
+        if (errorMessage.Length > 0) {
+            markdown.Quote("error: " + errorMessage);
+        } else if (errorCode.Length > 0) {
+            markdown.Quote("error: Tool failed with code `" + errorCode + "`.");
+        }
+
+        if (output.Hints is { Length: > 0 }) {
+            markdown.Paragraph("hints:");
+            for (var i = 0; i < output.Hints.Length; i++) {
+                var hint = (output.Hints[i] ?? string.Empty).Trim();
+                if (hint.Length > 0) {
+                    markdown.Bullet(hint);
+                }
+            }
+        }
     }
 }

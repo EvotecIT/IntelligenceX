@@ -38,6 +38,8 @@ internal static partial class Program {
         failed += Run("Tool output envelope error omits meta when null", TestToolOutputEnvelopeErrorOmitsMetaWhenNull);
         failed += Run("Tool output envelope error includes meta when provided", TestToolOutputEnvelopeErrorIncludesMetaWhenProvided);
         failed += Run("Tool output envelope error string includes meta when provided", TestToolOutputEnvelopeErrorStringIncludesMetaWhenProvided);
+        failed += Run("Tool output envelope error includes failure object", TestToolOutputEnvelopeErrorIncludesFailureObject);
+        failed += Run("Tool output envelope error string includes failure object", TestToolOutputEnvelopeErrorStringIncludesFailureObject);
 #endif
         failed += Run("Turn response_id parsing", TestTurnResponseIdParsing);
         failed += Run("Turn usage parsing", TestTurnUsageParsing);

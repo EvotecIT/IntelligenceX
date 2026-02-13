@@ -43,4 +43,15 @@ public sealed class SessionStatusFormatterTests {
         Assert.Equal("Opening sign-in...", SessionStatusFormatter.Format(SessionStatus.OpeningSignIn()));
         Assert.Equal("Exporting...", SessionStatusFormatter.Format(SessionStatus.Exporting()));
     }
+
+    /// <summary>
+    /// Ensures status-tone mapping stays deterministic for the status chip.
+    /// </summary>
+    [Fact]
+    public void ToneResolver_UsesExpectedTones() {
+        Assert.Equal(SessionStatusTone.Ok, SessionStatusToneResolver.Resolve(SessionStatus.Connected()));
+        Assert.Equal(SessionStatusTone.Warn, SessionStatusToneResolver.Resolve(SessionStatus.SignInRequired()));
+        Assert.Equal(SessionStatusTone.Bad, SessionStatusToneResolver.Resolve(SessionStatus.UsageLimitReached()));
+        Assert.Equal(SessionStatusTone.Neutral, SessionStatusToneResolver.Resolve(SessionStatus.NoActiveTurnToCancel()));
+    }
 }

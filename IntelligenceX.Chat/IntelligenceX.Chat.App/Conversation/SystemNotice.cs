@@ -30,6 +30,7 @@ internal readonly record struct SystemNotice(SystemNoticeKind Kind, string? Deta
     public static SystemNotice SignInRequiredBeforeSendingMessages() => new(SystemNoticeKind.SignInRequiredBeforeSendingMessages);
     public static SystemNotice CancelRequestFailed(string? detail) => new(SystemNoticeKind.CancelRequestFailed, detail);
     public static SystemNotice LoginFailed(string? detail) => new(SystemNoticeKind.LoginFailed, detail);
+    public static SystemNotice PromptQueuedAfterUsageLimit() => new(SystemNoticeKind.PromptQueuedAfterUsageLimit);
     public static SystemNotice ServiceError(string? error, string? code) => new(SystemNoticeKind.ServiceError, error, code);
     public static SystemNotice TranscriptExported(string? detail) => new(SystemNoticeKind.TranscriptExported, detail);
 }
@@ -64,6 +65,7 @@ internal enum SystemNoticeKind {
     SignInRequiredBeforeSendingMessages,
     CancelRequestFailed,
     LoginFailed,
+    PromptQueuedAfterUsageLimit,
     ServiceError,
     TranscriptExported
 }
@@ -100,6 +102,8 @@ internal static class SystemNoticeFormatter {
             SystemNoticeKind.SignInRequiredBeforeSendingMessages => "Sign-in is required before sending messages.",
             SystemNoticeKind.CancelRequestFailed => "Cancel request failed: " + DetailOrUnknown(notice.Detail),
             SystemNoticeKind.LoginFailed => "Login failed: " + DetailOrUnknown(notice.Detail),
+            SystemNoticeKind.PromptQueuedAfterUsageLimit =>
+                "Prompt queued for retry. Use **Switch Account** in the top-right menu; after sign-in, the prompt will run automatically.",
             SystemNoticeKind.ServiceError => "service error: " + DetailOrUnknown(notice.Detail) + " (" + DetailOrUnknown(notice.Code) + ")",
             SystemNoticeKind.TranscriptExported => "Exported transcript: " + DetailOrUnknown(notice.Detail),
             _ => "System notice."

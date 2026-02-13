@@ -37,4 +37,38 @@ public sealed class ToolRunMarkdownFormatterTests {
         Assert.DoesNotContain("- **AD Domain Info**", markdown);
         Assert.Contains("|Field|Value|", markdown);
     }
+
+    /// <summary>
+    /// Ensures structured tool failure fields are rendered in debug markdown.
+    /// </summary>
+    [Fact]
+    public void Format_RendersFailureContractAndHints() {
+        var tools = new ToolRunDto {
+            Calls = new[] {
+                new ToolCallDto {
+                    CallId = "c2",
+                    Name = "ad_replication_check"
+                }
+            },
+            Outputs = new[] {
+                new ToolOutputDto {
+                    CallId = "c2",
+                    Output = "{}",
+                    Ok = false,
+                    ErrorCode = "tool_timeout",
+                    Error = "Tool timed out after 60s.",
+                    IsTransient = true,
+                    Hints = new[] { "Narrow scope to one DC.", "Retry with a longer timeout." }
+                }
+            }
+        };
+
+        var markdown = ToolRunMarkdownFormatter.Format(tools, _ => "AD Replication Check");
+
+        Assert.Contains("#### AD Replication Check", markdown);
+        Assert.Contains("failure contract: code: `tool_timeout` | retryable: yes", markdown);
+        Assert.Contains("error: Tool timed out after 60s.", markdown);
+        Assert.Contains("- Narrow scope to one DC.", markdown);
+        Assert.Contains("- Retry with a longer timeout.", markdown);
+    }
 }
