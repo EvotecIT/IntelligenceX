@@ -12,6 +12,9 @@
     <IxChatSiblingsRoot2>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\\..\\..\\'))</IxChatSiblingsRoot2>
     <OfficeImoRepoRootCandidate1>$([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot1)OfficeIMO\\'))</OfficeImoRepoRootCandidate1>
     <OfficeImoRepoRootCandidate2>$([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot2)OfficeIMO\\'))</OfficeImoRepoRootCandidate2>
+    <OfficeImoRepoRootInput>$(OfficeImoRepoRoot)</OfficeImoRepoRootInput>
+    <OfficeImoRepoRootInputNormalized Condition="'$(OfficeImoRepoRootInput)' != ''">$([System.IO.Path]::GetFullPath('$(OfficeImoRepoRootInput)\\'))</OfficeImoRepoRootInputNormalized>
+    <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRootInputNormalized)' != '' and Exists('$(OfficeImoRepoRootInputNormalized)OfficeIMO.MarkdownRenderer\\OfficeIMO.MarkdownRenderer.csproj')">$(OfficeImoRepoRootInputNormalized)</OfficeImoRepoRoot>
     <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRoot)' == '' and Exists('$(OfficeImoRepoRootCandidate1)OfficeIMO.MarkdownRenderer\\OfficeIMO.MarkdownRenderer.csproj')">$(OfficeImoRepoRootCandidate1)</OfficeImoRepoRoot>
     <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRoot)' == '' and Exists('$(OfficeImoRepoRootCandidate2)OfficeIMO.MarkdownRenderer\\OfficeIMO.MarkdownRenderer.csproj')">$(OfficeImoRepoRootCandidate2)</OfficeImoRepoRoot>
     <!-- fallback root for NuGet mode when no local checkout is present -->
@@ -19,6 +22,9 @@
 
     <DbaClientXRepoRootCandidate1>$([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot1)DbaClientX\\'))</DbaClientXRepoRootCandidate1>
     <DbaClientXRepoRootCandidate2>$([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot2)DbaClientX\\'))</DbaClientXRepoRootCandidate2>
+    <DbaClientXRepoRootInput>$(DbaClientXRepoRoot)</DbaClientXRepoRootInput>
+    <DbaClientXRepoRootInputNormalized Condition="'$(DbaClientXRepoRootInput)' != ''">$([System.IO.Path]::GetFullPath('$(DbaClientXRepoRootInput)\\'))</DbaClientXRepoRootInputNormalized>
+    <DbaClientXRepoRoot Condition="'$(DbaClientXRepoRootInputNormalized)' != '' and Exists('$(DbaClientXRepoRootInputNormalized)DbaClientX.SQLite\\DbaClientX.SQLite.csproj')">$(DbaClientXRepoRootInputNormalized)</DbaClientXRepoRoot>
     <DbaClientXRepoRoot Condition="'$(DbaClientXRepoRoot)' == '' and Exists('$(DbaClientXRepoRootCandidate1)DbaClientX.SQLite\\DbaClientX.SQLite.csproj')">$(DbaClientXRepoRootCandidate1)</DbaClientXRepoRoot>
     <DbaClientXRepoRoot Condition="'$(DbaClientXRepoRoot)' == '' and Exists('$(DbaClientXRepoRootCandidate2)DbaClientX.SQLite\\DbaClientX.SQLite.csproj')">$(DbaClientXRepoRootCandidate2)</DbaClientXRepoRoot>
     <DbaClientXRepoRoot Condition="'$(DbaClientXRepoRoot)' == ''">$(DbaClientXRepoRootCandidate1)</DbaClientXRepoRoot>

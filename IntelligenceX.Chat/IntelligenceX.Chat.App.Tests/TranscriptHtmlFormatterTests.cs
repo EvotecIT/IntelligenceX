@@ -91,5 +91,4 @@ public sealed class TranscriptHtmlFormatterTests {
         Assert.DoesNotContain("✅I", html);
         Assert.DoesNotContain("or2)", html);
     }
-
 }

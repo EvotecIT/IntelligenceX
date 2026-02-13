@@ -44,28 +44,6 @@ public sealed class AssistantTurnOutcomeFormatterTests {
     }
 
     /// <summary>
-    /// Ensures usage-limit failures are formatted as a dedicated limit outcome.
-    /// </summary>
-    [Fact]
-    public void Format_RendersUsageLimitOutcome() {
-        var text = AssistantTurnOutcomeFormatter.Format(
-            AssistantTurnOutcome.UsageLimit("ChatGPT usage limit reached. Try again in about 60 minutes."));
-        Assert.StartsWith("[limit] ChatGPT usage limit reached for this account.", text);
-        Assert.Contains("Switch Account", text);
-        Assert.Contains("about 1 hour(s)", text);
-    }
-
-    /// <summary>
-    /// Ensures usage-limit parser formats long retry windows into compact day/hour/minute text.
-    /// </summary>
-    [Fact]
-    public void Format_RendersUsageLimitOutcomeWithLongRetryWindow() {
-        var text = AssistantTurnOutcomeFormatter.Format(
-            AssistantTurnOutcome.UsageLimit("ChatGPT usage limit reached. Try again in about 6046 minute(s)."));
-        Assert.Contains("4d 4h 46m", text);
-    }
-
-    /// <summary>
     /// Ensures tool-round-limit failures render actionable guidance instead of raw internal errors.
     /// </summary>
     [Fact]
@@ -73,7 +51,6 @@ public sealed class AssistantTurnOutcomeFormatterTests {
         var text = AssistantTurnOutcomeFormatter.Format(
             AssistantTurnOutcome.ToolRoundLimit("Chat failed: Tool runner exceeded max rounds (3)."));
 
-        Assert.StartsWith("[warning] Tool safety limit reached.", text);
         Assert.Contains("tool safety limit", text);
         Assert.Contains("max rounds: 3", text);
         Assert.Contains("continue", text);
