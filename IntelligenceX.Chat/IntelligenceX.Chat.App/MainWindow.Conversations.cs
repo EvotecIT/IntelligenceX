@@ -408,6 +408,7 @@ public sealed partial class MainWindow : Window {
                 Text = BuildKickoffRequestText(missingFields),
                 Options = BuildChatRequestOptions()
             };
+            _activeKickoffRequestId = request.RequestId;
 
             var result = await client.RequestAsync<ChatResultMessage>(request, CancellationToken.None).ConfigureAwait(false);
             conversation.ThreadId = result.ThreadId;
@@ -424,9 +425,15 @@ public sealed partial class MainWindow : Window {
                 AppendSystem(SystemNotice.ModelKickoffFailed(ex.Message));
             }
 
-            _modelKickoffAttempted = false;
+            if (IsUsageLimitError(ex)) {
+                await SetStatusAsync(SessionStatus.UsageLimitReached()).ConfigureAwait(false);
+                _modelKickoffAttempted = true;
+            } else {
+                _modelKickoffAttempted = false;
+            }
         } finally {
             _modelKickoffInProgress = false;
+            _activeKickoffRequestId = null;
             _activeRequestConversationId = null;
             await SetActivityAsync(null).ConfigureAwait(false);
         }

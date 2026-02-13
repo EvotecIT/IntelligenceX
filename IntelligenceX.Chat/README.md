@@ -60,7 +60,7 @@ By default, Host + Service + WinUI app share auth and use separate local state s
 Status-chip behavior is connection/auth based:
 
 - `Starting...`: app is bringing up or reconnecting local runtime
-- `Service unavailable`: local runtime failed to start or connect
+- `Runtime unavailable`: local runtime failed to start or connect
 - `Sign in to continue`: local runtime is reachable, auth cache is missing/invalid
 - `Ready`: local runtime is reachable and authenticated
 

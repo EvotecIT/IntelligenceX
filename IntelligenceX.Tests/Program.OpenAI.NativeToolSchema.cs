@@ -218,6 +218,24 @@ internal static partial class Program {
         ok = (bool)method!.Invoke(null, new object?[] { messageOnly })!;
         AssertEqual(true, ok, "message missing tools[].name triggers fallback");
 
+        var nativeErrorType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeErrorResponseException", throwOnError: true)!;
+        var nativeCtor = nativeErrorType.GetConstructor(
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            binder: null,
+            types: new[] { typeof(string), typeof(string), typeof(string), typeof(string), typeof(System.Net.HttpStatusCode), typeof(bool) },
+            modifiers: null);
+        AssertNotNull(nativeCtor, "OpenAINativeErrorResponseException ctor");
+        var rawOnly = (Exception)nativeCtor!.Invoke(new object?[] {
+            "Request validation failed.",
+            "Missing required parameter: 'tools[0].name'.",
+            "missing_required_parameter",
+            null,
+            System.Net.HttpStatusCode.BadRequest,
+            true
+        })!;
+        ok = (bool)method!.Invoke(null, new object?[] { rawOnly })!;
+        AssertEqual(true, ok, "native error raw-text missing tools[].name triggers fallback");
+
         var unrelated = new InvalidOperationException("Missing required parameter: 'input'.");
         ok = (bool)method!.Invoke(null, new object?[] { unrelated })!;
         AssertEqual(false, ok, "unrelated missing parameter does not trigger fallback");

@@ -21,7 +21,7 @@ internal sealed partial class OpenAINativeTransport {
                     (int)native.StatusCode == 422 /* Unprocessable Entity (not available in older TFMs) */) {
                     var code = native.ErrorCode;
                     var param = native.ErrorParam;
-                    if (IsToolSchemaRetryableValidationError(code, param, native.Message)) {
+                    if (IsToolSchemaRetryableValidationError(code, param, native.Message, native.RawText)) {
                         return true;
                     }
                 }
@@ -65,9 +65,9 @@ internal sealed partial class OpenAINativeTransport {
         return false;
     }
 
-    private static bool IsToolSchemaRetryableValidationError(string? code, string? param, string? message) {
-        if (string.IsNullOrWhiteSpace(param) ||
-            !param!.TrimStart().StartsWith("tools", StringComparison.OrdinalIgnoreCase)) {
+    private static bool IsToolSchemaRetryableValidationError(string? code, string? param, string? message, string? rawText = null) {
+        var hasToolsPath = HasToolsPath(param) || HasToolsPath(message) || HasToolsPath(rawText);
+        if (!hasToolsPath) {
             return false;
         }
 
@@ -77,8 +77,8 @@ internal sealed partial class OpenAINativeTransport {
             }
 
             if ((code.IndexOf("missing_required_parameter", StringComparison.OrdinalIgnoreCase) >= 0
-                 || code.IndexOf("required_parameter_missing", StringComparison.OrdinalIgnoreCase) >= 0)
-                && param.IndexOf(".name", StringComparison.OrdinalIgnoreCase) >= 0) {
+                  || code.IndexOf("required_parameter_missing", StringComparison.OrdinalIgnoreCase) >= 0)
+                && (HasNamePath(param) || HasNamePath(message) || HasNamePath(rawText))) {
                 return true;
             }
         }
@@ -90,7 +90,24 @@ internal sealed partial class OpenAINativeTransport {
             return true;
         }
 
+        if (!string.IsNullOrWhiteSpace(rawText)
+            && rawText!.IndexOf("missing required parameter", StringComparison.OrdinalIgnoreCase) >= 0
+            && rawText.IndexOf("tools", StringComparison.OrdinalIgnoreCase) >= 0
+            && rawText.IndexOf(".name", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return true;
+        }
+
         return false;
+    }
+
+    private static bool HasToolsPath(string? value) {
+        return !string.IsNullOrWhiteSpace(value)
+               && value!.IndexOf("tools", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static bool HasNamePath(string? value) {
+        return !string.IsNullOrWhiteSpace(value)
+               && value!.IndexOf(".name", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static bool TryGetToolSchemaKeyFallback(Exception? ex, out ToolSchemaKey fallbackKey) {

@@ -573,7 +573,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task RestartSidecarAsync() {
-        AppendSystem("Refreshing background connection...");
+        AppendSystem("Restarting local runtime...");
         _isConnected = false;
         _isAuthenticated = false;
         _loginInProgress = false;
@@ -584,11 +584,45 @@ public sealed partial class MainWindow : Window {
         await ConnectAsync(fromUserAction: true).ConfigureAwait(true);
     }
 
+    private bool ShouldProcessLiveRequestMessage(string? requestId) {
+        var id = (requestId ?? string.Empty).Trim();
+        if (id.Length == 0) {
+            return _isSending || _modelKickoffInProgress;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_activeTurnRequestId) &&
+            string.Equals(id, _activeTurnRequestId, StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_activeKickoffRequestId) &&
+            string.Equals(id, _activeKickoffRequestId, StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsTerminalChatStatus(string? status) {
+        var normalized = (status ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        return string.Equals(normalized, "completed", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(normalized, "done", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(normalized, "finished", StringComparison.OrdinalIgnoreCase);
+    }
+
     private void OnServiceMessage(ChatServiceMessage msg) {
         _ = _dispatcher.TryEnqueue(() => {
             var requestConversation = ResolveRequestConversation();
             switch (msg) {
                 case ChatDeltaMessage delta:
+                    if (!ShouldProcessLiveRequestMessage(delta.RequestId)) {
+                        break;
+                    }
+
                     _assistantStreaming.Append(delta.Text);
                     ReplaceLastAssistantText(requestConversation, _assistantStreaming.ToString());
                     requestConversation.UpdatedUtc = DateTime.UtcNow;
@@ -597,7 +631,11 @@ public sealed partial class MainWindow : Window {
                     }
                     break;
                 case ChatStatusMessage status:
-                    _ = SetActivityAsync(FormatActivityText(status));
+                    if (!ShouldProcessLiveRequestMessage(status.RequestId)) {
+                        break;
+                    }
+
+                    _ = SetActivityAsync(IsTerminalChatStatus(status.Status) ? null : FormatActivityText(status));
                     if (VerboseServiceLogs || _debugMode) {
                         AppendSystem(FormatStatusTrace(status));
                     }

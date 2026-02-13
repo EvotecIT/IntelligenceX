@@ -154,6 +154,7 @@ public sealed partial class MainWindow : Window {
     private bool _appStateLoaded;
     private bool _isSending;
     private string? _activeTurnRequestId;
+    private string? _activeKickoffRequestId;
     private string? _cancelRequestedTurnRequestId;
     private bool _modelKickoffAttempted;
     private bool _modelKickoffInProgress;

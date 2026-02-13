@@ -73,14 +73,15 @@ internal sealed partial class OpenAINativeTransport {
         // ChatGPT-native "responses" backend has been observed to reject previous_response_id.
         // We keep conversation state client-side via NativeThreadState.Messages.
 
-        if (options.Tools is not null && options.Tools.Count > 0) {
+        var requestTools = GetValidTools(options.Tools);
+        if (requestTools.Count > 0) {
             var tools = new JsonArray();
-            foreach (var tool in options.Tools) {
+            foreach (var tool in requestTools) {
                 tools.Add(SerializeToolDefinition(tool, toolWireFormat));
             }
             body.Add("tools", tools);
 
-            var choice = options.ToolChoice ?? ToolChoice.Auto;
+            var choice = NormalizeToolChoice(options.ToolChoice, requestTools);
             var toolChoice = SerializeToolChoice(choice, toolWireFormat);
             if (toolChoice is JsonObject obj) {
                 body.Add("tool_choice", obj);
@@ -98,9 +99,64 @@ internal sealed partial class OpenAINativeTransport {
         return body;
     }
 
+    private static IReadOnlyList<ToolDefinition> GetValidTools(IReadOnlyList<ToolDefinition>? tools) {
+        if (tools is null || tools.Count == 0) {
+            return Array.Empty<ToolDefinition>();
+        }
+
+        var valid = new List<ToolDefinition>(tools.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < tools.Count; i++) {
+            var tool = tools[i];
+            if (tool is null) {
+                continue;
+            }
+
+            var name = (tool.Name ?? string.Empty).Trim();
+            if (name.Length == 0) {
+                continue;
+            }
+
+            if (seen.Add(name)) {
+                valid.Add(tool);
+            }
+        }
+
+        return valid.Count == 0 ? Array.Empty<ToolDefinition>() : valid;
+    }
+
+    private static ToolChoice NormalizeToolChoice(ToolChoice? choice, IReadOnlyList<ToolDefinition> requestTools) {
+        if (choice is null) {
+            return ToolChoice.Auto;
+        }
+
+        if (!string.Equals(choice.Type, "custom", StringComparison.OrdinalIgnoreCase)) {
+            return choice;
+        }
+
+        var requestedName = (choice.Name ?? string.Empty).Trim();
+        if (requestedName.Length == 0) {
+            return ToolChoice.Auto;
+        }
+
+        for (var i = 0; i < requestTools.Count; i++) {
+            var toolName = requestTools[i].Name;
+            if (string.Equals(toolName, requestedName, StringComparison.OrdinalIgnoreCase)) {
+                return string.Equals(toolName, requestedName, StringComparison.Ordinal)
+                    ? choice
+                    : ToolChoice.Custom(toolName);
+            }
+        }
+
+        return ToolChoice.Auto;
+    }
+
     private static object SerializeToolChoice(ToolChoice choice, ToolWireFormat toolWireFormat) {
         if (string.Equals(choice.Type, "custom", StringComparison.OrdinalIgnoreCase)) {
-            var name = choice.Name ?? string.Empty;
+            var name = (choice.Name ?? string.Empty).Trim();
+            if (name.Length == 0) {
+                return "auto";
+            }
             var isFunctionWireFormat = toolWireFormat == ToolWireFormat.FunctionNestedParameters ||
                                        toolWireFormat == ToolWireFormat.FunctionNestedInputSchema ||
                                        toolWireFormat == ToolWireFormat.FunctionFlatParameters ||

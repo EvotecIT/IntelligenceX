@@ -13,7 +13,7 @@ public sealed class SystemNoticeFormatterTests {
     [Fact]
     public void Format_UsesDetail_ForDetailedNotices() {
         var text = SystemNoticeFormatter.Format(SystemNotice.ConnectFailed("Timed out waiting for service pipe."));
-        Assert.Equal("Connect failed: Timed out waiting for service pipe.", text);
+        Assert.Equal("Couldn't connect to local runtime: Timed out waiting for service pipe.", text);
     }
 
     /// <summary>
@@ -30,7 +30,7 @@ public sealed class SystemNoticeFormatterTests {
     /// </summary>
     [Fact]
     public void Format_UsesStableValues_ForFixedNotices() {
-        Assert.Equal("Background service is unavailable.", SystemNoticeFormatter.Format(SystemNotice.ServiceSidecarUnavailable()));
+        Assert.Equal("Local runtime is unavailable.", SystemNoticeFormatter.Format(SystemNotice.ServiceSidecarUnavailable()));
         Assert.Equal("Export failed: missing rows payload.", SystemNoticeFormatter.Format(SystemNotice.ExportMissingRowsPayload()));
         Assert.Equal("[service] exited", SystemNoticeFormatter.Format(SystemNotice.ServiceExited()));
     }

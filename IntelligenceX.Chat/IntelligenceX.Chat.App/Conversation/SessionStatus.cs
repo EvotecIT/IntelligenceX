@@ -64,7 +64,7 @@ internal static class SessionStatusFormatter {
             SessionStatusKind.SignInRequired => "Sign in to continue",
             SessionStatusKind.Disconnected => "Starting...",
             SessionStatusKind.Connecting => "Starting...",
-            SessionStatusKind.ConnectFailed => "Service unavailable",
+            SessionStatusKind.ConnectFailed => "Runtime unavailable",
             SessionStatusKind.PreviousRequestStillRunning => "Previous request still running...",
             SessionStatusKind.WaitingForSignIn => "Waiting for sign-in...",
             SessionStatusKind.NoActiveTurnToCancel => "No active turn to cancel",

@@ -404,21 +404,14 @@ public sealed partial class MainWindow : Window {
             // Ignore.
         }
 
-        var stagedServiceDir = _stagedServiceDir;
         _stagedServiceDir = null;
-        if (!string.IsNullOrWhiteSpace(stagedServiceDir)) {
-            try {
-                Directory.Delete(stagedServiceDir, recursive: true);
-            } catch {
-                // Ignore.
-            }
-        }
     }
 
     private async Task DisposeClientAsync() {
         var client = _client;
         _client = null;
         _isConnected = false;
+        _activeKickoffRequestId = null;
         if (client is not null) {
             client.MessageReceived -= OnServiceMessage;
             client.Disconnected -= OnClientDisconnected;

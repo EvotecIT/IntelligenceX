@@ -41,7 +41,7 @@ public sealed class SessionStatusFormatterTests {
     public void Format_UsesStableValues_ForCommonStates() {
         Assert.Equal("Debug mode on", SessionStatusFormatter.Format(SessionStatus.DebugModeOn()));
         Assert.Equal("Opening sign-in...", SessionStatusFormatter.Format(SessionStatus.OpeningSignIn()));
-        Assert.Equal("Service unavailable", SessionStatusFormatter.Format(SessionStatus.ConnectFailed()));
+        Assert.Equal("Runtime unavailable", SessionStatusFormatter.Format(SessionStatus.ConnectFailed()));
         Assert.Equal("Usage limit reached", SessionStatusFormatter.Format(SessionStatus.UsageLimitReached()));
         Assert.Equal("Exporting...", SessionStatusFormatter.Format(SessionStatus.Exporting()));
     }
