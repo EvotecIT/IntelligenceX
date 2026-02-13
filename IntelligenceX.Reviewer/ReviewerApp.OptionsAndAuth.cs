@@ -414,7 +414,8 @@ public static partial class ReviewerApp {
         }
 
         if (normalized == "round-robin") {
-            var offset = PositiveModulo(rotationSeed, ordered.Count);
+            var normalizedSeed = rotationSeed > 0 ? rotationSeed - 1 : 0;
+            var offset = PositiveModulo(normalizedSeed, ordered.Count);
             if (offset == 0) {
                 return ordered;
             }

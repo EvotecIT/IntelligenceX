@@ -23,12 +23,21 @@ internal static partial class Program {
     }
 
     private static void TestOpenAiAccountOrderRoundRobin() {
-        var ordered = CallOrderOpenAiAccounts(
+        var firstRun = CallOrderOpenAiAccounts(
             new[] { "acc-1", "acc-2", "acc-3" },
             rotation: "round-robin",
             stickyAccountId: null,
-            rotationSeed: 4);
-        AssertSequenceEqual(new[] { "acc-2", "acc-3", "acc-1" }, ordered.ToArray(), "openai account order round-robin");
+            rotationSeed: 1);
+        AssertSequenceEqual(new[] { "acc-1", "acc-2", "acc-3" }, firstRun.ToArray(),
+            "openai account order round-robin first run");
+
+        var secondRun = CallOrderOpenAiAccounts(
+            new[] { "acc-1", "acc-2", "acc-3" },
+            rotation: "round-robin",
+            stickyAccountId: null,
+            rotationSeed: 2);
+        AssertSequenceEqual(new[] { "acc-2", "acc-3", "acc-1" }, secondRun.ToArray(),
+            "openai account order round-robin second run");
     }
 
     private static void TestOpenAiAccountOrderSticky() {
@@ -59,7 +68,7 @@ internal static partial class Program {
 
         try {
             Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH", authPath);
-            Environment.SetEnvironmentVariable("GITHUB_RUN_NUMBER", "4");
+            Environment.SetEnvironmentVariable("GITHUB_RUN_NUMBER", "2");
 
             var store = new IntelligenceX.OpenAI.Auth.FileAuthBundleStore(authPath);
             store.SaveAsync(new IntelligenceX.OpenAI.Auth.AuthBundle("openai-codex", "token-1", "refresh-1",
