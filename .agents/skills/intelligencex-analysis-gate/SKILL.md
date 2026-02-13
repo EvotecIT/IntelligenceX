@@ -1,3 +1,8 @@
+---
+name: intelligencex-analysis-gate
+description: Use when changing analysis behavior, static-analysis policy, catalog validation, or analyzer execution flow in IntelligenceX.
+---
+
 # Skill: intelligencex-analysis-gate
 
 Use this skill when changing analysis behavior or static-analysis policy:

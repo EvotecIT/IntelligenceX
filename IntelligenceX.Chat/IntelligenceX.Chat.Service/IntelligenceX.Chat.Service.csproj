@@ -29,6 +29,8 @@
                       Condition="Exists('..\\..\\..\\DbaClientX\\DbaClientX.SQLite\\DbaClientX.SQLite.csproj')" />
     <ProjectReference Include="..\..\DbaClientX\DbaClientX.SQLite\DbaClientX.SQLite.csproj"
                       Condition="!Exists('..\\..\\..\\DbaClientX\\DbaClientX.SQLite\\DbaClientX.SQLite.csproj') AND Exists('..\\..\\DbaClientX\\DbaClientX.SQLite\\DbaClientX.SQLite.csproj')" />
+    <PackageReference Include="DBAClientX.SQLite" Version="0.1.1"
+                      Condition="!Exists('..\\..\\..\\DbaClientX\\DbaClientX.SQLite\\DbaClientX.SQLite.csproj') AND !Exists('..\\..\\DbaClientX\\DbaClientX.SQLite\\DbaClientX.SQLite.csproj')" />
     <ProjectReference Include="..\IntelligenceX.Chat.Tooling\IntelligenceX.Chat.Tooling.csproj" />
   </ItemGroup>
 

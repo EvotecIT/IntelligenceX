@@ -27,6 +27,32 @@
     <!-- Minimum markers for current thin-wrapper contracts in Tools.System and Tools.PowerShell. -->
     <IxToolsComputerXApiMarker>ComputerX\\Features\\FeatureInventoryQuery.cs</IxToolsComputerXApiMarker>
     <IxToolsComputerXPowerShellApiMarker>ComputerX\\PowerShellRuntime\\PowerShellCommandQuery.cs</IxToolsComputerXPowerShellApiMarker>
+    <!-- IntelligenceX core project candidates (monorepo + sibling/worktree layouts). -->
+    <IxCoreCandidateMonorepo>$([System.IO.Path]::GetFullPath('$(IxToolsRepoRoot)..\\IntelligenceX\\IntelligenceX.csproj'))</IxCoreCandidateMonorepo>
+    <IxCoreCandidateSibling1>$([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot1)IntelligenceX\\IntelligenceX\\IntelligenceX.csproj'))</IxCoreCandidateSibling1>
+    <IxCoreCandidateSibling2>$([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot2)IntelligenceX\\IntelligenceX\\IntelligenceX.csproj'))</IxCoreCandidateSibling2>
+    <IxCoreCandidateWorktree1>$([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot1)IntelligenceX-worktrees\\tools-contract-namespace\\IntelligenceX\\IntelligenceX.csproj'))</IxCoreCandidateWorktree1>
+    <IxCoreCandidateWorktree2>$([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot2)IntelligenceX-worktrees\\tools-contract-namespace\\IntelligenceX\\IntelligenceX.csproj'))</IxCoreCandidateWorktree2>
+  </PropertyGroup>
+
+  <!-- Optional caller override (for unusual local layouts). -->
+  <PropertyGroup Condition="'$(IntelligenceXCoreProject)'!=''">
+    <IntelligenceXCoreProject>$([System.IO.Path]::GetFullPath('$(IntelligenceXCoreProject)'))</IntelligenceXCoreProject>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(IntelligenceXCoreProject)'=='' AND Exists('$(IxCoreCandidateMonorepo)')">
+    <IntelligenceXCoreProject>$(IxCoreCandidateMonorepo)</IntelligenceXCoreProject>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(IntelligenceXCoreProject)'=='' AND Exists('$(IxCoreCandidateSibling1)')">
+    <IntelligenceXCoreProject>$(IxCoreCandidateSibling1)</IntelligenceXCoreProject>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(IntelligenceXCoreProject)'=='' AND Exists('$(IxCoreCandidateSibling2)')">
+    <IntelligenceXCoreProject>$(IxCoreCandidateSibling2)</IntelligenceXCoreProject>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(IntelligenceXCoreProject)'=='' AND Exists('$(IxCoreCandidateWorktree1)')">
+    <IntelligenceXCoreProject>$(IxCoreCandidateWorktree1)</IntelligenceXCoreProject>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(IntelligenceXCoreProject)'=='' AND Exists('$(IxCoreCandidateWorktree2)')">
+    <IntelligenceXCoreProject>$(IxCoreCandidateWorktree2)</IntelligenceXCoreProject>
   </PropertyGroup>
 
   <!-- If caller provided TestimoXRoot, normalize it first. -->

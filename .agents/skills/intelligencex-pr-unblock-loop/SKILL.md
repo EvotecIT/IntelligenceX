@@ -1,3 +1,8 @@
+---
+name: intelligencex-pr-unblock-loop
+description: Use when iterating on PR blockers, CI failures, and bot todo or critical items until mergeability is restored.
+---
+
 # Skill: intelligencex-pr-unblock-loop
 
 Use this skill when a PR must be unblocked/merged and checks or bot comments require iteration.

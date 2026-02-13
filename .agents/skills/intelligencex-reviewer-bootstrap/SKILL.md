@@ -1,3 +1,8 @@
+---
+name: intelligencex-reviewer-bootstrap
+description: Use when bootstrapping or validating IntelligenceX reviewer setup, managed workflow blocks, and reviewer.json generation/apply flow.
+---
+
 # Skill: intelligencex-reviewer-bootstrap
 
 Use this skill when setting up or validating IntelligenceX Reviewer onboarding in a target repo, especially:
