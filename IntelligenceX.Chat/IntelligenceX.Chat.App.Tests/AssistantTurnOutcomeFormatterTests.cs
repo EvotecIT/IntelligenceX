@@ -50,7 +50,19 @@ public sealed class AssistantTurnOutcomeFormatterTests {
     public void Format_RendersUsageLimitOutcome() {
         var text = AssistantTurnOutcomeFormatter.Format(
             AssistantTurnOutcome.UsageLimit("ChatGPT usage limit reached. Try again in about 60 minutes."));
-        Assert.Equal("[limit] ChatGPT usage limit reached. Try again in about 60 minutes.", text);
+        Assert.StartsWith("[limit] ChatGPT usage limit reached for this account.", text);
+        Assert.Contains("Switch Account", text);
+        Assert.Contains("about 1 hour(s)", text);
+    }
+
+    /// <summary>
+    /// Ensures usage-limit parser formats long retry windows into compact day/hour/minute text.
+    /// </summary>
+    [Fact]
+    public void Format_RendersUsageLimitOutcomeWithLongRetryWindow() {
+        var text = AssistantTurnOutcomeFormatter.Format(
+            AssistantTurnOutcome.UsageLimit("ChatGPT usage limit reached. Try again in about 6046 minute(s)."));
+        Assert.Contains("4d 4h 46m", text);
     }
 
     /// <summary>

@@ -13,7 +13,7 @@ public sealed class SessionStatusFormatterTests {
     [Fact]
     public void ForConnection_Disconnected_UsesDisconnectedText() {
         var status = SessionStatus.ForConnection(isConnected: false, isAuthenticated: true);
-        Assert.Equal("Starting...", SessionStatusFormatter.Format(status));
+        Assert.Equal("Starting runtime...", SessionStatusFormatter.Format(status));
     }
 
     /// <summary>
@@ -42,7 +42,7 @@ public sealed class SessionStatusFormatterTests {
         Assert.Equal("Debug mode on", SessionStatusFormatter.Format(SessionStatus.DebugModeOn()));
         Assert.Equal("Opening sign-in...", SessionStatusFormatter.Format(SessionStatus.OpeningSignIn()));
         Assert.Equal("Runtime unavailable", SessionStatusFormatter.Format(SessionStatus.ConnectFailed()));
-        Assert.Equal("Usage limit reached", SessionStatusFormatter.Format(SessionStatus.UsageLimitReached()));
+        Assert.Equal("Usage limit reached - switch account", SessionStatusFormatter.Format(SessionStatus.UsageLimitReached()));
         Assert.Equal("Exporting...", SessionStatusFormatter.Format(SessionStatus.Exporting()));
     }
 }

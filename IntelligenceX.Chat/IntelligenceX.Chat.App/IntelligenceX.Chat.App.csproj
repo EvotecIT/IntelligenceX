@@ -26,12 +26,10 @@
   <ItemGroup>
     <ProjectReference Include="..\\IntelligenceX.Chat.Abstractions\\IntelligenceX.Chat.Abstractions.csproj" />
     <ProjectReference Include="..\\IntelligenceX.Chat.Client\\IntelligenceX.Chat.Client.csproj" />
-    <ProjectReference Include="..\\..\\DbaClientX\\DbaClientX.SQLite\\DbaClientX.SQLite.csproj"
-                      Condition="Exists('..\\..\\DbaClientX\\DbaClientX.SQLite\\DbaClientX.SQLite.csproj')" />
-    <ProjectReference Include="..\\..\\..\\DbaClientX\\DbaClientX.SQLite\\DbaClientX.SQLite.csproj"
-                      Condition="!Exists('..\\..\\DbaClientX\\DbaClientX.SQLite\\DbaClientX.SQLite.csproj') AND Exists('..\\..\\..\\DbaClientX\\DbaClientX.SQLite\\DbaClientX.SQLite.csproj')" />
+    <ProjectReference Include="$(DbaClientXRepoRoot)DbaClientX.SQLite\\DbaClientX.SQLite.csproj"
+                      Condition="Exists('$(DbaClientXRepoRoot)DbaClientX.SQLite\\DbaClientX.SQLite.csproj')" />
     <PackageReference Include="DBAClientX.SQLite" Version="0.1.1"
-                      Condition="!Exists('..\\..\\DbaClientX\\DbaClientX.SQLite\\DbaClientX.SQLite.csproj') AND !Exists('..\\..\\..\\DbaClientX\\DbaClientX.SQLite\\DbaClientX.SQLite.csproj')" />
+                      Condition="!Exists('$(DbaClientXRepoRoot)DbaClientX.SQLite\\DbaClientX.SQLite.csproj')" />
   </ItemGroup>
 
   <ItemGroup>

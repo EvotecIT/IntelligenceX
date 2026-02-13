@@ -62,8 +62,8 @@ internal static class SessionStatusFormatter {
         return status.Kind switch {
             SessionStatusKind.Connected => "Ready",
             SessionStatusKind.SignInRequired => "Sign in to continue",
-            SessionStatusKind.Disconnected => "Starting...",
-            SessionStatusKind.Connecting => "Starting...",
+            SessionStatusKind.Disconnected => "Starting runtime...",
+            SessionStatusKind.Connecting => "Starting runtime...",
             SessionStatusKind.ConnectFailed => "Runtime unavailable",
             SessionStatusKind.PreviousRequestStillRunning => "Previous request still running...",
             SessionStatusKind.WaitingForSignIn => "Waiting for sign-in...",
@@ -76,10 +76,10 @@ internal static class SessionStatusFormatter {
             SessionStatusKind.DebugModeOn => "Debug mode on",
             SessionStatusKind.CannotDeleteActiveConversationDuringTurn => "Cannot delete active conversation during a running turn",
             SessionStatusKind.OpeningSignIn => "Opening sign-in...",
-            SessionStatusKind.UsageLimitReached => "Usage limit reached",
+            SessionStatusKind.UsageLimitReached => "Usage limit reached - switch account",
             SessionStatusKind.ExportFailed => "Export failed",
             SessionStatusKind.Exporting => "Exporting...",
-            _ => "Starting..."
+            _ => "Starting runtime..."
         };
     }
 }

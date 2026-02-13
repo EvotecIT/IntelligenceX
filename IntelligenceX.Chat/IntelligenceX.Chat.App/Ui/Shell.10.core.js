@@ -29,7 +29,7 @@
   };
 
   var state = {
-    status: "Starting...",
+    status: "Starting runtime...",
     connected: false,
     authenticated: false,
     loginInProgress: false,
