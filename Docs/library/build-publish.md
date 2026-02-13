@@ -24,6 +24,7 @@ Merged-worktree cleanup defaults to `codex/` branches merged into `origin/master
 You can tune branch selection:
 - `-MergedBranchPrefix <prefix>` (for example `codex/`)
 - `-SkipMergedBranchPrefixes <prefix1>,<prefix2>` (for example keep website worktrees)
+  You can pass either separate values (`-SkipMergedBranchPrefixes a,b`) or repeated values (`-SkipMergedBranchPrefixes a -SkipMergedBranchPrefixes b`).
 
 Example:
 
