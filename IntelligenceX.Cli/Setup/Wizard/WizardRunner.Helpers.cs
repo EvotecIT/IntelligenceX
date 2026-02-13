@@ -53,6 +53,8 @@ internal static partial class WizardRunner {
         var analysisApplies = withConfig &&
                               state.Operation == WizardOperation.Setup &&
                               state.ConfigMode == ConfigMode.Preset;
+        var openAiAccountRoutingApplies = analysisApplies &&
+                                          IsOpenAiProvider(state.Provider);
         var allowSecrets = state.Operation == WizardOperation.Setup;
         var plan = new SetupPlan(repo) {
             GitHubClientId = state.GitHubClientId,
@@ -62,6 +64,14 @@ internal static partial class WizardRunner {
             ConfigJson = state.ConfigJson,
             AuthB64 = ShouldPassAuthB64(state) ? state.OpenAiAuthB64 : null,
             Provider = state.Provider,
+            OpenAIAccountId = openAiAccountRoutingApplies ? state.OpenAiAccountId : null,
+            OpenAIAccountIds = openAiAccountRoutingApplies ? state.OpenAiAccountIds : null,
+            OpenAIAccountRotation = openAiAccountRoutingApplies && !string.IsNullOrWhiteSpace(state.OpenAiAccountIds)
+                ? state.OpenAiAccountRotation
+                : null,
+            OpenAIAccountFailover = openAiAccountRoutingApplies && !string.IsNullOrWhiteSpace(state.OpenAiAccountIds)
+                ? state.OpenAiAccountFailover
+                : null,
             ReviewProfile = ResolveProfile(state),
             ReviewMode = ResolveMode(state),
             SkipSecret = allowSecrets && state.SkipSecret,

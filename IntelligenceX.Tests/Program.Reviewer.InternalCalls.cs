@@ -52,6 +52,58 @@ internal static partial class Program {
         return result ?? string.Empty;
     }
 
+    private static string? CallEvaluateUsageBudgetGuardFailure(ReviewSettings settings, ChatGptUsageSnapshot snapshot) {
+        var method = typeof(ReviewerApp).GetMethod("EvaluateUsageBudgetGuardFailure",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("EvaluateUsageBudgetGuardFailure method not found.");
+        }
+        return method.Invoke(null, new object?[] { settings, snapshot }) as string;
+    }
+
+    private static string? CallTryBuildUsageBudgetGuardFailure(ReviewSettings settings, ReviewProvider provider) {
+        var method = typeof(ReviewerApp).GetMethod("TryBuildUsageBudgetGuardFailureAsync",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("TryBuildUsageBudgetGuardFailureAsync method not found.");
+        }
+        var task = method.Invoke(null, new object?[] { settings, provider });
+        if (task is Task<string?> typedTask) {
+            return typedTask.GetAwaiter().GetResult();
+        }
+        throw new InvalidOperationException("TryBuildUsageBudgetGuardFailureAsync returned unexpected result.");
+    }
+
+    private static IReadOnlyList<string> CallOrderOpenAiAccounts(
+        IReadOnlyList<string> accountIds,
+        string rotation,
+        string? stickyAccountId,
+        long rotationSeed) {
+        var method = typeof(ReviewerApp).GetMethod("OrderOpenAiAccounts",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("OrderOpenAiAccounts method not found.");
+        }
+        var result = method.Invoke(null, new object?[] { accountIds, rotation, stickyAccountId, rotationSeed });
+        if (result is IReadOnlyList<string> ordered) {
+            return ordered;
+        }
+        throw new InvalidOperationException("OrderOpenAiAccounts returned unexpected result.");
+    }
+
+    private static (bool Success, string? Error, bool BudgetGuardEvaluated) CallTryResolveOpenAiAccount(ReviewSettings settings) {
+        var method = typeof(ReviewerApp).GetMethod("TryResolveOpenAiAccountAsync",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        if (method is null) {
+            throw new InvalidOperationException("TryResolveOpenAiAccountAsync method not found.");
+        }
+        var task = method.Invoke(null, new object?[] { settings });
+        if (task is Task<ValueTuple<bool, string?, bool>> typedTask) {
+            return typedTask.GetAwaiter().GetResult();
+        }
+        throw new InvalidOperationException("TryResolveOpenAiAccountAsync returned unexpected result.");
+    }
+
     private static void CallPreflightNativeConnectivity(OpenAINativeOptions options, TimeSpan timeout) {
         var runner = new ReviewRunner(new ReviewSettings());
         var method = typeof(ReviewRunner).GetMethod("PreflightNativeConnectivityAsync",

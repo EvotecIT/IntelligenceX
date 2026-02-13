@@ -296,6 +296,23 @@
               <option value="fresh">fresh</option>
             </select>
 
+            <h3 style="margin: 12px 0 8px 0;">OpenAI account routing</h3>
+            <label>Primary account id (optional)</label>
+            <input id="openAiAccountId" placeholder="acc_..." />
+            <label>Account ids (comma-separated)</label>
+            <input id="openAiAccountIds" placeholder="acc_primary,acc_backup,acc_team" />
+            <label>Account rotation</label>
+            <select id="openAiAccountRotation">
+              <option value="first-available">first-available</option>
+              <option value="round-robin">round-robin</option>
+              <option value="sticky">sticky</option>
+            </select>
+            <div class="row">
+              <label class="inline"><input type="checkbox" id="openAiAccountFailover" checked /> Enable account failover</label>
+              <button id="loadOpenAiAccounts" class="secondary" type="button">Load from auth bundle</button>
+            </div>
+            <p class="hint" id="openAiAccountsHint">Use this when you want reviewer account rotation/failover in GitHub Actions.</p>
+
             <h3 style="margin: 12px 0 8px 0;">Static analysis</h3>
             <div class="row">
               <label class="inline"><input type="checkbox" id="analysisEnabled" /> Enable static analysis</label>

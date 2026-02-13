@@ -90,6 +90,10 @@ internal sealed partial class WebApi {
         public string? AuthB64 { get; set; }
         public string? AuthB64Path { get; set; }
         public string? Provider { get; set; }
+        public string? OpenAIAccountId { get; set; }
+        public string? OpenAIAccountIds { get; set; }
+        public string? OpenAIAccountRotation { get; set; }
+        public bool? OpenAIAccountFailover { get; set; }
         public string? ConfigJson { get; set; }
         public string? ConfigPath { get; set; }
         public string? ReviewProfile { get; set; }
@@ -121,6 +125,7 @@ internal sealed partial class WebApi {
     private sealed class UsageRequest {
         public string? AuthB64 { get; set; }
         public string? AuthB64Path { get; set; }
+        public string? AccountId { get; set; }
         public bool IncludeEvents { get; set; }
         public string? AuthKey { get; set; }
         public string? ChatGptApiBaseUrl { get; set; }
@@ -130,6 +135,12 @@ internal sealed partial class WebApi {
         public string? ClientId { get; set; }
         public int RedirectPort { get; set; }
         public int TimeoutSeconds { get; set; }
+    }
+
+    private sealed class OpenAIAccountsRequest {
+        public string? AuthB64 { get; set; }
+        public string? AuthB64Path { get; set; }
+        public string? AuthKey { get; set; }
     }
 
     private sealed class SetupResponse {
@@ -212,6 +223,19 @@ internal sealed partial class WebApi {
         public UsageSnapshot? Usage { get; set; }
         public List<UsageEvent>? Events { get; set; }
         public string? UpdatedAt { get; set; }
+    }
+
+    private sealed class OpenAIAccountsResponse {
+        public List<OpenAIAccountItem> Accounts { get; set; } = new();
+        public string? SelectedAccountId { get; set; }
+        public string? Source { get; set; }
+        public string? Error { get; set; }
+    }
+
+    private sealed class OpenAIAccountItem {
+        public string AccountId { get; set; } = string.Empty;
+        public string Provider { get; set; } = string.Empty;
+        public string? ExpiresAt { get; set; }
     }
 
     private sealed class UsageSnapshot {

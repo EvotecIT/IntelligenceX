@@ -91,12 +91,37 @@ internal sealed partial class ReviewSettings {
     public bool ReviewUsageSummary { get; set; }
     public int ReviewUsageSummaryCacheMinutes { get; set; } = 10;
     public int ReviewUsageSummaryTimeoutSeconds { get; set; } = 10;
+    /// <summary>
+    /// Enables an early fail-fast guard when configured usage budget sources are exhausted.
+    /// </summary>
+    public bool ReviewUsageBudgetGuard { get; set; } = true;
+    /// <summary>
+    /// Allows reviewer runs to proceed when ChatGPT credits are available.
+    /// </summary>
+    public bool ReviewUsageBudgetAllowCredits { get; set; } = true;
+    /// <summary>
+    /// Allows reviewer runs to proceed when weekly limit capacity is available.
+    /// </summary>
+    public bool ReviewUsageBudgetAllowWeeklyLimit { get; set; } = true;
     public bool StructuredFindings { get; set; }
     public OpenAITransportKind OpenAITransport { get; set; } = OpenAITransportKind.AppServer;
     /// <summary>
     /// Optional ChatGPT account id to use when multiple OpenAI bundles are present in the auth store.
     /// </summary>
     public string? OpenAiAccountId { get; set; }
+    /// <summary>
+    /// Optional ordered list of ChatGPT account ids used for reviewer account rotation/failover.
+    /// </summary>
+    public IReadOnlyList<string> OpenAiAccountIds { get; set; } = Array.Empty<string>();
+    /// <summary>
+    /// Account rotation policy when <see cref="OpenAiAccountIds"/> contains multiple entries.
+    /// Supported values: first-available, round-robin, sticky.
+    /// </summary>
+    public string OpenAiAccountRotation { get; set; } = "first-available";
+    /// <summary>
+    /// When true, reviewer can fall back to the next account in <see cref="OpenAiAccountIds"/> when the selected account is unavailable.
+    /// </summary>
+    public bool OpenAiAccountFailover { get; set; } = true;
     public int RetryCount { get; set; } = 3;
     public int RetryDelaySeconds { get; set; } = 5;
     public int RetryMaxDelaySeconds { get; set; } = 30;

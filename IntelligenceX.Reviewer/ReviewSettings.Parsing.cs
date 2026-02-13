@@ -75,6 +75,40 @@ internal sealed partial class ReviewSettings {
         return parts.Length == 0 ? fallback ?? Array.Empty<string>() : parts;
     }
 
+    internal static IReadOnlyList<string> NormalizeAccountIdList(IEnumerable<string>? values) {
+        if (values is null) {
+            return Array.Empty<string>();
+        }
+        var list = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in values) {
+            if (string.IsNullOrWhiteSpace(value)) {
+                continue;
+            }
+            var normalized = value.Trim();
+            if (normalized.Length == 0) {
+                continue;
+            }
+            if (seen.Add(normalized)) {
+                list.Add(normalized);
+            }
+        }
+        return list;
+    }
+
+    internal static string NormalizeOpenAiAccountRotation(string? value, string fallback) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return fallback;
+        }
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "first" or "first-available" or "first_available" or "ordered" => "first-available",
+            "round-robin" or "round_robin" or "rr" or "rotate" => "round-robin",
+            "sticky" or "pin" or "pinned" => "sticky",
+            _ => fallback
+        };
+    }
+
     internal static string NormalizeDiffRange(string? value, string fallback) {
         if (string.IsNullOrWhiteSpace(value)) {
             return fallback;

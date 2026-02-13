@@ -10,6 +10,9 @@ internal static partial class Program {
         var previousSkipGenerated = Environment.GetEnvironmentVariable("SKIP_GENERATED_FILES");
         var previousDiffRange = Environment.GetEnvironmentVariable("REVIEW_DIFF_RANGE");
         var previousPolicyRulePreviewItems = Environment.GetEnvironmentVariable("REVIEW_ANALYSIS_POLICY_RULE_PREVIEW_ITEMS");
+        var previousUsageBudgetGuard = Environment.GetEnvironmentVariable("REVIEW_USAGE_BUDGET_GUARD");
+        var previousUsageBudgetAllowCredits = Environment.GetEnvironmentVariable("REVIEW_USAGE_BUDGET_ALLOW_CREDITS");
+        var previousUsageBudgetAllowWeekly = Environment.GetEnvironmentVariable("REVIEW_USAGE_BUDGET_ALLOW_WEEKLY_LIMIT");
         var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-review-settings-{Guid.NewGuid():N}.json");
         try {
             File.WriteAllText(configPath, """
@@ -19,7 +22,10 @@ internal static partial class Program {
     "codeHost": "github",
     "maxFiles": 7,
     "skipGeneratedFiles": true,
-    "reviewDiffRange": "pr-base"
+    "reviewDiffRange": "pr-base",
+    "reviewUsageBudgetGuard": false,
+    "reviewUsageBudgetAllowCredits": false,
+    "reviewUsageBudgetAllowWeeklyLimit": false
   },
   "analysis": {
     "configMode": "replace",
@@ -37,6 +43,9 @@ internal static partial class Program {
             Environment.SetEnvironmentVariable("SKIP_GENERATED_FILES", "false");
             Environment.SetEnvironmentVariable("REVIEW_DIFF_RANGE", "current");
             Environment.SetEnvironmentVariable("REVIEW_ANALYSIS_POLICY_RULE_PREVIEW_ITEMS", "100");
+            Environment.SetEnvironmentVariable("REVIEW_USAGE_BUDGET_GUARD", "true");
+            Environment.SetEnvironmentVariable("REVIEW_USAGE_BUDGET_ALLOW_CREDITS", "true");
+            Environment.SetEnvironmentVariable("REVIEW_USAGE_BUDGET_ALLOW_WEEKLY_LIMIT", "true");
 
             var settings = ReviewSettings.Load();
             AssertEqual(ReviewProvider.Copilot, settings.Provider, "review settings load env provider precedence");
@@ -44,6 +53,9 @@ internal static partial class Program {
             AssertEqual(42, settings.MaxFiles, "review settings load env max files precedence");
             AssertEqual(false, settings.SkipGeneratedFiles, "review settings load env skip generated precedence");
             AssertEqual("current", settings.ReviewDiffRange, "review settings load env diff range precedence");
+            AssertEqual(true, settings.ReviewUsageBudgetGuard, "review settings usage budget guard precedence");
+            AssertEqual(true, settings.ReviewUsageBudgetAllowCredits, "review settings usage budget credits precedence");
+            AssertEqual(true, settings.ReviewUsageBudgetAllowWeeklyLimit, "review settings usage budget weekly precedence");
             AssertEqual(AnalysisConfigMode.Replace, settings.Analysis.ConfigMode, "review settings load config analysis mode");
             AssertEqual(100, settings.Analysis.Results.PolicyRulePreviewItems,
                 "review settings load config analysis preview size");
@@ -55,6 +67,9 @@ internal static partial class Program {
             Environment.SetEnvironmentVariable("SKIP_GENERATED_FILES", previousSkipGenerated);
             Environment.SetEnvironmentVariable("REVIEW_DIFF_RANGE", previousDiffRange);
             Environment.SetEnvironmentVariable("REVIEW_ANALYSIS_POLICY_RULE_PREVIEW_ITEMS", previousPolicyRulePreviewItems);
+            Environment.SetEnvironmentVariable("REVIEW_USAGE_BUDGET_GUARD", previousUsageBudgetGuard);
+            Environment.SetEnvironmentVariable("REVIEW_USAGE_BUDGET_ALLOW_CREDITS", previousUsageBudgetAllowCredits);
+            Environment.SetEnvironmentVariable("REVIEW_USAGE_BUDGET_ALLOW_WEEKLY_LIMIT", previousUsageBudgetAllowWeekly);
             if (File.Exists(configPath)) {
                 File.Delete(configPath);
             }

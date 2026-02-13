@@ -22,6 +22,136 @@ internal static partial class Program {
         AssertEqual("copilot-pull-request-reviewer", options.BotLogins[1], "bot login 2");
     }
 
+    private static void TestOpenAiAccountOrderRoundRobin() {
+        var firstRun = CallOrderOpenAiAccounts(
+            new[] { "acc-1", "acc-2", "acc-3" },
+            rotation: "round-robin",
+            stickyAccountId: null,
+            rotationSeed: 1);
+        AssertSequenceEqual(new[] { "acc-1", "acc-2", "acc-3" }, firstRun.ToArray(),
+            "openai account order round-robin first run");
+
+        var secondRun = CallOrderOpenAiAccounts(
+            new[] { "acc-1", "acc-2", "acc-3" },
+            rotation: "round-robin",
+            stickyAccountId: null,
+            rotationSeed: 2);
+        AssertSequenceEqual(new[] { "acc-2", "acc-3", "acc-1" }, secondRun.ToArray(),
+            "openai account order round-robin second run");
+    }
+
+    private static void TestOpenAiAccountOrderSticky() {
+        var ordered = CallOrderOpenAiAccounts(
+            new[] { "acc-1", "acc-2", "acc-3" },
+            rotation: "sticky",
+            stickyAccountId: "acc-3",
+            rotationSeed: 0);
+        AssertSequenceEqual(new[] { "acc-3", "acc-1", "acc-2" }, ordered.ToArray(), "openai account order sticky");
+    }
+
+    private static void TestNormalizeAccountIdListDedupesCaseInsensitive() {
+        var normalized = ReviewSettings.NormalizeAccountIdList(new[] {
+            "acc-1",
+            "ACC-1",
+            " acc-2 ",
+            "Acc-2"
+        });
+        AssertSequenceEqual(new[] { "acc-1", "acc-2" }, normalized.ToArray(), "normalize account id list dedupe");
+    }
+
+    private static void TestTryResolveOpenAiAccountStoresRotatedOrder() {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"ix-openai-accounts-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        var authPath = Path.Combine(tempDir, "auth-store.json");
+        var previousAuthPath = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH");
+        var previousRunNumber = Environment.GetEnvironmentVariable("GITHUB_RUN_NUMBER");
+
+        try {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH", authPath);
+            Environment.SetEnvironmentVariable("GITHUB_RUN_NUMBER", "2");
+
+            var store = new IntelligenceX.OpenAI.Auth.FileAuthBundleStore(authPath);
+            store.SaveAsync(new IntelligenceX.OpenAI.Auth.AuthBundle("openai-codex", "token-1", "refresh-1",
+                    DateTimeOffset.UtcNow.AddHours(1)) {
+                    AccountId = "acc-1"
+                }).GetAwaiter().GetResult();
+            store.SaveAsync(new IntelligenceX.OpenAI.Auth.AuthBundle("openai-codex", "token-2", "refresh-2",
+                    DateTimeOffset.UtcNow.AddHours(1)) {
+                    AccountId = "acc-2"
+                }).GetAwaiter().GetResult();
+            store.SaveAsync(new IntelligenceX.OpenAI.Auth.AuthBundle("openai-codex", "token-3", "refresh-3",
+                    DateTimeOffset.UtcNow.AddHours(1)) {
+                    AccountId = "acc-3"
+                }).GetAwaiter().GetResult();
+
+            var settings = new ReviewSettings {
+                Provider = ReviewProvider.OpenAI,
+                OpenAiAccountIds = new[] { "acc-1", "acc-2", "acc-3" },
+                OpenAiAccountRotation = "round-robin",
+                ReviewUsageBudgetGuard = false
+            };
+
+            var result = CallTryResolveOpenAiAccount(settings);
+            AssertEqual(true, result.Success, "try resolve openai account success");
+            AssertEqual("acc-2", settings.OpenAiAccountId, "try resolve openai account selected");
+            AssertSequenceEqual(new[] { "acc-2", "acc-3", "acc-1" }, settings.OpenAiAccountIds.ToArray(),
+                "try resolve openai account rotated order");
+        } finally {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH", previousAuthPath);
+            Environment.SetEnvironmentVariable("GITHUB_RUN_NUMBER", previousRunNumber);
+            try {
+                Directory.Delete(tempDir, recursive: true);
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
+    }
+
+    private static void TestTryResolveOpenAiAccountPrefersExplicitPrimaryOverIdsList() {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"ix-openai-primary-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        var authPath = Path.Combine(tempDir, "auth-store.json");
+        var previousAuthPath = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH");
+
+        try {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH", authPath);
+            var store = new IntelligenceX.OpenAI.Auth.FileAuthBundleStore(authPath);
+            store.SaveAsync(new IntelligenceX.OpenAI.Auth.AuthBundle("openai-codex", "token-1", "refresh-1",
+                    DateTimeOffset.UtcNow.AddHours(1)) {
+                    AccountId = "acc-1"
+                }).GetAwaiter().GetResult();
+            store.SaveAsync(new IntelligenceX.OpenAI.Auth.AuthBundle("openai-codex", "token-2", "refresh-2",
+                    DateTimeOffset.UtcNow.AddHours(1)) {
+                    AccountId = "acc-2"
+                }).GetAwaiter().GetResult();
+            store.SaveAsync(new IntelligenceX.OpenAI.Auth.AuthBundle("openai-codex", "token-3", "refresh-3",
+                    DateTimeOffset.UtcNow.AddHours(1)) {
+                    AccountId = "acc-3"
+                }).GetAwaiter().GetResult();
+
+            var settings = new ReviewSettings {
+                Provider = ReviewProvider.OpenAI,
+                OpenAiAccountId = "acc-3",
+                OpenAiAccountIds = new[] { "acc-1", "acc-2" },
+                OpenAiAccountRotation = "first-available",
+                ReviewUsageBudgetGuard = false
+            };
+
+            var result = CallTryResolveOpenAiAccount(settings);
+            AssertEqual(true, result.Success, "try resolve openai account explicit primary success");
+            AssertEqual("acc-3", settings.OpenAiAccountId, "try resolve openai account explicit primary selected");
+            AssertSequenceEqual(new[] { "acc-3", "acc-1", "acc-2" }, settings.OpenAiAccountIds.ToArray(),
+                "try resolve openai account explicit primary candidate order");
+        } finally {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH", previousAuthPath);
+            try {
+                Directory.Delete(tempDir, recursive: true);
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
+    }
+
     private static void TestResolveThreadsEndpointResolution() {
         var (baseUri, graphQlPath) = IntelligenceX.Cli.ReviewThreads.ReviewThreadResolveRunner.ResolveGraphQlEndpoint("https://github.company.local/api/v3");
         AssertEqual("https://github.company.local/api/v3", baseUri.ToString(), "base uri");
@@ -635,6 +765,56 @@ internal static partial class Program {
         AssertContains(parts, "5h limit: 90% remaining", "general non-weekly label");
         AssertContains(parts, "code review 5h limit: 75% remaining", "code review non-weekly label");
         AssertEqual(false, ContainsUsageSummaryPart(parts, "5h limit: 75% remaining"), "plain non-weekly code review label removed");
+    }
+
+    private static void TestReviewUsageBudgetGuardBlocksWhenCreditsAndWeeklyExhausted() {
+        const string json = "{"
+            + "\"rate_limit\":{\"allowed\":false,\"limit_reached\":true,"
+            + "\"secondary_window\":{\"used_percent\":100.0,\"limit_window_seconds\":604800,\"reset_after_seconds\":600}},"
+            + "\"code_review_rate_limit\":{\"allowed\":false,\"limit_reached\":true,"
+            + "\"secondary_window\":{\"used_percent\":100.0,\"limit_window_seconds\":604800,\"reset_after_seconds\":600}},"
+            + "\"credits\":{\"has_credits\":false,\"unlimited\":false,\"balance\":0}"
+            + "}";
+        var obj = JsonLite.Parse(json).AsObject();
+        AssertNotNull(obj, "usage budget block json");
+        var snapshot = ChatGptUsageSnapshot.FromJson(obj!);
+        var settings = new ReviewSettings {
+            ReviewUsageBudgetAllowCredits = true,
+            ReviewUsageBudgetAllowWeeklyLimit = true
+        };
+        var failure = CallEvaluateUsageBudgetGuardFailure(settings, snapshot);
+        AssertNotNull(failure, "usage budget block message");
+        AssertContainsText(failure!, "credits exhausted", "usage budget block credits detail");
+        AssertContainsText(failure!, "weekly limit", "usage budget block weekly detail");
+    }
+
+    private static void TestReviewUsageBudgetGuardAllowsCreditsFallback() {
+        const string json = "{"
+            + "\"rate_limit\":{\"allowed\":false,\"limit_reached\":true,"
+            + "\"secondary_window\":{\"used_percent\":100.0,\"limit_window_seconds\":604800,\"reset_after_seconds\":600}},"
+            + "\"credits\":{\"has_credits\":true,\"unlimited\":false,\"balance\":1.5}"
+            + "}";
+        var obj = JsonLite.Parse(json).AsObject();
+        AssertNotNull(obj, "usage budget credits json");
+        var snapshot = ChatGptUsageSnapshot.FromJson(obj!);
+        var settings = new ReviewSettings {
+            ReviewUsageBudgetAllowCredits = true,
+            ReviewUsageBudgetAllowWeeklyLimit = true
+        };
+        var failure = CallEvaluateUsageBudgetGuardFailure(settings, snapshot);
+        AssertEqual(null, failure, "usage budget allows credits fallback");
+    }
+
+    private static void TestReviewUsageBudgetGuardBlocksWhenNoBudgetSourcesAllowed() {
+        var settings = new ReviewSettings {
+            ReviewUsageBudgetGuard = true,
+            ReviewUsageBudgetAllowCredits = false,
+            ReviewUsageBudgetAllowWeeklyLimit = false
+        };
+        var failure = CallTryBuildUsageBudgetGuardFailure(settings, ReviewProvider.OpenAI);
+        AssertNotNull(failure, "usage budget strict mode block message");
+        AssertContainsText(failure!, "both credits and weekly budget allowances are disabled",
+            "usage budget strict mode block detail");
     }
 }
 #endif

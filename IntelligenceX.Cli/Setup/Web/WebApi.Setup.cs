@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
@@ -24,8 +25,51 @@ internal sealed partial class WebApi {
         return BuildSetupArgsForRepo(request, routeDryRun, "owner/repo");
     }
 
+    internal static string[] BuildSetupArgsForOpenAiAccountRoutingTests(
+        string? openAiAccountId,
+        string? openAiAccountIds,
+        string? openAiAccountRotation,
+        bool? openAiAccountFailover) {
+        var request = new SetupRequest {
+            Repo = "owner/repo",
+            GitHubToken = "token",
+            WithConfig = true,
+            Provider = "openai",
+            OpenAIAccountId = openAiAccountId,
+            OpenAIAccountIds = openAiAccountIds,
+            OpenAIAccountRotation = openAiAccountRotation,
+            OpenAIAccountFailover = openAiAccountFailover
+        };
+        return BuildSetupArgsForRepo(request, routeDryRun: false, "owner/repo");
+    }
+
     internal static bool ResolveWithConfigFromArgsForTests(params string[] args) {
         return ResolveWithConfigFromArgs(args);
+    }
+
+    internal static (bool Success, string? Error) ValidateOpenAiAccountRoutingForTests(
+        string provider,
+        string? openAiAccountId,
+        string? openAiAccountIds,
+        string? openAiAccountRotation,
+        bool? openAiAccountFailover,
+        bool isSetup,
+        bool withConfig,
+        bool hasConfigOverride) {
+        var request = new SetupRequest {
+            Provider = provider,
+            OpenAIAccountId = openAiAccountId,
+            OpenAIAccountIds = openAiAccountIds,
+            OpenAIAccountRotation = openAiAccountRotation,
+            OpenAIAccountFailover = openAiAccountFailover
+        };
+        var success = TryValidateAndNormalizeOpenAiAccountRouting(
+            request,
+            isSetup,
+            withConfig,
+            hasConfigOverride,
+            out var error);
+        return (success, error);
     }
 
     internal static (bool ExpectOrgSecret, string? SecretOrg) ResolveOrgSecretVerificationContextForTests(
@@ -107,6 +151,82 @@ internal sealed partial class WebApi {
         return false;
     }
 
+    private static bool TryValidateAndNormalizeOpenAiAccountRouting(
+        SetupRequest request,
+        bool isSetup,
+        bool withConfig,
+        bool hasConfigOverride,
+        out string? error) {
+        error = null;
+
+        var hasRoutingInput = !string.IsNullOrWhiteSpace(request.OpenAIAccountId) ||
+                              !string.IsNullOrWhiteSpace(request.OpenAIAccountIds) ||
+                              !string.IsNullOrWhiteSpace(request.OpenAIAccountRotation) ||
+                              request.OpenAIAccountFailover.HasValue;
+        if (!hasRoutingInput) {
+            return true;
+        }
+
+        var provider = string.IsNullOrWhiteSpace(request.Provider) ? "openai" : request.Provider!;
+        if (!IsOpenAiProvider(provider)) {
+            error = "OpenAI account routing options are supported only when provider=openai/chatgpt/codex.";
+            return false;
+        }
+
+        if (!isSetup) {
+            error = "OpenAI account routing options are only supported for setup operation.";
+            return false;
+        }
+        if (hasConfigOverride) {
+            error = "OpenAI account routing options are not supported when configJson/configPath override is used.";
+            return false;
+        }
+        if (!withConfig) {
+            error = "OpenAI account routing options require withConfig=true.";
+            return false;
+        }
+
+        request.OpenAIAccountId = string.IsNullOrWhiteSpace(request.OpenAIAccountId)
+            ? null
+            : request.OpenAIAccountId.Trim();
+        var normalizedIds = (request.OpenAIAccountIds ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (!string.IsNullOrWhiteSpace(request.OpenAIAccountId) &&
+            !normalizedIds.Any(id => string.Equals(id, request.OpenAIAccountId, StringComparison.OrdinalIgnoreCase))) {
+            normalizedIds.Insert(0, request.OpenAIAccountId!);
+        }
+
+        request.OpenAIAccountIds = normalizedIds.Count == 0
+            ? null
+            : string.Join(",", normalizedIds);
+        var hasConfiguredAccounts = !string.IsNullOrWhiteSpace(request.OpenAIAccountId) || normalizedIds.Count > 0;
+        if (!hasConfiguredAccounts) {
+            request.OpenAIAccountRotation = null;
+            request.OpenAIAccountFailover = null;
+            return true;
+        }
+
+        var rotation = string.IsNullOrWhiteSpace(request.OpenAIAccountRotation)
+            ? "first-available"
+            : request.OpenAIAccountRotation.Trim().ToLowerInvariant();
+        rotation = rotation switch {
+            "first" or "first-available" or "first_available" or "ordered" => "first-available",
+            "round-robin" or "round_robin" or "rr" or "rotate" => "round-robin",
+            "sticky" or "pin" or "pinned" => "sticky",
+            _ => string.Empty
+        };
+        if (string.IsNullOrWhiteSpace(rotation)) {
+            error = "OpenAI account rotation must be one of: first-available, round-robin, sticky.";
+            return false;
+        }
+        request.OpenAIAccountRotation = rotation;
+        request.OpenAIAccountFailover ??= true;
+        return true;
+    }
+
     private async Task HandleSetupAsync(System.Net.HttpListenerContext context, bool dryRun) {
         var body = await ReadJsonBodyAsync(context).ConfigureAwait(false);
         if (body is null) {
@@ -161,9 +281,10 @@ internal sealed partial class WebApi {
         // so reject them here to avoid misleading behavior and hard-to-debug no-op requests.
         var isSetup = !request.Cleanup && !request.UpdateSecret;
         var hasConfigOverride = !string.IsNullOrWhiteSpace(request.ConfigJson) || !string.IsNullOrWhiteSpace(request.ConfigPath);
+        var withConfig = request.WithConfig || hasConfigOverride;
         if (!WebSetupAnalysisValidator.TryValidateAndNormalize(
             isSetup: isSetup,
-            withConfig: request.WithConfig,
+            withConfig: withConfig,
             hasConfigOverride: hasConfigOverride,
             analysisEnabled: request.AnalysisEnabled,
             analysisGateEnabled: request.AnalysisGateEnabled,
@@ -182,6 +303,11 @@ internal sealed partial class WebApi {
         request.AnalysisGateEnabled = normalizedGateEnabled;
         request.AnalysisPacks = normalizedPacks;
         request.AnalysisExportPath = normalizedExportPath;
+        if (!TryValidateAndNormalizeOpenAiAccountRouting(request, isSetup, withConfig, hasConfigOverride, out var routingError)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = routingError }).ConfigureAwait(false);
+            return;
+        }
 
         var repos = request.Repos is not null && request.Repos.Count > 0
             ? request.Repos
@@ -204,7 +330,7 @@ internal sealed partial class WebApi {
 
             foreach (var repo in repos) {
                 var args = BuildSetupArgsForRepo(request, dryRun, repo);
-                var withConfig = ResolveWithConfigFromArgs(args);
+                var repoWithConfig = ResolveWithConfigFromArgs(args);
                 var secretOrgForRepo = ResolveSecretOrgForRepo(repo, request.SecretOrg);
                 var orgSecretContext = ResolveOrgSecretVerificationContext(operation, provider, request.SecretTarget, secretOrgForRepo);
                 var result = await RunSetupAsync(args).ConfigureAwait(false);
@@ -213,7 +339,7 @@ internal sealed partial class WebApi {
                 var verifyContext = new SetupPostApplyContext {
                     Repo = repo,
                     Operation = operation,
-                    WithConfig = withConfig,
+                    WithConfig = repoWithConfig,
                     SkipSecret = request.SkipSecret,
                     ManualSecret = request.ManualSecret,
                     KeepSecret = request.KeepSecret,
@@ -296,6 +422,11 @@ internal sealed partial class WebApi {
         request.AnalysisGateEnabled = normalizedGateEnabled;
         request.AnalysisPacks = normalizedPacks;
         request.AnalysisExportPath = normalizedExportPath;
+        if (!TryValidateAndNormalizeOpenAiAccountRouting(request, isSetup, withConfig, hasConfigOverride, out var routingError)) {
+            context.Response.StatusCode = 400;
+            await WriteJsonAsync(context, new { error = routingError }).ConfigureAwait(false);
+            return;
+        }
 
         if (!withConfig) {
             await WriteJsonOkAsync(context, new {

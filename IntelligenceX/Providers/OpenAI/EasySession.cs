@@ -231,6 +231,7 @@ public sealed class EasySession : IDisposable
         };
 
         clientOptions.NativeOptions.AuthStore = options.NativeOptions.AuthStore;
+        clientOptions.NativeOptions.AuthAccountId = options.NativeOptions.AuthAccountId;
         clientOptions.NativeOptions.Originator = options.NativeOptions.Originator;
         clientOptions.NativeOptions.ResponsesUrl = options.NativeOptions.ResponsesUrl;
         clientOptions.NativeOptions.ModelUrls = options.NativeOptions.ModelUrls;

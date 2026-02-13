@@ -46,6 +46,10 @@ internal sealed class NativeThreadState {
     public string? Preview { get; private set; }
     public List<JsonObject> Messages { get; } = new();
     public int MessageIndex { get; private set; }
+    public long SessionInputTokens { get; private set; }
+    public long SessionOutputTokens { get; private set; }
+    public long SessionTotalTokens { get; private set; }
+    public int UsageTurnCount { get; private set; }
 
     public static NativeThreadState Create(string model, string? id = null) {
         var threadId = string.IsNullOrWhiteSpace(id) ? Guid.NewGuid().ToString("N") : id!;
@@ -66,6 +70,28 @@ internal sealed class NativeThreadState {
         UpdatedAtUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
     }
 
+    public void AddUsage(TurnUsage? usage) {
+        if (usage is null) {
+            return;
+        }
+        if (usage.InputTokens.HasValue) {
+            SessionInputTokens += Math.Max(0, usage.InputTokens.Value);
+        }
+        if (usage.OutputTokens.HasValue) {
+            SessionOutputTokens += Math.Max(0, usage.OutputTokens.Value);
+        }
+        if (usage.TotalTokens.HasValue) {
+            SessionTotalTokens += Math.Max(0, usage.TotalTokens.Value);
+        } else {
+            var derivedTotal = Math.Max(0, usage.InputTokens ?? 0) + Math.Max(0, usage.OutputTokens ?? 0);
+            if (derivedTotal > 0) {
+                SessionTotalTokens += derivedTotal;
+            }
+        }
+        UsageTurnCount++;
+        UpdatedAtUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+    }
+
     public string NextMessageId() {
         var id = $"msg_{MessageIndex}";
         MessageIndex++;
@@ -79,6 +105,13 @@ internal sealed class NativeThreadState {
             .Add("model", Model)
             .Add("createdAt", CreatedAtUnix)
             .Add("updatedAt", UpdatedAtUnix);
+        if (UsageTurnCount > 0) {
+            raw.Add("usageSummary", new JsonObject()
+                .Add("turns", UsageTurnCount)
+                .Add("input_tokens", SessionInputTokens)
+                .Add("output_tokens", SessionOutputTokens)
+                .Add("total_tokens", SessionTotalTokens));
+        }
         return ThreadInfo.FromJson(raw);
     }
 }

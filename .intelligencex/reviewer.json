@@ -46,6 +46,9 @@
     "reviewThreadsAutoResolveAIReply": true,
     "reviewUsageSummary": true,
     "reviewUsageSummaryCacheMinutes": 10,
-    "reviewUsageSummaryTimeoutSeconds": 10
+    "reviewUsageSummaryTimeoutSeconds": 10,
+    "reviewUsageBudgetGuard": true,
+    "reviewUsageBudgetAllowCredits": true,
+    "reviewUsageBudgetAllowWeeklyLimit": true
   }
 }

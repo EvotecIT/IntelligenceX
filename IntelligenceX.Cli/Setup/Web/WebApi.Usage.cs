@@ -86,6 +86,9 @@ internal sealed partial class WebApi {
             var options = new OpenAINativeOptions {
                 AuthStore = new FileAuthBundleStore(authPath, request.AuthKey)
             };
+            if (!string.IsNullOrWhiteSpace(request.AccountId)) {
+                options.AuthAccountId = request.AccountId!.Trim();
+            }
             if (!string.IsNullOrWhiteSpace(request.ChatGptApiBaseUrl)) {
                 if (!TryGetChatGptApiBaseUrl(request.ChatGptApiBaseUrl, out var chatGptBaseUrl, out var chatGptError)) {
                     context.Response.StatusCode = 400;

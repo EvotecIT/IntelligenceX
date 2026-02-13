@@ -18,8 +18,10 @@ internal static class UsageRunner {
         Console.WriteLine();
         Console.WriteLine("Options:");
         Console.WriteLine("  --events              Include credit usage events");
+        Console.WriteLine("  --by-surface          Include grouped usage totals by product surface");
         Console.WriteLine("  --json                Print JSON output");
         Console.WriteLine("  --no-cache            Do not write usage cache");
+        Console.WriteLine("  --account-id <id>      Select a specific ChatGPT account id");
         Console.WriteLine("  --base-url <url>       Override ChatGPT backend base URL");
         Console.WriteLine("  --auth-path <path>     Override auth store path");
         Console.WriteLine("  --auth-key <base64>    Override auth store encryption key");
@@ -44,24 +46,35 @@ internal static class UsageRunner {
             if (!string.IsNullOrWhiteSpace(options.BaseUrl)) {
                 nativeOptions.ChatGptApiBaseUrl = options.BaseUrl!;
             }
+            if (!string.IsNullOrWhiteSpace(options.AccountId)) {
+                nativeOptions.AuthAccountId = options.AccountId!;
+            }
             if (!string.IsNullOrWhiteSpace(options.AuthPath) || !string.IsNullOrWhiteSpace(options.AuthKey)) {
                 nativeOptions.AuthStore = new FileAuthBundleStore(options.AuthPath, options.AuthKey);
             }
 
             using var service = new ChatGptUsageService(nativeOptions);
-            var report = await service.GetReportAsync(options.IncludeEvents, CancellationToken.None).ConfigureAwait(false);
+            var includeEventsForFetch = options.IncludeEvents || options.BySurface;
+            var report = await service.GetReportAsync(includeEventsForFetch, CancellationToken.None).ConfigureAwait(false);
 
             if (options.Json) {
-                var json = JsonLite.Serialize(JsonValue.From(report.ToJson()));
+                var jsonObject = BuildJsonOutput(report, options.IncludeEvents, options.BySurface);
+                var json = JsonLite.Serialize(JsonValue.From(jsonObject));
                 Console.WriteLine(json);
             } else {
                 PrintSummary(report.Snapshot);
                 if (options.IncludeEvents) {
                     PrintEvents(report.Events);
                 }
+                if (options.BySurface) {
+                    PrintSurfaceSummary(report.Events);
+                }
             }
             if (!options.NoCache) {
-                TrySaveCache(report.Snapshot);
+                var cacheAccountId = !string.IsNullOrWhiteSpace(report.Snapshot.AccountId)
+                    ? report.Snapshot.AccountId
+                    : options.AccountId;
+                TrySaveCache(report.Snapshot, cacheAccountId);
             }
 
             return 0;
@@ -69,6 +82,40 @@ internal static class UsageRunner {
             Console.Error.WriteLine(ex.Message);
             return 1;
         }
+    }
+
+    private static JsonObject BuildJsonOutput(ChatGptUsageReport report, bool includeEvents, bool bySurface) {
+        var json = new JsonObject()
+            .Add("usage", report.Snapshot.ToJson());
+        if (includeEvents) {
+            json.Add("events", BuildEventsJsonArray(report.Events));
+        }
+        if (bySurface) {
+            json.Add("surfaceSummary", BuildSurfaceSummaryJsonArray(report.Events));
+        }
+        return json;
+    }
+
+    private static JsonArray BuildEventsJsonArray(IReadOnlyList<ChatGptCreditUsageEvent> events) {
+        var array = new JsonArray();
+        foreach (var evt in events) {
+            array.Add(JsonValue.From(evt.ToJson()));
+        }
+        return array;
+    }
+
+    private static JsonArray BuildSurfaceSummaryJsonArray(IReadOnlyList<ChatGptCreditUsageEvent> events) {
+        var array = new JsonArray();
+        foreach (var pair in BuildSurfaceSummary(events)) {
+            var bucket = new JsonObject()
+                .Add("surface", pair.Key)
+                .Add("events", pair.Value.Count);
+            if (pair.Value.HasCredits) {
+                bucket.Add("credits", pair.Value.Credits);
+            }
+            array.Add(JsonValue.From(bucket));
+        }
+        return array;
     }
 
     private static void PrintSummary(ChatGptUsageSnapshot snapshot) {
@@ -143,6 +190,60 @@ internal static class UsageRunner {
         }
     }
 
+    private static void PrintSurfaceSummary(IReadOnlyList<ChatGptCreditUsageEvent> events) {
+        if (events.Count == 0) {
+            return;
+        }
+
+        var buckets = BuildSurfaceSummary(events);
+        if (buckets.Count == 0) {
+            return;
+        }
+
+        Console.WriteLine("Credit usage by surface:");
+        foreach (var pair in buckets) {
+            var credits = pair.Value.HasCredits
+                ? pair.Value.Credits.ToString("0.####", CultureInfo.InvariantCulture)
+                : "n/a";
+            Console.WriteLine($"  - {pair.Key}: {pair.Value.Count} events, credits {credits}");
+        }
+    }
+
+    private static IReadOnlyList<KeyValuePair<string, SurfaceUsageBucket>> BuildSurfaceSummary(
+        IReadOnlyList<ChatGptCreditUsageEvent> events) {
+        var buckets = new Dictionary<string, SurfaceUsageBucket>(StringComparer.OrdinalIgnoreCase);
+        foreach (var evt in events) {
+            var key = ClassifySurface(evt.ProductSurface);
+            if (!buckets.TryGetValue(key, out var bucket)) {
+                bucket = new SurfaceUsageBucket();
+                buckets[key] = bucket;
+            }
+            bucket.Count++;
+            if (evt.CreditAmount.HasValue) {
+                bucket.Credits += evt.CreditAmount.Value;
+                bucket.HasCredits = true;
+            }
+        }
+        return buckets
+            .OrderByDescending(static p => p.Value.Count)
+            .ThenBy(static p => p.Key, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string ClassifySurface(string? surface) {
+        if (string.IsNullOrWhiteSpace(surface)) {
+            return "unknown";
+        }
+        var value = surface.Trim().ToLowerInvariant();
+        if (value.Contains("spark", StringComparison.Ordinal)) {
+            return "spark";
+        }
+        if (value.Contains("codex", StringComparison.Ordinal)) {
+            return "codex";
+        }
+        return value;
+    }
+
     private static string FormatWindow(ChatGptRateLimitWindow window) {
         var parts = new List<string>();
         if (window.UsedPercent.HasValue) {
@@ -205,21 +306,30 @@ internal static class UsageRunner {
         return string.Join(", ", values);
     }
 
-    private static void TrySaveCache(ChatGptUsageSnapshot snapshot) {
+    private static void TrySaveCache(ChatGptUsageSnapshot snapshot, string? accountId) {
         try {
-            ChatGptUsageCache.Save(snapshot);
+            var path = ChatGptUsageCache.ResolveCachePath(accountId);
+            ChatGptUsageCache.Save(snapshot, path);
         } catch {
             // Cache is best-effort.
         }
+    }
+
+    private sealed class SurfaceUsageBucket {
+        public int Count { get; set; }
+        public double Credits { get; set; }
+        public bool HasCredits { get; set; }
     }
 }
 
 internal sealed class UsageOptions {
     public bool IncludeEvents { get; set; }
+    public bool BySurface { get; set; }
     public bool Json { get; set; }
     public bool ShowHelp { get; set; }
     public bool NoCache { get; set; }
     public string? BaseUrl { get; set; }
+    public string? AccountId { get; set; }
     public string? AuthPath { get; set; }
     public string? AuthKey { get; set; }
 
@@ -235,6 +345,9 @@ internal sealed class UsageOptions {
                 case "--events":
                     options.IncludeEvents = true;
                     break;
+                case "--by-surface":
+                    options.BySurface = true;
+                    break;
                 case "--json":
                     options.Json = true;
                     break;
@@ -243,6 +356,9 @@ internal sealed class UsageOptions {
                     break;
                 case "--base-url":
                     options.BaseUrl = ReadValue(args, ref i);
+                    break;
+                case "--account-id":
+                    options.AccountId = NormalizeOptionalValue(ReadValue(args, ref i));
                     break;
                 case "--auth-path":
                     options.AuthPath = ReadValue(args, ref i);
@@ -262,6 +378,17 @@ internal sealed class UsageOptions {
             throw new InvalidOperationException($"Missing value for {args[index]}.");
         }
         index++;
-        return args[index];
+        var value = args[index];
+        if (value.StartsWith("--", StringComparison.Ordinal)) {
+            throw new InvalidOperationException($"Missing value for {args[index - 1]}.");
+        }
+        return value;
+    }
+
+    private static string? NormalizeOptionalValue(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+        return value.Trim();
     }
 }

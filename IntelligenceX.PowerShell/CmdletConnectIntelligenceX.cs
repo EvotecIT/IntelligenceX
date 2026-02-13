@@ -28,6 +28,10 @@ namespace IntelligenceX.PowerShell;
 ///  <para>Enable diagnostics output</para>
 ///  <code>Connect-IntelligenceX -Transport Native -Diagnostics</code>
 /// </example>
+/// <example>
+///  <para>Pin a specific OpenAI account id when multiple bundles are present</para>
+///  <code>Connect-IntelligenceX -Transport Native -OpenAIAccountId "user-123"</code>
+/// </example>
 /// </summary>
 [Cmdlet(VerbsCommunications.Connect, "IntelligenceX")]
 [OutputType(typeof(IntelligenceXClient))]
@@ -68,6 +72,12 @@ public sealed class CmdletConnectIntelligenceX : IntelligenceXCmdlet {
     [Parameter]
     public SwitchParameter NoConfig { get; set; }
 
+    /// <summary>
+    /// <para type="description">Optional ChatGPT account id to use when multiple auth bundles are present.</para>
+    /// </summary>
+    [Parameter]
+    public string? OpenAIAccountId { get; set; }
+
     /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var options = new IntelligenceXClientOptions();
@@ -85,6 +95,9 @@ public sealed class CmdletConnectIntelligenceX : IntelligenceXCmdlet {
         }
         if (!string.IsNullOrWhiteSpace(WorkingDirectory)) {
             options.AppServerOptions.WorkingDirectory = WorkingDirectory!;
+        }
+        if (MyInvocation.BoundParameters.ContainsKey(nameof(OpenAIAccountId))) {
+            options.NativeOptions.AuthAccountId = string.IsNullOrWhiteSpace(OpenAIAccountId) ? null : OpenAIAccountId!.Trim();
         }
 
         IntelligenceXClient client;

@@ -92,6 +92,13 @@ internal sealed partial class WebApi {
                 await HandleOpenAILoginAsync(context).ConfigureAwait(false);
                 return;
             }
+            if (normalizedPath.Equals("/api/openai-accounts", StringComparison.OrdinalIgnoreCase)) {
+                if (!await EnsureLocalPostSetupRequestAsync(context).ConfigureAwait(false)) {
+                    return;
+                }
+                await HandleOpenAIAccountsAsync(context).ConfigureAwait(false);
+                return;
+            }
 
             context.Response.StatusCode = 404;
             await WriteJsonAsync(context, new { error = "Not found" }).ConfigureAwait(false);

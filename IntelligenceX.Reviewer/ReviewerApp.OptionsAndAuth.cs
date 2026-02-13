@@ -297,6 +297,190 @@ public static partial class ReviewerApp {
         }
     }
 
+    private static async Task<(bool Success, string? Error, bool BudgetGuardEvaluated)> TryResolveOpenAiAccountAsync(ReviewSettings settings) {
+        var provider = ReviewProviderContracts.Get(settings.Provider);
+        if (!provider.RequiresOpenAiAuthStore) {
+            return (true, null, false);
+        }
+
+        var configuredCandidates = ResolveConfiguredOpenAiAccountCandidates(settings);
+        if (configuredCandidates.Count == 0) {
+            return (true, null, false);
+        }
+
+        var store = new FileAuthBundleStore();
+        var available = new List<string>();
+        var missing = new List<string>();
+        foreach (var accountId in configuredCandidates) {
+            if (await HasOpenAiBundleAsync(store, accountId).ConfigureAwait(false)) {
+                available.Add(accountId);
+            } else {
+                missing.Add(accountId);
+            }
+        }
+
+        if (available.Count == 0) {
+            return (false,
+                $"No OpenAI auth bundles found for configured account ids ({string.Join(", ", configuredCandidates)}).", false);
+        }
+
+        if (missing.Count > 0) {
+            Console.Error.WriteLine(
+                $"Configured OpenAI account ids not found in auth store: {string.Join(", ", missing)}.");
+        }
+
+        var ordered = OrderOpenAiAccounts(available, settings.OpenAiAccountRotation, settings.OpenAiAccountId,
+            ResolveOpenAiRotationSeed());
+        if (ordered.Count == 0) {
+            return (false, "No OpenAI accounts available after applying account rotation policy.", false);
+        }
+
+        settings.OpenAiAccountIds = ordered;
+        var requiresBudgetEvaluation = settings.ReviewUsageBudgetGuard &&
+                                       (settings.ReviewUsageBudgetAllowCredits ||
+                                        settings.ReviewUsageBudgetAllowWeeklyLimit);
+        if (!requiresBudgetEvaluation) {
+            settings.OpenAiAccountId = ordered[0];
+            AnnounceSelectedOpenAiAccount(settings, ordered[0], "configured rotation");
+            return (true, null, false);
+        }
+
+        var candidates = settings.OpenAiAccountFailover
+            ? ordered
+            : new[] { ordered[0] };
+        var blocked = new List<string>();
+        foreach (var accountId in candidates) {
+            var snapshot = await TryGetUsageSnapshotAsync(settings, accountId).ConfigureAwait(false);
+            if (snapshot is null) {
+                settings.OpenAiAccountId = accountId;
+                AnnounceSelectedOpenAiAccount(settings, accountId, "usage unavailable (allow)");
+                return (true, null, true);
+            }
+
+            var budgetFailure = EvaluateUsageBudgetGuardFailure(settings, snapshot);
+            if (string.IsNullOrWhiteSpace(budgetFailure)) {
+                settings.OpenAiAccountId = accountId;
+                AnnounceSelectedOpenAiAccount(settings, accountId, "usage budget available");
+                return (true, null, true);
+            }
+
+            blocked.Add($"[{accountId}] {TrimUsageBudgetFailureMessage(budgetFailure)}");
+        }
+
+        if (!settings.OpenAiAccountFailover && ordered.Count > 1) {
+            return (false, $"Primary OpenAI account '{ordered[0]}' is blocked by usage budget guard. " +
+                           "Enable review.openaiAccountFailover to allow automatic fallback. " +
+                           string.Join(" ", blocked), true);
+        }
+
+        return (false, "All configured OpenAI accounts are blocked by usage budget guard. " + string.Join(" ", blocked), true);
+    }
+
+    private static IReadOnlyList<string> ResolveConfiguredOpenAiAccountCandidates(ReviewSettings settings) {
+        var candidates = ReviewSettings.NormalizeAccountIdList(settings.OpenAiAccountIds).ToList();
+        if (!string.IsNullOrWhiteSpace(settings.OpenAiAccountId)) {
+            var primary = settings.OpenAiAccountId!.Trim();
+            candidates.RemoveAll(id => string.Equals(id, primary, StringComparison.OrdinalIgnoreCase));
+            candidates.Insert(0, primary);
+        }
+        return candidates;
+    }
+
+    private static async Task<bool> HasOpenAiBundleAsync(FileAuthBundleStore store, string accountId) {
+        var bundle = await store.GetAsync("openai-codex", accountId).ConfigureAwait(false)
+                     ?? await store.GetAsync("openai", accountId).ConfigureAwait(false)
+                     ?? await store.GetAsync("chatgpt", accountId).ConfigureAwait(false);
+        return bundle is not null;
+    }
+
+    private static IReadOnlyList<string> OrderOpenAiAccounts(IReadOnlyList<string> accountIds, string rotation, string? stickyAccountId,
+        long rotationSeed) {
+        var normalized = ReviewSettings.NormalizeOpenAiAccountRotation(rotation, "first-available");
+        var ordered = accountIds.ToList();
+        if (ordered.Count <= 1) {
+            return ordered;
+        }
+
+        if (normalized == "sticky") {
+            if (!string.IsNullOrWhiteSpace(stickyAccountId)) {
+                var pinned = ordered.FindIndex(id => string.Equals(id, stickyAccountId.Trim(), StringComparison.OrdinalIgnoreCase));
+                if (pinned > 0) {
+                    var selected = ordered[pinned];
+                    ordered.RemoveAt(pinned);
+                    ordered.Insert(0, selected);
+                }
+            }
+            return ordered;
+        }
+
+        if (normalized == "round-robin") {
+            var normalizedSeed = rotationSeed > 0 ? rotationSeed - 1 : 0;
+            var offset = PositiveModulo(normalizedSeed, ordered.Count);
+            if (offset == 0) {
+                return ordered;
+            }
+            var rotated = new List<string>(ordered.Count);
+            for (var i = 0; i < ordered.Count; i++) {
+                rotated.Add(ordered[(i + offset) % ordered.Count]);
+            }
+            return rotated;
+        }
+
+        return ordered;
+    }
+
+    private static int PositiveModulo(long value, int modulo) {
+        if (modulo <= 0) {
+            return 0;
+        }
+        var result = value % modulo;
+        if (result < 0) {
+            result += modulo;
+        }
+        return (int)result;
+    }
+
+    private static long ResolveOpenAiRotationSeed() {
+        if (TryReadPositiveInt64Env("GITHUB_RUN_NUMBER", out var runNumber)) {
+            return runNumber;
+        }
+        if (TryReadPositiveInt64Env("GITHUB_RUN_ID", out var runId)) {
+            return runId;
+        }
+        if (TryReadPositiveInt64Env("GITHUB_RUN_ATTEMPT", out var runAttempt)) {
+            return runAttempt;
+        }
+        return 0;
+    }
+
+    private static bool TryReadPositiveInt64Env(string envName, out long value) {
+        value = 0;
+        var raw = Environment.GetEnvironmentVariable(envName);
+        return !string.IsNullOrWhiteSpace(raw) &&
+               long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out value) &&
+               value > 0;
+    }
+
+    private static string TrimUsageBudgetFailureMessage(string message) {
+        const string prefix = "Usage budget guard blocked review run: ";
+        var trimmed = message.Trim();
+        if (trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) {
+            trimmed = trimmed.Substring(prefix.Length);
+        }
+        const string configureMarker = ". Configure reviewUsageBudgetAllowCredits/reviewUsageBudgetAllowWeeklyLimit";
+        var markerIndex = trimmed.IndexOf(configureMarker, StringComparison.OrdinalIgnoreCase);
+        if (markerIndex > 0) {
+            trimmed = trimmed.Substring(0, markerIndex);
+        }
+        return trimmed.Trim();
+    }
+
+    private static void AnnounceSelectedOpenAiAccount(ReviewSettings settings, string accountId, string reason) {
+        if (settings.Diagnostics || settings.OpenAiAccountIds.Count > 1) {
+            Console.WriteLine($"Selected OpenAI account '{accountId}' ({reason}).");
+        }
+    }
+
     private static bool ShouldSkipByTitle(string title, IReadOnlyList<string> skipTitles) {
         if (skipTitles.Count == 0) {
             return false;

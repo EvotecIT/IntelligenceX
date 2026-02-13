@@ -112,6 +112,17 @@ internal static partial class WizardRunner {
             if (string.Equals(state.Provider, "copilot", StringComparison.OrdinalIgnoreCase)) {
                 state.SkipSecret = true;
                 state.ManualSecret = false;
+                state.OpenAiAccountId = null;
+                state.OpenAiAccountIds = null;
+                state.OpenAiAccountRotation = "first-available";
+                state.OpenAiAccountFailover = true;
+            } else if (state.WithConfig && state.ConfigMode == ConfigMode.Preset) {
+                state.OpenAiAccountId = WizardPrompts.PromptOpenAiAccountId(state.OpenAiAccountId);
+                state.OpenAiAccountIds = WizardPrompts.PromptOpenAiAccountIds(state.OpenAiAccountIds, state.OpenAiAccountId);
+                if (!string.IsNullOrWhiteSpace(state.OpenAiAccountIds)) {
+                    state.OpenAiAccountRotation = WizardPrompts.PromptOpenAiAccountRotation(state.OpenAiAccountRotation);
+                    state.OpenAiAccountFailover = WizardPrompts.PromptOpenAiAccountFailover(state.OpenAiAccountFailover);
+                }
             }
             state.SkipSecret = WizardPrompts.PromptSkipSecret(state.SkipSecret);
             if (!state.SkipSecret) {

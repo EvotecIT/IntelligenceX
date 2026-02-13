@@ -9,7 +9,7 @@ namespace IntelligenceX.Cli.Auth;
 internal sealed record AuthStoreEntry(string Provider, string? AccountId, DateTimeOffset? ExpiresAt);
 
 internal static class AuthStoreUtils {
-    public static string DecryptAuthStoreIfNeeded(string content) {
+    public static string DecryptAuthStoreIfNeeded(string content, string? authKeyBase64 = null) {
         if (string.IsNullOrWhiteSpace(content)) {
             return content;
         }
@@ -18,7 +18,9 @@ internal static class AuthStoreUtils {
             return content;
         }
 
-        var keyBase64 = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_KEY");
+        var keyBase64 = string.IsNullOrWhiteSpace(authKeyBase64)
+            ? Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_KEY")
+            : authKeyBase64;
         if (string.IsNullOrWhiteSpace(keyBase64)) {
             throw new InvalidOperationException("Auth store is encrypted but INTELLIGENCEX_AUTH_KEY is not set.");
         }
@@ -86,4 +88,3 @@ internal static class AuthStoreUtils {
         return list;
     }
 }
-

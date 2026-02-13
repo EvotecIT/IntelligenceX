@@ -166,6 +166,23 @@ internal static partial class Program {
         }
     }
 
+    private static void TestReviewConfigLoaderReadsOpenAiAccountRotationCamelCase() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-rotation-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path, "{ \"review\": { \"openaiAccountRotation\": \"round-robin\" } }");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings();
+            ReviewConfigLoader.Apply(settings);
+            AssertEqual("round-robin", settings.OpenAiAccountRotation, "review config loader openaiAccountRotation camelCase");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
     private static void TestReviewProviderFallbackEnv() {
         var previousProvider = Environment.GetEnvironmentVariable("REVIEW_PROVIDER");
         var previousFallback = Environment.GetEnvironmentVariable("REVIEW_PROVIDER_FALLBACK");

@@ -100,6 +100,35 @@ internal static partial class Program {
             }
         }
     }
+
+    private static void TestAuthStoreDecryptWithExplicitKeyOverride() {
+        var path = Path.Combine(Path.GetTempPath(), $"ix-auth-explicit-{Guid.NewGuid():N}.json");
+        var key = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        var previousKey = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_KEY");
+        try {
+            var store = new FileAuthBundleStore(path: path, encryptionKeyBase64: key);
+            var bundle = new AuthBundle("openai-codex", "access", "refresh", DateTimeOffset.UtcNow.AddHours(1)) {
+                AccountId = "acct-explicit"
+            };
+            store.SaveAsync(bundle, CancellationToken.None).GetAwaiter().GetResult();
+
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_KEY", null);
+            var content = File.ReadAllText(path);
+            var decrypted = IntelligenceX.Cli.Auth.AuthStoreUtils.DecryptAuthStoreIfNeeded(content, key);
+            var entries = IntelligenceX.Cli.Auth.AuthStoreUtils.ParseAuthStoreEntries(decrypted);
+            AssertEqual(1, entries.Count, "auth store explicit key entries count");
+            AssertEqual("acct-explicit", entries[0].AccountId, "auth store explicit key account id");
+        } finally {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_KEY", previousKey);
+            try {
+                if (File.Exists(path)) {
+                    File.Delete(path);
+                }
+            } catch {
+                // best-effort cleanup
+            }
+        }
+    }
 #endif
 
     private enum FakeAccountMode {

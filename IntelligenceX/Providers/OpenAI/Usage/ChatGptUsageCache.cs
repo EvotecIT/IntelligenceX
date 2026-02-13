@@ -81,15 +81,22 @@ public static class ChatGptUsageCache {
     /// Resolves the default cache path, honoring INTELLIGENCEX_USAGE_PATH when present.
     /// </summary>
     public static string ResolveCachePath() {
+        return ResolveCachePath(null);
+    }
+
+    /// <summary>
+    /// Resolves the usage cache path for a specific account id.
+    /// </summary>
+    /// <param name="accountId">Optional ChatGPT account id.</param>
+    public static string ResolveCachePath(string? accountId) {
         var overridePath = Environment.GetEnvironmentVariable("INTELLIGENCEX_USAGE_PATH");
-        if (!string.IsNullOrWhiteSpace(overridePath)) {
-            return overridePath!;
+        var basePath = string.IsNullOrWhiteSpace(overridePath)
+            ? ResolveDefaultCachePath()
+            : NormalizeOverridePath(overridePath!);
+        if (string.IsNullOrWhiteSpace(accountId)) {
+            return basePath;
         }
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        if (string.IsNullOrWhiteSpace(home)) {
-            home = ".";
-        }
-        return Path.Combine(home, ".intelligencex", "usage.json");
+        return AppendAccountSuffix(basePath, accountId!);
     }
 
     /// <summary>
@@ -186,5 +193,68 @@ public static class ChatGptUsageCache {
             // Best-effort permissions.
         }
 #endif
+    }
+
+    private static string ResolveDefaultCachePath() {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrWhiteSpace(home)) {
+            home = ".";
+        }
+        return Path.Combine(home, ".intelligencex", "usage.json");
+    }
+
+    private static string NormalizeOverridePath(string overridePath) {
+        var trimmed = overridePath.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed)) {
+            return ResolveDefaultCachePath();
+        }
+        if (LooksLikeDirectoryPath(trimmed) || Directory.Exists(trimmed)) {
+            return Path.Combine(trimmed, "usage.json");
+        }
+        return trimmed;
+    }
+
+    private static bool LooksLikeDirectoryPath(string path) {
+        if (path.Length == 0) {
+            return false;
+        }
+        var last = path[path.Length - 1];
+        return last == Path.DirectorySeparatorChar || last == Path.AltDirectorySeparatorChar;
+    }
+
+    private static string AppendAccountSuffix(string basePath, string accountId) {
+        var dir = Path.GetDirectoryName(basePath);
+        var name = Path.GetFileNameWithoutExtension(basePath);
+        var ext = Path.GetExtension(basePath);
+        if (string.IsNullOrWhiteSpace(name)) {
+            name = "usage";
+        }
+        var safeAccountId = SanitizeForFileName(accountId);
+        var fileName = string.IsNullOrWhiteSpace(ext)
+            ? $"{name}-{safeAccountId}"
+            : $"{name}-{safeAccountId}{ext}";
+        return string.IsNullOrWhiteSpace(dir) ? fileName : Path.Combine(dir, fileName);
+    }
+
+    private static string SanitizeForFileName(string value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return "account";
+        }
+        var chars = new char[Math.Min(value.Length, 80)];
+        var idx = 0;
+        foreach (var ch in value) {
+            if (idx >= chars.Length) {
+                break;
+            }
+            if (char.IsLetterOrDigit(ch) || ch is '-' or '_' or '.') {
+                chars[idx++] = ch;
+            } else {
+                chars[idx++] = '-';
+            }
+        }
+        if (idx == 0) {
+            return "account";
+        }
+        return new string(chars, 0, idx);
     }
 }

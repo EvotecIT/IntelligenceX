@@ -213,6 +213,19 @@ public static partial class ReviewerApp {
             if (!await ValidateAuthAsync(settings).ConfigureAwait(false)) {
                 return 1;
             }
+            var accountSelection = await TryResolveOpenAiAccountAsync(settings).ConfigureAwait(false);
+            if (!accountSelection.Success) {
+                Console.Error.WriteLine(accountSelection.Error);
+                return 1;
+            }
+            if (!accountSelection.BudgetGuardEvaluated) {
+                var usageBudgetFailure = await TryBuildUsageBudgetGuardFailureAsync(settings, settings.Provider)
+                    .ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(usageBudgetFailure)) {
+                    Console.Error.WriteLine(usageBudgetFailure);
+                    return 1;
+                }
+            }
 
             allowWrites = !isUntrusted || settings.UntrustedPrAllowWrites;
             if (!allowWrites && isUntrusted) {

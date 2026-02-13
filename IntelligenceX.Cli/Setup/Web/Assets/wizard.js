@@ -31,6 +31,7 @@ let deviceState = null;
 let lastRecommendation = null;
 let lastSummaryBase = 'Ready to preview or apply.';
 let lastUsageSummary = null;
+let openAiAccountId = '';
 let onboardingContractVersion = null;
 let onboardingContractFingerprint = null;
 
@@ -139,6 +140,10 @@ const analysisEnabled = $('analysisEnabled');
 const analysisGate = $('analysisGate');
 const analysisPacks = $('analysisPacks');
 const analysisExportPath = $('analysisExportPath');
+const openAiAccountIdInput = $('openAiAccountId');
+const openAiAccountIdsInput = $('openAiAccountIds');
+const openAiAccountRotation = $('openAiAccountRotation');
+const openAiAccountFailover = $('openAiAccountFailover');
 
 function normalizeOperationId(operation) {
   const normalized = String(operation || '').trim().toLowerCase();
@@ -396,6 +401,7 @@ function selectOperation(op) {
   $('setupOptions').classList.toggle('hidden', op !== 'setup');
   $('cleanupOptions').classList.toggle('hidden', op !== 'cleanup');
   updateAnalysisControls();
+  updateOpenAiAccountControls();
 
   selectedOnboardingPath = getOnboardingPathForOperation(op);
   syncOnboardingPathVisualState();
@@ -475,6 +481,7 @@ function selectProvider(p) {
       ? 'Recommended. Uses your ChatGPT account for reviews.'
       : 'Uses GitHub Copilot CLI. Requires Copilot subscription and CLI installed.';
   }
+  updateOpenAiAccountControls();
 }
 
 // ── Preset selection ──
@@ -503,7 +510,10 @@ function selectSecretOption(opt) {
 async function runChatGptLogin() {
   const statusEl = $('chatgptLoginStatus');
   const btn = $('chatgptLogin');
-  if (statusEl) statusEl.innerHTML = '<span class="spinner"></span> Opening ChatGPT login...';
+  if (statusEl) {
+    statusEl.style.color = '';
+    statusEl.innerHTML = '<span class="spinner"></span> Opening ChatGPT login...';
+  }
   if (btn) {
     btn.disabled = true;
   }
@@ -516,13 +526,23 @@ async function runChatGptLogin() {
     });
     if (data.authB64) {
       if (authB64) authB64.value = data.authB64;
-      if (statusEl) statusEl.innerHTML = '<span style="color: var(--pf-success);">&#x2713; Authenticated with ChatGPT</span>';
+      openAiAccountId = data.accountId ? String(data.accountId).trim() : '';
+      if (statusEl) {
+        const details = [];
+        if (openAiAccountId) details.push(`account ${openAiAccountId}`);
+        if (data.expiresAt) details.push(`expires ${data.expiresAt}`);
+        const suffix = details.length > 0 ? ` (${details.join(', ')})` : '';
+        statusEl.textContent = `\u2713 Authenticated with ChatGPT${suffix}`;
+        statusEl.style.color = 'var(--pf-success)';
+      }
       if (btn) {
         btn.textContent = 'Switch ChatGPT account';
         btn.classList.add('success');
       }
       // Refresh usage button enablement.
       try { updateUsageBtn(); } catch { }
+      // Load known accounts from auth store for optional multi-account routing.
+      try { await loadOpenAiAccountsFromAuth(false); } catch { }
       return true;
     }
 
@@ -565,6 +585,47 @@ async function ensureOpenAiAuthIfNeeded() {
 
   write('OpenAI auth bundle is missing. Provide authB64/authB64Path or select "ChatGPT browser login".');
   return false;
+}
+
+async function loadOpenAiAccountsFromAuth(showStatus = true) {
+  const btn = $('loadOpenAiAccounts');
+  const hint = $('openAiAccountsHint');
+  if (btn) btn.disabled = true;
+  if (hint && showStatus) hint.textContent = 'Loading OpenAI accounts from auth bundle...';
+
+  try {
+    const data = await fetchJsonSafe('/api/openai-accounts', {
+      method: 'POST',
+      headers: getSetupRequestHeaders(),
+      body: JSON.stringify({
+        authB64: authB64 ? authB64.value.trim() : '',
+        authB64Path: authB64Path ? authB64Path.value.trim() : ''
+      })
+    });
+
+    const accounts = Array.isArray(data.accounts) ? data.accounts : [];
+    const accountIds = normalizeOpenAiAccountIdsCsv(accounts.map(a => a && a.accountId ? a.accountId : '').join(','));
+    if (accountIds.length > 0) {
+      if (openAiAccountIdsInput && !openAiAccountIdsInput.value.trim()) {
+        openAiAccountIdsInput.value = accountIds.join(',');
+      }
+      const selected = data.selectedAccountId ? String(data.selectedAccountId).trim() : '';
+      if (openAiAccountIdInput && !openAiAccountIdInput.value.trim()) {
+        openAiAccountIdInput.value = selected || accountIds[0];
+      }
+      if (hint) {
+        hint.textContent = `Detected ${accountIds.length} account(s): ${accountIds.join(', ')}.`;
+      }
+    } else if (hint) {
+      hint.textContent = data.error
+        ? `No OpenAI accounts detected (${data.error}).`
+        : 'No OpenAI accounts detected in current auth bundle.';
+    }
+  } catch (e) {
+    if (hint) hint.textContent = `Account detection failed: ${e.message || e}`;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 // ── Manual entry toggle ──
@@ -780,6 +841,21 @@ function coerceBoolean(value) {
   return null;
 }
 
+function normalizeOpenAiAccountIdsCsv(raw) {
+  if (!raw || typeof raw !== 'string') return [];
+  const seen = new Set();
+  const values = [];
+  raw.split(',').forEach(part => {
+    const value = String(part || '').trim();
+    if (!value) return;
+    const key = value.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    values.push(value);
+  });
+  return values;
+}
+
 // ── Build review grid ──
 function buildReviewTable() {
   const grid = $('reviewGrid');
@@ -810,6 +886,20 @@ function buildReviewTable() {
   const safeReviewCommentMode = escapeHtml(reviewCommentMode && reviewCommentMode.value ? reviewCommentMode.value : 'default');
   const safeAnalysisState = escapeHtml(analysisState);
   const safeAnalysisExportPath = escapeHtml(analysisExportPathValue);
+  const openAiAccountIdValue = openAiAccountIdInput ? openAiAccountIdInput.value.trim() : '';
+  const openAiAccountIdsValue = openAiAccountIdsInput
+    ? normalizeOpenAiAccountIdsCsv(openAiAccountIdsInput.value).join(',')
+    : '';
+  const openAiAccountRotationValue = openAiAccountRotation ? openAiAccountRotation.value : 'first-available';
+  const openAiAccountFailoverValue = openAiAccountFailover ? openAiAccountFailover.checked : true;
+  const accountRoutingApplies = selectedOperation === 'setup' &&
+    selectedProvider === 'openai' &&
+    withConfigEffective &&
+    !hasConfigOverride;
+  const safeOpenAiAccountId = escapeHtml(openAiAccountIdValue || '(auto)');
+  const safeOpenAiAccountIds = escapeHtml(openAiAccountIdsValue || '(not set)');
+  const safeOpenAiAccountRotation = escapeHtml(openAiAccountRotationValue);
+  const safeOpenAiAccountFailover = openAiAccountFailoverValue ? 'enabled' : 'disabled';
   const safeRepoHtml = repos.map(r => `<code>${escapeHtml(r)}</code>`).join(' ');
 
   let html = `
@@ -860,6 +950,23 @@ function buildReviewTable() {
       <div class="review-item">
         <span class="review-label">Analysis export path</span>
         <span class="review-value"><code>${safeAnalysisExportPath}</code></span>
+      </div>` : ''}
+      ${accountRoutingApplies ? `
+      <div class="review-item">
+        <span class="review-label">OpenAI primary account</span>
+        <span class="review-value">${safeOpenAiAccountId}</span>
+      </div>
+      <div class="review-item">
+        <span class="review-label">OpenAI account ids</span>
+        <span class="review-value">${safeOpenAiAccountIds}</span>
+      </div>
+      <div class="review-item">
+        <span class="review-label">OpenAI account rotation</span>
+        <span class="review-value">${safeOpenAiAccountRotation}</span>
+      </div>
+      <div class="review-item">
+        <span class="review-label">OpenAI account failover</span>
+        <span class="review-value">${safeOpenAiAccountFailover}</span>
       </div>` : ''}
     </div>
   `;
@@ -934,10 +1041,20 @@ function buildRequestBody(dryRun) {
   const skipSecret = shouldSkipSecrets() || secretOption === 'skip';
   const hasConfigOverride = (configJson.value.trim().length > 0) || (configPath.value.trim().length > 0);
   const wantAnalysis = selectedOperation === 'setup' && withConfig.checked && !hasConfigOverride;
+  const wantOpenAiAccountRouting = selectedOperation === 'setup' &&
+    selectedProvider === 'openai' &&
+    withConfig.checked &&
+    !hasConfigOverride;
   const analysisEnabledValue = wantAnalysis && analysisEnabled && analysisEnabled.checked ? true : null;
   const analysisOn = analysisEnabledValue === true;
   const packsRaw = analysisPacks ? analysisPacks.value.trim() : '';
   const exportPathRaw = analysisExportPath ? analysisExportPath.value.trim() : '';
+  const openAiAccountIdValue = openAiAccountIdInput ? openAiAccountIdInput.value.trim() : '';
+  const openAiAccountIdsValue = openAiAccountIdsInput
+    ? normalizeOpenAiAccountIdsCsv(openAiAccountIdsInput.value).join(',')
+    : '';
+  const openAiAccountRotationValue = openAiAccountRotation ? openAiAccountRotation.value : 'first-available';
+  const openAiAccountFailoverValue = openAiAccountFailover ? !!openAiAccountFailover.checked : true;
   const body = {
     repos: selectedRepos(),
     gitHubToken: getToken(),
@@ -961,6 +1078,14 @@ function buildRequestBody(dryRun) {
     updateSecret: selectedOperation === 'update-secret',
     keepSecret: keepSecret.checked
   };
+  if (wantOpenAiAccountRouting) {
+    if (openAiAccountIdValue.length > 0) body.openAIAccountId = openAiAccountIdValue;
+    if (openAiAccountIdsValue.length > 0) {
+      body.openAIAccountIds = openAiAccountIdsValue;
+      body.openAIAccountRotation = openAiAccountRotationValue;
+      body.openAIAccountFailover = openAiAccountFailoverValue;
+    }
+  }
   if (wantAnalysis) {
     body.analysisEnabled = analysisEnabledValue;
     if (analysisOn) {
@@ -1499,12 +1624,17 @@ if (repo) repo.addEventListener('input', updateRepoCount);
 configJson.addEventListener('input', () => {
   if (configJson.value.trim()) withConfig.checked = true;
   updateAnalysisControls();
+  updateOpenAiAccountControls();
 });
 configPath.addEventListener('input', () => {
   if (configPath.value.trim()) withConfig.checked = true;
   updateAnalysisControls();
+  updateOpenAiAccountControls();
 });
-withConfig.addEventListener('change', updateAnalysisControls);
+withConfig.addEventListener('change', () => {
+  updateAnalysisControls();
+  updateOpenAiAccountControls();
+});
 
 // ── Static analysis toggle ──
 function updateAnalysisControls() {
@@ -1527,6 +1657,35 @@ function updateAnalysisControls() {
 if (analysisEnabled) analysisEnabled.addEventListener('change', updateAnalysisControls);
 updateAnalysisControls();
 
+function updateOpenAiAccountControls() {
+  const hasConfigOverride = (configJson.value.trim().length > 0) || (configPath.value.trim().length > 0);
+  const applicable = selectedOperation === 'setup' &&
+    selectedProvider === 'openai' &&
+    withConfig.checked &&
+    !hasConfigOverride;
+
+  if (openAiAccountIdInput) openAiAccountIdInput.disabled = !applicable;
+  if (openAiAccountIdsInput) openAiAccountIdsInput.disabled = !applicable;
+  if (openAiAccountRotation) openAiAccountRotation.disabled = !applicable;
+  if (openAiAccountFailover) openAiAccountFailover.disabled = !applicable;
+  const loadBtn = $('loadOpenAiAccounts');
+  if (loadBtn) loadBtn.disabled = !applicable;
+
+  const hint = $('openAiAccountsHint');
+  if (hint) {
+    hint.textContent = applicable
+      ? 'Use this when you want reviewer account rotation/failover in GitHub Actions.'
+      : 'OpenAI account routing applies only when generating reviewer config (no Config JSON/path override).';
+  }
+}
+updateOpenAiAccountControls();
+const loadOpenAiAccountsBtn = $('loadOpenAiAccounts');
+if (loadOpenAiAccountsBtn) {
+  loadOpenAiAccountsBtn.addEventListener('click', async () => {
+    await loadOpenAiAccountsFromAuth(true);
+  });
+}
+
 // ── App field watchers ──
 appId.addEventListener('input', updateAppControls);
 appPem.addEventListener('input', updateAppControls);
@@ -1539,6 +1698,8 @@ function updateUsageBtn() {
 }
 if (authB64) authB64.addEventListener('input', updateUsageBtn);
 if (authB64Path) authB64Path.addEventListener('input', updateUsageBtn);
+if (authB64) authB64.addEventListener('input', () => { openAiAccountId = ''; });
+if (authB64Path) authB64Path.addEventListener('input', () => { openAiAccountId = ''; });
 
 // ── Presets (localStorage) ──
 function readPresets() {
@@ -1671,6 +1832,9 @@ $('checkUsage').addEventListener('click', async () => {
       body: JSON.stringify({
         authB64: authB64 ? authB64.value.trim() : '',
         authB64Path: authB64Path ? authB64Path.value.trim() : '',
+        accountId: (openAiAccountIdInput && openAiAccountIdInput.value.trim())
+          ? openAiAccountIdInput.value.trim()
+          : openAiAccountId,
         includeEvents: usageEvents.checked
       })
     });
@@ -1764,6 +1928,7 @@ async function doApply() {
 // ── Init ──
 refreshPresets();
 loadUsageCache();
+loadOpenAiAccountsFromAuth(false);
 updateProgressBar();
 selectSecretOption(secretOption);
 setOnboardingPathContracts(FALLBACK_ONBOARDING_PATHS, null, null);

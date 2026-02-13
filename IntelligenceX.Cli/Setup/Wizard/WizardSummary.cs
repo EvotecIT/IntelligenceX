@@ -42,6 +42,23 @@ internal static class WizardSummary {
         }
         if (!string.IsNullOrWhiteSpace(plan.Provider)) {
             table.AddRow("Provider", plan.Provider);
+            if ((string.Equals(plan.Provider, "openai", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(plan.Provider, "chatgpt", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(plan.Provider, "codex", StringComparison.OrdinalIgnoreCase)) &&
+                plan.WithConfig &&
+                string.IsNullOrWhiteSpace(plan.ConfigJson) &&
+                string.IsNullOrWhiteSpace(plan.ConfigPath)) {
+                table.AddRow("OpenAI primary account",
+                    string.IsNullOrWhiteSpace(plan.OpenAIAccountId) ? "(auto)" : plan.OpenAIAccountId!);
+                table.AddRow("OpenAI account ids",
+                    string.IsNullOrWhiteSpace(plan.OpenAIAccountIds) ? "(not set)" : plan.OpenAIAccountIds!);
+                table.AddRow("OpenAI account rotation",
+                    string.IsNullOrWhiteSpace(plan.OpenAIAccountRotation) ? "(default)" : plan.OpenAIAccountRotation!);
+                table.AddRow("OpenAI account failover",
+                    plan.OpenAIAccountFailover.HasValue
+                        ? (plan.OpenAIAccountFailover.Value ? "enabled" : "disabled")
+                        : "(default)");
+            }
         }
         table.AddRow("Skip secret", plan.SkipSecret ? "yes" : "no");
         table.AddRow("Manual secret", plan.ManualSecret ? "yes" : "no");

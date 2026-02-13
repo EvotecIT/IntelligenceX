@@ -121,6 +121,48 @@ internal static partial class Program {
         }
     }
 
+    private static void TestCliAuthSyncCodexHelpSupportsOptions() {
+        var (exit, stdout, stderr) = RunCliDispatchWithCapturedOutput(
+            new[] { "auth", "sync-codex", "--help" },
+            () => false,
+            _ => Task.FromResult(0));
+
+        AssertEqual(0, exit, "auth sync-codex help exit");
+        AssertContainsText(stdout, "--provider", "auth sync-codex help provider option");
+        AssertContainsText(stdout, "--account-id", "auth sync-codex help account option");
+        AssertEqual(string.Empty, stderr, "auth sync-codex help stderr");
+    }
+
+    private static void TestCliAuthSyncCodexMissingProviderValueShowsHelp() {
+        var (exit, stdout, stderr) = RunCliDispatchWithCapturedOutput(
+            new[] { "auth", "sync-codex", "--provider" },
+            () => false,
+            _ => Task.FromResult(0));
+
+        AssertEqual(1, exit, "auth sync-codex missing provider exit");
+        AssertContainsText(stderr, "Missing value for --provider.", "auth sync-codex missing provider stderr");
+        AssertContainsText(stdout, "Usage:", "auth sync-codex missing provider help");
+    }
+
+    private static void TestCliModelsHelpRoutes() {
+        var (exitRoot, stdoutRoot, stderrRoot) = RunCliDispatchWithCapturedOutput(
+            new[] { "models", "--help" },
+            () => false,
+            _ => Task.FromResult(0));
+        AssertEqual(0, exitRoot, "models help exit");
+        AssertContainsText(stdoutRoot, "intelligencex models list", "models root help usage");
+        AssertContainsText(stdoutRoot, "--account-id", "models root help account option");
+        AssertEqual(string.Empty, stderrRoot, "models root help stderr");
+
+        var (exitList, stdoutList, stderrList) = RunCliDispatchWithCapturedOutput(
+            new[] { "models", "list", "--help" },
+            () => false,
+            _ => Task.FromResult(0));
+        AssertEqual(0, exitList, "models list help exit");
+        AssertContainsText(stdoutList, "--model-url", "models list help model-url option");
+        AssertEqual(string.Empty, stderrList, "models list help stderr");
+    }
+
     private static void TestResolveDefaultRepoNormalizesEnvironmentValue() {
         var previousRepo = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_REPO");
         var previousGitHubRepo = Environment.GetEnvironmentVariable("GITHUB_REPOSITORY");
