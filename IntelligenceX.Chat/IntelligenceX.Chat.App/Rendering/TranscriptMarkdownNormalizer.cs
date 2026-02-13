@@ -28,7 +28,6 @@ internal static class TranscriptMarkdownNormalizer {
             return string.Empty;
         }
 
-        normalized = normalized.Replace("\r\n", "\n").Replace('\r', '\n');
         normalized = EmojiWordJoinRegex.Replace(normalized, "$1 ");
         normalized = NumberedChoiceJoinRegex.Replace(normalized, "$1 ");
         normalized = LetterToNumberedChoiceJoinRegex.Replace(normalized, " ");

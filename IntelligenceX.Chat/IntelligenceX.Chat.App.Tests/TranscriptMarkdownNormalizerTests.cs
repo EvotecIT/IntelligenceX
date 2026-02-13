@@ -35,14 +35,14 @@ public sealed class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
-    /// Ensures normalization preserves intentional leading/trailing whitespace and newlines.
+    /// Ensures normalization preserves intentional leading/trailing whitespace and native line endings.
     /// </summary>
     [Fact]
     public void NormalizeForRendering_PreservesEdgeWhitespace() {
-        var text = "\n  line  \n";
+        var text = "\r\n  line  \r\n";
 
         var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
 
-        Assert.Equal("\n  line  \n", normalized);
+        Assert.Equal("\r\n  line  \r\n", normalized);
     }
 }
