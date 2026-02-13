@@ -599,6 +599,12 @@
     if (typeof nextState.statusTone === "string") {
       state.statusTone = nextState.statusTone;
     }
+    if (typeof nextState.usageLimitSwitchRecommended === "boolean") {
+      state.usageLimitSwitchRecommended = nextState.usageLimitSwitchRecommended;
+    }
+    if (typeof nextState.queuedPromptPending === "boolean") {
+      state.queuedPromptPending = nextState.queuedPromptPending;
+    }
     if (typeof nextState.connected === "boolean") {
       state.connected = nextState.connected;
     }

@@ -105,9 +105,10 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private async Task SetStatusAsync(string text, SessionStatusTone? tone = null) {
+    private async Task SetStatusAsync(string text, SessionStatusTone? tone = null, bool? usageLimitSwitchRecommended = null) {
         _statusText = text ?? string.Empty;
         _statusTone = tone ?? InferStatusTone(_statusText);
+        _usageLimitSwitchRecommended = usageLimitSwitchRecommended ?? InferUsageLimitSwitchRecommendation(_statusText);
         if (!_webViewReady) {
             return;
         }
@@ -123,7 +124,8 @@ public sealed partial class MainWindow : Window {
     private Task SetStatusAsync(SessionStatus status) {
         return SetStatusAsync(
             SessionStatusFormatter.Format(status),
-            SessionStatusToneResolver.Resolve(status));
+            SessionStatusToneResolver.Resolve(status),
+            status.Kind == SessionStatusKind.UsageLimitReached);
     }
 
     private async Task PublishSessionStateAsync() {
@@ -134,6 +136,8 @@ public sealed partial class MainWindow : Window {
         var json = JsonSerializer.Serialize(new {
             status = _statusText,
             statusTone = MapStatusTone(_statusTone),
+            usageLimitSwitchRecommended = _usageLimitSwitchRecommended,
+            queuedPromptPending = !string.IsNullOrWhiteSpace(_queuedPromptAfterLogin),
             connected = _isConnected,
             authenticated = _isAuthenticated,
             loginInProgress = _loginInProgress,
@@ -183,6 +187,16 @@ public sealed partial class MainWindow : Window {
         }
 
         return SessionStatusTone.Neutral;
+    }
+
+    private static bool InferUsageLimitSwitchRecommendation(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        return normalized.Contains("usage limit", StringComparison.OrdinalIgnoreCase)
+               || normalized.Contains("switch account", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task PublishOptionsStateAsync() {
