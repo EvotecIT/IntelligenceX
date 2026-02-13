@@ -104,18 +104,33 @@ public static class ToolOutputEnvelope {
             .Add("error_code", errorCode)
             .Add("error", error ?? string.Empty)
             .Add("is_transient", isTransient);
+        var failure = new JsonObject()
+            .Add("code", errorCode)
+            .Add("message", error ?? string.Empty)
+            .Add("is_transient", isTransient);
 
         if (hints is not null) {
-            var arr = new JsonArray();
+            var normalizedHints = new List<string>();
             foreach (var h in hints) {
                 if (!string.IsNullOrWhiteSpace(h)) {
-                    arr.Add(h);
+                    normalizedHints.Add(h);
                 }
             }
-            if (arr.Count > 0) {
-                obj.Add("hints", arr);
+
+            if (normalizedHints.Count > 0) {
+                var rootHints = new JsonArray();
+                var failureHints = new JsonArray();
+                foreach (var hint in normalizedHints) {
+                    rootHints.Add(hint);
+                    failureHints.Add(hint);
+                }
+
+                obj.Add("hints", rootHints);
+                failure.Add("hints", failureHints);
             }
         }
+
+        obj.Add("failure", failure);
 
         if (meta is not null) {
             obj.Add("meta", meta);

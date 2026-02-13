@@ -27,6 +27,11 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
+    private const int SafeDefaultMaxToolRounds = 3;
+    private const bool SafeDefaultParallelTools = true;
+    private const int SafeDefaultTurnTimeoutSeconds = 180;
+    private const int SafeDefaultToolTimeoutSeconds = 60;
+
     private void ReplaceLastAssistantText(string text) {
         ReplaceLastAssistantText(GetActiveConversation(), text);
     }
@@ -241,20 +246,28 @@ public sealed partial class MainWindow : Window {
             disabled.Sort(StringComparer.OrdinalIgnoreCase);
         }
 
-        var hasOverrides = _autonomyMaxToolRounds.HasValue
-                           || _autonomyParallelTools.HasValue
-                           || _autonomyTurnTimeoutSeconds.HasValue
-                           || _autonomyToolTimeoutSeconds.HasValue;
-        if (disabled.Count == 0 && !hasOverrides) {
-            return null;
-        }
+        var effectiveMaxToolRounds = _autonomyMaxToolRounds
+            ?? NormalizeAutonomyInt(_sessionPolicy?.MaxToolRounds, min: 1, max: 24)
+            ?? SafeDefaultMaxToolRounds;
+
+        var effectiveParallelTools = _autonomyParallelTools
+            ?? _sessionPolicy?.ParallelTools
+            ?? SafeDefaultParallelTools;
+
+        var effectiveTurnTimeoutSeconds = _autonomyTurnTimeoutSeconds
+            ?? NormalizePositiveTimeout(_sessionPolicy?.TurnTimeoutSeconds)
+            ?? SafeDefaultTurnTimeoutSeconds;
+
+        var effectiveToolTimeoutSeconds = _autonomyToolTimeoutSeconds
+            ?? NormalizePositiveTimeout(_sessionPolicy?.ToolTimeoutSeconds)
+            ?? SafeDefaultToolTimeoutSeconds;
 
         return new ChatRequestOptions {
             DisabledTools = disabled.Count == 0 ? null : disabled.ToArray(),
-            MaxToolRounds = _autonomyMaxToolRounds ?? 3,
-            ParallelTools = _autonomyParallelTools ?? true,
-            TurnTimeoutSeconds = _autonomyTurnTimeoutSeconds,
-            ToolTimeoutSeconds = _autonomyToolTimeoutSeconds
+            MaxToolRounds = effectiveMaxToolRounds,
+            ParallelTools = effectiveParallelTools,
+            TurnTimeoutSeconds = effectiveTurnTimeoutSeconds,
+            ToolTimeoutSeconds = effectiveToolTimeoutSeconds
         };
     }
 
@@ -314,6 +327,14 @@ public sealed partial class MainWindow : Window {
             return false;
         }
         return null;
+    }
+
+    private static int? NormalizePositiveTimeout(int? value) {
+        if (!value.HasValue || value.Value <= 0) {
+            return null;
+        }
+
+        return value.Value;
     }
 
     private List<string> BuildMissingOnboardingFields() {

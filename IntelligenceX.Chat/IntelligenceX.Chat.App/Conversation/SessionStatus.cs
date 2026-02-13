@@ -55,6 +55,16 @@ internal enum SessionStatusKind {
 }
 
 /// <summary>
+/// Visual tone used by the status chip.
+/// </summary>
+internal enum SessionStatusTone {
+    Neutral,
+    Ok,
+    Warn,
+    Bad
+}
+
+/// <summary>
 /// Formats typed session statuses into UI text.
 /// </summary>
 internal static class SessionStatusFormatter {
@@ -80,6 +90,36 @@ internal static class SessionStatusFormatter {
             SessionStatusKind.ExportFailed => "Export failed",
             SessionStatusKind.Exporting => "Exporting...",
             _ => "Starting runtime..."
+        };
+    }
+}
+
+/// <summary>
+/// Maps typed session statuses to status-chip visual tones.
+/// </summary>
+internal static class SessionStatusToneResolver {
+    public static SessionStatusTone Resolve(SessionStatus status) {
+        return status.Kind switch {
+            SessionStatusKind.Connected => SessionStatusTone.Ok,
+            SessionStatusKind.ConnectFailed => SessionStatusTone.Bad,
+            SessionStatusKind.SignInFailed => SessionStatusTone.Bad,
+            SessionStatusKind.UsageLimitReached => SessionStatusTone.Bad,
+            SessionStatusKind.WaitingForSignIn => SessionStatusTone.Warn,
+            SessionStatusKind.SignInRequired => SessionStatusTone.Warn,
+            SessionStatusKind.Connecting => SessionStatusTone.Warn,
+            SessionStatusKind.Disconnected => SessionStatusTone.Warn,
+            SessionStatusKind.OpeningSignIn => SessionStatusTone.Warn,
+            SessionStatusKind.CompleteSignInInBrowser => SessionStatusTone.Warn,
+            SessionStatusKind.PreviousRequestStillRunning => SessionStatusTone.Warn,
+            SessionStatusKind.Canceling => SessionStatusTone.Warn,
+            SessionStatusKind.DebugModeOn => SessionStatusTone.Warn,
+            SessionStatusKind.Exporting => SessionStatusTone.Warn,
+            SessionStatusKind.NoActiveTurnToCancel => SessionStatusTone.Neutral,
+            SessionStatusKind.ClipboardHasNoText => SessionStatusTone.Neutral,
+            SessionStatusKind.ClipboardEmpty => SessionStatusTone.Neutral,
+            SessionStatusKind.CannotDeleteActiveConversationDuringTurn => SessionStatusTone.Neutral,
+            SessionStatusKind.ExportFailed => SessionStatusTone.Bad,
+            _ => SessionStatusTone.Neutral
         };
     }
 }

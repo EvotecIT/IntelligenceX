@@ -108,6 +108,10 @@ public sealed record ToolOutputDto {
     /// Optional render-hints JSON extracted from tool outputs (for UI rendering).
     /// </summary>
     public string? RenderJson { get; init; }
+    /// <summary>
+    /// Optional structured failure JSON extracted from tool outputs.
+    /// </summary>
+    public string? FailureJson { get; init; }
 }
 
 /// <summary>

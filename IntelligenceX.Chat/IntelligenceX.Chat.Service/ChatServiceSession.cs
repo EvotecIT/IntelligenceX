@@ -777,7 +777,19 @@ internal sealed class ChatServiceSession {
             var executed = await ExecuteToolsAsync(writer, request.RequestId, threadId, extracted, parallelTools, toolTimeoutSeconds, turnToken)
                 .ConfigureAwait(false);
             foreach (var output in executed) {
-                toolOutputs.Add(new ToolOutputDto { CallId = output.CallId, Output = output.Output });
+                toolOutputs.Add(new ToolOutputDto {
+                    CallId = output.CallId,
+                    Output = output.Output,
+                    Ok = output.Ok,
+                    ErrorCode = output.ErrorCode,
+                    Error = output.Error,
+                    Hints = output.Hints,
+                    IsTransient = output.IsTransient,
+                    SummaryMarkdown = output.SummaryMarkdown,
+                    MetaJson = output.MetaJson,
+                    RenderJson = output.RenderJson,
+                    FailureJson = output.FailureJson
+                });
             }
 
             var next = new ChatInput();
@@ -900,7 +912,8 @@ internal sealed class ChatServiceSession {
                 IsTransient = meta.IsTransient,
                 SummaryMarkdown = meta.SummaryMarkdown,
                 MetaJson = meta.MetaJson,
-                RenderJson = meta.RenderJson
+                RenderJson = meta.RenderJson,
+                FailureJson = meta.FailureJson
             };
         }
         using var toolCts = CreateTimeoutCts(cancellationToken, toolTimeoutSeconds);
@@ -922,7 +935,8 @@ internal sealed class ChatServiceSession {
                 IsTransient = meta.IsTransient,
                 SummaryMarkdown = meta.SummaryMarkdown,
                 MetaJson = meta.MetaJson,
-                RenderJson = meta.RenderJson
+                RenderJson = meta.RenderJson,
+                FailureJson = meta.FailureJson
             };
         } catch (OperationCanceledException) when (toolCts is not null && toolCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested) {
             var output = ToolOutputEnvelope.Error(
@@ -942,7 +956,8 @@ internal sealed class ChatServiceSession {
                 IsTransient = meta.IsTransient,
                 SummaryMarkdown = meta.SummaryMarkdown,
                 MetaJson = meta.MetaJson,
-                RenderJson = meta.RenderJson
+                RenderJson = meta.RenderJson,
+                FailureJson = meta.FailureJson
             };
         } catch (Exception ex) {
             var output = ToolOutputEnvelope.Error(
@@ -962,7 +977,8 @@ internal sealed class ChatServiceSession {
                 IsTransient = meta.IsTransient,
                 SummaryMarkdown = meta.SummaryMarkdown,
                 MetaJson = meta.MetaJson,
-                RenderJson = meta.RenderJson
+                RenderJson = meta.RenderJson,
+                FailureJson = meta.FailureJson
             };
         }
     }
@@ -1000,19 +1016,35 @@ internal sealed class ChatServiceSession {
 
             string[]? hints = null;
             try {
-                var arr = obj.GetArray("hints");
-                if (arr is not null && arr.Count > 0) {
-                    var list = new List<string>(arr.Count);
-                    foreach (var item in arr) {
-                        var s = item?.AsString();
-                        if (!string.IsNullOrWhiteSpace(s)) {
-                            list.Add(s!);
-                        }
-                    }
-                    hints = list.Count > 0 ? list.ToArray() : null;
-                }
+                hints = ParseHintsArray(obj.GetArray("hints"));
             } catch {
                 hints = null;
+            }
+
+            string? failureJson = null;
+            try {
+                if (obj.GetObject("failure") is JsonObject failureObj) {
+                    failureJson = JsonLite.Serialize(failureObj);
+
+                    if (string.IsNullOrWhiteSpace(errorCode)) {
+                        errorCode = failureObj.GetString("code");
+                    }
+                    if (string.IsNullOrWhiteSpace(error)) {
+                        error = failureObj.GetString("message");
+                    }
+                    if (!isTransient.HasValue) {
+                        try {
+                            isTransient = failureObj.GetBoolean("is_transient");
+                        } catch {
+                            isTransient = null;
+                        }
+                    }
+                    if (hints is null || hints.Length == 0) {
+                        hints = ParseHintsArray(failureObj.GetArray("hints"));
+                    }
+                }
+            } catch {
+                failureJson = null;
             }
 
             var summaryMarkdown = obj.GetString("summary_markdown");
@@ -1036,14 +1068,31 @@ internal sealed class ChatServiceSession {
                 renderJson = null;
             }
 
-            if (ok is null && errorCode is null && error is null && hints is null && isTransient is null && summaryMarkdown is null && metaJson is null && renderJson is null) {
+            if (ok is null && errorCode is null && error is null && hints is null && isTransient is null && summaryMarkdown is null
+                && metaJson is null && renderJson is null && failureJson is null) {
                 return default;
             }
 
-            return new ToolOutputMetadata(ok, errorCode, error, hints, isTransient, summaryMarkdown, metaJson, renderJson);
+            return new ToolOutputMetadata(ok, errorCode, error, hints, isTransient, summaryMarkdown, metaJson, renderJson, failureJson);
         } catch {
             return default;
         }
+    }
+
+    private static string[]? ParseHintsArray(JsonArray? arr) {
+        if (arr is null || arr.Count == 0) {
+            return null;
+        }
+
+        var list = new List<string>(arr.Count);
+        foreach (var item in arr) {
+            var s = item?.AsString();
+            if (!string.IsNullOrWhiteSpace(s)) {
+                list.Add(s!);
+            }
+        }
+
+        return list.Count > 0 ? list.ToArray() : null;
     }
 
     private readonly record struct ToolOutputMetadata(
@@ -1054,7 +1103,8 @@ internal sealed class ChatServiceSession {
         bool? IsTransient,
         string? SummaryMarkdown,
         string? MetaJson,
-        string? RenderJson);
+        string? RenderJson,
+        string? FailureJson);
 
     private async Task WriteAsync(StreamWriter writer, ChatServiceMessage message, CancellationToken cancellationToken) {
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);

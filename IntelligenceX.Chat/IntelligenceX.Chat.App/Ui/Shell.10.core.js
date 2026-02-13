@@ -30,6 +30,7 @@
 
   var state = {
     status: "Starting runtime...",
+    statusTone: "warn",
     connected: false,
     authenticated: false,
     loginInProgress: false,
@@ -370,13 +371,30 @@
     switchOptionsTab("profile");
   }
 
-  function updateStatusVisual(text) {
+  function updateStatusVisual(text, tone) {
     var statusEl = byId("status");
     var value = text || "";
     var lower = value.toLowerCase();
+    var normalizedTone = "";
+    if (typeof tone === "string") {
+      normalizedTone = tone.trim().toLowerCase();
+    }
 
     statusEl.textContent = value;
     statusEl.classList.remove("ok", "warn", "bad");
+    if (normalizedTone === "ok") {
+      statusEl.classList.add("ok");
+      return;
+    }
+    if (normalizedTone === "warn") {
+      statusEl.classList.add("warn");
+      return;
+    }
+    if (normalizedTone === "bad") {
+      statusEl.classList.add("bad");
+      return;
+    }
+
     if (lower.indexOf("failed") >= 0 || lower.indexOf("error") >= 0 || lower.indexOf("limit") >= 0 || lower.indexOf("quota") >= 0 || lower.indexOf("unavailable") >= 0) {
       statusEl.classList.add("bad");
     } else if (lower.indexOf("connected") >= 0 || lower.indexOf("ready") >= 0) {
@@ -983,4 +1001,3 @@
     }
     return state.expandedToolPacks[packId] === true;
   }
-
