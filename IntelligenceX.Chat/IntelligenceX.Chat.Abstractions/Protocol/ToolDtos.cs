@@ -15,6 +15,26 @@ public sealed record ToolDefinitionDto {
     /// </summary>
     public required string Description { get; init; }
     /// <summary>
+    /// Optional human-friendly display name.
+    /// </summary>
+    public string? DisplayName { get; init; }
+    /// <summary>
+    /// Optional category label (e.g. active-directory, system, event-log).
+    /// </summary>
+    public string? Category { get; init; }
+    /// <summary>
+    /// Optional tags used for discovery and routing.
+    /// </summary>
+    public string[]? Tags { get; init; }
+    /// <summary>
+    /// Optional tool-pack identifier (e.g. system, fs, eventlog, ad).
+    /// </summary>
+    public string? PackId { get; init; }
+    /// <summary>
+    /// Optional tool-pack display name.
+    /// </summary>
+    public string? PackName { get; init; }
+    /// <summary>
     /// JSON serialized input schema from the runtime tool definition.
     /// </summary>
     public string ParametersJson { get; init; } = "{}";

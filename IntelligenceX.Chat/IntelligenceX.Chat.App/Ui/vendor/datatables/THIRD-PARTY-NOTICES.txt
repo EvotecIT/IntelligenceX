@@ -1,0 +1,4 @@
+DataTables local assets
+Source JS: https://cdn.jsdelivr.net/npm/datatables.net@2.0.5/js/dataTables.min.js
+Source CSS: https://cdn.jsdelivr.net/npm/datatables.net-dt@2.0.5/css/dataTables.dataTables.min.css
+License: MIT (https://www.datatables.net/license/mit)
