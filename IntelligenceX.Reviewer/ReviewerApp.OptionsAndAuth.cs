@@ -377,14 +377,13 @@ public static partial class ReviewerApp {
     }
 
     private static IReadOnlyList<string> ResolveConfiguredOpenAiAccountCandidates(ReviewSettings settings) {
-        var configured = ReviewSettings.NormalizeAccountIdList(settings.OpenAiAccountIds);
-        if (configured.Count > 0) {
-            return configured;
-        }
+        var candidates = ReviewSettings.NormalizeAccountIdList(settings.OpenAiAccountIds).ToList();
         if (!string.IsNullOrWhiteSpace(settings.OpenAiAccountId)) {
-            return new[] { settings.OpenAiAccountId!.Trim() };
+            var primary = settings.OpenAiAccountId!.Trim();
+            candidates.RemoveAll(id => string.Equals(id, primary, StringComparison.OrdinalIgnoreCase));
+            candidates.Insert(0, primary);
         }
-        return Array.Empty<string>();
+        return candidates;
     }
 
     private static async Task<bool> HasOpenAiBundleAsync(FileAuthBundleStore store, string accountId) {

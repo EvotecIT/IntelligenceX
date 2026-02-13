@@ -74,6 +74,15 @@ internal static partial class Program {
         }, args, "setup args openai account routing");
     }
 
+    private static void TestSetupConfigRejectsInvalidOpenAiAccountRotation() {
+        AssertThrows<InvalidOperationException>(() =>
+            SetupRunner.BuildReviewerConfigJson(new[] {
+                "--provider", "openai",
+                "--openai-account-ids", "acc-primary,acc-backup",
+                "--openai-account-rotation", "invalid-value"
+            }), "setup invalid openai account rotation");
+    }
+
     private static void TestSetupAnalysisExportPathNormalization() {
         var ok = SetupAnalysisExportPath.TryNormalize(" .intelligencex\\analyzers ", out var normalized, out var error);
         AssertEqual(true, ok, "analysis export path normalized ok");

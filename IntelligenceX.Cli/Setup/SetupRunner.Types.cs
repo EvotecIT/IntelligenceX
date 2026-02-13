@@ -453,7 +453,7 @@ internal static partial class SetupRunner {
                 OpenAIModel = options.OpenAIModel ?? "gpt-5.3-codex",
                 OpenAIAccountId = string.IsNullOrWhiteSpace(options.OpenAIAccountId) ? null : options.OpenAIAccountId!.Trim(),
                 OpenAIAccountIds = SplitCsv(options.OpenAIAccountIds),
-                OpenAIAccountRotation = NormalizeOpenAiAccountRotation(options.OpenAIAccountRotation),
+                OpenAIAccountRotation = NormalizeOpenAiAccountRotation(options.OpenAIAccountRotation, options.OpenAIAccountRotationSet),
                 OpenAIAccountFailover = options.OpenAIAccountFailover,
                 Profile = options.ReviewProfile ?? "balanced",
                 Mode = options.ReviewMode ?? "hybrid",
@@ -484,16 +484,24 @@ internal static partial class SetupRunner {
                 .ToArray();
         }
 
-        private static string NormalizeOpenAiAccountRotation(string? value) {
+        private static string NormalizeOpenAiAccountRotation(string? value, bool strict) {
             if (string.IsNullOrWhiteSpace(value)) {
                 return "first-available";
             }
-            return value.Trim().ToLowerInvariant() switch {
+            var normalized = value.Trim().ToLowerInvariant() switch {
                 "first" or "first-available" or "first_available" or "ordered" => "first-available",
                 "round-robin" or "round_robin" or "rr" or "rotate" => "round-robin",
                 "sticky" or "pin" or "pinned" => "sticky",
-                _ => "first-available"
+                _ => string.Empty
             };
+            if (!string.IsNullOrWhiteSpace(normalized)) {
+                return normalized;
+            }
+            if (strict) {
+                throw new InvalidOperationException(
+                    "Invalid --openai-account-rotation value. Use first-available, round-robin, or sticky.");
+            }
+            return "first-available";
         }
     }
 

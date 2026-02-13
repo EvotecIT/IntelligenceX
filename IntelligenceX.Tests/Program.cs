@@ -66,6 +66,7 @@ internal static partial class Program {
         failed += Run("Setup args include analysis export path", TestSetupArgsIncludeAnalysisExportPath);
         failed += Run("Setup args disable analysis omits gate and packs", TestSetupArgsDisableAnalysisOmitsGateAndPacks);
         failed += Run("Setup args include OpenAI account routing", TestSetupArgsIncludeOpenAiAccountRouting);
+        failed += Run("Setup config rejects invalid OpenAI account rotation", TestSetupConfigRejectsInvalidOpenAiAccountRotation);
         failed += Run("Setup analysis export path normalization", TestSetupAnalysisExportPathNormalization);
         failed += Run("Setup analysis export path combine rejects rooted file name", TestSetupAnalysisExportPathCombineRejectsRootedFileName);
         failed += Run("Setup analysis export catalog prereq validation", TestSetupAnalysisExportCatalogPrereqValidation);
@@ -381,6 +382,8 @@ internal static partial class Program {
         failed += Run("OpenAI account order sticky", TestOpenAiAccountOrderSticky);
         failed += Run("Normalize account id list dedupes case-insensitive", TestNormalizeAccountIdListDedupesCaseInsensitive);
         failed += Run("Try resolve OpenAI account stores rotated order", TestTryResolveOpenAiAccountStoresRotatedOrder);
+        failed += Run("Try resolve OpenAI account prefers explicit primary over ids list",
+            TestTryResolveOpenAiAccountPrefersExplicitPrimaryOverIdsList);
         failed += Run("Filter files include-only", TestFilterFilesIncludeOnly);
         failed += Run("Filter files exclude-only", TestFilterFilesExcludeOnly);
         failed += Run("Filter files include+exclude", TestFilterFilesIncludeExclude);
