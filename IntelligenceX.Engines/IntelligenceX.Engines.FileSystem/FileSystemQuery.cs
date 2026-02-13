@@ -279,15 +279,22 @@ public static class FileSystemQuery {
         var stack = new Stack<string>();
         stack.Push(rootPath);
 
+        // Make directory emission contract explicit: when IncludeDirectories is enabled,
+        // include the root directory as the first directory row.
+        if (request.IncludeDirectories) {
+            if (!TryAddDirectoryEntry(entries, emittedDirectories, rootPath, request.MaxResults, ref count, ref truncated)) {
+                return new FileSystemListResult {
+                    Path = rootPath,
+                    Count = count,
+                    Truncated = truncated,
+                    Entries = entries
+                };
+            }
+        }
+
         while (stack.Count > 0) {
             cancellationToken.ThrowIfCancellationRequested();
             var dir = stack.Pop();
-
-            if (request.IncludeDirectories && !string.Equals(dir, rootPath, StringComparison.OrdinalIgnoreCase)) {
-                if (!TryAddDirectoryEntry(entries, emittedDirectories, dir, request.MaxResults, ref count, ref truncated)) {
-                    break;
-                }
-            }
 
             IEnumerable<string> directories;
             IEnumerable<string> files;
@@ -316,22 +323,21 @@ public static class FileSystemQuery {
                 }
             }
 
-            if (request.Recursive) {
+            if (request.Recursive || request.IncludeDirectories) {
                 foreach (var sub in directories) {
                     cancellationToken.ThrowIfCancellationRequested();
                     if (canDescendOrIncludePath != null && !canDescendOrIncludePath(sub)) {
                         continue;
                     }
-                    stack.Push(sub);
-                }
-            } else if (request.IncludeDirectories) {
-                foreach (var sub in directories) {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    if (canDescendOrIncludePath != null && !canDescendOrIncludePath(sub)) {
-                        continue;
+
+                    if (request.IncludeDirectories) {
+                        if (!TryAddDirectoryEntry(entries, emittedDirectories, sub, request.MaxResults, ref count, ref truncated)) {
+                            break;
+                        }
                     }
-                    if (!TryAddDirectoryEntry(entries, emittedDirectories, sub, request.MaxResults, ref count, ref truncated)) {
-                        break;
+
+                    if (request.Recursive) {
+                        stack.Push(sub);
                     }
                 }
             }

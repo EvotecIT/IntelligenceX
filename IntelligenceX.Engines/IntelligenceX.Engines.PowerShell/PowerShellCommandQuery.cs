@@ -310,14 +310,16 @@ public static class PowerShellCommandQueryExecutor {
         var stdErrTask = process.StandardError.ReadToEndAsync();
 
         var timedOut = false;
+        using var timeoutCts = new CancellationTokenSource();
         var waitForExitTask = process.WaitForExitAsync(cancellationToken);
-        var timeoutTask = Task.Delay(request.TimeoutMs, cancellationToken);
+        var timeoutTask = Task.Delay(request.TimeoutMs, timeoutCts.Token);
         var completed = await Task.WhenAny(waitForExitTask, timeoutTask).ConfigureAwait(false);
-        if (!ReferenceEquals(completed, waitForExitTask)) {
+        if (ReferenceEquals(completed, timeoutTask)) {
             timedOut = true;
             TryKillProcess(process);
             await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
         } else {
+            timeoutCts.Cancel();
             await waitForExitTask.ConfigureAwait(false);
         }
 
