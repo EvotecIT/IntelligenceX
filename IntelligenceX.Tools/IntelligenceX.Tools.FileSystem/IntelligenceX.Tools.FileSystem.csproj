@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0-windows;net10.0-windows</TargetFrameworks>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>IntelligenceX.Tools.FileSystem</AssemblyName>
+    <PackageId>IntelligenceX.Tools.FileSystem</PackageId>
+    <Authors>Przemyslaw Klys</Authors>
+    <Company>Evotec</Company>
+    <Description>File system tool implementations for IntelligenceX tool calling (safe-by-default).</Description>
+    <RepositoryUrl>https://github.com/EvotecIT/IntelligenceX.Tools</RepositoryUrl>
+    <IsPackable>true</IsPackable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Shared core contract reference; path resolved in IntelligenceX.Tools/Directory.Build.props. -->
+    <ProjectReference Include="$(IntelligenceXCoreProject)" Condition="'$(IntelligenceXCoreProject)'!='' AND Exists('$(IntelligenceXCoreProject)')" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\IntelligenceX.Tools.Common\IntelligenceX.Tools.Common.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- File system tools are engine-first and rely on ComputerX. -->
+    <ProjectReference Include="$(TestimoXRoot)ComputerX\\ComputerX.csproj" Condition="Exists('$(TestimoXRoot)ComputerX\\ComputerX.csproj')" />
+  </ItemGroup>
+</Project>

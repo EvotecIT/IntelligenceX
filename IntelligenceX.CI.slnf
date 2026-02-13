@@ -1,0 +1,14 @@
+{
+  "solution": {
+    "path": "IntelligenceX.sln",
+    "projects": [
+      "IntelligenceX\\IntelligenceX.csproj",
+      "IntelligenceX.Examples\\IntelligenceX.Examples.csproj",
+      "IntelligenceX.Tests\\IntelligenceX.Tests.csproj",
+      "IntelligenceX.PowerShell\\IntelligenceX.PowerShell.csproj",
+      "IntelligenceX.Reviewer\\IntelligenceX.Reviewer.csproj",
+      "IntelligenceX.Cli\\IntelligenceX.Cli.csproj",
+      "IntelligenceX.UnitTests\\IntelligenceX.UnitTests.csproj"
+    ]
+  }
+}

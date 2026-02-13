@@ -3,6 +3,8 @@ namespace IntelligenceX.Tests;
 #if !NET472
 internal static partial class Program {
     private static void TestSetupWorkflowUpgradePreservesOutsideManagedBlockVerbatim() {
+        const string beginMarker = "# INTELLIGENCEX:BEGIN";
+        const string endMarker = "# INTELLIGENCEX:END";
         var seed = """
 name: IntelligenceX Review
 
@@ -29,28 +31,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo pre
-  # INTELLIGENCEX:BEGIN
+  __IX_BEGIN__
   review:
     uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@master
     with:
       provider: openai
       model: gpt-5.3-codex
       preflight_timeout_seconds: 15
-  # INTELLIGENCEX:END
+  __IX_END__
   custom_post:
     runs-on: ubuntu-latest
     steps:
       - run: echo post
 """;
+        seed = seed.Replace("__IX_BEGIN__", beginMarker).Replace("__IX_END__", endMarker);
 
         var upgraded = SetupRunner.BuildWorkflowYamlFromSeedForTests(
             new[] { "--provider", "copilot" },
             seed);
 
         AssertContainsText(upgraded, "provider: copilot", "workflow upgrade updates provider");
-        AssertEqual(1, CountOccurrencesInText(upgraded, "# INTELLIGENCEX:BEGIN"),
+        AssertEqual(1, CountOccurrencesInText(upgraded, beginMarker),
             "workflow upgrade has one begin marker");
-        AssertEqual(1, CountOccurrencesInText(upgraded, "# INTELLIGENCEX:END"),
+        AssertEqual(1, CountOccurrencesInText(upgraded, endMarker),
             "workflow upgrade has one end marker");
 
         var seedOutside = NormalizeLineEndingsForWorkflowAssert(StripManagedBlockForWorkflowAssert(seed)).Trim();

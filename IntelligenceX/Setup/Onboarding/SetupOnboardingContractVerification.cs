@@ -138,8 +138,8 @@ public static class SetupOnboardingContractVerification {
 
         var normalizedAutodetectVersion = autodetectContractVersion.Trim();
         var normalizedAutodetectFingerprint = autodetectContractFingerprint.Trim();
-        var normalizedPackVersion = string.IsNullOrWhiteSpace(packContractVersion) ? null : packContractVersion.Trim();
-        var normalizedPackFingerprint = string.IsNullOrWhiteSpace(packContractFingerprint) ? null : packContractFingerprint.Trim();
+        var normalizedPackVersion = NormalizeOptional(packContractVersion);
+        var normalizedPackFingerprint = NormalizeOptional(packContractFingerprint);
 
         var expectedContractVersion = SetupOnboardingContract.ContractVersion;
         var expectedContractFingerprint = SetupOnboardingContract.GetContractFingerprint(includeMaintenancePath);
@@ -207,5 +207,14 @@ public static class SetupOnboardingContractVerification {
             field: field,
             expected: expected,
             actual: actual));
+    }
+
+    private static string? NormalizeOptional(string? value) {
+        if (value is null) {
+            return null;
+        }
+
+        var trimmed = value.Trim();
+        return trimmed.Length == 0 ? null : trimmed;
     }
 }

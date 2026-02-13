@@ -1,3 +1,8 @@
+---
+name: intelligencex-onboarding-setup
+description: Use when work touches setup wizard, setup web, onboarding UX, onboarding docs, or first-run validation flows.
+---
+
 # Skill: intelligencex-onboarding-setup
 
 Use this skill when work touches onboarding/setup behavior in:

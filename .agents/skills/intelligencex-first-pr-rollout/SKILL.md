@@ -1,3 +1,8 @@
+---
+name: intelligencex-first-pr-rollout
+description: Use to validate the first live reviewer run after onboarding, including checks, sticky summary markers, and rollout health signals.
+---
+
 # Skill: intelligencex-first-pr-rollout
 
 Use this skill to verify the first live reviewer run after onboarding/setup is healthy and complete.

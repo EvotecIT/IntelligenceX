@@ -1,0 +1,82 @@
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using IntelligenceX.Json;
+using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
+
+namespace IntelligenceX.Tools.System;
+
+/// <summary>
+/// Returns system pack capabilities and usage guidance for model-driven tool planning.
+/// </summary>
+public sealed class SystemPackInfoTool : SystemToolBase, ITool {
+    private static readonly ToolDefinition DefinitionValue = new(
+        "system_pack_info",
+        "Return system pack capabilities, output contract, and recommended usage patterns. Call this first when planning system diagnostics.",
+        ToolSchema.Object().NoAdditionalProperties());
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SystemPackInfoTool"/> class.
+    /// </summary>
+    public SystemPackInfoTool(SystemToolOptions options) : base(options) { }
+
+    /// <inheritdoc />
+    public override ToolDefinition Definition => DefinitionValue;
+
+    /// <inheritdoc />
+    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var root = ToolPackGuidance.Create(
+            pack: "system",
+            engine: "ComputerX",
+            tools: ToolRegistrySystemExtensions.GetRegisteredToolNames(Options),
+            recommendedFlow: new[] {
+                "Call system_info or system_hardware_summary for baseline context.",
+                "Use list tools (processes/services/ports/adapters/firewall/disks/features) for evidence collection.",
+                "Use optional projection arguments only when the user asks for specific columns or sorting."
+            },
+            flowSteps: new[] {
+                ToolPackGuidance.FlowStep(
+                    goal: "Collect baseline host context",
+                    suggestedTools: new[] { "system_info", "system_hardware_summary", "system_whoami" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Collect process/network/security evidence",
+                    suggestedTools: new[] { "system_process_list", "system_ports_list", "system_network_adapters", "system_firewall_rules", "system_firewall_profiles" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Collect storage/feature configuration evidence",
+                    suggestedTools: new[] { "system_logical_disks_list", "system_disks_list", "system_features_list", "system_scheduled_tasks_list", "system_service_list" })
+            },
+            capabilities: new[] {
+                ToolPackGuidance.Capability(
+                    id: "host_baseline",
+                    summary: "Return host identity/runtime baselines and principal context.",
+                    primaryTools: new[] { "system_info", "system_hardware_identity", "system_hardware_summary", "system_whoami" }),
+                ToolPackGuidance.Capability(
+                    id: "runtime_evidence",
+                    summary: "Enumerate processes, services, ports, adapters, firewall rules and profiles.",
+                    primaryTools: new[] { "system_process_list", "system_service_list", "system_ports_list", "system_network_adapters", "system_firewall_rules", "system_firewall_profiles" }),
+                ToolPackGuidance.Capability(
+                    id: "platform_configuration",
+                    summary: "Inventory disks, devices, features, scheduled tasks, and optional WSL state.",
+                    primaryTools: new[] { "system_logical_disks_list", "system_disks_list", "system_devices_summary", "system_features_list", "system_scheduled_tasks_list", "wsl_status" })
+            },
+            toolCatalog: ToolRegistrySystemExtensions.GetRegisteredToolCatalog(Options),
+            rawPayloadPolicy: "Preserve raw engine arrays/objects. Do not rely only on *_view fields.",
+            viewProjectionPolicy: "Projection arguments are view-only and intended for display shaping (columns/sort_by/sort_direction/top).",
+            correlationGuidance: "Correlate using raw payload fields across multiple tool calls.",
+            setupHints: new {
+                MaxResults = Options.MaxResults,
+                SupportedPlatforms = Environment.OSVersion.Platform.ToString(),
+                Note = "Some tools are Windows-only; if unavailable, use platform-neutral tools first."
+            });
+
+        var summary = ToolMarkdown.SummaryText(
+            title: "System Pack",
+            "Use raw payload fields for reasoning and correlation.",
+            "Use `*_view` fields only for presentation filtering/sorting.");
+
+        return Task.FromResult(ToolResponse.OkModel(root, summaryMarkdown: summary));
+    }
+}

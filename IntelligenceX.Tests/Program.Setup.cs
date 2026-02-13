@@ -234,6 +234,8 @@ internal static partial class Program {
     }
 
     private static void TestSetupWorkflowUpgradePreservesCustomSectionsOutsideManagedBlock() {
+        const string beginMarker = "# INTELLIGENCEX:BEGIN";
+        const string endMarker = "# INTELLIGENCEX:END";
         var seed = """
 name: IntelligenceX Review
 
@@ -246,18 +248,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo pre
-  # INTELLIGENCEX:BEGIN
+  __IX_BEGIN__
   review:
     uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@master
     with:
       provider: openai
       model: gpt-5.3-codex
-  # INTELLIGENCEX:END
+  __IX_END__
   custom_post:
     runs-on: ubuntu-latest
     steps:
       - run: echo post
 """;
+        seed = seed.Replace("__IX_BEGIN__", beginMarker).Replace("__IX_END__", endMarker);
 
         var content = SetupRunner.BuildWorkflowYamlFromSeedForTests(
             new[] { "--provider", "copilot" },
@@ -266,11 +269,11 @@ jobs:
         AssertContainsText(content, "custom_pre:", "workflow upgrade keeps custom_pre");
         AssertContainsText(content, "custom_post:", "workflow upgrade keeps custom_post");
         AssertContainsText(content, "provider: copilot", "workflow upgrade updates managed provider");
-        AssertContainsText(content, "# INTELLIGENCEX:BEGIN", "workflow upgrade keeps managed begin marker");
-        AssertContainsText(content, "# INTELLIGENCEX:END", "workflow upgrade keeps managed end marker");
-        AssertEqual(1, CountOccurrences(content, "# INTELLIGENCEX:BEGIN"),
+        AssertContainsText(content, beginMarker, "workflow upgrade keeps managed begin marker");
+        AssertContainsText(content, endMarker, "workflow upgrade keeps managed end marker");
+        AssertEqual(1, CountOccurrences(content, beginMarker),
             "workflow upgrade has single managed begin marker");
-        AssertEqual(1, CountOccurrences(content, "# INTELLIGENCEX:END"),
+        AssertEqual(1, CountOccurrences(content, endMarker),
             "workflow upgrade has single managed end marker");
         AssertEqual(1, CountOccurrences(content, "provider: copilot"),
             "workflow upgrade has single provider override");

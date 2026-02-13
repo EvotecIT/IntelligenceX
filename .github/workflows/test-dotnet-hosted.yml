@@ -10,6 +10,7 @@ env:
         8.x
         10.0.x
     BUILD_CONFIGURATION: 'Release'
+    CI_SOLUTION: 'IntelligenceX.CI.slnf'
 
 jobs:
     test:
@@ -33,13 +34,13 @@ jobs:
                   dotnet-version: ${{ env.DOTNET_VERSION }}
 
             - name: Restore dependencies
-              run: dotnet restore IntelligenceX.sln
+              run: dotnet restore ${{ env.CI_SOLUTION }}
 
             - name: Build solution
-              run: dotnet build IntelligenceX.sln --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore
+              run: dotnet build ${{ env.CI_SOLUTION }} --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore
 
             - name: Run tests
-              run: dotnet test IntelligenceX.sln --configuration ${{ env.BUILD_CONFIGURATION }} --no-build --verbosity normal --logger trx --collect:"XPlat Code Coverage"
+              run: dotnet test ${{ env.CI_SOLUTION }} --configuration ${{ env.BUILD_CONFIGURATION }} --no-build --verbosity normal --logger trx --collect:"XPlat Code Coverage"
               timeout-minutes: 10
 
             - name: Run executable test harness (net8.0)

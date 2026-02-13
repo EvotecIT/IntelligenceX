@@ -1,0 +1,90 @@
+<Project>
+  <PropertyGroup>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!--
+    Dev-only repo path resolution.
+
+    IntelligenceX.Tools intentionally prefers engine code (ProjectReferences) during development to keep tools thin.
+    These properties centralize "where is TestimoX / PSEventViewer on disk" so individual .csproj files don't need
+    long chains of Condition="Exists(...)" checks.
+
+    You can override any of these via environment variables (MSBuild imports env vars as properties), e.g.:
+      setx TestimoXRoot C:\Support\GitHub\TestimoX\
+  -->
+  <PropertyGroup>
+    <IxToolsRepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)'))</IxToolsRepoRoot>
+    <!-- Candidate roots:
+         - when building from repo root: siblings are at ..\
+         - when building from a worktree under _worktrees: siblings are at ..\..\ -->
+    <IxToolsSiblingsRoot1>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\\'))</IxToolsSiblingsRoot1>
+    <IxToolsSiblingsRoot2>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\\..\\'))</IxToolsSiblingsRoot2>
+    <IxToolsSiblingsRoot>$(IxToolsSiblingsRoot1)</IxToolsSiblingsRoot>
+    <!-- Minimum markers for current thin-wrapper contracts in Tools.System and Tools.PowerShell. -->
+    <IxToolsComputerXApiMarker>ComputerX\\Features\\FeatureInventoryQuery.cs</IxToolsComputerXApiMarker>
+    <IxToolsComputerXPowerShellApiMarker>ComputerX\\PowerShellRuntime\\PowerShellCommandQuery.cs</IxToolsComputerXPowerShellApiMarker>
+    <!-- IntelligenceX core project candidates (monorepo + sibling/worktree layouts). -->
+    <IxCoreCandidateMonorepo>$([System.IO.Path]::GetFullPath('$(IxToolsRepoRoot)..\\IntelligenceX\\IntelligenceX.csproj'))</IxCoreCandidateMonorepo>
+    <IxCoreCandidateSibling1>$([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot1)IntelligenceX\\IntelligenceX\\IntelligenceX.csproj'))</IxCoreCandidateSibling1>
+    <IxCoreCandidateSibling2>$([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot2)IntelligenceX\\IntelligenceX\\IntelligenceX.csproj'))</IxCoreCandidateSibling2>
+    <IxCoreCandidateWorktree1>$([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot1)IntelligenceX-worktrees\\tools-contract-namespace\\IntelligenceX\\IntelligenceX.csproj'))</IxCoreCandidateWorktree1>
+    <IxCoreCandidateWorktree2>$([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot2)IntelligenceX-worktrees\\tools-contract-namespace\\IntelligenceX\\IntelligenceX.csproj'))</IxCoreCandidateWorktree2>
+  </PropertyGroup>
+
+  <!-- Optional caller override (for unusual local layouts). -->
+  <PropertyGroup Condition="'$(IntelligenceXCoreProject)'!=''">
+    <IntelligenceXCoreProject>$([System.IO.Path]::GetFullPath('$(IntelligenceXCoreProject)'))</IntelligenceXCoreProject>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(IntelligenceXCoreProject)'=='' AND Exists('$(IxCoreCandidateMonorepo)')">
+    <IntelligenceXCoreProject>$(IxCoreCandidateMonorepo)</IntelligenceXCoreProject>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(IntelligenceXCoreProject)'=='' AND Exists('$(IxCoreCandidateSibling1)')">
+    <IntelligenceXCoreProject>$(IxCoreCandidateSibling1)</IntelligenceXCoreProject>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(IntelligenceXCoreProject)'=='' AND Exists('$(IxCoreCandidateSibling2)')">
+    <IntelligenceXCoreProject>$(IxCoreCandidateSibling2)</IntelligenceXCoreProject>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(IntelligenceXCoreProject)'=='' AND Exists('$(IxCoreCandidateWorktree1)')">
+    <IntelligenceXCoreProject>$(IxCoreCandidateWorktree1)</IntelligenceXCoreProject>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(IntelligenceXCoreProject)'=='' AND Exists('$(IxCoreCandidateWorktree2)')">
+    <IntelligenceXCoreProject>$(IxCoreCandidateWorktree2)</IntelligenceXCoreProject>
+  </PropertyGroup>
+
+  <!-- If caller provided TestimoXRoot, normalize it first. -->
+  <PropertyGroup Condition="'$(TestimoXRoot)'!=''">
+    <TestimoXRoot>$([MSBuild]::EnsureTrailingSlash('$(TestimoXRoot)'))</TestimoXRoot>
+  </PropertyGroup>
+
+  <!-- If caller provided TestimoXRoot that does not contain required ComputerX thin-wrapper APIs, ignore it and fall back to local sibling discovery. -->
+  <PropertyGroup Condition="'$(TestimoXRoot)'!='' AND (!Exists('$(TestimoXRoot)$(IxToolsComputerXApiMarker)') OR !Exists('$(TestimoXRoot)$(IxToolsComputerXPowerShellApiMarker)'))">
+    <TestimoXRoot></TestimoXRoot>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="Exists('$(IxToolsSiblingsRoot2)TestimoX\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot2)TestimoX-master\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot2)PSEventViewer\\Sources\\EventViewerX\\EventViewerX.csproj')">
+    <IxToolsSiblingsRoot>$(IxToolsSiblingsRoot2)</IxToolsSiblingsRoot>
+  </PropertyGroup>
+
+  <!-- Prefer TestimoX-master over TestimoX so ad-hoc local feature branches do not break tool compilation. -->
+  <PropertyGroup Condition="'$(TestimoXRoot)'=='' AND Exists('$(IxToolsSiblingsRoot)TestimoX-master\\ADPlayground\\ADPlayground.csproj') AND Exists('$(IxToolsSiblingsRoot)TestimoX-master\\$(IxToolsComputerXApiMarker)') AND Exists('$(IxToolsSiblingsRoot)TestimoX-master\\$(IxToolsComputerXPowerShellApiMarker)')">
+    <TestimoXRoot>$([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot)TestimoX-master\\'))</TestimoXRoot>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(TestimoXRoot)'=='' AND Exists('$(IxToolsSiblingsRoot)TestimoX\\ADPlayground\\ADPlayground.csproj') AND Exists('$(IxToolsSiblingsRoot)TestimoX\\$(IxToolsComputerXApiMarker)') AND Exists('$(IxToolsSiblingsRoot)TestimoX\\$(IxToolsComputerXPowerShellApiMarker)')">
+    <TestimoXRoot>$([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot)TestimoX\\'))</TestimoXRoot>
+  </PropertyGroup>
+  <!-- Optional local engine worktree fallback if canonical roots are unavailable. -->
+  <PropertyGroup Condition="'$(TestimoXRoot)'=='' AND Exists('$(IxToolsSiblingsRoot1)testimox-searchfacets-helpers\\ADPlayground\\ADPlayground.csproj') AND Exists('$(IxToolsSiblingsRoot1)testimox-searchfacets-helpers\\$(IxToolsComputerXApiMarker)') AND Exists('$(IxToolsSiblingsRoot1)testimox-searchfacets-helpers\\$(IxToolsComputerXPowerShellApiMarker)')">
+    <TestimoXRoot>$([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot1)testimox-searchfacets-helpers\\'))</TestimoXRoot>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(TestimoXRoot)'=='' AND Exists('$(IxToolsSiblingsRoot)_worktrees\\testimox-searchfacets-helpers\\ADPlayground\\ADPlayground.csproj') AND Exists('$(IxToolsSiblingsRoot)_worktrees\\testimox-searchfacets-helpers\\$(IxToolsComputerXApiMarker)') AND Exists('$(IxToolsSiblingsRoot)_worktrees\\testimox-searchfacets-helpers\\$(IxToolsComputerXPowerShellApiMarker)')">
+    <TestimoXRoot>$([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot)_worktrees\\testimox-searchfacets-helpers\\'))</TestimoXRoot>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(PSEventViewerRoot)'=='' AND Exists('$(IxToolsSiblingsRoot)PSEventViewer\\Sources\\EventViewerX\\EventViewerX.csproj')">
+    <PSEventViewerRoot>$([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot)PSEventViewer\\'))</PSEventViewerRoot>
+  </PropertyGroup>
+</Project>

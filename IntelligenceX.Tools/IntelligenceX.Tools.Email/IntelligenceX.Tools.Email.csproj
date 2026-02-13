@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <AssemblyName>IntelligenceX.Tools.Email</AssemblyName>
+    <PackageId>IntelligenceX.Tools.Email</PackageId>
+    <Authors>Przemyslaw Klys</Authors>
+    <Company>Evotec</Company>
+    <Description>Email tool implementations for IntelligenceX tool calling (IMAP + SMTP via Mailozaurr).</Description>
+    <RepositoryUrl>https://github.com/EvotecIT/IntelligenceX.Tools</RepositoryUrl>
+    <IsPackable>true</IsPackable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Prefer local sources when available; fall back to NuGet for CI/consumers. -->
+    <ProjectReference Include="..\\..\\..\\Mailozaurr\\Sources\\Mailozaurr\\Mailozaurr.csproj" Condition="Exists('..\\..\\..\\Mailozaurr\\Sources\\Mailozaurr\\Mailozaurr.csproj')" />
+    <ProjectReference Include="..\\..\\Mailozaurr\\Sources\\Mailozaurr\\Mailozaurr.csproj" Condition="!Exists('..\\..\\..\\Mailozaurr\\Sources\\Mailozaurr\\Mailozaurr.csproj') AND Exists('..\\..\\Mailozaurr\\Sources\\Mailozaurr\\Mailozaurr.csproj')" />
+    <PackageReference Include="Mailozaurr" Version="2.0.4" Condition="!Exists('..\\..\\Mailozaurr\\Sources\\Mailozaurr\\Mailozaurr.csproj') AND !Exists('..\\..\\..\\Mailozaurr\\Sources\\Mailozaurr\\Mailozaurr.csproj')" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Shared core contract reference; path resolved in IntelligenceX.Tools/Directory.Build.props. -->
+    <ProjectReference Include="$(IntelligenceXCoreProject)" Condition="'$(IntelligenceXCoreProject)'!='' AND Exists('$(IntelligenceXCoreProject)')" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\\IntelligenceX.Tools.Common\\IntelligenceX.Tools.Common.csproj" />
+  </ItemGroup>
+</Project>
