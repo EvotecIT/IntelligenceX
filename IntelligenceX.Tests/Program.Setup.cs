@@ -244,8 +244,8 @@ internal static partial class Program {
 
     private static void TestSetupBuildConfigJsonNormalizesOpenAiPrimaryInAccountIds() {
         var content = SetupRunner.BuildReviewerConfigJson(new[] {
-            "--openai-account-id", "acc-primary",
-            "--openai-account-ids", "acc-backup,acc-team"
+            "--openai-account-id", "  acc-primary  ",
+            "--openai-account-ids", " ACC-primary , acc-backup "
         });
         AssertNotNull(content, "config json openai primary normalization content");
 
@@ -253,9 +253,65 @@ internal static partial class Program {
         AssertNotNull(root, "config json openai primary normalization root");
         var review = root!["review"] as System.Text.Json.Nodes.JsonObject;
         AssertNotNull(review, "config json openai primary normalization review");
+        AssertEqual("acc-primary", review!["openaiAccountId"]?.GetValue<string>(),
+            "config json openai primary normalization trimmed primary");
         var ids = review!["openaiAccountIds"] as System.Text.Json.Nodes.JsonArray;
         AssertNotNull(ids, "config json openai primary normalization account ids");
+        AssertEqual(2, ids!.Count, "config json openai primary normalization account ids count");
         AssertEqual("acc-primary", ids![0]?.GetValue<string>(), "config json openai primary normalization first id");
+        AssertEqual("acc-backup", ids[1]?.GetValue<string>(), "config json openai primary normalization second id");
+    }
+
+    private static void TestSetupBuildConfigJsonPersistsOpenAiRoutingWithPrimaryOnly() {
+        var content = SetupRunner.BuildReviewerConfigJson(new[] {
+            "--openai-account-id", "acc-primary",
+            "--openai-account-rotation", "round-robin",
+            "--openai-account-failover", "false"
+        });
+        AssertNotNull(content, "config json openai primary-only routing content");
+
+        var root = System.Text.Json.Nodes.JsonNode.Parse(content) as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(root, "config json openai primary-only routing root");
+        var review = root!["review"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(review, "config json openai primary-only routing review");
+        AssertEqual("acc-primary", review!["openaiAccountId"]?.GetValue<string>(),
+            "config json openai primary-only routing primary account");
+        AssertEqual("round-robin", review["openaiAccountRotation"]?.GetValue<string>(),
+            "config json openai primary-only routing rotation");
+        AssertEqual(false, review["openaiAccountFailover"]?.GetValue<bool>(),
+            "config json openai primary-only routing failover");
+        AssertEqual(null, review["openaiAccountIds"], "config json openai primary-only routing no account ids");
+    }
+
+    private static void TestSetupBuildConfigJsonMergePersistsOpenAiRoutingWithPrimaryOnly() {
+        var seed = """
+{
+  "review": {
+    "provider": "openai",
+    "model": "gpt-5.3-codex"
+  }
+}
+""";
+        var content = SetupRunner.BuildReviewerConfigJsonFromSeedForTests(
+            new[] {
+                "--openai-account-id", "acc-primary",
+                "--openai-account-rotation", "round-robin",
+                "--openai-account-failover", "false"
+            },
+            seed);
+        AssertNotNull(content, "config json openai merge primary-only routing content");
+
+        var root = System.Text.Json.Nodes.JsonNode.Parse(content) as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(root, "config json openai merge primary-only routing root");
+        var review = root!["review"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(review, "config json openai merge primary-only routing review");
+        AssertEqual("acc-primary", review!["openaiAccountId"]?.GetValue<string>(),
+            "config json openai merge primary-only routing primary account");
+        AssertEqual("round-robin", review["openaiAccountRotation"]?.GetValue<string>(),
+            "config json openai merge primary-only routing rotation");
+        AssertEqual(false, review["openaiAccountFailover"]?.GetValue<bool>(),
+            "config json openai merge primary-only routing failover");
+        AssertEqual(null, review["openaiAccountIds"], "config json openai merge primary-only routing no account ids");
     }
 
     private static void TestSetupBuildConfigJsonMergePreservesOpenAiRoutingWhenAccountIdsAbsent() {

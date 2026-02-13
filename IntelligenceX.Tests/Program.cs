@@ -77,6 +77,10 @@ internal static partial class Program {
         failed += Run("Setup config build includes OpenAI account routing", TestSetupBuildConfigJsonIncludesOpenAiAccountRouting);
         failed += Run("Setup config normalizes OpenAI primary into account ids",
             TestSetupBuildConfigJsonNormalizesOpenAiPrimaryInAccountIds);
+        failed += Run("Setup config build persists OpenAI routing with primary only",
+            TestSetupBuildConfigJsonPersistsOpenAiRoutingWithPrimaryOnly);
+        failed += Run("Setup config merge persists OpenAI routing with primary only",
+            TestSetupBuildConfigJsonMergePersistsOpenAiRoutingWithPrimaryOnly);
         failed += Run("Setup config merge preserves OpenAI routing when account ids absent",
             TestSetupBuildConfigJsonMergePreservesOpenAiRoutingWhenAccountIdsAbsent);
         failed += Run("Setup config merge clears OpenAI routing when account ids explicitly empty",

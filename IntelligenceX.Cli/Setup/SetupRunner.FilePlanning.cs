@@ -302,13 +302,20 @@ internal static partial class SetupRunner {
         if (string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
             return;
         }
+        settings.OpenAIAccountId = settings.OpenAIAccountId!.Trim();
+        if (settings.OpenAIAccountId.Length == 0) {
+            settings.OpenAIAccountId = null;
+            return;
+        }
 
         if (settings.OpenAIAccountIds.Length == 0) {
             return;
         }
 
         settings.OpenAIAccountIds = new[] { settings.OpenAIAccountId! }
-            .Concat(settings.OpenAIAccountIds)
+            .Concat(settings.OpenAIAccountIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id.Trim()))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
@@ -343,6 +350,10 @@ internal static partial class SetupRunner {
             review["openaiAccountIds"] = accountIds;
             review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
             review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
+        } else if (!string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
+            var review = (JsonObject)root["review"]!;
+            review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
+            review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
         }
         if (settings.AnalysisEnabledSet || settings.AnalysisGateEnabledSet || settings.AnalysisPacksSet) {
             SetupAnalysisConfig.Apply(root,
@@ -375,10 +386,13 @@ internal static partial class SetupRunner {
             review["openaiAccountIds"] = accountIds;
             review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
             review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
-        } else if (settings.OpenAIAccountIdsSet) {
+        } else if (settings.OpenAIAccountIdsSet && string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
             review.Remove("openaiAccountIds");
             review.Remove("openaiAccountRotation");
             review.Remove("openaiAccountFailover");
+        } else if (!string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
+            review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
+            review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
         }
         review["profile"] = settings.Profile;
         review["mode"] = settings.Mode;
