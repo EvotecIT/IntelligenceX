@@ -426,11 +426,12 @@
     }
 
     if (switchAccount) {
-      switchAccount.hidden = !authenticated;
+      switchAccount.hidden = false;
       switchAccount.disabled = loginInProgress;
+      switchAccount.textContent = authenticated ? "Switch Account" : "Switch Account";
     }
 
-    reconnect.textContent = normalizeBool(state.connected) ? "Refresh session" : "Retry now";
+    reconnect.textContent = normalizeBool(state.connected) ? "Reconnect runtime" : "Start runtime";
     if (debug) {
       debug.hidden = !debugToolsEnabled;
       debug.textContent = normalizeBool(state.debugMode) ? "Disable Debug" : "Enable Debug";

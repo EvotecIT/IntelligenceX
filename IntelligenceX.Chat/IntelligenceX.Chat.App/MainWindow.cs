@@ -172,6 +172,9 @@ public sealed partial class MainWindow : Window {
     private Process? _serviceProcess;
     private string? _servicePipeName;
     private string? _stagedServiceDir;
+    private readonly object _aliveProbeSync = new();
+    private ChatServiceClient? _aliveProbeClient;
+    private long _aliveProbeTicksUtc;
     private readonly object _autoReconnectSync = new();
     private CancellationTokenSource? _autoReconnectCts;
     private Task? _autoReconnectTask;

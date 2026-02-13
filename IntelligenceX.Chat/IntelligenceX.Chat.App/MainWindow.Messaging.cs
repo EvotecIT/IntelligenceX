@@ -110,6 +110,7 @@ public sealed partial class MainWindow : Window {
                 case "debug_copy_startup_log":
                     CopyStartupLogToClipboard();
                     break;
+                case "debug_restart_runtime":
                 case "debug_restart_sidecar":
                     await RestartSidecarAsync().ConfigureAwait(true);
                     break;

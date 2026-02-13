@@ -29,11 +29,30 @@ namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
     private async Task<bool> IsClientAliveAsync(ChatServiceClient client) {
+        var nowTicks = DateTime.UtcNow.Ticks;
+        lock (_aliveProbeSync) {
+            if (ReferenceEquals(client, _aliveProbeClient)
+                && _aliveProbeTicksUtc > 0
+                && nowTicks - _aliveProbeTicksUtc <= TimeSpan.FromMilliseconds(1200).Ticks) {
+                return true;
+            }
+        }
+
         try {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
             _ = await client.RequestAsync<HelloMessage>(new HelloRequest { RequestId = NextId() }, cts.Token).ConfigureAwait(false);
+            lock (_aliveProbeSync) {
+                _aliveProbeClient = client;
+                _aliveProbeTicksUtc = DateTime.UtcNow.Ticks;
+            }
             return true;
         } catch {
+            lock (_aliveProbeSync) {
+                if (ReferenceEquals(client, _aliveProbeClient)) {
+                    _aliveProbeClient = null;
+                    _aliveProbeTicksUtc = 0;
+                }
+            }
             return false;
         }
     }
@@ -412,6 +431,12 @@ public sealed partial class MainWindow : Window {
         _client = null;
         _isConnected = false;
         _activeKickoffRequestId = null;
+        lock (_aliveProbeSync) {
+            if (ReferenceEquals(client, _aliveProbeClient) || client is null) {
+                _aliveProbeClient = null;
+                _aliveProbeTicksUtc = 0;
+            }
+        }
         if (client is not null) {
             client.MessageReceived -= OnServiceMessage;
             client.Disconnected -= OnClientDisconnected;

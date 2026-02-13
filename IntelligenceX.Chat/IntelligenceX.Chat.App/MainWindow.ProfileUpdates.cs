@@ -58,7 +58,7 @@ public sealed partial class MainWindow : Window {
                 _toolPackIds.Remove(name);
             }
             if (!string.IsNullOrWhiteSpace(tool.PackName)) {
-                _toolPackNames[name] = tool.PackName.Trim();
+                _toolPackNames[name] = ResolvePackDisplayName(tool.PackId, tool.PackName);
             } else {
                 _toolPackNames.Remove(name);
             }

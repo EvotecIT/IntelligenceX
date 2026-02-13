@@ -238,13 +238,14 @@ public sealed partial class MainWindow : Window {
             _toolPackIds.TryGetValue(name, out var packId);
             _toolPackNames.TryGetValue(name, out var packName);
             _toolStates.TryGetValue(name, out var enabled);
+            var normalizedPackName = ResolvePackDisplayName(packId, packName);
             list.Add(new {
                 name,
                 displayName = string.IsNullOrWhiteSpace(displayName) ? FormatToolDisplayName(name) : displayName,
                 description = description ?? string.Empty,
                 category = string.IsNullOrWhiteSpace(category) ? InferToolCategory(name) : category,
                 packId = string.IsNullOrWhiteSpace(packId) ? null : packId,
-                packName = string.IsNullOrWhiteSpace(packName) ? null : packName,
+                packName = string.IsNullOrWhiteSpace(normalizedPackName) ? null : normalizedPackName,
                 tags = tags ?? Array.Empty<string>(),
                 enabled
             });
