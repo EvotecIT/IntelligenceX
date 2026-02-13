@@ -114,13 +114,17 @@ internal static class TranscriptHtmlFormatter {
         var detail = raw[match.Length..].Trim();
         var toneClass = GetAssistantOutcomeToneClass(kindRaw);
         var badge = GetAssistantOutcomeBadge(kindRaw);
+        var iconSvg = GetAssistantOutcomeIconSvg(kindRaw);
         var encoder = HtmlEncoder.Default;
 
         var sb = new StringBuilder();
         sb.Append("<section class='outcome-card ").Append(toneClass).Append("'>")
             .Append("<div class='outcome-head'>")
-            .Append("<span class='outcome-badge'>").Append(encoder.Encode(badge)).Append("</span>")
+            .Append("<div class='outcome-main'>")
+            .Append("<span class='outcome-icon' aria-hidden='true'>").Append(iconSvg).Append("</span>")
             .Append("<span class='outcome-title'>").Append(encoder.Encode(headline)).Append("</span>")
+            .Append("</div>")
+            .Append("<span class='outcome-badge'>").Append(encoder.Encode(badge)).Append("</span>")
             .Append("</div>");
 
         if (detail.Length > 0) {
@@ -179,6 +183,18 @@ internal static class TranscriptHtmlFormatter {
         }
 
         return "outcome-error";
+    }
+
+    private static string GetAssistantOutcomeIconSvg(string kind) {
+        if (kind.Equals("canceled", StringComparison.OrdinalIgnoreCase)) {
+            return "<svg width='14' height='14' viewBox='0 0 16 16' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><circle cx='8' cy='8' r='6.2'/><path d='M5.2 8h5.6'/></svg>";
+        }
+        if (kind.Equals("limit", StringComparison.OrdinalIgnoreCase)
+            || kind.Equals("warning", StringComparison.OrdinalIgnoreCase)) {
+            return "<svg width='14' height='14' viewBox='0 0 16 16' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><circle cx='8' cy='8' r='6.2'/><path d='M8 4.6v4.4'/><circle cx='8' cy='11.7' r='0.8' fill='currentColor' stroke='none'/></svg>";
+        }
+
+        return "<svg width='14' height='14' viewBox='0 0 16 16' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><circle cx='8' cy='8' r='6.2'/><path d='M5.7 5.7l4.6 4.6M10.3 5.7l-4.6 4.6'/></svg>";
     }
 
     private static string RenderBodyHtml(string text, MarkdownRendererOptions markdownOptions) {
