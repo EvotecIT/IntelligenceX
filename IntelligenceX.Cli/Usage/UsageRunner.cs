@@ -358,7 +358,7 @@ internal sealed class UsageOptions {
                     options.BaseUrl = ReadValue(args, ref i);
                     break;
                 case "--account-id":
-                    options.AccountId = ReadValue(args, ref i);
+                    options.AccountId = NormalizeOptionalValue(ReadValue(args, ref i));
                     break;
                 case "--auth-path":
                     options.AuthPath = ReadValue(args, ref i);
@@ -378,6 +378,17 @@ internal sealed class UsageOptions {
             throw new InvalidOperationException($"Missing value for {args[index]}.");
         }
         index++;
-        return args[index];
+        var value = args[index];
+        if (value.StartsWith("--", StringComparison.Ordinal)) {
+            throw new InvalidOperationException($"Missing value for {args[index - 1]}.");
+        }
+        return value;
+    }
+
+    private static string? NormalizeOptionalValue(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+        return value.Trim();
     }
 }

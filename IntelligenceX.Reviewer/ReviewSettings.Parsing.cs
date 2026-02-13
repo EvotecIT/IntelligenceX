@@ -80,7 +80,7 @@ internal sealed partial class ReviewSettings {
             return Array.Empty<string>();
         }
         var list = new List<string>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var value in values) {
             if (string.IsNullOrWhiteSpace(value)) {
                 continue;
@@ -89,8 +89,7 @@ internal sealed partial class ReviewSettings {
             if (normalized.Length == 0) {
                 continue;
             }
-            var dedupeKey = normalized.ToUpperInvariant();
-            if (seen.Add(dedupeKey)) {
+            if (seen.Add(normalized)) {
                 list.Add(normalized);
             }
         }

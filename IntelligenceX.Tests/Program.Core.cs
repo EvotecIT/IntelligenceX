@@ -407,7 +407,7 @@ internal static partial class Program {
         AssertNotNull(usageOptionsType, "UsageOptions type");
         var parseMethod = usageOptionsType!.GetMethod("Parse", BindingFlags.Public | BindingFlags.Static);
         AssertNotNull(parseMethod, "UsageOptions.Parse method");
-        var parsed = parseMethod!.Invoke(null, new object[] { new[] { "--account-id", "acct-77", "--json" } });
+        var parsed = parseMethod!.Invoke(null, new object[] { new[] { "--account-id", " acct-77 ", "--json" } });
         AssertNotNull(parsed, "UsageOptions parsed instance");
         var accountProp = usageOptionsType.GetProperty("AccountId", BindingFlags.Public | BindingFlags.Instance);
         AssertNotNull(accountProp, "UsageOptions.AccountId property");
