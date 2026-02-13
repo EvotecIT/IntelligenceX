@@ -401,11 +401,13 @@ public static class FileSystemQuery {
             bytesRead += read;
         }
 
+        var decodedByteCount = TrimIncompleteUtf8Tail(buffer.AsSpan(0, bytesRead));
+
         return new FileTextReadResult {
             Path = fullPath,
             BytesRead = bytesRead,
-            Truncated = stream.Length > bytesRead,
-            Text = Encoding.UTF8.GetString(buffer, 0, bytesRead)
+            Truncated = stream.Length > bytesRead || decodedByteCount < bytesRead,
+            Text = Encoding.UTF8.GetString(buffer, 0, decodedByteCount)
         };
     }
 
@@ -537,5 +539,57 @@ public static class FileSystemQuery {
             return false;
         }
         return true;
+    }
+
+    private static int TrimIncompleteUtf8Tail(ReadOnlySpan<byte> data) {
+        if (data.Length == 0) {
+            return 0;
+        }
+
+        var index = data.Length - 1;
+        var continuationCount = 0;
+        while (index >= 0 && IsUtf8ContinuationByte(data[index])) {
+            continuationCount++;
+            index--;
+        }
+
+        if (continuationCount == 0) {
+            var trailingLeadSize = GetUtf8LeadSize(data[data.Length - 1]);
+            return trailingLeadSize > 1 ? data.Length - 1 : data.Length;
+        }
+
+        if (index < 0) {
+            return data.Length - continuationCount;
+        }
+
+        var leadSize = GetUtf8LeadSize(data[index]);
+        if (leadSize <= 0) {
+            return data.Length;
+        }
+
+        var actualSequenceLength = continuationCount + 1;
+        if (actualSequenceLength < leadSize) {
+            return index;
+        }
+
+        return data.Length;
+    }
+
+    private static bool IsUtf8ContinuationByte(byte value) => (value & 0b1100_0000) == 0b1000_0000;
+
+    private static int GetUtf8LeadSize(byte value) {
+        if ((value & 0b1000_0000) == 0) {
+            return 1;
+        }
+        if ((value & 0b1110_0000) == 0b1100_0000) {
+            return 2;
+        }
+        if ((value & 0b1111_0000) == 0b1110_0000) {
+            return 3;
+        }
+        if ((value & 0b1111_1000) == 0b1111_0000) {
+            return 4;
+        }
+        return -1;
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Engines.FileSystem;
@@ -158,5 +159,31 @@ public sealed class EngineQueryBehaviorTests {
         Assert.False(result.Success);
         Assert.NotNull(result.Failure);
         Assert.Equal(PowerShellCommandQueryFailureCode.Cancelled, result.Failure!.Code);
+    }
+
+    [Fact]
+    public void FileSystemReadText_TruncatedUtf8_DoesNotReturnReplacementCharacter() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-fs-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var filePath = Path.Combine(root, "utf8.txt");
+        File.WriteAllText(filePath, "abc😀def", new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+        try {
+            var result = FileSystemQuery.ReadText(new FileTextReadRequest {
+                Path = filePath,
+                MaxBytes = 6
+            });
+
+            Assert.True(result.Truncated);
+            Assert.Equal(6, result.BytesRead);
+            Assert.DoesNotContain('\uFFFD', result.Text);
+            Assert.Equal("abc", result.Text);
+        } finally {
+            try {
+                Directory.Delete(root, recursive: true);
+            } catch {
+                // Ignore cleanup failure.
+            }
+        }
     }
 }
