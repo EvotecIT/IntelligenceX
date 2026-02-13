@@ -16,6 +16,9 @@ internal static class TranscriptHtmlFormatter {
     private const string CopyButtonIconSvg =
         "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='9' y='9' width='13' height='13' rx='2'/><path d='M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1'/></svg>";
     private static readonly Regex InlineCodeSpanRegex = new("`([^`]+)`", RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex SoftWrappedStrongRegex = new(
+        @"\*\*(?<left>[^\r\n*]{1,80})\r?\n(?<right>[^\r\n*]{1,80})\*\*",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex AssistantOutcomePrefixRegex = new(
         @"^\[(?<kind>[a-z_]+)\]\s*(?<headline>[^\r\n]*)",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -211,6 +214,16 @@ internal static class TranscriptHtmlFormatter {
         if (value.Length == 0) {
             return value;
         }
+
+        // Model/tool output sometimes hard-wraps short bold labels across lines.
+        value = SoftWrappedStrongRegex.Replace(value, static match => {
+            var left = match.Groups["left"].Value.Trim();
+            var right = match.Groups["right"].Value.Trim();
+            if (left.Length == 0 || right.Length == 0) {
+                return match.Value;
+            }
+            return "**" + left + " " + right + "**";
+        });
 
         // Keep inline code on one line for strict markdown parsers.
         return InlineCodeSpanRegex.Replace(value, static match => {

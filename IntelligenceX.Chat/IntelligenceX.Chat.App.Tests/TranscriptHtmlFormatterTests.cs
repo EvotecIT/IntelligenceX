@@ -74,4 +74,19 @@ public sealed class TranscriptHtmlFormatterTests {
         Assert.Contains("outcome-title'>Chat failed</span>", html);
         Assert.Contains("usage limit reached", html, StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// Ensures short soft-wrapped bold labels are normalized into a single bold span.
+    /// </summary>
+    [Fact]
+    public void Format_NormalizesSoftWrappedStrongLabels() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 11, 19, 20, 0, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", "**Status\nHEALTHY**", now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("Status HEALTHY", html);
+        Assert.DoesNotContain("Status\nHEALTHY", html, StringComparison.Ordinal);
+    }
 }

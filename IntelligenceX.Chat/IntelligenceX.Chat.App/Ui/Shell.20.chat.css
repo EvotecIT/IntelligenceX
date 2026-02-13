@@ -88,7 +88,7 @@
   border-radius: var(--ix-radius-lg);
   line-height: 1.56;
   overflow: hidden;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .msg-row.assistant .bubble {
@@ -178,7 +178,7 @@
   color: var(--ix-text-primary);
   line-height: 1.3;
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .outcome-body {
@@ -332,8 +332,8 @@ pre:hover .code-copy-btn {
 .bubble .markdown-body {
   margin: 0;
   min-width: 0;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .bubble .markdown-body p {
