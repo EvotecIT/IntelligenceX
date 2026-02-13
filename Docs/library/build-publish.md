@@ -15,8 +15,26 @@ pwsh ./Build/Cleanup-Workspace.ps1 -IncludeKnownSiblingRepos -FetchPrune
 Optional destructive cleanup switches:
 - `-CleanArtifacts`
 - `-RemoveOrphanedWorktreeDirs`
+- `-RemoveMergedWorktrees`
+- `-DeleteMergedLocalBranches`
 
 Use `-WhatIf` first when using destructive cleanup switches.
+
+Merged-worktree cleanup defaults to `codex/` branches merged into `origin/master`.
+You can tune branch selection:
+- `-MergedBranchPrefix <prefix>` (for example `codex/`)
+- `-SkipMergedBranchPrefixes <prefix1>,<prefix2>` (for example keep website worktrees)
+
+Example:
+
+```powershell
+pwsh ./Build/Cleanup-Workspace.ps1 `
+  -IncludeKnownSiblingRepos `
+  -FetchPrune `
+  -RemoveMergedWorktrees `
+  -DeleteMergedLocalBranches `
+  -SkipMergedBranchPrefixes codex/wt-intelligencex-website
+```
 
 ## 2. Build
 
