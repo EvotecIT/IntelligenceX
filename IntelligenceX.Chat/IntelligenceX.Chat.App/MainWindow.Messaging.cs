@@ -42,6 +42,12 @@ public sealed partial class MainWindow : Window {
                 case "login":
                     await LoginAsync().ConfigureAwait(true);
                     break;
+                case "relogin":
+                    await ReLoginFromMenuAsync().ConfigureAwait(true);
+                    break;
+                case "switch_account":
+                    await SwitchAccountFromMenuAsync().ConfigureAwait(true);
+                    break;
                 case "send":
                     {
                         var text = (TryGetString(root, "text") ?? string.Empty).Trim();
@@ -413,6 +419,14 @@ public sealed partial class MainWindow : Window {
 
     private async Task LoginAsync() {
         await StartLoginFlowIfNeededAsync().ConfigureAwait(false);
+    }
+
+    private async Task ReLoginFromMenuAsync() {
+        await ReLoginAsync().ConfigureAwait(false);
+    }
+
+    private async Task SwitchAccountFromMenuAsync() {
+        await SwitchAccountAsync().ConfigureAwait(false);
     }
 
     private async Task SendPromptAsync(string text) {

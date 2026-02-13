@@ -142,8 +142,8 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private async Task<bool> StartLoginFlowIfNeededAsync() {
-        if (_isAuthenticated) {
+    private async Task<bool> StartLoginFlowIfNeededAsync(bool forceInteractive = false) {
+        if (!forceInteractive && _isAuthenticated) {
             _isConnected = _client is not null;
             await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
             return true;
@@ -158,18 +158,20 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        if (await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false)) {
-            _isConnected = _client is not null;
-            await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
-            return true;
-        }
+        if (!forceInteractive) {
+            if (await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false)) {
+                _isConnected = _client is not null;
+                await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
+                return true;
+            }
 
-        // Allow one short retry window before launching browser login.
-        await Task.Delay(250).ConfigureAwait(false);
-        if (await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false)) {
-            _isConnected = _client is not null;
-            await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
-            return true;
+            // Allow one short retry window before launching browser login.
+            await Task.Delay(250).ConfigureAwait(false);
+            if (await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false)) {
+                _isConnected = _client is not null;
+                await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
+                return true;
+            }
         }
 
         var client = _client;
@@ -180,6 +182,7 @@ public sealed partial class MainWindow : Window {
         try {
             _loginInProgress = true;
             _isConnected = true;
+            _isAuthenticated = false;
             await SetStatusAsync(SessionStatus.OpeningSignIn()).ConfigureAwait(false);
             await client.RequestAsync<ChatGptLoginStartedMessage>(new StartChatGptLoginRequest {
                 RequestId = NextId(),
@@ -192,6 +195,52 @@ public sealed partial class MainWindow : Window {
             _isConnected = _client is not null;
             await SetStatusAsync(SessionStatus.SignInFailed()).ConfigureAwait(false);
             AppendSystem(SystemNotice.SignInFailed(ex.Message));
+            return false;
+        }
+    }
+
+    private Task<bool> ReLoginAsync() {
+        return StartLoginFlowIfNeededAsync(forceInteractive: true);
+    }
+
+    private async Task<bool> SwitchAccountAsync() {
+        var authPath = ResolveAuthPath();
+        if (!TryDeleteAuthStore(authPath, out var existed, out var error)) {
+            AppendSystem($"Could not clear local auth cache ({authPath}): {error}");
+        } else if (existed) {
+            AppendSystem($"Cleared local auth cache ({authPath}).");
+        }
+
+        await RestartSidecarAsync().ConfigureAwait(false);
+        return await StartLoginFlowIfNeededAsync(forceInteractive: true).ConfigureAwait(false);
+    }
+
+    private static string ResolveAuthPath() {
+        var overridePath = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH");
+        if (!string.IsNullOrWhiteSpace(overridePath)) {
+            return overridePath;
+        }
+
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrWhiteSpace(home)) {
+            home = ".";
+        }
+
+        return Path.Combine(home, ".intelligencex", "auth.json");
+    }
+
+    private static bool TryDeleteAuthStore(string authPath, out bool existed, out string? error) {
+        existed = false;
+        error = null;
+
+        try {
+            existed = File.Exists(authPath);
+            if (existed) {
+                File.Delete(authPath);
+            }
+            return true;
+        } catch (Exception ex) {
+            error = ex.Message;
             return false;
         }
     }

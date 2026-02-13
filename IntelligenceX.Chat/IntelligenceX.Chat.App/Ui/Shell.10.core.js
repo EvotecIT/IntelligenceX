@@ -406,16 +406,28 @@
 
   function updateMenuState() {
     var signIn = byId("menuSignIn");
+    var switchAccount = byId("menuSwitchAccount");
     var reconnect = byId("menuReconnect");
     var debug = byId("menuToggleDebug");
     var wheelDiagnostics = byId("menuWheelDiagnostics");
     var debugDivider = byId("menuDebugDivider");
+    var authenticated = normalizeBool(state.authenticated);
+    var loginInProgress = normalizeBool(state.loginInProgress);
     var debugToolsEnabled = normalizeBool(state.options.debugToolsEnabled);
 
-    signIn.hidden = normalizeBool(state.authenticated);
-    signIn.disabled = normalizeBool(state.loginInProgress);
-    if (!normalizeBool(state.authenticated)) {
-      signIn.textContent = normalizeBool(state.loginInProgress) ? "Signing In..." : "Sign In";
+    signIn.hidden = false;
+    signIn.disabled = loginInProgress;
+    if (authenticated) {
+      signIn.textContent = loginInProgress ? "Signing In..." : "Sign In Again";
+      signIn.setAttribute("data-cmd", "relogin");
+    } else {
+      signIn.textContent = loginInProgress ? "Signing In..." : "Sign In";
+      signIn.setAttribute("data-cmd", "login");
+    }
+
+    if (switchAccount) {
+      switchAccount.hidden = !authenticated;
+      switchAccount.disabled = loginInProgress;
     }
 
     reconnect.textContent = normalizeBool(state.connected) ? "Refresh session" : "Retry now";
@@ -876,6 +888,8 @@
     if (normalized === "file-system") return "fs";
     if (normalized === "system") return "system";
     if (normalized === "email") return "email";
+    if (normalized === "testimox") return "testimox";
+    if (normalized === "reviewer-setup") return "reviewer-setup";
     return "";
   }
 
@@ -903,7 +917,7 @@
         return mapped;
       }
       var normalized = normalizePackId(tags[i]);
-      if (normalized === "ad" || normalized === "eventlog" || normalized === "system" || normalized === "fs" || normalized === "email") {
+      if (normalized === "ad" || normalized === "eventlog" || normalized === "system" || normalized === "fs" || normalized === "email" || normalized === "testimox" || normalized === "reviewer-setup") {
         return normalized;
       }
     }
@@ -914,6 +928,8 @@
     if (name.indexOf("system_") === 0 || name.indexOf("wsl_") === 0) return "system";
     if (name.indexOf("fs_") === 0) return "fs";
     if (name.indexOf("email_") === 0) return "email";
+    if (name.indexOf("testimox_") === 0) return "testimox";
+    if (name.indexOf("reviewer_setup_") === 0) return "reviewer-setup";
 
     return "other";
   }
@@ -940,6 +956,8 @@
     if (packId === "system") return "System";
     if (packId === "fs") return "File System";
     if (packId === "email") return "Email";
+    if (packId === "testimox") return "TestimoX";
+    if (packId === "reviewer-setup") return "Reviewer Setup";
     return "Other";
   }
 
