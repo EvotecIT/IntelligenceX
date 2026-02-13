@@ -426,6 +426,7 @@ internal static partial class SetupRunner {
         public string OpenAITransport { get; set; } = "native";
         public string OpenAIModel { get; set; } = "gpt-5.3-codex";
         public string? OpenAIAccountId { get; set; }
+        public bool OpenAIAccountIdsSet { get; set; }
         public string[] OpenAIAccountIds { get; set; } = Array.Empty<string>();
         public string OpenAIAccountRotation { get; set; } = "first-available";
         public bool OpenAIAccountFailover { get; set; } = true;
@@ -452,6 +453,7 @@ internal static partial class SetupRunner {
                 OpenAITransport = options.OpenAITransport ?? "native",
                 OpenAIModel = options.OpenAIModel ?? "gpt-5.3-codex",
                 OpenAIAccountId = string.IsNullOrWhiteSpace(options.OpenAIAccountId) ? null : options.OpenAIAccountId!.Trim(),
+                OpenAIAccountIdsSet = options.OpenAIAccountIdsSet,
                 OpenAIAccountIds = SplitCsv(options.OpenAIAccountIds),
                 OpenAIAccountRotation = NormalizeOpenAiAccountRotation(options.OpenAIAccountRotation, options.OpenAIAccountRotationSet),
                 OpenAIAccountFailover = options.OpenAIAccountFailover,

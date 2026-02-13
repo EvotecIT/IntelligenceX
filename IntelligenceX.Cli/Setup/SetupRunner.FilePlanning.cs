@@ -375,6 +375,10 @@ internal static partial class SetupRunner {
             review["openaiAccountIds"] = accountIds;
             review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
             review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
+        } else if (settings.OpenAIAccountIdsSet) {
+            review.Remove("openaiAccountIds");
+            review.Remove("openaiAccountRotation");
+            review.Remove("openaiAccountFailover");
         }
         review["profile"] = settings.Profile;
         review["mode"] = settings.Mode;

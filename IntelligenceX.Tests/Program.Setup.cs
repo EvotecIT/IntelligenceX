@@ -285,6 +285,34 @@ internal static partial class Program {
         AssertEqual(null, review["openaiAccountIds"], "config json openai merge preserve no synthesized ids");
     }
 
+    private static void TestSetupBuildConfigJsonMergeClearsOpenAiRoutingWhenAccountIdsExplicitlyEmpty() {
+        var seed = """
+{
+  "review": {
+    "provider": "openai",
+    "openaiAccountIds": [
+      "acc-primary",
+      "acc-backup"
+    ],
+    "openaiAccountRotation": "sticky",
+    "openaiAccountFailover": false
+  }
+}
+""";
+        var content = SetupRunner.BuildReviewerConfigJsonFromSeedForTests(
+            new[] { "--openai-account-ids", string.Empty },
+            seed);
+        AssertNotNull(content, "config json openai merge clear content");
+
+        var root = System.Text.Json.Nodes.JsonNode.Parse(content) as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(root, "config json openai merge clear root");
+        var review = root!["review"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(review, "config json openai merge clear review");
+        AssertEqual(null, review!["openaiAccountIds"], "config json openai merge clear ids");
+        AssertEqual(null, review["openaiAccountRotation"], "config json openai merge clear rotation");
+        AssertEqual(null, review["openaiAccountFailover"], "config json openai merge clear failover");
+    }
+
     private static void TestSetupBuildConfigJsonMergePreservesReviewSettingsWhenEnablingAnalysis() {
         var seed = """
 {
