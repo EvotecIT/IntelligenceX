@@ -1,3 +1,4 @@
+#if !NET472
 using System.Text.Json;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
@@ -54,3 +55,4 @@ internal static partial class Program {
             "meta.error.category");
     }
 }
+#endif

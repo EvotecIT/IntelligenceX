@@ -178,7 +178,7 @@ public static class AnalysisConfigReader {
         if (string.IsNullOrWhiteSpace(value)) {
             return fallback;
         }
-        var normalized = value.Trim().ToLowerInvariant();
+        var normalized = value!.Trim().ToLowerInvariant();
         return normalized switch {
             "all" => "all",
             "changedfiles" => "changed-files",

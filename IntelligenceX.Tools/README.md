@@ -7,16 +7,20 @@ Design goals:
 - Provider-agnostic: packs do not depend on `IntelligenceX.OpenAI.*` or any provider-specific code.
 - Pack what you need: consumers reference only the packs they want.
 
-## Related repos
+## Related projects
 
-- `EvotecIT/IntelligenceX`: core library + tool contract (`IntelligenceX.Tools` namespace).
-  - Tool pack model and rules: https://github.com/EvotecIT/IntelligenceX/blob/master/Docs/library/tool-packs.md
-- `EvotecIT/IntelligenceX.Chat`: planned Windows tray chat app (UI host for providers + tool packs).
+- `IntelligenceX/`: core library + tool contract (`IntelligenceX.Tools` namespace).
+  - Tool pack model and rules: `Docs/library/tool-packs.md`
+- `IntelligenceX.Chat/`: Windows desktop and host/service runtimes that consume tool packs.
 
 ## Local development
 
-This repo is engine-first during development and prefers local `ProjectReference` to sibling checkouts
-so tool packs stay thin wrappers around the real engines.
+This monorepo is engine-first during development. Tool packs stay thin wrappers around engine libraries
+and can resolve engine sources from configured local roots when needed.
+
+- Resolution is centralized in `IntelligenceX.Tools/Directory.Build.props` (including worktree-friendly root discovery).
+- Public engines (`Mailozaurr`, `EventViewerX`) fall back to NuGet when local sources are not present.
+- Private engines (`TestimoX` monorepo: `ComputerX`, `ADPlayground`, `TestimoX`) remain local-source based.
 
 - Bootstrap script: `scripts/bootstrap-dev.ps1`
 - Details: `Docs/DevBootstrap.md`
@@ -24,9 +28,9 @@ so tool packs stay thin wrappers around the real engines.
 ## Tool packs in this repo
 
 - `IntelligenceX.Tools.FileSystem`
-  - Cross-platform file querying primitives intended for AI consumption
+  - File querying primitives intended for AI consumption
   - Includes `fs_pack_info` guidance tool
-  - Dependencies: .NET only
+  - Dependencies: `IntelligenceX.Engines.FileSystem`
 - `IntelligenceX.Tools.Email`
   - IMAP search/get + SMTP send helpers
   - Includes `email_pack_info` guidance tool
@@ -38,7 +42,7 @@ so tool packs stay thin wrappers around the real engines.
   - Dedicated IX.PowerShell runtime pack for `powershell.exe` / `pwsh` execution (opt-in, dangerous)
   - Includes `powershell_pack_info`, `powershell_environment_discover`, `powershell_hosts`, and `powershell_run`
   - `powershell_run` uses explicit `intent` (`read_only`/`read_write`) with policy-gated write controls
-  - Engine-first via `ComputerX.PowerShellRuntime`
+  - Engine-first via `IntelligenceX.Engines.PowerShell`
 - `IntelligenceX.Tools.TestimoX`
   - Native TestimoX diagnostics pack for rule discovery and focused rule execution
   - Includes `testimox_pack_info`, `testimox_rules_list`, and `testimox_rules_run`

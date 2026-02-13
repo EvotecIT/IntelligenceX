@@ -1,0 +1,109 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PlatformTarget>x64</PlatformTarget>
+
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <OfficeImoMarkdownRendererProject>$(OfficeImoRepoRoot)\OfficeIMO.MarkdownRenderer\OfficeIMO.MarkdownRenderer.csproj</OfficeImoMarkdownRendererProject>
+    <OfficeImoMarkdownRendererDll>$(OfficeImoRepoRoot)\OfficeIMO.MarkdownRenderer\bin\$(Configuration)\net8.0\OfficeIMO.MarkdownRenderer.dll</OfficeImoMarkdownRendererDll>
+    <OfficeImoMarkdownDll>$(OfficeImoRepoRoot)\OfficeIMO.Markdown\bin\$(Configuration)\net8.0\OfficeIMO.Markdown.dll</OfficeImoMarkdownDll>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\\IntelligenceX.Chat.Abstractions\\IntelligenceX.Chat.Abstractions.csproj" />
+    <ProjectReference Include="..\\IntelligenceX.Chat.Client\\IntelligenceX.Chat.Client.csproj" />
+    <ProjectReference Include="$(DbaClientXRepoRoot)DbaClientX.SQLite\\DbaClientX.SQLite.csproj"
+                      Condition="Exists('$(DbaClientXRepoRoot)DbaClientX.SQLite\\DbaClientX.SQLite.csproj')" />
+    <PackageReference Include="DBAClientX.SQLite" Version="0.1.1"
+                      Condition="!Exists('$(DbaClientXRepoRoot)DbaClientX.SQLite\\DbaClientX.SQLite.csproj')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Use a stable WinAppSDK version. -->
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.250907003" />
+
+    <!-- Local development: prefer an external OfficeIMO checkout for markdown rendering. -->
+    <ProjectReference Include="$(OfficeImoMarkdownRendererProject)"
+                      Condition="Exists('$(OfficeImoMarkdownRendererProject)')" />
+    <Reference Include="OfficeIMO.MarkdownRenderer"
+               Condition="!Exists('$(OfficeImoMarkdownRendererProject)') and Exists('$(OfficeImoMarkdownRendererDll)')">
+      <HintPath>$(OfficeImoMarkdownRendererDll)</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="OfficeIMO.Markdown"
+               Condition="!Exists('$(OfficeImoMarkdownRendererProject)') and Exists('$(OfficeImoMarkdownDll)')">
+      <HintPath>$(OfficeImoMarkdownDll)</HintPath>
+      <Private>true</Private>
+    </Reference>
+
+    <PackageReference Include="OfficeIMO.MarkdownRenderer" Version="$(OfficeImoMarkdownRendererNuGetVersion)"
+                      Condition="!Exists('$(OfficeImoMarkdownRendererProject)') and !Exists('$(OfficeImoMarkdownRendererDll)')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Ui\**\*.*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Prompts\**\*.md" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <ChatServiceTfm>net10.0-windows</ChatServiceTfm>
+    <ChatServiceBin>$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\bin\\$(Configuration)\\$(ChatServiceTfm)\\</ChatServiceBin>
+    <ChatAppPublishDir>$(MSBuildProjectDirectory)\\bin\\$(Configuration)\\$(TargetFramework)\\$(RuntimeIdentifier)\\publish\\</ChatAppPublishDir>
+    <ChatServicePublishOutDir>$(ChatAppPublishDir)service\\</ChatServicePublishOutDir>
+  </PropertyGroup>
+
+  <Target Name="BuildChatServiceSidecar" BeforeTargets="Build"
+          Condition="'$(SkipChatServiceSidecarBuild)' != 'true' AND Exists('$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj')">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj"
+             Targets="Restore;Build"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=;SelfContained=false" />
+  </Target>
+
+  <Target Name="CopyChatServiceSidecar" AfterTargets="Build"
+          Condition="Exists('$(ChatServiceBin)IntelligenceX.Chat.Service.dll')">
+    <ItemGroup>
+      <_ChatServiceFiles Include="$(ChatServiceBin)**\\*.*" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(_ChatServiceFiles)"
+          DestinationFiles="@(_ChatServiceFiles->'$(TargetDir)service\\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- WebView2: when building without a RID (typical dotnet run), ensure WebView2Loader.dll sits next to the exe. -->
+  <Target Name="CopyWebView2LoaderToAppDir" AfterTargets="Build"
+          Condition="'$(RuntimeIdentifier)' == '' AND Exists('$(TargetDir)runtimes\\win-x64\\native\\WebView2Loader.dll')">
+    <Copy SourceFiles="$(TargetDir)runtimes\\win-x64\\native\\WebView2Loader.dll"
+          DestinationFiles="$(TargetDir)WebView2Loader.dll"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyChatServiceSidecarToPublish" AfterTargets="Publish"
+          Condition="Exists('$(ChatServiceBin)IntelligenceX.Chat.Service.dll') AND Exists('$(ChatAppPublishDir)')">
+    <ItemGroup>
+      <_ChatServiceFilesForPublish Include="$(ChatServiceBin)**\\*.*" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(_ChatServiceFilesForPublish)"
+          DestinationFiles="@(_ChatServiceFilesForPublish->'$(ChatServicePublishOutDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

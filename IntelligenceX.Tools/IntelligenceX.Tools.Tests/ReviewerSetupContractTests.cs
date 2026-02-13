@@ -165,7 +165,11 @@ public class ReviewerSetupContractTests {
     private static string[] ReadStringArray(JsonElement element) {
         return element
             .EnumerateArray()
-            .Select(static node => node.GetString())
+            .Select(static node => node.ValueKind switch {
+                global::System.Text.Json.JsonValueKind.String => node.GetString(),
+                global::System.Text.Json.JsonValueKind.Object when node.TryGetProperty("name", out var nameNode) && nameNode.ValueKind == global::System.Text.Json.JsonValueKind.String => nameNode.GetString(),
+                _ => null
+            })
             .Where(static value => !string.IsNullOrWhiteSpace(value))
             .Select(static value => value!.Trim())
             .ToArray();

@@ -4,5 +4,25 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!-- Chat local-dev dependency roots: prefer sibling repos during development. -->
+    <!-- root1: repo-root sibling layout (..\..\OfficeIMO from IntelligenceX.Chat) -->
+    <IxChatSiblingsRoot1>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\\..\\'))</IxChatSiblingsRoot1>
+    <!-- root2: worktree layout (..\..\..\OfficeIMO from IntelligenceX.Chat) -->
+    <IxChatSiblingsRoot2>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\\..\\..\\'))</IxChatSiblingsRoot2>
+    <OfficeImoRepoRootCandidate1>$([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot1)OfficeIMO\\'))</OfficeImoRepoRootCandidate1>
+    <OfficeImoRepoRootCandidate2>$([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot2)OfficeIMO\\'))</OfficeImoRepoRootCandidate2>
+    <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRoot)' == '' and Exists('$(OfficeImoRepoRootCandidate1)OfficeIMO.MarkdownRenderer\\OfficeIMO.MarkdownRenderer.csproj')">$(OfficeImoRepoRootCandidate1)</OfficeImoRepoRoot>
+    <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRoot)' == '' and Exists('$(OfficeImoRepoRootCandidate2)OfficeIMO.MarkdownRenderer\\OfficeIMO.MarkdownRenderer.csproj')">$(OfficeImoRepoRootCandidate2)</OfficeImoRepoRoot>
+    <!-- fallback root for NuGet mode when no local checkout is present -->
+    <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRoot)' == ''">$(OfficeImoRepoRootCandidate1)</OfficeImoRepoRoot>
+
+    <DbaClientXRepoRootCandidate1>$([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot1)DbaClientX\\'))</DbaClientXRepoRootCandidate1>
+    <DbaClientXRepoRootCandidate2>$([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot2)DbaClientX\\'))</DbaClientXRepoRootCandidate2>
+    <DbaClientXRepoRoot Condition="'$(DbaClientXRepoRoot)' == '' and Exists('$(DbaClientXRepoRootCandidate1)DbaClientX.SQLite\\DbaClientX.SQLite.csproj')">$(DbaClientXRepoRootCandidate1)</DbaClientXRepoRoot>
+    <DbaClientXRepoRoot Condition="'$(DbaClientXRepoRoot)' == '' and Exists('$(DbaClientXRepoRootCandidate2)DbaClientX.SQLite\\DbaClientX.SQLite.csproj')">$(DbaClientXRepoRootCandidate2)</DbaClientXRepoRoot>
+    <DbaClientXRepoRoot Condition="'$(DbaClientXRepoRoot)' == ''">$(DbaClientXRepoRootCandidate1)</DbaClientXRepoRoot>
+
+    <OfficeImoMarkdownRendererNuGetVersion Condition="'$(OfficeImoMarkdownRendererNuGetVersion)' == ''">0.1.0</OfficeImoMarkdownRendererNuGetVersion>
   </PropertyGroup>
 </Project>

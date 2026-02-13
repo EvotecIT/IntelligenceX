@@ -24,5 +24,8 @@ public sealed record ToolPackInfoDto {
     /// Whether the pack includes potentially dangerous/write operations.
     /// </summary>
     public required bool IsDangerous { get; init; }
+    /// <summary>
+    /// Pack provenance classification.
+    /// </summary>
+    public ToolPackSourceKind SourceKind { get; init; } = ToolPackSourceKind.OpenSource;
 }
-

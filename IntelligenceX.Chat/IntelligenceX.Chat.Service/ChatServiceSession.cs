@@ -32,6 +32,8 @@ internal sealed class ChatServiceSession {
 
     private readonly object _loginLock = new();
     private LoginFlow? _login;
+    private readonly object _chatRunLock = new();
+    private ChatRun? _activeChat;
 
     public ChatServiceSession(ServiceOptions options, Stream stream) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -43,7 +45,10 @@ internal sealed class ChatServiceSession {
             AdMaxResults = _options.AdMaxResults,
             EnablePowerShellPack = _options.EnablePowerShellPack,
             PowerShellAllowWrite = _options.PowerShellAllowWrite,
-            EnableTestimoXPack = _options.EnableTestimoXPack
+            EnableTestimoXPack = _options.EnableTestimoXPack,
+            EnableDefaultPluginPaths = _options.EnableDefaultPluginPaths,
+            PluginPaths = _options.PluginPaths.ToArray(),
+            OnBootstrapWarning = warning => Console.Error.WriteLine($"[pack warning] {warning}")
         });
         _registry = new ToolRegistry();
         ToolPackBootstrap.RegisterAll(_registry, _packs);
@@ -67,8 +72,6 @@ internal sealed class ChatServiceSession {
 
         using var reader = new StreamReader(_stream, leaveOpen: true);
         using var writer = new StreamWriter(_stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
-
-        IDisposable? deltaSubscription = null;
         string? activeThreadId = null;
 
         try {
@@ -130,39 +133,16 @@ internal sealed class ChatServiceSession {
                         await HandleListToolsAsync(writer, request.RequestId, cancellationToken).ConfigureAwait(false);
                         break;
 
+                    case InvokeToolRequest invokeTool:
+                        await HandleInvokeToolAsync(writer, invokeTool, cancellationToken).ConfigureAwait(false);
+                        break;
+
+                    case CancelChatRequest cancelChat:
+                        await HandleCancelChatAsync(writer, cancelChat, cancellationToken).ConfigureAwait(false);
+                        break;
+
                     case ChatRequest chat:
-                        if (string.IsNullOrWhiteSpace(chat.Text)) {
-                            await WriteAsync(writer, new ErrorMessage {
-                                Kind = ChatServiceMessageKind.Response,
-                                RequestId = request.RequestId,
-                                Error = "Text cannot be empty.",
-                                Code = "invalid_argument"
-                            }, cancellationToken).ConfigureAwait(false);
-                            break;
-                        }
-
-                        try {
-                            // Determine the thread before subscribing to deltas.
-                            activeThreadId = await EnsureThreadAsync(client, chat.ThreadId, activeThreadId, chat.Options?.Model, cancellationToken)
-                                .ConfigureAwait(false);
-
-                            // Correlate deltas to the active requestId. Only one in-flight chat is supported for now.
-                            deltaSubscription?.Dispose();
-                            var threadIdForDelta = activeThreadId ?? string.Empty;
-                            deltaSubscription = client.SubscribeDelta(delta => {
-                                _ = TryWriteDeltaAsync(writer, request.RequestId, threadIdForDelta, delta);
-                            });
-
-                            var result = await RunChatOnCurrentThreadAsync(client, writer, chat, activeThreadId!, cancellationToken).ConfigureAwait(false);
-                            await WriteAsync(writer, result, cancellationToken).ConfigureAwait(false);
-                        } catch (OpenAIAuthenticationRequiredException) {
-                            await WriteAsync(writer, new ErrorMessage {
-                                Kind = ChatServiceMessageKind.Response,
-                                RequestId = request.RequestId,
-                                Error = "Not authenticated. Run ChatGPT login in a client that can persist ~/.intelligencex/auth.json, then reconnect.",
-                                Code = "not_authenticated"
-                            }, cancellationToken).ConfigureAwait(false);
-                        }
+                        activeThreadId = await HandleChatRequestAsync(client, writer, chat, activeThreadId, cancellationToken).ConfigureAwait(false);
                         break;
 
                     default:
@@ -176,7 +156,7 @@ internal sealed class ChatServiceSession {
                 }
             }
         } finally {
-            deltaSubscription?.Dispose();
+            await CancelActiveChatIfAnyAsync().ConfigureAwait(false);
             CancelLoginIfActive();
         }
     }
@@ -455,6 +435,232 @@ internal sealed class ChatServiceSession {
         }, cancellationToken).ConfigureAwait(false);
     }
 
+    private async Task HandleInvokeToolAsync(StreamWriter writer, InvokeToolRequest request, CancellationToken cancellationToken) {
+        var toolName = (request.ToolName ?? string.Empty).Trim();
+        if (toolName.Length == 0) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = "toolName is required.",
+                Code = "invalid_argument"
+            }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        JsonObject? arguments = null;
+        if (!string.IsNullOrWhiteSpace(request.ArgumentsJson)) {
+            try {
+                var parsed = JsonLite.Parse(request.ArgumentsJson!);
+                arguments = parsed?.AsObject();
+                if (parsed is not null && arguments is null) {
+                    await WriteAsync(writer, new ErrorMessage {
+                        Kind = ChatServiceMessageKind.Response,
+                        RequestId = request.RequestId,
+                        Error = "argumentsJson must be a JSON object.",
+                        Code = "invalid_argument"
+                    }, cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+            } catch (Exception ex) {
+                await WriteAsync(writer, new ErrorMessage {
+                    Kind = ChatServiceMessageKind.Response,
+                    RequestId = request.RequestId,
+                    Error = $"Invalid argumentsJson: {ex.Message}",
+                    Code = "invalid_json"
+                }, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+        }
+
+        var timeoutSeconds = request.ToolTimeoutSeconds ?? _options.ToolTimeoutSeconds;
+        if (timeoutSeconds < 0) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = "toolTimeoutSeconds must be a non-negative integer.",
+                Code = "invalid_argument"
+            }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var call = new ToolCall(
+            callId: request.RequestId + ":invoke",
+            name: toolName,
+            input: request.ArgumentsJson,
+            arguments: arguments,
+            raw: new JsonObject());
+        var output = await ExecuteToolAsync(call, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
+        await WriteAsync(writer, new InvokeToolResultMessage {
+            Kind = ChatServiceMessageKind.Response,
+            RequestId = request.RequestId,
+            ToolName = toolName,
+            Output = output
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<string?> HandleChatRequestAsync(IntelligenceXClient client, StreamWriter writer, ChatRequest request, string? activeThreadId,
+        CancellationToken cancellationToken) {
+        if (string.IsNullOrWhiteSpace(request.Text)) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = "Text cannot be empty.",
+                Code = "invalid_argument"
+            }, cancellationToken).ConfigureAwait(false);
+            return activeThreadId;
+        }
+
+        ChatRun? existingRun;
+        lock (_chatRunLock) {
+            existingRun = _activeChat;
+            if (existingRun is not null && !existingRun.IsCompleted) {
+                existingRun = _activeChat;
+            } else {
+                existingRun = null;
+            }
+        }
+
+        if (existingRun is not null) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = $"A chat request is already running (requestId={existingRun.ChatRequestId}).",
+                Code = "chat_in_progress"
+            }, cancellationToken).ConfigureAwait(false);
+            return activeThreadId;
+        }
+
+        try {
+            activeThreadId = await EnsureThreadAsync(client, request.ThreadId, activeThreadId, request.Options?.Model, cancellationToken)
+                .ConfigureAwait(false);
+        } catch (OpenAIAuthenticationRequiredException) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = "Not authenticated. Run ChatGPT login in a client that can persist ~/.intelligencex/auth.json, then reconnect.",
+                Code = "not_authenticated"
+            }, cancellationToken).ConfigureAwait(false);
+            return activeThreadId;
+        } catch (Exception ex) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = $"Chat failed: {ex.Message}",
+                Code = "chat_failed"
+            }, cancellationToken).ConfigureAwait(false);
+            return activeThreadId;
+        }
+
+        var run = new ChatRun(request.RequestId, CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)) {
+            ThreadId = activeThreadId
+        };
+        lock (_chatRunLock) {
+            _activeChat = run;
+        }
+
+        run.Task = Task.Run(async () => {
+            IDisposable? deltaSubscription = null;
+            try {
+                var threadIdForDelta = run.ThreadId ?? string.Empty;
+                deltaSubscription = client.SubscribeDelta(delta => { _ = TryWriteDeltaAsync(writer, request.RequestId, threadIdForDelta, delta); });
+
+                var result = await RunChatOnCurrentThreadAsync(client, writer, request, threadIdForDelta, run.Cts.Token).ConfigureAwait(false);
+                await WriteAsync(writer, result, CancellationToken.None).ConfigureAwait(false);
+            } catch (OpenAIAuthenticationRequiredException) {
+                await WriteAsync(writer, new ErrorMessage {
+                    Kind = ChatServiceMessageKind.Response,
+                    RequestId = request.RequestId,
+                    Error = "Not authenticated. Run ChatGPT login in a client that can persist ~/.intelligencex/auth.json, then reconnect.",
+                    Code = "not_authenticated"
+                }, CancellationToken.None).ConfigureAwait(false);
+            } catch (OperationCanceledException) when (run.Cts.IsCancellationRequested && !cancellationToken.IsCancellationRequested) {
+                await WriteAsync(writer, new ErrorMessage {
+                    Kind = ChatServiceMessageKind.Response,
+                    RequestId = request.RequestId,
+                    Error = "Chat canceled by client.",
+                    Code = "chat_canceled"
+                }, CancellationToken.None).ConfigureAwait(false);
+            } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+                // Session shutting down.
+            } catch (Exception ex) {
+                await WriteAsync(writer, new ErrorMessage {
+                    Kind = ChatServiceMessageKind.Response,
+                    RequestId = request.RequestId,
+                    Error = $"Chat failed: {ex.Message}",
+                    Code = "chat_failed"
+                }, CancellationToken.None).ConfigureAwait(false);
+            } finally {
+                deltaSubscription?.Dispose();
+                run.MarkCompleted();
+                lock (_chatRunLock) {
+                    if (ReferenceEquals(_activeChat, run)) {
+                        _activeChat = null;
+                    }
+                }
+            }
+        }, CancellationToken.None);
+
+        return activeThreadId;
+    }
+
+    private async Task HandleCancelChatAsync(StreamWriter writer, CancelChatRequest request, CancellationToken cancellationToken) {
+        if (string.IsNullOrWhiteSpace(request.ChatRequestId)) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = "chatRequestId is required.",
+                Code = "invalid_argument"
+            }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        ChatRun? active;
+        lock (_chatRunLock) {
+            active = _activeChat;
+        }
+
+        if (active is null || active.IsCompleted
+            || !string.Equals(active.ChatRequestId, request.ChatRequestId, StringComparison.Ordinal)) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = $"Active chat request '{request.ChatRequestId}' not found.",
+                Code = "chat_not_found"
+            }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        active.Cancel();
+        await WriteAsync(writer, new AckMessage {
+            Kind = ChatServiceMessageKind.Response,
+            RequestId = request.RequestId,
+            Ok = true,
+            Message = "Cancel requested."
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task CancelActiveChatIfAnyAsync() {
+        ChatRun? active;
+        lock (_chatRunLock) {
+            active = _activeChat;
+            _activeChat = null;
+        }
+
+        if (active is null) {
+            return;
+        }
+
+        active.Cancel();
+        if (active.Task is not null) {
+            try {
+                await active.Task.ConfigureAwait(false);
+            } catch {
+                // Ignore.
+            }
+        }
+    }
+
     private static string[] ExtractRequiredArguments(string parametersJson) {
         if (string.IsNullOrWhiteSpace(parametersJson)) {
             return Array.Empty<string>();
@@ -502,7 +708,27 @@ internal sealed class ChatServiceSession {
         var toolCalls = new List<ToolCallDto>();
         var toolOutputs = new List<ToolOutputDto>();
 
-        var toolDefs = _registry.GetDefinitions();
+        IReadOnlyList<ToolDefinition> toolDefs = _registry.GetDefinitions();
+        if (request.Options?.DisabledTools is { Length: > 0 } disabledTools && toolDefs.Count > 0) {
+            var disabled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < disabledTools.Length; i++) {
+                if (!string.IsNullOrWhiteSpace(disabledTools[i])) {
+                    disabled.Add(disabledTools[i].Trim());
+                }
+            }
+
+            if (disabled.Count > 0) {
+                var filtered = new List<ToolDefinition>(toolDefs.Count);
+                for (var i = 0; i < toolDefs.Count; i++) {
+                    if (!disabled.Contains(toolDefs[i].Name)) {
+                        filtered.Add(toolDefs[i]);
+                    }
+                }
+                toolDefs = filtered;
+            }
+        }
+        toolDefs = SanitizeToolDefinitions(toolDefs);
+
         var parallelTools = request.Options?.ParallelTools ?? _options.ParallelTools;
         var maxRounds = request.Options?.MaxToolRounds ?? _options.MaxToolRounds;
         var turnTimeoutSeconds = request.Options?.TurnTimeoutSeconds ?? _options.TurnTimeoutSeconds;
@@ -518,7 +744,7 @@ internal sealed class ChatServiceSession {
         };
 
         await TryWriteStatusAsync(writer, request.RequestId, threadId, status: "thinking").ConfigureAwait(false);
-        TurnInfo turn = await client.ChatAsync(ChatInput.FromText(request.Text), options, turnToken).ConfigureAwait(false);
+        TurnInfo turn = await ChatWithToolSchemaRecoveryAsync(client, ChatInput.FromText(request.Text), options, turnToken).ConfigureAwait(false);
 
         for (var round = 0; round < Math.Max(1, maxRounds); round++) {
             var extracted = ToolCallParser.Extract(turn);
@@ -560,10 +786,60 @@ internal sealed class ChatServiceSession {
             }
             options.NewThread = false;
             await TryWriteStatusAsync(writer, request.RequestId, threadId, status: "thinking").ConfigureAwait(false);
-            turn = await client.ChatAsync(next, options, turnToken).ConfigureAwait(false);
+            turn = await ChatWithToolSchemaRecoveryAsync(client, next, options, turnToken).ConfigureAwait(false);
         }
 
         throw new InvalidOperationException($"Tool runner exceeded max rounds ({maxRounds}).");
+    }
+
+    private static IReadOnlyList<ToolDefinition> SanitizeToolDefinitions(IReadOnlyList<ToolDefinition> definitions) {
+        if (definitions.Count == 0) {
+            return Array.Empty<ToolDefinition>();
+        }
+
+        var sanitized = new List<ToolDefinition>(definitions.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            if (definition is null) {
+                continue;
+            }
+
+            var normalizedName = (definition.Name ?? string.Empty).Trim();
+            if (normalizedName.Length == 0 || !seen.Add(normalizedName)) {
+                continue;
+            }
+
+            sanitized.Add(definition);
+        }
+
+        return sanitized.Count == 0 ? Array.Empty<ToolDefinition>() : sanitized;
+    }
+
+    private static async Task<TurnInfo> ChatWithToolSchemaRecoveryAsync(IntelligenceXClient client, ChatInput input, ChatOptions options,
+        CancellationToken cancellationToken) {
+        try {
+            return await client.ChatAsync(input, options, cancellationToken).ConfigureAwait(false);
+        } catch (Exception ex) when (ShouldRetryWithoutTools(ex, options)) {
+            options.Tools = null;
+            options.ToolChoice = null;
+            return await client.ChatAsync(input, options, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static bool ShouldRetryWithoutTools(Exception ex, ChatOptions options) {
+        if (options.Tools is not { Count: > 0 }) {
+            return false;
+        }
+
+        var message = ex.Message ?? string.Empty;
+        if (message.Length == 0) {
+            return false;
+        }
+
+        return message.IndexOf("missing required parameter", StringComparison.OrdinalIgnoreCase) >= 0
+               && message.IndexOf("tools", StringComparison.OrdinalIgnoreCase) >= 0
+               && message.IndexOf(".name", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private async Task<IReadOnlyList<ToolOutputDto>> ExecuteToolsAsync(StreamWriter writer, string requestId, string threadId, IReadOnlyList<ToolCall> calls,
@@ -818,10 +1094,11 @@ internal sealed class ChatServiceSession {
         foreach (var pack in ToolPackBootstrap.GetDescriptors(packs)) {
             packList.Add(new ToolPackInfoDto {
                 Id = pack.Id,
-                Name = pack.Name,
+                Name = ResolvePackDisplayName(pack.Id, pack.Name),
                 Tier = MapTier(pack.Tier),
                 Enabled = true,
-                IsDangerous = pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite
+                IsDangerous = pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite,
+                SourceKind = MapSourceKind(pack.SourceKind, pack.Id)
             });
         }
 
@@ -848,6 +1125,67 @@ internal sealed class ChatServiceSession {
             ToolCapabilityTier.SensitiveRead => CapabilityTier.SensitiveRead,
             ToolCapabilityTier.DangerousWrite => CapabilityTier.DangerousWrite,
             _ => CapabilityTier.SensitiveRead
+        };
+    }
+
+    private static string ResolvePackDisplayName(string? descriptorId, string? fallbackName) {
+        var packId = NormalizePackId(descriptorId);
+        return packId switch {
+            "system" => "ComputerX",
+            "ad" => "ADPlayground",
+            "testimox" => "TestimoX",
+            _ => string.IsNullOrWhiteSpace(fallbackName) ? string.Empty : fallbackName.Trim()
+        };
+    }
+
+    private static ToolPackSourceKind MapSourceKind(string? sourceKind, string descriptorId) {
+        var normalized = (sourceKind ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized is "builtin") {
+            return ToolPackSourceKind.Builtin;
+        }
+        if (normalized is "closed_source" or "closed" or "private" or "internal") {
+            return ToolPackSourceKind.ClosedSource;
+        }
+        if (normalized is "open_source" or "open" or "opensource" or "public") {
+            return ToolPackSourceKind.OpenSource;
+        }
+
+        var packId = NormalizePackId(descriptorId);
+        return packId switch {
+            "eventlog" => ToolPackSourceKind.Builtin,
+            "fs" => ToolPackSourceKind.Builtin,
+            "powershell" => ToolPackSourceKind.Builtin,
+            "reviewersetup" => ToolPackSourceKind.Builtin,
+            "email" => ToolPackSourceKind.Builtin,
+            "system" => ToolPackSourceKind.ClosedSource,
+            "ad" => ToolPackSourceKind.ClosedSource,
+            "testimox" => ToolPackSourceKind.ClosedSource,
+            _ => ToolPackSourceKind.OpenSource
+        };
+    }
+
+    private static string NormalizePackId(string? descriptorId) {
+        var normalized = (descriptorId ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        normalized = normalized.Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .Replace(".", string.Empty, StringComparison.Ordinal);
+
+        if (normalized.StartsWith("ix", StringComparison.Ordinal)) {
+            normalized = normalized[2..];
+        } else if (normalized.StartsWith("intelligencex", StringComparison.Ordinal)) {
+            normalized = normalized["intelligencex".Length..];
+        }
+
+        return normalized switch {
+            "computerx" => "system",
+            "adplayground" => "ad",
+            "activedirectory" => "ad",
+            "filesystem" => "fs",
+            _ => normalized
         };
     }
 
@@ -914,6 +1252,36 @@ internal sealed class ChatServiceSession {
         }
         // Best-effort: redact email/UPN-like tokens.
         return EmailRegex.Replace(text, "[redacted_email]");
+    }
+
+    private sealed class ChatRun {
+        public ChatRun(string chatRequestId, CancellationTokenSource cts) {
+            ChatRequestId = chatRequestId;
+            Cts = cts;
+        }
+
+        public string ChatRequestId { get; }
+        public string? ThreadId { get; set; }
+        public CancellationTokenSource Cts { get; }
+        public Task? Task { get; set; }
+        public bool IsCompleted { get; private set; }
+
+        public void Cancel() {
+            try {
+                Cts.Cancel();
+            } catch {
+                // Ignore.
+            }
+        }
+
+        public void MarkCompleted() {
+            IsCompleted = true;
+            try {
+                Cts.Dispose();
+            } catch {
+                // Ignore.
+            }
+        }
     }
 
     private sealed class LoginFlow {

@@ -34,9 +34,11 @@ internal static partial class Program {
         failed += Run("Tool call parsing", TestToolCallParsing);
         failed += Run("Tool call invalid JSON", TestToolCallParsingInvalidJson);
         failed += Run("Tool output input", TestToolOutputInput);
+#if !NET472
         failed += Run("Tool output envelope error omits meta when null", TestToolOutputEnvelopeErrorOmitsMetaWhenNull);
         failed += Run("Tool output envelope error includes meta when provided", TestToolOutputEnvelopeErrorIncludesMetaWhenProvided);
         failed += Run("Tool output envelope error string includes meta when provided", TestToolOutputEnvelopeErrorStringIncludesMetaWhenProvided);
+#endif
         failed += Run("Turn response_id parsing", TestTurnResponseIdParsing);
         failed += Run("Turn usage parsing", TestTurnUsageParsing);
         failed += Run("Thread usage summary parsing", TestThreadUsageSummaryParsing);
@@ -64,9 +66,11 @@ internal static partial class Program {
         failed += Run("Native tool schema fallback handles AggregateException", TestNativeToolSchemaFallbackHandlesAggregateException);
         failed += Run("Native tool schema fallback uses structured error data", TestNativeToolSchemaFallbackUsesStructuredErrorData);
         failed += Run("Native tool schema fallback ignores unrelated", TestNativeToolSchemaFallbackIgnoresUnrelated);
+        failed += Run("Native tool schema fallback retries missing tool name", TestNativeToolSchemaFallbackRetriesOnMissingToolName);
         failed += Run("Native tool schema serialization switches field name", TestNativeToolSchemaSerializationSwitchesFieldName);
         failed += Run("Native tool schema serialization includes tags in description", TestNativeToolSchemaSerializationIncludesTagsInDescription);
         failed += Run("Native request body omits previous_response_id", TestNativeRequestBodyOmitsPreviousResponseId);
+        failed += Run("Native request body normalizes tools/tool_choice", TestNativeRequestBodyNormalizesToolsAndToolChoice);
 #if !NET472
         failed += Run("Setup args reject skip+update", TestSetupArgsRejectSkipUpdate);
         failed += Run("Setup args include analysis options", TestSetupArgsIncludeAnalysisOptions);

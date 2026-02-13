@@ -10,10 +10,10 @@ By default, MSBuild tries to resolve these as sibling folders next to this repo:
 - `IntelligenceX` (tool contract + JSON types)
 - `TestimoX-master` (ADPlayground + ComputerX)
 - `PSEventViewer` (EventViewerX)
+- `Mailozaurr`
 
 Optional (used only when you want to build against local sources instead of NuGet):
-
-- `Mailozaurr` (Email tools)
+- None. All currently supported public engines can resolve from NuGet fallback.
 
 ## One-Time Setup Script
 
@@ -31,12 +31,14 @@ If your checkouts live elsewhere, set MSBuild properties via environment variabl
 
 - `TestimoXRoot` : folder containing `ADPlayground\ADPlayground.csproj` and `ComputerX\ComputerX.csproj`
 - `PSEventViewerRoot` : folder containing `Sources\EventViewerX\EventViewerX.csproj`
+- `MailozaurrRoot` : folder containing `Sources\Mailozaurr\Mailozaurr.csproj`
 
 Example:
 
 ```powershell
 setx TestimoXRoot "C:\Support\GitHub\TestimoX-master\"
 setx PSEventViewerRoot "C:\Support\GitHub\PSEventViewer\"
+setx MailozaurrRoot "C:\Support\GitHub\Mailozaurr\"
 ```
 
 Then restart your terminal/IDE so MSBuild picks up the updated environment variables.

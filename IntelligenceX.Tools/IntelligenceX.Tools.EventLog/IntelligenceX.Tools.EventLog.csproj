@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
     <TargetFrameworks>net8.0-windows;net10.0-windows</TargetFrameworks>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
@@ -7,21 +8,27 @@
     <Authors>Przemyslaw Klys</Authors>
     <Company>Evotec</Company>
     <Description>Event log tool implementations for IntelligenceX tool calling (planned; provider-agnostic).</Description>
-    <RepositoryUrl>https://github.com/EvotecIT/IntelligenceX.Tools</RepositoryUrl>
+    <RepositoryUrl>https://github.com/EvotecIT/IntelligenceX</RepositoryUrl>
     <IsPackable>true</IsPackable>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
   <ItemGroup>
-    <!-- Shared core contract reference; path resolved in IntelligenceX.Tools/Directory.Build.props. -->
-    <ProjectReference Include="$(IntelligenceXCoreProject)" Condition="'$(IntelligenceXCoreProject)'!='' AND Exists('$(IntelligenceXCoreProject)')" />
+    <!-- Monorepo-only core reference. -->
+    <ProjectReference Include="..\\..\\IntelligenceX\\IntelligenceX.csproj" />
   </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\IntelligenceX.Tools.Common\IntelligenceX.Tools.Common.csproj" />
   </ItemGroup>
+
   <ItemGroup>
-    <!-- Prefer local EventViewerX sources in dev; fall back to NuGet for CI/consumers. -->
-    <ProjectReference Include="$(PSEventViewerRoot)Sources\\EventViewerX\\EventViewerX.csproj" Condition="Exists('$(PSEventViewerRoot)Sources\\EventViewerX\\EventViewerX.csproj')" />
-    <PackageReference Include="EventViewerX" Version="3.3.0" Condition="!Exists('$(PSEventViewerRoot)Sources\\EventViewerX\\EventViewerX.csproj')" />
+    <!-- Prefer local EventViewerX sources; fall back to package for CI/consumers. -->
+    <ProjectReference Include="$(PSEventViewerRoot)$(IxToolsEventViewerProjectMarker)"
+                      Condition="Exists('$(PSEventViewerRoot)$(IxToolsEventViewerProjectMarker)')" />
+    <PackageReference Include="EventViewerX" Version="$(EventViewerXNuGetVersion)"
+                      Condition="!Exists('$(PSEventViewerRoot)$(IxToolsEventViewerProjectMarker)')" />
   </ItemGroup>
+
 </Project>

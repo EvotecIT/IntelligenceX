@@ -18,6 +18,8 @@ namespace IntelligenceX.Chat.Abstractions.Serialization;
 [JsonSerializable(typeof(ChatGptLoginPromptResponseRequest))]
 [JsonSerializable(typeof(CancelChatGptLoginRequest))]
 [JsonSerializable(typeof(ListToolsRequest))]
+[JsonSerializable(typeof(InvokeToolRequest))]
+[JsonSerializable(typeof(CancelChatRequest))]
 [JsonSerializable(typeof(ChatRequest))]
 [JsonSerializable(typeof(ChatRequestOptions))]
 [JsonSerializable(typeof(ErrorMessage))]
@@ -29,6 +31,7 @@ namespace IntelligenceX.Chat.Abstractions.Serialization;
 [JsonSerializable(typeof(ChatGptLoginPromptMessage))]
 [JsonSerializable(typeof(ChatGptLoginCompletedMessage))]
 [JsonSerializable(typeof(ToolListMessage))]
+[JsonSerializable(typeof(InvokeToolResultMessage))]
 [JsonSerializable(typeof(ChatStatusMessage))]
 [JsonSerializable(typeof(ChatDeltaMessage))]
 [JsonSerializable(typeof(ChatResultMessage))]
@@ -38,4 +41,5 @@ namespace IntelligenceX.Chat.Abstractions.Serialization;
 [JsonSerializable(typeof(ToolRunDto))]
 [JsonSerializable(typeof(SessionPolicyDto))]
 [JsonSerializable(typeof(ToolPackInfoDto))]
+[JsonSerializable(typeof(ToolPackSourceKind))]
 public sealed partial class ChatServiceJsonContext : JsonSerializerContext;

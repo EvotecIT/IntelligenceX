@@ -12,6 +12,8 @@ namespace IntelligenceX.Chat.Abstractions.Protocol;
 [JsonDerivedType(typeof(ChatGptLoginPromptResponseRequest), "chatgpt_login_prompt_response")]
 [JsonDerivedType(typeof(CancelChatGptLoginRequest), "chatgpt_login_cancel")]
 [JsonDerivedType(typeof(ListToolsRequest), "list_tools")]
+[JsonDerivedType(typeof(InvokeToolRequest), "invoke_tool")]
+[JsonDerivedType(typeof(CancelChatRequest), "chat_cancel")]
 [JsonDerivedType(typeof(ChatRequest), "chat")]
 public abstract record ChatServiceRequest {
     /// <summary>
@@ -85,6 +87,36 @@ public sealed record CancelChatGptLoginRequest : ChatServiceRequest {
 public sealed record ListToolsRequest : ChatServiceRequest;
 
 /// <summary>
+/// Invokes a specific registered tool directly (outside model chat flow).
+/// </summary>
+public sealed record InvokeToolRequest : ChatServiceRequest {
+    /// <summary>
+    /// Tool name to invoke.
+    /// </summary>
+    public required string ToolName { get; init; }
+
+    /// <summary>
+    /// Optional raw JSON object string for tool arguments.
+    /// </summary>
+    public string? ArgumentsJson { get; init; }
+
+    /// <summary>
+    /// Optional tool timeout override in seconds (0 = no timeout; null = service default).
+    /// </summary>
+    public int? ToolTimeoutSeconds { get; init; }
+}
+
+/// <summary>
+/// Cancels an in-progress chat request.
+/// </summary>
+public sealed record CancelChatRequest : ChatServiceRequest {
+    /// <summary>
+    /// Request id of the chat turn to cancel.
+    /// </summary>
+    public required string ChatRequestId { get; init; }
+}
+
+/// <summary>
 /// Submits a text chat message for the given (optional) thread.
 /// </summary>
 public sealed record ChatRequest : ChatServiceRequest {
@@ -126,4 +158,8 @@ public sealed record ChatRequestOptions {
     /// Optional per-tool timeout in seconds (null means use service default; 0 means no explicit timeout).
     /// </summary>
     public int? ToolTimeoutSeconds { get; init; }
+    /// <summary>
+    /// Optional tool names to disable for this request.
+    /// </summary>
+    public string[]? DisabledTools { get; init; }
 }

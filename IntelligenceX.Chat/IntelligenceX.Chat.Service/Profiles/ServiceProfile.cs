@@ -18,6 +18,8 @@ internal sealed class ServiceProfile {
     public int AdMaxResults { get; set; } = 1000;
     public bool EnablePowerShellPack { get; set; }
     public bool EnableTestimoXPack { get; set; } = true;
+    public bool EnableDefaultPluginPaths { get; set; } = true;
+    public List<string> PluginPaths { get; set; } = new();
 
     public string? InstructionsFile { get; set; }
     public int MaxTableRows { get; set; } = 20;

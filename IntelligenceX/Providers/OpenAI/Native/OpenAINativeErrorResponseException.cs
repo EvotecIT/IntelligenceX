@@ -16,12 +16,13 @@ internal sealed class OpenAINativeErrorResponseException : InvalidOperationExcep
         ErrorParam = string.IsNullOrWhiteSpace(param) ? null : param;
         StatusCode = statusCode;
         RawTextLength = rawText?.Length ?? 0;
-        RawText = includeRawText && !string.IsNullOrWhiteSpace(rawText) ? Truncate(rawText!, 8192) : string.Empty;
+        RawText = !string.IsNullOrWhiteSpace(rawText) ? Truncate(rawText!, 8192) : string.Empty;
 
         Data["openai:native_transport"] = true;
         Data["openai:status_code"] = (int)statusCode;
         Data["openai:raw_length"] = RawTextLength;
         Data["openai:raw_truncated"] = RawTextLength > 8192;
+        Data["openai:raw_attached"] = includeRawText;
         if (ErrorCode is not null) {
             Data["openai:error_code"] = ErrorCode;
         }

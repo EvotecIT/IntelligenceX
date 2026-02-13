@@ -28,11 +28,15 @@ internal sealed class ServiceOptions {
     public bool EnablePowerShellPack { get; set; }
     public bool PowerShellAllowWrite { get; set; }
     public bool EnableTestimoXPack { get; set; } = true;
+    public bool EnableDefaultPluginPaths { get; set; } = true;
+    public List<string> PluginPaths { get; } = new();
 
     public string? InstructionsFile { get; set; }
     public int MaxTableRows { get; set; } = 20;
     public int MaxSample { get; set; } = 10;
     public bool Redact { get; set; }
+    public bool ExitOnDisconnect { get; set; }
+    public int? ParentProcessId { get; set; }
 
     public static ServiceOptions Parse(string[] args, out string? error) {
         error = null;
@@ -192,6 +196,17 @@ internal sealed class ServiceOptions {
                 options.EnableTestimoXPack = false;
                 continue;
             }
+            if (arg is "--plugin-path") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                options.PluginPaths.Add(value!);
+                continue;
+            }
+            if (arg is "--no-default-plugin-paths") {
+                options.EnableDefaultPluginPaths = false;
+                continue;
+            }
             if (arg is "--max-table-rows") {
                 if (!TryConsume(args, ref i, out var value, out error)) {
                     return options;
@@ -216,6 +231,21 @@ internal sealed class ServiceOptions {
             }
             if (arg is "--redact") {
                 options.Redact = true;
+                continue;
+            }
+            if (arg is "--exit-on-disconnect") {
+                options.ExitOnDisconnect = true;
+                continue;
+            }
+            if (arg is "--parent-pid") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!int.TryParse(value, out var pid) || pid <= 0) {
+                    error = "--parent-pid must be a positive integer.";
+                    return options;
+                }
+                options.ParentProcessId = pid;
                 continue;
             }
 
@@ -264,9 +294,13 @@ internal sealed class ServiceOptions {
         Console.WriteLine("  --powershell-allow-write  Allow read_write intent in IX.PowerShell tools (default: off).");
         Console.WriteLine("  --enable-testimox-pack  Enable IX.TestimoX diagnostics tools (default: on).");
         Console.WriteLine("  --disable-testimox-pack Disable IX.TestimoX diagnostics tools.");
+        Console.WriteLine("  --plugin-path <PATH>    Additional folder-based plugin path (repeatable).");
+        Console.WriteLine("  --no-default-plugin-paths Disable default plugin paths (%LOCALAPPDATA% and app ./plugins).");
         Console.WriteLine("  --max-table-rows <N>    Max rows to show in table-like output (0 = no limit; default: 20).");
         Console.WriteLine("  --max-sample <N>        Max sample items to show from long lists (0 = no limit; default: 10).");
         Console.WriteLine("  --redact                Best-effort redact output for display/logging (default: off).");
+        Console.WriteLine("  --exit-on-disconnect    Exit when parent app disconnects (sidecar mode).");
+        Console.WriteLine("  --parent-pid <PID>      Parent process id used with --exit-on-disconnect.");
         Console.WriteLine("  -h, --help              Show help.");
     }
 
@@ -299,6 +333,11 @@ internal sealed class ServiceOptions {
         AdMaxResults = profile.AdMaxResults;
         EnablePowerShellPack = profile.EnablePowerShellPack;
         EnableTestimoXPack = profile.EnableTestimoXPack;
+        EnableDefaultPluginPaths = profile.EnableDefaultPluginPaths;
+        PluginPaths.Clear();
+        if (profile.PluginPaths != null && profile.PluginPaths.Count > 0) {
+            PluginPaths.AddRange(profile.PluginPaths);
+        }
 
         InstructionsFile = profile.InstructionsFile;
         MaxTableRows = profile.MaxTableRows;
@@ -319,6 +358,8 @@ internal sealed class ServiceOptions {
             AdMaxResults = AdMaxResults,
             EnablePowerShellPack = EnablePowerShellPack,
             EnableTestimoXPack = EnableTestimoXPack,
+            EnableDefaultPluginPaths = EnableDefaultPluginPaths,
+            PluginPaths = new List<string>(PluginPaths),
             InstructionsFile = InstructionsFile,
             MaxTableRows = MaxTableRows,
             MaxSample = MaxSample,
