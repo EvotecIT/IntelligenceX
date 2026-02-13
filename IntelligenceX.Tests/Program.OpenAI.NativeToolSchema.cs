@@ -196,6 +196,33 @@ internal static partial class Program {
         AssertEqual("Parameters", args[1]?.ToString() ?? string.Empty, "fallbackKind");
     }
 
+    private static void TestNativeToolSchemaFallbackRetriesOnMissingToolName() {
+        var ix = typeof(IntelligenceXClient).Assembly;
+        var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
+        var method = transportType.GetMethod(
+            "IsToolSchemaUnknownParameter",
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: new[] { typeof(Exception) },
+            modifiers: null);
+        AssertNotNull(method, "IsToolSchemaUnknownParameter(Exception)");
+
+        var structured = new InvalidOperationException("Request validation failed.");
+        structured.Data["openai:native_transport"] = true;
+        structured.Data["openai:error_code"] = "missing_required_parameter";
+        structured.Data["openai:error_param"] = "tools[0].name";
+        var ok = (bool)method!.Invoke(null, new object?[] { structured })!;
+        AssertEqual(true, ok, "structured missing tools[].name triggers fallback");
+
+        var messageOnly = new InvalidOperationException("Missing required parameter: 'tools[0].name'.");
+        ok = (bool)method!.Invoke(null, new object?[] { messageOnly })!;
+        AssertEqual(true, ok, "message missing tools[].name triggers fallback");
+
+        var unrelated = new InvalidOperationException("Missing required parameter: 'input'.");
+        ok = (bool)method!.Invoke(null, new object?[] { unrelated })!;
+        AssertEqual(false, ok, "unrelated missing parameter does not trigger fallback");
+    }
+
     private static void TestNativeToolSchemaSerializationSwitchesFieldName() {
         var ix = typeof(IntelligenceXClient).Assembly;
         var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;

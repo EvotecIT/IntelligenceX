@@ -115,6 +115,7 @@ public sealed partial class MainWindow : Window {
     private readonly SemaphoreSlim _connectGate = new(1, 1);
     private bool _webViewReady;
     private bool _startupInitialized;
+    private int _startupFlowState;
 
     private ChatServiceClient? _client;
     private string? _threadId;
@@ -221,18 +222,15 @@ public sealed partial class MainWindow : Window {
         Content = _webView;
         ConfigureWindowPlacement();
 
-        Activated += async (_, _) => {
-            try {
-                StartupLog.Write("MainWindow.Activated");
-                await EnsureWebViewInitializedAsync().ConfigureAwait(false);
-                await EnsureAppStateLoadedAsync().ConfigureAwait(false);
-                await EnsureStartupConnectedAsync().ConfigureAwait(false);
-                await EnsureFirstRunAuthenticatedAsync().ConfigureAwait(false);
-                await EnsureOnboardingStartedAsync().ConfigureAwait(false);
-                StartupLog.Write("MainWindow.Activated done");
-            } catch (Exception ex) {
-                StartupLog.Write("MainWindow.Activated failed: " + ex);
+        Activated += (_, _) => {
+            StartupLog.Write("MainWindow.Activated");
+            EnsureRestoredIfMinimized();
+
+            if (Interlocked.CompareExchange(ref _startupFlowState, 1, 0) != 0) {
+                return;
             }
+
+            _ = RunStartupFlowAsync();
         };
 
         Closed += async (_, _) => {
@@ -244,6 +242,33 @@ public sealed partial class MainWindow : Window {
             UninstallWindowMessageHook();
             _stateStore.Dispose();
         };
+    }
+
+    private async Task RunStartupFlowAsync() {
+        try {
+            StartupLog.Write("MainWindow.StartupFlow begin");
+            await EnsureWebViewInitializedAsync().ConfigureAwait(false);
+            await EnsureAppStateLoadedAsync().ConfigureAwait(false);
+            await EnsureStartupConnectedAsync().ConfigureAwait(false);
+            await EnsureFirstRunAuthenticatedAsync().ConfigureAwait(false);
+            await EnsureOnboardingStartedAsync().ConfigureAwait(false);
+            Interlocked.Exchange(ref _startupFlowState, 2);
+            StartupLog.Write("MainWindow.StartupFlow done");
+        } catch (Exception ex) {
+            Interlocked.Exchange(ref _startupFlowState, 0);
+            StartupLog.Write("MainWindow.StartupFlow failed: " + ex);
+        }
+    }
+
+    private void EnsureRestoredIfMinimized() {
+        try {
+            if (AppWindow?.Presenter is OverlappedPresenter overlapped
+                && overlapped.State == OverlappedPresenterState.Minimized) {
+                overlapped.Restore();
+            }
+        } catch {
+            // Ignore.
+        }
     }
 
     private void ConfigureWindowPlacement() {

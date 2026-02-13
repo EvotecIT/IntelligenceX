@@ -206,9 +206,13 @@ public sealed partial class MainWindow : Window {
     private async Task<bool> SwitchAccountAsync() {
         var authPath = ResolveAuthPath();
         if (!TryDeleteAuthStore(authPath, out var existed, out var error)) {
-            AppendSystem($"Could not clear local auth cache ({authPath}): {error}");
+            AppendSystem("Couldn't clear the local sign-in cache. We'll still try to sign in again.");
+            if (VerboseServiceLogs || _debugMode) {
+                AppendSystem($"Auth cache path: {authPath}");
+                AppendSystem("Cache clear detail: " + error);
+            }
         } else if (existed) {
-            AppendSystem($"Cleared local auth cache ({authPath}).");
+            AppendSystem("Sign-in cache cleared. You can now choose another account.");
         }
 
         await RestartSidecarAsync().ConfigureAwait(false);

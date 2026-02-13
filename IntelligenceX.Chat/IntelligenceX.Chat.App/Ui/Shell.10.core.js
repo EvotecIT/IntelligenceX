@@ -951,9 +951,9 @@
       return pack.name;
     }
 
-    if (packId === "ad") return "Active Directory";
+    if (packId === "ad") return "ADPlayground";
     if (packId === "eventlog") return "Event Log";
-    if (packId === "system") return "System";
+    if (packId === "system") return "ComputerX";
     if (packId === "fs") return "File System";
     if (packId === "email") return "Email";
     if (packId === "testimox") return "TestimoX";

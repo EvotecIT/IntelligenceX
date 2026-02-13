@@ -19,13 +19,10 @@ internal sealed partial class OpenAINativeTransport {
             if (current is OpenAINativeErrorResponseException native) {
                 if (native.StatusCode == System.Net.HttpStatusCode.BadRequest ||
                     (int)native.StatusCode == 422 /* Unprocessable Entity (not available in older TFMs) */) {
-                    if (!string.IsNullOrWhiteSpace(native.ErrorCode) &&
-                        native.ErrorCode!.IndexOf("unknown_parameter", StringComparison.OrdinalIgnoreCase) >= 0) {
-                        var param = native.ErrorParam;
-                        if (!string.IsNullOrWhiteSpace(param) &&
-                            param!.TrimStart().StartsWith("tools", StringComparison.OrdinalIgnoreCase)) {
-                            return true;
-                        }
+                    var code = native.ErrorCode;
+                    var param = native.ErrorParam;
+                    if (IsToolSchemaRetryableValidationError(code, param, native.Message)) {
+                        return true;
                     }
                 }
             }
@@ -35,10 +32,7 @@ internal sealed partial class OpenAINativeTransport {
                 if (ioe.Data?["openai:native_transport"] is bool marker && marker) {
                     var code = ioe.Data?["openai:error_code"] as string;
                     var param = ioe.Data?["openai:error_param"] as string;
-                    if (!string.IsNullOrWhiteSpace(code) &&
-                        code!.IndexOf("unknown_parameter", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                        !string.IsNullOrWhiteSpace(param) &&
-                        param!.TrimStart().StartsWith("tools", StringComparison.OrdinalIgnoreCase)) {
+                    if (IsToolSchemaRetryableValidationError(code, param, ioe.Message)) {
                         return true;
                     }
                 }
@@ -48,6 +42,7 @@ internal sealed partial class OpenAINativeTransport {
                 if (!string.IsNullOrWhiteSpace(msg) &&
                     (msg!.IndexOf("unknown parameter", StringComparison.OrdinalIgnoreCase) >= 0 ||
                      msg.IndexOf("unknown field", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                     msg.IndexOf("missing required parameter", StringComparison.OrdinalIgnoreCase) >= 0 ||
                      msg.IndexOf("unrecognized request argument", StringComparison.OrdinalIgnoreCase) >= 0) &&
                     msg.IndexOf("tools", StringComparison.OrdinalIgnoreCase) >= 0) {
                     return true;
@@ -65,6 +60,34 @@ internal sealed partial class OpenAINativeTransport {
             if (current.InnerException is not null) {
                 pending.Push(current.InnerException);
             }
+        }
+
+        return false;
+    }
+
+    private static bool IsToolSchemaRetryableValidationError(string? code, string? param, string? message) {
+        if (string.IsNullOrWhiteSpace(param) ||
+            !param!.TrimStart().StartsWith("tools", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(code)) {
+            if (code!.IndexOf("unknown_parameter", StringComparison.OrdinalIgnoreCase) >= 0) {
+                return true;
+            }
+
+            if ((code.IndexOf("missing_required_parameter", StringComparison.OrdinalIgnoreCase) >= 0
+                 || code.IndexOf("required_parameter_missing", StringComparison.OrdinalIgnoreCase) >= 0)
+                && param.IndexOf(".name", StringComparison.OrdinalIgnoreCase) >= 0) {
+                return true;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(message)
+            && message!.IndexOf("missing required parameter", StringComparison.OrdinalIgnoreCase) >= 0
+            && message.IndexOf("tools", StringComparison.OrdinalIgnoreCase) >= 0
+            && message.IndexOf(".name", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return true;
         }
 
         return false;

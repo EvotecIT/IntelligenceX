@@ -573,7 +573,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task RestartSidecarAsync() {
-        AppendSystem("Restarting sidecar...");
+        AppendSystem("Refreshing background connection...");
         _isConnected = false;
         _isAuthenticated = false;
         _loginInProgress = false;
