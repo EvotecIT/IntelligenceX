@@ -10,7 +10,8 @@
       "id": "build-library",
       "project": "../IntelligenceX/IntelligenceX.csproj",
       "configuration": "Release",
-      "framework": "net8.0"
+      "framework": "net8.0",
+      "skipIfProjectMissing": true
     },
     {
       "task": "build",
