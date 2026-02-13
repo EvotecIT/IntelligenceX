@@ -348,6 +348,39 @@ body.options-open .options-panel {
   color: var(--ix-text-muted);
 }
 
+.options-policy-list-wrap {
+  margin-top: 8px;
+  border: 1px solid rgba(58, 96, 144, 0.45);
+  border-radius: 8px;
+  background: rgba(9, 33, 60, 0.48);
+  padding: 8px;
+}
+
+.options-policy-list-warn {
+  border-color: rgba(255, 182, 92, 0.45);
+  background: rgba(110, 70, 14, 0.22);
+}
+
+.options-policy-list-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ix-text-secondary);
+}
+
+.options-policy-list {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.options-policy-list li {
+  font-size: 10.8px;
+  color: var(--ix-text-secondary);
+  word-break: break-word;
+}
+
 .options-actions {
   display: flex;
   gap: 8px;
