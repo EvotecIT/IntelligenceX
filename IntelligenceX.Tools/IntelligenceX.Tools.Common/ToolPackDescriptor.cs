@@ -28,5 +28,9 @@ public sealed record ToolPackDescriptor {
     /// Optional description used in UI/help.
     /// </summary>
     public string? Description { get; init; }
-}
 
+    /// <summary>
+    /// Optional provenance classification for pack origin (for example: builtin/open_source/closed_source).
+    /// </summary>
+    public string? SourceKind { get; init; }
+}

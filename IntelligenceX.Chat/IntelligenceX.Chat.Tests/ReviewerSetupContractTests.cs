@@ -20,19 +20,19 @@ public sealed class ReviewerSetupContractTests {
         ToolPackBootstrap.RegisterAll(registry, packs);
 
         var definitions = registry.GetDefinitions();
-        var toolDefinition = Assert.Single(definitions.Where(static d =>
-            string.Equals(d.Name, "reviewer_setup_pack_info", StringComparison.Ordinal)));
+        var toolDefinition = Assert.Single(definitions, static d =>
+            string.Equals(d.Name, "reviewer_setup_pack_info", StringComparison.Ordinal));
         Assert.Equal("reviewer_setup_pack_info", toolDefinition.Name);
-        var verifyDefinition = Assert.Single(definitions.Where(static d =>
-            string.Equals(d.Name, "reviewer_setup_contract_verify", StringComparison.Ordinal)));
+        var verifyDefinition = Assert.Single(definitions, static d =>
+            string.Equals(d.Name, "reviewer_setup_contract_verify", StringComparison.Ordinal));
         Assert.Equal("reviewer_setup_contract_verify", verifyDefinition.Name);
 
         Assert.True(registry.TryGet("reviewer_setup_pack_info", out var tool));
-        var response = await tool.InvokeAsync(arguments: null, CancellationToken.None).ConfigureAwait(false);
+        var response = await tool.InvokeAsync(arguments: null, CancellationToken.None);
 
         using var doc = JsonDocument.Parse(response);
         var root = doc.RootElement;
-        Assert.True(root.TryGetProperty("ok", out var okNode) && okNode.ValueKind == JsonValueKind.True);
+        Assert.True(root.TryGetProperty("ok", out var okNode) && okNode.ValueKind == System.Text.Json.JsonValueKind.True);
         Assert.Contains("reviewer_setup_pack_info", ReadStringArray(root.GetProperty("tools")));
         Assert.Contains("reviewer_setup_contract_verify", ReadStringArray(root.GetProperty("tools")));
 
@@ -97,7 +97,7 @@ public sealed class ReviewerSetupContractTests {
                 .Add("autodetect_contract_fingerprint", SetupOnboardingContract.GetContractFingerprint(includeMaintenancePath: true))
                 .Add("pack_contract_version", setupHints.GetProperty("contract_version").GetString())
                 .Add("pack_contract_fingerprint", setupHints.GetProperty("contract_fingerprint").GetString()),
-            CancellationToken.None).ConfigureAwait(false);
+            CancellationToken.None);
 
         using var verifyDoc = JsonDocument.Parse(verifyResponse);
         Assert.True(verifyDoc.RootElement.GetProperty("ok").GetBoolean());

@@ -34,9 +34,11 @@ internal static partial class Program {
         failed += Run("Tool call parsing", TestToolCallParsing);
         failed += Run("Tool call invalid JSON", TestToolCallParsingInvalidJson);
         failed += Run("Tool output input", TestToolOutputInput);
+#if !NET472
         failed += Run("Tool output envelope error omits meta when null", TestToolOutputEnvelopeErrorOmitsMetaWhenNull);
         failed += Run("Tool output envelope error includes meta when provided", TestToolOutputEnvelopeErrorIncludesMetaWhenProvided);
         failed += Run("Tool output envelope error string includes meta when provided", TestToolOutputEnvelopeErrorStringIncludesMetaWhenProvided);
+#endif
         failed += Run("Turn response_id parsing", TestTurnResponseIdParsing);
         failed += Run("Turn usage parsing", TestTurnUsageParsing);
         failed += Run("Thread usage summary parsing", TestThreadUsageSummaryParsing);

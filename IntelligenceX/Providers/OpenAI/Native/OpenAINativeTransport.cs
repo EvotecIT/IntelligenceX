@@ -499,7 +499,13 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             if (string.IsNullOrWhiteSpace(candidate)) {
                 return;
             }
-            var normalized = NormalizeModelId(candidate, candidate);
+
+            var fallback = candidate!.Trim();
+            if (fallback.Length == 0) {
+                return;
+            }
+
+            var normalized = NormalizeModelId(fallback, fallback);
             if (string.IsNullOrWhiteSpace(normalized)) {
                 return;
             }
