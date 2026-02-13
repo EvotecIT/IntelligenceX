@@ -110,21 +110,10 @@
       "dependsOn": "build-llms",
       "siteRoot": "./_site",
       "baseUrl": "https://intelligencex.dev",
+      "entriesJson": "./data/sitemap.entries.json",
+      "json": true,
       "html": true,
-      "htmlTitle": "IntelligenceX Sitemap",
-      "entries": [
-        { "path": "/", "priority": "1.0", "changefreq": "weekly" },
-        { "path": "/docs/getting-started/", "priority": "0.9", "changefreq": "weekly" },
-        { "path": "/docs/security/", "priority": "0.8", "changefreq": "monthly" },
-        { "path": "/faq/", "priority": "0.7", "changefreq": "monthly" },
-        { "path": "/changelog/", "priority": "0.6", "changefreq": "weekly" },
-        { "path": "/docs/", "priority": "0.9", "changefreq": "weekly" },
-        { "path": "/docs/reviewer/overview/", "priority": "0.9", "changefreq": "weekly" },
-        { "path": "/docs/cli/overview/", "priority": "0.8", "changefreq": "weekly" },
-        { "path": "/docs/library/overview/", "priority": "0.8", "changefreq": "weekly" },
-        { "path": "/docs/powershell/overview/", "priority": "0.8", "changefreq": "weekly" },
-        { "path": "/api/", "priority": "0.8", "changefreq": "weekly" }
-      ]
+      "htmlTitle": "IntelligenceX Sitemap"
     },
     {
       "task": "optimize",
