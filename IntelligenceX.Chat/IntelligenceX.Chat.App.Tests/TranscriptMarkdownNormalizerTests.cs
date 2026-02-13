@@ -31,7 +31,19 @@ public sealed class TranscriptMarkdownNormalizerTests {
 
         var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
 
-        Assert.Contains("**Status: HEALTHY**\n- **Servers checked:** 5\n- **Replication edges:** 62", normalized);
+        Assert.Contains("**Status: HEALTHY**\n- **Servers checked:** 5 - **Replication edges:** 62", normalized);
+    }
+
+    /// <summary>
+    /// Ensures inline hyphen prose is not treated as a collapsed bullet list.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_DoesNotSplitInlineHyphenProse() {
+        var text = "Health note: foo - **bar** should stay inline.";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal(text, normalized);
     }
 
     /// <summary>

@@ -19,7 +19,7 @@ internal static class TranscriptMarkdownNormalizer {
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex CollapsedBulletRegex = new(
-        @"(?<!\n)\s-\s\*\*",
+        @"(?<=\*\*)\s-\s\*\*",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public static string NormalizeForRendering(string? text) {
