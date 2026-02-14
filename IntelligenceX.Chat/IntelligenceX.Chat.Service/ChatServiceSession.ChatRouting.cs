@@ -56,7 +56,8 @@ internal sealed partial class ChatServiceSession {
         var weightedToolRouting = request.Options?.WeightedToolRouting ?? true;
         var maxCandidateTools = request.Options?.MaxCandidateTools;
         var userRequest = ExtractPrimaryUserRequest(request.Text);
-        RememberUserIntent(threadId, userRequest);
+        var userIntent = ExtractIntentUserText(request.Text);
+        RememberUserIntent(threadId, userIntent);
         var routedUserRequest = ExpandContinuationUserRequest(threadId, userRequest);
         var usedContinuationSubset = false;
         if (weightedToolRouting && toolDefs.Count > 0) {

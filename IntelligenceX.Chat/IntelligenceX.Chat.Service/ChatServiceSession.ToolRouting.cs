@@ -445,6 +445,33 @@ internal sealed partial class ChatServiceSession {
         return NormalizeRoutingUserText(text);
     }
 
+    private static string ExtractIntentUserText(string requestText) {
+        var text = (requestText ?? string.Empty).Trim();
+        if (text.Length == 0) {
+            return string.Empty;
+        }
+
+        var match = UserRequestSectionRegex.Match(text);
+        if (match.Success && match.Groups.Count > 1) {
+            var value = match.Groups["value"].Value;
+            if (!string.IsNullOrWhiteSpace(value)) {
+                text = value.Trim();
+            }
+        }
+
+        // Keep intent relatively faithful while still removing markdown delimiters.
+        var withoutInlineDelimiters = StripInlineCode(text);
+        var strippedFences = StripCodeFences(withoutInlineDelimiters);
+        var collapsed = CollapseWhitespace(strippedFences);
+        if (collapsed.Length > 0) {
+            return collapsed;
+        }
+
+        // If stripping fences wiped out everything (e.g., an all-code message), keep a compact version of the
+        // original content but remove fence markers so follow-ups can still anchor on *some* context.
+        return CollapseWhitespace(withoutInlineDelimiters.Replace("```", " ", StringComparison.Ordinal));
+    }
+
     private static string NormalizeRoutingUserText(string text) {
         var normalized = (text ?? string.Empty).Trim();
         if (normalized.Length == 0) {

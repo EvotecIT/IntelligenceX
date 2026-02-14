@@ -26,6 +26,9 @@ public sealed class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ExtractPrimaryUserRequestMethod =
         typeof(ChatServiceSession).GetMethod("ExtractPrimaryUserRequest", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ExtractPrimaryUserRequest not found.");
+    private static readonly MethodInfo ExtractIntentUserTextMethod =
+        typeof(ChatServiceSession).GetMethod("ExtractIntentUserText", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ExtractIntentUserText not found.");
     private static readonly MethodInfo RememberUserIntentMethod =
         typeof(ChatServiceSession).GetMethod("RememberUserIntent", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("RememberUserIntent not found.");
@@ -207,6 +210,23 @@ public sealed class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExtractPrimaryUserRequest_DropsTrailingTextInsideUnclosedFence() {
+        var input = """
+            Please run the checks first.
+            ```powershell
+            Get-EventLog -LogName System
+            then run now
+            """;
+
+        var result = ExtractPrimaryUserRequestMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("Please run the checks first.", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Get-EventLog", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("then run now", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ExtractPrimaryUserRequest_ReturnsEmptyWhenFenceUnclosedAtStart() {
         var input = """
             ```powershell
@@ -241,6 +261,21 @@ public sealed class ChatServiceRoutingTrimTests {
         var text = Assert.IsType<string>(result);
 
         Assert.Equal(string.Empty, text);
+    }
+
+    [Fact]
+    public void ExtractIntentUserText_RemovesFenceMarkersButKeepsContent() {
+        var input = """
+            ```powershell
+            Get-EventLog -LogName System
+            ```
+            """;
+
+        var result = ExtractIntentUserTextMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("Get-EventLog -LogName System", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("```", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
