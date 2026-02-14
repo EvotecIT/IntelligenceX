@@ -66,6 +66,7 @@ internal static class ReviewConfigLoader {
         ApplyLength(reviewObj, settings);
         ApplyContext(reviewObj, settings);
         ApplyCodex(root, settings);
+        ApplyOpenAiCompatible(reviewObj, settings);
         ApplyCopilot(root, settings);
         ApplyAzureDevOps(reviewObj, settings);
         ApplyCleanup(root, settings);
@@ -331,6 +332,17 @@ internal static class ReviewConfigLoader {
         settings.CodexPath = codex.GetString("path") ?? settings.CodexPath;
         settings.CodexArgs = codex.GetString("args") ?? settings.CodexArgs;
         settings.CodexWorkingDirectory = codex.GetString("workingDirectory") ?? settings.CodexWorkingDirectory;
+    }
+
+    private static void ApplyOpenAiCompatible(JsonObject reviewObj, ReviewSettings settings) {
+        var openAi = reviewObj.GetObject("openaiCompatible") ?? reviewObj.GetObject("openAiCompatible");
+        if (openAi is null) {
+            return;
+        }
+        settings.OpenAICompatibleBaseUrl = openAi.GetString("baseUrl") ?? settings.OpenAICompatibleBaseUrl;
+        settings.OpenAICompatibleApiKeyEnv = openAi.GetString("apiKeyEnv") ?? settings.OpenAICompatibleApiKeyEnv;
+        settings.OpenAICompatibleApiKey = openAi.GetString("apiKey") ?? settings.OpenAICompatibleApiKey;
+        settings.OpenAICompatibleTimeoutSeconds = ReadInt(openAi, "timeoutSeconds", settings.OpenAICompatibleTimeoutSeconds);
     }
 
     private static void ApplyCopilot(JsonObject root, ReviewSettings settings) {

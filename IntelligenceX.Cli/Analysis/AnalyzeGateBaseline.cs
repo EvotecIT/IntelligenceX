@@ -207,6 +207,66 @@ internal static class AnalyzeGateBaseline {
         return true;
     }
 
+    public static bool TryLoadDuplicationFileBaselines(string path, out Dictionary<string, DuplicationFileBaseline> baselines,
+        out string? error) {
+        baselines = new Dictionary<string, DuplicationFileBaseline>(StringComparer.OrdinalIgnoreCase);
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
+            error = $"baseline file not found: {path}";
+            return false;
+        }
+
+        JsonObject? root;
+        try {
+            root = JsonLite.Parse(File.ReadAllText(path))?.AsObject();
+        } catch (Exception ex) {
+            error = $"could not parse baseline file ({FormatExceptionMessage(ex)})";
+            return false;
+        }
+        if (root is null) {
+            error = "baseline file root must be a JSON object";
+            return false;
+        }
+
+        var items = root.GetArray("items");
+        if (items is null || items.Count == 0) {
+            return true;
+        }
+
+        foreach (var item in items) {
+            var obj = item.AsObject();
+            if (obj is null) {
+                continue;
+            }
+            var findingPath = (obj.GetString("path") ?? string.Empty).Trim().Replace('\\', '/');
+            if (!findingPath.Equals(".intelligencex/duplication-file", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            var ruleId = (obj.GetString("ruleId") ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(ruleId)) {
+                continue;
+            }
+            var fingerprint = (obj.GetString("fingerprint") ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(fingerprint)) {
+                continue;
+            }
+            if (!TryParseDuplicationFileFingerprint(fingerprint, out var filePath, out var duplicated, out var significant,
+                    out var windowLines, out var scope)) {
+                continue;
+            }
+            if (string.IsNullOrWhiteSpace(filePath) || significant <= 0) {
+                continue;
+            }
+            var percent = Math.Round((duplicated * 100.0) / significant, 2, MidpointRounding.AwayFromZero);
+            var key = $"{ruleId}|{scope}|{filePath}";
+            baselines[key] = new DuplicationFileBaseline(ruleId, scope, filePath, significant, duplicated, percent, windowLines,
+                fingerprint);
+        }
+
+        return true;
+    }
+
     private static bool TryParseDuplicationOverallFingerprint(string fingerprint, out int duplicatedLines, out int significantLines,
         out string scope) {
         duplicatedLines = 0;
@@ -228,6 +288,43 @@ internal static class AnalyzeGateBaseline {
 
         // Default scope is "all" unless an explicit suffix exists.
         for (var i = 4; i < tokens.Length - 1; i++) {
+            if (tokens[i].Equals("scope", StringComparison.OrdinalIgnoreCase) &&
+                tokens[i + 1].Equals("changed-files", StringComparison.OrdinalIgnoreCase)) {
+                scope = "changed-files";
+                break;
+            }
+        }
+        return true;
+    }
+
+    private static bool TryParseDuplicationFileFingerprint(string fingerprint, out string path, out int duplicatedLines,
+        out int significantLines, out int windowLines, out string scope) {
+        path = string.Empty;
+        duplicatedLines = 0;
+        significantLines = 0;
+        windowLines = 0;
+        scope = "all";
+
+        var tokens = (fingerprint ?? string.Empty).Split(':');
+        if (tokens.Length < 6) {
+            return false;
+        }
+        if (!tokens[1].Equals("file", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        path = (tokens[2] ?? string.Empty).Trim().Replace('\\', '/');
+        if (!int.TryParse(tokens[3], out duplicatedLines) || duplicatedLines < 0) {
+            return false;
+        }
+        if (!int.TryParse(tokens[4], out significantLines) || significantLines < 0) {
+            return false;
+        }
+        if (!int.TryParse(tokens[5], out windowLines) || windowLines < 0) {
+            return false;
+        }
+
+        for (var i = 6; i < tokens.Length - 1; i++) {
             if (tokens[i].Equals("scope", StringComparison.OrdinalIgnoreCase) &&
                 tokens[i + 1].Equals("changed-files", StringComparison.OrdinalIgnoreCase)) {
                 scope = "changed-files";
@@ -312,5 +409,15 @@ internal static class AnalyzeGateBaseline {
         int SignificantLines,
         int DuplicatedLines,
         double DuplicatedPercent,
+        string Fingerprint);
+
+    public sealed record DuplicationFileBaseline(
+        string RuleId,
+        string Scope,
+        string Path,
+        int SignificantLines,
+        int DuplicatedLines,
+        double DuplicatedPercent,
+        int WindowLines,
         string Fingerprint);
 }

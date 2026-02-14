@@ -132,6 +132,13 @@ internal static partial class Program {
         AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("Copilot", out var copilotMixedCase), "provider copilot mixed case alias");
         AssertEqual(ReviewProvider.Copilot, copilotMixedCase, "provider copilot mixed case value");
 
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("openai-compatible", out var openaiCompat),
+            "provider openai-compatible alias");
+        AssertEqual(ReviewProvider.OpenAICompatible, openaiCompat, "provider openai-compatible value");
+
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("ollama", out var ollama), "provider ollama alias");
+        AssertEqual(ReviewProvider.OpenAICompatible, ollama, "provider ollama value");
+
         AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias(null, out _), "provider null alias unsupported");
         AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias("", out _), "provider empty alias unsupported");
         AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias("   ", out _), "provider whitespace alias unsupported");
@@ -152,6 +159,13 @@ internal static partial class Program {
         AssertEqual(false, copilot.RequiresOpenAiAuthStore, "copilot auth");
         AssertEqual(true, copilot.SupportsStreaming, "copilot streaming");
         AssertEqual(true, copilot.MaxRecommendedRetryCount > 0, "copilot retry limit");
+
+        var compatible = ReviewProviderContracts.Get(ReviewProvider.OpenAICompatible);
+        AssertEqual(false, compatible.SupportsUsageApi, "openai-compatible usage api");
+        AssertEqual(false, compatible.SupportsReasoningControls, "openai-compatible reasoning");
+        AssertEqual(false, compatible.RequiresOpenAiAuthStore, "openai-compatible auth");
+        AssertEqual(false, compatible.SupportsStreaming, "openai-compatible streaming");
+        AssertEqual(true, compatible.MaxRecommendedRetryCount > 0, "openai-compatible retry limit");
 
         AssertThrows<NotSupportedException>(() => ReviewProviderContracts.Get((ReviewProvider)999), "unknown provider contract");
     }

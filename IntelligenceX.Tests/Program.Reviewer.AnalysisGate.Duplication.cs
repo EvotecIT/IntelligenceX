@@ -722,6 +722,140 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeGateDuplicationFileDeltaBlocksWhenIncreaseExceedsAllowed() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-dup-file-delta-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            SeedMinimalGateCatalog(temp);
+            Directory.CreateDirectory(Path.Combine(temp, "artifacts"));
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+
+            WriteEmptyFindings(Path.Combine(temp, "artifacts", "intelligencex.findings.json"));
+            WriteDuplicationMetrics(
+                Path.Combine(temp, "artifacts", "intelligencex.duplication.json"),
+                duplicatedPercent: 35,
+                duplicatedLines: 35,
+                significantLines: 100,
+                firstLine: 12,
+                fingerprint: "ixdup-fp-file-delta",
+                findingPath: "src/test.cs");
+
+            // Baseline snapshot at 20% per-file duplication.
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "analysis-baseline.json"), """
+{
+  "schema": "intelligencex.analysis-baseline.v1",
+  "items": [
+    {
+      "path": ".intelligencex/duplication-file",
+      "line": 0,
+      "severity": "info",
+      "ruleId": "IXDUP001",
+      "tool": "IntelligenceX.Maintainability",
+      "fingerprint": "IXDUP001:file:src/test.cs:20:100:8"
+    }
+  ]
+}
+""");
+
+            var configPath = Path.Combine(temp, ".intelligencex", "reviewer.json");
+            File.WriteAllText(configPath, """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["all-50"],
+    "gate": {
+      "enabled": true,
+      "baselinePath": ".intelligencex/analysis-baseline.json",
+      "failOnUnavailable": true,
+      "duplication": {
+        "enabled": true,
+        "metricsPath": "artifacts/intelligencex.duplication.json",
+        "ruleIds": ["IXDUP001"],
+        "maxFilePercentIncrease": 5,
+        "failOnUnavailable": true
+      }
+    },
+    "results": { "inputs": ["artifacts/intelligencex.findings.json"] }
+  }
+}
+""");
+
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunner.RunAsync(new[] {
+                "gate",
+                "--workspace", temp,
+                "--config", configPath
+            }).GetAwaiter().GetResult();
+            AssertEqual(2, exit, "analyze gate duplication per-file delta blocks");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalyzeGateWriteBaselineIncludesDuplicationFileSnapshotsWhenConfigured() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-dup-baseline-files-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            SeedMinimalGateCatalog(temp);
+            Directory.CreateDirectory(Path.Combine(temp, "artifacts"));
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+
+            WriteEmptyFindings(Path.Combine(temp, "artifacts", "intelligencex.findings.json"));
+            WriteDuplicationMetrics(
+                Path.Combine(temp, "artifacts", "intelligencex.duplication.json"),
+                duplicatedPercent: 10,
+                duplicatedLines: 10,
+                significantLines: 100,
+                firstLine: 12,
+                fingerprint: "ixdup-fp-baseline-files");
+
+            var configPath = Path.Combine(temp, ".intelligencex", "reviewer.json");
+            File.WriteAllText(configPath, """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["all-50"],
+    "gate": {
+      "enabled": true,
+      "failOnUnavailable": true,
+      "duplication": {
+        "enabled": true,
+        "metricsPath": "artifacts/intelligencex.duplication.json",
+        "ruleIds": ["IXDUP001"],
+        "maxFilePercentIncrease": 1,
+        "failOnUnavailable": true
+      }
+    },
+    "results": { "inputs": ["artifacts/intelligencex.findings.json"] }
+  }
+}
+""");
+
+            var baselinePath = Path.Combine(temp, ".intelligencex", "analysis-baseline.json");
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunner.RunAsync(new[] {
+                "gate",
+                "--workspace", temp,
+                "--config", configPath,
+                "--write-baseline", baselinePath
+            }).GetAwaiter().GetResult();
+            AssertEqual(0, exit, "analyze gate write baseline includes duplication file snapshots exit");
+            AssertEqual(true, File.Exists(baselinePath), "analyze gate write baseline file snapshots baseline exists");
+            var content = File.ReadAllText(baselinePath);
+            AssertContainsText(content, ".intelligencex/duplication-file", "analyze gate write baseline includes duplication file snapshots");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalyzeGateWriteBaselineIncludesDuplicationOverallSnapshot() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-dup-baseline-snapshot-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

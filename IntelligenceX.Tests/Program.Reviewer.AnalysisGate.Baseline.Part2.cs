@@ -172,9 +172,61 @@ internal static partial class Program {
         AssertNotNull(maxFilePercent, "reviewer schema duplication maxFilePercent property");
         AssertEqual("number", maxFilePercent!.GetString("type") ?? string.Empty, "reviewer schema duplication maxFilePercent type");
 
+        var maxFilePercentIncrease = duplicationProps.GetObject("maxFilePercentIncrease");
+        AssertNotNull(maxFilePercentIncrease, "reviewer schema duplication maxFilePercentIncrease property");
+        AssertEqual("number", maxFilePercentIncrease!.GetString("type") ?? string.Empty,
+            "reviewer schema duplication maxFilePercentIncrease type");
+
         var scope = duplicationProps.GetObject("scope");
         AssertNotNull(scope, "reviewer schema duplication scope property");
         AssertEqual("string", scope!.GetString("type") ?? string.Empty, "reviewer schema duplication scope type");
+    }
+
+    private static void TestReviewerSchemaIncludesOpenAiCompatibleProviderAndConfig() {
+        var schemaPath = Path.Combine(ResolveWorkspaceRoot(), "Schemas", "reviewer.schema.json");
+        AssertEqual(true, File.Exists(schemaPath), "reviewer schema exists");
+        var root = JsonLite.Parse(File.ReadAllText(schemaPath))?.AsObject();
+        AssertNotNull(root, "reviewer schema root");
+
+        var review = root!.GetObject("properties")?.GetObject("review");
+        AssertNotNull(review, "reviewer schema review node");
+        var reviewProps = review!.GetObject("properties");
+        AssertNotNull(reviewProps, "reviewer schema review.properties");
+
+        var provider = reviewProps!.GetObject("provider");
+        AssertNotNull(provider, "reviewer schema review.provider property");
+        var providerEnum = provider!.GetArray("enum");
+        AssertNotNull(providerEnum, "reviewer schema review.provider enum");
+
+        var providerValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in providerEnum!) {
+            var value = item?.AsString();
+            if (!string.IsNullOrWhiteSpace(value)) {
+                providerValues.Add(value);
+            }
+        }
+
+        AssertEqual(true, providerValues.Contains("openai-compatible"), "reviewer schema provider includes openai-compatible");
+        AssertEqual(true, providerValues.Contains("ollama"), "reviewer schema provider includes ollama");
+
+        var openAiCompatible = reviewProps.GetObject("openaiCompatible");
+        AssertNotNull(openAiCompatible, "reviewer schema openaiCompatible property");
+        AssertEqual("object", openAiCompatible!.GetString("type") ?? string.Empty, "reviewer schema openaiCompatible type");
+        var openAiCompatibleProps = openAiCompatible.GetObject("properties");
+        AssertNotNull(openAiCompatibleProps, "reviewer schema openaiCompatible.properties");
+
+        var baseUrl = openAiCompatibleProps!.GetObject("baseUrl");
+        AssertNotNull(baseUrl, "reviewer schema openaiCompatible baseUrl property");
+        AssertEqual("string", baseUrl!.GetString("type") ?? string.Empty, "reviewer schema openaiCompatible baseUrl type");
+
+        var apiKeyEnv = openAiCompatibleProps.GetObject("apiKeyEnv");
+        AssertNotNull(apiKeyEnv, "reviewer schema openaiCompatible apiKeyEnv property");
+        AssertEqual("string", apiKeyEnv!.GetString("type") ?? string.Empty, "reviewer schema openaiCompatible apiKeyEnv type");
+
+        var timeoutSeconds = openAiCompatibleProps.GetObject("timeoutSeconds");
+        AssertNotNull(timeoutSeconds, "reviewer schema openaiCompatible timeoutSeconds property");
+        AssertEqual("integer", timeoutSeconds!.GetString("type") ?? string.Empty,
+            "reviewer schema openaiCompatible timeoutSeconds type");
     }
 }
 #endif

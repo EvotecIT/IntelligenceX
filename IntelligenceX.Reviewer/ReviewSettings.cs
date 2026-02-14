@@ -31,7 +31,8 @@ internal enum AzureDevOpsAuthScheme {
 
 internal enum ReviewProvider {
     OpenAI,
-    Copilot
+    Copilot,
+    OpenAICompatible
 }
 
 internal sealed partial class ReviewSettings {
@@ -105,6 +106,24 @@ internal sealed partial class ReviewSettings {
     public bool ReviewUsageBudgetAllowWeeklyLimit { get; set; } = true;
     public bool StructuredFindings { get; set; }
     public OpenAITransportKind OpenAITransport { get; set; } = OpenAITransportKind.AppServer;
+    /// <summary>
+    /// Base URL for an OpenAI-compatible HTTP endpoint (for example a local gateway or other provider).
+    /// When <see cref="Provider"/> is <see cref="ReviewProvider.OpenAICompatible"/>, this value must be set.
+    /// </summary>
+    public string? OpenAICompatibleBaseUrl { get; set; }
+    /// <summary>
+    /// Environment variable name holding the OpenAI-compatible API key.
+    /// When set, this is preferred over <see cref="OpenAICompatibleApiKey"/>.
+    /// </summary>
+    public string? OpenAICompatibleApiKeyEnv { get; set; }
+    /// <summary>
+    /// API key for the OpenAI-compatible HTTP endpoint (not recommended; prefer env).
+    /// </summary>
+    public string? OpenAICompatibleApiKey { get; set; }
+    /// <summary>
+    /// Timeout for OpenAI-compatible HTTP requests.
+    /// </summary>
+    public int OpenAICompatibleTimeoutSeconds { get; set; } = 60;
     /// <summary>
     /// Optional ChatGPT account id to use when multiple OpenAI bundles are present in the auth store.
     /// </summary>

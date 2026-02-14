@@ -16,6 +16,8 @@ internal static partial class AnalyzeGateCommand {
     private const int ExitGateFailed = 2;
     private const string DuplicationOverallPath = ".intelligencex/duplication-overall";
     private const string DuplicationOverallDeltaPath = ".intelligencex/duplication-overall-delta";
+    private const string DuplicationFilePath = ".intelligencex/duplication-file";
+    private const string DuplicationFileDeltaPath = ".intelligencex/duplication-file-delta";
 
     public static Task<int> RunAsync(string[] args) {
         var options = ParseArgs(args, out var error);
@@ -175,13 +177,15 @@ internal static partial class AnalyzeGateCommand {
         var duplicationEnabled = analysisSettings.Gate.Duplication.Enabled;
         var duplicationUseNewIssuesOnly = duplicationEnabled &&
             (useNewIssuesOnly || analysisSettings.Gate.Duplication.NewIssuesOnly);
+        var duplicationUseFileDelta = duplicationEnabled &&
+                                      analysisSettings.Gate.Duplication.MaxFilePercentIncrease.HasValue;
         var duplicationUseOverallDelta = duplicationEnabled &&
                                         analysisSettings.Gate.Duplication.MaxOverallPercentIncrease.HasValue;
-        var duplicationRequiresBaseline = duplicationUseNewIssuesOnly || duplicationUseOverallDelta;
+        var duplicationRequiresBaseline = duplicationUseNewIssuesOnly || duplicationUseFileDelta || duplicationUseOverallDelta;
         var configuredBaselinePath = !string.IsNullOrWhiteSpace(options.BaselinePath)
             ? options.BaselinePath
             : analysisSettings.Gate.BaselinePath;
-        var baselineRequired = useNewIssuesOnly || duplicationUseNewIssuesOnly || duplicationUseOverallDelta;
+        var baselineRequired = useNewIssuesOnly || duplicationUseNewIssuesOnly || duplicationUseFileDelta || duplicationUseOverallDelta;
         var baselineSuppressed = 0;
         var duplicationBaselineSuppressed = 0;
         var baselineLoadedCount = 0;
@@ -215,6 +219,17 @@ internal static partial class AnalyzeGateCommand {
                         $"Overall duplication snapshot (scope={snapshot.Scope}): {snapshot.DuplicatedLines}/{snapshot.SignificantLines} ({FormatPercent(snapshot.DuplicatedPercent)}%).";
                     baselineItems.Add(new AnalysisFinding(DuplicationOverallPath, 0, message, "info", snapshot.RuleId, snapshot.Tool,
                         snapshot.Fingerprint));
+                }
+                if (analysisSettings.Gate.Duplication.MaxFilePercentIncrease.HasValue) {
+                    foreach (var snapshot in duplicationEvaluation.FileSnapshots ?? Array.Empty<DuplicationFileSnapshot>()) {
+                        if (snapshot.SignificantLines <= 0) {
+                            continue;
+                        }
+                        var message =
+                            $"File duplication snapshot (scope={snapshot.Scope}): {snapshot.Path} {snapshot.DuplicatedLines}/{snapshot.SignificantLines} ({FormatPercent(snapshot.DuplicatedPercent)}%).";
+                        baselineItems.Add(new AnalysisFinding(DuplicationFilePath, 0, message, "info", snapshot.RuleId, snapshot.Tool,
+                            snapshot.Fingerprint));
+                    }
                 }
             }
             var writeResult = AnalyzeGateBaseline.TryWriteBaselineFile(writePath, baselineItems, out var writeError);
@@ -320,6 +335,60 @@ internal static partial class AnalyzeGateCommand {
                     var fingerprint = $"{current.RuleId}:overall-delta:{FormatPercent(baseline.DuplicatedPercent)}->{FormatPercent(current.DuplicatedPercent)}:allow:+{FormatPercent(allowedIncrease)}:scope:{current.Scope}";
                     duplicationViolations.Add(new AnalysisFinding(DuplicationOverallDeltaPath, 0, message, "warning", current.RuleId, current.Tool,
                         fingerprint));
+                }
+            }
+        }
+
+        if (duplicationUseFileDelta && duplicationEvaluation.Available) {
+            var deltaResult = AnalyzeGateBaseline.TryLoadDuplicationFileBaselines(
+                baselinePathResolved,
+                out var baselineFilesByKey,
+                out var deltaError);
+            if (!deltaResult) {
+                Console.WriteLine($"Static analysis duplication file delta gate: unavailable ({deltaError}).");
+                if (analysisSettings.Gate.Duplication.FailOnUnavailable) {
+                    return Task.FromResult(ExitGateFailed);
+                }
+            } else {
+                var allowedIncrease = analysisSettings.Gate.Duplication.MaxFilePercentIncrease!.Value;
+                var missingBaseline = 0;
+                var windowMismatch = 0;
+                foreach (var current in duplicationEvaluation.FileSnapshots ?? Array.Empty<DuplicationFileSnapshot>()) {
+                    if (current.SignificantLines <= 0) {
+                        continue;
+                    }
+                    if (!baselineFilesByKey.TryGetValue($"{current.RuleId}|{current.Scope}|{current.Path}", out var baseline)) {
+                        missingBaseline++;
+                        continue;
+                    }
+                    if (baseline.WindowLines != current.WindowLines) {
+                        windowMismatch++;
+                        continue;
+                    }
+                    if (baseline.SignificantLines <= 0) {
+                        continue;
+                    }
+
+                    var delta = Math.Round(current.DuplicatedPercent - baseline.DuplicatedPercent, 2, MidpointRounding.AwayFromZero);
+                    if (delta - allowedIncrease <= double.Epsilon) {
+                        continue;
+                    }
+
+                    var message =
+                        $"File duplication increased (scope={current.Scope}): {current.Path} baseline {FormatPercent(baseline.DuplicatedPercent)}% -> current {FormatPercent(current.DuplicatedPercent)}% (+{FormatPercent(delta)}pp) exceeds allowed +{FormatPercent(allowedIncrease)}pp.";
+                    var fingerprint =
+                        $"{current.RuleId}:file-delta:{current.Path}:{FormatPercent(baseline.DuplicatedPercent)}->{FormatPercent(current.DuplicatedPercent)}:allow:+{FormatPercent(allowedIncrease)}:scope:{current.Scope}";
+                    duplicationViolations.Add(new AnalysisFinding(current.Path, 1, message, "warning", current.RuleId, current.Tool,
+                        fingerprint));
+                }
+
+                if (missingBaseline > 0) {
+                    Console.WriteLine(
+                        $"Static analysis duplication file delta gate: baseline missing snapshots for {missingBaseline} file(s) (skipped).");
+                }
+                if (windowMismatch > 0) {
+                    Console.WriteLine(
+                        $"Static analysis duplication file delta gate: baseline window mismatch for {windowMismatch} file(s) (skipped).");
                 }
             }
         }

@@ -21,6 +21,8 @@ For the deep-dive design notes (catalog schema, packs, config modes), see:
   - `intelligencex analyze hotspots sync-state --check` (stateful “security hotspots” review)
 - CI integration:
   - `.github/workflows/review-intelligencex.yml` runs catalog validation + analysis + gate before running the reviewer.
+- Dogfooding helpers:
+  - `scripts/dogfood-analysis.ps1` runs catalog validation + analyze run + changed-files + gate against this repo.
 
 ## Goals
 - First-party feel:

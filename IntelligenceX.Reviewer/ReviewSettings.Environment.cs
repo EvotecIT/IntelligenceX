@@ -153,6 +153,24 @@ internal sealed partial class ReviewSettings {
             settings.OpenAiAccountFailover = ParseBoolean(openAiAccountFailover, settings.OpenAiAccountFailover);
         }
 
+        var openAiCompatibleBaseUrl = GetInput("openai_compatible_base_url", "OPENAI_COMPATIBLE_BASE_URL");
+        if (!string.IsNullOrWhiteSpace(openAiCompatibleBaseUrl)) {
+            settings.OpenAICompatibleBaseUrl = openAiCompatibleBaseUrl;
+        }
+        var openAiCompatibleApiKeyEnv = GetInput("openai_compatible_api_key_env", "OPENAI_COMPATIBLE_API_KEY_ENV");
+        if (!string.IsNullOrWhiteSpace(openAiCompatibleApiKeyEnv)) {
+            settings.OpenAICompatibleApiKeyEnv = openAiCompatibleApiKeyEnv;
+        }
+        var openAiCompatibleApiKey = GetInput("openai_compatible_api_key", "OPENAI_COMPATIBLE_API_KEY");
+        if (!string.IsNullOrWhiteSpace(openAiCompatibleApiKey)) {
+            settings.OpenAICompatibleApiKey = openAiCompatibleApiKey;
+        }
+        var openAiCompatibleTimeout = GetInput("openai_compatible_timeout_seconds", "OPENAI_COMPATIBLE_TIMEOUT_SECONDS");
+        if (!string.IsNullOrWhiteSpace(openAiCompatibleTimeout)) {
+            settings.OpenAICompatibleTimeoutSeconds =
+                ParsePositiveInt(openAiCompatibleTimeout, settings.OpenAICompatibleTimeoutSeconds);
+        }
+
         var overwriteSummary = GetInput("overwrite_summary", "OVERWRITE_SUMMARY");
         if (!string.IsNullOrWhiteSpace(overwriteSummary)) {
             settings.OverwriteSummary = ParseBoolean(overwriteSummary, settings.OverwriteSummary);

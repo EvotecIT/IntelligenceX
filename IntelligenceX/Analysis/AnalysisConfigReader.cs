@@ -86,6 +86,10 @@ public static class AnalysisConfigReader {
                     duplication,
                     "maxFilePercent",
                     settings.Gate.Duplication.MaxFilePercent);
+                settings.Gate.Duplication.MaxFilePercentIncrease = ReadPercentOrDefault(
+                    duplication,
+                    "maxFilePercentIncrease",
+                    settings.Gate.Duplication.MaxFilePercentIncrease);
                 settings.Gate.Duplication.MaxOverallPercent = ReadPercentOrDefault(
                     duplication,
                     "maxOverallPercent",

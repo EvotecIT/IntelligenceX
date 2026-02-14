@@ -383,6 +383,8 @@ internal static partial class AnalyzeRunCommand {
             duplicatedLineMasks.Add(new bool[file.SignificantLines.Count]);
         }
 
+        var duplicatedWindowGroups = 0;
+        var duplicatedWindowOccurrences = 0;
         foreach (var occurrenceGroup in signatures.Values) {
             if (occurrenceGroup.Count <= 1) {
                 continue;
@@ -391,6 +393,8 @@ internal static partial class AnalyzeRunCommand {
                 continue;
             }
 
+            duplicatedWindowGroups++;
+            duplicatedWindowOccurrences += occurrenceGroup.Count;
             foreach (var occurrence in occurrenceGroup) {
                 var mask = duplicatedLineMasks[occurrence.FileIndex];
                 for (var offset = 0; offset < windowLines && occurrence.StartIndex + offset < mask.Length; offset++) {
@@ -419,7 +423,7 @@ internal static partial class AnalyzeRunCommand {
                 ? file.SignificantLines[firstDuplicatedIndex].OriginalLine
                 : 1;
             var perFileFingerprint =
-                $"{policyRule.Rule.Id}:{file.Source.RelativePath}:{duplicatedLines}:{file.SignificantLines.Count}:{windowLines}";
+                $"{emittedRuleId}:{file.Source.RelativePath}:{duplicatedLines}:{file.SignificantLines.Count}:{windowLines}";
             fileMetrics.Add(new DuplicationFileMetrics {
                 Path = file.Source.RelativePath,
                 Language = fileLanguage,
@@ -459,6 +463,8 @@ internal static partial class AnalyzeRunCommand {
             TotalSignificantLines = totalComparableLines,
             DuplicatedSignificantLines = totalDuplicatedLines,
             OverallDuplicatedPercent = overallPercent,
+            DuplicatedWindowGroups = duplicatedWindowGroups,
+            DuplicatedWindowOccurrences = duplicatedWindowOccurrences,
             Files = fileMetrics
                 .OrderBy(file => file.Path, StringComparer.OrdinalIgnoreCase)
                 .ToList()
@@ -594,6 +600,8 @@ internal static partial class AnalyzeRunCommand {
             TotalSignificantLines = 0,
             DuplicatedSignificantLines = 0,
             OverallDuplicatedPercent = 0,
+            DuplicatedWindowGroups = 0,
+            DuplicatedWindowOccurrences = 0,
             Files = new List<DuplicationFileMetrics>()
         };
     }

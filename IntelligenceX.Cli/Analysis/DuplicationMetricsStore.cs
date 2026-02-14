@@ -108,6 +108,8 @@ internal sealed class DuplicationRuleMetrics {
     public int TotalSignificantLines { get; set; }
     public int DuplicatedSignificantLines { get; set; }
     public double OverallDuplicatedPercent { get; set; }
+    public int DuplicatedWindowGroups { get; set; }
+    public int DuplicatedWindowOccurrences { get; set; }
     public List<DuplicationFileMetrics> Files { get; set; } = new();
 }
 

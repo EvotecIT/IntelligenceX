@@ -269,6 +269,152 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeRunInternalDuplicationIgnoresJavaScriptImports() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-js-imports-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["intelligencex-maintainability-default"]
+  }
+}
+""");
+
+            // Keep the window small so imports would have caused duplication if considered significant.
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXDUP001.json"), """
+{
+  "id": "IXDUP001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXDUP001",
+  "title": "Source files should keep duplicated code below 0%",
+  "description": "Flags files with high duplication percentages.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["max-duplication-percent:0", "dup-window-lines:2", "include-ext:js"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "rules": ["IXDUP001"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "file-a.js"), """
+import x from "lib";
+import y from "lib2";
+const alpha = 1;
+return alpha + 1;
+""");
+            File.WriteAllText(Path.Combine(temp, "file-b.js"), """
+import x from "lib";
+import y from "lib2";
+let beta = 2;
+return beta - 2;
+""");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run duplication ignores js imports exit");
+            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
+            AssertEqual(true, File.Exists(findingsPath), "analyze run duplication ignores js imports findings exists");
+            var content = File.ReadAllText(findingsPath);
+            AssertEqual(false, content.Contains("\"ruleId\": \"IXDUP001\"", StringComparison.Ordinal),
+                "analyze run duplication ignores js imports no finding");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalyzeRunInternalDuplicationIgnoresPowerShellUsingStatements() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-ps-using-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["intelligencex-maintainability-default"]
+  }
+}
+""");
+
+            // Keep the window small so using statements would have caused duplication if considered significant.
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXDUP001.json"), """
+{
+  "id": "IXDUP001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXDUP001",
+  "title": "Source files should keep duplicated code below 0%",
+  "description": "Flags files with high duplication percentages.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["max-duplication-percent:0", "dup-window-lines:2", "include-ext:ps1"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "rules": ["IXDUP001"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "file_a.ps1"), """
+using module Foo
+using namespace Bar
+return 1
+break
+""");
+            File.WriteAllText(Path.Combine(temp, "file_b.ps1"), """
+using module Foo
+using namespace Bar
+throw "x"
+continue
+""");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run duplication ignores powershell using exit");
+            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
+            AssertEqual(true, File.Exists(findingsPath), "analyze run duplication ignores powershell using findings exists");
+            var content = File.ReadAllText(findingsPath);
+            AssertEqual(false, content.Contains("\"ruleId\": \"IXDUP001\"", StringComparison.Ordinal),
+                "analyze run duplication ignores powershell using no finding");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalyzeRunInternalDuplicationTokenizesPython() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-py-tokenized-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
@@ -327,6 +473,78 @@ internal static partial class Program {
             AssertEqual(true, content.Contains("file_a.py", StringComparison.Ordinal) ||
                               content.Contains("file_b.py", StringComparison.Ordinal),
                 "analyze run duplication tokenized python finding path");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalyzeRunInternalDuplicationIgnoresPythonImports() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-py-imports-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["intelligencex-maintainability-default"]
+  }
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXDUP001.json"), """
+{
+  "id": "IXDUP001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXDUP001",
+  "title": "Source files should keep duplicated code below 0%",
+  "description": "Flags files with high duplication percentages.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["max-duplication-percent:0", "dup-window-lines:2", "include-ext:py"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "rules": ["IXDUP001"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "file_a.py"), """
+import os
+from math import sqrt
+x += 1
+assert x
+""");
+            File.WriteAllText(Path.Combine(temp, "file_b.py"), """
+import os
+from math import sqrt
+x -= 1
+return x
+""");
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run duplication ignores python imports exit");
+            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
+            AssertEqual(true, File.Exists(findingsPath), "analyze run duplication ignores python imports findings exists");
+            var content = File.ReadAllText(findingsPath);
+            AssertEqual(false, content.Contains("\"ruleId\": \"IXDUP001\"", StringComparison.Ordinal),
+                "analyze run duplication ignores python imports no finding");
         } finally {
             if (Directory.Exists(temp)) {
                 Directory.Delete(temp, true);

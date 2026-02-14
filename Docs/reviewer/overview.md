@@ -24,7 +24,7 @@ Related docs:
 
 **Engine Scope**
 - Review pipeline: resolve inputs, build context, assemble prompt, call provider, parse inline comments, post summary/inline output.
-- Providers and transports: OpenAI (native/appserver) and Copilot (CLI/direct).
+- Providers and transports: OpenAI (native/appserver), OpenAI-compatible HTTP endpoints (Ollama/OpenRouter/etc.), and Copilot (CLI/direct).
 - Context builder: diff-range selection, file filtering, chunking, redaction, language hints, related PRs.
 - Formatter/output: summary templates, inline comment formatting, structured findings block.
 - Thread triage/auto-resolve: load threads, require evidence, summarize/append optional replies.

@@ -239,7 +239,9 @@ IntelligenceX does not push analysis configuration into existing user repositori
 - `metricsPath`: duplication metrics file path (default `artifacts/intelligencex.duplication.json`).
 - `ruleIds`: duplication rule IDs to evaluate (default `IXDUP001`).
 - `maxFilePercent`: optional per-file threshold override (else each rule's configured max is used).
+- `maxFilePercentIncrease`: optional allowed per-file increase in percentage points compared to baseline snapshots (requires baseline file).
 - `maxOverallPercent`: optional overall threshold for each evaluated rule.
+- `maxOverallPercentIncrease`: optional allowed overall increase in percentage points compared to baseline snapshots (requires baseline file).
 - `scope`: `changed-files` (default) or `all` for duplication gate evaluation scope.
 - `newIssuesOnly`: apply baseline suppression to duplication violations.
 - `failOnUnavailable`: fail or skip when duplication metrics are unavailable.
@@ -257,7 +259,9 @@ Example:
         "metricsPath": "artifacts/intelligencex.duplication.json",
         "ruleIds": ["IXDUP001"],
         "maxFilePercent": 30,
+        "maxFilePercentIncrease": 5,
         "maxOverallPercent": 25,
+        "maxOverallPercentIncrease": 2,
         "scope": "changed-files",
         "newIssuesOnly": true,
         "failOnUnavailable": true

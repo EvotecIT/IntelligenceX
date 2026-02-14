@@ -361,6 +361,7 @@ internal static partial class Program {
             TestAnalyzeGateNewIssuesOnlySuppressesLegacyBaselineKeyDotRelativePrefix);
         failed += Run("Analyze gate write baseline contract schema", TestAnalyzeGateWriteBaselineCreatesContractSchema);
         failed += Run("Reviewer schema includes analysis gate baseline properties", TestReviewerSchemaIncludesAnalysisGateBaselineProperties);
+        failed += Run("Reviewer schema includes OpenAI-compatible provider and config", TestReviewerSchemaIncludesOpenAiCompatibleProviderAndConfig);
         failed += Run("Analyze gate duplication per-file threshold blocks", TestAnalyzeGateDuplicationFailsOnPerFileThreshold);
         failed += Run("Analyze gate duplication per-file threshold passes", TestAnalyzeGateDuplicationPassesWhenWithinThreshold);
         failed += Run("Analyze gate duplication uses per-file configured threshold",
@@ -379,6 +380,10 @@ internal static partial class Program {
             TestAnalyzeGateDuplicationOverallDeltaBlocksWhenIncreaseExceedsAllowed);
         failed += Run("Analyze gate duplication overall delta missing baseline unavailable",
             TestAnalyzeGateDuplicationOverallDeltaMissingBaselineIsUnavailable);
+        failed += Run("Analyze gate duplication file delta blocks when increase exceeds allowed",
+            TestAnalyzeGateDuplicationFileDeltaBlocksWhenIncreaseExceedsAllowed);
+        failed += Run("Analyze gate write baseline includes duplication file snapshots when configured",
+            TestAnalyzeGateWriteBaselineIncludesDuplicationFileSnapshotsWhenConfigured);
         failed += Run("Analyze gate write baseline includes duplication overall snapshot",
             TestAnalyzeGateWriteBaselineIncludesDuplicationOverallSnapshot);
         failed += Run("Analysis config reader normalizes duplication ruleIds",
@@ -389,6 +394,8 @@ internal static partial class Program {
             TestAnalysisConfigReaderReadsRunStrict);
         failed += Run("Analysis config reader reads duplication maxOverallPercentIncrease",
             TestAnalysisConfigReaderReadsDuplicationMaxOverallPercentIncrease);
+        failed += Run("Analysis config reader reads duplication maxFilePercentIncrease",
+            TestAnalysisConfigReaderReadsDuplicationMaxFilePercentIncrease);
         failed += Run("Analyze gate changed-files accepts absolute in-workspace path",
             TestAnalyzeGateChangedFilesAcceptsAbsoluteInWorkspace);
         failed += Run("Analyze gate changed-files rejects absolute outside-workspace path",
@@ -462,8 +469,14 @@ internal static partial class Program {
             TestAnalyzeRunInternalDuplicationRuleWarnsOnMalformedTags);
         failed += Run("Analyze run internal duplication tokenized javascript",
             TestAnalyzeRunInternalDuplicationTokenizesJavaScript);
+        failed += Run("Analyze run internal duplication ignores javascript imports",
+            TestAnalyzeRunInternalDuplicationIgnoresJavaScriptImports);
+        failed += Run("Analyze run internal duplication ignores PowerShell using statements",
+            TestAnalyzeRunInternalDuplicationIgnoresPowerShellUsingStatements);
         failed += Run("Analyze run internal duplication tokenized python",
             TestAnalyzeRunInternalDuplicationTokenizesPython);
+        failed += Run("Analyze run internal duplication ignores python imports",
+            TestAnalyzeRunInternalDuplicationIgnoresPythonImports);
         failed += Run("Analyze run internal duplication python triple-quote comment handling",
             TestAnalyzeRunInternalDuplicationPythonTripleQuoteCommentHandling);
         failed += Run("Analyze run include-ext is per-rule",

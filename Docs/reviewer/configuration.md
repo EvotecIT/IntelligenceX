@@ -54,6 +54,28 @@ GitHub Actions input/env aliases:
 }
 ```
 
+## OpenAI-compatible provider (Ollama/OpenRouter/etc.)
+
+Use `provider: openai-compatible` when you want to talk to an OpenAI-style HTTP endpoint (for example Ollama or OpenRouter).
+This provider uses `POST /v1/chat/completions` and requires:
+- `review.model`
+- `review.openaiCompatible.baseUrl`
+- an API key (via `review.openaiCompatible.apiKeyEnv`, `OPENAI_COMPATIBLE_API_KEY`, or `review.openaiCompatible.apiKey`)
+
+```json
+{
+  "review": {
+    "provider": "openai-compatible",
+    "model": "gpt-4o-mini",
+    "openaiCompatible": {
+      "baseUrl": "http://localhost:11434",
+      "apiKeyEnv": "OPENAI_COMPATIBLE_API_KEY",
+      "timeoutSeconds": 60
+    }
+  }
+}
+```
+
 ## Strict (security-first) example
 
 ```json
@@ -461,8 +483,8 @@ Use `directHeaders` to attach custom headers required by your gateway.
 Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source control.
 
 ## Common knobs
-- `provider`: `openai`, `codex` (alias for OpenAI), or `copilot`
-- `providerFallback`: optional fallback provider (`openai`, `codex`, or `copilot`)
+- `provider`: `openai`/`codex`/`chatgpt`/`openai-codex`, `openai-compatible` (aliases: `openai-api`, `ollama`, `openrouter`), or `copilot`
+- `providerFallback`: optional fallback provider (same value set as `provider`)
 - `model`: model name for the selected provider
 - `reasoningEffort`: `minimal|low|medium|high|xhigh` (when set to low/medium/high, the header shows a reasoning level label)
 - `mode`: `inline`, `summary`, or `hybrid`

@@ -7,6 +7,7 @@ using System.Net.Http;
 using System.Net.Sockets;
 using System.Runtime.ExceptionServices;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Copilot;
@@ -20,6 +21,9 @@ namespace IntelligenceX.Reviewer;
 internal sealed class ReviewRunner {
     // Infinite timeout here; each preflight call applies its own CTS-based timeout.
     private static readonly HttpClient PreflightHttp = new() {
+        Timeout = Timeout.InfiniteTimeSpan
+    };
+    private static readonly HttpClient OpenAiCompatibleHttp = new() {
         Timeout = Timeout.InfiniteTimeSpan
     };
     private readonly ReviewSettings _settings;
@@ -147,6 +151,7 @@ internal sealed class ReviewRunner {
             return provider switch {
                 ReviewProvider.Copilot => await RunCopilotAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false),
                 ReviewProvider.OpenAI => await RunOpenAiWithRetryAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false),
+                ReviewProvider.OpenAICompatible => await RunOpenAiCompatibleWithRetryAsync(prompt, cancellationToken).ConfigureAwait(false),
                 _ => throw new NotSupportedException($"Unsupported review provider '{provider}'.")
             };
         } finally {
@@ -162,6 +167,9 @@ internal sealed class ReviewRunner {
                 return;
             case ReviewProvider.Copilot:
                 await RunCopilotHealthCheckAsync(timeout, cancellationToken).ConfigureAwait(false);
+                return;
+            case ReviewProvider.OpenAICompatible:
+                await RunOpenAiCompatiblePreflightAsync(timeout, cancellationToken).ConfigureAwait(false);
                 return;
             default:
                 throw new NotSupportedException($"Unsupported review provider '{provider}'.");
@@ -309,16 +317,16 @@ internal sealed class ReviewRunner {
         public static Task<string> RunAsync(Func<Task<string>> action, Func<Exception, bool> isTransient,
             int maxAttempts, int retryDelaySeconds, int retryMaxDelaySeconds, CancellationToken cancellationToken,
             Func<Exception, string>? describeError, int extraAttempts, Func<Exception, bool>? extraRetryPredicate,
-            ReviewRetryState? retryState) {
+            ReviewRetryState? retryState, string? operationName = null) {
             return RunAsync(action, isTransient, maxAttempts, retryDelaySeconds, retryMaxDelaySeconds,
-                2.0, 200, 800, cancellationToken, describeError, extraAttempts, extraRetryPredicate, retryState);
+                2.0, 200, 800, cancellationToken, describeError, extraAttempts, extraRetryPredicate, retryState, operationName);
         }
 
         public static async Task<string> RunAsync(Func<Task<string>> action, Func<Exception, bool> isTransient,
             int maxAttempts, int retryDelaySeconds, int retryMaxDelaySeconds, double backoffMultiplier,
             int retryJitterMinMs, int retryJitterMaxMs, CancellationToken cancellationToken,
             Func<Exception, string>? describeError, int extraAttempts, Func<Exception, bool>? extraRetryPredicate,
-            ReviewRetryState? retryState) {
+            ReviewRetryState? retryState, string? operationName = null) {
             // maxAttempts includes the initial attempt.
             var attempts = Math.Max(1, maxAttempts);
             var extraRemaining = Math.Max(0, extraAttempts);
@@ -328,6 +336,7 @@ internal sealed class ReviewRunner {
             var jitterMin = Math.Max(0, retryJitterMinMs);
             var jitterMax = Math.Max(jitterMin, retryJitterMaxMs);
             var backoff = Math.Max(1.0, backoffMultiplier);
+            var operationLabel = string.IsNullOrWhiteSpace(operationName) ? "OpenAI" : operationName!.Trim();
 
             Exception? lastError = null;
             for (var attempt = 1; attempt <= attempts; attempt++) {
@@ -362,7 +371,8 @@ internal sealed class ReviewRunner {
                     var jitter = TimeSpan.FromMilliseconds(jitterMs);
                     var wait = delay + jitter;
                     var summary = describeError is not null ? describeError(ex) : ex.Message;
-                    Console.Error.WriteLine($"OpenAI request failed (attempt {attempt}/{attempts}): {summary}. Retrying in {wait.TotalSeconds:0.0}s.");
+                    Console.Error.WriteLine(
+                        $"{operationLabel} request failed (attempt {attempt}/{attempts}): {summary}. Retrying in {wait.TotalSeconds:0.0}s.");
                     await Task.Delay(wait, cancellationToken).ConfigureAwait(false);
                     var nextDelaySeconds = Math.Min(maxDelaySeconds, delay.TotalSeconds * backoff);
                     delay = TimeSpan.FromSeconds(nextDelaySeconds);
@@ -373,8 +383,185 @@ internal sealed class ReviewRunner {
                 ExceptionDispatchInfo.Capture(lastError).Throw();
             }
 
-            throw new InvalidOperationException("OpenAI request failed without a captured exception.");
+            throw new InvalidOperationException($"{operationLabel} request failed without a captured exception.");
         }
+    }
+
+    private async Task RunOpenAiCompatiblePreflightAsync(TimeSpan timeout, CancellationToken cancellationToken) {
+        var endpoint = ResolveOpenAiCompatibleEndpoint(_settings.OpenAICompatibleBaseUrl);
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(timeout);
+
+        // Treat any HTTP response as "reachable" (including 401/403/404). This is a connectivity check, not auth validation.
+        using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+        try {
+            using var _ = await OpenAiCompatibleHttp.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token)
+                .ConfigureAwait(false);
+        } catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested) {
+            throw new TimeoutException($"Connectivity preflight timed out after {timeout.TotalSeconds:0.#}s for {endpoint.Host}.", ex);
+        } catch (HttpRequestException ex) when (!ex.StatusCode.HasValue) {
+            throw new InvalidOperationException(
+                $"Connectivity preflight failed for {endpoint.Host}. Check URL, DNS, proxy, and network settings.", ex);
+        }
+    }
+
+    private async Task<string> RunOpenAiCompatibleWithRetryAsync(string prompt, CancellationToken cancellationToken) {
+        var retryState = new ReviewRetryState();
+        try {
+            if (_settings.Preflight && !_settings.ProviderHealthChecks) {
+                var timeout = _settings.PreflightTimeoutSeconds > 0
+                    ? TimeSpan.FromSeconds(_settings.PreflightTimeoutSeconds)
+                    : TimeSpan.FromSeconds(15);
+                await RunOpenAiCompatiblePreflightAsync(timeout, cancellationToken).ConfigureAwait(false);
+            }
+
+            return await ReviewRetryPolicy.RunAsync(
+                    () => RunOpenAiCompatibleOnceAsync(prompt, cancellationToken),
+                    IsTransient,
+                    _settings.RetryCount,
+                    _settings.RetryDelaySeconds,
+                    _settings.RetryMaxDelaySeconds,
+                    Math.Max(1.0, _settings.RetryBackoffMultiplier),
+                    Math.Max(0, _settings.RetryJitterMinMs),
+                    Math.Max(0, _settings.RetryJitterMaxMs),
+                    cancellationToken,
+                    ex => ReviewDiagnostics.FormatExceptionSummary(ex, _settings.Diagnostics),
+                    extraAttempts: 0,
+                    extraRetryPredicate: null,
+                    retryState,
+                    operationName: "OpenAI-compatible").ConfigureAwait(false);
+        } catch (Exception ex) {
+            ReviewDiagnostics.LogFailure(ex, _settings, snapshot: null, retryState);
+            if (ShouldFailOpen(_settings, ex)) {
+                return ReviewDiagnostics.BuildFailureBody(ex, _settings, snapshot: null, retryState);
+            }
+            throw;
+        }
+    }
+
+    private async Task<string> RunOpenAiCompatibleOnceAsync(string prompt, CancellationToken cancellationToken) {
+        if (string.IsNullOrWhiteSpace(_settings.Model)) {
+            throw new InvalidOperationException("OpenAI-compatible provider requires review.model to be set.");
+        }
+        var endpoint = ResolveOpenAiCompatibleEndpoint(_settings.OpenAICompatibleBaseUrl);
+        var apiKey = ResolveOpenAiCompatibleApiKey();
+
+        var timeoutSeconds = Math.Max(1, _settings.OpenAICompatibleTimeoutSeconds);
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+        var payload = new {
+            model = _settings.Model,
+            messages = new[] {
+                new { role = "user", content = prompt }
+            }
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+        request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
+        request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        using var response = await OpenAiCompatibleHttp.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token)
+            .ConfigureAwait(false);
+        var responseText = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode) {
+            var code = (int)response.StatusCode;
+            var body = SanitizeErrorContent(responseText);
+            throw new InvalidOperationException($"OpenAI-compatible request failed (HTTP {code}). {body}");
+        }
+
+        return ExtractOpenAiCompatibleOutput(responseText);
+    }
+
+    private static Uri ResolveOpenAiCompatibleEndpoint(string? baseUrl) {
+        var trimmed = (baseUrl ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(trimmed)) {
+            throw new InvalidOperationException("OpenAI-compatible provider requires review.openaiCompatible.baseUrl.");
+        }
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var baseUri)) {
+            throw new InvalidOperationException($"OpenAI-compatible baseUrl is invalid: '{trimmed}'.");
+        }
+
+        var normalized = baseUri.ToString().TrimEnd('/');
+        if (normalized.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)) {
+            normalized += "/chat/completions";
+        } else {
+            normalized += "/v1/chat/completions";
+        }
+        if (!Uri.TryCreate(normalized, UriKind.Absolute, out var endpoint)) {
+            throw new InvalidOperationException($"OpenAI-compatible endpoint is invalid: '{normalized}'.");
+        }
+        return endpoint;
+    }
+
+    private string ResolveOpenAiCompatibleApiKey() {
+        var envName = _settings.OpenAICompatibleApiKeyEnv?.Trim();
+        if (!string.IsNullOrWhiteSpace(envName)) {
+            var value = Environment.GetEnvironmentVariable(envName);
+            if (!string.IsNullOrWhiteSpace(value)) {
+                SecretsAudit.Record($"OpenAI-compatible API key from {envName}");
+                return value.Trim();
+            }
+        }
+
+        var envValue = Environment.GetEnvironmentVariable("OPENAI_COMPATIBLE_API_KEY");
+        if (!string.IsNullOrWhiteSpace(envValue)) {
+            SecretsAudit.Record("OpenAI-compatible API key from OPENAI_COMPATIBLE_API_KEY");
+            return envValue.Trim();
+        }
+
+        var configValue = _settings.OpenAICompatibleApiKey;
+        if (!string.IsNullOrWhiteSpace(configValue)) {
+            SecretsAudit.Record("OpenAI-compatible API key from config (openaiCompatible.apiKey)");
+            return configValue.Trim();
+        }
+
+        throw new InvalidOperationException(
+            "OpenAI-compatible provider requires an API key. Set review.openaiCompatible.apiKeyEnv or OPENAI_COMPATIBLE_API_KEY.");
+    }
+
+    private static string ExtractOpenAiCompatibleOutput(string? responseText) {
+        if (string.IsNullOrWhiteSpace(responseText)) {
+            throw new InvalidOperationException("OpenAI-compatible response was empty.");
+        }
+
+        try {
+            using var doc = JsonDocument.Parse(responseText);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("choices", out var choices) && choices.ValueKind == System.Text.Json.JsonValueKind.Array &&
+                choices.GetArrayLength() > 0) {
+                var first = choices[0];
+                if (first.TryGetProperty("message", out var message) &&
+                    message.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                    message.TryGetProperty("content", out var content) &&
+                    content.ValueKind == System.Text.Json.JsonValueKind.String) {
+                    return content.GetString() ?? string.Empty;
+                }
+                if (first.TryGetProperty("text", out var text) && text.ValueKind == System.Text.Json.JsonValueKind.String) {
+                    return text.GetString() ?? string.Empty;
+                }
+            }
+
+            throw new InvalidOperationException("OpenAI-compatible response JSON missing choices[0].message.content.");
+        } catch (JsonException ex) {
+            throw new InvalidOperationException("OpenAI-compatible response was not valid JSON.", ex);
+        }
+    }
+
+    private static string SanitizeErrorContent(string? content) {
+        var text = (content ?? string.Empty)
+            .Replace("\r", " ")
+            .Replace("\n", " ")
+            .Trim();
+        if (string.IsNullOrWhiteSpace(text)) {
+            return "Response body was empty.";
+        }
+        if (text.Length > 240) {
+            text = text.Substring(0, 240) + "...";
+        }
+        return "Body: " + text;
     }
 
     private async Task RunCopilotHealthCheckAsync(TimeSpan timeout, CancellationToken cancellationToken) {

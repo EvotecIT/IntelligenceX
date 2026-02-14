@@ -105,6 +105,7 @@ internal static partial class AnalyzeGateCommand {
 
         var violations = new List<AnalysisFinding>();
         var overallSnapshots = new List<DuplicationOverallSnapshot>();
+        var fileSnapshots = new List<DuplicationFileSnapshot>();
         foreach (var rule in selectedRules) {
             var ruleId = rule.RuleId.Trim();
             var tool = string.IsNullOrWhiteSpace(rule.Tool) ? "IntelligenceX.Maintainability" : rule.Tool.Trim();
@@ -112,7 +113,22 @@ internal static partial class AnalyzeGateCommand {
                 .Where(static file => !string.IsNullOrWhiteSpace(file.Path))
                 .Where(file => !useChangedFileScope || changedPaths.Contains(NormalizeChangedPath(file.Path)))
                 .ToList();
+            var fileScopeSuffix = useChangedFileScope ? ":scope:changed-files" : string.Empty;
             foreach (var file in files) {
+                if (file.SignificantLines > 0) {
+                    var snapshotFingerprint = $"{ruleId}:file:{file.Path.Replace('\\', '/')}:{file.DuplicatedLines}:{file.SignificantLines}:{rule.WindowLines}{fileScopeSuffix}";
+                    fileSnapshots.Add(new DuplicationFileSnapshot(
+                        RuleId: ruleId,
+                        Tool: tool,
+                        Scope: effectiveScope,
+                        Path: file.Path.Replace('\\', '/'),
+                        SignificantLines: file.SignificantLines,
+                        DuplicatedLines: file.DuplicatedLines,
+                        DuplicatedPercent: file.DuplicatedPercent,
+                        WindowLines: rule.WindowLines,
+                        Fingerprint: snapshotFingerprint));
+                }
+
                 var fileThreshold = duplication.MaxFilePercent ??
                                     file.ConfiguredMaxPercent ??
                                     rule.ConfiguredMaxPercent;
@@ -164,7 +180,8 @@ internal static partial class AnalyzeGateCommand {
             }
         }
 
-        return DuplicationGateEvaluation.WithData(metricsPath, selectedRules.Count, violations, overallSnapshots, effectiveScope);
+        return DuplicationGateEvaluation.WithData(metricsPath, selectedRules.Count, violations, overallSnapshots, fileSnapshots,
+            effectiveScope);
     }
 
     private static int ResolveUnavailableExit(AnalysisSettings settings, bool findingsRequireBaseline,
@@ -522,6 +539,7 @@ internal static partial class AnalyzeGateCommand {
         int RulesEvaluated,
         IReadOnlyList<AnalysisFinding> Violations,
         IReadOnlyList<DuplicationOverallSnapshot> OverallSnapshots,
+        IReadOnlyList<DuplicationFileSnapshot> FileSnapshots,
         string Scope,
         string? UnavailableReason) {
         public static DuplicationGateEvaluation Disabled => new(
@@ -530,17 +548,22 @@ internal static partial class AnalyzeGateCommand {
             RulesEvaluated: 0,
             Violations: Array.Empty<AnalysisFinding>(),
             OverallSnapshots: Array.Empty<DuplicationOverallSnapshot>(),
+            FileSnapshots: Array.Empty<DuplicationFileSnapshot>(),
             Scope: "changed-files",
             UnavailableReason: null);
 
         public static DuplicationGateEvaluation WithData(string metricsPath, int rulesEvaluated,
-            IReadOnlyList<AnalysisFinding> violations, IReadOnlyList<DuplicationOverallSnapshot> overallSnapshots, string scope) {
+            IReadOnlyList<AnalysisFinding> violations,
+            IReadOnlyList<DuplicationOverallSnapshot> overallSnapshots,
+            IReadOnlyList<DuplicationFileSnapshot> fileSnapshots,
+            string scope) {
             return new DuplicationGateEvaluation(
                 Available: true,
                 MetricsPath: metricsPath,
                 RulesEvaluated: rulesEvaluated,
                 Violations: violations ?? Array.Empty<AnalysisFinding>(),
                 OverallSnapshots: overallSnapshots ?? Array.Empty<DuplicationOverallSnapshot>(),
+                FileSnapshots: fileSnapshots ?? Array.Empty<DuplicationFileSnapshot>(),
                 Scope: scope,
                 UnavailableReason: null);
         }
@@ -552,6 +575,7 @@ internal static partial class AnalyzeGateCommand {
                 RulesEvaluated: 0,
                 Violations: Array.Empty<AnalysisFinding>(),
                 OverallSnapshots: Array.Empty<DuplicationOverallSnapshot>(),
+                FileSnapshots: Array.Empty<DuplicationFileSnapshot>(),
                 Scope: "changed-files",
                 UnavailableReason: reason);
         }
@@ -561,6 +585,17 @@ internal static partial class AnalyzeGateCommand {
         string RuleId,
         string Tool,
         string Scope,
+        int SignificantLines,
+        int DuplicatedLines,
+        double DuplicatedPercent,
+        int WindowLines,
+        string Fingerprint);
+
+    private sealed record DuplicationFileSnapshot(
+        string RuleId,
+        string Tool,
+        string Scope,
+        string Path,
         int SignificantLines,
         int DuplicatedLines,
         double DuplicatedPercent,
