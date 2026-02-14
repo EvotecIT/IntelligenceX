@@ -26,6 +26,9 @@ public sealed class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ShouldAttemptToolExecutionNudgeMethod =
         typeof(ChatServiceSession).GetMethod("ShouldAttemptToolExecutionNudge", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldAttemptToolExecutionNudge not found.");
+    private static readonly MethodInfo BuildToolExecutionNudgePromptMethod =
+        typeof(ChatServiceSession).GetMethod("BuildToolExecutionNudgePrompt", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildToolExecutionNudgePrompt not found.");
     private static readonly MethodInfo ExtractPrimaryUserRequestMethod =
         typeof(ChatServiceSession).GetMethod("ExtractPrimaryUserRequest", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ExtractPrimaryUserRequest not found.");
@@ -151,6 +154,14 @@ public sealed class ChatServiceRoutingTrimTests {
 
         var result13 = CountLetterDigitTokensMethod.Invoke(null, new object?[] { thirteen, 12 });
         Assert.Equal(12, Assert.IsType<int>(result13));
+    }
+
+    [Fact]
+    public void BuildToolExecutionNudgePrompt_EmitsStableMarker() {
+        var result = BuildToolExecutionNudgePromptMethod.Invoke(null, new object?[] { "run now", "draft" });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("ix:execution-correction:v1", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
