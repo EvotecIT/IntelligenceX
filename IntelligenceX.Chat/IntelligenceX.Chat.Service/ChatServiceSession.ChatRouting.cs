@@ -215,16 +215,28 @@ internal sealed partial class ChatServiceSession {
 
     private static bool ShouldAttemptToolExecutionNudge(string userRequest, string assistantDraft, bool toolsAvailable, int priorToolCalls,
         bool usedContinuationSubset) {
-        if (!toolsAvailable || priorToolCalls > 0 || !usedContinuationSubset) {
+        if (!toolsAvailable || priorToolCalls > 0) {
             return false;
         }
 
-        if (!LooksLikeCompactFollowUp(userRequest)) {
+        var request = (userRequest ?? string.Empty).Trim();
+        if (request.Length == 0) {
             return false;
         }
 
         var draft = (assistantDraft ?? string.Empty).Trim();
         if (draft.Length == 0 || draft.Length > 2400) {
+            return false;
+        }
+
+        // If the assistant explicitly told the user to "say" a quoted phrase, accept echoing that phrase even when
+        // weighted continuation routing wasn't used (for example after a restart or when tool routing kept full tool lists).
+        var echoedCallToAction = UserMatchesAssistantCallToAction(request, draft);
+        if (!usedContinuationSubset && !echoedCallToAction) {
+            return false;
+        }
+
+        if (!echoedCallToAction && !LooksLikeCompactFollowUp(request)) {
             return false;
         }
 
@@ -256,7 +268,150 @@ internal sealed partial class ChatServiceSession {
 
         // Avoid overriding already-good short completions (for example "You're welcome.").
         // Only retry tool execution when the assistant draft still appears tied to the user's follow-up.
-        return AssistantDraftReferencesUserRequest(userRequest, draft);
+        return AssistantDraftReferencesUserRequest(request, draft);
+    }
+
+    private static bool UserMatchesAssistantCallToAction(string userRequest, string assistantDraft) {
+        var request = NormalizeCompactText(userRequest);
+        if (request.Length == 0 || request.Length > 120) {
+            return false;
+        }
+
+        var phrases = ExtractQuotedPhrases(assistantDraft);
+        if (phrases.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < phrases.Count; i++) {
+            var phrase = NormalizeCompactText(phrases[i]);
+            if (phrase.Length == 0 || phrase.Length > 96) {
+                continue;
+            }
+
+            // Strong signal: exact echo.
+            if (string.Equals(request, phrase, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+
+            // Common pattern: "yes - <phrase>" or "<phrase>?".
+            if (ContainsPhraseWithBoundaries(request, phrase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string NormalizeCompactText(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        // Strip inline-code wrappers (`run now`) without trying to parse markdown fully.
+        if (normalized.Length >= 2 && normalized[0] == '`' && normalized[^1] == '`') {
+            normalized = normalized.Substring(1, normalized.Length - 2).Trim();
+        }
+
+        // Trim light punctuation wrappers so "run now?" and "\"run now\"" normalize.
+        normalized = normalized.Trim().Trim('"', '\'', '.', '!', '?', ':', ';', ',', '(', ')', '[', ']', '{', '}');
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        // Collapse whitespace to stabilize matching across minor formatting differences.
+        var sb = new StringBuilder(normalized.Length);
+        var inSpace = false;
+        for (var i = 0; i < normalized.Length; i++) {
+            var ch = normalized[i];
+            if (char.IsWhiteSpace(ch)) {
+                if (!inSpace) {
+                    sb.Append(' ');
+                    inSpace = true;
+                }
+                continue;
+            }
+
+            inSpace = false;
+            sb.Append(ch);
+        }
+
+        return sb.ToString().Trim();
+    }
+
+    private static bool ContainsPhraseWithBoundaries(string haystack, string needle) {
+        if (haystack.Length == 0 || needle.Length == 0 || needle.Length > haystack.Length) {
+            return false;
+        }
+
+        var startIndex = 0;
+        while (true) {
+            var idx = haystack.IndexOf(needle, startIndex, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) {
+                return false;
+            }
+
+            var beforeOk = idx == 0 || !char.IsLetterOrDigit(haystack[idx - 1]);
+            var afterIndex = idx + needle.Length;
+            var afterOk = afterIndex >= haystack.Length || !char.IsLetterOrDigit(haystack[afterIndex]);
+            if (beforeOk && afterOk) {
+                return true;
+            }
+
+            startIndex = idx + 1;
+            if (startIndex >= haystack.Length) {
+                return false;
+            }
+        }
+    }
+
+    private static List<string> ExtractQuotedPhrases(string text) {
+        var value = text ?? string.Empty;
+        if (value.Length == 0) {
+            return new List<string>();
+        }
+
+        var phrases = new List<string>();
+        for (var i = 0; i < value.Length; i++) {
+            var quote = value[i];
+            if (quote != '"' && quote != '\'') {
+                continue;
+            }
+
+            // Treat apostrophes inside words as apostrophes, not as quoting. This avoids accidentally pairing "don't"
+            // with a later single-quote and extracting a huge bogus "phrase".
+            if (quote == '\'' && i > 0 && i + 1 < value.Length && char.IsLetterOrDigit(value[i - 1]) && char.IsLetterOrDigit(value[i + 1])) {
+                continue;
+            }
+
+            var end = value.IndexOf(quote, i + 1);
+            if (end <= i + 1) {
+                continue;
+            }
+
+            var inner = value.Substring(i + 1, end - i - 1).Trim();
+            i = end;
+            if (inner.Length == 0 || inner.Length > 96) {
+                continue;
+            }
+
+            if (inner.Contains('\n', StringComparison.Ordinal)) {
+                continue;
+            }
+
+            // Keep it lean: only short, "say this" kind of phrases (avoid quoting entire paragraphs).
+            var tokens = CountLetterDigitTokens(inner, maxTokens: 12);
+            if (tokens == 0 || tokens > 8) {
+                continue;
+            }
+
+            phrases.Add(inner);
+            if (phrases.Count >= 6) {
+                break;
+            }
+        }
+
+        return phrases;
     }
 
     private static bool LooksLikeCompactFollowUp(string userRequest) {

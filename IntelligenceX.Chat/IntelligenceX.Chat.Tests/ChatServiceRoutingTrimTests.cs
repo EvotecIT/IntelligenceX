@@ -150,6 +150,32 @@ public sealed class ChatServiceRoutingTrimTests {
         Assert.True(Assert.IsType<bool>(result));
     }
 
+    [Theory]
+    [InlineData("run now")]
+    [InlineData("yes - run now")]
+    [InlineData("please `run now`")]
+    public void ShouldAttemptToolExecutionNudge_TriggersWhenUserEchoesQuotedCallToActionEvenWithoutContinuationSubset(string userRequest) {
+        var assistantDraft = "If you say \"run now\", I'll execute forest-wide checks immediately.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerWithoutContinuationSubsetWhenDraftDoesNotContainEchoableCallToAction() {
+        var userRequest = "run now";
+        var assistantDraft = "I can help, but I need a DC FQDN first.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
     [Fact]
     public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForExplicitCapabilityBlocker() {
         var userRequest = "Get top 5 events from ADO system log.";
