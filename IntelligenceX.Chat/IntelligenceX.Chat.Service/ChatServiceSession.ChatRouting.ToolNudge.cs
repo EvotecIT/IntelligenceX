@@ -7,6 +7,7 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
 
     private const int MaxQuotedPhraseSpan = 140;
+    private const string ExecutionCorrectionMarker = "ix:execution-correction:v1";
 
     // Narrow, safety-oriented hints: this is not a "phrase list" of confirmations. It's a guard to ensure we only
     // treat quoted phrases as call-to-action targets when the assistant explicitly instructs the user to say/type/etc.
@@ -38,9 +39,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         // Guard against accidental feedback loops where the assistant echoes the correction prompt itself.
-        if (draft.Contains("[Execution correction]", StringComparison.OrdinalIgnoreCase)
-            || draft.Contains("previous assistant draft did not execute tools", StringComparison.OrdinalIgnoreCase)
-            || draft.Contains("Execute available tools now", StringComparison.OrdinalIgnoreCase)) {
+        if (draft.Contains(ExecutionCorrectionMarker, StringComparison.OrdinalIgnoreCase)) {
             return false;
         }
 
@@ -435,6 +434,7 @@ internal sealed partial class ChatServiceSession {
         var draftText = string.IsNullOrWhiteSpace(assistantDraft) ? "(empty)" : assistantDraft.Trim();
         return $$"""
             [Execution correction]
+            {{ExecutionCorrectionMarker}}
             The previous assistant draft did not execute tools.
 
             User request:

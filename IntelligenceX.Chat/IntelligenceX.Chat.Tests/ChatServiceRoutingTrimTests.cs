@@ -170,6 +170,7 @@ public sealed class ChatServiceRoutingTrimTests {
         var userRequest = "run now";
         var assistantDraft = """
             [Execution correction]
+            ix:execution-correction:v1
             The previous assistant draft did not execute tools.
 
             Execute available tools now when they can satisfy this request.
