@@ -20,6 +20,11 @@ public sealed class MainWindowMemoryTokenizationTests {
         BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("CountNewTokenMatches not found.");
 
+    private static readonly MethodInfo NormalizeMemoryUpdatedUtcForRecencyMethod = typeof(MainWindow).GetMethod(
+        "NormalizeMemoryUpdatedUtcForRecency",
+        BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("NormalizeMemoryUpdatedUtcForRecency not found.");
+
     /// <summary>
     /// Ensures tokenization yields stable semantic tokens for precomposed/decomposed Unicode forms.
     /// </summary>
@@ -64,6 +69,54 @@ public sealed class MainWindowMemoryTokenizationTests {
         Assert.Equal(1, overlap);
     }
 
+    /// <summary>
+    /// Ensures recency normalization preserves UTC timestamps without alteration.
+    /// </summary>
+    [Fact]
+    public void NormalizeMemoryUpdatedUtcForRecency_PreservesUtcValues() {
+        var nowUtc = new DateTime(2026, 2, 14, 10, 0, 0, DateTimeKind.Utc);
+        var value = nowUtc.AddHours(-4);
+
+        var normalized = InvokeNormalizeMemoryUpdatedUtcForRecency(value, nowUtc);
+
+        Assert.Equal(DateTimeKind.Utc, normalized.Kind);
+        Assert.Equal(value, normalized);
+    }
+
+    /// <summary>
+    /// Ensures local timestamps are converted to UTC for recency scoring.
+    /// </summary>
+    [Fact]
+    public void NormalizeMemoryUpdatedUtcForRecency_ConvertsLocalValues() {
+        var nowUtc = new DateTime(2026, 2, 14, 10, 0, 0, DateTimeKind.Utc);
+        var localValue = nowUtc.AddHours(-3).ToLocalTime();
+
+        var normalized = InvokeNormalizeMemoryUpdatedUtcForRecency(localValue, nowUtc);
+
+        Assert.Equal(DateTimeKind.Utc, normalized.Kind);
+        Assert.Equal(localValue.ToUniversalTime(), normalized);
+    }
+
+    /// <summary>
+    /// Ensures unspecified timestamps prefer the interpretation closest to the scoring clock.
+    /// </summary>
+    [Fact]
+    public void NormalizeMemoryUpdatedUtcForRecency_ResolvesUnspecifiedByNearestInterpretation() {
+        var nowUtc = new DateTime(2026, 2, 14, 10, 0, 0, DateTimeKind.Utc);
+        var localClockStamp = nowUtc.AddHours(-2).ToLocalTime();
+        var unspecified = DateTime.SpecifyKind(localClockStamp, DateTimeKind.Unspecified);
+
+        var normalized = InvokeNormalizeMemoryUpdatedUtcForRecency(unspecified, nowUtc);
+        var asLocalUtc = DateTime.SpecifyKind(unspecified, DateTimeKind.Local).ToUniversalTime();
+        var asUtc = DateTime.SpecifyKind(unspecified, DateTimeKind.Utc);
+        var expected = Math.Abs((nowUtc - asLocalUtc).TotalHours) <= Math.Abs((nowUtc - asUtc).TotalHours)
+            ? asLocalUtc
+            : asUtc;
+
+        Assert.Equal(expected, normalized);
+        Assert.Equal(DateTimeKind.Utc, normalized.Kind);
+    }
+
     private static HashSet<string> InvokeTokenize(string input) {
         var result = TokenizeMethod.Invoke(null, new object?[] { input });
         return Assert.IsType<HashSet<string>>(result);
@@ -75,5 +128,10 @@ public sealed class MainWindowMemoryTokenizationTests {
         HashSet<string> seen) {
         var result = CountNewTokenMatchesMethod.Invoke(null, new object?[] { userTokens, candidateTokens, seen });
         return Assert.IsType<int>(result);
+    }
+
+    private static DateTime InvokeNormalizeMemoryUpdatedUtcForRecency(DateTime value, DateTime nowUtc) {
+        var result = NormalizeMemoryUpdatedUtcForRecencyMethod.Invoke(null, new object?[] { value, nowUtc });
+        return Assert.IsType<DateTime>(result);
     }
 }

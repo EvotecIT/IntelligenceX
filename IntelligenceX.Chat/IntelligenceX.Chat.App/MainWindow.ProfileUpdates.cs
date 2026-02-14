@@ -459,6 +459,7 @@ public sealed partial class MainWindow : Window {
             return BuildPersistentMemoryLinesForEmptyQuery(facts);
         }
 
+        var nowUtc = DateTime.UtcNow;
         var userTokens = TokenizeMemorySemanticText(lowerText);
         var scoredFacts = new List<ScoredMemoryFact>(facts.Count);
 
@@ -507,8 +508,8 @@ public sealed partial class MainWindow : Window {
                 }
             }
 
-            var updatedUtc = EnsureUtc(fact.UpdatedUtc == default ? DateTime.UtcNow : fact.UpdatedUtc);
-            var ageHours = (DateTime.UtcNow - updatedUtc).TotalHours;
+            var updatedUtc = NormalizeMemoryUpdatedUtcForRecency(fact.UpdatedUtc, nowUtc);
+            var ageHours = Math.Max(0d, (nowUtc - updatedUtc).TotalHours);
             if (ageHours <= 24d) {
                 score += 0.9d;
             } else if (ageHours <= 72d) {
@@ -560,6 +561,26 @@ public sealed partial class MainWindow : Window {
         }
 
         return lines.Count == 0 ? Array.Empty<string>() : lines;
+    }
+
+    private static DateTime NormalizeMemoryUpdatedUtcForRecency(DateTime value, DateTime nowUtc) {
+        if (value == default) {
+            return nowUtc;
+        }
+
+        if (value.Kind == DateTimeKind.Utc) {
+            return value;
+        }
+
+        if (value.Kind == DateTimeKind.Local) {
+            return value.ToUniversalTime();
+        }
+
+        var unspecifiedAsUtc = DateTime.SpecifyKind(value, DateTimeKind.Utc);
+        var unspecifiedAsLocalUtc = DateTime.SpecifyKind(value, DateTimeKind.Local).ToUniversalTime();
+        var utcDistanceHours = Math.Abs((nowUtc - unspecifiedAsUtc).TotalHours);
+        var localDistanceHours = Math.Abs((nowUtc - unspecifiedAsLocalUtc).TotalHours);
+        return localDistanceHours <= utcDistanceHours ? unspecifiedAsLocalUtc : unspecifiedAsUtc;
     }
 
     private static IReadOnlyList<string> BuildPersistentMemoryLinesForEmptyQuery(List<ChatMemoryFactState> facts) {
