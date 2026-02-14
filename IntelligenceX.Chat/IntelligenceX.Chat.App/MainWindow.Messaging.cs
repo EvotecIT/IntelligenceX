@@ -487,8 +487,12 @@ public sealed partial class MainWindow : Window {
         _cancelRequestedTurnRequestId = null;
         _activeRequestConversationId = turn.ConversationId;
         ClearToolRoutingInsights();
-        await PublishSessionStateAsync().ConfigureAwait(false);
-        await PublishOptionsStateAsync().ConfigureAwait(false);
+        try {
+            await PublishSessionStateAsync().ConfigureAwait(false);
+        } finally {
+            // Ensure tools state is refreshed after routing reset even if session publish faults.
+            await PublishOptionsStateAsync().ConfigureAwait(false);
+        }
 
         try {
             await ExecuteChatTurnWithReconnectAsync(turn).ConfigureAwait(false);
@@ -498,8 +502,11 @@ public sealed partial class MainWindow : Window {
             _cancelRequestedTurnRequestId = null;
             _activeRequestConversationId = null;
             _activeTurnReceivedDelta = false;
-            await PublishSessionStateAsync().ConfigureAwait(false);
-            await PublishOptionsStateAsync().ConfigureAwait(false);
+            try {
+                await PublishSessionStateAsync().ConfigureAwait(false);
+            } finally {
+                await PublishOptionsStateAsync().ConfigureAwait(false);
+            }
         }
     }
 
