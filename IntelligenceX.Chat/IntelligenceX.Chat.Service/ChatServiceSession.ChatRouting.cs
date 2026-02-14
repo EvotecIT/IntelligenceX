@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -436,14 +437,66 @@ internal sealed partial class ChatServiceSession {
             return definitions;
         }
 
+        var routingTokens = TokenizeRoutingTokens(userRequest, maxTokens: 16);
+        var routingTokenSupport = routingTokens.Length == 0 ? Array.Empty<int>() : new int[routingTokens.Length];
+        string[]? toolSearchTexts = null;
+        if (routingTokens.Length > 0) {
+            toolSearchTexts = new string[definitions.Count];
+            for (var i = 0; i < definitions.Count; i++) {
+                toolSearchTexts[i] = BuildToolRoutingSearchText(definitions[i]);
+            }
+
+            for (var t = 0; t < routingTokens.Length; t++) {
+                var token = routingTokens[t];
+                if (token.Length == 0) {
+                    continue;
+                }
+
+                var support = 0;
+                for (var i = 0; i < toolSearchTexts.Length; i++) {
+                    if (toolSearchTexts[i].IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0) {
+                        support++;
+                    }
+                }
+
+                routingTokenSupport[t] = support;
+            }
+        }
+
+        // Tokens that show up in most tools are noise (ex: "get", "list"). Filter them out per-turn.
+        var maxTokenSupport = Math.Max(1, (int)Math.Ceiling(definitions.Count * 0.55d));
+
         var scored = new List<ToolScore>(definitions.Count);
         var hasSignal = false;
         for (var i = 0; i < definitions.Count; i++) {
             var definition = definitions[i];
             var score = 0d;
+            var tokenHits = 0;
             var directNameMatch = userRequest.IndexOf(definition.Name, StringComparison.OrdinalIgnoreCase) >= 0;
             if (directNameMatch) {
                 score += 6d;
+            }
+
+            if (routingTokens.Length > 0) {
+                var searchText = toolSearchTexts?[i] ?? BuildToolRoutingSearchText(definition);
+                for (var t = 0; t < routingTokens.Length; t++) {
+                    if (routingTokenSupport[t] > maxTokenSupport) {
+                        continue;
+                    }
+
+                    var token = routingTokens[t];
+                    if (token.Length == 0) {
+                        continue;
+                    }
+
+                    if (searchText.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0) {
+                        tokenHits++;
+                    }
+                }
+
+                if (tokenHits > 0) {
+                    score += tokenHits * 1.25d;
+                }
             }
 
             var adjustment = ReadToolRoutingAdjustment(definition.Name);
@@ -456,6 +509,7 @@ internal sealed partial class ChatServiceSession {
                 Definition: definition,
                 Score: score,
                 DirectNameMatch: directNameMatch,
+                TokenHits: tokenHits,
                 Adjustment: adjustment));
         }
 
@@ -533,6 +587,9 @@ internal sealed partial class ChatServiceSession {
             if (toolScore.DirectNameMatch) {
                 reasons.Add("direct name match");
             }
+            if (toolScore.TokenHits > 0) {
+                reasons.Add("token match");
+            }
             if (toolScore.Adjustment > 0.2d) {
                 reasons.Add("recent tool success");
             } else if (toolScore.Adjustment < -0.2d) {
@@ -556,6 +613,96 @@ internal sealed partial class ChatServiceSession {
         }
 
         return insights;
+    }
+
+    private static string[] TokenizeRoutingTokens(string text, int maxTokens) {
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0 || maxTokens <= 0) {
+            return Array.Empty<string>();
+        }
+
+        var tokens = new List<string>(Math.Min(12, maxTokens));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var inToken = false;
+        var tokenStart = 0;
+        for (var i = 0; i <= normalized.Length; i++) {
+            var ch = i < normalized.Length ? normalized[i] : '\0';
+            var isTokenChar = i < normalized.Length && char.IsLetterOrDigit(ch);
+            if (isTokenChar) {
+                if (!inToken) {
+                    inToken = true;
+                    tokenStart = i;
+                }
+                continue;
+            }
+
+            if (!inToken) {
+                continue;
+            }
+
+            var token = normalized.Substring(tokenStart, i - tokenStart).Normalize(NormalizationForm.FormKC).Trim();
+            inToken = false;
+            if (token.Length == 0) {
+                continue;
+            }
+
+            var lower = token.ToLowerInvariant();
+            var hasNonAscii = false;
+            for (var t = 0; t < lower.Length; t++) {
+                if (lower[t] > 127) {
+                    hasNonAscii = true;
+                    break;
+                }
+            }
+
+            var minLen = hasNonAscii ? 2 : 3;
+            if (lower.Length < minLen) {
+                continue;
+            }
+
+            if (seen.Add(lower)) {
+                tokens.Add(lower);
+                if (tokens.Count >= maxTokens) {
+                    break;
+                }
+            }
+        }
+
+        return tokens.Count == 0 ? Array.Empty<string>() : tokens.ToArray();
+    }
+
+    private static string BuildToolRoutingSearchText(ToolDefinition definition) {
+        if (definition is null) {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder(256);
+        sb.Append(definition.Name);
+        if (!string.IsNullOrWhiteSpace(definition.Description)) {
+            sb.Append(' ').Append(definition.Description!.Trim());
+        }
+
+        if (definition.Tags.Count > 0) {
+            for (var i = 0; i < definition.Tags.Count; i++) {
+                var tag = (definition.Tags[i] ?? string.Empty).Trim();
+                if (tag.Length == 0) {
+                    continue;
+                }
+                sb.Append(' ').Append(tag);
+            }
+        }
+
+        if (definition.Aliases.Count > 0) {
+            for (var i = 0; i < definition.Aliases.Count; i++) {
+                var alias = definition.Aliases[i];
+                if (alias is null || string.IsNullOrWhiteSpace(alias.Name)) {
+                    continue;
+                }
+                sb.Append(' ').Append(alias.Name.Trim());
+            }
+        }
+
+        return sb.ToString();
     }
 
 }

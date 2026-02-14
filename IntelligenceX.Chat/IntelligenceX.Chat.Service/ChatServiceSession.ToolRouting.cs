@@ -760,6 +760,7 @@ internal sealed partial class ChatServiceSession {
         ToolDefinition Definition,
         double Score,
         bool DirectNameMatch,
+        int TokenHits,
         double Adjustment);
 
     private readonly record struct ToolRoutingInsight(

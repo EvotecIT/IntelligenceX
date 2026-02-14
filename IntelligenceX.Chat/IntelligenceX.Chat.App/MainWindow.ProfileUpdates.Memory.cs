@@ -451,6 +451,10 @@ public sealed partial class MainWindow : Window {
             for (var i = 0; i < staleKeys.Count; i++) {
                 _memorySemanticVectorCache.Remove(staleKeys[i]);
             }
+
+            if (_memorySemanticVectorCache.Count > MaxMemorySemanticVectorCacheEntries) {
+                _memorySemanticVectorCache.Clear();
+            }
         }
     }
 
@@ -479,11 +483,17 @@ public sealed partial class MainWindow : Window {
                 Signature = signature,
                 Vector = vector
             };
+
+            // Hard cap as a safety net. Under normal operation, this is bounded by memory fact retention.
+            if (_memorySemanticVectorCache.Count > MaxMemorySemanticVectorCacheEntries) {
+                _memorySemanticVectorCache.Clear();
+            }
         }
         return vector;
     }
 
     private const int MemorySemanticVectorDimensions = 384;
+    private const int MaxMemorySemanticVectorCacheEntries = 160;
 
     private static string BuildMemorySemanticSource(string factText, IReadOnlyList<string> tags) {
         if (tags.Count == 0) {

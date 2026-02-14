@@ -422,12 +422,15 @@
     copyWheelDiagnosticsToClipboard();
   });
 
-  byId("btnDebugCopyMemory").addEventListener("click", function() {
-    if (!normalizeBool(state.options.debugToolsEnabled)) {
-      return;
-    }
-    copyMemoryDiagnosticsToClipboard();
-  });
+  var btnDebugCopyMemory = byId("btnDebugCopyMemory");
+  if (btnDebugCopyMemory) {
+    btnDebugCopyMemory.addEventListener("click", function() {
+      if (!normalizeBool(state.options.debugToolsEnabled)) {
+        return;
+      }
+      copyMemoryDiagnosticsToClipboard();
+    });
+  }
 
   var btnDebugRecomputeMemory = byId("btnDebugRecomputeMemory");
   if (btnDebugRecomputeMemory) {
