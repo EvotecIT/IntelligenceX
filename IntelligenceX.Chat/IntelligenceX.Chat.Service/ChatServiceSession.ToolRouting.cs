@@ -170,8 +170,6 @@ internal sealed partial class ChatServiceSession {
             }
 
             intentTicks = _lastUserIntentSeenUtcTicks.TryGetValue(normalizedThreadId, out var ticks) ? ticks : 0;
-            _lastUserIntentSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
-            TrimWeightedRoutingContextsNoLock();
         }
 
         if (intentTicks > 0) {
@@ -179,6 +177,11 @@ internal sealed partial class ChatServiceSession {
             if (age > UserIntentContextMaxAge) {
                 return normalized;
             }
+        }
+
+        lock (_toolRoutingContextLock) {
+            _lastUserIntentSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
+            TrimWeightedRoutingContextsNoLock();
         }
 
         var expanded = $"{intent!.Trim()}\nFollow-up: {normalized}";
@@ -455,6 +458,11 @@ internal sealed partial class ChatServiceSession {
 
             var end = text.IndexOf("```", start + 3, StringComparison.Ordinal);
             if (end < 0) {
+                // If the user forgot the closing fence, avoid dropping the whole message.
+                // Keep the remainder only when the fence starts the message; otherwise keep the prefix intent.
+                if (sb.Length == 0) {
+                    sb.Append(text, start + 3, text.Length - (start + 3));
+                }
                 break;
             }
 
@@ -474,6 +482,8 @@ internal sealed partial class ChatServiceSession {
         for (var i = 0; i < text.Length; i++) {
             var ch = text[i];
             if (ch == '`') {
+                // Replace with whitespace so we don't accidentally concatenate tokens.
+                sb.Append(' ');
                 continue;
             }
             sb.Append(ch);

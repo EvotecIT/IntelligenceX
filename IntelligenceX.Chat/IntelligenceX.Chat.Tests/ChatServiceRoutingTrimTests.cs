@@ -182,6 +182,31 @@ public sealed class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExtractPrimaryUserRequest_DoesNotDropIntentWhenFenceUnclosedAfterIntent() {
+        var input = """
+            Please run the checks first.
+            ```powershell
+            Get-EventLog -LogName System
+            """;
+
+        var result = ExtractPrimaryUserRequestMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("Please run the checks first.", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Get-EventLog", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExtractPrimaryUserRequest_DoesNotConcatenateTokensWhenBackticksAreOdd() {
+        var input = "please `run now";
+
+        var result = ExtractPrimaryUserRequestMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("run now", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_IncludesLastIntent() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
 

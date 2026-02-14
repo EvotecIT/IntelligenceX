@@ -109,7 +109,7 @@ internal sealed partial class ChatServiceSession {
         var executionNudgeUsed = false;
 
         for (var round = 0; round < Math.Max(1, maxRounds); round++) {
-                var extracted = ToolCallParser.Extract(turn);
+            var extracted = ToolCallParser.Extract(turn);
             if (extracted.Count == 0) {
                 var text = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
                 if (!executionNudgeUsed

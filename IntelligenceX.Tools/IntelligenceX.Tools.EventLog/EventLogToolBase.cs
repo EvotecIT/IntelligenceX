@@ -106,10 +106,10 @@ public abstract class EventLogToolBase : ToolBase {
 
         var nameContains = arguments?.GetString("name_contains");
         var max = ToolArgs.GetCappedInt32(arguments, maxArgumentName, Options.MaxResults, 1, Options.MaxResults);
-        var machineName = (arguments?.GetString("machine_name") ?? string.Empty).Trim();
-        if (machineName.Length == 0) {
-            machineName = null;
-        } else if (machineName.Length > 260) {
+
+        var machineNameNormalized = (arguments?.GetString("machine_name") ?? string.Empty).Trim();
+        string? machineName = machineNameNormalized.Length == 0 ? null : machineNameNormalized;
+        if (machineName is { Length: > 260 }) {
             machineName = machineName.Substring(0, 260);
         }
 
