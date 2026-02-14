@@ -333,14 +333,22 @@ public static class AnalysisCatalogLoader {
             return false;
         }
 
+        var comparison = GetPathComparison();
         var root = TrimEndingDirectorySeparators(rootFullPath);
         var candidate = TrimEndingDirectorySeparators(candidateFullPath);
-        if (string.Equals(candidate, root, StringComparison.OrdinalIgnoreCase)) {
+        if (string.Equals(candidate, root, comparison)) {
             return true;
         }
 
         var prefix = root + Path.DirectorySeparatorChar;
-        return candidate.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+        return candidate.StartsWith(prefix, comparison);
+    }
+
+    private static StringComparison GetPathComparison() {
+        // Windows paths are case-insensitive by default; Linux/macOS paths are generally case-sensitive.
+        return Path.DirectorySeparatorChar == '\\'
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
     }
 
     private static string TrimEndingDirectorySeparators(string path) {

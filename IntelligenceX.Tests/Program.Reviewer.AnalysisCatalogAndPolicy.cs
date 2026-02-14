@@ -195,6 +195,50 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalysisCatalogLoaderUnderRootCaseSensitivityByPlatform() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-catalog-loader-case-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var flags = global::System.Reflection.BindingFlags.NonPublic | global::System.Reflection.BindingFlags.Static;
+            var method = typeof(IntelligenceX.Analysis.AnalysisCatalogLoader).GetMethod("IsUnderRoot", flags);
+            AssertNotNull(method, "analysis catalog loader IsUnderRoot exists (case sensitivity)");
+
+            var rootPath = Path.GetFullPath(temp);
+            var nestedPath = Path.Combine(rootPath, "Analysis", "Catalog", "rules", "internal", "IX001.json");
+            var rootCaseVariant = TogglePathCase(rootPath);
+            if (string.Equals(rootCaseVariant, rootPath, StringComparison.Ordinal)) {
+                AssertEqual(true, true, "analysis catalog loader case sensitivity setup");
+                return;
+            }
+
+            var caseVariantResult = (bool)method!.Invoke(null, new object[] { rootCaseVariant, nestedPath })!;
+            var expectCaseInsensitive = Path.DirectorySeparatorChar == '\\';
+            AssertEqual(expectCaseInsensitive, caseVariantResult,
+                "analysis catalog loader root comparison follows platform case semantics");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static string TogglePathCase(string path) {
+        if (string.IsNullOrEmpty(path)) {
+            return string.Empty;
+        }
+
+        var chars = path.ToCharArray();
+        for (var i = 0; i < chars.Length; i++) {
+            if (!char.IsLetter(chars[i])) {
+                continue;
+            }
+            chars[i] = char.IsUpper(chars[i]) ? char.ToLowerInvariant(chars[i]) : char.ToUpperInvariant(chars[i]);
+            return new string(chars);
+        }
+
+        return path;
+    }
+
     private static void TestAnalysisCatalogValidatorDetectsInvalidCatalog() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-validate-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

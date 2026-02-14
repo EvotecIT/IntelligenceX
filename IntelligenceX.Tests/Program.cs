@@ -295,6 +295,8 @@ internal static partial class Program {
         failed += Run("Analysis catalog validator passes built-in catalog", TestAnalysisCatalogValidatorPassesBuiltInCatalog);
         failed += Run("Analysis catalog loader root check rejects sibling prefix path",
             TestAnalysisCatalogLoaderUnderRootRejectsSiblingPrefixPath);
+        failed += Run("Analysis catalog loader root check follows platform case sensitivity",
+            TestAnalysisCatalogLoaderUnderRootCaseSensitivityByPlatform);
         failed += Run("Analysis catalog validator detects invalid catalog", TestAnalysisCatalogValidatorDetectsInvalidCatalog);
         failed += Run("Analysis catalog validator detects missing rule metadata", TestAnalysisCatalogValidatorDetectsMissingRuleMetadata);
         failed += Run("Analysis packs: all-security includes PowerShell", TestAnalysisPacksAllSecurityIncludesPowerShell);
