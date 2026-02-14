@@ -209,7 +209,7 @@ public sealed class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ExtractPrimaryUserRequest_DropsTrailingTextInsideUnclosedFence() {
+    public void ExtractPrimaryUserRequest_PreservesTrailingPlainTextAfterUnclosedFence() {
         var input = """
             Please run the checks first.
             ```powershell
@@ -222,7 +222,7 @@ public sealed class ChatServiceRoutingTrimTests {
 
         Assert.Contains("Please run the checks first.", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Get-EventLog", text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("then run now", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("then run now", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

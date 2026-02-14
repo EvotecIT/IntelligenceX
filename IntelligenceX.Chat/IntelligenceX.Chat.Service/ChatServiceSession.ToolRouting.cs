@@ -174,7 +174,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (intentTicks > 0) {
-            if (intentTicks > DateTime.MaxValue.Ticks) {
+            if (intentTicks < DateTime.MinValue.Ticks || intentTicks > DateTime.MaxValue.Ticks) {
                 // Defensive: avoid exceptions from ticks->DateTime conversion if ticks are corrupted/out of range.
                 return normalized;
             }
@@ -492,6 +492,13 @@ internal sealed partial class ChatServiceSession {
 
             var end = text.IndexOf("```", start + 3, StringComparison.Ordinal);
             if (end < 0) {
+                var tail = ExtractUnclosedFenceTail(text, fenceStartIndex: start + 3);
+                if (!string.IsNullOrWhiteSpace(tail)) {
+                    if (sb.Length > 0 && !char.IsWhiteSpace(sb[^1])) {
+                        sb.Append(' ');
+                    }
+                    sb.Append(tail);
+                }
                 break;
             }
 
@@ -499,6 +506,62 @@ internal sealed partial class ChatServiceSession {
         }
 
         return sb.ToString();
+    }
+
+    private static string ExtractUnclosedFenceTail(string text, int fenceStartIndex) {
+        if (string.IsNullOrWhiteSpace(text) || fenceStartIndex < 0 || fenceStartIndex >= text.Length) {
+            return string.Empty;
+        }
+
+        // If a user forgets the closing fence, they often keep typing a short instruction after the code.
+        // Try to salvage the last non-empty line if it looks like natural language rather than a command.
+        var idx = text.Length;
+        while (idx > fenceStartIndex) {
+            var lineStart = text.LastIndexOf('\n', idx - 1);
+            if (lineStart < fenceStartIndex) {
+                lineStart = fenceStartIndex - 1;
+            }
+
+            var rawLine = text.Substring(lineStart + 1, idx - (lineStart + 1)).Trim();
+            if (rawLine.Length == 0) {
+                idx = lineStart;
+                continue;
+            }
+
+            var candidate = CollapseWhitespace(StripInlineCode(rawLine));
+            if (candidate.Length == 0 || candidate.Length > 96) {
+                return string.Empty;
+            }
+            if (LooksLikeCodeTail(candidate)) {
+                return string.Empty;
+            }
+            return candidate;
+        }
+
+        return string.Empty;
+    }
+
+    private static bool LooksLikeCodeTail(string text) {
+        if (string.IsNullOrWhiteSpace(text)) {
+            return false;
+        }
+
+        var hasUpper = false;
+        for (var i = 0; i < text.Length; i++) {
+            var ch = text[i];
+            if (ch is '{' or '}' or ';' or '(' or ')' or '[' or ']' or '$' or '=' or '|' or '<' or '>') {
+                return true;
+            }
+            if (ch is '\r' or '\n' or '\t') {
+                return true;
+            }
+            if (char.IsUpper(ch)) {
+                hasUpper = true;
+            }
+        }
+
+        // Common for cmdlets/functions: `Get-Thing` (hyphen + upper). Allow "forest-wide" (no upper).
+        return hasUpper && text.Contains('-', StringComparison.Ordinal);
     }
 
     private static string StripInlineCode(string text) {
