@@ -596,7 +596,7 @@ public sealed partial class MainWindow : Window {
             return tokens;
         }
 
-        var parts = Regex.Split(text, @"[^a-z0-9_]+");
+        var parts = Regex.Split(text, @"[^\p{L}\p{Nd}_]+");
         for (var i = 0; i < parts.Length; i++) {
             var token = (parts[i] ?? string.Empty).Trim().ToLowerInvariant();
             if (token.Length < 3 || MemoryTokenStopWords.Contains(token)) {
