@@ -306,42 +306,6 @@ internal static partial class Program {
         }
     }
 
-    private static void TestAnalyzeGateDuplicationOverallBaselineSkipsNullItems() {
-        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-dup-overall-null-items-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(temp);
-        try {
-            var baselinePath = Path.Combine(temp, "analysis-baseline.json");
-            File.WriteAllText(baselinePath, """
-{
-  "schema": "intelligencex.analysis-baseline.v1",
-  "items": [
-    null,
-    {
-      "path": ".intelligencex/duplication-overall",
-      "line": 0,
-      "severity": "info",
-      "ruleId": "IXDUP001",
-      "tool": "IntelligenceX.Maintainability",
-      "fingerprint": "IXDUP001:overall:10:100:8"
-    }
-  ]
-}
-""");
-
-            var ok = IntelligenceX.Cli.Analysis.AnalyzeGateBaseline.TryLoadDuplicationOverallBaselines(
-                baselinePath,
-                out var baselines,
-                out var error);
-            AssertEqual(true, ok, "duplication overall baseline skips null items ok");
-            AssertEqual(true, string.IsNullOrWhiteSpace(error), "duplication overall baseline skips null items error empty");
-            AssertEqual(true, baselines.ContainsKey("IXDUP001|all"), "duplication overall baseline skips null items key exists");
-        } finally {
-            if (Directory.Exists(temp)) {
-                Directory.Delete(temp, true);
-            }
-        }
-    }
-
     private static void TestAnalyzeGateDuplicationFileBaselineSkipsNullItems() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-dup-file-null-items-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

@@ -68,8 +68,8 @@ internal sealed partial class ReviewRunner {
                     Math.Max(0, _settings.RetryJitterMaxMs),
                     cancellationToken,
                     ex => ReviewDiagnostics.FormatExceptionSummary(ex, _settings.Diagnostics),
-                    extraAttempts: 0,
-                    extraRetryPredicate: null,
+                    extraAttempts: _settings.RetryExtraOnResponseEnded ? 1 : 0,
+                    extraRetryPredicate: ReviewDiagnostics.IsResponseEnded,
                     retryState,
                     operationName: "OpenAI-compatible").ConfigureAwait(false);
         } catch (Exception ex) {

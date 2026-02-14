@@ -389,6 +389,8 @@ internal static partial class Program {
         failed += Run("Analyze gate duplication file delta normalizes ./ paths",
             TestAnalyzeGateDuplicationFileDeltaNormalizesDotRelativePaths);
         failed += Run("Analyze gate duplication overall baseline skips null items", TestAnalyzeGateDuplicationOverallBaselineSkipsNullItems);
+        failed += Run("Analyze gate duplication overall baseline rejects malformed fingerprints",
+            TestAnalyzeGateDuplicationOverallBaselineRejectsMalformedFingerprints);
         failed += Run("Analyze gate duplication file baseline skips null items", TestAnalyzeGateDuplicationFileBaselineSkipsNullItems);
         failed += Run("Analyze gate duplication file baseline loads paths with colon",
             TestAnalyzeGateDuplicationFileBaselineLoadsPathsWithColon);

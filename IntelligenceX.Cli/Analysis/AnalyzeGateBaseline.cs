@@ -316,23 +316,37 @@ internal static class AnalyzeGateBaseline {
             return false;
         }
 
-        // Optional windowLines was introduced later. Older baselines might not include it, or may place :scope:changed-files
-        // immediately after significantLines.
-        var scopeStartIndex = 4;
-        if (tokens.Length >= 5 && int.TryParse(tokens[4], out var parsedWindowLines) && parsedWindowLines >= 0) {
-            windowLines = parsedWindowLines;
-            scopeStartIndex = 5;
+        // Accepted shapes:
+        // - <ruleId>:overall:<duplicated>:<significant>
+        // - <ruleId>:overall:<duplicated>:<significant>:<windowLines>
+        // - <ruleId>:overall:<duplicated>:<significant>:scope:changed-files
+        // - <ruleId>:overall:<duplicated>:<significant>:<windowLines>:scope:changed-files
+        if (tokens.Length == 4) {
+            return true;
         }
-
-        // Default scope is "all" unless an explicit suffix exists.
-        for (var i = scopeStartIndex; i < tokens.Length - 1; i++) {
-            if (tokens[i].Equals("scope", StringComparison.OrdinalIgnoreCase) &&
-                tokens[i + 1].Equals("changed-files", StringComparison.OrdinalIgnoreCase)) {
-                scope = "changed-files";
-                break;
+        if (tokens.Length == 5) {
+            return int.TryParse(tokens[4], out windowLines) && windowLines >= 0;
+        }
+        if (tokens.Length == 6) {
+            if (!tokens[4].Equals("scope", StringComparison.OrdinalIgnoreCase) ||
+                !tokens[5].Equals("changed-files", StringComparison.OrdinalIgnoreCase)) {
+                return false;
             }
+            scope = "changed-files";
+            return true;
         }
-        return true;
+        if (tokens.Length == 7) {
+            if (!int.TryParse(tokens[4], out windowLines) || windowLines < 0) {
+                return false;
+            }
+            if (!tokens[5].Equals("scope", StringComparison.OrdinalIgnoreCase) ||
+                !tokens[6].Equals("changed-files", StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+            scope = "changed-files";
+            return true;
+        }
+        return false;
     }
 
     private static bool TryParseDuplicationFileFingerprint(string fingerprint, out string path, out int duplicatedLines,
