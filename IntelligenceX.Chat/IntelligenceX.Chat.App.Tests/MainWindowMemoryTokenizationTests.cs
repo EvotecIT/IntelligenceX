@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
+using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using IntelligenceX.Chat.App;
 using Xunit;
 
@@ -29,6 +33,26 @@ public sealed class MainWindowMemoryTokenizationTests {
         "BuildPersistentMemoryLinesForEmptyQuery",
         BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildPersistentMemoryLinesForEmptyQuery not found.");
+
+    private static readonly MethodInfo TryExtractMemoryFactFromRegexMethod = typeof(MainWindow).GetMethod(
+        "TryExtractMemoryFactFromRegex",
+        BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("TryExtractMemoryFactFromRegex not found.");
+
+    private static readonly MethodInfo ClearPersistentMemoryAsyncMethod = typeof(MainWindow).GetMethod(
+        "ClearPersistentMemoryAsync",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("ClearPersistentMemoryAsync not found.");
+
+    private static readonly FieldInfo MemoryRememberIntentRegexField = typeof(MainWindow).GetField(
+        "MemoryRememberIntentRegex",
+        BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("MemoryRememberIntentRegex not found.");
+
+    private static readonly FieldInfo AppStateField = typeof(MainWindow).GetField(
+        "_appState",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_appState field not found.");
 
     /// <summary>
     /// Ensures tokenization yields stable semantic tokens for precomposed/decomposed Unicode forms.
@@ -206,6 +230,50 @@ public sealed class MainWindowMemoryTokenizationTests {
         Assert.Equal(expectedFirst, lines[0]);
     }
 
+    /// <summary>
+    /// Ensures preference phrases that start with "to use" are retained for memory capture.
+    /// </summary>
+    [Fact]
+    public void TryExtractMemoryFactFromRegex_AllowsToUsePreferencePhrases() {
+        var regex = Assert.IsType<Regex>(MemoryRememberIntentRegexField.GetValue(null));
+        var args = new object?[] { regex, "remember this to use short bullets", null };
+
+        var ok = Assert.IsType<bool>(TryExtractMemoryFactFromRegexMethod.Invoke(null, args));
+
+        Assert.True(ok);
+        Assert.Equal("to use short bullets", Assert.IsType<string>(args[2]));
+    }
+
+    /// <summary>
+    /// Ensures clearly imperative task phrases are still rejected.
+    /// </summary>
+    [Fact]
+    public void TryExtractMemoryFactFromRegex_RejectsImperativeTaskPhrases() {
+        var regex = Assert.IsType<Regex>(MemoryRememberIntentRegexField.GetValue(null));
+        var args = new object?[] { regex, "remember this to do domain cleanup", null };
+
+        var ok = Assert.IsType<bool>(TryExtractMemoryFactFromRegexMethod.Invoke(null, args));
+
+        Assert.False(ok);
+        Assert.Null(args[2]);
+    }
+
+    /// <summary>
+    /// Ensures null legacy memory-fact state short-circuits without throwing.
+    /// </summary>
+    [Fact]
+    public async Task ClearPersistentMemoryAsync_ReturnsWhenMemoryFactsNull() {
+        var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+        var state = new ChatAppState {
+            MemoryFacts = null!
+        };
+
+        AppStateField.SetValue(window, state);
+        await InvokeClearPersistentMemoryAsync(window);
+
+        Assert.Null(state.MemoryFacts);
+    }
+
     private static HashSet<string> InvokeTokenize(string input) {
         var result = TokenizeMethod.Invoke(null, new object?[] { input });
         return Assert.IsType<HashSet<string>>(result);
@@ -227,5 +295,15 @@ public sealed class MainWindowMemoryTokenizationTests {
     private static IReadOnlyList<string> InvokeBuildPersistentMemoryLinesForEmptyQuery(List<ChatMemoryFactState> facts) {
         var result = BuildPersistentMemoryLinesForEmptyQueryMethod.Invoke(null, new object?[] { facts });
         return Assert.IsAssignableFrom<IReadOnlyList<string>>(result);
+    }
+
+    private static Task InvokeClearPersistentMemoryAsync(MainWindow window) {
+        try {
+            var invocationResult = ClearPersistentMemoryAsyncMethod.Invoke(window, null);
+            return Assert.IsAssignableFrom<Task>(invocationResult);
+        } catch (TargetInvocationException ex) {
+            ExceptionDispatchInfo.Capture(ex.InnerException ?? ex).Throw();
+            throw;
+        }
     }
 }

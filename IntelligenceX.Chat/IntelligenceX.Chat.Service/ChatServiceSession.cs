@@ -24,6 +24,8 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed class ChatServiceSession {
+    private const int MaxTrackedToolRoutingStats = 512;
+    private const int MaxTrackedWeightedRoutingContexts = 256;
     private readonly ServiceOptions _options;
     private readonly Stream _stream;
     private readonly ToolRegistry _registry;
@@ -35,6 +37,7 @@ internal sealed class ChatServiceSession {
     private readonly Dictionary<string, ToolRoutingStats> _toolRoutingStats = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _toolRoutingContextLock = new();
     private readonly Dictionary<string, string[]> _lastWeightedToolNamesByThreadId = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _lastWeightedToolSubsetSeenUtcTicks = new(StringComparer.Ordinal);
 
     private readonly JsonSerializerOptions _json;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
@@ -1362,6 +1365,9 @@ internal sealed class ChatServiceSession {
             if (!_lastWeightedToolNamesByThreadId.TryGetValue(normalizedThreadId, out previousNames) || previousNames.Length == 0) {
                 return false;
             }
+
+            _lastWeightedToolSubsetSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
+            TrimWeightedRoutingContextsNoLock();
         }
 
         var preferred = new HashSet<string>(previousNames!, StringComparer.OrdinalIgnoreCase);
@@ -1390,6 +1396,7 @@ internal sealed class ChatServiceSession {
         lock (_toolRoutingContextLock) {
             if (selectedDefinitions.Count == 0 || selectedDefinitions.Count >= allToolCount) {
                 _lastWeightedToolNamesByThreadId.Remove(normalizedThreadId);
+                _lastWeightedToolSubsetSeenUtcTicks.Remove(normalizedThreadId);
                 return;
             }
 
@@ -1402,6 +1409,8 @@ internal sealed class ChatServiceSession {
             }
 
             _lastWeightedToolNamesByThreadId[normalizedThreadId] = names.Count == 0 ? Array.Empty<string>() : names.ToArray();
+            _lastWeightedToolSubsetSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
+            TrimWeightedRoutingContextsNoLock();
         }
     }
 
@@ -1472,6 +1481,134 @@ internal sealed class ChatServiceSession {
                     stats.Failures++;
                 }
             }
+            TrimToolRoutingStatsNoLock();
+        }
+    }
+
+    private void TrimWeightedRoutingContextsNoLock() {
+        var removeCount = _lastWeightedToolNamesByThreadId.Count - MaxTrackedWeightedRoutingContexts;
+        if (removeCount <= 0) {
+            return;
+        }
+
+        var threadIdsToRemove = _lastWeightedToolNamesByThreadId.Keys
+            .Select(threadId => {
+                var ticks = _lastWeightedToolSubsetSeenUtcTicks.TryGetValue(threadId, out var value) && value > 0
+                    ? value
+                    : long.MinValue;
+                return (ThreadId: threadId, Ticks: ticks);
+            })
+            .OrderBy(item => item.Ticks)
+            .ThenBy(item => item.ThreadId, StringComparer.Ordinal)
+            .Take(removeCount)
+            .Select(item => item.ThreadId)
+            .ToArray();
+
+        foreach (var threadId in threadIdsToRemove) {
+            _lastWeightedToolNamesByThreadId.Remove(threadId);
+            _lastWeightedToolSubsetSeenUtcTicks.Remove(threadId);
+        }
+    }
+
+    private void TrimToolRoutingStatsNoLock() {
+        var removeCount = _toolRoutingStats.Count - MaxTrackedToolRoutingStats;
+        if (removeCount <= 0) {
+            return;
+        }
+
+        var toolNamesToRemove = _toolRoutingStats
+            .Select(pair => {
+                var stats = pair.Value;
+                var ticks = stats.LastUsedUtcTicks > 0
+                    ? stats.LastUsedUtcTicks
+                    : (stats.LastSuccessUtcTicks > 0 ? stats.LastSuccessUtcTicks : long.MinValue);
+                return (ToolName: pair.Key, Ticks: ticks);
+            })
+            .OrderBy(item => item.Ticks)
+            .ThenBy(item => item.ToolName, StringComparer.Ordinal)
+            .Take(removeCount)
+            .Select(item => item.ToolName)
+            .ToArray();
+
+        foreach (var toolName in toolNamesToRemove) {
+            _toolRoutingStats.Remove(toolName);
+        }
+    }
+
+    internal void SetToolRoutingStatsForTesting(IReadOnlyDictionary<string, (long LastUsedUtcTicks, long LastSuccessUtcTicks)> statsByToolName) {
+        ArgumentNullException.ThrowIfNull(statsByToolName);
+
+        lock (_toolRoutingStatsLock) {
+            _toolRoutingStats.Clear();
+            foreach (var pair in statsByToolName) {
+                var name = (pair.Key ?? string.Empty).Trim();
+                if (name.Length == 0) {
+                    continue;
+                }
+
+                _toolRoutingStats[name] = new ToolRoutingStats {
+                    LastUsedUtcTicks = pair.Value.LastUsedUtcTicks,
+                    LastSuccessUtcTicks = pair.Value.LastSuccessUtcTicks
+                };
+            }
+        }
+    }
+
+    internal void SetWeightedRoutingContextsForTesting(IReadOnlyDictionary<string, string[]> namesByThreadId, IReadOnlyDictionary<string, long> seenTicksByThreadId) {
+        ArgumentNullException.ThrowIfNull(namesByThreadId);
+        ArgumentNullException.ThrowIfNull(seenTicksByThreadId);
+
+        lock (_toolRoutingContextLock) {
+            _lastWeightedToolNamesByThreadId.Clear();
+            _lastWeightedToolSubsetSeenUtcTicks.Clear();
+
+            foreach (var pair in namesByThreadId) {
+                var threadId = (pair.Key ?? string.Empty).Trim();
+                if (threadId.Length == 0) {
+                    continue;
+                }
+
+                var names = pair.Value ?? Array.Empty<string>();
+                var namesClone = new string[names.Length];
+                if (names.Length > 0) {
+                    Array.Copy(names, namesClone, names.Length);
+                }
+
+                _lastWeightedToolNamesByThreadId[threadId] = namesClone;
+            }
+
+            foreach (var pair in seenTicksByThreadId) {
+                var threadId = (pair.Key ?? string.Empty).Trim();
+                if (threadId.Length == 0 || !_lastWeightedToolNamesByThreadId.ContainsKey(threadId)) {
+                    continue;
+                }
+
+                _lastWeightedToolSubsetSeenUtcTicks[threadId] = pair.Value;
+            }
+        }
+    }
+
+    internal IReadOnlyCollection<string> GetTrackedToolRoutingStatNamesForTesting() {
+        lock (_toolRoutingStatsLock) {
+            return _toolRoutingStats.Keys.ToArray();
+        }
+    }
+
+    internal IReadOnlyCollection<string> GetTrackedWeightedRoutingContextThreadIdsForTesting() {
+        lock (_toolRoutingContextLock) {
+            return _lastWeightedToolNamesByThreadId.Keys.ToArray();
+        }
+    }
+
+    internal void TrimToolRoutingStatsForTesting() {
+        lock (_toolRoutingStatsLock) {
+            TrimToolRoutingStatsNoLock();
+        }
+    }
+
+    internal void TrimWeightedRoutingContextsForTesting() {
+        lock (_toolRoutingContextLock) {
+            TrimWeightedRoutingContextsNoLock();
         }
     }
 

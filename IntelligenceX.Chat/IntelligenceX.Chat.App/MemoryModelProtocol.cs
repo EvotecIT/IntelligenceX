@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -104,7 +105,8 @@ internal static class MemoryModelProtocol {
                     }
                 }
             }
-        } catch {
+        } catch (Exception ex) {
+            Debug.WriteLine("MemoryModelProtocol.TryExtractLastMemoryUpdate parse failure: " + ex);
             return false;
         }
 
