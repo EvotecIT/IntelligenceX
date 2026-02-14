@@ -341,5 +341,14 @@ internal static partial class Program {
             }
         }
     }
+
+    private static void TestAnalyzeGateDuplicationFileBaselineMissingPathReturnsNotProvided() {
+        var ok = IntelligenceX.Cli.Analysis.AnalyzeGateBaseline.TryLoadDuplicationFileBaselines(
+            path: "",
+            baselines: out _,
+            error: out var error);
+        AssertEqual(false, ok, "duplication file baseline missing path fails");
+        AssertContainsText(error ?? string.Empty, "baseline path not provided", "duplication file baseline missing path error");
+    }
 }
 #endif

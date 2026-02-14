@@ -216,7 +216,11 @@ internal static class AnalyzeGateBaseline {
         baselines = new Dictionary<string, DuplicationFileBaseline>(StringComparer.OrdinalIgnoreCase);
         error = null;
 
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
+        if (string.IsNullOrWhiteSpace(path)) {
+            error = "baseline path not provided";
+            return false;
+        }
+        if (!File.Exists(path)) {
             error = $"baseline file not found: {path}";
             return false;
         }

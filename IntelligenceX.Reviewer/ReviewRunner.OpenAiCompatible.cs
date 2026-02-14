@@ -106,7 +106,11 @@ internal sealed partial class ReviewRunner {
             }, endpoint, timeoutCts.Token)
             .ConfigureAwait(false);
 
-        var responseText = await response.Content.ReadAsStringAsync(timeoutCts.Token).ConfigureAwait(false);
+        // Safe-by-default: do not read or include remote error bodies unless diagnostics are explicitly enabled.
+        var responseText = string.Empty;
+        if (response.IsSuccessStatusCode || _settings.Diagnostics) {
+            responseText = await response.Content.ReadAsStringAsync(timeoutCts.Token).ConfigureAwait(false);
+        }
 
         if (!response.IsSuccessStatusCode) {
             var code = (int)response.StatusCode;

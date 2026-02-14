@@ -376,9 +376,11 @@ internal static partial class AnalyzeGateCommand {
 
                     var message =
                         $"File duplication increased (scope={current.Scope}): {current.Path} baseline {FormatPercent(baseline.DuplicatedPercent)}% -> current {FormatPercent(current.DuplicatedPercent)}% (+{FormatPercent(delta)}pp) exceeds allowed +{FormatPercent(allowedIncrease)}pp.";
+                    var fingerprintPath = Uri.EscapeDataString((current.Path ?? string.Empty).Trim());
                     var fingerprint =
-                        $"{current.RuleId}:file-delta:{current.Path}:{FormatPercent(baseline.DuplicatedPercent)}->{FormatPercent(current.DuplicatedPercent)}:allow:+{FormatPercent(allowedIncrease)}:scope:{current.Scope}";
-                    duplicationViolations.Add(new AnalysisFinding(current.Path, 1, message, "warning", current.RuleId, current.Tool,
+                        $"{current.RuleId}:file-delta-uri:{fingerprintPath}:{FormatPercent(baseline.DuplicatedPercent)}->{FormatPercent(current.DuplicatedPercent)}:allow:+{FormatPercent(allowedIncrease)}:scope:{current.Scope}";
+                    var findingPath = current.Path ?? string.Empty;
+                    duplicationViolations.Add(new AnalysisFinding(findingPath, 1, message, "warning", current.RuleId, current.Tool,
                         fingerprint));
                 }
 
