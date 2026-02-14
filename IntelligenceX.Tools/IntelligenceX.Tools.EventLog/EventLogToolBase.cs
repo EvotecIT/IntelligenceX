@@ -116,7 +116,8 @@ public abstract class EventLogToolBase : ToolBase {
         int? sessionTimeoutMs = null;
         var timeoutRaw = arguments?.GetInt64("session_timeout_ms");
         if (timeoutRaw.HasValue) {
-            var normalized = timeoutRaw.Value > int.MaxValue ? int.MaxValue : (int)timeoutRaw.Value;
+            var normalizedLong = Math.Clamp(timeoutRaw.Value, (long)int.MinValue, (long)int.MaxValue);
+            var normalized = (int)normalizedLong;
             if (normalized > 0) {
                 sessionTimeoutMs = Math.Clamp(normalized, 1000, 600_000);
             }

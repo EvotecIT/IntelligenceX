@@ -207,6 +207,20 @@ public sealed class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExtractPrimaryUserRequest_ReturnsEmptyForAllCodeMessages() {
+        var input = """
+            ```powershell
+            Get-EventLog -LogName System
+            ```
+            """;
+
+        var result = ExtractPrimaryUserRequestMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Equal(string.Empty, text);
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_IncludesLastIntent() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
 

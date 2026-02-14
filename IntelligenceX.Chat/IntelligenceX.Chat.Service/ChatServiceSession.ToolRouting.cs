@@ -437,7 +437,8 @@ internal sealed partial class ChatServiceSession {
         normalized = StripCodeFences(normalized);
         normalized = StripInlineCode(normalized);
         normalized = CollapseWhitespace(normalized);
-        return normalized.Length == 0 ? (text ?? string.Empty).Trim() : normalized;
+        // Never fall back to the original text here: it may contain the very content we intentionally stripped.
+        return normalized;
     }
 
     private static string StripCodeFences(string text) {
