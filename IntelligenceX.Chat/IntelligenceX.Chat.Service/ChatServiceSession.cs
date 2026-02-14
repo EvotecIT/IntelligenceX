@@ -1693,6 +1693,7 @@ internal sealed class ChatServiceSession {
             return BuildToolOutputDto(call.CallId, output);
         }
 
+        // Retry profile wiring is enforced in this execution loop.
         var profile = ResolveRetryProfile(call.Name);
         ToolOutputDto? lastFailure = null;
         for (var attemptIndex = 0; attemptIndex < profile.MaxAttempts; attemptIndex++) {

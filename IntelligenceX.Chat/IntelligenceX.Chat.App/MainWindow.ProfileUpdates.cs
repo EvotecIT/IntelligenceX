@@ -469,6 +469,7 @@ public sealed partial class MainWindow : Window {
             var normalizedFactText = text.ToLowerInvariant();
             var score = fact.Weight * 1.4d;
             var semanticHits = 0;
+            var matchedTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             if (lowerText.Length > 0
                 && (lowerText.Contains(normalizedFactText, StringComparison.Ordinal)
@@ -478,7 +479,7 @@ public sealed partial class MainWindow : Window {
             }
 
             var factTokens = TokenizeMemorySemanticText(normalizedFactText);
-            var factTokenOverlap = CountTokenOverlap(userTokens, factTokens);
+            var factTokenOverlap = CountNewTokenMatches(userTokens, factTokens, matchedTokens);
             if (factTokenOverlap > 0) {
                 score += Math.Min(5d, factTokenOverlap * 1.35d);
                 semanticHits += factTokenOverlap;
@@ -497,7 +498,7 @@ public sealed partial class MainWindow : Window {
                 }
 
                 var tagTokens = TokenizeMemorySemanticText(tag);
-                var tagTokenOverlap = CountTokenOverlap(userTokens, tagTokens);
+                var tagTokenOverlap = CountNewTokenMatches(userTokens, tagTokens, matchedTokens);
                 if (tagTokenOverlap > 0) {
                     score += Math.Min(2.5d, tagTokenOverlap * 0.75d);
                     semanticHits += tagTokenOverlap;
@@ -608,29 +609,22 @@ public sealed partial class MainWindow : Window {
         return tokens;
     }
 
-    private static int CountTokenOverlap(IReadOnlySet<string> left, IReadOnlySet<string> right) {
-        if (left.Count == 0 || right.Count == 0) {
+    private static int CountNewTokenMatches(IReadOnlySet<string> userTokens, IReadOnlySet<string> candidateTokens, HashSet<string> seen) {
+        if (userTokens.Count == 0 || candidateTokens.Count == 0) {
             return 0;
         }
 
-        var overlap = 0;
-        if (left.Count <= right.Count) {
-            foreach (var token in left) {
-                if (right.Contains(token)) {
-                    overlap++;
-                }
+        var matches = 0;
+        foreach (var token in candidateTokens) {
+            if (!userTokens.Contains(token)) {
+                continue;
             }
-
-            return overlap;
-        }
-
-        foreach (var token in right) {
-            if (left.Contains(token)) {
-                overlap++;
+            if (seen.Add(token)) {
+                matches++;
             }
         }
 
-        return overlap;
+        return matches;
     }
 
     private static readonly HashSet<string> MemoryTokenStopWords = new(StringComparer.OrdinalIgnoreCase) {
