@@ -158,6 +158,7 @@ public sealed partial class MainWindow : Window {
     private readonly Dictionary<string, string> _toolRoutingReason = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, double> _toolRoutingScore = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, MemorySemanticVectorCacheEntry> _memorySemanticVectorCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _memoryDiagnosticsSync = new();
     private MemoryDebugSnapshot? _lastMemoryDebugSnapshot;
     private readonly List<MemoryDebugSnapshot> _memoryDebugHistory = new();
     private int _memoryDebugSequence;
@@ -723,10 +724,7 @@ public sealed partial class MainWindow : Window {
         _persistentMemoryEnabled = _appState.PersistentMemoryEnabled;
         _appState.PersistentMemoryEnabled = _persistentMemoryEnabled;
         _appState.MemoryFacts = NormalizeMemoryFacts(_appState.MemoryFacts);
-        _memorySemanticVectorCache.Clear();
-        _lastMemoryDebugSnapshot = null;
-        _memoryDebugHistory.Clear();
-        _memoryDebugSequence = 0;
+        ResetMemoryDiagnosticsState();
 
         var repairedLegacyTranscriptState = LoadConversationsFromState(_appState);
         ActivateConversation(ResolveInitialConversationId(_appState));

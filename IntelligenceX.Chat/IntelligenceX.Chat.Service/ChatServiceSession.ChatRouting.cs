@@ -246,7 +246,13 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        return !hasNumericSignal && draft.Length <= 220;
+        if (hasNumericSignal || draft.Length > 220) {
+            return false;
+        }
+
+        // Avoid overriding already-good short completions (for example "You're welcome.").
+        // Only retry tool execution when the assistant draft still appears tied to the user's follow-up.
+        return AssistantDraftReferencesUserRequest(userRequest, draft);
     }
 
     private static bool LooksLikeCompactFollowUp(string userRequest) {
@@ -273,6 +279,70 @@ internal sealed partial class ChatServiceSession {
         }
 
         return tokenCount <= 8 && normalized.Length <= 80 && normalized.Contains('?', StringComparison.Ordinal);
+    }
+
+    private static bool AssistantDraftReferencesUserRequest(string userRequest, string assistantDraft) {
+        var request = (userRequest ?? string.Empty).Trim();
+        var draft = (assistantDraft ?? string.Empty).Trim();
+        if (request.Length == 0 || draft.Length == 0) {
+            return false;
+        }
+
+        // Direct substring match is the strongest signal.
+        if (request.Length >= 3 && draft.IndexOf(request, StringComparison.OrdinalIgnoreCase) >= 0) {
+            return true;
+        }
+
+        // Fall back to token containment (language-agnostic): if any meaningful user token appears in the draft,
+        // it is likely the assistant intended to act on that follow-up but failed to call tools.
+        var inToken = false;
+        var tokenStart = 0;
+        var checkedTokens = 0;
+        for (var i = 0; i <= request.Length; i++) {
+            var ch = i < request.Length ? request[i] : '\0';
+            var isTokenChar = i < request.Length && char.IsLetterOrDigit(ch);
+            if (isTokenChar) {
+                if (!inToken) {
+                    inToken = true;
+                    tokenStart = i;
+                }
+                continue;
+            }
+
+            if (!inToken) {
+                continue;
+            }
+
+            var token = request.Substring(tokenStart, i - tokenStart);
+            inToken = false;
+            if (token.Length == 0) {
+                continue;
+            }
+
+            var hasNonAscii = false;
+            for (var t = 0; t < token.Length; t++) {
+                if (token[t] > 127) {
+                    hasNonAscii = true;
+                    break;
+                }
+            }
+
+            var minLen = hasNonAscii ? 2 : 3;
+            if (token.Length < minLen) {
+                continue;
+            }
+
+            checkedTokens++;
+            if (draft.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0) {
+                return true;
+            }
+
+            if (checkedTokens >= 12) {
+                break;
+            }
+        }
+
+        return false;
     }
 
     private static int CountLetterDigitTokens(string text, int maxTokens) {

@@ -142,6 +142,18 @@ public sealed class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForGratitudeFollowUps() {
+        var userRequest = "thanks";
+        var assistantDraft = "You're welcome.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, true });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
     public void ParsePlannerSelectedDefinitions_ParsesStrictJsonToolNames() {
         var defs = BuildPlannerTestDefinitions();
         var plannerText = "{\"tool_names\":[\"ad_replication_summary\",\"eventlog_live_query\"]}";

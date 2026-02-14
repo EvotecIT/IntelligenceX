@@ -226,8 +226,7 @@ public sealed partial class MainWindow : Window {
             topScore: topScore,
             topSemanticSimilarity: topSimilarity,
             averageSelectedSimilarity: averageSelectionSimilarity,
-            averageSelectedRelevance: averageSelectionRelevance,
-            cacheEntries: _memorySemanticVectorCache.Count);
+            averageSelectedRelevance: averageSelectionRelevance);
         TraceMemorySelectionDiagnostics(
             availableFacts: facts.Count,
             selectedFacts: lines.Count,
@@ -248,11 +247,15 @@ public sealed partial class MainWindow : Window {
         double topScore,
         double topSemanticSimilarity,
         double averageSelectedSimilarity,
-        double averageSelectedRelevance,
-        int cacheEntries) {
+        double averageSelectedRelevance) {
         var quality = ComputeMemoryDebugQuality(averageSelectedRelevance, averageSelectedSimilarity, selectedFacts);
-        var nextSequence = unchecked(_memoryDebugSequence + 1);
-        _memoryDebugSequence = nextSequence;
+        int nextSequence;
+        int normalizedCacheEntries;
+        lock (_memoryDiagnosticsSync) {
+            nextSequence = unchecked(_memoryDebugSequence + 1);
+            _memoryDebugSequence = nextSequence;
+            normalizedCacheEntries = Math.Max(0, _memorySemanticVectorCache.Count);
+        }
         var snapshot = new MemoryDebugSnapshot {
             UpdatedUtc = DateTime.UtcNow,
             Sequence = nextSequence,
@@ -264,14 +267,15 @@ public sealed partial class MainWindow : Window {
             TopSemanticSimilarity = double.IsFinite(topSemanticSimilarity) ? Math.Clamp(topSemanticSimilarity, 0d, 1d) : 0d,
             AverageSelectedSimilarity = double.IsFinite(averageSelectedSimilarity) ? Math.Clamp(averageSelectedSimilarity, 0d, 1d) : 0d,
             AverageSelectedRelevance = double.IsFinite(averageSelectedRelevance) ? Math.Clamp(averageSelectedRelevance, 0d, 1d) : 0d,
-            CacheEntries = Math.Max(0, cacheEntries),
+            CacheEntries = normalizedCacheEntries,
             Quality = quality
         };
-        _lastMemoryDebugSnapshot = snapshot;
-
-        _memoryDebugHistory.Add(snapshot);
-        if (_memoryDebugHistory.Count > 24) {
-            _memoryDebugHistory.RemoveRange(0, _memoryDebugHistory.Count - 24);
+        lock (_memoryDiagnosticsSync) {
+            _lastMemoryDebugSnapshot = snapshot;
+            _memoryDebugHistory.Add(snapshot);
+            if (_memoryDebugHistory.Count > 24) {
+                _memoryDebugHistory.RemoveRange(0, _memoryDebugHistory.Count - 24);
+            }
         }
     }
 
@@ -419,10 +423,6 @@ public sealed partial class MainWindow : Window {
     }
 
     private void PruneMemorySemanticVectorCache(IReadOnlyList<ChatMemoryFactState> facts) {
-        if (_memorySemanticVectorCache.Count == 0) {
-            return;
-        }
-
         var activeIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < facts.Count; i++) {
             var id = (facts[i].Id ?? string.Empty).Trim();
@@ -431,20 +431,26 @@ public sealed partial class MainWindow : Window {
             }
         }
 
-        if (activeIds.Count == 0) {
-            _memorySemanticVectorCache.Clear();
-            return;
-        }
-
-        var staleKeys = new List<string>();
-        foreach (var pair in _memorySemanticVectorCache) {
-            if (!activeIds.Contains(pair.Key)) {
-                staleKeys.Add(pair.Key);
+        lock (_memoryDiagnosticsSync) {
+            if (_memorySemanticVectorCache.Count == 0) {
+                return;
             }
-        }
 
-        for (var i = 0; i < staleKeys.Count; i++) {
-            _memorySemanticVectorCache.Remove(staleKeys[i]);
+            if (activeIds.Count == 0) {
+                _memorySemanticVectorCache.Clear();
+                return;
+            }
+
+            var staleKeys = new List<string>();
+            foreach (var pair in _memorySemanticVectorCache) {
+                if (!activeIds.Contains(pair.Key)) {
+                    staleKeys.Add(pair.Key);
+                }
+            }
+
+            for (var i = 0; i < staleKeys.Count; i++) {
+                _memorySemanticVectorCache.Remove(staleKeys[i]);
+            }
         }
     }
 
@@ -455,16 +461,25 @@ public sealed partial class MainWindow : Window {
         }
 
         var signature = BuildMemoryFactSemanticSignature(fact);
-        if (_memorySemanticVectorCache.TryGetValue(id, out var cached)
-            && string.Equals(cached.Signature, signature, StringComparison.Ordinal)) {
-            return cached.Vector;
+        lock (_memoryDiagnosticsSync) {
+            if (_memorySemanticVectorCache.TryGetValue(id, out var cached)
+                && string.Equals(cached.Signature, signature, StringComparison.Ordinal)) {
+                return cached.Vector;
+            }
         }
 
         var vector = BuildSemanticMemoryVector(BuildMemorySemanticSource(fact.Fact, fact.Tags ?? Array.Empty<string>()));
-        _memorySemanticVectorCache[id] = new MemorySemanticVectorCacheEntry {
-            Signature = signature,
-            Vector = vector
-        };
+        lock (_memoryDiagnosticsSync) {
+            if (_memorySemanticVectorCache.TryGetValue(id, out var cached)
+                && string.Equals(cached.Signature, signature, StringComparison.Ordinal)) {
+                return cached.Vector;
+            }
+
+            _memorySemanticVectorCache[id] = new MemorySemanticVectorCacheEntry {
+                Signature = signature,
+                Vector = vector
+            };
+        }
         return vector;
     }
 
@@ -1038,6 +1053,15 @@ public sealed partial class MainWindow : Window {
         await PersistAppStateAsync().ConfigureAwait(false);
     }
 
+    private void ResetMemoryDiagnosticsState() {
+        lock (_memoryDiagnosticsSync) {
+            _memorySemanticVectorCache.Clear();
+            _lastMemoryDebugSnapshot = null;
+            _memoryDebugHistory.Clear();
+            _memoryDebugSequence = 0;
+        }
+    }
+
     private async Task AddMemoryFactAsync(string? factText, int weight = 3, string[]? tags = null) {
         var text = (factText ?? string.Empty).Trim();
         if (text.Length == 0) {
@@ -1056,10 +1080,7 @@ public sealed partial class MainWindow : Window {
         }
 
         _appState.MemoryFacts = facts;
-        _memorySemanticVectorCache.Clear();
-        _lastMemoryDebugSnapshot = null;
-        _memoryDebugHistory.Clear();
-        _memoryDebugSequence = 0;
+        ResetMemoryDiagnosticsState();
         await PublishOptionsStateAsync().ConfigureAwait(false);
         await PersistAppStateAsync().ConfigureAwait(false);
     }
@@ -1077,10 +1098,7 @@ public sealed partial class MainWindow : Window {
         }
 
         _appState.MemoryFacts = facts;
-        _memorySemanticVectorCache.Clear();
-        _lastMemoryDebugSnapshot = null;
-        _memoryDebugHistory.Clear();
-        _memoryDebugSequence = 0;
+        ResetMemoryDiagnosticsState();
         await PublishOptionsStateAsync().ConfigureAwait(false);
         await PersistAppStateAsync().ConfigureAwait(false);
     }
@@ -1093,20 +1111,14 @@ public sealed partial class MainWindow : Window {
 
         facts.Clear();
         _appState.MemoryFacts = facts;
-        _memorySemanticVectorCache.Clear();
-        _lastMemoryDebugSnapshot = null;
-        _memoryDebugHistory.Clear();
-        _memoryDebugSequence = 0;
+        ResetMemoryDiagnosticsState();
         await PublishOptionsStateAsync().ConfigureAwait(false);
         await PersistAppStateAsync().ConfigureAwait(false);
     }
 
     private async Task ForceRecomputeMemoryCacheAsync() {
         // Debug action: clear semantic vectors and diagnostics so the next turn recomputes fresh.
-        _memorySemanticVectorCache.Clear();
-        _lastMemoryDebugSnapshot = null;
-        _memoryDebugHistory.Clear();
-        _memoryDebugSequence = 0;
+        ResetMemoryDiagnosticsState();
         await PublishOptionsStateAsync().ConfigureAwait(false);
     }
 
@@ -1152,10 +1164,7 @@ public sealed partial class MainWindow : Window {
         }
 
         _appState.MemoryFacts = facts;
-        _memorySemanticVectorCache.Clear();
-        _lastMemoryDebugSnapshot = null;
-        _memoryDebugHistory.Clear();
-        _memoryDebugSequence = 0;
+        ResetMemoryDiagnosticsState();
         await PublishOptionsStateAsync().ConfigureAwait(false);
         await PersistAppStateAsync().ConfigureAwait(false);
         return true;

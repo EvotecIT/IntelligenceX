@@ -352,13 +352,28 @@ public sealed partial class MainWindow : Window {
     }
 
     private object? BuildMemoryDebugState() {
-        var snapshot = _lastMemoryDebugSnapshot;
+        MemoryDebugSnapshot? snapshot;
+        MemoryDebugSnapshot[] history;
+        lock (_memoryDiagnosticsSync) {
+            snapshot = _lastMemoryDebugSnapshot;
+            if (_memoryDebugHistory.Count == 0) {
+                history = Array.Empty<MemoryDebugSnapshot>();
+            } else {
+                var start = Math.Max(0, _memoryDebugHistory.Count - 12);
+                var count = _memoryDebugHistory.Count - start;
+                history = new MemoryDebugSnapshot[count];
+                for (var i = 0; i < count; i++) {
+                    history[i] = _memoryDebugHistory[start + i];
+                }
+            }
+        }
+
         if (snapshot is null) {
             return null;
         }
 
         var updatedLocal = EnsureUtc(snapshot.UpdatedUtc).ToLocalTime();
-        var history = BuildMemoryDebugHistoryState();
+        var historyState = BuildMemoryDebugHistoryState(history);
         return new {
             updatedLocal = updatedLocal.ToString(_timestampFormat, CultureInfo.InvariantCulture),
             sequence = snapshot.Sequence,
@@ -372,19 +387,18 @@ public sealed partial class MainWindow : Window {
             averageSelectedRelevance = snapshot.AverageSelectedRelevance,
             cacheEntries = snapshot.CacheEntries,
             quality = snapshot.Quality,
-            history
+            history = historyState
         };
     }
 
-    private object[] BuildMemoryDebugHistoryState() {
-        if (_memoryDebugHistory.Count == 0) {
+    private object[] BuildMemoryDebugHistoryState(MemoryDebugSnapshot[] history) {
+        if (history.Length == 0) {
             return Array.Empty<object>();
         }
 
-        var start = Math.Max(0, _memoryDebugHistory.Count - 12);
-        var list = new List<object>(_memoryDebugHistory.Count - start);
-        for (var i = start; i < _memoryDebugHistory.Count; i++) {
-            var item = _memoryDebugHistory[i];
+        var list = new List<object>(history.Length);
+        for (var i = 0; i < history.Length; i++) {
+            var item = history[i];
             var updatedLocal = EnsureUtc(item.UpdatedUtc).ToLocalTime();
             list.Add(new {
                 updatedLocal = updatedLocal.ToString(_timestampFormat, CultureInfo.InvariantCulture),
