@@ -517,6 +517,7 @@ internal static partial class Program {
         failed += Run("OpenAI-compatible rejects http non-loopback by default", TestReviewOpenAiCompatibleRejectsHttpNonLoopbackByDefault);
         failed += Run("OpenAI-compatible preflight treats 405 as reachable", TestReviewOpenAiCompatiblePreflightTreats405AsReachable);
         failed += Run("OpenAI-compatible follows redirects", TestReviewOpenAiCompatibleFollowsRedirects);
+        failed += Run("OpenAI-compatible 303 redirect switches POST to GET", TestReviewOpenAiCompatibleRedirect303SwitchesToGet);
         failed += Run("OpenAI-compatible non-diagnostics omits remote error body",
             TestReviewOpenAiCompatibleDoesNotLeakErrorBodyWhenDiagnosticsFalse);
         failed += Run("Review config loader reads openaiAccountRotation camelCase",

@@ -436,6 +436,48 @@ internal static partial class Program {
         AssertEqual("ok", result, "openai-compatible follows redirects for preflight and request");
     }
 
+    private static void TestReviewOpenAiCompatibleRedirect303SwitchesToGet() {
+        using var server = new OpenAiCompatibleTestServer((method, path, body) => {
+            if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/chat/completions", StringComparison.OrdinalIgnoreCase)) {
+                return (303, "See Other", "{}", new Dictionary<string, string> {
+                    ["Location"] = "/v1/chat/completions-redirected"
+                });
+            }
+            if (method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/chat/completions-redirected", StringComparison.OrdinalIgnoreCase)) {
+                // Ensure we did not forward the original POST body.
+                if (!string.IsNullOrEmpty(body)) {
+                    return (400, "Bad Request", "{\"error\":\"expected empty body\"}", null);
+                }
+                return (200, "OK", "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}", null);
+            }
+
+            return (404, "Not Found", "{}", null);
+        });
+
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAICompatible,
+            ProviderHealthChecks = true,
+            Preflight = false,
+            Model = "test-model",
+            OpenAICompatibleBaseUrl = server.BaseUri.ToString(),
+            OpenAICompatibleApiKey = "test",
+            OpenAICompatibleTimeoutSeconds = 10,
+            RetryCount = 1,
+            RetryDelaySeconds = 1,
+            RetryMaxDelaySeconds = 1,
+            FailOpen = false,
+            Diagnostics = false
+        };
+
+        var runner = new ReviewRunner(settings);
+        var result = runner.RunAsync("hi", onPartial: null, updateInterval: null, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        AssertEqual("ok", result, "openai-compatible 303 redirect switches POST to GET");
+    }
+
     private static void TestReviewConfigLoaderReadsOpenAiAccountRotationCamelCase() {
         var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
         var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-rotation-{Guid.NewGuid():N}.json");
