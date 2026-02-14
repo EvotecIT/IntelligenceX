@@ -174,7 +174,8 @@ internal sealed partial class ChatServiceSession {
         var nowTicks = DateTime.UtcNow.Ticks;
         lock (_toolRoutingStatsLock) {
             foreach (var output in outputs) {
-                if (string.IsNullOrWhiteSpace(output.CallId) || !nameByCallId.TryGetValue(output.CallId, out var toolName)) {
+                var normalizedOutputCallId = (output.CallId ?? string.Empty).Trim();
+                if (normalizedOutputCallId.Length == 0 || !nameByCallId.TryGetValue(normalizedOutputCallId, out var toolName)) {
                     continue;
                 }
 

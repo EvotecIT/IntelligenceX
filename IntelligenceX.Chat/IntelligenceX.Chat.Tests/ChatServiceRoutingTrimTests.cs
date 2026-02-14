@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
+using IntelligenceX.Json;
+using IntelligenceX.Tools;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -63,5 +66,28 @@ public sealed class ChatServiceRoutingTrimTests {
         Assert.DoesNotContain("thread-zero", trackedThreadIds);
         Assert.Contains("thread-000", trackedThreadIds);
         Assert.Contains($"thread-{MaxTrackedWeightedRoutingContexts - 1:D3}", trackedThreadIds);
+    }
+
+    [Fact]
+    public void UpdateToolRoutingStats_TracksOutputsWhenCallIdsDifferOnlyByWhitespace() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var calls = new List<ToolCall> {
+            new("  call-001  ", "ad_replication_summary", null, null, new JsonObject())
+        };
+        var outputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-001",
+                Output = "{\"ok\":true}",
+                Ok = true
+            }
+        };
+
+        var updateMethod = typeof(ChatServiceSession).GetMethod("UpdateToolRoutingStats", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(updateMethod);
+
+        updateMethod!.Invoke(session, new object[] { calls, outputs });
+
+        var names = session.GetTrackedToolRoutingStatNamesForTesting();
+        Assert.Contains(names, static name => string.Equals(name, "ad_replication_summary", StringComparison.OrdinalIgnoreCase));
     }
 }
