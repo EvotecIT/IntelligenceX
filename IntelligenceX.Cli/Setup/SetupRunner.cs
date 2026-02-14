@@ -45,12 +45,18 @@ internal static partial class SetupRunner {
                 Console.Error.WriteLine("Choose only one of --auth-b64 or --auth-b64-path.");
                 return 1;
             }
+
+            if (!TryValidateAnalysisOptionContextForCurrentOperation(options, out var withConfig, out var analysisOptionError)) {
+                Console.Error.WriteLine(analysisOptionError);
+                return 1;
+            }
+
             if (options.AnalysisExportPathSet) {
                 if (options.Cleanup || options.UpdateSecret) {
                     Console.Error.WriteLine("--analysis-export-path is only supported for setup operation.");
                     return 1;
                 }
-                if (!options.WithConfig) {
+                if (!withConfig) {
                     Console.Error.WriteLine("--analysis-export-path requires --with-config (or config-json/config-path).");
                     return 1;
                 }
@@ -59,10 +65,6 @@ internal static partial class SetupRunner {
                     return 1;
                 }
                 options.AnalysisExportPath = normalizedExportPath;
-                if (options.AnalysisEnabledSet && !options.AnalysisEnabled) {
-                    Console.Error.WriteLine("--analysis-export-path requires --analysis-enabled=true.");
-                    return 1;
-                }
                 if (!TryValidateLocalAnalysisCatalog(Environment.CurrentDirectory, out var catalogError)) {
                     Console.Error.WriteLine(catalogError);
                     return 1;
@@ -206,6 +208,72 @@ internal static partial class SetupRunner {
             Console.Error.WriteLine(ex.Message);
             return 1;
         }
+    }
+
+    private static bool TryValidateAnalysisOptionContextForCurrentOperation(
+        SetupOptions options,
+        out bool withConfig,
+        out string? error) {
+        var hasConfigOverride = !string.IsNullOrWhiteSpace(options.ConfigJson) ||
+                                !string.IsNullOrWhiteSpace(options.ConfigPath);
+        withConfig = options.WithConfig || hasConfigOverride;
+        var isSetupOperation = !options.Cleanup && !options.UpdateSecret;
+        return TryValidateAnalysisOptionContext(
+            options,
+            isSetup: isSetupOperation,
+            withConfig: withConfig,
+            hasConfigOverride: hasConfigOverride,
+            out error);
+    }
+
+    private static bool TryValidateAnalysisOptionContext(
+        SetupOptions options,
+        bool isSetup,
+        bool withConfig,
+        bool hasConfigOverride,
+        out string? error) {
+        error = null;
+        var hasAnyAnalysisOption = options.AnalysisEnabledSet ||
+                                   options.AnalysisGateEnabledSet ||
+                                   options.AnalysisRunStrictSet ||
+                                   options.AnalysisPacksSet ||
+                                   options.AnalysisExportPathSet;
+        if (!hasAnyAnalysisOption) {
+            return true;
+        }
+
+        if (!isSetup) {
+            error = "Analysis options are only supported for setup operation.";
+            return false;
+        }
+
+        if (!withConfig) {
+            error = "Analysis options require --with-config (or --config-json/--config-path).";
+            return false;
+        }
+
+        if (hasConfigOverride) {
+            error = "Analysis options are not supported when --config-json/--config-path override is used.";
+            return false;
+        }
+
+        var requiresAnalysisEnabled = options.AnalysisGateEnabledSet ||
+                                      options.AnalysisRunStrictSet ||
+                                      options.AnalysisPacksSet ||
+                                      options.AnalysisExportPathSet;
+        if (requiresAnalysisEnabled && (!options.AnalysisEnabledSet || !options.AnalysisEnabled)) {
+            error = "--analysis-gate/--analysis-run-strict/--analysis-packs/--analysis-export-path require --analysis-enabled true.";
+            return false;
+        }
+
+        if (options.AnalysisPacksSet) {
+            if (!SetupAnalysisPacks.TryNormalizeCsv(options.AnalysisPacks, out var normalizedPacks, out error)) {
+                return false;
+            }
+            options.AnalysisPacks = normalizedPacks;
+        }
+
+        return true;
     }
 
     private static async Task ResolveGitHubAuthAsync(SetupState state) {

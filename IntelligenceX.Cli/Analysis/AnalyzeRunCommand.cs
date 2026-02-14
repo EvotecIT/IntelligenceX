@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Text.Json;
 using System.Threading.Tasks;
 using IntelligenceX.Analysis;
@@ -35,6 +36,8 @@ internal static partial class AnalyzeRunCommand {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true
     };
+    private static readonly Regex PackIdRegex = new("^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public static async Task<int> RunAsync(string[] args) {
         if (!TryParseOptions(args, out var options, out var error)) {
@@ -68,6 +71,12 @@ internal static partial class AnalyzeRunCommand {
         var reviewObj = root.GetObject("review") ?? root;
         var settings = new AnalysisSettings();
         AnalysisConfigReader.Apply(root, reviewObj, settings);
+        if (options.PacksOverride.Count > 0) {
+            settings.Packs = options.PacksOverride.ToArray();
+        }
+        if (!options.StrictSet) {
+            options.Strict = settings.Run.Strict;
+        }
         Directory.CreateDirectory(outputDirectory);
 
         var findingsPath = Path.Combine(outputDirectory, "intelligencex.findings.json");
@@ -278,8 +287,59 @@ internal static partial class AnalyzeRunCommand {
                 options.RuffCommand = args[++i];
                 continue;
             }
+            if (arg.Equals("--pack", StringComparison.OrdinalIgnoreCase) ||
+                arg.Equals("--packs", StringComparison.OrdinalIgnoreCase)) {
+                if (i + 1 >= args.Length) {
+                    error = $"Missing value for {arg}.";
+                    return false;
+                }
+                if (!TryAddPackValues(options.PacksOverride, args[++i], out error)) {
+                    return false;
+                }
+                continue;
+            }
+            if (arg.StartsWith("--strict=", StringComparison.OrdinalIgnoreCase)) {
+                var strictValue = arg.Substring("--strict=".Length);
+                if (!TryParseStrictValue(strictValue, out var parsedStrict)) {
+                    error = $"Invalid value for --strict: {strictValue}. Expected true|false.";
+                    return false;
+                }
+                options.Strict = parsedStrict;
+                options.StrictSet = true;
+                continue;
+            }
             if (arg.Equals("--strict", StringComparison.OrdinalIgnoreCase)) {
+                if (i + 1 < args.Length) {
+                    var strictCandidate = args[i + 1];
+                    if (TryParseStrictValue(strictCandidate, out var parsedStrict)) {
+                        i++;
+                        options.Strict = parsedStrict;
+                        options.StrictSet = true;
+                        continue;
+                    }
+
+                    // Known options after --strict keep implicit "--strict=true".
+                    if (IsAnalyzeRunOptionToken(strictCandidate)) {
+                        options.Strict = true;
+                        options.StrictSet = true;
+                        continue;
+                    }
+
+                    // Unknown option-like tokens should be validated by the main parser path.
+                    if (strictCandidate.StartsWith("-", StringComparison.Ordinal)) {
+                        options.Strict = true;
+                        options.StrictSet = true;
+                        continue;
+                    }
+
+                    // Invalid explicit values (for example "--strict maybe") must fail.
+                    if (!TryParseStrictValue(strictCandidate, out _)) {
+                        error = $"Invalid value for --strict: {strictCandidate}. Expected true|false.";
+                        return false;
+                    }
+                }
                 options.Strict = true;
+                options.StrictSet = true;
                 continue;
             }
             error = $"Unknown argument: {arg}";
@@ -288,10 +348,93 @@ internal static partial class AnalyzeRunCommand {
         return true;
     }
 
+    private static bool IsAnalyzeRunOptionToken(string token) {
+        return token.Equals("--help", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("-h", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--config", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--workspace", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--out", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--dotnet-command", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--framework", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--dotnet-framework", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--pwsh-command", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--npx-command", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--ruff-command", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--pack", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--packs", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--strict", StringComparison.OrdinalIgnoreCase) ||
+            token.StartsWith("--strict=", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryAddPackValues(ICollection<string> packs, string? raw, out string? error) {
+        error = null;
+        if (packs is null) {
+            error = "Pack override destination is unavailable.";
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(raw)) {
+            error = "Pack override value cannot be empty.";
+            return false;
+        }
+
+        var values = raw.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (values.Length == 0) {
+            error = "Pack override value cannot be empty.";
+            return false;
+        }
+
+        foreach (var value in values) {
+            if (string.IsNullOrWhiteSpace(value)) {
+                continue;
+            }
+            if (!PackIdRegex.IsMatch(value)) {
+                error = $"Invalid pack id '{value}'. Use comma-separated ids like all-50, all-security-default, powershell-50.";
+                return false;
+            }
+            if (!packs.Contains(value, StringComparer.OrdinalIgnoreCase)) {
+                packs.Add(value);
+            }
+        }
+
+        if (packs.Count == 0) {
+            error = "Pack override value cannot be empty.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryParseStrictValue(string value, out bool strict) {
+        strict = false;
+        if (string.IsNullOrWhiteSpace(value)) {
+            return false;
+        }
+
+        switch (value.Trim().ToLowerInvariant()) {
+            case "true":
+            case "1":
+            case "yes":
+            case "y":
+            case "on":
+                strict = true;
+                return true;
+            case "false":
+            case "0":
+            case "no":
+            case "n":
+            case "off":
+                strict = false;
+                return true;
+            default:
+                return false;
+        }
+    }
+
     public static void PrintHelp() {
         Console.WriteLine("  intelligencex analyze run [--config <path>] [--workspace <path>] [--out <dir>]");
         Console.WriteLine("                         [--dotnet-command <path>] [--framework <tfm>] [--pwsh-command <path>]");
-        Console.WriteLine("                         [--npx-command <path>] [--ruff-command <path>] [--strict]");
+        Console.WriteLine("                         [--npx-command <path>] [--ruff-command <path>] [--pack <id>] [--packs <id1,id2>]");
+        Console.WriteLine("                         [--strict [true|false]]");
     }
 
     internal static string BuildPowerShellRunnerScriptForTests() {
@@ -501,7 +644,9 @@ if ($sawInvokeErrors -and $FailOnAnalyzerErrors) {
         public string PowerShellCommand { get; set; } = "pwsh";
         public string NpxCommand { get; set; } = "npx";
         public string RuffCommand { get; set; } = "ruff";
+        public List<string> PacksOverride { get; } = new();
         public bool Strict { get; set; }
+        public bool StrictSet { get; set; }
     }
 
     private sealed class TemporaryFileScope : IDisposable {

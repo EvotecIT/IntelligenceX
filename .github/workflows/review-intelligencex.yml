@@ -41,6 +41,14 @@ on:
         description: 'Override weekly-limit budget allowance (true|false) for this run'
         required: false
         default: ''
+      analysis_run_strict:
+        description: 'Force strict analyze run exit behavior for this run (true|false)'
+        required: false
+        default: ''
+      analysis_packs:
+        description: 'Override analysis packs for this run (CSV: e.g. all-50,all-security-default)'
+        required: false
+        default: ''
 
 jobs:
   # INTELLIGENCEX:BEGIN
@@ -72,7 +80,37 @@ jobs:
           dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze list-rules --workspace . --format markdown --pack all-50 > artifacts/analysis-rules.md
 
       - name: Run static analysis
-        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze run --config .intelligencex/reviewer.json --out artifacts --framework net8.0
+        env:
+          INPUT_ANALYSIS_RUN_STRICT: ${{ inputs.analysis_run_strict }}
+          INPUT_ANALYSIS_PACKS: ${{ inputs.analysis_packs }}
+        run: |
+          extra_args=()
+          case "${INPUT_ANALYSIS_RUN_STRICT,,}" in
+            true|1|yes|y|on)
+              extra_args+=("--strict")
+              echo "Analyze run strict override: enabled"
+              ;;
+            false|0|no|n|off)
+              extra_args+=("--strict" "false")
+              echo "Analyze run strict override: disabled"
+              ;;
+            '')
+              echo "Analyze run strict override: unchanged (uses config default)"
+              ;;
+            *)
+              echo "Invalid analysis_run_strict input: '${INPUT_ANALYSIS_RUN_STRICT}'. Expected true|false or empty."
+              exit 1
+              ;;
+          esac
+
+          if [[ -n "${INPUT_ANALYSIS_PACKS// }" ]]; then
+            extra_args+=("--packs" "${INPUT_ANALYSIS_PACKS}")
+            echo "Analyze run pack override: ${INPUT_ANALYSIS_PACKS}"
+          else
+            echo "Analyze run pack override: unchanged (uses config packs)"
+          fi
+
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze run --config .intelligencex/reviewer.json --out artifacts --framework net8.0 "${extra_args[@]}"
 
       - name: Compute changed files
         run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- ci changed-files --workspace . --out artifacts/changed-files.txt

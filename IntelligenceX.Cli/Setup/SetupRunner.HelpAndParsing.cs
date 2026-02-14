@@ -37,6 +37,7 @@ internal static partial class SetupRunner {
         Console.WriteLine("  --review-comment-mode <sticky|fresh>");
         Console.WriteLine("  --analysis-enabled <true|false> (write analysis section into reviewer.json)");
         Console.WriteLine("  --analysis-gate <true|false> (when true, analysis gate can fail CI; default false)");
+        Console.WriteLine("  --analysis-run-strict <true|false> (when true, analyze run fails on runner/tool errors)");
         Console.WriteLine("  --analysis-packs <id1,id2> (default all-50 when analysis is enabled)");
         Console.WriteLine("  --analysis-export-path <repo/path> (optional: export analyzer configs into PR for IDE support)");
         Console.WriteLine("  --config-path <path> (use custom config.json content)");

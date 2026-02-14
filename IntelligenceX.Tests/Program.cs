@@ -76,10 +76,21 @@ internal static partial class Program {
 #if !NET472
         failed += Run("Setup args reject skip+update", TestSetupArgsRejectSkipUpdate);
         failed += Run("Setup args include analysis options", TestSetupArgsIncludeAnalysisOptions);
+        failed += Run("Setup args include analysis run strict option", TestSetupArgsIncludeAnalysisRunStrictOption);
         failed += Run("Setup args include analysis export path", TestSetupArgsIncludeAnalysisExportPath);
         failed += Run("Setup args disable analysis omits gate and packs", TestSetupArgsDisableAnalysisOmitsGateAndPacks);
         failed += Run("Setup args include OpenAI account routing", TestSetupArgsIncludeOpenAiAccountRouting);
+        failed += Run("Setup args include OpenAI account routing with primary only",
+            TestSetupArgsIncludeOpenAiAccountRoutingWithPrimaryOnly);
         failed += Run("Setup config rejects invalid OpenAI account rotation", TestSetupConfigRejectsInvalidOpenAiAccountRotation);
+        failed += Run("Setup config rejects analysis strict without analysis enabled",
+            TestSetupConfigRejectsAnalysisStrictWithoutAnalysisEnabled);
+        failed += Run("Setup config rejects analysis options with config override",
+            TestSetupConfigRejectsAnalysisOptionsWithConfigOverride);
+        failed += Run("Setup config rejects analysis options without with-config",
+            TestSetupConfigRejectsAnalysisOptionsWithoutWithConfig);
+        failed += Run("Setup config rejects invalid analysis pack id",
+            TestSetupConfigRejectsInvalidAnalysisPackId);
         failed += Run("Setup config merge rejects invalid OpenAI account rotation from snapshot",
             TestSetupConfigMergeRejectsInvalidOpenAiAccountRotationFromSnapshot);
         failed += Run("Setup analysis export path normalization", TestSetupAnalysisExportPathNormalization);
@@ -89,6 +100,7 @@ internal static partial class Program {
         failed += Run("Setup analysis disable writes enabled=false", TestSetupAnalysisDisableWritesFalse);
         failed += Run("Setup analysis defaults packs to all-50", TestSetupAnalysisDefaultsPacksToAll50);
         failed += Run("Setup config build honors analysis gate", TestSetupBuildConfigJsonHonorsAnalysisGateOnNewConfig);
+        failed += Run("Setup config build includes analysis run strict", TestSetupBuildConfigJsonIncludesAnalysisRunStrict);
         failed += Run("Setup config build includes OpenAI account routing", TestSetupBuildConfigJsonIncludesOpenAiAccountRouting);
         failed += Run("Setup config normalizes OpenAI primary into account ids",
             TestSetupBuildConfigJsonNormalizesOpenAiPrimaryInAccountIds);
@@ -129,6 +141,8 @@ internal static partial class Program {
             TestSetupWorkflowUpgradePreservesOutsideManagedBlockVerbatim);
         failed += Run("Setup workflow template includes OpenAI account routing pass-through",
             TestSetupWorkflowTemplateIncludesOpenAiAccountRoutingPassThrough);
+        failed += Run("Setup workflow template explicit-secrets includes diagnostics and preflight pass-through",
+            TestSetupWorkflowTemplateExplicitSecretsIncludesDiagnosticsAndPreflightPassThrough);
         failed += Run("Setup post-apply verify passes for managed setup", TestSetupPostApplyVerifySetupPassesWithManagedWorkflowAndSecret);
         failed += Run("Setup post-apply verify detects residual cleanup config", TestSetupPostApplyVerifyCleanupDetectsResidualConfig);
         failed += Run("Setup post-apply verify allows unknown branch state when PR exists",
@@ -167,11 +181,20 @@ internal static partial class Program {
             TestWebSetupAutodetectResponseJsonRejectsUnknownCheckStatus);
         failed += Run("Web setup args propagate request dry-run", TestWebSetupBuildSetupArgsPropagatesRequestDryRun);
         failed += Run("Web setup args propagate OpenAI account routing", TestWebSetupBuildSetupArgsPropagatesOpenAiAccountRouting);
+        failed += Run("Web setup args propagate OpenAI account routing with primary only",
+            TestWebSetupBuildSetupArgsPropagatesOpenAiAccountRoutingWithPrimaryOnly);
+        failed += Run("Web setup args propagate analysis run strict", TestWebSetupBuildSetupArgsPropagatesAnalysisRunStrict);
         failed += Run("Web setup resolves with-config from args", TestWebSetupResolveWithConfigFromArgs);
         failed += Run("Web setup OpenAI routing validation rejects config override",
             TestWebSetupOpenAiRoutingValidationRejectsConfigOverride);
         failed += Run("Web setup OpenAI routing validation rejects invalid rotation with primary only",
             TestWebSetupOpenAiRoutingValidationRejectsInvalidRotationWithPrimaryOnly);
+        failed += Run("Web setup analysis validation normalizes run strict",
+            TestWebSetupAnalysisValidationNormalizesRunStrict);
+        failed += Run("Web setup analysis validation rejects run strict without analysis enabled",
+            TestWebSetupAnalysisValidationRejectsRunStrictWithoutAnalysisEnabled);
+        failed += Run("Web setup analysis validation rejects run strict outside preset generation",
+            TestWebSetupAnalysisValidationRejectsRunStrictOutsidePresetGeneration);
         failed += Run("Web setup post-apply verify skips callback on failed apply",
             TestWebSetupPostApplyVerifySkipsCallbackWhenApplyFails);
         failed += Run("Web setup resolves org-secret verification context", TestWebSetupResolveOrgSecretVerificationContext);
@@ -270,6 +293,14 @@ internal static partial class Program {
         failed += Run("Analysis policy included pack cycle warning", TestAnalysisPolicyIncludedPackCycleWarning);
         failed += Run("Analysis policy disable tool rule id", TestAnalysisPolicyDisableToolRuleId);
         failed += Run("Analysis catalog validator passes built-in catalog", TestAnalysisCatalogValidatorPassesBuiltInCatalog);
+        failed += Run("Analysis catalog loader root check rejects sibling prefix path",
+            TestAnalysisCatalogLoaderUnderRootRejectsSiblingPrefixPath);
+        failed += Run("Analysis catalog loader root check follows platform case sensitivity",
+            TestAnalysisCatalogLoaderUnderRootCaseSensitivityByPlatform);
+        failed += Run("Analysis catalog loader root check accepts mixed separators",
+            TestAnalysisCatalogLoaderUnderRootAcceptsMixedSeparators);
+        failed += Run("Analysis catalog loader trim preserves filesystem root",
+            TestAnalysisCatalogLoaderTrimPreservesFilesystemRoot);
         failed += Run("Analysis catalog validator detects invalid catalog", TestAnalysisCatalogValidatorDetectsInvalidCatalog);
         failed += Run("Analysis catalog validator detects missing rule metadata", TestAnalysisCatalogValidatorDetectsMissingRuleMetadata);
         failed += Run("Analysis packs: all-security includes PowerShell", TestAnalysisPacksAllSecurityIncludesPowerShell);
@@ -290,6 +321,12 @@ internal static partial class Program {
         failed += Run("Analysis loader includes hotspots below minSeverity", TestAnalysisLoaderIncludesHotspotsBelowMinSeverity);
         failed += Run("Analysis loader ignores inputs outside workspace", TestAnalysisFindingsLoaderIgnoresInputsOutsideWorkspace);
         failed += Run("Analysis loader rejects sibling prefix paths", TestAnalysisFindingsLoaderWorkspaceBoundRejectsSiblingPrefix);
+        failed += Run("Analysis loader does not relativize sibling-prefix absolute path",
+            TestAnalysisFindingsLoaderDoesNotRelativizeSiblingPrefixAbsoluteFindingPath);
+        failed += Run("Analysis loader normalize path follows platform case semantics",
+            TestAnalysisFindingsLoaderNormalizePathCaseSensitivityByPlatform);
+        failed += Run("Analysis loader normalize path accepts mixed separators",
+            TestAnalysisFindingsLoaderNormalizePathAcceptsMixedSeparatorsWithinWorkspace);
         failed += Run("Analyze hotspots sync-state writes state file", TestAnalyzeHotspotsSyncStateWritesStateFile);
         failed += Run("Analyze hotspots help has no side effects", TestAnalyzeHotspotsHelpHasNoSideEffects);
         failed += Run("Analyze hotspots state path is workspace-bound", TestAnalyzeHotspotsStatePathIsWorkspaceBound);
@@ -342,6 +379,8 @@ internal static partial class Program {
             TestAnalysisConfigReaderNormalizesDuplicationRuleIds);
         failed += Run("Analysis config reader keeps default duplication ruleIds on empty input",
             TestAnalysisConfigReaderKeepsDefaultDuplicationRuleIdsWhenConfiguredListEmpty);
+        failed += Run("Analysis config reader reads run strict",
+            TestAnalysisConfigReaderReadsRunStrict);
         failed += Run("Analyze gate hotspot state path bound", TestAnalyzeGateHotspotsStatePathIsWorkspaceBound);
         failed += Run("Analyze gate help token", TestAnalyzeGateHelpToken);
         failed += Run("Doctor help", TestDoctorHelp);
@@ -356,6 +395,27 @@ internal static partial class Program {
         failed += Run("Analyze run PowerShell script captures engine errors", TestAnalyzeRunPowerShellScriptCapturesEngineErrors);
         failed += Run("Analyze run PowerShell strict args include fail switch", TestAnalyzeRunPowerShellStrictArgsIncludeFailSwitch);
         failed += Run("Analyze run disabled writes empty findings", TestAnalyzeRunDisabledWritesEmptyFindings);
+        failed += Run("Analyze run non-strict allows runner failure", TestAnalyzeRunNonStrictAllowsRunnerFailure);
+        failed += Run("Analyze run strict from config fails runner failure", TestAnalyzeRunStrictFromConfigFailsRunnerFailure);
+        failed += Run("Analyze run strict false flag overrides config strict true",
+            TestAnalyzeRunStrictFlagFalseOverridesConfigStrictTrue);
+        failed += Run("Analyze run strict equals false overrides config strict true",
+            TestAnalyzeRunStrictEqualsFalseOverridesConfigStrictTrue);
+        failed += Run("Analyze run strict equals true overrides config strict false",
+            TestAnalyzeRunStrictEqualsTrueOverridesConfigStrictFalse);
+        failed += Run("Analyze run strict flag does not consume following option",
+            TestAnalyzeRunStrictFlagDoesNotConsumeFollowingOption);
+        failed += Run("Analyze run strict invalid explicit value fails",
+            TestAnalyzeRunStrictFlagInvalidExplicitValueFails);
+        failed += Run("Analyze run strict unknown option fails as unknown argument",
+            TestAnalyzeRunStrictUnknownOptionFailsAsUnknownArgument);
+        failed += Run("Analyze run strict keeps known option lookahead with dash-prefixed value",
+            TestAnalyzeRunStrictFlagAllowsKnownOptionLookaheadWithDashValue);
+        failed += Run("Analyze run strict keeps known option lookahead with framework value",
+            TestAnalyzeRunStrictFlagAllowsKnownOptionLookaheadWithFrameworkValue);
+        failed += Run("Analyze run pack override skips configured csharp runner failure",
+            TestAnalyzeRunPacksOverrideSkipsConfiguredCsharpFailure);
+        failed += Run("Analyze run invalid pack override fails", TestAnalyzeRunInvalidPackOverrideFails);
         failed += Run("Analyze run internal file size rule", TestAnalyzeRunInternalFileSizeRule);
         failed += Run("Analyze run internal findings use catalog tool metadata",
             TestAnalyzeRunInternalFindingsUseCatalogToolMetadata);
@@ -406,6 +466,10 @@ internal static partial class Program {
         failed += Run("Review provider config alias", TestReviewProviderConfigAlias);
         failed += Run("Review config loader reads openaiAccountRotation camelCase",
             TestReviewConfigLoaderReadsOpenAiAccountRotationCamelCase);
+        failed += Run("Review config loader reads legacy includeRelatedPullRequests alias",
+            TestReviewConfigLoaderReadsLegacyIncludeRelatedPullRequestsAlias);
+        failed += Run("Review config loader prefers canonical includeRelatedPrs when both keys exist",
+            TestReviewConfigLoaderPrefersCanonicalIncludeRelatedPrsWhenBothKeysPresent);
         failed += Run("Review provider fallback env", TestReviewProviderFallbackEnv);
         failed += Run("Review provider fallback config", TestReviewProviderFallbackConfig);
         failed += Run("Review provider fallback plan", TestReviewProviderFallbackPlan);
@@ -428,6 +492,12 @@ internal static partial class Program {
         failed += Run("Azure auth scheme invalid env", TestAzureAuthSchemeInvalidEnv);
         failed += Run("Review settings defaults and env merge", TestReviewSettingsDefaultsAndEnvMerge);
         failed += Run("Review settings load config then env precedence", TestReviewSettingsLoadConfigThenEnvPrecedence);
+        failed += Run("Review settings load config allows zero for non-negative limits",
+            TestReviewSettingsLoadConfigAllowsZeroForNonNegativeLimits);
+        failed += Run("Review settings env allows zero for non-negative limits",
+            TestReviewSettingsFromEnvironmentAllowsZeroForNonNegativeLimits);
+        failed += Run("Setup-generated reviewer config validates and loads canonical related PRs",
+            TestSetupGeneratedReviewerConfigValidatesAndLoadsWithCanonicalRelatedPrs);
         failed += Run("Review settings policy preview clamp range", TestReviewSettingsPolicyRulePreviewConfigClampRange);
         failed += Run("Azure code host reader smoke", TestAzureDevOpsCodeHostReaderSmoke);
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);

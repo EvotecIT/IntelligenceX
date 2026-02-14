@@ -95,6 +95,7 @@ internal sealed class WizardState {
     public string? ConfigSourceLabel { get; set; }
     public bool? AnalysisEnabled { get; set; } = true;
     public bool? AnalysisGateEnabled { get; set; } = false;
+    public bool? AnalysisRunStrict { get; set; } = false;
     public string? AnalysisPacks { get; set; }
     public string? AnalysisExportPath { get; set; }
     public bool Force { get; set; }

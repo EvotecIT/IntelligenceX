@@ -50,6 +50,8 @@ internal static partial class SetupRunner {
         public bool AnalysisEnabledSet { get; set; }
         public bool AnalysisGateEnabled { get; set; }
         public bool AnalysisGateEnabledSet { get; set; }
+        public bool AnalysisRunStrict { get; set; }
+        public bool AnalysisRunStrictSet { get; set; }
         public string? AnalysisPacks { get; set; }
         public bool AnalysisPacksSet { get; set; }
         public string? AnalysisExportPath { get; set; }
@@ -240,6 +242,10 @@ internal static partial class SetupRunner {
                     case "analysis-gate":
                         options.AnalysisGateEnabled = ParseBool(value, options.AnalysisGateEnabled);
                         options.AnalysisGateEnabledSet = true;
+                        break;
+                    case "analysis-run-strict":
+                        options.AnalysisRunStrict = ParseBool(value, options.AnalysisRunStrict);
+                        options.AnalysisRunStrictSet = true;
                         break;
                     case "analysis-packs":
                         options.AnalysisPacks = value;
@@ -444,6 +450,8 @@ internal static partial class SetupRunner {
         public bool AnalysisEnabledSet { get; set; }
         public bool AnalysisGateEnabled { get; set; }
         public bool AnalysisGateEnabledSet { get; set; }
+        public bool AnalysisRunStrict { get; set; }
+        public bool AnalysisRunStrictSet { get; set; }
         public string[] AnalysisPacks { get; set; } = Array.Empty<string>();
         public bool AnalysisPacksSet { get; set; }
 
@@ -471,6 +479,8 @@ internal static partial class SetupRunner {
                 AnalysisEnabledSet = options.AnalysisEnabledSet,
                 AnalysisGateEnabled = options.AnalysisGateEnabled,
                 AnalysisGateEnabledSet = options.AnalysisGateEnabledSet,
+                AnalysisRunStrict = options.AnalysisRunStrict,
+                AnalysisRunStrictSet = options.AnalysisRunStrictSet,
                 AnalysisPacks = SplitCsv(options.AnalysisPacks),
                 AnalysisPacksSet = options.AnalysisPacksSet
             };
@@ -582,6 +592,7 @@ internal static partial class SetupRunner {
         public int? PreflightTimeoutSeconds { get; set; }
         public bool? AnalysisEnabled { get; set; }
         public bool? AnalysisGateEnabled { get; set; }
+        public bool? AnalysisRunStrict { get; set; }
         public string[] AnalysisPacks { get; set; } = Array.Empty<string>();
 
         public bool HasAny =>
@@ -604,6 +615,7 @@ internal static partial class SetupRunner {
             PreflightTimeoutSeconds.HasValue ||
             AnalysisEnabled.HasValue ||
             AnalysisGateEnabled.HasValue ||
+            AnalysisRunStrict.HasValue ||
             AnalysisPacks.Length > 0;
     }
 

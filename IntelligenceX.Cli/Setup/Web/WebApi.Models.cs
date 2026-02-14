@@ -101,6 +101,7 @@ internal sealed partial class WebApi {
         public string? ReviewCommentMode { get; set; }
         public bool? AnalysisEnabled { get; set; }
         public bool? AnalysisGateEnabled { get; set; }
+        public bool? AnalysisRunStrict { get; set; }
         public string? AnalysisPacks { get; set; }
         public string? AnalysisExportPath { get; set; }
         public string? SecretTarget { get; set; }

@@ -55,6 +55,224 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeRunNonStrictAllowsRunnerFailure() {
+        var exit = RunAnalyzeRunWithMissingDotnet(strict: false);
+        AssertEqual(0, exit, "analyze run non-strict exits success on runner failure");
+    }
+
+    private static void TestAnalyzeRunStrictFromConfigFailsRunnerFailure() {
+        var exit = RunAnalyzeRunWithMissingDotnet(strict: true);
+        AssertEqual(1, exit, "analyze run strict from config exits failure on runner failure");
+    }
+
+    private static void TestAnalyzeRunStrictFlagFalseOverridesConfigStrictTrue() {
+        var exit = RunAnalyzeRunWithMissingDotnet(strict: true, strictOverride: false);
+        AssertEqual(0, exit, "analyze run strict false flag overrides config strict true");
+    }
+
+    private static void TestAnalyzeRunStrictEqualsFalseOverridesConfigStrictTrue() {
+        var exit = RunAnalyzeRunWithMissingDotnet(
+            strict: true,
+            strictOverride: false,
+            strictOverrideEqualsSyntax: true);
+        AssertEqual(0, exit, "analyze run --strict=false overrides config strict true");
+    }
+
+    private static void TestAnalyzeRunStrictEqualsTrueOverridesConfigStrictFalse() {
+        var exit = RunAnalyzeRunWithMissingDotnet(
+            strict: false,
+            strictOverride: true,
+            strictOverrideEqualsSyntax: true);
+        AssertEqual(1, exit, "analyze run --strict=true overrides config strict false");
+    }
+
+    private static void TestAnalyzeRunStrictFlagDoesNotConsumeFollowingOption() {
+        var exit = RunAnalyzeRunWithMissingDotnet(
+            strict: false,
+            strictOverride: true,
+            packsOverride: "internal-default",
+            strictBeforePacks: true);
+        AssertEqual(0, exit, "analyze run --strict does not consume following option token");
+    }
+
+    private static void TestAnalyzeRunStrictFlagInvalidExplicitValueFails() {
+        var exit = RunAnalyzeRunWithMissingDotnet(
+            strict: false,
+            strictOverrideRawValue: "maybe");
+        AssertEqual(1, exit, "analyze run --strict invalid explicit value fails");
+    }
+
+    private static void TestAnalyzeRunStrictUnknownOptionFailsAsUnknownArgument() {
+        var (exit, output) = RunAnalyzeAndCaptureOutput(new[] { "run", "--strict", "--unknown" });
+        AssertEqual(1, exit, "analyze run --strict with unknown option exits failure");
+        AssertContainsText(output, "Unknown argument: --unknown", "analyze run --strict unknown option error");
+    }
+
+    private static void TestAnalyzeRunStrictFlagAllowsKnownOptionLookaheadWithDashValue() {
+        var exit = RunAnalyzeRunWithMissingDotnet(
+            strict: false,
+            strictOverride: true,
+            strictBeforeFramework: true,
+            frameworkOverride: "-1",
+            packsOverride: "internal-default");
+        AssertEqual(0, exit, "analyze run --strict keeps known option lookahead with dash-prefixed value");
+    }
+
+    private static void TestAnalyzeRunStrictFlagAllowsKnownOptionLookaheadWithFrameworkValue() {
+        var exit = RunAnalyzeRunWithMissingDotnet(
+            strict: false,
+            strictOverride: true,
+            strictBeforeFramework: true,
+            frameworkOverride: "net8.0",
+            packsOverride: "internal-default");
+        AssertEqual(0, exit, "analyze run --strict keeps known option lookahead with framework value");
+    }
+
+    private static void TestAnalyzeRunPacksOverrideSkipsConfiguredCsharpFailure() {
+        var exit = RunAnalyzeRunWithMissingDotnet(strict: true, packsOverride: "internal-default");
+        AssertEqual(0, exit, "analyze run pack override skips configured csharp runner failure");
+    }
+
+    private static void TestAnalyzeRunInvalidPackOverrideFails() {
+        var exit = RunAnalyzeRunWithMissingDotnet(strict: false, packsOverride: "all-50,--force");
+        AssertEqual(1, exit, "analyze run invalid pack override fails");
+    }
+
+    private static int RunAnalyzeRunWithMissingDotnet(
+        bool strict,
+        bool? strictOverride = null,
+        bool strictOverrideEqualsSyntax = false,
+        string? packsOverride = null,
+        bool strictBeforePacks = false,
+        string? strictOverrideRawValue = null,
+        bool strictBeforeFramework = false,
+        string? frameworkOverride = null) {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-run-strict-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "csharp"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), $$"""
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["csharp-default"],
+    "run": {
+      "strict": {{strict.ToString().ToLowerInvariant()}}
+    }
+  }
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "csharp", "IXCS001.json"), """
+{
+  "id": "IXCS001",
+  "language": "csharp",
+  "tool": "roslyn",
+  "toolRuleId": "CS0001",
+  "type": "bug",
+  "title": "C# smoke rule",
+  "description": "Ensures C# analyzer runner is selected.",
+  "category": "Reliability",
+  "defaultSeverity": "warning"
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "csharp-default.json"), """
+{
+  "id": "csharp-default",
+  "label": "C# Default",
+  "rules": ["IXCS001"]
+}
+""");
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXINT001.json"), """
+{
+  "id": "IXINT001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXINT001",
+  "type": "maintainability",
+  "title": "Internal smoke rule",
+  "description": "Used for analyze run pack override tests.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": [
+    "max-lines:10000",
+    "include-ext:.cs"
+  ]
+}
+""");
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "internal-default.json"), """
+{
+  "id": "internal-default",
+  "label": "Internal Default",
+  "rules": ["IXINT001"]
+}
+""");
+
+            var output = Path.Combine(temp, "artifacts");
+            var args = new List<string> {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output,
+                "--dotnet-command", "__ix_missing_dotnet_command__"
+            };
+
+            bool AppendStrictOverride() {
+                if (!string.IsNullOrWhiteSpace(strictOverrideRawValue)) {
+                    args.Add("--strict");
+                    args.Add(strictOverrideRawValue);
+                    return true;
+                }
+
+                if (!strictOverride.HasValue) {
+                    return false;
+                }
+                if (strictOverrideEqualsSyntax) {
+                    args.Add("--strict=" + strictOverride.Value.ToString().ToLowerInvariant());
+                } else {
+                    args.Add("--strict");
+                    if (!strictOverride.Value) {
+                        args.Add("false");
+                    }
+                }
+                return true;
+            }
+
+            var strictAppended = false;
+            if (strictBeforeFramework) {
+                strictAppended = AppendStrictOverride();
+            }
+
+            if (!string.IsNullOrWhiteSpace(frameworkOverride)) {
+                args.Add("--framework");
+                args.Add(frameworkOverride);
+            }
+
+            if (strictBeforePacks && !strictAppended) {
+                strictAppended = AppendStrictOverride();
+            }
+
+            if (!string.IsNullOrWhiteSpace(packsOverride)) {
+                args.Add("--packs");
+                args.Add(packsOverride);
+            }
+
+            if (!strictAppended) {
+                AppendStrictOverride();
+            }
+
+            return IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(args.ToArray()).GetAwaiter().GetResult();
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalyzeRunInternalFileSizeRule() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-size-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

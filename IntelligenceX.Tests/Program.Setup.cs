@@ -25,6 +25,19 @@ internal static partial class Program {
         }, args, "setup args analysis");
     }
 
+    private static void TestSetupArgsIncludeAnalysisRunStrictOption() {
+        var plan = new SetupPlan("owner/repo") {
+            AnalysisEnabled = true,
+            AnalysisRunStrict = true
+        };
+        var args = SetupArgsBuilder.FromPlan(plan);
+        AssertSequenceEqual(new[] {
+            "--repo", "owner/repo",
+            "--analysis-enabled", "true",
+            "--analysis-run-strict", "true"
+        }, args, "setup args analysis run strict");
+    }
+
     private static void TestSetupArgsIncludeAnalysisExportPath() {
         var plan = new SetupPlan("owner/repo") {
             AnalysisEnabled = true,
@@ -43,6 +56,7 @@ internal static partial class Program {
         var plan = new SetupPlan("owner/repo") {
             AnalysisEnabled = false,
             AnalysisGateEnabled = true,
+            AnalysisRunStrict = true,
             AnalysisPacks = "all-100",
             AnalysisExportPath = ".intelligencex/analyzers"
         };
@@ -74,6 +88,24 @@ internal static partial class Program {
         }, args, "setup args openai account routing");
     }
 
+    private static void TestSetupArgsIncludeOpenAiAccountRoutingWithPrimaryOnly() {
+        var plan = new SetupPlan("owner/repo") {
+            Provider = "openai",
+            OpenAIAccountId = "acc-primary",
+            OpenAIAccountRotation = "round-robin",
+            OpenAIAccountFailover = false
+        };
+
+        var args = SetupArgsBuilder.FromPlan(plan);
+        AssertSequenceEqual(new[] {
+            "--repo", "owner/repo",
+            "--provider", "openai",
+            "--openai-account-id", "acc-primary",
+            "--openai-account-rotation", "round-robin",
+            "--openai-account-failover", "false"
+        }, args, "setup args openai account routing primary only");
+    }
+
     private static void TestSetupConfigRejectsInvalidOpenAiAccountRotation() {
         AssertThrows<InvalidOperationException>(() =>
             SetupRunner.BuildReviewerConfigJson(new[] {
@@ -81,6 +113,39 @@ internal static partial class Program {
                 "--openai-account-ids", "acc-primary,acc-backup",
                 "--openai-account-rotation", "invalid-value"
             }), "setup invalid openai account rotation");
+    }
+
+    private static void TestSetupConfigRejectsAnalysisStrictWithoutAnalysisEnabled() {
+        AssertThrows<InvalidOperationException>(() =>
+            SetupRunner.BuildReviewerConfigJson(new[] {
+                "--with-config",
+                "--analysis-run-strict", "true"
+            }), "setup analysis strict requires analysis enabled");
+    }
+
+    private static void TestSetupConfigRejectsAnalysisOptionsWithConfigOverride() {
+        AssertThrows<InvalidOperationException>(() =>
+            SetupRunner.BuildReviewerConfigJson(new[] {
+                "--with-config",
+                "--config-json", "{}",
+                "--analysis-enabled", "true"
+            }), "setup analysis options with config override");
+    }
+
+    private static void TestSetupConfigRejectsAnalysisOptionsWithoutWithConfig() {
+        AssertThrows<InvalidOperationException>(() =>
+            SetupRunner.BuildReviewerConfigJson(new[] {
+                "--analysis-enabled", "true"
+            }), "setup analysis options without with-config");
+    }
+
+    private static void TestSetupConfigRejectsInvalidAnalysisPackId() {
+        AssertThrows<InvalidOperationException>(() =>
+            SetupRunner.BuildReviewerConfigJson(new[] {
+                "--with-config",
+                "--analysis-enabled", "true",
+                "--analysis-packs", "all-50,--force"
+            }), "setup invalid analysis pack id");
     }
 
     private static void TestSetupConfigMergeRejectsInvalidOpenAiAccountRotationFromSnapshot() {
@@ -95,7 +160,7 @@ internal static partial class Program {
 """;
         AssertThrows<InvalidOperationException>(() =>
             SetupRunner.BuildReviewerConfigJsonFromSeedForTests(
-                new[] { "--analysis-enabled", "true" },
+                new[] { "--with-config", "--analysis-enabled", "true" },
                 seed), "setup merge invalid openai account rotation from snapshot");
     }
 
@@ -215,7 +280,17 @@ internal static partial class Program {
     }
 
     private static void TestSetupBuildConfigJsonHonorsAnalysisGateOnNewConfig() {
-        var content = SetupRunner.BuildReviewerConfigJson(new[] { "--analysis-gate", "true" });
+        AssertThrows<InvalidOperationException>(() =>
+            SetupRunner.BuildReviewerConfigJson(new[] {
+                "--with-config",
+                "--analysis-gate", "true"
+            }), "config json analysis gate requires analysis enabled");
+
+        var content = SetupRunner.BuildReviewerConfigJson(new[] {
+            "--with-config",
+            "--analysis-enabled", "true",
+            "--analysis-gate", "true"
+        });
         AssertNotNull(content, "config json content");
 
         var root = System.Text.Json.Nodes.JsonNode.Parse(content) as System.Text.Json.Nodes.JsonObject;
@@ -223,11 +298,28 @@ internal static partial class Program {
 
         var analysis = root!["analysis"] as System.Text.Json.Nodes.JsonObject;
         AssertNotNull(analysis, "analysis object");
-        AssertEqual(true, analysis!["enabled"]?.GetValue<bool>(), "analysis.enabled inferred");
+        AssertEqual(true, analysis!["enabled"]?.GetValue<bool>(), "analysis.enabled");
 
         var gate = analysis["gate"] as System.Text.Json.Nodes.JsonObject;
         AssertNotNull(gate, "analysis.gate");
         AssertEqual(true, gate!["enabled"]?.GetValue<bool>(), "analysis.gate.enabled");
+    }
+
+    private static void TestSetupBuildConfigJsonIncludesAnalysisRunStrict() {
+        var content = SetupRunner.BuildReviewerConfigJson(new[] {
+            "--with-config",
+            "--analysis-enabled", "true",
+            "--analysis-run-strict", "true"
+        });
+        AssertNotNull(content, "config json analysis run strict content");
+
+        var root = System.Text.Json.Nodes.JsonNode.Parse(content) as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(root, "config json analysis run strict root");
+        var analysis = root!["analysis"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(analysis, "analysis object");
+        var run = analysis!["run"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(run, "analysis.run object");
+        AssertEqual(true, run!["strict"]?.GetValue<bool>(), "analysis.run.strict value");
     }
 
     private static void TestSetupBuildConfigJsonIncludesOpenAiAccountRouting() {
@@ -342,7 +434,7 @@ internal static partial class Program {
 }
 """;
         var content = SetupRunner.BuildReviewerConfigJsonFromSeedForTests(
-            new[] { "--analysis-enabled", "true" },
+            new[] { "--with-config", "--analysis-enabled", "true" },
             seed);
         AssertNotNull(content, "config json openai merge preserve content");
 
@@ -477,7 +569,7 @@ internal static partial class Program {
 """;
 
         var content = SetupRunner.BuildReviewerConfigJsonFromSeedForTests(
-            new[] { "--analysis-enabled", "true", "--analysis-gate", "true" },
+            new[] { "--with-config", "--analysis-enabled", "true", "--analysis-gate", "true" },
             seed);
         AssertNotNull(content, "config json merge content");
 
@@ -593,6 +685,31 @@ jobs:
             "workflow template usage budget credits pass-through");
         AssertContainsText(content, "usage_budget_allow_weekly_limit: ${{ inputs.usage_budget_allow_weekly_limit }}",
             "workflow template usage budget weekly pass-through");
+    }
+
+    private static void TestSetupWorkflowTemplateExplicitSecretsIncludesDiagnosticsAndPreflightPassThrough() {
+        var seed = """
+name: IntelligenceX Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  review:
+    uses: evotecit/github-actions/.github/workflows/review-intelligencex.yml@master
+    with:
+      provider: openai
+      model: gpt-5.3-codex
+""";
+
+        var content = SetupRunner.BuildWorkflowYamlFromSeedForTests(new[] {
+            "--explicit-secrets", "true"
+        }, seed);
+
+        AssertContainsText(content, "diagnostics:", "workflow explicit-secrets diagnostics input");
+        AssertContainsText(content, "preflight:", "workflow explicit-secrets preflight input");
+        AssertContainsText(content, "preflight_timeout_seconds:", "workflow explicit-secrets preflight timeout input");
     }
 
     private static void TestGitHubRepoDetectorParsesRemoteUrls() {

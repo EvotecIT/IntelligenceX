@@ -109,6 +109,130 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalysisFindingsLoaderDoesNotRelativizeSiblingPrefixAbsoluteFindingPath() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-loader-path-normalization-root-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var sibling = temp + "2";
+        Directory.CreateDirectory(sibling);
+        try {
+            var siblingFile = Path.Combine(sibling, "src", "test.cs");
+            Directory.CreateDirectory(Path.GetDirectoryName(siblingFile)!);
+            File.WriteAllText(siblingFile, "// outside workspace");
+
+            var artifactsDir = Path.Combine(temp, "artifacts");
+            Directory.CreateDirectory(artifactsDir);
+            var escapedSiblingPath = siblingFile.Replace("\\", "\\\\");
+            var findingsPath = Path.Combine(artifactsDir, "intelligencex.findings.json");
+            File.WriteAllText(findingsPath, $$"""
+{
+  "items": [
+    {
+      "path": "{{escapedSiblingPath}}",
+      "line": 5,
+      "severity": "warning",
+      "message": "Outside path finding",
+      "ruleId": "IX001",
+      "tool": "IntelligenceX"
+    }
+  ]
+}
+""");
+
+            var settings = new ReviewSettings();
+            settings.Analysis.Enabled = true;
+            settings.Analysis.Results.MinSeverity = "info";
+            settings.Analysis.Results.Inputs = new[] { "artifacts/intelligencex.findings.json" };
+
+            var load = IntelligenceX.Reviewer.AnalysisFindingsLoader.LoadWithReport(
+                settings,
+                Array.Empty<PullRequestFile>(),
+                temp);
+
+            AssertEqual(1, load.Findings.Count, "analysis loader finds outside absolute path item");
+            var expected = Path.GetFullPath(siblingFile).Replace('\\', '/');
+            AssertEqual(expected, load.Findings[0].Path, "analysis loader keeps outside path absolute");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+            if (Directory.Exists(sibling)) {
+                Directory.Delete(sibling, true);
+            }
+        }
+    }
+
+    private static void TestAnalysisFindingsLoaderNormalizePathCaseSensitivityByPlatform() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-loader-normalize-case-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var flags = global::System.Reflection.BindingFlags.NonPublic | global::System.Reflection.BindingFlags.Static;
+            var method = typeof(IntelligenceX.Reviewer.AnalysisFindingsLoader).GetMethod("NormalizePath", flags);
+            AssertNotNull(method, "analysis loader normalize path method exists");
+
+            var workspace = Path.GetFullPath(temp);
+            var pathInWorkspace = Path.Combine(workspace, "src", "test.cs");
+            Directory.CreateDirectory(Path.GetDirectoryName(pathInWorkspace)!);
+            File.WriteAllText(pathInWorkspace, "// test");
+
+            var workspaceCaseVariant = TogglePathCase(workspace);
+            if (string.Equals(workspaceCaseVariant, workspace, StringComparison.Ordinal)) {
+                AssertEqual(true, true, "analysis loader normalize path case setup");
+                return;
+            }
+
+            var normalized = (string)method!.Invoke(null, new object[] { pathInWorkspace, workspaceCaseVariant })!;
+            var expectedCaseInsensitive = Path.DirectorySeparatorChar == '\\';
+            var expectedRelative = Path.Combine("src", "test.cs").Replace('\\', '/');
+            var expectedAbsolute = Path.GetFullPath(pathInWorkspace).Replace('\\', '/');
+
+            AssertEqual(expectedCaseInsensitive ? expectedRelative : expectedAbsolute,
+                normalized,
+                "analysis loader normalize path follows platform case semantics");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalysisFindingsLoaderNormalizePathAcceptsMixedSeparatorsWithinWorkspace() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-loader-normalize-separators-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            if (Path.DirectorySeparatorChar == Path.AltDirectorySeparatorChar) {
+                AssertEqual(true, true, "analysis loader normalize mixed separators setup");
+                return;
+            }
+
+            var flags = global::System.Reflection.BindingFlags.NonPublic | global::System.Reflection.BindingFlags.Static;
+            var method = typeof(IntelligenceX.Reviewer.AnalysisFindingsLoader).GetMethod("NormalizePath", flags);
+            AssertNotNull(method, "analysis loader normalize path method exists (mixed separators)");
+
+            var workspace = Path.GetFullPath(temp);
+            var pathInWorkspace = Path.Combine(workspace, "src", "test.cs");
+            Directory.CreateDirectory(Path.GetDirectoryName(pathInWorkspace)!);
+            File.WriteAllText(pathInWorkspace, "// test");
+
+            var mixedWorkspace = workspace.Replace(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var mixedPath = pathInWorkspace.Replace(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+            var normalizedMixedWorkspace = (string)method!.Invoke(null, new object[] { pathInWorkspace, mixedWorkspace })!;
+            var normalizedMixedPath = (string)method.Invoke(null, new object[] { mixedPath, workspace })!;
+            var expectedRelative = Path.Combine("src", "test.cs").Replace('\\', '/');
+
+            AssertEqual(expectedRelative,
+                normalizedMixedWorkspace,
+                "analysis loader normalize path accepts mixed-separator workspace");
+            AssertEqual(expectedRelative,
+                normalizedMixedPath,
+                "analysis loader normalize path accepts mixed-separator candidate");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalyzeGateResolveWorkspaceBoundPathAcceptsWorkspaceRoot() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-workspace-root-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

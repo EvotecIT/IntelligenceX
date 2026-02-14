@@ -50,5 +50,24 @@ internal static partial class Program {
         AssertEqual(1, ruleIds!.Count, "analysis config empty-ruleIds count");
         AssertEqual("IXDUP001", ruleIds[0], "analysis config empty-ruleIds preserves default");
     }
+
+    private static void TestAnalysisConfigReaderReadsRunStrict() {
+        var root = JsonLite.Parse("""
+{
+  "analysis": {
+    "enabled": true,
+    "run": {
+      "strict": true
+    }
+  }
+}
+""")?.AsObject();
+        AssertNotNull(root, "analysis config run.strict parse root");
+
+        var settings = new AnalysisSettings();
+        AnalysisConfigReader.Apply(root!, reviewObj: null, settings);
+
+        AssertEqual(true, settings.Run.Strict, "analysis config run.strict applied");
+    }
 }
 #endif

@@ -101,6 +101,16 @@ public sealed class AnalysisHotspotsSettings {
 }
 
 /// <summary>
+/// Settings that control <c>intelligencex analyze run</c> execution behavior.
+/// </summary>
+public sealed class AnalysisRunSettings {
+    /// <summary>
+    /// When true, analysis runner failures (for example tool execution failures) return a non-zero exit code.
+    /// </summary>
+    public bool Strict { get; set; }
+}
+
+/// <summary>
 /// Settings that control CI gating behavior for static analysis.
 /// </summary>
 public sealed class AnalysisGateSettings {
@@ -217,6 +227,10 @@ public sealed class AnalysisSettings {
     /// Security hotspot rendering and state settings.
     /// </summary>
     public AnalysisHotspotsSettings Hotspots { get; } = new AnalysisHotspotsSettings();
+    /// <summary>
+    /// Analysis runner execution settings.
+    /// </summary>
+    public AnalysisRunSettings Run { get; } = new AnalysisRunSettings();
     /// <summary>
     /// CI gate settings.
     /// </summary>

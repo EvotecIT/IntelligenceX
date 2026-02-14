@@ -117,6 +117,10 @@ internal static class SetupArgsBuilder {
             args.Add("--analysis-gate");
             args.Add(plan.AnalysisGateEnabled.Value ? "true" : "false");
         }
+        if (analysisAllowsGateAndPacks && plan.AnalysisRunStrict.HasValue) {
+            args.Add("--analysis-run-strict");
+            args.Add(plan.AnalysisRunStrict.Value ? "true" : "false");
+        }
 
         if (analysisAllowsGateAndPacks && !string.IsNullOrWhiteSpace(plan.AnalysisPacks)) {
             args.Add("--analysis-packs");

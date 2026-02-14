@@ -13,8 +13,10 @@ This document describes the current IntelligenceX static analysis model and onbo
 - The wizard offers a single toggle: "Enable static analysis (recommended)."
 - Users choose pack defaults from curated options (default `all-50`) or enter custom pack IDs.
 - Users can optionally enable analysis gating ("Fail CI on static analysis findings?").
+- Users can optionally enable strict runner behavior (`--analysis-run-strict true`) to fail on analyzer runner/tool execution errors.
 - Users can optionally set an analyzer export path for IDE support.
 - The wizard writes the `analysis` section into `.intelligencex/reviewer.json`.
+- CLI parity: `intelligencex setup --analysis-*` flags are accepted only for preset generation (`--with-config` without `--config-json/--config-path` override), and gate/strict/packs/export require `--analysis-enabled true`.
 
 ## Source Of Truth
 All enablement decisions live in `.intelligencex/reviewer.json`. Analyzer tool configs are generated temporarily during analysis runs and deleted afterward. No config files are committed by default.
@@ -28,6 +30,9 @@ All enablement decisions live in `.intelligencex/reviewer.json`. Analyzer tool c
     "disabledRules": ["CA2000"],
     "severityOverrides": { "CA1062": "error" },
     "configMode": "respect",
+    "run": {
+      "strict": false
+    },
     "hotspots": {
       "show": true,
       "maxItems": 10,
@@ -156,6 +161,10 @@ During analysis runs, configs are generated to a temporary directory and cleaned
 - Python: `ruff.toml` or `pyproject.toml` with rule selection.
 
 `intelligencex analyze run` executes analysis for configured packs and emits findings artifacts for the reviewer.
+Set `analysis.run.strict=true` in `.intelligencex/reviewer.json` to fail the command on tool runner errors.
+You can force strict behavior per run with `intelligencex analyze run --strict` (or `--strict true`),
+and force non-strict behavior with `intelligencex analyze run --strict false`.
+You can override configured packs per run with `intelligencex analyze run --pack <id>` or `--packs <id1,id2>`.
 `intelligencex analyze export-config` remains available for teams that explicitly want committed analyzer configs for IDE support.
 `intelligencex analyze validate-catalog` validates rules/packs integrity (duplicates, bad refs, cycles, invalid severities).
 `intelligencex analyze list-rules` prints the built-in rule inventory (`--format text|markdown|json`) and supports pack-scoped views (`--pack` / `--packs`).
@@ -193,6 +202,12 @@ Review comments now include analysis execution context and outcomes even when no
 ### Static Analysis 🔎
 - Findings: 0 (no issues at or above configured severity)
 ```
+
+For manual `workflow_dispatch` runs, `.github/workflows/review-intelligencex.yml` supports an `analysis_run_strict` input:
+- `true`: runs `analyze run --strict`
+- `false`: runs `analyze run --strict false`
+- empty: uses `analysis.run.strict` from config
+It also supports `analysis_packs` (CSV), which maps to `analyze run --packs <value>`.
 
 `Result files` counters are defined as:
 - `matched`: unique files resolved from `analysis.results.inputs`.

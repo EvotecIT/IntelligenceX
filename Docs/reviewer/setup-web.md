@@ -50,6 +50,8 @@ Operations available:
 
 Advanced options:
 - Provider toggle (openai | copilot)
+- Static analysis controls when generating preset config (`analysisEnabled`, `analysisGateEnabled`, `analysisRunStrict`, packs, export path)
+- OpenAI account routing supports primary-only setup (rotation/failover can be configured without `account ids`)
 - Auth bundle input for secret updates (INTELLIGENCEX_AUTH_B64)
 
 ## GitHub App flow (optional)

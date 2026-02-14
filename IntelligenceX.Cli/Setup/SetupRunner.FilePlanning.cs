@@ -61,6 +61,7 @@ internal static partial class SetupRunner {
 
     internal static string BuildReviewerConfigJson(string[] args) {
         var options = SetupOptions.Parse(args);
+        ValidateAnalysisOptionContextOrThrow(options);
         var plan = PlanConfigChange(options, existingReviewerContent: null, seedContent: null);
         return plan.Content ?? string.Empty;
     }
@@ -72,8 +73,16 @@ internal static partial class SetupRunner {
     // Test helper for merge coverage against existing reviewer.json content.
     internal static string BuildReviewerConfigJsonFromSeedForTests(string[] args, string seedContent) {
         var options = SetupOptions.Parse(args);
+        ValidateAnalysisOptionContextOrThrow(options);
         var plan = PlanConfigChange(options, existingReviewerContent: seedContent, seedContent: seedContent);
         return plan.Content ?? string.Empty;
+    }
+
+    private static void ValidateAnalysisOptionContextOrThrow(SetupOptions options) {
+        if (TryValidateAnalysisOptionContextForCurrentOperation(options, out _, out var analysisOptionError)) {
+            return;
+        }
+        throw new InvalidOperationException(analysisOptionError ?? "Invalid analysis options.");
     }
 
     // Test helper for workflow upgrade coverage against existing workflow content.
@@ -285,6 +294,9 @@ internal static partial class SetupRunner {
         if (!options.AnalysisGateEnabledSet && snapshot.AnalysisGateEnabled.HasValue) {
             settings.AnalysisGateEnabled = snapshot.AnalysisGateEnabled.Value;
         }
+        if (!options.AnalysisRunStrictSet && snapshot.AnalysisRunStrict.HasValue) {
+            settings.AnalysisRunStrict = snapshot.AnalysisRunStrict.Value;
+        }
         if (!options.AnalysisPacksSet && snapshot.AnalysisPacks is { Length: > 0 }) {
             settings.AnalysisPacks = snapshot.AnalysisPacks;
         }
@@ -339,7 +351,7 @@ internal static partial class SetupRunner {
                 ["commentMode"] = settings.CommentMode,
                 ["includeIssueComments"] = settings.IncludeIssueComments,
                 ["includeReviewComments"] = settings.IncludeReviewComments,
-                ["includeRelatedPullRequests"] = settings.IncludeRelatedPullRequests,
+                ["includeRelatedPrs"] = settings.IncludeRelatedPullRequests,
                 ["progressUpdates"] = settings.ProgressUpdates,
                 ["diagnostics"] = settings.Diagnostics,
                 ["preflight"] = settings.Preflight,
@@ -363,15 +375,17 @@ internal static partial class SetupRunner {
             review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
             review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
         }
-        if (settings.AnalysisEnabledSet || settings.AnalysisGateEnabledSet || settings.AnalysisPacksSet) {
+        if (settings.AnalysisEnabledSet || settings.AnalysisGateEnabledSet || settings.AnalysisPacksSet ||
+            settings.AnalysisRunStrictSet) {
             SetupAnalysisConfig.Apply(root,
                 enabledSet: settings.AnalysisEnabledSet, enabled: settings.AnalysisEnabled,
                 gateEnabledSet: settings.AnalysisGateEnabledSet, gateEnabled: settings.AnalysisGateEnabled,
-                packsSet: settings.AnalysisPacksSet, packs: settings.AnalysisPacks);
+                packsSet: settings.AnalysisPacksSet, packs: settings.AnalysisPacks,
+                runStrictSet: settings.AnalysisRunStrictSet, runStrict: settings.AnalysisRunStrict);
         } else if (settings.AnalysisEnabled) {
             // Backwards-compatible behavior for future defaults where analysis might be enabled without a set-flag.
             root["analysis"] = SetupAnalysisConfig.Build(enabled: true, gateEnabled: settings.AnalysisGateEnabled,
-                packs: settings.AnalysisPacks);
+                packs: settings.AnalysisPacks, runStrict: settings.AnalysisRunStrict);
         }
 
         return root.ToJsonString(CliJson.Indented);
@@ -412,17 +426,19 @@ internal static partial class SetupRunner {
         review["commentMode"] = settings.CommentMode;
         review["includeIssueComments"] = settings.IncludeIssueComments;
         review["includeReviewComments"] = settings.IncludeReviewComments;
-        review["includeRelatedPullRequests"] = settings.IncludeRelatedPullRequests;
+        review["includeRelatedPrs"] = settings.IncludeRelatedPullRequests;
         review["progressUpdates"] = settings.ProgressUpdates;
         review["diagnostics"] = settings.Diagnostics;
         review["preflight"] = settings.Preflight;
         review["preflightTimeoutSeconds"] = settings.PreflightTimeoutSeconds;
         node["review"] = review;
-        if (settings.AnalysisEnabledSet || settings.AnalysisGateEnabledSet || settings.AnalysisPacksSet) {
+        if (settings.AnalysisEnabledSet || settings.AnalysisGateEnabledSet || settings.AnalysisPacksSet ||
+            settings.AnalysisRunStrictSet) {
             SetupAnalysisConfig.Apply(node,
                 enabledSet: settings.AnalysisEnabledSet, enabled: settings.AnalysisEnabled,
                 gateEnabledSet: settings.AnalysisGateEnabledSet, gateEnabled: settings.AnalysisGateEnabled,
-                packsSet: settings.AnalysisPacksSet, packs: settings.AnalysisPacks);
+                packsSet: settings.AnalysisPacksSet, packs: settings.AnalysisPacks,
+                runStrictSet: settings.AnalysisRunStrictSet, runStrict: settings.AnalysisRunStrict);
         }
         return node.ToJsonString(CliJson.Indented);
     }
@@ -663,7 +679,9 @@ internal static partial class SetupRunner {
                 snapshot.CommentMode = ReadJsonString(review, "commentMode");
                 snapshot.IncludeIssueComments = ReadJsonBool(review, "includeIssueComments");
                 snapshot.IncludeReviewComments = ReadJsonBool(review, "includeReviewComments");
-                snapshot.IncludeRelatedPullRequests = ReadJsonBool(review, "includeRelatedPullRequests");
+                snapshot.IncludeRelatedPullRequests =
+                    ReadJsonBool(review, "includeRelatedPrs") ??
+                    ReadJsonBool(review, "includeRelatedPullRequests");
                 snapshot.ProgressUpdates = ReadJsonBool(review, "progressUpdates");
                 snapshot.Diagnostics = ReadJsonBool(review, "diagnostics");
                 snapshot.Preflight = ReadJsonBool(review, "preflight");
@@ -673,6 +691,10 @@ internal static partial class SetupRunner {
             if (analysis is not null) {
                 snapshot.AnalysisEnabled = ReadJsonBool(analysis, "enabled");
                 snapshot.AnalysisPacks = SetupAnalysisConfig.ReadStringArray(analysis, "packs");
+                var run = analysis["run"] as JsonObject;
+                if (run is not null) {
+                    snapshot.AnalysisRunStrict = ReadJsonBool(run, "strict");
+                }
                 var gate = analysis["gate"] as JsonObject;
                 if (gate is not null) {
                     snapshot.AnalysisGateEnabled = ReadJsonBool(gate, "enabled");

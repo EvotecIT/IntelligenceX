@@ -321,11 +321,59 @@ public static class AnalysisCatalogLoader {
         var rootFull = Path.GetFullPath(root);
         foreach (var file in Directory.EnumerateFiles(root, "*.json", searchOption)) {
             var full = Path.GetFullPath(file);
-            if (!full.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase)) {
+            if (!IsUnderRoot(rootFull, full)) {
                 continue;
             }
             yield return full;
         }
+    }
+
+    private static bool IsUnderRoot(string rootFullPath, string candidateFullPath) {
+        if (string.IsNullOrWhiteSpace(rootFullPath) || string.IsNullOrWhiteSpace(candidateFullPath)) {
+            return false;
+        }
+
+        var comparison = GetPathComparison();
+        var root = NormalizeDirectorySeparators(TrimEndingDirectorySeparators(rootFullPath));
+        var candidate = NormalizeDirectorySeparators(TrimEndingDirectorySeparators(candidateFullPath));
+        if (string.Equals(candidate, root, comparison)) {
+            return true;
+        }
+
+        var prefix = root + Path.DirectorySeparatorChar;
+        return candidate.StartsWith(prefix, comparison);
+    }
+
+    private static StringComparison GetPathComparison() {
+        // Windows paths are case-insensitive by default; Linux/macOS paths are generally case-sensitive.
+        return Path.DirectorySeparatorChar == '\\'
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+    }
+
+    private static string TrimEndingDirectorySeparators(string path) {
+        if (string.IsNullOrEmpty(path)) {
+            return string.Empty;
+        }
+        var normalized = NormalizeDirectorySeparators(path);
+        var root = NormalizeDirectorySeparators(Path.GetPathRoot(normalized) ?? string.Empty);
+        var minLength = root.Length;
+        var end = normalized.Length;
+        while (end > minLength && IsDirectorySeparator(normalized[end - 1])) {
+            end--;
+        }
+        return end == normalized.Length ? normalized : normalized.Substring(0, end);
+    }
+
+    private static string NormalizeDirectorySeparators(string path) {
+        if (string.IsNullOrEmpty(path) || Path.DirectorySeparatorChar == Path.AltDirectorySeparatorChar) {
+            return path;
+        }
+        return path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+    }
+
+    private static bool IsDirectorySeparator(char value) {
+        return value == Path.DirectorySeparatorChar || value == Path.AltDirectorySeparatorChar;
     }
 
     private sealed class AnalysisRuleOverride {

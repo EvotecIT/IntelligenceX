@@ -16,7 +16,7 @@ internal static class WizardConfigEditor {
     ""commentMode"": ""sticky"",
     ""includeIssueComments"": true,
     ""includeReviewComments"": true,
-    ""includeRelatedPullRequests"": true,
+    ""includeRelatedPrs"": true,
     ""progressUpdates"": true
   }
 }";
