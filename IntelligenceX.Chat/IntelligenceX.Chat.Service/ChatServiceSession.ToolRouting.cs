@@ -157,9 +157,10 @@ internal sealed partial class ChatServiceSession {
             return userRequest;
         }
 
-        var normalized = (userRequest ?? string.Empty).Trim();
+        var raw = userRequest ?? string.Empty;
+        var normalized = raw.Trim();
         if (normalized.Length == 0 || !LooksLikeContinuationFollowUp(normalized)) {
-            return normalized;
+            return raw;
         }
 
         string? intent;
@@ -272,19 +273,6 @@ internal sealed partial class ChatServiceSession {
         var removeCount = Math.Max(weightedRemoveCount, intentRemoveCount);
         if (removeCount <= 0) {
             return;
-        }
-
-        // Defensive: keep timestamp maps in sync with their value maps so missing ticks can't skew eviction ordering.
-        var nowTicks = DateTime.UtcNow.Ticks;
-        foreach (var threadId in _lastWeightedToolNamesByThreadId.Keys) {
-            if (!_lastWeightedToolSubsetSeenUtcTicks.ContainsKey(threadId)) {
-                _lastWeightedToolSubsetSeenUtcTicks[threadId] = nowTicks;
-            }
-        }
-        foreach (var threadId in _lastUserIntentByThreadId.Keys) {
-            if (!_lastUserIntentSeenUtcTicks.ContainsKey(threadId)) {
-                _lastUserIntentSeenUtcTicks[threadId] = nowTicks;
-            }
         }
 
         var seenThreadIds = new HashSet<string>(_lastWeightedToolNamesByThreadId.Keys, StringComparer.Ordinal);

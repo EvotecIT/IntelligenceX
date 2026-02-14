@@ -73,7 +73,7 @@ public sealed class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void TrimWeightedRoutingContextsForTesting_SynchronizesMissingTickEntriesAndRemovesOldest() {
+    public void TrimWeightedRoutingContextsForTesting_RemovesMissingAndZeroTickEntriesFirst() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
 
         var names = new Dictionary<string, string[]>(StringComparer.Ordinal);
@@ -94,10 +94,9 @@ public sealed class ChatServiceRoutingTrimTests {
         var trackedThreadIds = new HashSet<string>(session.GetTrackedWeightedRoutingContextThreadIdsForTesting(), StringComparer.Ordinal);
 
         Assert.Equal(MaxTrackedWeightedRoutingContexts, trackedThreadIds.Count);
-        Assert.Contains("thread-missing", trackedThreadIds);
+        Assert.DoesNotContain("thread-missing", trackedThreadIds);
         Assert.DoesNotContain("thread-zero", trackedThreadIds);
-        Assert.DoesNotContain("thread-000", trackedThreadIds);
-        Assert.Contains("thread-001", trackedThreadIds);
+        Assert.Contains("thread-000", trackedThreadIds);
         Assert.Contains($"thread-{MaxTrackedWeightedRoutingContexts - 1:D3}", trackedThreadIds);
     }
 
@@ -292,6 +291,17 @@ public sealed class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExpandContinuationUserRequest_ReturnsOriginalTextWhenNotAFollowUp() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var input = "  Please check the replication health for this domain today.  ";
+
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_RespectsMaxAge() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         RememberUserIntentMethod.Invoke(session, new object?[] { "thread-001", "Please run forest-wide replication." });
@@ -345,7 +355,7 @@ public sealed class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void TrimWeightedRoutingContextsForTesting_DoesNotEvictMissingIntentTickEntriesFirst() {
+    public void TrimWeightedRoutingContextsForTesting_EvictsMissingIntentTickEntriesFirst() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
 
         var gate = ToolRoutingContextLockField.GetValue(session)!;
@@ -374,9 +384,8 @@ public sealed class ChatServiceRoutingTrimTests {
             tracked = new HashSet<string>(intents.Keys, StringComparer.Ordinal);
         }
 
-        // Before the defensive sync, thread-000 would be treated as long.MinValue and evicted first.
-        Assert.Contains("thread-000", tracked);
-        Assert.DoesNotContain("thread-001", tracked);
+        Assert.DoesNotContain("thread-000", tracked);
+        Assert.Contains("thread-001", tracked);
     }
 
     [Fact]
