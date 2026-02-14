@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
@@ -31,10 +32,10 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             .NoAdditionalProperties());
 
     private sealed record EvtxFindFile(
-        string Path,
-        string FileName,
-        long SizeBytes,
-        DateTime LastWriteTimeUtc);
+        [property: JsonPropertyName("path")] string Path,
+        [property: JsonPropertyName("file_name")] string FileName,
+        [property: JsonPropertyName("size_bytes")] long SizeBytes,
+        [property: JsonPropertyName("last_write_time_utc")] DateTime LastWriteTimeUtc);
 
     private sealed record EvtxFindResult(
         IReadOnlyList<EvtxFindFile> Files,
