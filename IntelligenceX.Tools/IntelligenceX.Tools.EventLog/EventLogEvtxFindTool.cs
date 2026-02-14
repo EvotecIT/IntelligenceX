@@ -52,14 +52,19 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        // Directory enumeration is synchronous; offload to avoid blocking the tool runner thread.
+        return Task.Run(() => InvokeCore(arguments, cancellationToken), cancellationToken);
+    }
+
+    private string InvokeCore(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
         if (Options.AllowedRoots.Count == 0) {
-            return Task.FromResult(ToolResponse.Error(
+            return ToolResponse.Error(
                 "access_denied",
                 "EVTX file scanning is disabled (AllowedRoots is empty).",
                 hints: new[] { "Enable EVTX access by configuring AllowedRoots / --allow-root." },
-                isTransient: false));
+                isTransient: false);
         }
 
         var query = (arguments?.GetString("query") ?? string.Empty).Trim();
@@ -196,7 +201,7 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                 row.Path);
         }
 
-        return Task.FromResult(ToolResponse.OkTablePreviewModel(
+        return ToolResponse.OkTablePreviewModel(
             model: result,
             title: "EVTX files (preview)",
             rowsPath: "files",
@@ -213,7 +218,7 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                 new ToolColumn("last_write_time_utc", "LastWriteUtc", "datetime"),
                 new ToolColumn("size_bytes", "Size", "number"),
                 new ToolColumn("path", "Path", "string")
-            }));
+            });
     }
 
     private static bool IsMatch(string path, IReadOnlyList<string> queryTokens, string? logHint) {
