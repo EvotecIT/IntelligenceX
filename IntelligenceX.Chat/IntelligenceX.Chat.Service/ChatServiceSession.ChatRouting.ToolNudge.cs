@@ -6,6 +6,8 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
 
+    private const int MaxQuotedPhraseSpan = 140;
+
     // Narrow, safety-oriented hints: this is not a "phrase list" of confirmations. It's a guard to ensure we only
     // treat quoted phrases as call-to-action targets when the assistant explicitly instructs the user to say/type/etc.
     private static readonly string[] ToolNudgeCallToActionHints = new[] {
@@ -185,7 +187,20 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            var end = value.IndexOf(quote, i + 1);
+            // Find a closing quote without scanning unboundedly far (prevents large accidental spans and reduces allocations).
+            var maxEnd = Math.Min(value.Length - 1, i + 1 + MaxQuotedPhraseSpan);
+            var end = -1;
+            for (var j = i + 1; j <= maxEnd; j++) {
+                var ch = value[j];
+                if (ch == '\n' || ch == '\r') {
+                    break;
+                }
+                if (ch == quote) {
+                    end = j;
+                    break;
+                }
+            }
+
             if (end <= i + 1) {
                 continue;
             }

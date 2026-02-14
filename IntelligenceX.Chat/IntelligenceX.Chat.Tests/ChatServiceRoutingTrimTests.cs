@@ -189,6 +189,28 @@ public sealed class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForSingleQuotedCallToActionEvenWithApostrophesInText() {
+        var assistantDraft = "Don't worry. If you say 'run now', I'll execute forest-wide checks immediately.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { "run now", assistantDraft, true, 0, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerWhenSingleQuoteIsUnbalanced() {
+        var assistantDraft = "If you say 'run now, I'll execute forest-wide checks immediately.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { "run now", assistantDraft, true, 0, false });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
     public void ShouldAttemptToolExecutionNudge_UsesCallToActionQuoteWhenMultipleQuotedSegmentsPresent() {
         var assistantDraft = "If you say \"run now\", I'll execute forest-wide checks. Last error was \"access denied\".";
 
