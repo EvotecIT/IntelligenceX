@@ -1821,15 +1821,12 @@ internal sealed class ChatServiceSession {
     }
 
     private static string BuildToolFailureSearchText(ToolOutputDto output) {
-        var parts = new List<string>(6);
+        var parts = new List<string>(4);
         if (!string.IsNullOrWhiteSpace(output.ErrorCode)) {
             parts.Add(output.ErrorCode);
         }
         if (!string.IsNullOrWhiteSpace(output.Error)) {
             parts.Add(output.Error);
-        }
-        if (output.Hints is { Length: > 0 }) {
-            parts.Add(string.Join(" ", output.Hints));
         }
 
         return parts.Count == 0 ? string.Empty : string.Join(" ", parts);
@@ -1842,8 +1839,7 @@ internal sealed class ChatServiceSession {
 
         var name = ex.GetType().FullName ?? ex.GetType().Name;
         if (name.IndexOf("SocketException", StringComparison.OrdinalIgnoreCase) >= 0
-            || name.IndexOf("HttpRequestException", StringComparison.OrdinalIgnoreCase) >= 0
-            || name.IndexOf("TaskCanceledException", StringComparison.OrdinalIgnoreCase) >= 0) {
+            || name.IndexOf("HttpRequestException", StringComparison.OrdinalIgnoreCase) >= 0) {
             return true;
         }
 
