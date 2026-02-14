@@ -78,6 +78,15 @@ internal static partial class Program {
         AssertEqual(0, exit, "analyze run --strict=false overrides config strict true");
     }
 
+    private static void TestAnalyzeRunStrictFlagDoesNotConsumeFollowingOption() {
+        var exit = RunAnalyzeRunWithMissingDotnet(
+            strict: false,
+            strictOverride: true,
+            packsOverride: "internal-default",
+            strictBeforePacks: true);
+        AssertEqual(0, exit, "analyze run --strict does not consume following option token");
+    }
+
     private static void TestAnalyzeRunPacksOverrideSkipsConfiguredCsharpFailure() {
         var exit = RunAnalyzeRunWithMissingDotnet(strict: true, packsOverride: "internal-default");
         AssertEqual(0, exit, "analyze run pack override skips configured csharp runner failure");
@@ -92,7 +101,8 @@ internal static partial class Program {
         bool strict,
         bool? strictOverride = null,
         bool strictOverrideEqualsSyntax = false,
-        string? packsOverride = null) {
+        string? packsOverride = null,
+        bool strictBeforePacks = false) {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-run-strict-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try {
@@ -166,11 +176,11 @@ internal static partial class Program {
                 "--out", output,
                 "--dotnet-command", "__ix_missing_dotnet_command__"
             };
-            if (!string.IsNullOrWhiteSpace(packsOverride)) {
-                args.Add("--packs");
-                args.Add(packsOverride);
-            }
-            if (strictOverride.HasValue) {
+
+            void AppendStrictOverride() {
+                if (!strictOverride.HasValue) {
+                    return;
+                }
                 if (strictOverrideEqualsSyntax) {
                     args.Add("--strict=" + strictOverride.Value.ToString().ToLowerInvariant());
                 } else {
@@ -179,6 +189,19 @@ internal static partial class Program {
                         args.Add("false");
                     }
                 }
+            }
+
+            if (strictBeforePacks) {
+                AppendStrictOverride();
+            }
+
+            if (!string.IsNullOrWhiteSpace(packsOverride)) {
+                args.Add("--packs");
+                args.Add(packsOverride);
+            }
+
+            if (!strictBeforePacks) {
+                AppendStrictOverride();
             }
 
             return IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(args.ToArray()).GetAwaiter().GetResult();

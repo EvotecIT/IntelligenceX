@@ -309,12 +309,8 @@ internal static partial class AnalyzeRunCommand {
                 continue;
             }
             if (arg.Equals("--strict", StringComparison.OrdinalIgnoreCase)) {
-                if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal)) {
-                    var strictValue = args[++i];
-                    if (!TryParseStrictValue(strictValue, out var parsedStrict)) {
-                        error = $"Invalid value for --strict: {strictValue}. Expected true|false.";
-                        return false;
-                    }
+                if (i + 1 < args.Length && TryParseStrictValue(args[i + 1], out var parsedStrict)) {
+                    i++;
                     options.Strict = parsedStrict;
                     options.StrictSet = true;
                     continue;
