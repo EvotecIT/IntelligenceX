@@ -24,6 +24,7 @@ internal static class UiShellAssets {
 
     private static readonly string[] JsManifest = [
         "Shell.10.core.js",
+        "Shell.12.core.helpers.js",
         "Shell.15.core.tools.js",
         "Shell.16.core.datatables.js",
         "Shell.17.core.dataview.js",
