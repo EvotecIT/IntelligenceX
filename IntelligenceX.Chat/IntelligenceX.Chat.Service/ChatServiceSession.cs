@@ -24,6 +24,8 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed class ChatServiceSession {
+    private const int MaxTrackedToolRoutingStats = 512;
+    private const int MaxTrackedWeightedRoutingContexts = 256;
     private readonly ServiceOptions _options;
     private readonly Stream _stream;
     private readonly ToolRegistry _registry;
@@ -35,6 +37,7 @@ internal sealed class ChatServiceSession {
     private readonly Dictionary<string, ToolRoutingStats> _toolRoutingStats = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _toolRoutingContextLock = new();
     private readonly Dictionary<string, string[]> _lastWeightedToolNamesByThreadId = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _lastWeightedToolSubsetSeenUtcTicks = new(StringComparer.Ordinal);
 
     private readonly JsonSerializerOptions _json;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
@@ -1362,6 +1365,8 @@ internal sealed class ChatServiceSession {
             if (!_lastWeightedToolNamesByThreadId.TryGetValue(normalizedThreadId, out previousNames) || previousNames.Length == 0) {
                 return false;
             }
+
+            _lastWeightedToolSubsetSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
         }
 
         var preferred = new HashSet<string>(previousNames!, StringComparer.OrdinalIgnoreCase);
@@ -1390,6 +1395,7 @@ internal sealed class ChatServiceSession {
         lock (_toolRoutingContextLock) {
             if (selectedDefinitions.Count == 0 || selectedDefinitions.Count >= allToolCount) {
                 _lastWeightedToolNamesByThreadId.Remove(normalizedThreadId);
+                _lastWeightedToolSubsetSeenUtcTicks.Remove(normalizedThreadId);
                 return;
             }
 
@@ -1402,6 +1408,8 @@ internal sealed class ChatServiceSession {
             }
 
             _lastWeightedToolNamesByThreadId[normalizedThreadId] = names.Count == 0 ? Array.Empty<string>() : names.ToArray();
+            _lastWeightedToolSubsetSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
+            TrimWeightedRoutingContextsNoLock();
         }
     }
 
@@ -1472,6 +1480,66 @@ internal sealed class ChatServiceSession {
                     stats.Failures++;
                 }
             }
+
+            TrimToolRoutingStatsNoLock();
+        }
+    }
+
+    private void TrimWeightedRoutingContextsNoLock() {
+        if (_lastWeightedToolNamesByThreadId.Count <= MaxTrackedWeightedRoutingContexts) {
+            return;
+        }
+
+        while (_lastWeightedToolNamesByThreadId.Count > MaxTrackedWeightedRoutingContexts) {
+            string? oldestThreadId = null;
+            long oldestTicks = long.MaxValue;
+            foreach (var pair in _lastWeightedToolNamesByThreadId) {
+                var ticks = _lastWeightedToolSubsetSeenUtcTicks.TryGetValue(pair.Key, out var value)
+                    ? value
+                    : long.MinValue;
+                if (ticks >= oldestTicks) {
+                    continue;
+                }
+
+                oldestTicks = ticks;
+                oldestThreadId = pair.Key;
+            }
+
+            if (string.IsNullOrWhiteSpace(oldestThreadId)) {
+                break;
+            }
+
+            _lastWeightedToolNamesByThreadId.Remove(oldestThreadId);
+            _lastWeightedToolSubsetSeenUtcTicks.Remove(oldestThreadId);
+        }
+    }
+
+    private void TrimToolRoutingStatsNoLock() {
+        if (_toolRoutingStats.Count <= MaxTrackedToolRoutingStats) {
+            return;
+        }
+
+        while (_toolRoutingStats.Count > MaxTrackedToolRoutingStats) {
+            string? oldestToolName = null;
+            long oldestTicks = long.MaxValue;
+            foreach (var pair in _toolRoutingStats) {
+                var stats = pair.Value;
+                var candidateTicks = stats.LastUsedUtcTicks > 0
+                    ? stats.LastUsedUtcTicks
+                    : stats.LastSuccessUtcTicks;
+                if (candidateTicks >= oldestTicks) {
+                    continue;
+                }
+
+                oldestTicks = candidateTicks;
+                oldestToolName = pair.Key;
+            }
+
+            if (string.IsNullOrWhiteSpace(oldestToolName)) {
+                break;
+            }
+
+            _toolRoutingStats.Remove(oldestToolName);
         }
     }
 

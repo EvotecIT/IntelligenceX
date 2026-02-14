@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using IntelligenceX.Chat.App;
 using Xunit;
 
@@ -29,6 +30,16 @@ public sealed class MainWindowMemoryTokenizationTests {
         "BuildPersistentMemoryLinesForEmptyQuery",
         BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildPersistentMemoryLinesForEmptyQuery not found.");
+
+    private static readonly MethodInfo TryExtractMemoryFactFromRegexMethod = typeof(MainWindow).GetMethod(
+        "TryExtractMemoryFactFromRegex",
+        BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("TryExtractMemoryFactFromRegex not found.");
+
+    private static readonly FieldInfo MemoryRememberIntentRegexField = typeof(MainWindow).GetField(
+        "MemoryRememberIntentRegex",
+        BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("MemoryRememberIntentRegex not found.");
 
     /// <summary>
     /// Ensures tokenization yields stable semantic tokens for precomposed/decomposed Unicode forms.
@@ -204,6 +215,34 @@ public sealed class MainWindowMemoryTokenizationTests {
 
         Assert.NotEmpty(lines);
         Assert.Equal(expectedFirst, lines[0]);
+    }
+
+    /// <summary>
+    /// Ensures preference phrases that start with "to use" are retained for memory capture.
+    /// </summary>
+    [Fact]
+    public void TryExtractMemoryFactFromRegex_AllowsToUsePreferencePhrases() {
+        var regex = Assert.IsType<Regex>(MemoryRememberIntentRegexField.GetValue(null));
+        var args = new object?[] { regex, "remember this to use short bullets", null };
+
+        var ok = Assert.IsType<bool>(TryExtractMemoryFactFromRegexMethod.Invoke(null, args));
+
+        Assert.True(ok);
+        Assert.Equal("to use short bullets", Assert.IsType<string>(args[2]));
+    }
+
+    /// <summary>
+    /// Ensures clearly imperative task phrases are still rejected.
+    /// </summary>
+    [Fact]
+    public void TryExtractMemoryFactFromRegex_RejectsImperativeTaskPhrases() {
+        var regex = Assert.IsType<Regex>(MemoryRememberIntentRegexField.GetValue(null));
+        var args = new object?[] { regex, "remember this to do domain cleanup", null };
+
+        var ok = Assert.IsType<bool>(TryExtractMemoryFactFromRegexMethod.Invoke(null, args));
+
+        Assert.False(ok);
+        Assert.Null(args[2]);
     }
 
     private static HashSet<string> InvokeTokenize(string input) {

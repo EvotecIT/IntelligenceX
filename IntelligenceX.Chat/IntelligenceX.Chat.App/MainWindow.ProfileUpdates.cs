@@ -466,6 +466,7 @@ public sealed partial class MainWindow : Window {
 
         var nowUtc = DateTime.UtcNow;
         var userTokens = TokenizeMemorySemanticText(normalizedUserText);
+        var normalizedUserTokens = NormalizeMemoryTokenSet(userTokens);
         var scoredFacts = new List<ScoredMemoryFact>(facts.Count);
 
         foreach (var fact in facts) {
@@ -486,7 +487,7 @@ public sealed partial class MainWindow : Window {
             }
 
             var factTokens = TokenizeMemorySemanticText(text);
-            var factTokenOverlap = CountNewTokenMatches(userTokens, factTokens, matchedTokens);
+            var factTokenOverlap = CountNewTokenMatchesFromNormalizedUserTokens(normalizedUserTokens, factTokens, matchedTokens);
             if (factTokenOverlap > 0) {
                 score += Math.Min(5d, factTokenOverlap * 1.35d);
                 semanticHits += factTokenOverlap;
@@ -505,7 +506,7 @@ public sealed partial class MainWindow : Window {
                 }
 
                 var tagTokens = TokenizeMemorySemanticText(tag);
-                var tagTokenOverlap = CountNewTokenMatches(userTokens, tagTokens, matchedTokens);
+                var tagTokenOverlap = CountNewTokenMatchesFromNormalizedUserTokens(normalizedUserTokens, tagTokens, matchedTokens);
                 if (tagTokenOverlap > 0) {
                     score += Math.Min(2.5d, tagTokenOverlap * 0.75d);
                     semanticHits += tagTokenOverlap;
@@ -657,21 +658,15 @@ public sealed partial class MainWindow : Window {
     }
 
     private static int CountNewTokenMatches(IReadOnlySet<string> userTokens, IReadOnlySet<string> candidateTokens, HashSet<string> seen) {
-        if (userTokens.Count == 0 || candidateTokens.Count == 0) {
-            return 0;
-        }
+        var normalizedUserTokens = NormalizeMemoryTokenSet(userTokens);
+        return CountNewTokenMatchesFromNormalizedUserTokens(normalizedUserTokens, candidateTokens, seen);
+    }
 
-        var normalizedUserTokens = new HashSet<string>(MemoryTokenComparer);
-        foreach (var token in userTokens) {
-            var normalizedUserToken = NormalizeMemoryToken(token);
-            if (normalizedUserToken.Length == 0) {
-                continue;
-            }
-
-            normalizedUserTokens.Add(normalizedUserToken);
-        }
-
-        if (normalizedUserTokens.Count == 0) {
+    private static int CountNewTokenMatchesFromNormalizedUserTokens(
+        IReadOnlySet<string> normalizedUserTokens,
+        IReadOnlySet<string> candidateTokens,
+        HashSet<string> seen) {
+        if (normalizedUserTokens.Count == 0 || candidateTokens.Count == 0) {
             return 0;
         }
 
@@ -687,6 +682,24 @@ public sealed partial class MainWindow : Window {
         }
 
         return matches;
+    }
+
+    private static HashSet<string> NormalizeMemoryTokenSet(IReadOnlySet<string> tokens) {
+        if (tokens.Count == 0) {
+            return new HashSet<string>(MemoryTokenComparer);
+        }
+
+        var normalized = new HashSet<string>(MemoryTokenComparer);
+        foreach (var token in tokens) {
+            var normalizedToken = NormalizeMemoryToken(token);
+            if (normalizedToken.Length == 0) {
+                continue;
+            }
+
+            normalized.Add(normalizedToken);
+        }
+
+        return normalized;
     }
 
     private static string NormalizeMemoryToken(string? token) {
@@ -838,7 +851,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task ClearPersistentMemoryAsync() {
-        if (_appState.MemoryFacts.Count == 0) {
+        if (_appState.MemoryFacts is null || _appState.MemoryFacts.Count == 0) {
             return;
         }
 
@@ -1045,8 +1058,8 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        if (candidate.StartsWith("to ", StringComparison.OrdinalIgnoreCase)) {
-            // Avoid storing imperative tasks accidentally.
+        if (LooksLikeImperativeTaskPhrase(candidate)) {
+            // Avoid storing imperative tasks accidentally while still allowing preference-style entries.
             return false;
         }
 
@@ -1056,6 +1069,19 @@ public sealed partial class MainWindow : Window {
 
         memoryFact = candidate;
         return true;
+    }
+
+    private static bool LooksLikeImperativeTaskPhrase(string candidate) {
+        if (!candidate.StartsWith("to ", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        return candidate.StartsWith("to do ", StringComparison.OrdinalIgnoreCase)
+               || candidate.StartsWith("to run ", StringComparison.OrdinalIgnoreCase)
+               || candidate.StartsWith("to check ", StringComparison.OrdinalIgnoreCase)
+               || candidate.StartsWith("to investigate ", StringComparison.OrdinalIgnoreCase)
+               || candidate.StartsWith("to troubleshoot ", StringComparison.OrdinalIgnoreCase)
+               || candidate.StartsWith("to fix ", StringComparison.OrdinalIgnoreCase);
     }
 
     private UserProfileIntent ParseUserProfileIntent(string userText) {
