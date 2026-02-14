@@ -76,6 +76,11 @@ public sealed partial class MainWindow : Window {
             if (!_toolStates.ContainsKey(name)) {
                 _toolStates[name] = true;
             }
+
+            // Reset routing snapshot on catalog refresh so UI never shows stale confidence/score/reason.
+            _toolRoutingConfidence.Remove(name);
+            _toolRoutingReason.Remove(name);
+            _toolRoutingScore.Remove(name);
         }
 
         var existing = new List<string>(_toolStates.Keys);
