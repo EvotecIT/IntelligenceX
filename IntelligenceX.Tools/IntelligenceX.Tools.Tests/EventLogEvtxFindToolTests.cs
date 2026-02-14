@@ -143,4 +143,34 @@ public class EventLogEvtxFindToolTests {
             }
         }
     }
+
+    [Fact]
+    public async Task EvtxFind_WhenScanBudgetHit_SetsTruncatedAndScanBudgetHit() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-evtx-find-" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tempRoot);
+        try {
+            File.WriteAllText(Path.Combine(tempRoot, "one.evtx"), "x");
+            File.WriteAllText(Path.Combine(tempRoot, "two.evtx"), "x");
+
+            var options = new EventLogToolOptions {
+                EvtxFindMaxFilesScanned = 1
+            };
+            options.AllowedRoots.Add(tempRoot);
+            var tool = new EventLogEvtxFindTool(options);
+
+            var json = await tool.InvokeAsync(new JsonObject().Add("max_results", 10), CancellationToken.None);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            Assert.True(root.GetProperty("ok").GetBoolean());
+            Assert.True(root.GetProperty("meta").GetProperty("scan_budget_hit").GetBoolean());
+            Assert.True(root.GetProperty("meta").GetProperty("truncated").GetBoolean());
+        } finally {
+            try {
+                Directory.Delete(tempRoot, recursive: true);
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
+    }
 }
