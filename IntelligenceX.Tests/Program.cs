@@ -409,6 +409,8 @@ internal static partial class Program {
             TestAnalyzeRunStrictUnknownOptionFailsAsUnknownArgument);
         failed += Run("Analyze run strict keeps known option lookahead with dash-prefixed value",
             TestAnalyzeRunStrictFlagAllowsKnownOptionLookaheadWithDashValue);
+        failed += Run("Analyze run strict keeps known option lookahead with framework value",
+            TestAnalyzeRunStrictFlagAllowsKnownOptionLookaheadWithFrameworkValue);
         failed += Run("Analyze run pack override skips configured csharp runner failure",
             TestAnalyzeRunPacksOverrideSkipsConfiguredCsharpFailure);
         failed += Run("Analyze run invalid pack override fails", TestAnalyzeRunInvalidPackOverrideFails);

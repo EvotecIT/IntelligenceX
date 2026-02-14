@@ -318,11 +318,22 @@ internal static partial class AnalyzeRunCommand {
                         continue;
                     }
 
+                    // Known options after --strict keep implicit "--strict=true".
+                    if (IsAnalyzeRunOptionToken(strictCandidate)) {
+                        options.Strict = true;
+                        options.StrictSet = true;
+                        continue;
+                    }
+
+                    // Unknown option-like tokens should be validated by the main parser path.
+                    if (strictCandidate.StartsWith("-", StringComparison.Ordinal)) {
+                        options.Strict = true;
+                        options.StrictSet = true;
+                        continue;
+                    }
+
                     // Invalid explicit values (for example "--strict maybe") must fail.
-                    // If the next token starts with "-" we treat it as another option token and let
-                    // the main argument parser validate/flag it (for example unknown options).
-                    if (!strictCandidate.StartsWith("-", StringComparison.Ordinal) &&
-                        !IsAnalyzeRunOptionToken(strictCandidate)) {
+                    if (!TryParseStrictValue(strictCandidate, out _)) {
                         error = $"Invalid value for --strict: {strictCandidate}. Expected true|false.";
                         return false;
                     }

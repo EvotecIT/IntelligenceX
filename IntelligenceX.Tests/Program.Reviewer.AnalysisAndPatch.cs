@@ -110,6 +110,16 @@ internal static partial class Program {
         AssertEqual(0, exit, "analyze run --strict keeps known option lookahead with dash-prefixed value");
     }
 
+    private static void TestAnalyzeRunStrictFlagAllowsKnownOptionLookaheadWithFrameworkValue() {
+        var exit = RunAnalyzeRunWithMissingDotnet(
+            strict: false,
+            strictOverride: true,
+            strictBeforeFramework: true,
+            frameworkOverride: "net8.0",
+            packsOverride: "internal-default");
+        AssertEqual(0, exit, "analyze run --strict keeps known option lookahead with framework value");
+    }
+
     private static void TestAnalyzeRunPacksOverrideSkipsConfiguredCsharpFailure() {
         var exit = RunAnalyzeRunWithMissingDotnet(strict: true, packsOverride: "internal-default");
         AssertEqual(0, exit, "analyze run pack override skips configured csharp runner failure");
