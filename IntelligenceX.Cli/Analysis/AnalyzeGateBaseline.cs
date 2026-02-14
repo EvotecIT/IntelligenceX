@@ -149,6 +149,94 @@ internal static class AnalyzeGateBaseline {
         return $"{ruleId}|{path}|{line}|{tool}|msg:{message}";
     }
 
+    public static bool TryLoadDuplicationOverallBaselines(string path, out Dictionary<string, DuplicationOverallBaseline> baselines,
+        out string? error) {
+        baselines = new Dictionary<string, DuplicationOverallBaseline>(StringComparer.OrdinalIgnoreCase);
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
+            error = $"baseline file not found: {path}";
+            return false;
+        }
+
+        JsonObject? root;
+        try {
+            root = JsonLite.Parse(File.ReadAllText(path))?.AsObject();
+        } catch (Exception ex) {
+            error = $"could not parse baseline file ({FormatExceptionMessage(ex)})";
+            return false;
+        }
+        if (root is null) {
+            error = "baseline file root must be a JSON object";
+            return false;
+        }
+
+        var items = root.GetArray("items");
+        if (items is null || items.Count == 0) {
+            return true;
+        }
+
+        foreach (var item in items) {
+            var obj = item.AsObject();
+            if (obj is null) {
+                continue;
+            }
+            var findingPath = (obj.GetString("path") ?? string.Empty).Trim().Replace('\\', '/');
+            if (!findingPath.Equals(".intelligencex/duplication-overall", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            var ruleId = (obj.GetString("ruleId") ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(ruleId)) {
+                continue;
+            }
+            var fingerprint = (obj.GetString("fingerprint") ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(fingerprint)) {
+                continue;
+            }
+            if (!TryParseDuplicationOverallFingerprint(fingerprint, out var duplicated, out var significant, out var scope)) {
+                continue;
+            }
+            if (significant <= 0) {
+                continue;
+            }
+            var percent = Math.Round((duplicated * 100.0) / significant, 2, MidpointRounding.AwayFromZero);
+            var key = $"{ruleId}|{scope}";
+            baselines[key] = new DuplicationOverallBaseline(ruleId, scope, significant, duplicated, percent, fingerprint);
+        }
+
+        return true;
+    }
+
+    private static bool TryParseDuplicationOverallFingerprint(string fingerprint, out int duplicatedLines, out int significantLines,
+        out string scope) {
+        duplicatedLines = 0;
+        significantLines = 0;
+        scope = "all";
+        var tokens = (fingerprint ?? string.Empty).Split(':');
+        if (tokens.Length < 5) {
+            return false;
+        }
+        if (!tokens[1].Equals("overall", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+        if (!int.TryParse(tokens[2], out duplicatedLines) || duplicatedLines < 0) {
+            return false;
+        }
+        if (!int.TryParse(tokens[3], out significantLines) || significantLines < 0) {
+            return false;
+        }
+
+        // Default scope is "all" unless an explicit suffix exists.
+        for (var i = 4; i < tokens.Length - 1; i++) {
+            if (tokens[i].Equals("scope", StringComparison.OrdinalIgnoreCase) &&
+                tokens[i + 1].Equals("changed-files", StringComparison.OrdinalIgnoreCase)) {
+                scope = "changed-files";
+                break;
+            }
+        }
+        return true;
+    }
+
     private static string NormalizePathForBaselineKey(string? path) {
         var normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
         var hasDotRelativePrefix = normalized.StartsWith(".", StringComparison.Ordinal);
@@ -217,4 +305,12 @@ internal static class AnalyzeGateBaseline {
         public string Severity { get; set; } = "unknown";
         public string? Fingerprint { get; set; }
     }
+
+    public sealed record DuplicationOverallBaseline(
+        string RuleId,
+        string Scope,
+        int SignificantLines,
+        int DuplicatedLines,
+        double DuplicatedPercent,
+        string Fingerprint);
 }

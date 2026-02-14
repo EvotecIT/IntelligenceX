@@ -616,7 +616,8 @@ internal static partial class AnalyzeRunCommand {
             return true;
         }
         return HasTagWithPrefix(rule.Tags, DuplicationWindowLinesTagPrefix) ||
-            HasTagWithPrefix(rule.Tags, MaxDuplicationPercentTagPrefix);
+            HasTagWithPrefix(rule.Tags, MaxDuplicationPercentTagPrefix) ||
+            HasTagWithPrefix(rule.Tags, MaxDuplicationPercentByLanguageTagPrefix);
     }
 
     private sealed class SourceFileEntry {

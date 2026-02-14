@@ -375,12 +375,28 @@ internal static partial class Program {
         failed += Run("Analyze gate duplication changed-files scope blocks changed file",
             TestAnalyzeGateDuplicationScopeChangedFilesBlocksChangedFiles);
         failed += Run("Analyze gate duplication new-only suppresses baseline finding", TestAnalyzeGateDuplicationNewOnlySuppressesBaselineFindings);
+        failed += Run("Analyze gate duplication overall delta blocks when increase exceeds allowed",
+            TestAnalyzeGateDuplicationOverallDeltaBlocksWhenIncreaseExceedsAllowed);
+        failed += Run("Analyze gate duplication overall delta missing baseline unavailable",
+            TestAnalyzeGateDuplicationOverallDeltaMissingBaselineIsUnavailable);
+        failed += Run("Analyze gate write baseline includes duplication overall snapshot",
+            TestAnalyzeGateWriteBaselineIncludesDuplicationOverallSnapshot);
         failed += Run("Analysis config reader normalizes duplication ruleIds",
             TestAnalysisConfigReaderNormalizesDuplicationRuleIds);
         failed += Run("Analysis config reader keeps default duplication ruleIds on empty input",
             TestAnalysisConfigReaderKeepsDefaultDuplicationRuleIdsWhenConfiguredListEmpty);
         failed += Run("Analysis config reader reads run strict",
             TestAnalysisConfigReaderReadsRunStrict);
+        failed += Run("Analysis config reader reads duplication maxOverallPercentIncrease",
+            TestAnalysisConfigReaderReadsDuplicationMaxOverallPercentIncrease);
+        failed += Run("Analyze gate changed-files accepts absolute in-workspace path",
+            TestAnalyzeGateChangedFilesAcceptsAbsoluteInWorkspace);
+        failed += Run("Analyze gate changed-files rejects absolute outside-workspace path",
+            TestAnalyzeGateChangedFilesRejectsAbsoluteOutsideWorkspace);
+        failed += Run("Analyze gate changed-files rejects relative traversal outside workspace",
+            TestAnalyzeGateChangedFilesRejectsRelativeTraversalOutsideWorkspace);
+        failed += Run("Analyze gate hotspots to-review blocks when threshold exceeded",
+            TestAnalyzeGateHotspotsToReviewBlocksWhenAboveThreshold);
         failed += Run("Analyze gate hotspot state path bound", TestAnalyzeGateHotspotsStatePathIsWorkspaceBound);
         failed += Run("Analyze gate help token", TestAnalyzeGateHelpToken);
         failed += Run("Doctor help", TestDoctorHelp);
@@ -436,6 +452,8 @@ internal static partial class Program {
             TestAnalyzeRunInternalFileSizeRuleWarnsOnUnknownTagPrefixes);
         failed += Run("Analyze run internal generated header scan can be disabled",
             TestAnalyzeRunInternalFileSizeRuleGeneratedHeaderScanCanBeDisabled);
+        failed += Run("Analyze run internal generated header marker supports hash comments",
+            TestAnalyzeRunInternalFileSizeRuleGeneratedHeaderMarkerSupportsHashComments);
         failed += Run("Analyze run internal maintainability supports multiple rules",
             TestAnalyzeRunInternalMaintainabilitySupportsMultipleRules);
         failed += Run("Analyze run internal duplication threshold",
@@ -452,6 +470,8 @@ internal static partial class Program {
             TestAnalyzeRunInternalMaintainabilityIncludeExtIsPerRule);
         failed += Run("Analyze run duplication language threshold",
             TestAnalyzeRunInternalDuplicationLanguageSpecificThreshold);
+        failed += Run("Analyze run duplication language-only tag activates rule",
+            TestAnalyzeRunInternalDuplicationLanguageSpecificTagOnlyActivatesRule);
         failed += RunAnalysisPolicyReportingTests();
         failed += Run("Structured findings block", TestStructuredFindingsBlock);
         failed += Run("Trim patch hunk boundary", TestTrimPatchStopsAtHunkBoundary);
@@ -464,6 +484,7 @@ internal static partial class Program {
         failed += Run("Review provider alias parsing", TestReviewProviderAliasParsing);
         failed += Run("Review provider contract capabilities", TestReviewProviderContractCapabilities);
         failed += Run("Review provider config alias", TestReviewProviderConfigAlias);
+        failed += Run("Review provider invalid config throws", TestReviewProviderConfigInvalidThrows);
         failed += Run("Review config loader reads openaiAccountRotation camelCase",
             TestReviewConfigLoaderReadsOpenAiAccountRotationCamelCase);
         failed += Run("Review config loader reads legacy includeRelatedPullRequests alias",
@@ -471,7 +492,9 @@ internal static partial class Program {
         failed += Run("Review config loader prefers canonical includeRelatedPrs when both keys exist",
             TestReviewConfigLoaderPrefersCanonicalIncludeRelatedPrsWhenBothKeysPresent);
         failed += Run("Review provider fallback env", TestReviewProviderFallbackEnv);
+        failed += Run("Review provider invalid env throws", TestReviewProviderEnvInvalidThrows);
         failed += Run("Review provider fallback config", TestReviewProviderFallbackConfig);
+        failed += Run("Review provider fallback invalid config throws", TestReviewProviderFallbackConfigInvalidThrows);
         failed += Run("Review provider fallback plan", TestReviewProviderFallbackPlan);
         failed += Run("Review provider health env", TestReviewProviderHealthEnv);
         failed += Run("Review provider health config", TestReviewProviderHealthConfig);

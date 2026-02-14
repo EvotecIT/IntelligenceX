@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace IntelligenceX.Reviewer;
 
@@ -36,7 +37,7 @@ internal static class ReviewProviderContracts {
         ReviewProvider.OpenAI,
         "openai",
         "OpenAI",
-        new[] { "codex" },
+        new[] { "codex", "chatgpt", "openai-codex" },
         new[] { "appserver", "native" },
         supportsUsageApi: true,
         supportsReasoningControls: true,
@@ -80,6 +81,28 @@ internal static class ReviewProviderContracts {
 
     public static ReviewProvider ParseProviderOrDefault(string? value, ReviewProvider fallback) {
         return TryParseProviderAlias(value, out var provider) ? provider : fallback;
+    }
+
+    public static ReviewProvider ParseProviderOrThrow(string? value, string settingName) {
+        if (TryParseProviderAlias(value, out var provider)) {
+            return provider;
+        }
+        var configuredValue = string.IsNullOrWhiteSpace(value) ? "<empty>" : value.Trim();
+        throw new InvalidOperationException(
+            $"Invalid {settingName} '{configuredValue}'. Supported values: {DescribeSupportedProviders()}.");
+    }
+
+    private static string DescribeSupportedProviders() {
+        var values = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var contract in ByProvider.Values) {
+            values.Add(contract.Id);
+            foreach (var alias in contract.Aliases) {
+                if (!string.IsNullOrWhiteSpace(alias)) {
+                    values.Add(alias.Trim());
+                }
+            }
+        }
+        return string.Join(", ", values.OrderBy(v => v, StringComparer.OrdinalIgnoreCase));
     }
 
     private static IReadOnlyDictionary<string, ReviewProvider> BuildAliasMap() {

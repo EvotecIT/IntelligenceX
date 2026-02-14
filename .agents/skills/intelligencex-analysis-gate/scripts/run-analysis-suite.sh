@@ -2,7 +2,25 @@
 set -euo pipefail
 
 MODE="${1:-fast}"
-REPO_ROOT="$(git rev-parse --show-toplevel)"
+find_repo_root() {
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -f "$dir/IntelligenceX.sln" ]]; then
+      echo "$dir"
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
+
+# Prefer a pure-filesystem root lookup so the script works in WSL against Windows git worktrees
+# (where `.git` points at a Windows-style gitdir path that WSL git can't always resolve).
+REPO_ROOT="${REPO_ROOT:-$(find_repo_root)}"
+if [[ -z "${REPO_ROOT}" ]]; then
+  echo "ERROR: could not locate repo root (expected to find IntelligenceX.sln)" >&2
+  exit 1
+fi
 cd "$REPO_ROOT"
 
 run_fast() {

@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using IntelligenceX.Analysis;
 
@@ -15,35 +16,208 @@ internal static partial class AnalyzeRunCommand {
         var sarifPath = Path.Combine(outputDirectory, "intelligencex.roslyn.sarif");
         using var overrideScope = PrepareEditorConfigOverride(settings, workspace, generatedEditorConfig, warnings);
 
-        var buildArgs = new[] {
-            "build",
-            "-nologo"
-        };
-        var args = new List<string>(buildArgs);
-        if (!string.IsNullOrWhiteSpace(options.DotnetFramework)) {
-            args.Add("--framework");
-            args.Add(options.DotnetFramework);
+        var requestedFramework = options.DotnetFramework?.Trim();
+        if (string.IsNullOrWhiteSpace(requestedFramework)) {
+            var args = new List<string> { "build", "-nologo", $"/p:ErrorLog={sarifPath}" };
+            var result = await RunProcessAsync(options.DotnetCommand, args, workspace).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(result.StdOut)) {
+                Console.WriteLine(result.StdOut.Trim());
+            }
+            if (!string.IsNullOrWhiteSpace(result.StdErr)) {
+                Console.WriteLine(result.StdErr.Trim());
+            }
+            if (result.ExitCode != 0) {
+                return new RunnerResult(false, $"dotnet build returned exit code {result.ExitCode}.");
+            }
+            if (!File.Exists(sarifPath)) {
+                warnings.Add("Roslyn SARIF file was not generated.");
+                return new RunnerResult(true, string.Empty);
+            }
+            Console.WriteLine($"Roslyn SARIF: {sarifPath}");
+            return new RunnerResult(true, string.Empty);
         }
-        args.Add($"/p:ErrorLog={sarifPath}");
 
-        var result = await RunProcessAsync(options.DotnetCommand, args, workspace).ConfigureAwait(false);
-        if (!string.IsNullOrWhiteSpace(result.StdOut)) {
-            Console.WriteLine(result.StdOut.Trim());
-        }
-        if (!string.IsNullOrWhiteSpace(result.StdErr)) {
-            Console.WriteLine(result.StdErr.Trim());
+        // When a framework is specified (CI uses net8.0), build only projects that explicitly target that framework.
+        // This avoids failures on Linux runners when the repo contains Windows-only TFMs (e.g. net10.0-windows).
+        var candidates = DiscoverDotnetProjects(workspace);
+        var projectsToBuild = candidates
+            .Where(path => ProjectTargetsFramework(path, requestedFramework))
+            .Distinct(System.StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (projectsToBuild.Count == 0) {
+            warnings.Add($"No .NET projects target '{requestedFramework}'; Roslyn analysis skipped.");
+            return new RunnerResult(true, string.Empty);
         }
 
-        if (result.ExitCode != 0) {
-            return new RunnerResult(false, $"dotnet build returned exit code {result.ExitCode}.");
+        var sarifParts = new List<string>();
+        for (var i = 0; i < projectsToBuild.Count; i++) {
+            var project = projectsToBuild[i];
+            var partPath = Path.Combine(outputDirectory, $"intelligencex.roslyn.{i + 1}.sarif");
+            var args = new List<string> {
+                "build",
+                "-nologo",
+                project,
+                "--framework",
+                requestedFramework,
+                $"/p:ErrorLog={partPath}"
+            };
+            var result = await RunProcessAsync(options.DotnetCommand, args, workspace).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(result.StdOut)) {
+                Console.WriteLine(result.StdOut.Trim());
+            }
+            if (!string.IsNullOrWhiteSpace(result.StdErr)) {
+                Console.WriteLine(result.StdErr.Trim());
+            }
+            if (result.ExitCode != 0) {
+                return new RunnerResult(false, $"dotnet build returned exit code {result.ExitCode}.");
+            }
+            if (File.Exists(partPath)) {
+                sarifParts.Add(partPath);
+            }
         }
-        if (!File.Exists(sarifPath)) {
+
+        if (sarifParts.Count == 0) {
             warnings.Add("Roslyn SARIF file was not generated.");
             return new RunnerResult(true, string.Empty);
         }
 
+        if (sarifParts.Count == 1) {
+            File.Copy(sarifParts[0], sarifPath, overwrite: true);
+            Console.WriteLine($"Roslyn SARIF: {sarifPath}");
+            return new RunnerResult(true, string.Empty);
+        }
+
+        if (!TryMergeSarif(sarifParts, sarifPath, out var mergeError)) {
+            warnings.Add($"Roslyn SARIF merge failed: {mergeError}");
+            File.Copy(sarifParts[0], sarifPath, overwrite: true);
+        }
+
         Console.WriteLine($"Roslyn SARIF: {sarifPath}");
         return new RunnerResult(true, string.Empty);
+    }
+
+    private static IReadOnlyList<string> DiscoverDotnetProjects(string workspace) {
+        // Prefer building projects from the workspace solution when present.
+        var slnPath = Directory.EnumerateFiles(workspace, "IntelligenceX.sln", SearchOption.TopDirectoryOnly).FirstOrDefault()
+                      ?? Directory.EnumerateFiles(workspace, "*.sln", SearchOption.TopDirectoryOnly).FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(slnPath) && File.Exists(slnPath)) {
+            var slnDir = Path.GetDirectoryName(slnPath) ?? workspace;
+            var list = new List<string>();
+            foreach (var line in File.ReadAllLines(slnPath)) {
+                // Project("{GUID}") = "Name", "path\to\proj.csproj", "{GUID}"
+                if (!line.Contains(".csproj", System.StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+                var parts = line.Split(',');
+                if (parts.Length < 2) {
+                    continue;
+                }
+                var rawPath = parts[1].Trim().Trim('"').Replace('\\', Path.DirectorySeparatorChar);
+                if (string.IsNullOrWhiteSpace(rawPath) || !rawPath.EndsWith(".csproj", System.StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+                var full = Path.GetFullPath(Path.Combine(slnDir, rawPath));
+                if (File.Exists(full)) {
+                    list.Add(full);
+                }
+            }
+            return list;
+        }
+
+        // Fallback: enumerate projects under workspace and skip generated output folders.
+        return Directory.EnumerateFiles(workspace, "*.csproj", SearchOption.AllDirectories)
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
+            .ToList();
+    }
+
+    private static bool ProjectTargetsFramework(string csprojPath, string framework) {
+        if (string.IsNullOrWhiteSpace(csprojPath) || string.IsNullOrWhiteSpace(framework) || !File.Exists(csprojPath)) {
+            return false;
+        }
+        try {
+            var content = File.ReadAllText(csprojPath);
+            var tfms = ExtractTagValue(content, "TargetFrameworks") ?? ExtractTagValue(content, "TargetFramework");
+            if (string.IsNullOrWhiteSpace(tfms)) {
+                return false;
+            }
+            foreach (var item in tfms.Split(';')) {
+                if (item.Trim().Equals(framework, System.StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+            return false;
+        } catch {
+            return false;
+        }
+    }
+
+    private static string? ExtractTagValue(string content, string tagName) {
+        if (string.IsNullOrWhiteSpace(content) || string.IsNullOrWhiteSpace(tagName)) {
+            return null;
+        }
+        var open = "<" + tagName + ">";
+        var close = "</" + tagName + ">";
+        var start = content.IndexOf(open, System.StringComparison.OrdinalIgnoreCase);
+        if (start < 0) {
+            return null;
+        }
+        start += open.Length;
+        var end = content.IndexOf(close, start, System.StringComparison.OrdinalIgnoreCase);
+        if (end < 0) {
+            return null;
+        }
+        return content.Substring(start, end - start).Trim();
+    }
+
+    private static bool TryMergeSarif(IReadOnlyList<string> inputPaths, string outputPath, out string? error) {
+        error = null;
+        try {
+            var allRuns = new List<JsonElement>();
+            string? schema = null;
+            string? version = null;
+
+            foreach (var path in inputPaths ?? Array.Empty<string>()) {
+                if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
+                    continue;
+                }
+                using var doc = JsonDocument.Parse(File.ReadAllText(path));
+                var root = doc.RootElement;
+                if (schema is null && root.TryGetProperty("$schema", out var schemaValue) &&
+                    schemaValue.ValueKind == JsonValueKind.String) {
+                    schema = schemaValue.GetString();
+                }
+                if (version is null && root.TryGetProperty("version", out var versionValue) &&
+                    versionValue.ValueKind == JsonValueKind.String) {
+                    version = versionValue.GetString();
+                }
+                if (root.TryGetProperty("runs", out var runs) && runs.ValueKind == JsonValueKind.Array) {
+                    foreach (var run in runs.EnumerateArray()) {
+                        allRuns.Add(run.Clone());
+                    }
+                }
+            }
+
+            using var stream = File.Create(outputPath);
+            using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = false });
+            writer.WriteStartObject();
+            if (!string.IsNullOrWhiteSpace(schema)) {
+                writer.WriteString("$schema", schema);
+            }
+            writer.WriteString("version", string.IsNullOrWhiteSpace(version) ? "2.1.0" : version);
+            writer.WritePropertyName("runs");
+            writer.WriteStartArray();
+            foreach (var run in allRuns) {
+                run.WriteTo(writer);
+            }
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+            writer.Flush();
+            return true;
+        } catch (System.Exception ex) {
+            error = ex.Message;
+            return false;
+        }
     }
 
     private static async Task<PowerShellRunnerResult> RunPowerShellAsync(AnalyzeRunOptions options, string workspace,

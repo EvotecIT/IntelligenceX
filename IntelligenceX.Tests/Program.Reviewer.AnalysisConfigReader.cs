@@ -69,5 +69,26 @@ internal static partial class Program {
 
         AssertEqual(true, settings.Run.Strict, "analysis config run.strict applied");
     }
+
+    private static void TestAnalysisConfigReaderReadsDuplicationMaxOverallPercentIncrease() {
+        var root = JsonLite.Parse("""
+{
+  "analysis": {
+    "enabled": true,
+    "gate": {
+      "duplication": {
+        "maxOverallPercentIncrease": 2
+      }
+    }
+  }
+}
+""")?.AsObject();
+        AssertNotNull(root, "analysis config duplication maxOverallPercentIncrease parse root");
+
+        var settings = new AnalysisSettings();
+        AnalysisConfigReader.Apply(root!, reviewObj: null, settings);
+
+        AssertEqual(2.0, settings.Gate.Duplication.MaxOverallPercentIncrease, "analysis config duplication maxOverallPercentIncrease applied");
+    }
 }
 #endif

@@ -414,7 +414,8 @@ internal static partial class AnalyzeRunCommand {
                     continue;
                 }
 
-                var isLineComment = normalized.StartsWith("//", StringComparison.Ordinal);
+                var isLineComment = normalized.StartsWith("//", StringComparison.Ordinal) ||
+                                    normalized.StartsWith("#", StringComparison.Ordinal);
                 if (normalized.StartsWith("/*", StringComparison.Ordinal)) {
                     inBlockComment = true;
                 }

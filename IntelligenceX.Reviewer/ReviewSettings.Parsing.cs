@@ -11,13 +11,11 @@ namespace IntelligenceX.Reviewer;
 
 internal sealed partial class ReviewSettings {
     private static ReviewProvider ParseProvider(string value) {
-        return ReviewProviderContracts.ParseProviderOrDefault(value, ReviewProvider.OpenAI);
+        return ReviewProviderContracts.ParseProviderOrThrow(value, "review provider");
     }
 
     private static ReviewProvider? ParseProviderNullable(string value) {
-        return ReviewProviderContracts.TryParseProviderAlias(value, out var provider)
-            ? provider
-            : null;
+        return ReviewProviderContracts.ParseProviderOrThrow(value, "review provider fallback");
     }
 
     private static ReviewCodeHost ParseCodeHost(string value) {

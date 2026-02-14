@@ -560,6 +560,74 @@ public class Oversized {
         }
     }
 
+    private static void TestAnalyzeRunInternalDuplicationLanguageSpecificTagOnlyActivatesRule() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-dup-language-only-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["intelligencex-maintainability-default"]
+  }
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXDUP001.json"), """
+{
+  "id": "IXDUP001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXDUP001",
+  "title": "Source files should keep duplicated code below threshold",
+  "description": "Flags files with high duplication percentages.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": ["max-duplication-percent-javascript:15", "include-ext:js"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "intelligencex-maintainability-default.json"), """
+{
+  "id": "intelligencex-maintainability-default",
+  "label": "IntelligenceX Maintainability",
+  "rules": ["IXDUP001"]
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "file-a.js"), BuildDuplicateJavaScriptSample("sumAlpha", "alphaInput"));
+            File.WriteAllText(Path.Combine(temp, "file-b.js"), BuildDuplicateJavaScriptSample("sumBeta", "betaInput"));
+
+            var output = Path.Combine(temp, "artifacts");
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(new[] {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output
+            }).GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "analyze run duplication language-only tag exit");
+            var findingsPath = Path.Combine(output, "intelligencex.findings.json");
+            var findings = ReadFindingsRulePathPairs(findingsPath);
+            AssertEqual(true, findings.Any(item =>
+                    item.RuleId.Equals("IXDUP001", StringComparison.OrdinalIgnoreCase) &&
+                    item.Path.EndsWith(".js", StringComparison.OrdinalIgnoreCase)),
+                "analyze run duplication language-only tag activates duplication rule");
+
+            var metricsPath = Path.Combine(output, "intelligencex.duplication.json");
+            var metricsContent = File.ReadAllText(metricsPath);
+            AssertContainsText(metricsContent, "\"configuredMaxPercent\": 15",
+                "analyze run duplication language-only tag uses language threshold");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static string BuildDuplicateSample(string className) {
         return $$"""
 namespace Demo;

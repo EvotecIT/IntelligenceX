@@ -90,6 +90,10 @@ public static class AnalysisConfigReader {
                     duplication,
                     "maxOverallPercent",
                     settings.Gate.Duplication.MaxOverallPercent);
+                settings.Gate.Duplication.MaxOverallPercentIncrease = ReadPercentOrDefault(
+                    duplication,
+                    "maxOverallPercentIncrease",
+                    settings.Gate.Duplication.MaxOverallPercentIncrease);
                 settings.Gate.Duplication.Scope = NormalizeDuplicationScope(
                     duplication.GetString("scope"),
                     settings.Gate.Duplication.Scope);
