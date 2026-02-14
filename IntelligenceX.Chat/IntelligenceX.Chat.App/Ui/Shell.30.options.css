@@ -617,6 +617,30 @@ body.options-open .options-panel {
   color: #fff2cd;
 }
 
+.options-pill-routing {
+  border-color: rgba(147, 197, 253, 0.45);
+  background: rgba(59, 130, 246, 0.16);
+  color: #dbeafe;
+}
+
+.options-pill-routing-high {
+  border-color: rgba(52, 211, 153, 0.52);
+  background: rgba(16, 185, 129, 0.2);
+  color: #d1fae5;
+}
+
+.options-pill-routing-medium {
+  border-color: rgba(251, 191, 36, 0.52);
+  background: rgba(245, 158, 11, 0.2);
+  color: #fef3c7;
+}
+
+.options-pill-routing-low {
+  border-color: rgba(251, 113, 133, 0.52);
+  background: rgba(225, 29, 72, 0.2);
+  color: #ffe4e6;
+}
+
 .options-pill-action {
   cursor: pointer;
 }
@@ -671,6 +695,19 @@ body.options-open .options-panel {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
+}
+
+.options-tool-routing {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+.options-tool-routing-reason {
+  font-size: 10.5px;
+  color: var(--ix-text-muted);
 }
 
 .options-tag {

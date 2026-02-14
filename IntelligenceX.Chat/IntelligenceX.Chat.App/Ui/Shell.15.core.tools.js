@@ -119,6 +119,36 @@
       item.appendChild(tagsRow);
     }
 
+    if (tool.routingConfidence || tool.routingReason || typeof tool.routingScore === "number") {
+      var routing = document.createElement("div");
+      routing.className = "options-tool-routing";
+
+      if (tool.routingConfidence) {
+        var confidence = document.createElement("span");
+        var normalized = String(tool.routingConfidence || "").toLowerCase();
+        var level = normalized === "high" || normalized === "low" ? normalized : "medium";
+        confidence.className = "options-pill options-pill-routing options-pill-routing-" + level;
+        confidence.textContent = "Routing " + level;
+        routing.appendChild(confidence);
+      }
+
+      if (typeof tool.routingScore === "number" && isFinite(tool.routingScore)) {
+        var score = document.createElement("span");
+        score.className = "options-pill options-pill-category";
+        score.textContent = "Score " + Number(tool.routingScore).toFixed(2);
+        routing.appendChild(score);
+      }
+
+      if (tool.routingReason) {
+        var reason = document.createElement("span");
+        reason.className = "options-tool-routing-reason";
+        reason.textContent = String(tool.routingReason);
+        routing.appendChild(reason);
+      }
+
+      item.appendChild(routing);
+    }
+
     if (Array.isArray(tool.parameters) && tool.parameters.length > 0) {
       var parametersDetails = document.createElement("details");
       parametersDetails.className = "options-tool-params";
@@ -181,6 +211,9 @@
       tool.category || "",
       tool.packId || "",
       tool.packName || "",
+      tool.routingConfidence || "",
+      tool.routingReason || "",
+      typeof tool.routingScore === "number" ? String(tool.routingScore) : "",
       packSourceLabel(packSourceKind(inferPackIdFromTool(tool))),
       (tool.tags || []).join(" "),
       Array.isArray(tool.parameters)

@@ -27,6 +27,8 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
+    private const int MaxRoutingInsightPayloadChars = 4096;
+
     private void ClearConversation() {
         var conversation = GetActiveConversation();
         conversation.Messages.Clear();
@@ -36,6 +38,7 @@ public sealed partial class MainWindow : Window {
         _messages = conversation.Messages;
         _assistantStreaming.Clear();
         _threadId = null;
+        ClearToolRoutingInsights();
         if (string.Equals(_activeRequestConversationId, conversation.Id, StringComparison.OrdinalIgnoreCase)) {
             _activeRequestConversationId = null;
         }
@@ -390,6 +393,9 @@ public sealed partial class MainWindow : Window {
             _toolPackNames.TryGetValue(name, out var packName);
             _toolParameters.TryGetValue(name, out var parameters);
             _toolStates.TryGetValue(name, out var enabled);
+            _toolRoutingConfidence.TryGetValue(name, out var routingConfidence);
+            _toolRoutingReason.TryGetValue(name, out var routingReason);
+            _toolRoutingScore.TryGetValue(name, out var routingScore);
             var normalizedPackId = NormalizePackId(packId);
             var normalizedPackName = ResolvePackDisplayName(normalizedPackId, packName);
             var parameterState = BuildToolParameterState(parameters);
@@ -402,6 +408,9 @@ public sealed partial class MainWindow : Window {
                 packName = string.IsNullOrWhiteSpace(normalizedPackName) ? null : normalizedPackName,
                 tags = tags ?? Array.Empty<string>(),
                 parameters = parameterState,
+                routingConfidence = string.IsNullOrWhiteSpace(routingConfidence) ? null : routingConfidence,
+                routingReason = string.IsNullOrWhiteSpace(routingReason) ? null : routingReason,
+                routingScore = _toolRoutingScore.ContainsKey(name) ? Math.Round(routingScore, 3) : (double?)null,
                 enabled
             });
         }
@@ -419,6 +428,16 @@ public sealed partial class MainWindow : Window {
     }
 
     private string FormatActivityText(ChatStatusMessage status) {
+        if (string.Equals(status.Status, "routing_tool", StringComparison.OrdinalIgnoreCase)) {
+            var routingToolLabel = string.IsNullOrWhiteSpace(status.ToolName)
+                ? "tool"
+                : ResolveToolActivityName(status.ToolName!);
+            if (TryParseRoutingInsightPayload(status.Message, out var routingConfidence, out _)) {
+                return $"Routing {routingToolLabel} ({routingConfidence})";
+            }
+            return $"Routing {routingToolLabel}...";
+        }
+
         if (!string.IsNullOrWhiteSpace(status.Message)) {
             return status.Message!;
         }
@@ -439,6 +458,103 @@ public sealed partial class MainWindow : Window {
                 ? "Working..."
                 : char.ToUpperInvariant(status.Status[0]) + status.Status[1..]
         };
+    }
+
+    private void ClearToolRoutingInsights() {
+        _toolRoutingConfidence.Clear();
+        _toolRoutingReason.Clear();
+        _toolRoutingScore.Clear();
+
+        // Keep explicit per-tool keys so the next options publish clears stale routing state
+        // for every visible tool row even if no fresh routing_tool events arrive this turn.
+        if (_toolStates.Count == 0) {
+            return;
+        }
+
+        var toolNames = new List<string>(_toolStates.Keys);
+        for (var i = 0; i < toolNames.Count; i++) {
+            var name = toolNames[i];
+            _toolRoutingConfidence[name] = string.Empty;
+            _toolRoutingReason[name] = string.Empty;
+        }
+    }
+
+    private bool ApplyToolRoutingInsight(ChatStatusMessage status) {
+        if (!string.Equals(status.Status, "routing_tool", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        var toolName = (status.ToolName ?? string.Empty).Trim();
+        if (toolName.Length == 0) {
+            return false;
+        }
+
+        if (!TryParseRoutingInsightPayload(status.Message, out var confidence, out var reason, out var score)) {
+            confidence = "medium";
+            reason = "model-selected tool";
+            score = null;
+        }
+
+        _toolRoutingConfidence[toolName] = confidence;
+        _toolRoutingReason[toolName] = reason;
+        if (score.HasValue) {
+            _toolRoutingScore[toolName] = score.Value;
+        } else {
+            _toolRoutingScore.Remove(toolName);
+        }
+
+        return true;
+    }
+
+    private static bool TryParseRoutingInsightPayload(string? payload, out string confidence, out string reason)
+        => TryParseRoutingInsightPayload(payload, out confidence, out reason, out _);
+
+    private static bool TryParseRoutingInsightPayload(string? payload, out string confidence, out string reason, out double? score) {
+        confidence = "medium";
+        reason = "model-selected tool";
+        score = null;
+
+        var json = (payload ?? string.Empty).Trim();
+        if (json.Length == 0 || json[0] != '{' || json.Length > MaxRoutingInsightPayloadChars) {
+            return false;
+        }
+
+        try {
+            using var doc = JsonDocument.Parse(json, new JsonDocumentOptions {
+                MaxDepth = 8,
+                CommentHandling = JsonCommentHandling.Disallow,
+                AllowTrailingCommas = false
+            });
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) {
+                return false;
+            }
+
+            if (root.TryGetProperty("confidence", out var confidenceElement) && confidenceElement.ValueKind == JsonValueKind.String) {
+                var parsed = (confidenceElement.GetString() ?? string.Empty).Trim().ToLowerInvariant();
+                confidence = parsed switch {
+                    "high" => "high",
+                    "low" => "low",
+                    _ => "medium"
+                };
+            }
+
+            if (root.TryGetProperty("reason", out var reasonElement) && reasonElement.ValueKind == JsonValueKind.String) {
+                var parsedReason = (reasonElement.GetString() ?? string.Empty).Trim();
+                if (parsedReason.Length > 0) {
+                    reason = parsedReason;
+                }
+            }
+
+            if (root.TryGetProperty("score", out var scoreElement) && scoreElement.ValueKind == JsonValueKind.Number
+                && scoreElement.TryGetDouble(out var parsedScore) && !double.IsNaN(parsedScore) && !double.IsInfinity(parsedScore)) {
+                score = Math.Clamp(parsedScore, 0d, 9999d);
+            }
+
+            return true;
+        } catch {
+            return false;
+        }
     }
 
     private string ResolveToolActivityName(string toolName) {

@@ -486,7 +486,13 @@ public sealed partial class MainWindow : Window {
         _activeTurnRequestId = requestId;
         _cancelRequestedTurnRequestId = null;
         _activeRequestConversationId = turn.ConversationId;
-        await PublishSessionStateAsync().ConfigureAwait(false);
+        ClearToolRoutingInsights();
+        try {
+            await PublishSessionStateAsync().ConfigureAwait(false);
+        } finally {
+            // Ensure tools state is refreshed after routing reset even if session publish faults.
+            await PublishOptionsStateSafeAsync().ConfigureAwait(false);
+        }
 
         try {
             await ExecuteChatTurnWithReconnectAsync(turn).ConfigureAwait(false);
@@ -496,8 +502,11 @@ public sealed partial class MainWindow : Window {
             _cancelRequestedTurnRequestId = null;
             _activeRequestConversationId = null;
             _activeTurnReceivedDelta = false;
-            await PublishSessionStateAsync().ConfigureAwait(false);
-            await PublishOptionsStateAsync().ConfigureAwait(false);
+            try {
+                await PublishSessionStateAsync().ConfigureAwait(false);
+            } finally {
+                await PublishOptionsStateSafeAsync().ConfigureAwait(false);
+            }
         }
     }
 
@@ -681,7 +690,11 @@ public sealed partial class MainWindow : Window {
                         break;
                     }
 
+                    var routingInsightUpdated = ApplyToolRoutingInsight(status);
                     _ = SetActivityAsync(IsTerminalChatStatus(status.Status) ? null : FormatActivityText(status));
+                    if (routingInsightUpdated) {
+                        _ = PublishOptionsStateSafeAsync();
+                    }
                     if (VerboseServiceLogs || _debugMode) {
                         AppendSystem(FormatStatusTrace(status));
                     }
@@ -725,6 +738,56 @@ public sealed partial class MainWindow : Window {
                     break;
             }
         });
+    }
+
+    private async Task PublishOptionsStateSafeAsync() {
+        try {
+            if (_dispatcher.HasThreadAccess) {
+                await PublishOptionsStateAsync().ConfigureAwait(false);
+            } else {
+                var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+                if (!_dispatcher.TryEnqueue(() => {
+                    try {
+                        var publishTask = PublishOptionsStateAsync();
+                        if (publishTask.IsCompletedSuccessfully) {
+                            tcs.TrySetResult(null);
+                            return;
+                        }
+
+                        _ = publishTask.ContinueWith(task => {
+                            if (task.IsCanceled) {
+                                tcs.TrySetCanceled();
+                                return;
+                            }
+
+                            if (task.IsFaulted) {
+                                tcs.TrySetException(task.Exception?.InnerException ?? task.Exception!);
+                                return;
+                            }
+
+                            tcs.TrySetResult(null);
+                        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                    } catch (Exception ex) {
+                        tcs.TrySetException(ex);
+                    }
+                })) {
+                    tcs.TrySetException(new InvalidOperationException("Failed to dispatch options refresh to UI thread."));
+                }
+
+                await tcs.Task.ConfigureAwait(false);
+            }
+        } catch (Exception ex) {
+            if (VerboseServiceLogs || _debugMode) {
+                try {
+                    await RunOnUiThreadAsync(() => {
+                        AppendSystem("Options refresh failed: " + ex.Message);
+                        return Task.CompletedTask;
+                    }).ConfigureAwait(false);
+                } catch {
+                    // best-effort logging only
+                }
+            }
+        }
     }
 
     private void OnClientDisconnected(ChatServiceClient client) {

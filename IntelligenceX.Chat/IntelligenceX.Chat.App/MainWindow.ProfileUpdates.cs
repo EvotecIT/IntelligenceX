@@ -31,6 +31,8 @@ public sealed partial class MainWindow : Window {
     private const bool SafeDefaultParallelTools = true;
     private const int SafeDefaultTurnTimeoutSeconds = 180;
     private const int SafeDefaultToolTimeoutSeconds = 60;
+    private static readonly StringComparer MemoryTokenComparer = StringComparer.OrdinalIgnoreCase;
+    private static readonly Regex MemoryTokenSplitRegex = new(@"[^\p{L}\p{Nd}_]+", RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private void ReplaceLastAssistantText(string text) {
         ReplaceLastAssistantText(GetActiveConversation(), text);
@@ -74,6 +76,11 @@ public sealed partial class MainWindow : Window {
             if (!_toolStates.ContainsKey(name)) {
                 _toolStates[name] = true;
             }
+
+            // Reset routing snapshot on catalog refresh so UI never shows stale confidence/score/reason.
+            _toolRoutingConfidence.Remove(name);
+            _toolRoutingReason.Remove(name);
+            _toolRoutingScore.Remove(name);
         }
 
         var existing = new List<string>(_toolStates.Keys);
@@ -87,6 +94,9 @@ public sealed partial class MainWindow : Window {
                 _toolPackNames.Remove(toolName);
                 _toolTags.Remove(toolName);
                 _toolParameters.Remove(toolName);
+                _toolRoutingConfidence.Remove(toolName);
+                _toolRoutingReason.Remove(toolName);
+                _toolRoutingScore.Remove(toolName);
             }
         }
     }
@@ -449,17 +459,14 @@ public sealed partial class MainWindow : Window {
             return Array.Empty<string>();
         }
 
-        var lines = new List<string>();
-        var lowerText = (userText ?? string.Empty).Trim().ToLowerInvariant();
+        var normalizedUserText = (userText ?? string.Empty).Trim();
+        if (normalizedUserText.Length == 0) {
+            return BuildPersistentMemoryLinesForEmptyQuery(facts);
+        }
 
-        facts.Sort(static (a, b) => {
-            var weightCompare = b.Weight.CompareTo(a.Weight);
-            if (weightCompare != 0) {
-                return weightCompare;
-            }
-
-            return b.UpdatedUtc.CompareTo(a.UpdatedUtc);
-        });
+        var nowUtc = DateTime.UtcNow;
+        var userTokens = TokenizeMemorySemanticText(normalizedUserText);
+        var scoredFacts = new List<ScoredMemoryFact>(facts.Count);
 
         foreach (var fact in facts) {
             var text = (fact.Fact ?? string.Empty).Trim();
@@ -467,30 +474,258 @@ public sealed partial class MainWindow : Window {
                 continue;
             }
 
-            var score = fact.Weight;
+            var score = fact.Weight * 1.4d;
+            var semanticHits = 0;
+            var matchedTokens = new HashSet<string>(MemoryTokenComparer);
+
+            if (normalizedUserText.Length > 0
+                && (normalizedUserText.Contains(text, StringComparison.OrdinalIgnoreCase)
+                    || text.Contains(normalizedUserText, StringComparison.OrdinalIgnoreCase))) {
+                score += 2.25d;
+                semanticHits += 2;
+            }
+
+            var factTokens = TokenizeMemorySemanticText(text);
+            var factTokenOverlap = CountNewTokenMatches(userTokens, factTokens, matchedTokens);
+            if (factTokenOverlap > 0) {
+                score += Math.Min(5d, factTokenOverlap * 1.35d);
+                semanticHits += factTokenOverlap;
+            }
+
             var tags = fact.Tags ?? Array.Empty<string>();
             for (var i = 0; i < tags.Length; i++) {
-                var tag = (tags[i] ?? string.Empty).Trim().ToLowerInvariant();
-                if (tag.Length > 0 && lowerText.Contains(tag, StringComparison.Ordinal)) {
-                    score += 2;
+                var tag = (tags[i] ?? string.Empty).Trim();
+                if (tag.Length == 0) {
+                    continue;
+                }
+
+                if (normalizedUserText.Length > 0 && normalizedUserText.Contains(tag, StringComparison.OrdinalIgnoreCase)) {
+                    score += 1.1d;
+                    semanticHits++;
+                }
+
+                var tagTokens = TokenizeMemorySemanticText(tag);
+                var tagTokenOverlap = CountNewTokenMatches(userTokens, tagTokens, matchedTokens);
+                if (tagTokenOverlap > 0) {
+                    score += Math.Min(2.5d, tagTokenOverlap * 0.75d);
+                    semanticHits += tagTokenOverlap;
                 }
             }
 
-            if (lowerText.Length > 0 && lowerText.Contains(text.ToLowerInvariant(), StringComparison.Ordinal)) {
-                score += 2;
+            var updatedUtc = NormalizeMemoryUpdatedUtcForRecency(fact.UpdatedUtc, nowUtc);
+            var ageHours = Math.Max(0d, (nowUtc - updatedUtc).TotalHours);
+            if (ageHours <= 24d) {
+                score += 0.9d;
+            } else if (ageHours <= 72d) {
+                score += 0.55d;
+            } else if (ageHours <= 168d) {
+                score += 0.2d;
             }
 
-            if (score >= 3 || lines.Count < 3) {
+            scoredFacts.Add(new ScoredMemoryFact(text, fact.Weight, updatedUtc, score, semanticHits));
+        }
+
+        if (scoredFacts.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        scoredFacts.Sort(static (left, right) => {
+            var scoreCompare = right.Score.CompareTo(left.Score);
+            if (scoreCompare != 0) {
+                return scoreCompare;
+            }
+
+            var weightCompare = right.Weight.CompareTo(left.Weight);
+            if (weightCompare != 0) {
+                return weightCompare;
+            }
+
+            var leftUpdatedUtc = left.UpdatedUtc;
+            var rightUpdatedUtc = right.UpdatedUtc;
+            return rightUpdatedUtc.CompareTo(leftUpdatedUtc);
+        });
+
+        var lines = new List<string>(Math.Min(10, scoredFacts.Count));
+        for (var i = 0; i < scoredFacts.Count && lines.Count < 10; i++) {
+            var fact = scoredFacts[i];
+            var include = i < 2
+                          || fact.Score >= 3.2d
+                          || fact.SemanticHits >= 2
+                          || (fact.SemanticHits >= 1 && fact.Score >= 2.5d);
+            if (!include) {
+                continue;
+            }
+
+            var text = (fact.Text ?? string.Empty).Trim();
+            if (text.Length == 0) {
+                continue;
+            }
+
+            lines.Add(text);
+        }
+
+        if (lines.Count == 0) {
+            var fallbackCount = Math.Min(3, scoredFacts.Count);
+            for (var i = 0; i < fallbackCount; i++) {
+                var text = (scoredFacts[i].Text ?? string.Empty).Trim();
+                if (text.Length == 0) {
+                    continue;
+                }
+
                 lines.Add(text);
-            }
-
-            if (lines.Count >= 8) {
-                break;
             }
         }
 
         return lines.Count == 0 ? Array.Empty<string>() : lines;
     }
+
+    private static DateTime NormalizeMemoryUpdatedUtcForRecency(DateTime value, DateTime nowUtc) {
+        if (value == default) {
+            return nowUtc;
+        }
+
+        if (value.Kind == DateTimeKind.Utc) {
+            return ClampMemoryUpdatedUtcToNow(value, nowUtc);
+        }
+
+        if (value.Kind == DateTimeKind.Local) {
+            return ClampMemoryUpdatedUtcToNow(value.ToUniversalTime(), nowUtc);
+        }
+
+        var unspecifiedAsUtc = DateTime.SpecifyKind(value, DateTimeKind.Utc);
+        var unspecifiedAsLocalUtc = DateTime.SpecifyKind(value, DateTimeKind.Local).ToUniversalTime();
+        var utcDistanceHours = Math.Abs((nowUtc - unspecifiedAsUtc).TotalHours);
+        var localDistanceHours = Math.Abs((nowUtc - unspecifiedAsLocalUtc).TotalHours);
+        var selectedUtc = localDistanceHours <= utcDistanceHours ? unspecifiedAsLocalUtc : unspecifiedAsUtc;
+        return ClampMemoryUpdatedUtcToNow(selectedUtc, nowUtc);
+    }
+
+    private static DateTime ClampMemoryUpdatedUtcToNow(DateTime valueUtc, DateTime nowUtc) {
+        return valueUtc > nowUtc ? nowUtc : valueUtc;
+    }
+
+    private static IReadOnlyList<string> BuildPersistentMemoryLinesForEmptyQuery(List<ChatMemoryFactState> facts) {
+        if (facts.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var ordered = new List<ChatMemoryFactState>(facts);
+        var nowUtc = DateTime.UtcNow;
+        ordered.Sort((a, b) => {
+            var weightCompare = b.Weight.CompareTo(a.Weight);
+            if (weightCompare != 0) {
+                return weightCompare;
+            }
+
+            var aUpdatedUtc = NormalizeMemoryUpdatedUtcForRecency(a.UpdatedUtc, nowUtc);
+            var bUpdatedUtc = NormalizeMemoryUpdatedUtcForRecency(b.UpdatedUtc, nowUtc);
+            return bUpdatedUtc.CompareTo(aUpdatedUtc);
+        });
+
+        var lines = new List<string>(8);
+        for (var i = 0; i < ordered.Count && lines.Count < 8; i++) {
+            var text = (ordered[i].Fact ?? string.Empty).Trim();
+            if (text.Length == 0) {
+                continue;
+            }
+
+            if (ordered[i].Weight >= 3 || lines.Count < 3) {
+                lines.Add(text);
+            }
+        }
+
+        return lines.Count == 0 ? Array.Empty<string>() : lines;
+    }
+
+    private static HashSet<string> TokenizeMemorySemanticText(string text) {
+        var tokens = new HashSet<string>(MemoryTokenComparer);
+        if (string.IsNullOrWhiteSpace(text)) {
+            return tokens;
+        }
+
+        var parts = MemoryTokenSplitRegex.Split(text.Normalize(NormalizationForm.FormKC));
+        for (var i = 0; i < parts.Length; i++) {
+            var token = NormalizeMemoryToken(parts[i]);
+            if (token.Length < 3 || MemoryTokenStopWords.Contains(token)) {
+                continue;
+            }
+
+            tokens.Add(token);
+        }
+
+        return tokens;
+    }
+
+    private static int CountNewTokenMatches(IReadOnlySet<string> userTokens, IReadOnlySet<string> candidateTokens, HashSet<string> seen) {
+        if (userTokens.Count == 0 || candidateTokens.Count == 0) {
+            return 0;
+        }
+
+        var normalizedUserTokens = new HashSet<string>(MemoryTokenComparer);
+        foreach (var token in userTokens) {
+            var normalizedUserToken = NormalizeMemoryToken(token);
+            if (normalizedUserToken.Length == 0) {
+                continue;
+            }
+
+            normalizedUserTokens.Add(normalizedUserToken);
+        }
+
+        if (normalizedUserTokens.Count == 0) {
+            return 0;
+        }
+
+        var matches = 0;
+        foreach (var token in candidateTokens) {
+            var normalizedToken = NormalizeMemoryToken(token);
+            if (normalizedToken.Length == 0 || !normalizedUserTokens.Contains(normalizedToken)) {
+                continue;
+            }
+            if (seen.Add(normalizedToken)) {
+                matches++;
+            }
+        }
+
+        return matches;
+    }
+
+    private static string NormalizeMemoryToken(string? token) {
+        if (string.IsNullOrWhiteSpace(token)) {
+            return string.Empty;
+        }
+
+        var normalized = token.Normalize(NormalizationForm.FormKC).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        var decomposed = normalized.Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(decomposed.Length);
+        for (var i = 0; i < decomposed.Length; i++) {
+            var category = CharUnicodeInfo.GetUnicodeCategory(decomposed[i]);
+            if (category is UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark or UnicodeCategory.EnclosingMark) {
+                continue;
+            }
+
+            builder.Append(decomposed[i]);
+        }
+
+        return builder.ToString().Normalize(NormalizationForm.FormKC).ToLowerInvariant();
+    }
+
+    private static readonly HashSet<string> MemoryTokenStopWords = new(MemoryTokenComparer) {
+        "the", "and", "with", "from", "that", "this", "for", "you", "your", "have", "show", "give", "list",
+        "check", "please", "about", "into", "just", "today", "need", "want", "when", "what", "where", "then",
+        "them", "they", "their", "there", "after", "before", "will", "should", "would", "could", "also", "been",
+        "being", "while", "does", "did", "done", "using", "used", "more", "same", "again"
+    };
+
+    private readonly record struct ScoredMemoryFact(
+        string Text,
+        int Weight,
+        DateTime UpdatedUtc,
+        double Score,
+        int SemanticHits);
 
     private static List<ChatMemoryFactState> NormalizeMemoryFacts(List<ChatMemoryFactState>? facts) {
         if (facts is null || facts.Count == 0) {

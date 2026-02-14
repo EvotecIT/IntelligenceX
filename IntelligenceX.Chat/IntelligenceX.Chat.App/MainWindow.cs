@@ -154,6 +154,9 @@ public sealed partial class MainWindow : Window {
     private readonly Dictionary<string, string> _toolPackIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _toolPackNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ToolParameterDto[]> _toolParameters = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _toolRoutingConfidence = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _toolRoutingReason = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, double> _toolRoutingScore = new(StringComparer.OrdinalIgnoreCase);
     private string _appProfileName = ResolveAppProfileName(Environment.GetEnvironmentVariable("IXCHAT_PROFILE"));
     private readonly ChatAppStateStore _stateStore = new(ChatAppStateStore.GetDefaultDbPath());
     private readonly SemaphoreSlim _stateWriteGate = new(1, 1);
@@ -708,6 +711,7 @@ public sealed partial class MainWindow : Window {
         _autoSignInAttempted = _appState.OnboardingCompleted || AnyConversationHasMessages();
 
         _toolStates.Clear();
+        ClearToolRoutingInsights();
         foreach (var toolName in knownToolNames) {
             _toolStates[toolName] = true;
         }
