@@ -44,19 +44,6 @@ internal static partial class SetupRunner {
         // Reviewer config is consumed by IntelligenceX.Reviewer at runtime.
         // `.intelligencex/config.json` is reserved for the .NET library/app-server client config.
         var path = ".intelligencex/reviewer.json";
-        var hasConfigOverride = !string.IsNullOrWhiteSpace(options.ConfigJson) ||
-                                !string.IsNullOrWhiteSpace(options.ConfigPath);
-        var withConfig = options.WithConfig || hasConfigOverride;
-        var isSetupOperation = !options.Cleanup && !options.UpdateSecret;
-        if (!TryValidateAnalysisOptionContext(
-                options,
-                isSetup: isSetupOperation,
-                withConfig: withConfig,
-                hasConfigOverride: hasConfigOverride,
-                out var analysisOptionError)) {
-            throw new InvalidOperationException(analysisOptionError ?? "Invalid analysis options.");
-        }
-
         var overrideContent = ReadConfigOverride(options);
         if (!string.IsNullOrWhiteSpace(overrideContent)) {
             return PlanWrite(path, existingReviewerContent, overrideContent, options.Force);
@@ -74,6 +61,7 @@ internal static partial class SetupRunner {
 
     internal static string BuildReviewerConfigJson(string[] args) {
         var options = SetupOptions.Parse(args);
+        ValidateAnalysisOptionContextOrThrow(options);
         var plan = PlanConfigChange(options, existingReviewerContent: null, seedContent: null);
         return plan.Content ?? string.Empty;
     }
@@ -85,8 +73,16 @@ internal static partial class SetupRunner {
     // Test helper for merge coverage against existing reviewer.json content.
     internal static string BuildReviewerConfigJsonFromSeedForTests(string[] args, string seedContent) {
         var options = SetupOptions.Parse(args);
+        ValidateAnalysisOptionContextOrThrow(options);
         var plan = PlanConfigChange(options, existingReviewerContent: seedContent, seedContent: seedContent);
         return plan.Content ?? string.Empty;
+    }
+
+    private static void ValidateAnalysisOptionContextOrThrow(SetupOptions options) {
+        if (TryValidateAnalysisOptionContextForCurrentOperation(options, out _, out var analysisOptionError)) {
+            return;
+        }
+        throw new InvalidOperationException(analysisOptionError ?? "Invalid analysis options.");
     }
 
     // Test helper for workflow upgrade coverage against existing workflow content.

@@ -46,16 +46,7 @@ internal static partial class SetupRunner {
                 return 1;
             }
 
-            var hasConfigOverride = !string.IsNullOrWhiteSpace(options.ConfigJson) ||
-                                    !string.IsNullOrWhiteSpace(options.ConfigPath);
-            var withConfig = options.WithConfig || hasConfigOverride;
-            var isSetupOperation = !options.Cleanup && !options.UpdateSecret;
-            if (!TryValidateAnalysisOptionContext(
-                    options,
-                    isSetup: isSetupOperation,
-                    withConfig: withConfig,
-                    hasConfigOverride: hasConfigOverride,
-                    out var analysisOptionError)) {
+            if (!TryValidateAnalysisOptionContextForCurrentOperation(options, out var withConfig, out var analysisOptionError)) {
                 Console.Error.WriteLine(analysisOptionError);
                 return 1;
             }
@@ -217,6 +208,22 @@ internal static partial class SetupRunner {
             Console.Error.WriteLine(ex.Message);
             return 1;
         }
+    }
+
+    private static bool TryValidateAnalysisOptionContextForCurrentOperation(
+        SetupOptions options,
+        out bool withConfig,
+        out string? error) {
+        var hasConfigOverride = !string.IsNullOrWhiteSpace(options.ConfigJson) ||
+                                !string.IsNullOrWhiteSpace(options.ConfigPath);
+        withConfig = options.WithConfig || hasConfigOverride;
+        var isSetupOperation = !options.Cleanup && !options.UpdateSecret;
+        return TryValidateAnalysisOptionContext(
+            options,
+            isSetup: isSetupOperation,
+            withConfig: withConfig,
+            hasConfigOverride: hasConfigOverride,
+            out error);
     }
 
     private static bool TryValidateAnalysisOptionContext(
