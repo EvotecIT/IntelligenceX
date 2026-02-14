@@ -173,6 +173,10 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (intentTicks > 0) {
+            if (intentTicks > DateTime.MaxValue.Ticks) {
+                // Defensive: avoid exceptions from ticks->DateTime conversion if ticks are corrupted/out of range.
+                return normalized;
+            }
             var age = DateTime.UtcNow - new DateTime(intentTicks, DateTimeKind.Utc);
             if (age > UserIntentContextMaxAge) {
                 return normalized;
@@ -270,6 +274,19 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
+        // Defensive: keep timestamp maps in sync with their value maps so missing ticks can't skew eviction ordering.
+        var nowTicks = DateTime.UtcNow.Ticks;
+        foreach (var threadId in _lastWeightedToolNamesByThreadId.Keys) {
+            if (!_lastWeightedToolSubsetSeenUtcTicks.ContainsKey(threadId)) {
+                _lastWeightedToolSubsetSeenUtcTicks[threadId] = nowTicks;
+            }
+        }
+        foreach (var threadId in _lastUserIntentByThreadId.Keys) {
+            if (!_lastUserIntentSeenUtcTicks.ContainsKey(threadId)) {
+                _lastUserIntentSeenUtcTicks[threadId] = nowTicks;
+            }
+        }
+
         var seenThreadIds = new HashSet<string>(_lastWeightedToolNamesByThreadId.Keys, StringComparer.Ordinal);
         foreach (var threadId in _lastUserIntentByThreadId.Keys) {
             seenThreadIds.Add(threadId);
@@ -277,10 +294,11 @@ internal sealed partial class ChatServiceSession {
 
         var threadIdsToRemove = seenThreadIds
             .Select(threadId => {
-                var ticks = long.MinValue;
-                if (_lastWeightedToolSubsetSeenUtcTicks.TryGetValue(threadId, out var weightedTicks) && weightedTicks > 0) {
+                var ticks = 0L;
+                if (_lastWeightedToolSubsetSeenUtcTicks.TryGetValue(threadId, out var weightedTicks) && weightedTicks > ticks) {
                     ticks = weightedTicks;
-                } else if (_lastUserIntentSeenUtcTicks.TryGetValue(threadId, out var intentTicks) && intentTicks > 0) {
+                }
+                if (_lastUserIntentSeenUtcTicks.TryGetValue(threadId, out var intentTicks) && intentTicks > ticks) {
                     ticks = intentTicks;
                 }
                 return (ThreadId: threadId, Ticks: ticks);
@@ -459,11 +477,6 @@ internal sealed partial class ChatServiceSession {
 
             var end = text.IndexOf("```", start + 3, StringComparison.Ordinal);
             if (end < 0) {
-                // If the user forgot the closing fence, avoid dropping the whole message.
-                // Keep the remainder only when the fence starts the message; otherwise keep the prefix intent.
-                if (sb.Length == 0) {
-                    sb.Append(text, start + 3, text.Length - (start + 3));
-                }
                 break;
             }
 

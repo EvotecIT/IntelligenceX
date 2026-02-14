@@ -35,6 +35,15 @@ public sealed class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ParsePlannerSelectedDefinitionsMethod =
         typeof(ChatServiceSession).GetMethod("ParsePlannerSelectedDefinitions", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ParsePlannerSelectedDefinitions not found.");
+    private static readonly FieldInfo ToolRoutingContextLockField =
+        typeof(ChatServiceSession).GetField("_toolRoutingContextLock", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolRoutingContextLock not found.");
+    private static readonly FieldInfo LastUserIntentByThreadIdField =
+        typeof(ChatServiceSession).GetField("_lastUserIntentByThreadId", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_lastUserIntentByThreadId not found.");
+    private static readonly FieldInfo LastUserIntentSeenUtcTicksField =
+        typeof(ChatServiceSession).GetField("_lastUserIntentSeenUtcTicks", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_lastUserIntentSeenUtcTicks not found.");
 
     [Fact]
     public void TrimToolRoutingStatsForTesting_RemovesNonPositiveTimestampEntriesFirst() {
@@ -61,7 +70,7 @@ public sealed class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void TrimWeightedRoutingContextsForTesting_RemovesMissingAndZeroTickEntriesFirst() {
+    public void TrimWeightedRoutingContextsForTesting_SynchronizesMissingTickEntriesAndRemovesOldest() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
 
         var names = new Dictionary<string, string[]>(StringComparer.Ordinal);
@@ -82,9 +91,10 @@ public sealed class ChatServiceRoutingTrimTests {
         var trackedThreadIds = new HashSet<string>(session.GetTrackedWeightedRoutingContextThreadIdsForTesting(), StringComparer.Ordinal);
 
         Assert.Equal(MaxTrackedWeightedRoutingContexts, trackedThreadIds.Count);
-        Assert.DoesNotContain("thread-missing", trackedThreadIds);
+        Assert.Contains("thread-missing", trackedThreadIds);
         Assert.DoesNotContain("thread-zero", trackedThreadIds);
-        Assert.Contains("thread-000", trackedThreadIds);
+        Assert.DoesNotContain("thread-000", trackedThreadIds);
+        Assert.Contains("thread-001", trackedThreadIds);
         Assert.Contains($"thread-{MaxTrackedWeightedRoutingContexts - 1:D3}", trackedThreadIds);
     }
 
@@ -197,6 +207,19 @@ public sealed class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExtractPrimaryUserRequest_ReturnsEmptyWhenFenceUnclosedAtStart() {
+        var input = """
+            ```powershell
+            Get-EventLog -LogName System
+            """;
+
+        var result = ExtractPrimaryUserRequestMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Equal(string.Empty, text);
+    }
+
+    [Fact]
     public void ExtractPrimaryUserRequest_DoesNotConcatenateTokensWhenBackticksAreOdd() {
         var input = "please `run now";
 
@@ -231,6 +254,94 @@ public sealed class ChatServiceRoutingTrimTests {
         Assert.Contains("forest-wide replication", expanded, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Follow-up:", expanded, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("run now", expanded, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_RespectsMaxAge() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        RememberUserIntentMethod.Invoke(session, new object?[] { "thread-001", "Please run forest-wide replication." });
+
+        var gate = ToolRoutingContextLockField.GetValue(session)!;
+        lock (gate) {
+            var ticks = (Dictionary<string, long>)LastUserIntentSeenUtcTicksField.GetValue(session)!;
+            ticks["thread-001"] = DateTime.UtcNow.AddHours(-1).Ticks;
+        }
+
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "run now" });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.DoesNotContain("Follow-up:", expanded, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("run now", expanded);
+    }
+
+    [Fact]
+    public void TrimWeightedRoutingContextsForTesting_PrefersMostRecentTicksAcrossContexts() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+
+        var names = new Dictionary<string, string[]>(StringComparer.Ordinal);
+        var seenTicks = new Dictionary<string, long>(StringComparer.Ordinal);
+        for (var i = 0; i < MaxTrackedWeightedRoutingContexts + 1; i++) {
+            var threadId = $"thread-{i:D3}";
+            names[threadId] = new[] { $"tool-{i:D3}" };
+            seenTicks[threadId] = 10_000L + i;
+        }
+
+        // Make thread-000 look old in weighted context...
+        seenTicks["thread-000"] = 1;
+        session.SetWeightedRoutingContextsForTesting(names, seenTicks);
+
+        // ...but recent in intent context, so it should not be evicted.
+        var gate = ToolRoutingContextLockField.GetValue(session)!;
+        lock (gate) {
+            var intents = (Dictionary<string, string>)LastUserIntentByThreadIdField.GetValue(session)!;
+            var intentTicks = (Dictionary<string, long>)LastUserIntentSeenUtcTicksField.GetValue(session)!;
+            intents.Clear();
+            intentTicks.Clear();
+            intents["thread-000"] = "intent";
+            intentTicks["thread-000"] = 999_999;
+        }
+
+        session.TrimWeightedRoutingContextsForTesting();
+        var tracked = new HashSet<string>(session.GetTrackedWeightedRoutingContextThreadIdsForTesting(), StringComparer.Ordinal);
+
+        Assert.Contains("thread-000", tracked);
+        Assert.DoesNotContain("thread-001", tracked);
+        Assert.Contains("thread-002", tracked);
+    }
+
+    [Fact]
+    public void TrimWeightedRoutingContextsForTesting_DoesNotEvictMissingIntentTickEntriesFirst() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+
+        var gate = ToolRoutingContextLockField.GetValue(session)!;
+        lock (gate) {
+            var intents = (Dictionary<string, string>)LastUserIntentByThreadIdField.GetValue(session)!;
+            var intentTicks = (Dictionary<string, long>)LastUserIntentSeenUtcTicksField.GetValue(session)!;
+            intents.Clear();
+            intentTicks.Clear();
+
+            for (var i = 0; i < MaxTrackedWeightedRoutingContexts + 1; i++) {
+                var threadId = $"thread-{i:D3}";
+                intents[threadId] = "intent";
+                if (threadId != "thread-000") {
+                    intentTicks[threadId] = 10_000L + i;
+                }
+            }
+
+            // Ensure there's a clear oldest "known" tick so eviction is deterministic.
+            intentTicks["thread-001"] = 1;
+        }
+
+        session.TrimWeightedRoutingContextsForTesting();
+        HashSet<string> tracked;
+        lock (gate) {
+            var intents = (Dictionary<string, string>)LastUserIntentByThreadIdField.GetValue(session)!;
+            tracked = new HashSet<string>(intents.Keys, StringComparer.Ordinal);
+        }
+
+        // Before the defensive sync, thread-000 would be treated as long.MinValue and evicted first.
+        Assert.Contains("thread-000", tracked);
+        Assert.DoesNotContain("thread-001", tracked);
     }
 
     [Fact]
