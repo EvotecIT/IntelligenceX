@@ -222,6 +222,36 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalysisCatalogLoaderUnderRootAcceptsMixedSeparators() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-catalog-loader-separators-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var flags = global::System.Reflection.BindingFlags.NonPublic | global::System.Reflection.BindingFlags.Static;
+            var method = typeof(IntelligenceX.Analysis.AnalysisCatalogLoader).GetMethod("IsUnderRoot", flags);
+            AssertNotNull(method, "analysis catalog loader IsUnderRoot exists (mixed separators)");
+
+            if (Path.DirectorySeparatorChar == Path.AltDirectorySeparatorChar) {
+                AssertEqual(true, true, "analysis catalog loader mixed separator setup");
+                return;
+            }
+
+            var rootPath = Path.GetFullPath(temp);
+            var nestedPath = Path.Combine(rootPath, "Analysis", "Catalog", "rules", "internal", "IX001.json");
+            var mixedRootPath = rootPath.Replace(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var mixedNestedPath = nestedPath.Replace(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+            var mixedCandidateResult = (bool)method!.Invoke(null, new object[] { rootPath, mixedNestedPath })!;
+            var mixedRootResult = (bool)method!.Invoke(null, new object[] { mixedRootPath, nestedPath })!;
+
+            AssertEqual(true, mixedCandidateResult, "analysis catalog loader accepts mixed-separator candidate path");
+            AssertEqual(true, mixedRootResult, "analysis catalog loader accepts mixed-separator root path");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static string TogglePathCase(string path) {
         if (string.IsNullOrEmpty(path)) {
             return string.Empty;

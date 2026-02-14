@@ -334,8 +334,8 @@ public static class AnalysisCatalogLoader {
         }
 
         var comparison = GetPathComparison();
-        var root = TrimEndingDirectorySeparators(rootFullPath);
-        var candidate = TrimEndingDirectorySeparators(candidateFullPath);
+        var root = NormalizeDirectorySeparators(TrimEndingDirectorySeparators(rootFullPath));
+        var candidate = NormalizeDirectorySeparators(TrimEndingDirectorySeparators(candidateFullPath));
         if (string.Equals(candidate, root, comparison)) {
             return true;
         }
@@ -356,6 +356,13 @@ public static class AnalysisCatalogLoader {
             return string.Empty;
         }
         return path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    }
+
+    private static string NormalizeDirectorySeparators(string path) {
+        if (string.IsNullOrEmpty(path) || Path.DirectorySeparatorChar == Path.AltDirectorySeparatorChar) {
+            return path;
+        }
+        return path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
     }
 
     private sealed class AnalysisRuleOverride {
