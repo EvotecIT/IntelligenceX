@@ -130,9 +130,8 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        var window = assistantDraft.Substring(windowStart, quoteIndex - windowStart);
         for (var i = 0; i < ToolNudgeCallToActionHints.Length; i++) {
-            if (ContainsWord(window, ToolNudgeCallToActionHints[i])) {
+            if (ContainsWordInRange(assistantDraft, windowStart, quoteIndex, ToolNudgeCallToActionHints[i])) {
                 return true;
             }
         }
@@ -140,27 +139,44 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
-    private static bool ContainsWord(string text, string word) {
-        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(word) || word.Length > text.Length) {
+    private static bool ContainsWordInRange(string text, int startIndex, int endIndexExclusive, string word) {
+        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(word)) {
             return false;
         }
 
-        var startIndex = 0;
+        if (startIndex < 0) {
+            startIndex = 0;
+        }
+        if (endIndexExclusive > text.Length) {
+            endIndexExclusive = text.Length;
+        }
+
+        var rangeLength = endIndexExclusive - startIndex;
+        if (rangeLength <= 0 || word.Length > rangeLength) {
+            return false;
+        }
+
+        var scanStart = startIndex;
         while (true) {
-            var idx = text.IndexOf(word, startIndex, StringComparison.OrdinalIgnoreCase);
+            var remaining = endIndexExclusive - scanStart;
+            if (remaining < word.Length) {
+                return false;
+            }
+
+            var idx = text.IndexOf(word, scanStart, remaining, StringComparison.OrdinalIgnoreCase);
             if (idx < 0) {
                 return false;
             }
 
-            var beforeOk = idx == 0 || !char.IsLetterOrDigit(text[idx - 1]);
+            var beforeOk = idx == startIndex || !char.IsLetterOrDigit(text[idx - 1]);
             var afterIndex = idx + word.Length;
-            var afterOk = afterIndex >= text.Length || !char.IsLetterOrDigit(text[afterIndex]);
+            var afterOk = afterIndex >= endIndexExclusive || !char.IsLetterOrDigit(text[afterIndex]);
             if (beforeOk && afterOk) {
                 return true;
             }
 
-            startIndex = idx + 1;
-            if (startIndex >= text.Length) {
+            scanStart = idx + 1;
+            if (scanStart >= endIndexExclusive) {
                 return false;
             }
         }
