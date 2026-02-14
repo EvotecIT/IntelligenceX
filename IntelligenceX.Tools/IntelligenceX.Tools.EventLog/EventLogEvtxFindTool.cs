@@ -72,6 +72,7 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
         var matches = new List<EvtxFindFile>(Math.Min(64, maxResults));
         var scannedDirs = 0;
         var scannedFiles = 0;
+        var hitScanBudget = false;
 
         foreach (var root in Options.AllowedRoots.Where(static x => !string.IsNullOrWhiteSpace(x))) {
             cancellationToken.ThrowIfCancellationRequested();
@@ -87,7 +88,12 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             while (queue.Count > 0) {
                 cancellationToken.ThrowIfCancellationRequested();
 
+                if (matches.Count >= maxResults) {
+                    break;
+                }
+
                 if (scannedDirs >= MaxDirsScanned || scannedFiles >= MaxFilesScanned) {
+                    hitScanBudget = true;
                     break;
                 }
 
@@ -104,10 +110,16 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                 foreach (var file in files) {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    scannedFiles++;
-                    if (scannedFiles > MaxFilesScanned) {
+                    if (matches.Count >= maxResults) {
                         break;
                     }
+
+                    if (scannedFiles >= MaxFilesScanned) {
+                        hitScanBudget = true;
+                        break;
+                    }
+
+                    scannedFiles++;
 
                     if (!IsMatch(file, queryTokens, logToken)) {
                         continue;
@@ -125,6 +137,10 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                     }
                 }
 
+                if (matches.Count >= maxResults || hitScanBudget) {
+                    break;
+                }
+
                 if (depth >= MaxDepth) {
                     continue;
                 }
@@ -137,14 +153,16 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                 }
 
                 foreach (var subDir in subDirs) {
-                    if (queue.Count >= MaxDirsScanned) {
+                    // Avoid queue blowups on wide trees: cap *pending* dirs based on remaining scan budget.
+                    if (scannedDirs + queue.Count >= MaxDirsScanned) {
+                        hitScanBudget = true;
                         break;
                     }
                     queue.Enqueue((subDir, depth + 1));
                 }
             }
 
-            if (scannedDirs >= MaxDirsScanned || scannedFiles >= MaxFilesScanned) {
+            if (matches.Count >= maxResults || hitScanBudget) {
                 break;
             }
         }
@@ -154,8 +172,9 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             .ThenBy(static x => x.FileName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        var truncated = ordered.Length > maxResults;
-        var selected = truncated ? ordered.Take(maxResults).ToArray() : ordered;
+        // We may stop early either because we hit max_results or because we hit scan budgets.
+        var truncated = hitScanBudget || ordered.Length >= maxResults;
+        var selected = ordered.Length > maxResults ? ordered.Take(maxResults).ToArray() : ordered;
 
         var result = new EvtxFindResult(
             Files: selected,
