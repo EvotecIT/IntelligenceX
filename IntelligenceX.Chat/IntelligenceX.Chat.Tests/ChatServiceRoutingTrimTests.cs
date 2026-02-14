@@ -20,9 +20,15 @@ public sealed class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo LooksLikeContinuationFollowUpMethod =
         typeof(ChatServiceSession).GetMethod("LooksLikeContinuationFollowUp", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("LooksLikeContinuationFollowUp not found.");
+    private static readonly MethodInfo CountLetterDigitTokensMethod =
+        typeof(ChatServiceSession).GetMethod("CountLetterDigitTokens", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("CountLetterDigitTokens not found.");
     private static readonly MethodInfo ShouldAttemptToolExecutionNudgeMethod =
         typeof(ChatServiceSession).GetMethod("ShouldAttemptToolExecutionNudge", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldAttemptToolExecutionNudge not found.");
+    private static readonly MethodInfo BuildToolExecutionNudgePromptMethod =
+        typeof(ChatServiceSession).GetMethod("BuildToolExecutionNudgePrompt", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildToolExecutionNudgePrompt not found.");
     private static readonly MethodInfo ExtractPrimaryUserRequestMethod =
         typeof(ChatServiceSession).GetMethod("ExtractPrimaryUserRequest", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ExtractPrimaryUserRequest not found.");
@@ -139,6 +145,26 @@ public sealed class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void CountLetterDigitTokens_CapsAtMaxTokens() {
+        var twelve = "a b c d e f g h i j k l";
+        var thirteen = "a b c d e f g h i j k l m";
+
+        var result12 = CountLetterDigitTokensMethod.Invoke(null, new object?[] { twelve, 12 });
+        Assert.Equal(12, Assert.IsType<int>(result12));
+
+        var result13 = CountLetterDigitTokensMethod.Invoke(null, new object?[] { thirteen, 12 });
+        Assert.Equal(12, Assert.IsType<int>(result13));
+    }
+
+    [Fact]
+    public void BuildToolExecutionNudgePrompt_EmitsStableMarker() {
+        var result = BuildToolExecutionNudgePromptMethod.Invoke(null, new object?[] { "run now", "draft" });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("ix:execution-correction:v1", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ShouldAttemptToolExecutionNudge_TriggersForDeferredDraftWithoutToolCalls() {
         var userRequest = "run now?";
         var assistantDraft = "If you say \"run now\", I'll execute forest-wide checks immediately.";
@@ -148,6 +174,111 @@ public sealed class ChatServiceRoutingTrimTests {
             new object?[] { userRequest, assistantDraft, true, 0, true });
 
         Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerWhenDraftLooksLikeExecutionCorrectionEcho() {
+        var userRequest = "run now";
+        var assistantDraft = """
+            [Execution correction]
+            ix:execution-correction:v1
+            The previous assistant draft did not execute tools.
+
+            Execute available tools now when they can satisfy this request.
+            """;
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, true });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Theory]
+    [InlineData("run now")]
+    [InlineData("yes - run now")]
+    [InlineData("please `run now`")]
+    public void ShouldAttemptToolExecutionNudge_TriggersWhenUserEchoesQuotedCallToActionEvenWithoutContinuationSubset(string userRequest) {
+        var assistantDraft = "If you say \"run now\", I'll execute forest-wide checks immediately.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerWithoutContinuationSubsetWhenDraftDoesNotContainEchoableCallToAction() {
+        var userRequest = "run now";
+        var assistantDraft = "I can help, but I need a DC FQDN first.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForQuotedNonCallToActionWhenContinuationSubsetNotUsed() {
+        var userRequest = "access denied";
+        var assistantDraft = "I got \"access denied\" from the server, but I can retry if needed.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForSingleQuotedCallToActionEvenWithApostrophesInText() {
+        var assistantDraft = "Don't worry. If you say 'run now', I'll execute forest-wide checks immediately.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { "run now", assistantDraft, true, 0, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerWhenSingleQuoteIsUnbalanced() {
+        var assistantDraft = "If you say 'run now, I'll execute forest-wide checks immediately.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { "run now", assistantDraft, true, 0, false });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_UsesCallToActionQuoteWhenMultipleQuotedSegmentsPresent() {
+        var assistantDraft = "If you say \"run now\", I'll execute forest-wide checks. Last error was \"access denied\".";
+
+        var resultCta = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { "run now", assistantDraft, true, 0, false });
+        Assert.True(Assert.IsType<bool>(resultCta));
+
+        var resultNonCta = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { "access denied", assistantDraft, true, 0, false });
+        Assert.False(Assert.IsType<bool>(resultNonCta));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerOnUnlinkedQuestionDraft() {
+        var userRequest = "run now";
+        var assistantDraft = "Are you sure?";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, true });
+
+        Assert.False(Assert.IsType<bool>(result));
     }
 
     [Fact]
