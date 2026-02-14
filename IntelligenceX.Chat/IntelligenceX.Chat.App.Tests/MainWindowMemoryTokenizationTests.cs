@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -268,10 +269,7 @@ public sealed class MainWindowMemoryTokenizationTests {
         };
 
         AppStateField.SetValue(window, state);
-        var invocationResult = ClearPersistentMemoryAsyncMethod.Invoke(window, null);
-        var task = Assert.IsAssignableFrom<Task>(invocationResult);
-
-        await task;
+        await InvokeClearPersistentMemoryAsync(window);
 
         Assert.Null(state.MemoryFacts);
     }
@@ -297,5 +295,15 @@ public sealed class MainWindowMemoryTokenizationTests {
     private static IReadOnlyList<string> InvokeBuildPersistentMemoryLinesForEmptyQuery(List<ChatMemoryFactState> facts) {
         var result = BuildPersistentMemoryLinesForEmptyQueryMethod.Invoke(null, new object?[] { facts });
         return Assert.IsAssignableFrom<IReadOnlyList<string>>(result);
+    }
+
+    private static Task InvokeClearPersistentMemoryAsync(MainWindow window) {
+        try {
+            var invocationResult = ClearPersistentMemoryAsyncMethod.Invoke(window, null);
+            return Assert.IsAssignableFrom<Task>(invocationResult);
+        } catch (TargetInvocationException ex) {
+            ExceptionDispatchInfo.Capture(ex.InnerException ?? ex).Throw();
+            throw;
+        }
     }
 }
