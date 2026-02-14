@@ -89,9 +89,13 @@ public sealed partial class MainWindow : Window {
             return BuildPersistentMemoryLinesForEmptyQuery(facts);
         }
 
+        PruneMemorySemanticVectorCache(facts);
         var nowUtc = DateTime.UtcNow;
         var userTokens = TokenizeMemorySemanticText(normalizedUserText);
         var normalizedUserTokens = NormalizeMemoryTokenSet(userTokens);
+        var tokenDocumentFrequency = BuildMemoryTokenDocumentFrequency(facts);
+        var effectiveUserTokens = SelectHighSignalUserTokens(normalizedUserTokens, tokenDocumentFrequency, facts.Count);
+        var querySemanticVector = BuildSemanticMemoryVector(normalizedUserText);
         var scoredFacts = new List<ScoredMemoryFact>(facts.Count);
 
         foreach (var fact in facts) {
@@ -103,6 +107,18 @@ public sealed partial class MainWindow : Window {
             var score = fact.Weight * 1.4d;
             var semanticHits = 0;
             var matchedTokens = new HashSet<string>(MemoryTokenComparer);
+            var tags = fact.Tags ?? Array.Empty<string>();
+
+            var factSemanticVector = GetOrBuildMemoryFactSemanticVector(fact);
+            var semanticSimilarity = ComputeSemanticVectorCosine(querySemanticVector, factSemanticVector);
+            if (semanticSimilarity > 0d) {
+                score += Math.Min(3.6d, semanticSimilarity * 4.8d);
+                if (semanticSimilarity >= 0.24d) {
+                    semanticHits += 2;
+                } else if (semanticSimilarity >= 0.12d) {
+                    semanticHits++;
+                }
+            }
 
             if (normalizedUserText.Length > 0
                 && (normalizedUserText.Contains(text, StringComparison.OrdinalIgnoreCase)
@@ -112,13 +128,12 @@ public sealed partial class MainWindow : Window {
             }
 
             var factTokens = TokenizeMemorySemanticText(text);
-            var factTokenOverlap = CountNewTokenMatchesFromNormalizedUserTokens(normalizedUserTokens, factTokens, matchedTokens);
+            var factTokenOverlap = CountNewTokenMatchesFromNormalizedUserTokens(effectiveUserTokens, factTokens, matchedTokens);
             if (factTokenOverlap > 0) {
                 score += Math.Min(5d, factTokenOverlap * 1.35d);
                 semanticHits += factTokenOverlap;
             }
 
-            var tags = fact.Tags ?? Array.Empty<string>();
             for (var i = 0; i < tags.Length; i++) {
                 var tag = (tags[i] ?? string.Empty).Trim();
                 if (tag.Length == 0) {
@@ -131,7 +146,7 @@ public sealed partial class MainWindow : Window {
                 }
 
                 var tagTokens = TokenizeMemorySemanticText(tag);
-                var tagTokenOverlap = CountNewTokenMatchesFromNormalizedUserTokens(normalizedUserTokens, tagTokens, matchedTokens);
+                var tagTokenOverlap = CountNewTokenMatchesFromNormalizedUserTokens(effectiveUserTokens, tagTokens, matchedTokens);
                 if (tagTokenOverlap > 0) {
                     score += Math.Min(2.5d, tagTokenOverlap * 0.75d);
                     semanticHits += tagTokenOverlap;
@@ -148,7 +163,7 @@ public sealed partial class MainWindow : Window {
                 score += 0.2d;
             }
 
-            scoredFacts.Add(new ScoredMemoryFact(text, fact.Weight, updatedUtc, score, semanticHits));
+            scoredFacts.Add(new ScoredMemoryFact(text, fact.Weight, updatedUtc, score, semanticHits, semanticSimilarity, factSemanticVector));
         }
 
         if (scoredFacts.Count == 0) {
@@ -161,6 +176,11 @@ public sealed partial class MainWindow : Window {
                 return scoreCompare;
             }
 
+            var similarityCompare = right.SemanticSimilarity.CompareTo(left.SemanticSimilarity);
+            if (similarityCompare != 0) {
+                return similarityCompare;
+            }
+
             var weightCompare = right.Weight.CompareTo(left.Weight);
             if (weightCompare != 0) {
                 return weightCompare;
@@ -171,18 +191,10 @@ public sealed partial class MainWindow : Window {
             return rightUpdatedUtc.CompareTo(leftUpdatedUtc);
         });
 
-        var lines = new List<string>(Math.Min(10, scoredFacts.Count));
-        for (var i = 0; i < scoredFacts.Count && lines.Count < 10; i++) {
-            var fact = scoredFacts[i];
-            var include = i < 2
-                          || fact.Score >= 3.2d
-                          || fact.SemanticHits >= 2
-                          || (fact.SemanticHits >= 1 && fact.Score >= 2.5d);
-            if (!include) {
-                continue;
-            }
-
-            var text = (fact.Text ?? string.Empty).Trim();
+        var selectedFacts = SelectDiverseMemoryFacts(scoredFacts, maxCount: 10, userTokenCount: effectiveUserTokens.Count);
+        var lines = new List<string>(selectedFacts.Count);
+        for (var i = 0; i < selectedFacts.Count; i++) {
+            var text = (selectedFacts[i].Text ?? string.Empty).Trim();
             if (text.Length == 0) {
                 continue;
             }
@@ -202,7 +214,90 @@ public sealed partial class MainWindow : Window {
             }
         }
 
+        var topScore = scoredFacts.Count > 0 ? scoredFacts[0].Score : 0d;
+        var topSimilarity = scoredFacts.Count > 0 ? scoredFacts[0].SemanticSimilarity : 0d;
+        var averageSelectionSimilarity = ComputeAveragePairSimilarity(selectedFacts);
+        var averageSelectionRelevance = ComputeAverageRelevance(selectedFacts, topScore);
+        RememberLastMemoryDebugSnapshot(
+            availableFacts: facts.Count,
+            candidateFacts: scoredFacts.Count,
+            selectedFacts: lines.Count,
+            userTokenCount: effectiveUserTokens.Count,
+            topScore: topScore,
+            topSemanticSimilarity: topSimilarity,
+            averageSelectedSimilarity: averageSelectionSimilarity,
+            averageSelectedRelevance: averageSelectionRelevance);
+        TraceMemorySelectionDiagnostics(
+            availableFacts: facts.Count,
+            selectedFacts: lines.Count,
+            userTokenCount: effectiveUserTokens.Count,
+            topScore: topScore,
+            topSemanticSimilarity: topSimilarity,
+            averageSelectionSimilarity: averageSelectionSimilarity,
+            averageSelectionRelevance: averageSelectionRelevance);
+
         return lines.Count == 0 ? Array.Empty<string>() : lines;
+    }
+
+    private void RememberLastMemoryDebugSnapshot(
+        int availableFacts,
+        int candidateFacts,
+        int selectedFacts,
+        int userTokenCount,
+        double topScore,
+        double topSemanticSimilarity,
+        double averageSelectedSimilarity,
+        double averageSelectedRelevance) {
+        var quality = ComputeMemoryDebugQuality(averageSelectedRelevance, averageSelectedSimilarity, selectedFacts);
+        int nextSequence;
+        int normalizedCacheEntries;
+        lock (_memoryDiagnosticsSync) {
+            nextSequence = unchecked(_memoryDebugSequence + 1);
+            _memoryDebugSequence = nextSequence;
+            normalizedCacheEntries = Math.Max(0, _memorySemanticVectorCache.Count);
+        }
+        var snapshot = new MemoryDebugSnapshot {
+            UpdatedUtc = DateTime.UtcNow,
+            Sequence = nextSequence,
+            AvailableFacts = Math.Max(0, availableFacts),
+            CandidateFacts = Math.Max(0, candidateFacts),
+            SelectedFacts = Math.Max(0, selectedFacts),
+            UserTokenCount = Math.Max(0, userTokenCount),
+            TopScore = double.IsFinite(topScore) ? Math.Max(0d, topScore) : 0d,
+            TopSemanticSimilarity = double.IsFinite(topSemanticSimilarity) ? Math.Clamp(topSemanticSimilarity, 0d, 1d) : 0d,
+            AverageSelectedSimilarity = double.IsFinite(averageSelectedSimilarity) ? Math.Clamp(averageSelectedSimilarity, 0d, 1d) : 0d,
+            AverageSelectedRelevance = double.IsFinite(averageSelectedRelevance) ? Math.Clamp(averageSelectedRelevance, 0d, 1d) : 0d,
+            CacheEntries = normalizedCacheEntries,
+            Quality = quality
+        };
+        lock (_memoryDiagnosticsSync) {
+            _lastMemoryDebugSnapshot = snapshot;
+            _memoryDebugHistory.Add(snapshot);
+            if (_memoryDebugHistory.Count > 24) {
+                _memoryDebugHistory.RemoveRange(0, _memoryDebugHistory.Count - 24);
+            }
+        }
+    }
+
+    private static string ComputeMemoryDebugQuality(double averageSelectedRelevance, double averageSelectedSimilarity, int selectedFacts) {
+        if (selectedFacts <= 0) {
+            return "none";
+        }
+
+        var relevance = double.IsFinite(averageSelectedRelevance) ? Math.Clamp(averageSelectedRelevance, 0d, 1d) : 0d;
+        var similarity = double.IsFinite(averageSelectedSimilarity) ? Math.Clamp(averageSelectedSimilarity, 0d, 1d) : 0d;
+
+        // "good" means: high relevance and not overly repetitive.
+        if (relevance >= 0.62d && similarity <= 0.78d) {
+            return "good";
+        }
+
+        // "ok" means: decent relevance, or strong relevance but somewhat repetitive.
+        if (relevance >= 0.46d) {
+            return "ok";
+        }
+
+        return "low";
     }
 
     private static DateTime NormalizeMemoryUpdatedUtcForRecency(DateTime value, DateTime nowUtc) {
@@ -272,7 +367,7 @@ public sealed partial class MainWindow : Window {
         var parts = MemoryTokenSplitRegex.Split(text.Normalize(NormalizationForm.FormKC));
         for (var i = 0; i < parts.Length; i++) {
             var token = NormalizeMemoryToken(parts[i]);
-            if (token.Length < 3 || MemoryTokenStopWords.Contains(token)) {
+            if (!IsSemanticMemoryTokenCandidate(token)) {
                 continue;
             }
 
@@ -327,6 +422,543 @@ public sealed partial class MainWindow : Window {
         return normalized;
     }
 
+    private void PruneMemorySemanticVectorCache(IReadOnlyList<ChatMemoryFactState> facts) {
+        var activeIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < facts.Count; i++) {
+            var id = (facts[i].Id ?? string.Empty).Trim();
+            if (id.Length > 0) {
+                activeIds.Add(id);
+            }
+        }
+
+        lock (_memoryDiagnosticsSync) {
+            if (_memorySemanticVectorCache.Count == 0) {
+                return;
+            }
+
+            if (activeIds.Count == 0) {
+                _memorySemanticVectorCache.Clear();
+                return;
+            }
+
+            var staleKeys = new List<string>();
+            foreach (var pair in _memorySemanticVectorCache) {
+                if (!activeIds.Contains(pair.Key)) {
+                    staleKeys.Add(pair.Key);
+                }
+            }
+
+            for (var i = 0; i < staleKeys.Count; i++) {
+                _memorySemanticVectorCache.Remove(staleKeys[i]);
+            }
+
+            if (_memorySemanticVectorCache.Count > MaxMemorySemanticVectorCacheEntries) {
+                _memorySemanticVectorCache.Clear();
+            }
+        }
+    }
+
+    private Dictionary<int, double> GetOrBuildMemoryFactSemanticVector(ChatMemoryFactState fact) {
+        var id = (fact.Id ?? string.Empty).Trim();
+        if (id.Length == 0) {
+            return BuildSemanticMemoryVector(BuildMemorySemanticSource(fact.Fact, fact.Tags ?? Array.Empty<string>()));
+        }
+
+        var signature = BuildMemoryFactSemanticSignature(fact);
+        lock (_memoryDiagnosticsSync) {
+            if (_memorySemanticVectorCache.TryGetValue(id, out var cached)
+                && string.Equals(cached.Signature, signature, StringComparison.Ordinal)) {
+                return cached.Vector;
+            }
+        }
+
+        var vector = BuildSemanticMemoryVector(BuildMemorySemanticSource(fact.Fact, fact.Tags ?? Array.Empty<string>()));
+        lock (_memoryDiagnosticsSync) {
+            if (_memorySemanticVectorCache.TryGetValue(id, out var cached)
+                && string.Equals(cached.Signature, signature, StringComparison.Ordinal)) {
+                return cached.Vector;
+            }
+
+            _memorySemanticVectorCache[id] = new MemorySemanticVectorCacheEntry {
+                Signature = signature,
+                Vector = vector
+            };
+
+            // Hard cap as a safety net. Under normal operation, this is bounded by memory fact retention.
+            if (_memorySemanticVectorCache.Count > MaxMemorySemanticVectorCacheEntries) {
+                _memorySemanticVectorCache.Clear();
+            }
+        }
+        return vector;
+    }
+
+    private const int MemorySemanticVectorDimensions = 384;
+    private const int MaxMemorySemanticVectorCacheEntries = 160;
+
+    private static string BuildMemorySemanticSource(string factText, IReadOnlyList<string> tags) {
+        if (tags.Count == 0) {
+            return factText ?? string.Empty;
+        }
+
+        var sb = new StringBuilder((factText?.Length ?? 0) + (tags.Count * 24));
+        if (!string.IsNullOrWhiteSpace(factText)) {
+            sb.Append(factText!.Trim());
+        }
+
+        for (var i = 0; i < tags.Count; i++) {
+            var tag = (tags[i] ?? string.Empty).Trim();
+            if (tag.Length == 0) {
+                continue;
+            }
+
+            if (sb.Length > 0) {
+                sb.Append(' ');
+            }
+
+            sb.Append(tag);
+        }
+
+        return sb.ToString();
+    }
+
+    private static string BuildMemoryFactSemanticSignature(ChatMemoryFactState fact) {
+        var text = (fact.Fact ?? string.Empty).Trim();
+        var tags = fact.Tags ?? Array.Empty<string>();
+        var sb = new StringBuilder(text.Length + (tags.Length * 24) + 24);
+        sb.Append(text).Append('|').Append(fact.UpdatedUtc.Ticks);
+        for (var i = 0; i < tags.Length; i++) {
+            var tag = (tags[i] ?? string.Empty).Trim();
+            if (tag.Length == 0) {
+                continue;
+            }
+
+            sb.Append('|').Append(tag);
+        }
+
+        return sb.ToString();
+    }
+
+    private static Dictionary<int, double> BuildSemanticMemoryVector(string text) {
+        var vector = new Dictionary<int, double>();
+        if (string.IsNullOrWhiteSpace(text)) {
+            return vector;
+        }
+
+        var normalized = text.Normalize(NormalizationForm.FormKC);
+        var semanticTokens = TokenizeMemorySemanticText(normalized);
+        foreach (var token in semanticTokens) {
+            AddSemanticFeature(vector, token, weight: 1.2d);
+
+            var padded = "_" + token + "_";
+            AddCharNgramFeatures(vector, padded, minN: 2, maxN: 4, weightPerGram: 0.35d);
+        }
+
+        // Character n-grams over normalized text improve language/script coverage
+        // when whitespace tokenization is weak (for example CJK or short phrases).
+        AddCharNgramFeatures(vector, normalized.ToLowerInvariant(), minN: 2, maxN: 3, weightPerGram: 0.15d);
+        return vector;
+    }
+
+    private static void AddCharNgramFeatures(Dictionary<int, double> vector, string text, int minN, int maxN, double weightPerGram) {
+        if (string.IsNullOrWhiteSpace(text) || minN <= 0 || maxN < minN || weightPerGram <= 0d) {
+            return;
+        }
+
+        var normalized = text.Normalize(NormalizationForm.FormKC);
+        for (var n = minN; n <= maxN; n++) {
+            if (normalized.Length < n) {
+                continue;
+            }
+
+            for (var i = 0; i <= normalized.Length - n; i++) {
+                var gram = normalized.Substring(i, n).Trim();
+                if (gram.Length == 0 || IsWhitespaceOnly(gram)) {
+                    continue;
+                }
+
+                AddSemanticFeature(vector, $"{n}:{gram}", weightPerGram);
+            }
+        }
+    }
+
+    private static bool IsWhitespaceOnly(string text) {
+        for (var i = 0; i < text.Length; i++) {
+            if (!char.IsWhiteSpace(text[i])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static void AddSemanticFeature(Dictionary<int, double> vector, string feature, double weight) {
+        if (string.IsNullOrWhiteSpace(feature) || weight <= 0d) {
+            return;
+        }
+
+        var bucket = HashToFeatureBucket(feature);
+        vector.TryGetValue(bucket, out var current);
+        vector[bucket] = current + weight;
+    }
+
+    private static int HashToFeatureBucket(string value) {
+        unchecked {
+            uint hash = 2166136261u;
+            for (var i = 0; i < value.Length; i++) {
+                hash ^= value[i];
+                hash *= 16777619u;
+            }
+
+            return (int)(hash % MemorySemanticVectorDimensions);
+        }
+    }
+
+    private static double ComputeSemanticVectorCosine(IReadOnlyDictionary<int, double> left, IReadOnlyDictionary<int, double> right) {
+        if (left.Count == 0 || right.Count == 0) {
+            return 0d;
+        }
+
+        IReadOnlyDictionary<int, double> smaller = left;
+        IReadOnlyDictionary<int, double> larger = right;
+        if (left.Count > right.Count) {
+            smaller = right;
+            larger = left;
+        }
+
+        var dot = 0d;
+        var leftNorm = 0d;
+        var rightNorm = 0d;
+
+        foreach (var pair in left) {
+            leftNorm += pair.Value * pair.Value;
+        }
+
+        foreach (var pair in right) {
+            rightNorm += pair.Value * pair.Value;
+        }
+
+        foreach (var pair in smaller) {
+            if (larger.TryGetValue(pair.Key, out var value)) {
+                dot += pair.Value * value;
+            }
+        }
+
+        if (leftNorm <= 0d || rightNorm <= 0d) {
+            return 0d;
+        }
+
+        var denom = Math.Sqrt(leftNorm) * Math.Sqrt(rightNorm);
+        if (denom <= 0d) {
+            return 0d;
+        }
+
+        var similarity = dot / denom;
+        if (double.IsNaN(similarity) || double.IsInfinity(similarity)) {
+            return 0d;
+        }
+
+        return Math.Clamp(similarity, 0d, 1d);
+    }
+
+    private static List<ScoredMemoryFact> SelectDiverseMemoryFacts(IReadOnlyList<ScoredMemoryFact> scoredFacts, int maxCount, int userTokenCount) {
+        if (scoredFacts.Count == 0 || maxCount <= 0) {
+            return new List<ScoredMemoryFact>();
+        }
+
+        var topScore = Math.Max(scoredFacts[0].Score, 0.001d);
+        var relevanceGate = ComputeMinimumRelevanceGate(userTokenCount);
+        var candidates = new List<int>(Math.Min(scoredFacts.Count, maxCount * 3));
+        for (var i = 0; i < scoredFacts.Count; i++) {
+            var fact = scoredFacts[i];
+            if (!ShouldIncludeMemoryFactCandidate(i, fact)) {
+                continue;
+            }
+
+            if (i >= 2) {
+                var relevance = ComputeMemoryRelevance(fact, topScore);
+                if (relevance < relevanceGate
+                    && fact.SemanticHits == 0
+                    && fact.SemanticSimilarity < 0.18d) {
+                    continue;
+                }
+            }
+
+            candidates.Add(i);
+        }
+
+        if (candidates.Count == 0) {
+            var fallbackCount = Math.Min(2, scoredFacts.Count);
+            for (var i = 0; i < fallbackCount; i++) {
+                candidates.Add(i);
+            }
+        }
+
+        var relevanceWeight = ComputeMmrLambda(userTokenCount);
+        var noveltyWeight = 1d - relevanceWeight;
+        var selected = new List<ScoredMemoryFact>(Math.Min(maxCount, candidates.Count));
+        var selectedIndexes = new List<int>(Math.Min(maxCount, candidates.Count));
+
+        while (candidates.Count > 0 && selected.Count < maxCount) {
+            var bestCandidateListIndex = -1;
+            var bestCandidateScore = double.NegativeInfinity;
+            var bestNoveltyPenalty = 0d;
+
+            for (var i = 0; i < candidates.Count; i++) {
+                var candidateIndex = candidates[i];
+                var candidate = scoredFacts[candidateIndex];
+                var relevance = ComputeMemoryRelevance(candidate, topScore);
+                var noveltyPenalty = 0d;
+                for (var j = 0; j < selectedIndexes.Count; j++) {
+                    var selectedFact = scoredFacts[selectedIndexes[j]];
+                    var similarity = ComputeSemanticVectorCosine(candidate.SemanticVector, selectedFact.SemanticVector);
+                    if (similarity > noveltyPenalty) {
+                        noveltyPenalty = similarity;
+                    }
+                }
+
+                var mmrScore = selectedIndexes.Count == 0
+                    ? relevance
+                    : (relevanceWeight * relevance) - (noveltyWeight * noveltyPenalty);
+                if (selectedIndexes.Count >= 2
+                    && noveltyPenalty >= 0.93d
+                    && relevance < Math.Max(0.88d, relevanceGate + 0.24d)) {
+                    mmrScore -= 0.25d;
+                }
+
+                if (mmrScore > bestCandidateScore) {
+                    bestCandidateScore = mmrScore;
+                    bestCandidateListIndex = i;
+                    bestNoveltyPenalty = noveltyPenalty;
+                }
+            }
+
+            if (bestCandidateListIndex < 0) {
+                break;
+            }
+
+            if (selected.Count >= 3
+                && bestCandidateScore < (relevanceGate - 0.14d)
+                && bestNoveltyPenalty >= 0.9d) {
+                break;
+            }
+
+            var selectedCandidateIndex = candidates[bestCandidateListIndex];
+            selectedIndexes.Add(selectedCandidateIndex);
+            selected.Add(scoredFacts[selectedCandidateIndex]);
+            candidates.RemoveAt(bestCandidateListIndex);
+        }
+
+        return selected;
+    }
+
+    private static bool ShouldIncludeMemoryFactCandidate(int index, ScoredMemoryFact fact) {
+        return index < 2
+               || fact.Score >= 3.2d
+               || fact.SemanticSimilarity >= 0.22d
+               || fact.SemanticHits >= 2
+               || (fact.SemanticHits >= 1 && fact.Score >= 2.5d);
+    }
+
+    private static double ComputeMmrLambda(int userTokenCount) {
+        if (userTokenCount <= 2) {
+            return 0.68d;
+        }
+
+        if (userTokenCount <= 5) {
+            return 0.74d;
+        }
+
+        return 0.82d;
+    }
+
+    private static double ComputeMinimumRelevanceGate(int userTokenCount) {
+        if (userTokenCount <= 2) {
+            return 0.18d;
+        }
+
+        if (userTokenCount <= 5) {
+            return 0.24d;
+        }
+
+        return 0.30d;
+    }
+
+    private static double ComputeMemoryRelevance(ScoredMemoryFact fact, double topScore) {
+        var normalizedScore = topScore <= 0d ? 0d : Math.Clamp(fact.Score / topScore, 0d, 1d);
+        var normalizedSimilarity = Math.Clamp(fact.SemanticSimilarity, 0d, 1d);
+        return (0.72d * normalizedScore) + (0.28d * normalizedSimilarity);
+    }
+
+    private static double ComputeAveragePairSimilarity(IReadOnlyList<ScoredMemoryFact> selectedFacts) {
+        if (selectedFacts.Count < 2) {
+            return 0d;
+        }
+
+        var pairCount = 0;
+        var similaritySum = 0d;
+        for (var i = 0; i < selectedFacts.Count - 1; i++) {
+            for (var j = i + 1; j < selectedFacts.Count; j++) {
+                pairCount++;
+                similaritySum += ComputeSemanticVectorCosine(selectedFacts[i].SemanticVector, selectedFacts[j].SemanticVector);
+            }
+        }
+
+        if (pairCount == 0) {
+            return 0d;
+        }
+
+        return similaritySum / pairCount;
+    }
+
+    private static double ComputeAverageRelevance(IReadOnlyList<ScoredMemoryFact> selectedFacts, double topScore) {
+        if (selectedFacts.Count == 0) {
+            return 0d;
+        }
+
+        var relevanceSum = 0d;
+        for (var i = 0; i < selectedFacts.Count; i++) {
+            relevanceSum += ComputeMemoryRelevance(selectedFacts[i], topScore);
+        }
+
+        return relevanceSum / selectedFacts.Count;
+    }
+
+    [Conditional("DEBUG")]
+    private static void TraceMemorySelectionDiagnostics(
+        int availableFacts,
+        int selectedFacts,
+        int userTokenCount,
+        double topScore,
+        double topSemanticSimilarity,
+        double averageSelectionSimilarity,
+        double averageSelectionRelevance) {
+        Debug.WriteLine(
+            $"[memory.retrieval] facts={availableFacts} selected={selectedFacts} user_tokens={userTokenCount} "
+            + $"top_score={topScore:F3} top_similarity={topSemanticSimilarity:F3} avg_selected_similarity={averageSelectionSimilarity:F3} "
+            + $"avg_selected_relevance={averageSelectionRelevance:F3}");
+    }
+
+    private static Dictionary<string, int> BuildMemoryTokenDocumentFrequency(IReadOnlyList<ChatMemoryFactState> facts) {
+        var frequency = new Dictionary<string, int>(MemoryTokenComparer);
+        if (facts.Count == 0) {
+            return frequency;
+        }
+
+        for (var i = 0; i < facts.Count; i++) {
+            var fact = facts[i];
+            var text = (fact.Fact ?? string.Empty).Trim();
+            if (text.Length == 0) {
+                continue;
+            }
+
+            var factTokens = TokenizeMemorySemanticText(text);
+            var documentTokens = new HashSet<string>(factTokens, MemoryTokenComparer);
+            var tags = fact.Tags ?? Array.Empty<string>();
+            for (var j = 0; j < tags.Length; j++) {
+                var tag = (tags[j] ?? string.Empty).Trim();
+                if (tag.Length == 0) {
+                    continue;
+                }
+
+                var tagTokens = TokenizeMemorySemanticText(tag);
+                foreach (var token in tagTokens) {
+                    documentTokens.Add(token);
+                }
+            }
+
+            foreach (var token in documentTokens) {
+                frequency.TryGetValue(token, out var count);
+                frequency[token] = count + 1;
+            }
+        }
+
+        return frequency;
+    }
+
+    private static HashSet<string> SelectHighSignalUserTokens(
+        IReadOnlySet<string> normalizedUserTokens,
+        IReadOnlyDictionary<string, int> documentFrequency,
+        int documentCount) {
+        var selected = new HashSet<string>(MemoryTokenComparer);
+        if (normalizedUserTokens.Count == 0) {
+            return selected;
+        }
+
+        if (normalizedUserTokens.Count <= 2 || documentCount <= 2) {
+            foreach (var token in normalizedUserTokens) {
+                selected.Add(token);
+            }
+
+            return selected;
+        }
+
+        var safeDocumentCount = Math.Max(1, documentCount);
+        foreach (var token in normalizedUserTokens) {
+            if (token.Length == 0) {
+                continue;
+            }
+
+            documentFrequency.TryGetValue(token, out var tokenDocumentCount);
+            var coverageRatio = tokenDocumentCount / (double)safeDocumentCount;
+            var veryBroad = tokenDocumentCount >= 3 && coverageRatio >= 0.72d && token.Length <= 5;
+            if (veryBroad) {
+                continue;
+            }
+
+            selected.Add(token);
+        }
+
+        if (selected.Count == 0) {
+            foreach (var token in normalizedUserTokens) {
+                selected.Add(token);
+            }
+        }
+
+        return selected;
+    }
+
+    private static bool IsSemanticMemoryTokenCandidate(string token) {
+        if (token.Length == 0) {
+            return false;
+        }
+
+        var hasLetter = false;
+        var hasDigit = false;
+        var latinLetterCount = 0;
+        var nonLatinLetterCount = 0;
+        for (var i = 0; i < token.Length; i++) {
+            var ch = token[i];
+            if (char.IsLetter(ch)) {
+                hasLetter = true;
+                if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) {
+                    latinLetterCount++;
+                } else {
+                    nonLatinLetterCount++;
+                }
+            } else if (char.IsDigit(ch)) {
+                hasDigit = true;
+            }
+        }
+
+        if (!hasLetter && !hasDigit) {
+            return false;
+        }
+
+        if (!hasLetter) {
+            return false;
+        }
+
+        if (nonLatinLetterCount > 0) {
+            return token.Length >= 2;
+        }
+
+        if (latinLetterCount > 0) {
+            return token.Length >= 3;
+        }
+
+        return token.Length >= 2;
+    }
+
     private static string NormalizeMemoryToken(string? token) {
         if (string.IsNullOrWhiteSpace(token)) {
             return string.Empty;
@@ -351,19 +983,14 @@ public sealed partial class MainWindow : Window {
         return builder.ToString().Normalize(NormalizationForm.FormKC).ToLowerInvariant();
     }
 
-    private static readonly HashSet<string> MemoryTokenStopWords = new(MemoryTokenComparer) {
-        "the", "and", "with", "from", "that", "this", "for", "you", "your", "have", "show", "give", "list",
-        "check", "please", "about", "into", "just", "today", "need", "want", "when", "what", "where", "then",
-        "them", "they", "their", "there", "after", "before", "will", "should", "would", "could", "also", "been",
-        "being", "while", "does", "did", "done", "using", "used", "more", "same", "again"
-    };
-
     private readonly record struct ScoredMemoryFact(
         string Text,
         int Weight,
         DateTime UpdatedUtc,
         double Score,
-        int SemanticHits);
+        int SemanticHits,
+        double SemanticSimilarity,
+        Dictionary<int, double> SemanticVector);
 
     private static List<ChatMemoryFactState> NormalizeMemoryFacts(List<ChatMemoryFactState>? facts) {
         if (facts is null || facts.Count == 0) {
@@ -436,6 +1063,15 @@ public sealed partial class MainWindow : Window {
         await PersistAppStateAsync().ConfigureAwait(false);
     }
 
+    private void ResetMemoryDiagnosticsState() {
+        lock (_memoryDiagnosticsSync) {
+            _memorySemanticVectorCache.Clear();
+            _lastMemoryDebugSnapshot = null;
+            _memoryDebugHistory.Clear();
+            _memoryDebugSequence = 0;
+        }
+    }
+
     private async Task AddMemoryFactAsync(string? factText, int weight = 3, string[]? tags = null) {
         var text = (factText ?? string.Empty).Trim();
         if (text.Length == 0) {
@@ -454,6 +1090,7 @@ public sealed partial class MainWindow : Window {
         }
 
         _appState.MemoryFacts = facts;
+        ResetMemoryDiagnosticsState();
         await PublishOptionsStateAsync().ConfigureAwait(false);
         await PersistAppStateAsync().ConfigureAwait(false);
     }
@@ -471,6 +1108,7 @@ public sealed partial class MainWindow : Window {
         }
 
         _appState.MemoryFacts = facts;
+        ResetMemoryDiagnosticsState();
         await PublishOptionsStateAsync().ConfigureAwait(false);
         await PersistAppStateAsync().ConfigureAwait(false);
     }
@@ -483,8 +1121,15 @@ public sealed partial class MainWindow : Window {
 
         facts.Clear();
         _appState.MemoryFacts = facts;
+        ResetMemoryDiagnosticsState();
         await PublishOptionsStateAsync().ConfigureAwait(false);
         await PersistAppStateAsync().ConfigureAwait(false);
+    }
+
+    private async Task ForceRecomputeMemoryCacheAsync() {
+        // Debug action: clear semantic vectors and diagnostics so the next turn recomputes fresh.
+        ResetMemoryDiagnosticsState();
+        await PublishOptionsStateAsync().ConfigureAwait(false);
     }
 
     private async Task<bool> ApplyMemoryUpdateAsync(AssistantMemoryUpdate update) {
@@ -529,6 +1174,7 @@ public sealed partial class MainWindow : Window {
         }
 
         _appState.MemoryFacts = facts;
+        ResetMemoryDiagnosticsState();
         await PublishOptionsStateAsync().ConfigureAwait(false);
         await PersistAppStateAsync().ConfigureAwait(false);
         return true;
@@ -577,14 +1223,33 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        return text.Contains("check this", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("check that", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("that one", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("same", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("again", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("as above", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("this please", StringComparison.OrdinalIgnoreCase)
-               || text.Equals("ok?", StringComparison.OrdinalIgnoreCase);
+        if (text.Contains('\n', StringComparison.Ordinal) || text.Length > 96) {
+            return false;
+        }
+
+        var tokenCount = 0;
+        var inToken = false;
+        for (var i = 0; i < text.Length; i++) {
+            var ch = text[i];
+            if (char.IsLetterOrDigit(ch)) {
+                if (!inToken) {
+                    tokenCount++;
+                    inToken = true;
+                }
+            } else {
+                inToken = false;
+            }
+        }
+
+        if (tokenCount == 0) {
+            return false;
+        }
+
+        if (tokenCount <= 6 && text.Length <= 64) {
+            return true;
+        }
+
+        return tokenCount <= 8 && text.Contains('?', StringComparison.Ordinal);
     }
 
     private static string CompactMessageForContext(string text) {

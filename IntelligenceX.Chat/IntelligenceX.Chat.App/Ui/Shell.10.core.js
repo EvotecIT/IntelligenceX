@@ -63,6 +63,7 @@
         count: 0,
         facts: []
       },
+      memoryDebug: null,
       activeProfileName: "default",
       profileNames: ["default"],
       activeConversationId: "",
@@ -594,4 +595,3 @@
     }
     host.appendChild(list);
   }
-

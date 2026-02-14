@@ -44,6 +44,7 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
             recommendedFlow: new[] {
                 "Use eventlog_evtx_query or eventlog_live_query for event evidence.",
                 "Use eventlog_evtx_stats/eventlog_live_stats for top-level aggregation.",
+                "For remote live logs, pass machine_name (and optional session_timeout_ms) to eventlog_live_query/eventlog_live_stats.",
                 "Use security report tools for lockouts/logons/failures when investigating authentication incidents.",
                 "For AD identity correlation: call ad_environment_discover, then ad_search using eventlog report ad_correlation candidates."
             },

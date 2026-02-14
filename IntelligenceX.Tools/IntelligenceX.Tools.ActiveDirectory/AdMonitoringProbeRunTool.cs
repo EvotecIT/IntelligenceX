@@ -53,6 +53,16 @@ public sealed class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, ITool {
             ["drsr"] = ReplicationQueryMode.Drsr,
             ["sda"] = ReplicationQueryMode.Sda
         };
+    private static readonly IReadOnlyDictionary<string, DirectoryDiscoveryFallback> DiscoveryFallbackModes =
+        new Dictionary<string, DirectoryDiscoveryFallback>(StringComparer.OrdinalIgnoreCase) {
+            ["none"] = DirectoryDiscoveryFallback.None,
+            ["current_domain"] = DirectoryDiscoveryFallback.CurrentDomain,
+            ["current-domain"] = DirectoryDiscoveryFallback.CurrentDomain,
+            ["currentdomain"] = DirectoryDiscoveryFallback.CurrentDomain,
+            ["current_forest"] = DirectoryDiscoveryFallback.CurrentForest,
+            ["current-forest"] = DirectoryDiscoveryFallback.CurrentForest,
+            ["currentforest"] = DirectoryDiscoveryFallback.CurrentForest
+        };
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_monitoring_probe_run",
@@ -70,6 +80,9 @@ public sealed class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, ITool {
                 ("exclude_domain_controllers", ToolSchema.Array(ToolSchema.String(), "Optional exclude-DC filter for discovery.")),
                 ("skip_rodc", ToolSchema.Boolean("When true, excludes RODCs from discovered targets.")),
                 ("include_trusts", ToolSchema.Boolean("When true, includes trusted domains in discovery.")),
+                ("discovery_fallback",
+                    ToolSchema.String("Fallback discovery policy when no explicit targets/domain/forest are provided.")
+                        .Enum("none", "current_domain", "current_forest")),
                 ("timeout_ms", ToolSchema.Integer("Probe timeout in milliseconds. Default 5000.")),
                 ("retries", ToolSchema.Integer("Retry count. Default 0.")),
                 ("retry_delay_ms", ToolSchema.Integer("Retry delay in milliseconds. Default 250.")),
@@ -152,6 +165,13 @@ public sealed class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, ITool {
         var skipRodc = ToolArgs.GetBoolean(arguments, "skip_rodc", defaultValue: false);
         var includeTrusts = ToolArgs.GetBoolean(arguments, "include_trusts", defaultValue: false);
         var splitProtocolResults = ToolArgs.GetBoolean(arguments, "split_protocol_results", defaultValue: false);
+        var defaultDiscoveryFallback = string.Equals(normalizedKind, "replication", StringComparison.OrdinalIgnoreCase)
+            ? DirectoryDiscoveryFallback.CurrentForest
+            : DirectoryDiscoveryFallback.CurrentDomain;
+        var discoveryFallback = ToolEnumBinders.ParseOrDefault(
+            value: ToolArgs.GetOptionalTrimmed(arguments, "discovery_fallback"),
+            map: DiscoveryFallbackModes,
+            defaultValue: defaultDiscoveryFallback);
         var timeout = TimeSpan.FromMilliseconds(timeoutMs);
         var retryDelay = TimeSpan.FromMilliseconds(retryDelayMs);
 
@@ -165,6 +185,7 @@ public sealed class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, ITool {
             excludeDomainControllers: excludeDomainControllers,
             skipRodc: skipRodc,
             includeTrusts: includeTrusts,
+            fallback: discoveryFallback,
             cancellationToken: cancellationToken);
 
         ProbeResult result;
@@ -213,6 +234,7 @@ public sealed class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, ITool {
                 ExcludeDomainControllers = excludeDomainControllers,
                 SkipRodc = skipRodc,
                 IncludeTrusts = includeTrusts,
+                DiscoveryFallback = ToDiscoveryFallbackName(discoveryFallback),
                 TimeoutMs = timeoutMs,
                 Retries = retries,
                 RetryDelayMs = retryDelayMs,
@@ -418,8 +440,8 @@ public sealed class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, ITool {
         IReadOnlyList<string> excludeDomainControllers,
         bool skipRodc,
         bool includeTrusts,
+        DirectoryDiscoveryFallback fallback,
         CancellationToken cancellationToken) {
-        var fallback = DirectoryDiscoveryFallback.CurrentDomain;
         return DirectoryTargetResolver.ResolveTargets(
             explicitTargets: explicitTargets,
             forestName: forestName,
@@ -432,6 +454,14 @@ public sealed class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, ITool {
             includeTrusts: includeTrusts,
             fallback: fallback,
             cancellationToken: cancellationToken);
+    }
+
+    private static string ToDiscoveryFallbackName(DirectoryDiscoveryFallback fallback) {
+        return fallback switch {
+            DirectoryDiscoveryFallback.None => "none",
+            DirectoryDiscoveryFallback.CurrentForest => "current_forest",
+            _ => "current_domain"
+        };
     }
 
     private static List<DnsQueryItem> ReadDnsQueries(JsonArray? array) {

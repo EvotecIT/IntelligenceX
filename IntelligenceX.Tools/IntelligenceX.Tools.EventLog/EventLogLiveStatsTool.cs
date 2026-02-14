@@ -17,12 +17,15 @@ public sealed class EventLogLiveStatsTool : EventLogToolBase, ITool {
     private const int MaxTop = 50;
     private const int MaxScanCap = 5000;
     private const int MaxViewTop = 5000;
+    private const int MinSessionTimeoutMs = 250;
+    private const int MaxSessionTimeoutMs = 300_000;
 
     private static readonly ToolDefinition DefinitionValue = new(
         "eventlog_live_stats",
-        "Aggregate event statistics from a local Windows Event Log (log name + optional XPath filter).",
+        "Aggregate event statistics from a Windows Event Log (local or remote machine).",
         ToolSchema.Object(
                 ("log_name", ToolSchema.String("Windows Event Log name (for example: System, Security, Application).")),
+                ("machine_name", ToolSchema.String("Optional remote machine name/FQDN. Omit for local machine.")),
                 ("xpath", ToolSchema.String("Optional XPath query (default: '*').")),
                 ("max_events_scanned", ToolSchema.Integer("Maximum number of events to scan (capped).")),
                 ("oldest_first", ToolSchema.Boolean("If true, read from oldest to newest (default false).")),
@@ -31,7 +34,8 @@ public sealed class EventLogLiveStatsTool : EventLogToolBase, ITool {
                 ("top_event_ids", ToolSchema.Integer("How many top Event IDs to return (capped).")),
                 ("top_providers", ToolSchema.Integer("How many top providers to return (capped).")),
                 ("top_levels", ToolSchema.Integer("How many top levels to return (capped).")),
-                ("top_computers", ToolSchema.Integer("How many top computers to return (capped).")))
+                ("top_computers", ToolSchema.Integer("How many top computers to return (capped).")),
+                ("session_timeout_ms", ToolSchema.Integer("Optional remote session timeout in milliseconds (capped).")))
             .WithTableViewOptions()
             .Required("log_name")
             .NoAdditionalProperties());
@@ -59,6 +63,11 @@ public sealed class EventLogLiveStatsTool : EventLogToolBase, ITool {
         }
 
         var oldestFirst = arguments?.GetBoolean("oldest_first") ?? false;
+        var machineName = ToolArgs.GetOptionalTrimmed(arguments, "machine_name");
+        var sessionTimeoutMs = ToolArgs.ToPositiveInt32OrNull(arguments?.GetInt64("session_timeout_ms"), maxInclusive: MaxSessionTimeoutMs);
+        if (sessionTimeoutMs.HasValue && sessionTimeoutMs.Value < MinSessionTimeoutMs) {
+            sessionTimeoutMs = MinSessionTimeoutMs;
+        }
 
         if (!ToolTime.TryParseUtcRange(arguments, "start_time_utc", "end_time_utc", out var startUtc, out var endUtc, out var timeErr)) {
             return Task.FromResult(ToolResponse.Error("invalid_argument", timeErr ?? "Invalid time range."));
@@ -76,6 +85,7 @@ public sealed class EventLogLiveStatsTool : EventLogToolBase, ITool {
         if (!LiveStatsQueryExecutor.TryBuild(
                 request: new LiveStatsQueryRequest {
                     LogName = logName,
+                    MachineName = machineName,
                     XPath = xpath,
                     MaxEventsScanned = maxScan,
                     OldestFirst = oldestFirst,
@@ -84,7 +94,8 @@ public sealed class EventLogLiveStatsTool : EventLogToolBase, ITool {
                     TopEventIds = topEventIds,
                     TopProviders = topProviders,
                     TopLevels = topLevels,
-                    TopComputers = topComputers
+                    TopComputers = topComputers,
+                    SessionTimeoutMs = sessionTimeoutMs
                 },
                 result: out var result,
                 failure: out var failure,
@@ -108,4 +119,3 @@ public sealed class EventLogLiveStatsTool : EventLogToolBase, ITool {
         return Task.FromResult(response);
     }
 }
-

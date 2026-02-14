@@ -633,5 +633,119 @@
     if (restart) {
       restart.disabled = !enabled;
     }
-  }
 
+    var memState = byId("optMemoryDebugState");
+    var memKv = byId("memDebugKv");
+    var memCopy = byId("btnDebugCopyMemory");
+    var memRecompute = byId("btnDebugRecomputeMemory");
+    var memQuality = byId("memDebugQuality");
+    var memHistory = byId("memDebugHistory");
+    if (memCopy) {
+      memCopy.disabled = !enabled;
+    }
+    if (memRecompute) {
+      memRecompute.disabled = !enabled;
+    }
+    if (memKv) {
+      memKv.textContent = "";
+    }
+    if (memHistory) {
+      memHistory.textContent = "";
+    }
+    if (memQuality) {
+      memQuality.textContent = "none";
+      memQuality.classList.remove("options-pill-routing-high", "options-pill-routing-medium", "options-pill-routing-low");
+      memQuality.classList.add("options-pill-routing-low");
+    }
+
+    var snapshot = state.options.memoryDebug;
+    if (!snapshot || typeof snapshot !== "object") {
+      if (memState) {
+        memState.textContent = "No memory diagnostics yet. Send a message to compute a snapshot.";
+      }
+      if (memCopy) {
+        memCopy.disabled = true;
+      }
+      return;
+    }
+
+    if (memState) {
+      var updated = snapshot.updatedLocal ? String(snapshot.updatedLocal) : "";
+      memState.textContent = updated ? ("Last updated: " + updated) : "Memory diagnostics available.";
+    }
+
+    function fmtInt(value) {
+      var n = Number(value);
+      if (!Number.isFinite(n)) {
+        return "0";
+      }
+      return String(Math.max(0, Math.floor(n)));
+    }
+
+    function fmtFloat(value) {
+      var n = Number(value);
+      if (!Number.isFinite(n)) {
+        return "0.000";
+      }
+      return n.toFixed(3);
+    }
+
+    function appendKv(label, value) {
+      if (!memKv) {
+        return;
+      }
+      var k = document.createElement("div");
+      k.className = "options-k";
+      k.textContent = label;
+      var v = document.createElement("div");
+      v.className = "options-v";
+      v.textContent = value;
+      memKv.appendChild(k);
+      memKv.appendChild(v);
+    }
+
+    appendKv("facts", fmtInt(snapshot.availableFacts));
+    appendKv("candidates", fmtInt(snapshot.candidateFacts));
+    appendKv("selected", fmtInt(snapshot.selectedFacts));
+    appendKv("user tokens", fmtInt(snapshot.userTokenCount));
+    appendKv("top score", fmtFloat(snapshot.topScore));
+    appendKv("top similarity", fmtFloat(snapshot.topSemanticSimilarity));
+    appendKv("avg selected similarity", fmtFloat(snapshot.averageSelectedSimilarity));
+    appendKv("avg selected relevance", fmtFloat(snapshot.averageSelectedRelevance));
+    appendKv("cache entries", fmtInt(snapshot.cacheEntries));
+
+    if (memQuality) {
+      var q = (snapshot.quality || "none");
+      memQuality.textContent = q;
+      memQuality.classList.remove("options-pill-routing-high", "options-pill-routing-medium", "options-pill-routing-low");
+      if (q === "good") {
+        memQuality.classList.add("options-pill-routing-high");
+      } else if (q === "ok") {
+        memQuality.classList.add("options-pill-routing-medium");
+      } else {
+        memQuality.classList.add("options-pill-routing-low");
+      }
+    }
+
+    if (memHistory && Array.isArray(snapshot.history) && snapshot.history.length > 0) {
+      for (var h = snapshot.history.length - 1; h >= 0; h--) {
+        var item = snapshot.history[h] || {};
+        var row = document.createElement("div");
+        row.className = "options-note";
+        var t = item.updatedLocal ? String(item.updatedLocal) : "";
+        var qh = item.quality ? String(item.quality) : "";
+        var sel = fmtInt(item.selectedFacts);
+        var rel = fmtFloat(item.averageSelectedRelevance);
+        var sim = fmtFloat(item.averageSelectedSimilarity);
+        row.textContent = (t ? (t + " | ") : "") + "q=" + qh + " selected=" + sel + " rel=" + rel + " sim=" + sim;
+        memHistory.appendChild(row);
+      }
+    }
+
+    if (memCopy) {
+      memCopy.disabled = !enabled;
+    }
+    if (memRecompute) {
+      memRecompute.disabled = !enabled;
+    }
+  }

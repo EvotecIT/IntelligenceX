@@ -48,9 +48,6 @@ internal sealed partial class ChatServiceSession {
     private ChatRun? _activeChat;
     private static readonly Regex UserRequestSectionRegex =
         new(@"\bUser request:\s*(?<value>[\s\S]+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-    private static readonly Regex ContinuationFollowUpRegex =
-        new(@"\b(continue|go on|keep going|same|again|retry|more|next step)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
-            | RegexOptions.Compiled);
 
     public ChatServiceSession(ServiceOptions options, Stream stream) {
         _options = options ?? throw new ArgumentNullException(nameof(options));

@@ -114,6 +114,9 @@ public sealed partial class MainWindow : Window {
                 case "debug_restart_sidecar":
                     await RestartSidecarAsync().ConfigureAwait(true);
                     break;
+                case "debug_memory_recompute":
+                    await ForceRecomputeMemoryCacheAsync().ConfigureAwait(true);
+                    break;
                 case "set_time_mode":
                     {
                         var mode = (TryGetString(root, "value") ?? string.Empty).Trim();

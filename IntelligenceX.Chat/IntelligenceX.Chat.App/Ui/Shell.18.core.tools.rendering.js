@@ -221,6 +221,7 @@
     state.options.export = nextOptions.export || state.options.export;
     state.options.autonomy = nextOptions.autonomy || state.options.autonomy;
     state.options.memory = nextOptions.memory || state.options.memory;
+    state.options.memoryDebug = nextOptions.memoryDebug || null;
     state.options.activeProfileName = nextOptions.activeProfileName || state.options.activeProfileName;
     state.options.profileNames = nextOptions.profileNames || state.options.profileNames;
     state.options.activeConversationId = nextOptions.activeConversationId || state.options.activeConversationId;

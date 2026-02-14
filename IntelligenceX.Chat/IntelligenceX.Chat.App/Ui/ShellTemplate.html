@@ -299,6 +299,19 @@
             <button id="btnDebugRestartSidecar" class="options-btn options-btn-sm options-btn-ghost">Restart Runtime</button>
           </div>
         </section>
+
+        <section class="options-group">
+          <div class="options-label">Memory Diagnostics</div>
+          <div class="options-note" id="optMemoryDebugState">No memory diagnostics yet.</div>
+          <div class="options-note">Quality: <span id="memDebugQuality" class="options-pill options-pill-routing options-pill-routing-low">none</span></div>
+          <div class="options-kv" id="memDebugKv"></div>
+          <div class="options-note">History (latest first)</div>
+          <div class="options-list" id="memDebugHistory"></div>
+          <div class="options-actions options-actions-wrap">
+            <button id="btnDebugCopyMemory" class="options-btn options-btn-sm options-btn-ghost">Copy Memory Diagnostics</button>
+            <button id="btnDebugRecomputeMemory" class="options-btn options-btn-sm options-btn-ghost">Force Recompute Cache</button>
+          </div>
+        </section>
       </div>
     </div>
   </aside>

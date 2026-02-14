@@ -230,6 +230,7 @@ public sealed partial class MainWindow : Window {
                 maxCandidateTools = _autonomyMaxCandidateTools
             },
             memory = BuildMemoryState(),
+            memoryDebug = BuildMemoryDebugState(),
             activeProfileName = _appProfileName,
             profileNames = BuildKnownProfiles(),
             activeConversationId = _activeConversationId,
@@ -348,6 +349,69 @@ public sealed partial class MainWindow : Window {
             count = normalizedFacts.Count,
             facts = facts.ToArray()
         };
+    }
+
+    private object? BuildMemoryDebugState() {
+        MemoryDebugSnapshot? snapshot;
+        MemoryDebugSnapshot[] history;
+        lock (_memoryDiagnosticsSync) {
+            snapshot = _lastMemoryDebugSnapshot;
+            if (_memoryDebugHistory.Count == 0) {
+                history = Array.Empty<MemoryDebugSnapshot>();
+            } else {
+                var start = Math.Max(0, _memoryDebugHistory.Count - 12);
+                var count = _memoryDebugHistory.Count - start;
+                history = new MemoryDebugSnapshot[count];
+                for (var i = 0; i < count; i++) {
+                    history[i] = _memoryDebugHistory[start + i];
+                }
+            }
+        }
+
+        if (snapshot is null) {
+            return null;
+        }
+
+        var updatedLocal = EnsureUtc(snapshot.UpdatedUtc).ToLocalTime();
+        var historyState = BuildMemoryDebugHistoryState(history);
+        return new {
+            updatedLocal = updatedLocal.ToString(_timestampFormat, CultureInfo.InvariantCulture),
+            sequence = snapshot.Sequence,
+            availableFacts = snapshot.AvailableFacts,
+            candidateFacts = snapshot.CandidateFacts,
+            selectedFacts = snapshot.SelectedFacts,
+            userTokenCount = snapshot.UserTokenCount,
+            topScore = snapshot.TopScore,
+            topSemanticSimilarity = snapshot.TopSemanticSimilarity,
+            averageSelectedSimilarity = snapshot.AverageSelectedSimilarity,
+            averageSelectedRelevance = snapshot.AverageSelectedRelevance,
+            cacheEntries = snapshot.CacheEntries,
+            quality = snapshot.Quality,
+            history = historyState
+        };
+    }
+
+    private object[] BuildMemoryDebugHistoryState(MemoryDebugSnapshot[] history) {
+        if (history.Length == 0) {
+            return Array.Empty<object>();
+        }
+
+        var list = new List<object>(history.Length);
+        for (var i = 0; i < history.Length; i++) {
+            var item = history[i];
+            var updatedLocal = EnsureUtc(item.UpdatedUtc).ToLocalTime();
+            list.Add(new {
+                updatedLocal = updatedLocal.ToString(_timestampFormat, CultureInfo.InvariantCulture),
+                sequence = item.Sequence,
+                selectedFacts = item.SelectedFacts,
+                userTokenCount = item.UserTokenCount,
+                averageSelectedSimilarity = item.AverageSelectedSimilarity,
+                averageSelectedRelevance = item.AverageSelectedRelevance,
+                quality = item.Quality
+            });
+        }
+
+        return list.ToArray();
     }
 
     private static object[] BuildToolParameterState(ToolParameterDto[]? parameters) {

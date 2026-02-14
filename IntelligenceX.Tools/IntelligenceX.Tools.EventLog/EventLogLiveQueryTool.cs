@@ -14,16 +14,20 @@ namespace IntelligenceX.Tools.EventLog;
 /// </summary>
 public sealed class EventLogLiveQueryTool : EventLogToolBase, ITool {
     private const int MaxViewTop = 5000;
+    private const int MinSessionTimeoutMs = 250;
+    private const int MaxSessionTimeoutMs = 300_000;
 
     private static readonly ToolDefinition DefinitionValue = new(
         "eventlog_live_query",
-        "Read events from a local Windows Event Log (log name + optional XPath filter).",
+        "Read events from a Windows Event Log (local or remote machine) using log name + optional XPath filter.",
         ToolSchema.Object(
                 ("log_name", ToolSchema.String("Windows Event Log name (for example: System, Security, Application).")),
+                ("machine_name", ToolSchema.String("Optional remote machine name/FQDN. Omit for local machine.")),
                 ("xpath", ToolSchema.String("Optional XPath query (default: '*').")),
                 ("max_events", ToolSchema.Integer("Optional maximum events to return (capped).")),
                 ("oldest_first", ToolSchema.Boolean("If true, read from oldest to newest (default false).")),
-                ("include_message", ToolSchema.Boolean("If true, include formatted message text (may be large).")))
+                ("include_message", ToolSchema.Boolean("If true, include formatted message text (may be large).")),
+                ("session_timeout_ms", ToolSchema.Integer("Optional remote session timeout in milliseconds (capped).")))
             .WithTableViewOptions()
             .Required("log_name")
             .NoAdditionalProperties());
@@ -56,17 +60,24 @@ public sealed class EventLogLiveQueryTool : EventLogToolBase, ITool {
 
         var oldestFirst = arguments?.GetBoolean("oldest_first") ?? false;
         var includeMessage = arguments?.GetBoolean("include_message") ?? false;
+        var machineName = ToolArgs.GetOptionalTrimmed(arguments, "machine_name");
+        var sessionTimeoutMs = ToolArgs.ToPositiveInt32OrNull(arguments?.GetInt64("session_timeout_ms"), maxInclusive: MaxSessionTimeoutMs);
+        if (sessionTimeoutMs.HasValue && sessionTimeoutMs.Value < MinSessionTimeoutMs) {
+            sessionTimeoutMs = MinSessionTimeoutMs;
+        }
 
         var maxEvents = ToolArgs.GetCappedInt32(arguments, "max_events", Options.MaxResults, 1, Options.MaxResults);
 
         if (!LiveEventQueryExecutor.TryRead(
                 request: new LiveEventQueryRequest {
                     LogName = logName,
+                    MachineName = machineName,
                     XPath = xpath,
                     MaxEvents = maxEvents,
                     OldestFirst = oldestFirst,
                     IncludeMessage = includeMessage,
-                    MaxMessageChars = Options.MaxMessageChars
+                    MaxMessageChars = Options.MaxMessageChars,
+                    SessionTimeoutMs = sessionTimeoutMs
                 },
                 result: out var root,
                 failure: out var failure,
@@ -86,4 +97,3 @@ public sealed class EventLogLiveQueryTool : EventLogToolBase, ITool {
         return Task.FromResult(response);
     }
 }
-
