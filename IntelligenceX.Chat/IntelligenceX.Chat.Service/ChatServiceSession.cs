@@ -1776,6 +1776,18 @@ internal sealed class ChatServiceSession {
         if (string.Equals(output.ErrorCode, "tool_not_registered", StringComparison.OrdinalIgnoreCase)) {
             return false;
         }
+        if (string.Equals(output.ErrorCode, "tool_timeout", StringComparison.OrdinalIgnoreCase) && profile.RetryOnTimeout) {
+            return true;
+        }
+        if (!string.IsNullOrWhiteSpace(output.ErrorCode)) {
+            var code = output.ErrorCode.Trim();
+            var transientTransportCode = code.Contains("transport", StringComparison.OrdinalIgnoreCase)
+                                         || code.Contains("transient", StringComparison.OrdinalIgnoreCase)
+                                         || code.Contains("unavailable", StringComparison.OrdinalIgnoreCase);
+            if (transientTransportCode && profile.RetryOnTransport) {
+                return true;
+            }
+        }
         if (IsLikelyPermanentToolFailure(output)) {
             return false;
         }
@@ -1799,6 +1811,14 @@ internal sealed class ChatServiceSession {
         var transportSignal = text.Contains("temporarily unavailable", StringComparison.OrdinalIgnoreCase)
                               || text.Contains("connection reset", StringComparison.OrdinalIgnoreCase)
                               || text.Contains("connection closed", StringComparison.OrdinalIgnoreCase)
+                              || text.Contains("connection refused", StringComparison.OrdinalIgnoreCase)
+                              || text.Contains("name resolution", StringComparison.OrdinalIgnoreCase)
+                              || text.Contains("dns", StringComparison.OrdinalIgnoreCase)
+                              || text.Contains("remote host closed", StringComparison.OrdinalIgnoreCase)
+                              || text.Contains("service unavailable", StringComparison.OrdinalIgnoreCase)
+                              || text.Contains("gateway timeout", StringComparison.OrdinalIgnoreCase)
+                              || text.Contains("econnreset", StringComparison.OrdinalIgnoreCase)
+                              || text.Contains("etimedout", StringComparison.OrdinalIgnoreCase)
                               || text.Contains("network", StringComparison.OrdinalIgnoreCase)
                               || text.Contains("try again", StringComparison.OrdinalIgnoreCase)
                               || text.Contains("throttl", StringComparison.OrdinalIgnoreCase);
@@ -1922,13 +1942,7 @@ internal sealed class ChatServiceSession {
             return false;
         }
 
-        if (ex is TimeoutException || ex is IOException) {
-            return true;
-        }
-
-        var name = ex.GetType().FullName ?? ex.GetType().Name;
-        if (name.IndexOf("SocketException", StringComparison.OrdinalIgnoreCase) >= 0
-            || name.IndexOf("HttpRequestException", StringComparison.OrdinalIgnoreCase) >= 0) {
+        if (HasKnownTransientExceptionInChain(ex)) {
             return true;
         }
 
@@ -1940,6 +1954,26 @@ internal sealed class ChatServiceSession {
                || message.IndexOf("try again", StringComparison.OrdinalIgnoreCase) >= 0
                || message.IndexOf("connection", StringComparison.OrdinalIgnoreCase) >= 0
                || message.IndexOf("throttl", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static bool HasKnownTransientExceptionInChain(Exception ex) {
+        var depth = 0;
+        for (Exception? current = ex; current is not null && depth < 8; current = current.InnerException, depth++) {
+            if (current is OperationCanceledException) {
+                return false;
+            }
+            if (current is TimeoutException || current is IOException) {
+                return true;
+            }
+
+            var name = current.GetType().FullName ?? current.GetType().Name;
+            if (name.IndexOf("SocketException", StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("HttpRequestException", StringComparison.OrdinalIgnoreCase) >= 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static ToolRetryProfile ResolveRetryProfile(string? toolName) {
