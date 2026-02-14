@@ -20,7 +20,10 @@
 *.cs    text eol=lf
 *.csproj text eol=lf
 *.sln   text eol=lf
+*.sh    text eol=lf
 *.ps1   text eol=crlf
+.gitattributes text eol=lf
+.editorconfig text eol=lf
 
 ###############################################################################
 # Set default behavior for command prompt diff.
