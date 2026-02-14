@@ -11,6 +11,7 @@ internal static class PromptAssets {
     private const string OnboardingGuidanceResourceName = "IntelligenceX.Chat.App.Prompts.OnboardingGuidance.v1.md";
     private const string LiveProfileUpdatesResourceName = "IntelligenceX.Chat.App.Prompts.LiveProfileUpdates.v1.md";
     private const string KickoffPreludeResourceName = "IntelligenceX.Chat.App.Prompts.KickoffPrelude.v1.md";
+    private const string PersistentMemoryResourceName = "IntelligenceX.Chat.App.Prompts.PersistentMemory.v1.md";
     private const string MissingFieldsToken = "{{MISSING_FIELDS_BULLET}}";
     private const string ThemePresetSchemaToken = "{{THEME_PRESET_SCHEMA}}";
     private static readonly object Lock = new();
@@ -101,6 +102,28 @@ internal static class PromptAssets {
         }
 
         return RenderTemplate(template, string.Empty, themePresetSchema);
+    }
+
+    public static string GetPersistentMemoryPrompt() {
+        var template = GetTemplate(PersistentMemoryResourceName);
+        if (string.IsNullOrWhiteSpace(template)) {
+            template = """
+                       [Persistent memory protocol]
+                       - Capture only durable, user-approved facts that improve future help.
+                       - Avoid storing secrets, credentials, access tokens, or one-time data.
+                       - Use concise reusable facts (preferences, environment defaults, recurring constraints).
+                       - When updating memory, append a machine block:
+
+                       ```ix_memory
+                       {"upserts":[{"fact":"...","weight":3,"tags":["preference"]}],"deleteFacts":["..."]}
+                       ```
+
+                       - Use weight 1-5 where 5 is highest importance.
+                       - Include only entries changed in this turn.
+                       """;
+        }
+
+        return template.Trim();
     }
 
     private static string GetTemplate(string resourceName) {

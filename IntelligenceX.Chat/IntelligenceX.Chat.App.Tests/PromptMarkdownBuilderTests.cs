@@ -1,3 +1,4 @@
+using System;
 using IntelligenceX.Chat.App.Markdown;
 using Xunit;
 
@@ -19,7 +20,9 @@ public sealed class PromptMarkdownBuilderTests {
             onboardingInProgress: true,
             missingOnboardingFields: new[] { "themePreset" },
             includeLiveProfileUpdates: true,
-            executionBehaviorPrompt: "[Execution behavior]\n- Retry tools before asking user.");
+            executionBehaviorPrompt: "[Execution behavior]\n- Retry tools before asking user.",
+            persistentMemoryLines: new[] { "Prefers concise answers." },
+            persistentMemoryPrompt: "[Persistent memory protocol]");
 
         Assert.Contains("[Session profile context]", markdown);
         Assert.Contains("- User name: Przemek", markdown);
@@ -27,6 +30,9 @@ public sealed class PromptMarkdownBuilderTests {
         Assert.Contains("[Onboarding context]", markdown);
         Assert.Contains("[Live profile updates]", markdown);
         Assert.Contains("[Execution behavior]", markdown);
+        Assert.Contains("[Persistent memory protocol]", markdown);
+        Assert.Contains("[Persistent memory]", markdown);
+        Assert.Contains("Prefers concise answers.", markdown);
         Assert.Contains("User request:", markdown);
         Assert.Contains("Can you list top 3 domain admins?", markdown);
     }
@@ -46,5 +52,28 @@ public sealed class PromptMarkdownBuilderTests {
             executionBehaviorPrompt: string.Empty);
 
         Assert.Equal("hello", markdown);
+    }
+
+    /// <summary>
+    /// Ensures persistent memory context can still shape the prompt even without profile context.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_IncludesMemoryContextWithoutProfile() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What should we do next?",
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            localContextLines: null,
+            persistentMemoryLines: new[] { "Default domain controller is DC-01." },
+            persistentMemoryPrompt: "[Persistent memory protocol]");
+
+        Assert.Contains("[Persistent memory protocol]", markdown);
+        Assert.Contains("[Persistent memory]", markdown);
+        Assert.Contains("Default domain controller is DC-01.", markdown);
+        Assert.Contains("User request:", markdown);
     }
 }

@@ -7,7 +7,7 @@ namespace IntelligenceX.Chat.Service.Profiles;
 /// </summary>
 internal sealed class ServiceProfile {
     public string Model { get; set; } = "gpt-5.3-codex";
-    public int MaxToolRounds { get; set; } = 3;
+    public int MaxToolRounds { get; set; } = 8;
     public bool ParallelTools { get; set; } = true;
     public int TurnTimeoutSeconds { get; set; }
     public int ToolTimeoutSeconds { get; set; }

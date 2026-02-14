@@ -611,6 +611,12 @@ body.options-open .options-panel {
   color: #d5ebff;
 }
 
+.options-pill-required {
+  border-color: rgba(255, 206, 107, 0.52);
+  background: rgba(255, 206, 107, 0.16);
+  color: #fff2cd;
+}
+
 .options-pill-action {
   cursor: pointer;
 }
@@ -674,6 +680,77 @@ body.options-open .options-panel {
   border: 1px solid rgba(88, 128, 173, 0.45);
   color: var(--ix-text-secondary);
   background: rgba(17, 52, 93, 0.36);
+}
+
+.options-tool-params {
+  margin-top: 7px;
+  border: 1px solid rgba(58, 96, 144, 0.45);
+  border-radius: 8px;
+  background: rgba(5, 23, 42, 0.38);
+  overflow: hidden;
+}
+
+.options-tool-params > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--ix-text-secondary);
+  border-bottom: 1px solid transparent;
+}
+
+.options-tool-params[open] > summary {
+  border-bottom-color: rgba(58, 96, 144, 0.45);
+  background: rgba(17, 52, 93, 0.3);
+}
+
+.options-tool-params > summary::-webkit-details-marker {
+  display: none;
+}
+
+.options-tool-params-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px;
+}
+
+.options-tool-param {
+  border: 1px solid rgba(58, 96, 144, 0.45);
+  border-radius: 7px;
+  background: rgba(8, 30, 56, 0.48);
+  padding: 6px 7px;
+}
+
+.options-tool-param-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.options-tool-param-name {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--ix-text-primary);
+}
+
+.options-tool-param-desc {
+  margin-top: 4px;
+  font-size: 10.8px;
+  line-height: 1.35;
+  color: var(--ix-text-secondary);
+}
+
+.options-tool-param-meta {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--ix-text-muted);
+  word-break: break-word;
+}
+
+.options-memory-list .options-item {
+  padding: 7px;
 }
 
 @media (max-width: 680px) {

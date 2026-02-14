@@ -137,9 +137,12 @@ public sealed partial class MainWindow : Window {
     private bool? _autonomyParallelTools;
     private int? _autonomyTurnTimeoutSeconds;
     private int? _autonomyToolTimeoutSeconds;
+    private bool? _autonomyWeightedToolRouting;
+    private int? _autonomyMaxCandidateTools;
     private string _exportSaveMode = ExportPreferencesContract.DefaultSaveMode;
     private string _exportDefaultFormat = ExportPreferencesContract.DefaultFormat;
     private string? _lastExportDirectory;
+    private bool _persistentMemoryEnabled = true;
     private SessionPolicyDto? _sessionPolicy;
     private readonly Dictionary<string, bool> _toolStates = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _toolDisplayNames = new(StringComparer.OrdinalIgnoreCase);
@@ -148,6 +151,7 @@ public sealed partial class MainWindow : Window {
     private readonly Dictionary<string, string[]> _toolTags = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _toolPackIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _toolPackNames = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ToolParameterDto[]> _toolParameters = new(StringComparer.OrdinalIgnoreCase);
     private string _appProfileName = ResolveAppProfileName(Environment.GetEnvironmentVariable("IXCHAT_PROFILE"));
     private readonly ChatAppStateStore _stateStore = new(ChatAppStateStore.GetDefaultDbPath());
     private readonly SemaphoreSlim _stateWriteGate = new(1, 1);
@@ -669,20 +673,27 @@ public sealed partial class MainWindow : Window {
             _timestampMode = ResolveTimestampMode(_appState.TimestampMode);
             _timestampFormat = ResolveTimestampFormat(_appState.TimestampMode);
         }
-        _autonomyMaxToolRounds = NormalizeAutonomyInt(_appState.AutonomyMaxToolRounds, min: 1, max: 24);
+        _autonomyMaxToolRounds = NormalizeAutonomyInt(_appState.AutonomyMaxToolRounds, min: 1, max: 64);
         _autonomyParallelTools = _appState.AutonomyParallelTools;
         _autonomyTurnTimeoutSeconds = NormalizeAutonomyInt(_appState.AutonomyTurnTimeoutSeconds, min: 0, max: 3600);
         _autonomyToolTimeoutSeconds = NormalizeAutonomyInt(_appState.AutonomyToolTimeoutSeconds, min: 0, max: 3600);
+        _autonomyWeightedToolRouting = _appState.AutonomyWeightedToolRouting;
+        _autonomyMaxCandidateTools = NormalizeAutonomyInt(_appState.AutonomyMaxCandidateTools, min: 0, max: 64);
         _appState.AutonomyMaxToolRounds = _autonomyMaxToolRounds;
         _appState.AutonomyParallelTools = _autonomyParallelTools;
         _appState.AutonomyTurnTimeoutSeconds = _autonomyTurnTimeoutSeconds;
         _appState.AutonomyToolTimeoutSeconds = _autonomyToolTimeoutSeconds;
+        _appState.AutonomyWeightedToolRouting = _autonomyWeightedToolRouting;
+        _appState.AutonomyMaxCandidateTools = _autonomyMaxCandidateTools;
         _exportSaveMode = ExportPreferencesContract.NormalizeSaveMode(_appState.ExportSaveMode);
         _appState.ExportSaveMode = _exportSaveMode;
         _exportDefaultFormat = ExportPreferencesContract.NormalizeFormat(_appState.ExportDefaultFormat);
         _appState.ExportDefaultFormat = _exportDefaultFormat;
         _lastExportDirectory = ExportPreferencesContract.NormalizeDirectory(_appState.ExportLastDirectory);
         _appState.ExportLastDirectory = _lastExportDirectory;
+        _persistentMemoryEnabled = _appState.PersistentMemoryEnabled;
+        _appState.PersistentMemoryEnabled = _persistentMemoryEnabled;
+        _appState.MemoryFacts = NormalizeMemoryFacts(_appState.MemoryFacts);
 
         var repairedLegacyTranscriptState = LoadConversationsFromState(_appState);
         ActivateConversation(ResolveInitialConversationId(_appState));

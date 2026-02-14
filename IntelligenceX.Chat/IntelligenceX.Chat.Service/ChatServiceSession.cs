@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using JsonValueKind = System.Text.Json.JsonValueKind;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Abstractions.Serialization;
@@ -28,6 +30,11 @@ internal sealed class ChatServiceSession {
     private readonly IReadOnlyList<IToolPack> _packs;
     private readonly string[] _startupWarnings;
     private readonly string[] _pluginSearchPaths;
+    private readonly Dictionary<string, string> _packDisplayNamesById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _toolRoutingStatsLock = new();
+    private readonly Dictionary<string, ToolRoutingStats> _toolRoutingStats = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _toolRoutingContextLock = new();
+    private readonly Dictionary<string, string[]> _lastWeightedToolNamesByThreadId = new(StringComparer.Ordinal);
 
     private readonly JsonSerializerOptions _json;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
@@ -36,6 +43,11 @@ internal sealed class ChatServiceSession {
     private LoginFlow? _login;
     private readonly object _chatRunLock = new();
     private ChatRun? _activeChat;
+    private static readonly Regex UserRequestSectionRegex =
+        new(@"\bUser request:\s*(?<value>[\s\S]+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex ContinuationFollowUpRegex =
+        new(@"\b(continue|go on|keep going|same|again|retry|more|next step)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+            | RegexOptions.Compiled);
 
     public ChatServiceSession(ServiceOptions options, Stream stream) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -59,6 +71,14 @@ internal sealed class ChatServiceSession {
         _startupWarnings = NormalizeDistinctStrings(startupWarnings, maxItems: 64);
         _registry = new ToolRegistry();
         ToolPackBootstrap.RegisterAll(_registry, _packs);
+        foreach (var descriptor in ToolPackBootstrap.GetDescriptors(_packs)) {
+            var normalizedPackId = NormalizePackId(descriptor.Id);
+            if (normalizedPackId.Length == 0) {
+                continue;
+            }
+
+            _packDisplayNamesById[normalizedPackId] = ResolvePackDisplayName(descriptor.Id, descriptor.Name);
+        }
 
         _json = new JsonSerializerOptions {
             TypeInfoResolver = ChatServiceJsonContext.Default
@@ -428,11 +448,25 @@ internal sealed class ChatServiceSession {
         var tools = new ToolDefinitionDto[defs.Count];
         for (var i = 0; i < defs.Count; i++) {
             var parametersJson = defs[i].Parameters is null ? "{}" : JsonLite.Serialize(defs[i].Parameters);
+            var required = ExtractRequiredArguments(parametersJson);
+            var parameters = ExtractToolParameters(parametersJson, required);
+            var packId = NormalizePackId(InferPackIdFromToolName(defs[i].Name, defs[i].Tags));
+            string? packName = null;
+            if (packId.Length > 0 && _packDisplayNamesById.TryGetValue(packId, out var resolvedPackName)) {
+                packName = resolvedPackName;
+            }
+
             tools[i] = new ToolDefinitionDto {
                 Name = defs[i].Name,
                 Description = defs[i].Description ?? string.Empty,
+                DisplayName = FormatToolDisplayName(defs[i].Name),
+                Category = InferToolCategory(defs[i].Name, defs[i].Tags),
+                Tags = defs[i].Tags.Count == 0 ? null : defs[i].Tags.ToArray(),
+                PackId = packId.Length == 0 ? null : packId,
+                PackName = string.IsNullOrWhiteSpace(packName) ? null : packName,
                 ParametersJson = parametersJson,
-                RequiredArguments = ExtractRequiredArguments(parametersJson)
+                RequiredArguments = required,
+                Parameters = parameters
             };
         }
         await WriteAsync(writer, new ToolListMessage {
@@ -696,6 +730,247 @@ internal sealed class ChatServiceSession {
         }
     }
 
+    private static ToolParameterDto[] ExtractToolParameters(string parametersJson, IReadOnlyCollection<string> requiredArguments) {
+        if (string.IsNullOrWhiteSpace(parametersJson)) {
+            return Array.Empty<ToolParameterDto>();
+        }
+
+        try {
+            using var doc = JsonDocument.Parse(parametersJson);
+            if (!doc.RootElement.TryGetProperty("properties", out var properties) || properties.ValueKind != JsonValueKind.Object) {
+                return Array.Empty<ToolParameterDto>();
+            }
+
+            var required = new HashSet<string>(requiredArguments ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+            var list = new List<ToolParameterDto>();
+            foreach (var property in properties.EnumerateObject()) {
+                var parameterName = (property.Name ?? string.Empty).Trim();
+                if (parameterName.Length == 0) {
+                    continue;
+                }
+
+                var node = property.Value;
+                var enumValues = TryReadEnumValues(node);
+                var defaultJson = node.TryGetProperty("default", out var defaultValue)
+                    ? NormalizeSchemaJsonSnippet(defaultValue.GetRawText())
+                    : null;
+                var exampleJson = node.TryGetProperty("example", out var exampleValue)
+                    ? NormalizeSchemaJsonSnippet(exampleValue.GetRawText())
+                    : (node.TryGetProperty("examples", out var examples) && examples.ValueKind == JsonValueKind.Array && examples.GetArrayLength() > 0
+                        ? NormalizeSchemaJsonSnippet(examples[0].GetRawText())
+                        : null);
+
+                list.Add(new ToolParameterDto {
+                    Name = parameterName,
+                    Type = ReadSchemaType(node),
+                    Description = node.TryGetProperty("description", out var description) && description.ValueKind == JsonValueKind.String
+                        ? description.GetString()
+                        : null,
+                    Required = required.Contains(parameterName),
+                    EnumValues = enumValues,
+                    DefaultJson = defaultJson,
+                    ExampleJson = exampleJson
+                });
+            }
+
+            return list.Count == 0
+                ? Array.Empty<ToolParameterDto>()
+                : list
+                    .OrderBy(static p => p.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+        } catch {
+            return Array.Empty<ToolParameterDto>();
+        }
+    }
+
+    private static string ReadSchemaType(JsonElement node) {
+        if (node.TryGetProperty("type", out var typeNode)) {
+            if (typeNode.ValueKind == JsonValueKind.String) {
+                var value = (typeNode.GetString() ?? string.Empty).Trim();
+                if (value.Length > 0) {
+                    return value;
+                }
+            }
+
+            if (typeNode.ValueKind == JsonValueKind.Array) {
+                var values = new List<string>();
+                foreach (var item in typeNode.EnumerateArray()) {
+                    if (item.ValueKind != JsonValueKind.String) {
+                        continue;
+                    }
+
+                    var value = (item.GetString() ?? string.Empty).Trim();
+                    if (value.Length == 0 || string.Equals(value, "null", StringComparison.OrdinalIgnoreCase)) {
+                        continue;
+                    }
+
+                    values.Add(value);
+                }
+
+                if (values.Count > 0) {
+                    return string.Join("|", values);
+                }
+            }
+        }
+
+        if (node.TryGetProperty("anyOf", out var anyOf) && anyOf.ValueKind == JsonValueKind.Array) {
+            foreach (var candidate in anyOf.EnumerateArray()) {
+                var resolved = ReadSchemaType(candidate);
+                if (!string.Equals(resolved, "any", StringComparison.OrdinalIgnoreCase)) {
+                    return resolved;
+                }
+            }
+        }
+
+        if (node.TryGetProperty("oneOf", out var oneOf) && oneOf.ValueKind == JsonValueKind.Array) {
+            foreach (var candidate in oneOf.EnumerateArray()) {
+                var resolved = ReadSchemaType(candidate);
+                if (!string.Equals(resolved, "any", StringComparison.OrdinalIgnoreCase)) {
+                    return resolved;
+                }
+            }
+        }
+
+        return "any";
+    }
+
+    private static string[]? TryReadEnumValues(JsonElement node) {
+        if (!node.TryGetProperty("enum", out var enumNode) || enumNode.ValueKind != JsonValueKind.Array || enumNode.GetArrayLength() == 0) {
+            return null;
+        }
+
+        var values = new List<string>();
+        foreach (var enumValue in enumNode.EnumerateArray()) {
+            var text = enumValue.ValueKind switch {
+                JsonValueKind.String => enumValue.GetString(),
+                JsonValueKind.True => "true",
+                JsonValueKind.False => "false",
+                JsonValueKind.Number => enumValue.GetRawText(),
+                _ => enumValue.GetRawText()
+            };
+
+            if (string.IsNullOrWhiteSpace(text)) {
+                continue;
+            }
+
+            values.Add(text.Trim());
+        }
+
+        return values.Count == 0 ? null : values.ToArray();
+    }
+
+    private static string? NormalizeSchemaJsonSnippet(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? null : normalized;
+    }
+
+    private static string FormatToolDisplayName(string toolName) {
+        var normalized = (toolName ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return "Tool";
+        }
+
+        var parts = normalized.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 0) {
+            return normalized;
+        }
+
+        for (var i = 0; i < parts.Length; i++) {
+            var part = parts[i];
+            if (part.Length <= 1) {
+                parts[i] = part.ToUpperInvariant();
+                continue;
+            }
+
+            parts[i] = char.ToUpperInvariant(part[0]) + part[1..];
+        }
+
+        return string.Join(' ', parts);
+    }
+
+    private static string InferToolCategory(string toolName, IReadOnlyList<string> tags) {
+        var packId = InferPackIdFromToolName(toolName, tags);
+        return packId switch {
+            "ad" => "active-directory",
+            "eventlog" => "event-log",
+            "fs" => "file-system",
+            "system" => "system",
+            "powershell" => "powershell",
+            "email" => "email",
+            "testimox" => "testimox",
+            "reviewersetup" => "reviewer-setup",
+            "reviewer-setup" => "reviewer-setup",
+            _ => "other"
+        };
+    }
+
+    private static string InferPackIdFromToolName(string? toolName, IReadOnlyList<string>? tags) {
+        var normalized = (toolName ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        if (normalized.StartsWith("ad_", StringComparison.Ordinal)
+            || normalized.StartsWith("adplayground_", StringComparison.Ordinal)) {
+            return "ad";
+        }
+        if (normalized.StartsWith("eventlog_", StringComparison.Ordinal)) {
+            return "eventlog";
+        }
+        if (normalized.StartsWith("fs_", StringComparison.Ordinal)) {
+            return "fs";
+        }
+        if (normalized.StartsWith("system_", StringComparison.Ordinal) || normalized.StartsWith("wsl_", StringComparison.Ordinal)) {
+            return "system";
+        }
+        if (normalized.StartsWith("powershell_", StringComparison.Ordinal)) {
+            return "powershell";
+        }
+        if (normalized.StartsWith("email_", StringComparison.Ordinal)) {
+            return "email";
+        }
+        if (normalized.StartsWith("testimox_", StringComparison.Ordinal)) {
+            return "testimox";
+        }
+        if (normalized.StartsWith("reviewer_setup_", StringComparison.Ordinal)) {
+            return "reviewer-setup";
+        }
+        if (normalized.StartsWith("export_", StringComparison.Ordinal)) {
+            return "export";
+        }
+
+        if (tags is { Count: > 0 }) {
+            foreach (var tag in tags) {
+                var normalizedTag = (tag ?? string.Empty).Trim().ToLowerInvariant();
+                if (normalizedTag.Length == 0) {
+                    continue;
+                }
+
+                if (normalizedTag.Contains("active-directory", StringComparison.Ordinal)
+                    || normalizedTag.Equals("ad", StringComparison.Ordinal)) {
+                    return "ad";
+                }
+
+                if (normalizedTag.Contains("eventlog", StringComparison.Ordinal)
+                    || normalizedTag.Contains("event-log", StringComparison.Ordinal)) {
+                    return "eventlog";
+                }
+
+                if (normalizedTag.Contains("filesystem", StringComparison.Ordinal)
+                    || normalizedTag.Contains("file-system", StringComparison.Ordinal)
+                    || normalizedTag.Equals("fs", StringComparison.Ordinal)) {
+                    return "fs";
+                }
+
+                if (normalizedTag.Contains("powershell", StringComparison.Ordinal)) {
+                    return "powershell";
+                }
+            }
+        }
+
+        return "other";
+    }
+
     private static async Task<string> EnsureThreadAsync(IntelligenceXClient client, string? requestThreadId, string? activeThreadId, string? model,
         CancellationToken cancellationToken) {
         if (!string.IsNullOrWhiteSpace(requestThreadId)) {
@@ -735,6 +1010,18 @@ internal sealed class ChatServiceSession {
             }
         }
         toolDefs = SanitizeToolDefinitions(toolDefs);
+        var originalToolCount = toolDefs.Count;
+        var weightedToolRouting = request.Options?.WeightedToolRouting ?? true;
+        var maxCandidateTools = request.Options?.MaxCandidateTools;
+        if (weightedToolRouting && toolDefs.Count > 0) {
+            var userRequest = ExtractPrimaryUserRequest(request.Text);
+            if (!TryGetContinuationToolSubset(threadId, userRequest, toolDefs, out var continuationSubset)) {
+                toolDefs = SelectWeightedToolSubset(toolDefs, userRequest, maxCandidateTools);
+            } else {
+                toolDefs = continuationSubset;
+            }
+            RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
+        }
 
         var parallelTools = request.Options?.ParallelTools ?? _options.ParallelTools;
         var maxRounds = request.Options?.MaxToolRounds ?? _options.MaxToolRounds;
@@ -749,6 +1036,16 @@ internal sealed class ChatServiceSession {
             Tools = toolDefs.Count == 0 ? null : toolDefs,
             ToolChoice = toolDefs.Count == 0 ? null : ToolChoice.Auto
         };
+
+        if (weightedToolRouting && originalToolCount > 0 && toolDefs.Count > 0 && toolDefs.Count < originalToolCount) {
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: "routing",
+                    message: $"Tool routing selected {toolDefs.Count} of {originalToolCount} tools for this turn.")
+                .ConfigureAwait(false);
+        }
 
         await TryWriteStatusAsync(writer, request.RequestId, threadId, status: "thinking").ConfigureAwait(false);
         TurnInfo turn = await ChatWithToolSchemaRecoveryAsync(client, ChatInput.FromText(request.Text), options, turnToken).ConfigureAwait(false);
@@ -783,6 +1080,7 @@ internal sealed class ChatServiceSession {
 
             var executed = await ExecuteToolsAsync(writer, request.RequestId, threadId, extracted, parallelTools, toolTimeoutSeconds, turnToken)
                 .ConfigureAwait(false);
+            UpdateToolRoutingStats(extracted, executed);
             foreach (var output in executed) {
                 toolOutputs.Add(new ToolOutputDto {
                     CallId = output.CallId,
@@ -834,6 +1132,359 @@ internal sealed class ChatServiceSession {
 
         return sanitized.Count == 0 ? Array.Empty<ToolDefinition>() : sanitized;
     }
+
+    private IReadOnlyList<ToolDefinition> SelectWeightedToolSubset(IReadOnlyList<ToolDefinition> definitions, string requestText, int? maxCandidateTools) {
+        if (definitions.Count <= 12) {
+            return definitions;
+        }
+
+        var userRequest = ExtractPrimaryUserRequest(requestText);
+        if (ShouldSkipWeightedRouting(userRequest)) {
+            return definitions;
+        }
+
+        var tokens = TokenizeForToolRouting(userRequest);
+        if (tokens.Count == 0) {
+            return definitions;
+        }
+
+        var limit = ResolveMaxCandidateToolsLimit(maxCandidateTools, definitions.Count);
+        if (limit >= definitions.Count) {
+            return definitions;
+        }
+
+        var scored = new List<ToolScore>(definitions.Count);
+        var hasSignal = false;
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            var searchText = BuildToolSearchText(definition);
+            var score = 0d;
+            if (userRequest.IndexOf(definition.Name, StringComparison.OrdinalIgnoreCase) >= 0) {
+                score += 6d;
+            }
+
+            var packId = InferPackIdFromToolName(definition.Name, definition.Tags);
+            if (IsPackMentioned(userRequest, packId)) {
+                score += 2.5d;
+            }
+
+            for (var t = 0; t < tokens.Count; t++) {
+                var token = tokens[t];
+                if (searchText.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0) {
+                    score += 0.9d;
+                }
+
+                if (definition.Name.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0) {
+                    score += 0.9d;
+                }
+            }
+
+            score += ReadToolRoutingAdjustment(definition.Name);
+            if (score > 0.01d) {
+                hasSignal = true;
+            }
+
+            scored.Add(new ToolScore(definition, score));
+        }
+
+        if (!hasSignal) {
+            return definitions;
+        }
+
+        scored.Sort(static (a, b) => {
+            var scoreCompare = b.Score.CompareTo(a.Score);
+            if (scoreCompare != 0) {
+                return scoreCompare;
+            }
+
+            return StringComparer.OrdinalIgnoreCase.Compare(a.Definition.Name, b.Definition.Name);
+        });
+
+        if (scored[0].Score < 1d) {
+            return definitions;
+        }
+
+        var selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var selectedDefs = new List<ToolDefinition>(Math.Min(limit, definitions.Count));
+        for (var i = 0; i < scored.Count && selectedDefs.Count < limit; i++) {
+            var definition = scored[i].Definition;
+            if (!selected.Add(definition.Name)) {
+                continue;
+            }
+            selectedDefs.Add(definition);
+        }
+
+        if (selectedDefs.Count == 0) {
+            return definitions;
+        }
+
+        var minSelection = Math.Min(definitions.Count, Math.Max(8, Math.Min(limit, 12)));
+        if (selectedDefs.Count < minSelection) {
+            for (var i = selectedDefs.Count; i < scored.Count && selectedDefs.Count < minSelection; i++) {
+                var definition = scored[i].Definition;
+                if (!selected.Add(definition.Name)) {
+                    continue;
+                }
+                selectedDefs.Add(definition);
+            }
+        }
+
+        if (selectedDefs.Count >= definitions.Count) {
+            return definitions;
+        }
+
+        return selectedDefs;
+    }
+
+    private bool TryGetContinuationToolSubset(string threadId, string userRequest, IReadOnlyList<ToolDefinition> allDefinitions,
+        out IReadOnlyList<ToolDefinition> subset) {
+        subset = Array.Empty<ToolDefinition>();
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0 || !LooksLikeContinuationFollowUp(userRequest)) {
+            return false;
+        }
+
+        string[]? previousNames;
+        lock (_toolRoutingContextLock) {
+            if (!_lastWeightedToolNamesByThreadId.TryGetValue(normalizedThreadId, out previousNames) || previousNames.Length == 0) {
+                return false;
+            }
+        }
+
+        var preferred = new HashSet<string>(previousNames!, StringComparer.OrdinalIgnoreCase);
+        var selected = new List<ToolDefinition>();
+        for (var i = 0; i < allDefinitions.Count; i++) {
+            var definition = allDefinitions[i];
+            if (preferred.Contains(definition.Name)) {
+                selected.Add(definition);
+            }
+        }
+
+        if (selected.Count < 2) {
+            return false;
+        }
+
+        subset = selected;
+        return true;
+    }
+
+    private void RememberWeightedToolSubset(string threadId, IReadOnlyList<ToolDefinition> selectedDefinitions, int allToolCount) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return;
+        }
+
+        lock (_toolRoutingContextLock) {
+            if (selectedDefinitions.Count == 0 || selectedDefinitions.Count >= allToolCount) {
+                _lastWeightedToolNamesByThreadId.Remove(normalizedThreadId);
+                return;
+            }
+
+            var names = new List<string>(selectedDefinitions.Count);
+            for (var i = 0; i < selectedDefinitions.Count && i < 64; i++) {
+                var name = (selectedDefinitions[i].Name ?? string.Empty).Trim();
+                if (name.Length > 0) {
+                    names.Add(name);
+                }
+            }
+
+            _lastWeightedToolNamesByThreadId[normalizedThreadId] = names.Count == 0 ? Array.Empty<string>() : names.ToArray();
+        }
+    }
+
+    private double ReadToolRoutingAdjustment(string toolName) {
+        lock (_toolRoutingStatsLock) {
+            if (!_toolRoutingStats.TryGetValue(toolName, out var stats)) {
+                return 0d;
+            }
+
+            var score = 0d;
+            if (stats.Successes > 0) {
+                score += Math.Min(2.4d, stats.Successes * 0.2d);
+            }
+            if (stats.Failures > 0) {
+                score -= Math.Min(2.4d, stats.Failures * 0.28d);
+            }
+            if (stats.LastSuccessUtcTicks > 0) {
+                var sinceSuccess = DateTime.UtcNow - new DateTime(stats.LastSuccessUtcTicks, DateTimeKind.Utc);
+                if (sinceSuccess <= TimeSpan.FromMinutes(20)) {
+                    score += 0.35d;
+                }
+            }
+
+            return score;
+        }
+    }
+
+    private void UpdateToolRoutingStats(IReadOnlyList<ToolCall> calls, IReadOnlyList<ToolOutputDto> outputs) {
+        if (calls.Count == 0 || outputs.Count == 0) {
+            return;
+        }
+
+        var nameByCallId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < calls.Count; i++) {
+            var call = calls[i];
+            if (string.IsNullOrWhiteSpace(call.CallId) || string.IsNullOrWhiteSpace(call.Name)) {
+                continue;
+            }
+
+            nameByCallId[call.CallId.Trim()] = call.Name.Trim();
+        }
+
+        if (nameByCallId.Count == 0) {
+            return;
+        }
+
+        var nowTicks = DateTime.UtcNow.Ticks;
+        lock (_toolRoutingStatsLock) {
+            foreach (var output in outputs) {
+                if (string.IsNullOrWhiteSpace(output.CallId) || !nameByCallId.TryGetValue(output.CallId, out var toolName)) {
+                    continue;
+                }
+
+                if (!_toolRoutingStats.TryGetValue(toolName, out var stats)) {
+                    stats = new ToolRoutingStats();
+                    _toolRoutingStats[toolName] = stats;
+                }
+
+                stats.Invocations++;
+                stats.LastUsedUtcTicks = nowTicks;
+                var success = output.Ok != false
+                              && string.IsNullOrWhiteSpace(output.ErrorCode)
+                              && string.IsNullOrWhiteSpace(output.Error);
+                if (success) {
+                    stats.Successes++;
+                    stats.LastSuccessUtcTicks = nowTicks;
+                } else {
+                    stats.Failures++;
+                }
+            }
+        }
+    }
+
+    private static int ResolveMaxCandidateToolsLimit(int? requestedLimit, int totalToolCount) {
+        var candidate = requestedLimit.GetValueOrDefault(0);
+        if (candidate <= 0) {
+            candidate = Math.Clamp((int)Math.Ceiling(totalToolCount * 0.45d), 10, 28);
+        }
+
+        return Math.Clamp(candidate, 4, Math.Max(4, totalToolCount));
+    }
+
+    private static string ExtractPrimaryUserRequest(string requestText) {
+        var text = (requestText ?? string.Empty).Trim();
+        if (text.Length == 0) {
+            return string.Empty;
+        }
+
+        var match = UserRequestSectionRegex.Match(text);
+        if (match.Success && match.Groups.Count > 1) {
+            var value = match.Groups["value"].Value;
+            if (!string.IsNullOrWhiteSpace(value)) {
+                return value.Trim();
+            }
+        }
+
+        return text;
+    }
+
+    private static bool ShouldSkipWeightedRouting(string userRequest) {
+        if (string.IsNullOrWhiteSpace(userRequest)) {
+            return true;
+        }
+
+        var normalized = userRequest.Trim().ToLowerInvariant();
+        return normalized.Contains("what tools", StringComparison.Ordinal)
+               || normalized.Contains("list tools", StringComparison.Ordinal)
+               || normalized.Contains("available tools", StringComparison.Ordinal)
+               || normalized.Contains("tool catalog", StringComparison.Ordinal)
+               || normalized.Contains("which tool", StringComparison.Ordinal)
+               || normalized.Contains("all tools", StringComparison.Ordinal)
+               || normalized.Contains("anything you can", StringComparison.Ordinal);
+    }
+
+    private static bool LooksLikeContinuationFollowUp(string userRequest) {
+        var normalized = (userRequest ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        if (ContinuationFollowUpRegex.IsMatch(normalized)) {
+            return true;
+        }
+
+        return normalized.Equals("continue", StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals("same", StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals("again", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static List<string> TokenizeForToolRouting(string userRequest) {
+        var result = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var parts = Regex.Split((userRequest ?? string.Empty).ToLowerInvariant(), @"[^a-z0-9_]+");
+        for (var i = 0; i < parts.Length; i++) {
+            var token = (parts[i] ?? string.Empty).Trim();
+            if (token.Length < 3) {
+                continue;
+            }
+
+            if (token is "the" or "and" or "with" or "from" or "that" or "this" or "for" or "you" or "your" or "have" or "show"
+                or "give" or "list" or "check" or "please" or "about" or "into" or "just" or "today") {
+                continue;
+            }
+
+            if (seen.Add(token)) {
+                result.Add(token);
+            }
+        }
+
+        return result;
+    }
+
+    private static string BuildToolSearchText(ToolDefinition definition) {
+        var tags = definition.Tags.Count == 0 ? string.Empty : string.Join(' ', definition.Tags);
+        return (definition.Name + " " + (definition.Description ?? string.Empty) + " " + tags).ToLowerInvariant();
+    }
+
+    private static bool IsPackMentioned(string userRequest, string packId) {
+        if (string.IsNullOrWhiteSpace(userRequest) || string.IsNullOrWhiteSpace(packId)) {
+            return false;
+        }
+
+        var normalized = userRequest.ToLowerInvariant();
+        return packId switch {
+            "ad" => normalized.Contains("active directory", StringComparison.Ordinal)
+                    || normalized.Contains("domain", StringComparison.Ordinal)
+                    || normalized.Contains("replication", StringComparison.Ordinal)
+                    || normalized.Contains("ou ", StringComparison.Ordinal),
+            "eventlog" => normalized.Contains("event log", StringComparison.Ordinal)
+                          || normalized.Contains("evtx", StringComparison.Ordinal)
+                          || normalized.Contains("lockout", StringComparison.Ordinal),
+            "system" => normalized.Contains("system", StringComparison.Ordinal)
+                        || normalized.Contains("host", StringComparison.Ordinal)
+                        || normalized.Contains("computer", StringComparison.Ordinal),
+            "fs" => normalized.Contains("file", StringComparison.Ordinal)
+                    || normalized.Contains("folder", StringComparison.Ordinal)
+                    || normalized.Contains("path", StringComparison.Ordinal),
+            "powershell" => normalized.Contains("powershell", StringComparison.Ordinal)
+                            || normalized.Contains("script", StringComparison.Ordinal),
+            "email" => normalized.Contains("email", StringComparison.Ordinal)
+                       || normalized.Contains("mail", StringComparison.Ordinal),
+            "testimox" => normalized.Contains("testimox", StringComparison.Ordinal)
+                          || normalized.Contains("rule", StringComparison.Ordinal),
+            _ => false
+        };
+    }
+
+    private sealed class ToolRoutingStats {
+        public int Invocations { get; set; }
+        public int Successes { get; set; }
+        public int Failures { get; set; }
+        public long LastUsedUtcTicks { get; set; }
+        public long LastSuccessUtcTicks { get; set; }
+    }
+
+    private readonly record struct ToolScore(ToolDefinition Definition, double Score);
 
     private static async Task<TurnInfo> ChatWithToolSchemaRecoveryAsync(IntelligenceXClient client, ChatInput input, ChatOptions options,
         CancellationToken cancellationToken) {

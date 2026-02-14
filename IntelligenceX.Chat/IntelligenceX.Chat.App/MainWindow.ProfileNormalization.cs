@@ -29,17 +29,24 @@ namespace IntelligenceX.Chat.App;
 public sealed partial class MainWindow : Window {
     private async Task<string> ApplyAssistantProfileUpdateAsync(string? assistantText) {
         var normalized = (assistantText ?? string.Empty).Trim();
-        if (!OnboardingModelProtocol.TryExtractLastProfileUpdate(normalized, out var update, out var cleanedText)) {
-            return normalized;
+        var cleanedText = normalized;
+        var profileChanged = false;
+        if (OnboardingModelProtocol.TryExtractLastProfileUpdate(cleanedText, out var profileUpdate, out var profileCleanedText)) {
+            profileChanged = await ApplyProfileUpdateAsync(profileUpdate, autoCompleteOnboardingForProfileScope: false).ConfigureAwait(false);
+            cleanedText = profileCleanedText;
         }
 
-        var changed = await ApplyProfileUpdateAsync(update, autoCompleteOnboardingForProfileScope: false).ConfigureAwait(false);
+        var memoryChanged = false;
+        if (MemoryModelProtocol.TryExtractLastMemoryUpdate(cleanedText, out var memoryUpdate, out var memoryCleanedText)) {
+            memoryChanged = await ApplyMemoryUpdateAsync(memoryUpdate).ConfigureAwait(false);
+            cleanedText = memoryCleanedText;
+        }
 
         if (!string.IsNullOrWhiteSpace(cleanedText)) {
             return cleanedText;
         }
 
-        return changed ? "Got it." : normalized;
+        return profileChanged || memoryChanged ? "Got it." : normalized;
     }
 
     private static string? NormalizeProfileValue(string? value) {

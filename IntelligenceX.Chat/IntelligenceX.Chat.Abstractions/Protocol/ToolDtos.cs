@@ -42,6 +42,44 @@ public sealed record ToolDefinitionDto {
     /// Required argument names extracted from the input schema.
     /// </summary>
     public string[] RequiredArguments { get; init; } = System.Array.Empty<string>();
+    /// <summary>
+    /// Optional flattened parameter metadata extracted from the input schema.
+    /// </summary>
+    public ToolParameterDto[] Parameters { get; init; } = System.Array.Empty<ToolParameterDto>();
+}
+
+/// <summary>
+/// Flattened tool parameter metadata extracted from JSON schema.
+/// </summary>
+public sealed record ToolParameterDto {
+    /// <summary>
+    /// Parameter name.
+    /// </summary>
+    public required string Name { get; init; }
+    /// <summary>
+    /// Parameter type hint (for example: string, integer, object, array).
+    /// </summary>
+    public string Type { get; init; } = "any";
+    /// <summary>
+    /// Optional parameter description.
+    /// </summary>
+    public string? Description { get; init; }
+    /// <summary>
+    /// Indicates whether the parameter is required.
+    /// </summary>
+    public bool Required { get; init; }
+    /// <summary>
+    /// Optional enum values represented as text.
+    /// </summary>
+    public string[]? EnumValues { get; init; }
+    /// <summary>
+    /// Optional JSON-encoded default value.
+    /// </summary>
+    public string? DefaultJson { get; init; }
+    /// <summary>
+    /// Optional JSON-encoded example value.
+    /// </summary>
+    public string? ExampleJson { get; init; }
 }
 
 /// <summary>

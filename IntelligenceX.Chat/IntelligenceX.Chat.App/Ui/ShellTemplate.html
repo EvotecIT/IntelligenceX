@@ -215,7 +215,7 @@
           <div class="options-note">Overrides are profile-scoped. Leave fields empty to use service defaults.</div>
           <div class="options-row">
             <label class="options-label-inline" for="optAutonomyMaxRounds">Max tool rounds</label>
-            <input id="optAutonomyMaxRounds" class="options-input options-input-sm" type="number" min="1" max="24" placeholder="Default" />
+            <input id="optAutonomyMaxRounds" class="options-input options-input-sm" type="number" min="1" max="64" placeholder="Default" />
           </div>
           <div class="options-row">
             <label class="options-label-inline" for="optAutonomyParallel">Parallel tools</label>
@@ -233,9 +233,41 @@
             <label class="options-label-inline" for="optAutonomyToolTimeout">Tool timeout (seconds)</label>
             <input id="optAutonomyToolTimeout" class="options-input options-input-sm" type="number" min="0" max="3600" placeholder="Default" />
           </div>
+          <div class="options-row">
+            <label class="options-label-inline" for="optAutonomyWeightedRouting">Weighted tool routing</label>
+            <select id="optAutonomyWeightedRouting" class="options-select">
+              <option value="default">Service default</option>
+              <option value="on">Enabled</option>
+              <option value="off">Disabled</option>
+            </select>
+          </div>
+          <div class="options-row">
+            <label class="options-label-inline" for="optAutonomyMaxCandidates">Max candidate tools</label>
+            <input id="optAutonomyMaxCandidates" class="options-input options-input-sm" type="number" min="0" max="64" placeholder="Default" />
+          </div>
           <div class="options-actions">
             <button id="btnAutonomyReset" class="options-btn options-btn-ghost options-btn-sm">Use Service Defaults</button>
           </div>
+        </section>
+
+        <section class="options-group">
+          <div class="options-label">Persistent Memory</div>
+          <div class="options-row options-row-inline">
+            <label class="options-label-inline" for="optMemoryEnabled">Enabled</label>
+            <input id="optMemoryEnabled" class="options-toggle" type="checkbox" />
+          </div>
+          <div class="options-note">Profile-scoped memory facts are injected as context in future turns.</div>
+          <div class="options-row">
+            <label class="options-label-inline" for="optMemoryNote">Add memory note</label>
+            <div class="options-row-inline">
+              <input id="optMemoryNote" class="options-input options-input-sm" placeholder="e.g. Prefer concise AD summaries" />
+              <button id="btnAddMemoryNote" class="options-btn options-btn-sm">Add</button>
+            </div>
+          </div>
+          <div class="options-actions">
+            <button id="btnClearMemory" class="options-btn options-btn-ghost options-btn-sm">Clear Memory</button>
+          </div>
+          <div class="options-list options-memory-list" id="memoryFactsList"></div>
         </section>
 
         <section class="options-group">

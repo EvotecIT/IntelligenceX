@@ -31,6 +31,8 @@ internal static class PromptMarkdownBuilder {
     /// <param name="includeLiveProfileUpdates">Whether live-profile guidance should be included.</param>
     /// <param name="executionBehaviorPrompt">Execution behavior prompt fragment.</param>
     /// <param name="localContextLines">Optional compact local context fallback lines.</param>
+    /// <param name="persistentMemoryLines">Optional persistent memory facts.</param>
+    /// <param name="persistentMemoryPrompt">Optional persistent memory protocol guidance.</param>
     /// <returns>Request text to send to service/model.</returns>
     public static string BuildServiceRequest(
         string userText,
@@ -40,11 +42,18 @@ internal static class PromptMarkdownBuilder {
         IReadOnlyList<string> missingOnboardingFields,
         bool includeLiveProfileUpdates,
         string executionBehaviorPrompt,
-        IReadOnlyList<string>? localContextLines = null) {
+        IReadOnlyList<string>? localContextLines = null,
+        IReadOnlyList<string>? persistentMemoryLines = null,
+        string? persistentMemoryPrompt = null) {
         var hasName = !string.IsNullOrWhiteSpace(effectiveName);
         var hasPersona = !string.IsNullOrWhiteSpace(effectivePersona);
+        var hasSupplementalContext = includeLiveProfileUpdates
+                                     || !string.IsNullOrWhiteSpace(executionBehaviorPrompt)
+                                     || !string.IsNullOrWhiteSpace(persistentMemoryPrompt)
+                                     || (localContextLines is { Count: > 0 })
+                                     || (persistentMemoryLines is { Count: > 0 });
 
-        if (!hasName && !hasPersona && !onboardingInProgress) {
+        if (!hasName && !hasPersona && !onboardingInProgress && !hasSupplementalContext) {
             return userText;
         }
 
@@ -81,6 +90,26 @@ internal static class PromptMarkdownBuilder {
 
         if (!string.IsNullOrWhiteSpace(executionBehaviorPrompt)) {
             markdown.Raw(executionBehaviorPrompt).BlankLine();
+        }
+
+        if (!string.IsNullOrWhiteSpace(persistentMemoryPrompt)) {
+            markdown.Raw(persistentMemoryPrompt.Trim()).BlankLine();
+        }
+
+        if (persistentMemoryLines is { Count: > 0 }) {
+            markdown
+                .Paragraph("[Persistent memory]")
+                .Bullet("Use these as durable hints when relevant for this request.")
+                .BlankLine();
+
+            for (var i = 0; i < persistentMemoryLines.Count; i++) {
+                var line = persistentMemoryLines[i];
+                if (!string.IsNullOrWhiteSpace(line)) {
+                    markdown.Bullet(line.Trim());
+                }
+            }
+
+            markdown.BlankLine();
         }
 
         if (localContextLines is { Count: > 0 }) {

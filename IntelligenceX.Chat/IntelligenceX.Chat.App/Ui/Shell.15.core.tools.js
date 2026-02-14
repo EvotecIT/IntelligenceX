@@ -1,3 +1,65 @@
+  function truncateJsonValue(value, maxLen) {
+    var text = String(value || "");
+    if (text.length <= maxLen) {
+      return text;
+    }
+    return text.slice(0, maxLen - 3) + "...";
+  }
+
+  function buildToolParameterCard(parameter) {
+    var card = document.createElement("div");
+    card.className = "options-tool-param";
+
+    var title = document.createElement("div");
+    title.className = "options-tool-param-title";
+
+    var name = document.createElement("span");
+    name.className = "options-tool-param-name";
+    name.textContent = parameter.name || "parameter";
+    title.appendChild(name);
+
+    var type = document.createElement("span");
+    type.className = "options-pill options-pill-category";
+    type.textContent = parameter.type || "any";
+    title.appendChild(type);
+
+    if (parameter.required === true) {
+      var required = document.createElement("span");
+      required.className = "options-pill options-pill-required";
+      required.textContent = "required";
+      title.appendChild(required);
+    }
+
+    card.appendChild(title);
+
+    if (parameter.description) {
+      var desc = document.createElement("div");
+      desc.className = "options-tool-param-desc";
+      desc.textContent = parameter.description;
+      card.appendChild(desc);
+    }
+
+    var metaBits = [];
+    if (Array.isArray(parameter.enumValues) && parameter.enumValues.length > 0) {
+      metaBits.push("enum: " + parameter.enumValues.join(", "));
+    }
+    if (parameter.defaultJson) {
+      metaBits.push("default: " + truncateJsonValue(parameter.defaultJson, 120));
+    }
+    if (parameter.exampleJson) {
+      metaBits.push("example: " + truncateJsonValue(parameter.exampleJson, 120));
+    }
+
+    if (metaBits.length > 0) {
+      var meta = document.createElement("div");
+      meta.className = "options-tool-param-meta";
+      meta.textContent = metaBits.join(" · ");
+      card.appendChild(meta);
+    }
+
+    return card;
+  }
+
   function createToolCard(tool) {
     var item = document.createElement("div");
     item.className = "options-item";
@@ -57,6 +119,23 @@
       item.appendChild(tagsRow);
     }
 
+    if (Array.isArray(tool.parameters) && tool.parameters.length > 0) {
+      var parametersDetails = document.createElement("details");
+      parametersDetails.className = "options-tool-params";
+
+      var summary = document.createElement("summary");
+      summary.textContent = "Parameters (" + String(tool.parameters.length) + ")";
+      parametersDetails.appendChild(summary);
+
+      var body = document.createElement("div");
+      body.className = "options-tool-params-body";
+      for (var p = 0; p < tool.parameters.length; p++) {
+        body.appendChild(buildToolParameterCard(tool.parameters[p] || {}));
+      }
+      parametersDetails.appendChild(body);
+      item.appendChild(parametersDetails);
+    }
+
     return item;
   }
 
@@ -103,7 +182,10 @@
       tool.packId || "",
       tool.packName || "",
       packSourceLabel(packSourceKind(inferPackIdFromTool(tool))),
-      (tool.tags || []).join(" ")
+      (tool.tags || []).join(" "),
+      Array.isArray(tool.parameters)
+        ? tool.parameters.map(function(p) { return (p && p.name ? p.name : "") + " " + (p && p.description ? p.description : ""); }).join(" ")
+        : ""
     ].join(" ").toLowerCase();
 
     return haystack.indexOf(filter) >= 0;
@@ -352,6 +434,8 @@
     var parallelSelect = byId("optAutonomyParallel");
     var turnTimeoutInput = byId("optAutonomyTurnTimeout");
     var toolTimeoutInput = byId("optAutonomyToolTimeout");
+    var weightedRoutingSelect = byId("optAutonomyWeightedRouting");
+    var maxCandidatesInput = byId("optAutonomyMaxCandidates");
 
     if (maxRoundsInput) {
       maxRoundsInput.value = autonomy.maxToolRounds == null ? "" : String(autonomy.maxToolRounds);
@@ -371,6 +455,101 @@
         parallelSelect.value = "default";
       }
       syncCustomSelect(parallelSelect);
+    }
+    if (weightedRoutingSelect) {
+      if (autonomy.weightedToolRouting === true) {
+        weightedRoutingSelect.value = "on";
+      } else if (autonomy.weightedToolRouting === false) {
+        weightedRoutingSelect.value = "off";
+      } else {
+        weightedRoutingSelect.value = "default";
+      }
+      syncCustomSelect(weightedRoutingSelect);
+    }
+    if (maxCandidatesInput) {
+      maxCandidatesInput.value = autonomy.maxCandidateTools == null ? "" : String(autonomy.maxCandidateTools);
+    }
+  }
+
+  function renderMemory() {
+    var memory = state.options.memory || {};
+    var enabled = memory.enabled !== false;
+    var facts = Array.isArray(memory.facts) ? memory.facts : [];
+
+    var toggle = byId("optMemoryEnabled");
+    if (toggle) {
+      toggle.checked = enabled;
+    }
+
+    var addButton = byId("btnAddMemoryNote");
+    if (addButton) {
+      addButton.disabled = !enabled;
+    }
+
+    var noteInput = byId("optMemoryNote");
+    if (noteInput) {
+      noteInput.disabled = !enabled;
+    }
+
+    var list = byId("memoryFactsList");
+    if (!list) {
+      return;
+    }
+
+    list.innerHTML = "";
+    if (facts.length === 0) {
+      list.innerHTML = "<div class='options-item'><div class='options-item-title'>No memory facts saved</div></div>";
+      return;
+    }
+
+    for (var i = 0; i < facts.length; i++) {
+      var fact = facts[i] || {};
+      var card = document.createElement("div");
+      card.className = "options-item";
+
+      var header = document.createElement("div");
+      header.className = "options-item-header";
+
+      var title = document.createElement("div");
+      title.className = "options-item-title";
+      title.textContent = fact.fact || "(empty)";
+      header.appendChild(title);
+
+      var weight = document.createElement("span");
+      weight.className = "options-pill options-pill-category";
+      weight.textContent = "w" + String(fact.weight || 3);
+      header.appendChild(weight);
+
+      var remove = document.createElement("button");
+      remove.className = "options-btn options-btn-ghost options-btn-sm";
+      remove.textContent = "Remove";
+      remove.disabled = !enabled;
+      remove.dataset.memoryId = fact.id || "";
+      remove.addEventListener("click", function(e) {
+        var id = e.target.dataset.memoryId || "";
+        if (!id) {
+          return;
+        }
+        post("remove_memory_fact", { id: id });
+      });
+      header.appendChild(remove);
+      card.appendChild(header);
+
+      var metaParts = [];
+      if (Array.isArray(fact.tags) && fact.tags.length > 0) {
+        metaParts.push("tags: " + fact.tags.join(", "));
+      }
+      if (fact.updatedLocal) {
+        metaParts.push("updated: " + fact.updatedLocal);
+      }
+      if (metaParts.length > 0) {
+        var sub = document.createElement("div");
+        sub.className = "options-item-sub";
+        sub.textContent = metaParts.join(" · ");
+        card.appendChild(sub);
+      }
+
+      list.appendChild(card);
     }
   }
 
@@ -457,9 +636,11 @@
     ensureCustomSelect("optSidebarMode");
     ensureCustomSelect("optProfileApplyMode");
     ensureCustomSelect("optAutonomyParallel");
+    ensureCustomSelect("optAutonomyWeightedRouting");
 
     renderPolicy();
     renderAutonomy();
+    renderMemory();
     renderTools();
     renderSidebarConversations();
     renderProfileScopeHint();
@@ -643,6 +824,7 @@
     state.options.timestampFormat = nextOptions.timestampFormat || state.options.timestampFormat;
     state.options.export = nextOptions.export || state.options.export;
     state.options.autonomy = nextOptions.autonomy || state.options.autonomy;
+    state.options.memory = nextOptions.memory || state.options.memory;
     state.options.activeProfileName = nextOptions.activeProfileName || state.options.activeProfileName;
     state.options.profileNames = nextOptions.profileNames || state.options.profileNames;
     state.options.activeConversationId = nextOptions.activeConversationId || state.options.activeConversationId;

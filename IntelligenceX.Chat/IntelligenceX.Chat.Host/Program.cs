@@ -571,7 +571,7 @@ internal static class Program {
         public bool ShowHelp { get; set; }
         public bool ForceLogin { get; set; }
         public bool ParallelToolCalls { get; set; }
-        public int MaxToolRounds { get; set; } = 3;
+        public int MaxToolRounds { get; set; } = 8;
         public int TurnTimeoutSeconds { get; set; }
         public int ToolTimeoutSeconds { get; set; }
         public List<string> AllowedRoots { get; } = new();

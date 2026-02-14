@@ -27,7 +27,7 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
-    private const int SafeDefaultMaxToolRounds = 3;
+    private const int SafeDefaultMaxToolRounds = 8;
     private const bool SafeDefaultParallelTools = true;
     private const int SafeDefaultTurnTimeoutSeconds = 180;
     private const int SafeDefaultToolTimeoutSeconds = 60;
@@ -68,6 +68,9 @@ public sealed partial class MainWindow : Window {
                 _toolPackNames.Remove(name);
             }
             _toolTags[name] = NormalizeTags(tool.Tags);
+            _toolParameters[name] = tool.Parameters is { Length: > 0 } parameters
+                ? parameters
+                : Array.Empty<ToolParameterDto>();
             if (!_toolStates.ContainsKey(name)) {
                 _toolStates[name] = true;
             }
@@ -83,6 +86,7 @@ public sealed partial class MainWindow : Window {
                 _toolPackIds.Remove(toolName);
                 _toolPackNames.Remove(toolName);
                 _toolTags.Remove(toolName);
+                _toolParameters.Remove(toolName);
             }
         }
     }
@@ -247,7 +251,7 @@ public sealed partial class MainWindow : Window {
         }
 
         var effectiveMaxToolRounds = _autonomyMaxToolRounds
-            ?? NormalizeAutonomyInt(_sessionPolicy?.MaxToolRounds, min: 1, max: 24)
+            ?? NormalizeAutonomyInt(_sessionPolicy?.MaxToolRounds, min: 1, max: 64)
             ?? SafeDefaultMaxToolRounds;
 
         var effectiveParallelTools = _autonomyParallelTools
@@ -267,20 +271,27 @@ public sealed partial class MainWindow : Window {
             MaxToolRounds = effectiveMaxToolRounds,
             ParallelTools = effectiveParallelTools,
             TurnTimeoutSeconds = effectiveTurnTimeoutSeconds,
-            ToolTimeoutSeconds = effectiveToolTimeoutSeconds
+            ToolTimeoutSeconds = effectiveToolTimeoutSeconds,
+            WeightedToolRouting = _autonomyWeightedToolRouting,
+            MaxCandidateTools = _autonomyMaxCandidateTools
         };
     }
 
-    private async Task SetAutonomyOverridesAsync(string? maxRounds, string? parallelMode, string? turnTimeout, string? toolTimeout) {
-        _autonomyMaxToolRounds = ParseAutonomyInt(maxRounds, min: 1, max: 24);
+    private async Task SetAutonomyOverridesAsync(string? maxRounds, string? parallelMode, string? turnTimeout, string? toolTimeout,
+        string? weightedRouting, string? maxCandidates) {
+        _autonomyMaxToolRounds = ParseAutonomyInt(maxRounds, min: 1, max: 64);
         _autonomyParallelTools = ParseAutonomyParallelMode(parallelMode);
         _autonomyTurnTimeoutSeconds = ParseAutonomyInt(turnTimeout, min: 0, max: 3600);
         _autonomyToolTimeoutSeconds = ParseAutonomyInt(toolTimeout, min: 0, max: 3600);
+        _autonomyWeightedToolRouting = ParseAutonomyParallelMode(weightedRouting);
+        _autonomyMaxCandidateTools = ParseAutonomyInt(maxCandidates, min: 0, max: 64);
 
         _appState.AutonomyMaxToolRounds = _autonomyMaxToolRounds;
         _appState.AutonomyParallelTools = _autonomyParallelTools;
         _appState.AutonomyTurnTimeoutSeconds = _autonomyTurnTimeoutSeconds;
         _appState.AutonomyToolTimeoutSeconds = _autonomyToolTimeoutSeconds;
+        _appState.AutonomyWeightedToolRouting = _autonomyWeightedToolRouting;
+        _appState.AutonomyMaxCandidateTools = _autonomyMaxCandidateTools;
 
         await PublishOptionsStateAsync().ConfigureAwait(false);
         await PersistAppStateAsync().ConfigureAwait(false);
@@ -291,11 +302,15 @@ public sealed partial class MainWindow : Window {
         _autonomyParallelTools = null;
         _autonomyTurnTimeoutSeconds = null;
         _autonomyToolTimeoutSeconds = null;
+        _autonomyWeightedToolRouting = null;
+        _autonomyMaxCandidateTools = null;
 
         _appState.AutonomyMaxToolRounds = null;
         _appState.AutonomyParallelTools = null;
         _appState.AutonomyTurnTimeoutSeconds = null;
         _appState.AutonomyToolTimeoutSeconds = null;
+        _appState.AutonomyWeightedToolRouting = null;
+        _appState.AutonomyMaxCandidateTools = null;
 
         await PublishOptionsStateAsync().ConfigureAwait(false);
         await PersistAppStateAsync().ConfigureAwait(false);
@@ -364,6 +379,7 @@ public sealed partial class MainWindow : Window {
         var onboardingInProgress = !_appState.OnboardingCompleted;
         IReadOnlyList<string> missingFields = onboardingInProgress ? BuildMissingOnboardingFields() : Array.Empty<string>();
         var localContextLines = BuildLocalContextFallbackLines(activeConversation, userText);
+        var memoryContextLines = BuildPersistentMemoryContextLines(userText);
         return PromptMarkdownBuilder.BuildServiceRequest(
             userText: userText,
             effectiveName: effectiveName,
@@ -372,7 +388,9 @@ public sealed partial class MainWindow : Window {
             missingOnboardingFields: missingFields,
             includeLiveProfileUpdates: MightContainProfileUpdateCue(userText),
             executionBehaviorPrompt: PromptAssets.GetExecutionBehaviorPrompt(),
-            localContextLines: localContextLines);
+            localContextLines: localContextLines,
+            persistentMemoryLines: memoryContextLines,
+            persistentMemoryPrompt: _persistentMemoryEnabled ? PromptAssets.GetPersistentMemoryPrompt() : string.Empty);
     }
 
     private static IReadOnlyList<string> BuildLocalContextFallbackLines(ConversationRuntime conversation, string userText) {
@@ -418,6 +436,264 @@ public sealed partial class MainWindow : Window {
 
         lines.Reverse();
         return lines;
+    }
+
+    private IReadOnlyList<string> BuildPersistentMemoryContextLines(string userText) {
+        if (!_persistentMemoryEnabled) {
+            return Array.Empty<string>();
+        }
+
+        var facts = NormalizeMemoryFacts(_appState.MemoryFacts);
+        _appState.MemoryFacts = facts;
+        if (facts.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var lines = new List<string>();
+        var lowerText = (userText ?? string.Empty).Trim().ToLowerInvariant();
+
+        facts.Sort(static (a, b) => {
+            var weightCompare = b.Weight.CompareTo(a.Weight);
+            if (weightCompare != 0) {
+                return weightCompare;
+            }
+
+            return b.UpdatedUtc.CompareTo(a.UpdatedUtc);
+        });
+
+        foreach (var fact in facts) {
+            var text = (fact.Fact ?? string.Empty).Trim();
+            if (text.Length == 0) {
+                continue;
+            }
+
+            var score = fact.Weight;
+            var tags = fact.Tags ?? Array.Empty<string>();
+            for (var i = 0; i < tags.Length; i++) {
+                var tag = (tags[i] ?? string.Empty).Trim().ToLowerInvariant();
+                if (tag.Length > 0 && lowerText.Contains(tag, StringComparison.Ordinal)) {
+                    score += 2;
+                }
+            }
+
+            if (lowerText.Length > 0 && lowerText.Contains(text.ToLowerInvariant(), StringComparison.Ordinal)) {
+                score += 2;
+            }
+
+            if (score >= 3 || lines.Count < 3) {
+                lines.Add(text);
+            }
+
+            if (lines.Count >= 8) {
+                break;
+            }
+        }
+
+        return lines.Count == 0 ? Array.Empty<string>() : lines;
+    }
+
+    private static List<ChatMemoryFactState> NormalizeMemoryFacts(List<ChatMemoryFactState>? facts) {
+        if (facts is null || facts.Count == 0) {
+            return new List<ChatMemoryFactState>();
+        }
+
+        var normalized = new List<ChatMemoryFactState>(facts.Count);
+        var seenByFact = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var fact in facts) {
+            if (fact is null) {
+                continue;
+            }
+
+            var text = (fact.Fact ?? string.Empty).Trim();
+            if (text.Length == 0) {
+                continue;
+            }
+
+            if (!seenByFact.Add(text)) {
+                continue;
+            }
+
+            var id = string.IsNullOrWhiteSpace(fact.Id) ? Guid.NewGuid().ToString("N") : fact.Id.Trim();
+            var weight = Math.Clamp(fact.Weight, 1, 5);
+            var tags = NormalizeMemoryTags(fact.Tags);
+            var updatedUtc = fact.UpdatedUtc == default ? DateTime.UtcNow : EnsureUtc(fact.UpdatedUtc);
+
+            normalized.Add(new ChatMemoryFactState {
+                Id = id,
+                Fact = text,
+                Weight = weight,
+                Tags = tags,
+                UpdatedUtc = updatedUtc
+            });
+        }
+
+        normalized.Sort(static (a, b) => b.UpdatedUtc.CompareTo(a.UpdatedUtc));
+        if (normalized.Count > 120) {
+            normalized.RemoveRange(120, normalized.Count - 120);
+        }
+
+        return normalized;
+    }
+
+    private static string[] NormalizeMemoryTags(string[]? tags) {
+        if (tags is null || tags.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        var list = new List<string>(tags.Length);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < tags.Length; i++) {
+            var tag = (tags[i] ?? string.Empty).Trim();
+            if (tag.Length == 0 || tag.Length > 40) {
+                continue;
+            }
+
+            if (seen.Add(tag)) {
+                list.Add(tag);
+            }
+        }
+
+        return list.Count == 0 ? Array.Empty<string>() : list.ToArray();
+    }
+
+    private async Task SetPersistentMemoryEnabledAsync(bool enabled) {
+        _persistentMemoryEnabled = enabled;
+        _appState.PersistentMemoryEnabled = enabled;
+        await PublishOptionsStateAsync().ConfigureAwait(false);
+        await PersistAppStateAsync().ConfigureAwait(false);
+    }
+
+    private async Task AddMemoryFactAsync(string? factText, int weight = 3, string[]? tags = null) {
+        var text = (factText ?? string.Empty).Trim();
+        if (text.Length == 0) {
+            return;
+        }
+
+        if (!_persistentMemoryEnabled) {
+            _persistentMemoryEnabled = true;
+            _appState.PersistentMemoryEnabled = true;
+        }
+
+        var facts = NormalizeMemoryFacts(_appState.MemoryFacts);
+        var changed = UpsertMemoryFact(facts, text, weight, tags);
+        if (!changed) {
+            return;
+        }
+
+        _appState.MemoryFacts = facts;
+        await PublishOptionsStateAsync().ConfigureAwait(false);
+        await PersistAppStateAsync().ConfigureAwait(false);
+    }
+
+    private async Task RemoveMemoryFactAsync(string? memoryId) {
+        var id = (memoryId ?? string.Empty).Trim();
+        if (id.Length == 0) {
+            return;
+        }
+
+        var facts = NormalizeMemoryFacts(_appState.MemoryFacts);
+        var removed = facts.RemoveAll(fact => string.Equals(fact.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (removed <= 0) {
+            return;
+        }
+
+        _appState.MemoryFacts = facts;
+        await PublishOptionsStateAsync().ConfigureAwait(false);
+        await PersistAppStateAsync().ConfigureAwait(false);
+    }
+
+    private async Task ClearPersistentMemoryAsync() {
+        if (_appState.MemoryFacts.Count == 0) {
+            return;
+        }
+
+        _appState.MemoryFacts = new List<ChatMemoryFactState>();
+        await PublishOptionsStateAsync().ConfigureAwait(false);
+        await PersistAppStateAsync().ConfigureAwait(false);
+    }
+
+    private async Task<bool> ApplyMemoryUpdateAsync(AssistantMemoryUpdate update) {
+        if (!_persistentMemoryEnabled) {
+            return false;
+        }
+
+        var facts = NormalizeMemoryFacts(_appState.MemoryFacts);
+        var changed = false;
+
+        if (update.DeleteFacts is { Count: > 0 }) {
+            for (var i = 0; i < update.DeleteFacts.Count; i++) {
+                var candidate = (update.DeleteFacts[i] ?? string.Empty).Trim();
+                if (candidate.Length == 0) {
+                    continue;
+                }
+
+                var removed = facts.RemoveAll(fact =>
+                    string.Equals(fact.Id, candidate, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(fact.Fact, candidate, StringComparison.OrdinalIgnoreCase));
+                if (removed > 0) {
+                    changed = true;
+                }
+            }
+        }
+
+        if (update.Upserts is { Count: > 0 }) {
+            for (var i = 0; i < update.Upserts.Count; i++) {
+                var upsert = update.Upserts[i];
+                if (upsert is null || string.IsNullOrWhiteSpace(upsert.Fact)) {
+                    continue;
+                }
+
+                if (UpsertMemoryFact(facts, upsert.Fact, upsert.Weight, upsert.Tags)) {
+                    changed = true;
+                }
+            }
+        }
+
+        if (!changed) {
+            return false;
+        }
+
+        _appState.MemoryFacts = facts;
+        await PublishOptionsStateAsync().ConfigureAwait(false);
+        await PersistAppStateAsync().ConfigureAwait(false);
+        return true;
+    }
+
+    private static bool UpsertMemoryFact(List<ChatMemoryFactState> facts, string? factText, int weight, string[]? tags) {
+        var text = (factText ?? string.Empty).Trim();
+        if (text.Length == 0) {
+            return false;
+        }
+
+        var normalizedTags = NormalizeMemoryTags(tags);
+        var clampedWeight = Math.Clamp(weight, 1, 5);
+        var now = DateTime.UtcNow;
+
+        for (var i = 0; i < facts.Count; i++) {
+            if (!string.Equals(facts[i].Fact, text, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            facts[i].Weight = clampedWeight;
+            facts[i].Tags = normalizedTags;
+            facts[i].UpdatedUtc = now;
+            return true;
+        }
+
+        facts.Add(new ChatMemoryFactState {
+            Id = Guid.NewGuid().ToString("N"),
+            Fact = text,
+            Weight = clampedWeight,
+            Tags = normalizedTags,
+            UpdatedUtc = now
+        });
+
+        if (facts.Count > 120) {
+            facts.Sort(static (a, b) => b.UpdatedUtc.CompareTo(a.UpdatedUtc));
+            facts.RemoveRange(120, facts.Count - 120);
+        }
+
+        return true;
     }
 
     private static bool LooksLikeContextDependentFollowUp(string? userText) {

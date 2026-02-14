@@ -44,9 +44,13 @@ public sealed partial class MainWindow : Window {
             _appState.AutonomyParallelTools = _autonomyParallelTools;
             _appState.AutonomyTurnTimeoutSeconds = _autonomyTurnTimeoutSeconds;
             _appState.AutonomyToolTimeoutSeconds = _autonomyToolTimeoutSeconds;
+            _appState.AutonomyWeightedToolRouting = _autonomyWeightedToolRouting;
+            _appState.AutonomyMaxCandidateTools = _autonomyMaxCandidateTools;
             _appState.ExportSaveMode = _exportSaveMode;
             _appState.ExportDefaultFormat = _exportDefaultFormat;
             _appState.ExportLastDirectory = _lastExportDirectory;
+            _appState.PersistentMemoryEnabled = _persistentMemoryEnabled;
+            _appState.MemoryFacts = NormalizeMemoryFacts(_appState.MemoryFacts);
             _appState.ActiveConversationId = _activeConversationId;
             _appState.ThreadId = activeConversation.ThreadId;
             if (string.IsNullOrWhiteSpace(_sessionThemeOverride)) {
