@@ -397,8 +397,12 @@ internal sealed class ReviewRunner {
         // Treat any HTTP response as "reachable" (including 401/403/404/405). This is a connectivity check, not auth validation.
         using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
         try {
-            using var _ = await OpenAiCompatibleHttp.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token)
+            using var response = await OpenAiCompatibleHttp.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token)
                 .ConfigureAwait(false);
+            if (_settings.Diagnostics) {
+                Console.Error.WriteLine(
+                    $"Connectivity preflight returned HTTP {(int)response.StatusCode} for {endpoint.Host} (reachable).");
+            }
         } catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested) {
             throw new TimeoutException($"Connectivity preflight timed out after {timeout.TotalSeconds:0.#}s for {endpoint.Host}.", ex);
         } catch (HttpRequestException ex) {
