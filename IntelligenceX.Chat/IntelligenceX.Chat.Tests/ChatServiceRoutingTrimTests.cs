@@ -61,10 +61,10 @@ public sealed class ChatServiceRoutingTrimTests {
         TrimToolRoutingStatsNoLockMethod.Invoke(setup.Session, null);
 
         Assert.Equal(MaxTrackedToolRoutingStats, setup.ToolRoutingStats.Count);
-        Assert.False(setup.ToolRoutingStats.Contains("stale-zero"));
-        Assert.False(setup.ToolRoutingStats.Contains("stale-negative"));
-        Assert.True(setup.ToolRoutingStats.Contains("active-000"));
-        Assert.True(setup.ToolRoutingStats.Contains($"active-{MaxTrackedToolRoutingStats - 1:D3}"));
+        Assert.False(ContainsToolRoutingStatsKey(setup.ToolRoutingStats, "stale-zero"));
+        Assert.False(ContainsToolRoutingStatsKey(setup.ToolRoutingStats, "stale-negative"));
+        Assert.True(ContainsToolRoutingStatsKey(setup.ToolRoutingStats, "active-000"));
+        Assert.True(ContainsToolRoutingStatsKey(setup.ToolRoutingStats, $"active-{MaxTrackedToolRoutingStats - 1:D3}"));
     }
 
     [Fact]
@@ -125,6 +125,19 @@ public sealed class ChatServiceRoutingTrimTests {
             ?? throw new InvalidOperationException($"Property {propertyName} not found on ToolRoutingStats.");
 
         property.SetValue(stats, value);
+    }
+
+    private static bool ContainsToolRoutingStatsKey(IDictionary routingStats, string key) {
+        var containsKeyMethod = routingStats.GetType().GetMethod(
+            "ContainsKey",
+            BindingFlags.Public | BindingFlags.Instance,
+            null,
+            new[] { typeof(string) },
+            null)
+            ?? throw new InvalidOperationException("ContainsKey(string) not found on tool routing stats dictionary.");
+
+        var result = containsKeyMethod.Invoke(routingStats, new object?[] { key });
+        return Assert.IsType<bool>(result);
     }
 
     private readonly record struct SessionTrimTestState(
