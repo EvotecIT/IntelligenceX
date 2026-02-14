@@ -555,13 +555,23 @@ public sealed partial class MainWindow : Window {
                 continue;
             }
 
-            lines.Add(fact.Text);
+            var text = (fact.Text ?? string.Empty).Trim();
+            if (text.Length == 0) {
+                continue;
+            }
+
+            lines.Add(text);
         }
 
         if (lines.Count == 0) {
             var fallbackCount = Math.Min(3, scoredFacts.Count);
             for (var i = 0; i < fallbackCount; i++) {
-                lines.Add(scoredFacts[i].Text);
+                var text = (scoredFacts[i].Text ?? string.Empty).Trim();
+                if (text.Length == 0) {
+                    continue;
+                }
+
+                lines.Add(text);
             }
         }
 
