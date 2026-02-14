@@ -502,6 +502,7 @@ internal static partial class Program {
         failed += Run("Review provider invalid config throws", TestReviewProviderConfigInvalidThrows);
         failed += Run("OpenAI-compatible rejects http non-loopback by default", TestReviewOpenAiCompatibleRejectsHttpNonLoopbackByDefault);
         failed += Run("OpenAI-compatible preflight treats 405 as reachable", TestReviewOpenAiCompatiblePreflightTreats405AsReachable);
+        failed += Run("OpenAI-compatible follows redirects", TestReviewOpenAiCompatibleFollowsRedirects);
         failed += Run("Review config loader reads openaiAccountRotation camelCase",
             TestReviewConfigLoaderReadsOpenAiAccountRotationCamelCase);
         failed += Run("Review config loader reads legacy includeRelatedPullRequests alias",

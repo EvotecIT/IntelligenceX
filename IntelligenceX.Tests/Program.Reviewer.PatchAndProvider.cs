@@ -5,9 +5,9 @@ internal static partial class Program {
     private sealed class OpenAiCompatibleTestServer : IDisposable {
         private readonly TcpListener _listener;
         private readonly Task _loop;
-        private readonly Func<string, string, string, (int Code, string Status, string Body)> _handler;
+        private readonly Func<string, string, string, (int Code, string Status, string Body, Dictionary<string, string>? Headers)> _handler;
 
-        public OpenAiCompatibleTestServer(Func<string, string, string, (int Code, string Status, string Body)> handler) {
+        public OpenAiCompatibleTestServer(Func<string, string, string, (int Code, string Status, string Body, Dictionary<string, string>? Headers)> handler) {
             _handler = handler;
             _listener = new TcpListener(IPAddress.Loopback, 0);
             _listener.Start();
@@ -92,14 +92,25 @@ internal static partial class Program {
                 body = Encoding.UTF8.GetString(buffer, 0, total);
             }
 
-            var (code, status, responseBody) = _handler(method, path, body);
+            var (code, status, responseBody, headers) = _handler(method, path, body);
             var responseBytes = Encoding.UTF8.GetBytes(responseBody ?? string.Empty);
+            var responseHeaderBuilder = new System.Text.StringBuilder();
+            responseHeaderBuilder.Append($"HTTP/1.1 {code} {status}\r\n");
+            responseHeaderBuilder.Append("Content-Type: application/json\r\n");
+            if (headers is not null) {
+                foreach (var kvp in headers) {
+                    responseHeaderBuilder.Append(kvp.Key);
+                    responseHeaderBuilder.Append(": ");
+                    responseHeaderBuilder.Append(kvp.Value);
+                    responseHeaderBuilder.Append("\r\n");
+                }
+            }
+            responseHeaderBuilder.Append($"Content-Length: {responseBytes.Length}\r\n");
+            responseHeaderBuilder.Append("Connection: close\r\n");
+            responseHeaderBuilder.Append("\r\n");
+
             var responseHeader =
-                $"HTTP/1.1 {code} {status}\r\n" +
-                "Content-Type: application/json\r\n" +
-                $"Content-Length: {responseBytes.Length}\r\n" +
-                "Connection: close\r\n" +
-                "\r\n";
+                responseHeaderBuilder.ToString();
             var headerOut = Encoding.ASCII.GetBytes(responseHeader);
             await stream.WriteAsync(headerOut, 0, headerOut.Length).ConfigureAwait(false);
             await stream.WriteAsync(responseBytes, 0, responseBytes.Length).ConfigureAwait(false);
@@ -345,13 +356,13 @@ internal static partial class Program {
         using var server = new OpenAiCompatibleTestServer((method, path, _) => {
             if (method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
                 path.Equals("/v1/models", StringComparison.OrdinalIgnoreCase)) {
-                return (405, "Method Not Allowed", "{\"error\":\"nope\"}");
+                return (405, "Method Not Allowed", "{\"error\":\"nope\"}", null);
             }
             if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
                 path.Equals("/v1/chat/completions", StringComparison.OrdinalIgnoreCase)) {
-                return (200, "OK", "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}");
+                return (200, "OK", "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}", null);
             }
-            return (404, "Not Found", "{}");
+            return (404, "Not Found", "{}", null);
         });
 
         var settings = new ReviewSettings {
@@ -374,6 +385,55 @@ internal static partial class Program {
             .GetAwaiter()
             .GetResult();
         AssertEqual("ok", result, "openai-compatible preflight treats 405 as reachable");
+    }
+
+    private static void TestReviewOpenAiCompatibleFollowsRedirects() {
+        using var server = new OpenAiCompatibleTestServer((method, path, _) => {
+            if (method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/models", StringComparison.OrdinalIgnoreCase)) {
+                return (302, "Found", "{}", new Dictionary<string, string> {
+                    ["Location"] = "/v1/models-redirected"
+                });
+            }
+            if (method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/models-redirected", StringComparison.OrdinalIgnoreCase)) {
+                return (405, "Method Not Allowed", "{\"error\":\"nope\"}", null);
+            }
+
+            if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/chat/completions", StringComparison.OrdinalIgnoreCase)) {
+                return (302, "Found", "{}", new Dictionary<string, string> {
+                    ["Location"] = "/v1/chat/completions-redirected"
+                });
+            }
+            if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/chat/completions-redirected", StringComparison.OrdinalIgnoreCase)) {
+                return (200, "OK", "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}", null);
+            }
+
+            return (404, "Not Found", "{}", null);
+        });
+
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAICompatible,
+            ProviderHealthChecks = true,
+            Preflight = false,
+            Model = "test-model",
+            OpenAICompatibleBaseUrl = server.BaseUri.ToString(),
+            OpenAICompatibleApiKey = "test",
+            OpenAICompatibleTimeoutSeconds = 10,
+            RetryCount = 1,
+            RetryDelaySeconds = 1,
+            RetryMaxDelaySeconds = 1,
+            FailOpen = false,
+            Diagnostics = false
+        };
+
+        var runner = new ReviewRunner(settings);
+        var result = runner.RunAsync("hi", onPartial: null, updateInterval: null, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        AssertEqual("ok", result, "openai-compatible follows redirects for preflight and request");
     }
 
     private static void TestReviewConfigLoaderReadsOpenAiAccountRotationCamelCase() {

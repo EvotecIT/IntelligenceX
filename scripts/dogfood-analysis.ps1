@@ -16,20 +16,19 @@ if (-not (Test-Path $ConfigPath)) {
     throw "Config not found: $ConfigPath"
 }
 
-Write-Host "Dogfood: validate-catalog"
+Write-Output "Dogfood: validate-catalog"
 dotnet run --project $cliProject --framework $Framework -- analyze validate-catalog --workspace .
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host "Dogfood: analyze run"
+Write-Output "Dogfood: analyze run"
 dotnet run --project $cliProject --framework $Framework -- analyze run --config $ConfigPath --out $OutDir --framework $Framework --workspace .
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $changedFiles = Join-Path $OutDir "changed-files.txt"
-Write-Host "Dogfood: ci changed-files ($changedFiles)"
+Write-Output "Dogfood: ci changed-files ($changedFiles)"
 dotnet run --project $cliProject --framework $Framework -- ci changed-files --workspace . --out $changedFiles
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host "Dogfood: analyze gate"
+Write-Output "Dogfood: analyze gate"
 dotnet run --project $cliProject --framework $Framework -- analyze gate --config $ConfigPath --workspace . --changed-files $changedFiles
 exit $LASTEXITCODE
-
