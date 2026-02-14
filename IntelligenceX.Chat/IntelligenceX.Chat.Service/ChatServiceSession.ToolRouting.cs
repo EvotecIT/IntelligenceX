@@ -167,7 +167,7 @@ internal sealed partial class ChatServiceSession {
         long intentTicks;
         lock (_toolRoutingContextLock) {
             if (!_lastUserIntentByThreadId.TryGetValue(normalizedThreadId, out intent) || string.IsNullOrWhiteSpace(intent)) {
-                return normalized;
+                return raw;
             }
 
             intentTicks = _lastUserIntentSeenUtcTicks.TryGetValue(normalizedThreadId, out var ticks) ? ticks : 0;
@@ -176,11 +176,11 @@ internal sealed partial class ChatServiceSession {
         if (intentTicks > 0) {
             if (intentTicks < DateTime.MinValue.Ticks || intentTicks > DateTime.MaxValue.Ticks) {
                 // Defensive: avoid exceptions from ticks->DateTime conversion if ticks are corrupted/out of range.
-                return normalized;
+                return raw;
             }
             var age = DateTime.UtcNow - new DateTime(intentTicks, DateTimeKind.Utc);
             if (age > UserIntentContextMaxAge) {
-                return normalized;
+                return raw;
             }
         }
 

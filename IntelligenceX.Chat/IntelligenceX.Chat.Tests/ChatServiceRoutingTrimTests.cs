@@ -302,6 +302,17 @@ public sealed class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExpandContinuationUserRequest_PreservesWhitespaceWhenNoIntentCached() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var input = "  run now  ";
+
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_RespectsMaxAge() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         RememberUserIntentMethod.Invoke(session, new object?[] { "thread-001", "Please run forest-wide replication." });
