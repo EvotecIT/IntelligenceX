@@ -248,6 +248,12 @@ public class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "eventlog_evtx_find",
+            new[] { "query", "log_name", "max_results" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
             "powershell_pack_info",
             Array.Empty<string>(),
             Array.Empty<string>()
