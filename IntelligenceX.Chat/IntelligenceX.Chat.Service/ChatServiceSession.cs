@@ -1916,6 +1916,10 @@ internal sealed class ChatServiceSession {
     }
 
     private static bool IsLikelyTransientToolException(Exception ex) {
+        if (ex is OperationCanceledException) {
+            return false;
+        }
+
         if (ex is TimeoutException || ex is IOException) {
             return true;
         }
