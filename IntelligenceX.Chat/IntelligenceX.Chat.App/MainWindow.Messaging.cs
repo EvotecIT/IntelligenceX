@@ -693,7 +693,7 @@ public sealed partial class MainWindow : Window {
                     var routingInsightUpdated = ApplyToolRoutingInsight(status);
                     _ = SetActivityAsync(IsTerminalChatStatus(status.Status) ? null : FormatActivityText(status));
                     if (routingInsightUpdated) {
-                        _ = PublishOptionsStateAsync();
+                        _ = PublishOptionsStateSafeAsync();
                     }
                     if (VerboseServiceLogs || _debugMode) {
                         AppendSystem(FormatStatusTrace(status));
@@ -738,6 +738,16 @@ public sealed partial class MainWindow : Window {
                     break;
             }
         });
+    }
+
+    private async Task PublishOptionsStateSafeAsync() {
+        try {
+            await PublishOptionsStateAsync().ConfigureAwait(true);
+        } catch (Exception ex) {
+            if (VerboseServiceLogs || _debugMode) {
+                AppendSystem("Options refresh failed: " + ex.Message);
+            }
+        }
     }
 
     private void OnClientDisconnected(ChatServiceClient client) {

@@ -1941,6 +1941,9 @@ internal sealed class ChatServiceSession {
         if (ex is OperationCanceledException) {
             return false;
         }
+        if (HasLikelyPermanentExceptionSignal(ex)) {
+            return false;
+        }
 
         if (HasKnownTransientExceptionInChain(ex)) {
             return true;
@@ -1954,6 +1957,31 @@ internal sealed class ChatServiceSession {
                || message.IndexOf("try again", StringComparison.OrdinalIgnoreCase) >= 0
                || message.IndexOf("connection", StringComparison.OrdinalIgnoreCase) >= 0
                || message.IndexOf("throttl", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static bool HasLikelyPermanentExceptionSignal(Exception ex) {
+        var depth = 0;
+        for (Exception? current = ex; current is not null && depth < 8; current = current.InnerException, depth++) {
+            if (current is UnauthorizedAccessException) {
+                return true;
+            }
+
+            var message = current.Message ?? string.Empty;
+            if (message.IndexOf("access denied", StringComparison.OrdinalIgnoreCase) >= 0
+                || message.IndexOf("permission denied", StringComparison.OrdinalIgnoreCase) >= 0
+                || message.IndexOf("unauthorized", StringComparison.OrdinalIgnoreCase) >= 0
+                || message.IndexOf("forbidden", StringComparison.OrdinalIgnoreCase) >= 0
+                || message.IndexOf("invalid credential", StringComparison.OrdinalIgnoreCase) >= 0
+                || message.IndexOf("authentication failed", StringComparison.OrdinalIgnoreCase) >= 0
+                || message.IndexOf("invalid parameter", StringComparison.OrdinalIgnoreCase) >= 0
+                || message.IndexOf("invalid argument", StringComparison.OrdinalIgnoreCase) >= 0
+                || message.IndexOf("missing required", StringComparison.OrdinalIgnoreCase) >= 0
+                || message.IndexOf("cannot bind parameter", StringComparison.OrdinalIgnoreCase) >= 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool HasKnownTransientExceptionInChain(Exception ex) {
