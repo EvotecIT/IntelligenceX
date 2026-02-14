@@ -177,6 +177,33 @@ public sealed class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForQuotedNonCallToActionWhenContinuationSubsetNotUsed() {
+        var userRequest = "access denied";
+        var assistantDraft = "I got \"access denied\" from the server, but I can retry if needed.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_UsesCallToActionQuoteWhenMultipleQuotedSegmentsPresent() {
+        var assistantDraft = "If you say \"run now\", I'll execute forest-wide checks. Last error was \"access denied\".";
+
+        var resultCta = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { "run now", assistantDraft, true, 0, false });
+        Assert.True(Assert.IsType<bool>(resultCta));
+
+        var resultNonCta = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { "access denied", assistantDraft, true, 0, false });
+        Assert.False(Assert.IsType<bool>(resultNonCta));
+    }
+
+    [Fact]
     public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForExplicitCapabilityBlocker() {
         var userRequest = "Get top 5 events from ADO system log.";
         var assistantDraft = "I can't query remote ADO live logs directly without machine access.";
