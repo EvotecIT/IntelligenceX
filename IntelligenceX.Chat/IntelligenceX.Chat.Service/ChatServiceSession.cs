@@ -26,6 +26,8 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private const int MaxTrackedToolRoutingStats = 512;
     private const int MaxTrackedWeightedRoutingContexts = 256;
+    private const int MaxTrackedUserIntentContexts = 256;
+    private static readonly TimeSpan UserIntentContextMaxAge = TimeSpan.FromMinutes(15);
     private readonly ServiceOptions _options;
     private readonly Stream _stream;
     private readonly ToolRegistry _registry;
@@ -38,6 +40,8 @@ internal sealed partial class ChatServiceSession {
     private readonly object _toolRoutingContextLock = new();
     private readonly Dictionary<string, string[]> _lastWeightedToolNamesByThreadId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _lastWeightedToolSubsetSeenUtcTicks = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _lastUserIntentByThreadId = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _lastUserIntentSeenUtcTicks = new(StringComparer.Ordinal);
 
     private readonly JsonSerializerOptions _json;
     private readonly SemaphoreSlim _writeLock = new(1, 1);

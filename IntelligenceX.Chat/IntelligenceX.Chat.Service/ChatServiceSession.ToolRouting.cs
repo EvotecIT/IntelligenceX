@@ -129,6 +129,62 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
+    private void RememberUserIntent(string threadId, string userRequest) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return;
+        }
+
+        var normalized = (userRequest ?? string.Empty).Trim();
+        if (normalized.Length == 0 || LooksLikeContinuationFollowUp(normalized)) {
+            return;
+        }
+
+        if (normalized.Length > 600) {
+            normalized = normalized.Substring(0, 600);
+        }
+
+        lock (_toolRoutingContextLock) {
+            _lastUserIntentByThreadId[normalizedThreadId] = normalized;
+            _lastUserIntentSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
+            TrimWeightedRoutingContextsNoLock();
+        }
+    }
+
+    private string ExpandContinuationUserRequest(string threadId, string userRequest) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return userRequest;
+        }
+
+        var normalized = (userRequest ?? string.Empty).Trim();
+        if (normalized.Length == 0 || !LooksLikeContinuationFollowUp(normalized)) {
+            return normalized;
+        }
+
+        string? intent;
+        long intentTicks;
+        lock (_toolRoutingContextLock) {
+            if (!_lastUserIntentByThreadId.TryGetValue(normalizedThreadId, out intent) || string.IsNullOrWhiteSpace(intent)) {
+                return normalized;
+            }
+
+            intentTicks = _lastUserIntentSeenUtcTicks.TryGetValue(normalizedThreadId, out var ticks) ? ticks : 0;
+            _lastUserIntentSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
+            TrimWeightedRoutingContextsNoLock();
+        }
+
+        if (intentTicks > 0) {
+            var age = DateTime.UtcNow - new DateTime(intentTicks, DateTimeKind.Utc);
+            if (age > UserIntentContextMaxAge) {
+                return normalized;
+            }
+        }
+
+        var expanded = $"{intent!.Trim()}\nFollow-up: {normalized}";
+        return expanded.Length <= 900 ? expanded : expanded.Substring(0, 900);
+    }
+
     private double ReadToolRoutingAdjustment(string toolName) {
         lock (_toolRoutingStatsLock) {
             if (!_toolRoutingStats.TryGetValue(toolName, out var stats)) {
@@ -202,16 +258,28 @@ internal sealed partial class ChatServiceSession {
     }
 
     private void TrimWeightedRoutingContextsNoLock() {
-        var removeCount = _lastWeightedToolNamesByThreadId.Count - MaxTrackedWeightedRoutingContexts;
+        // Weighted-tool-subset context and user-intent context share the same key space (threadId),
+        // so trim both when either grows beyond its cap.
+        var weightedRemoveCount = _lastWeightedToolNamesByThreadId.Count - MaxTrackedWeightedRoutingContexts;
+        var intentRemoveCount = _lastUserIntentByThreadId.Count - MaxTrackedUserIntentContexts;
+        var removeCount = Math.Max(weightedRemoveCount, intentRemoveCount);
         if (removeCount <= 0) {
             return;
         }
 
-        var threadIdsToRemove = _lastWeightedToolNamesByThreadId.Keys
+        var seenThreadIds = new HashSet<string>(_lastWeightedToolNamesByThreadId.Keys, StringComparer.Ordinal);
+        foreach (var threadId in _lastUserIntentByThreadId.Keys) {
+            seenThreadIds.Add(threadId);
+        }
+
+        var threadIdsToRemove = seenThreadIds
             .Select(threadId => {
-                var ticks = _lastWeightedToolSubsetSeenUtcTicks.TryGetValue(threadId, out var value) && value > 0
-                    ? value
-                    : long.MinValue;
+                var ticks = long.MinValue;
+                if (_lastWeightedToolSubsetSeenUtcTicks.TryGetValue(threadId, out var weightedTicks) && weightedTicks > 0) {
+                    ticks = weightedTicks;
+                } else if (_lastUserIntentSeenUtcTicks.TryGetValue(threadId, out var intentTicks) && intentTicks > 0) {
+                    ticks = intentTicks;
+                }
                 return (ThreadId: threadId, Ticks: ticks);
             })
             .OrderBy(item => item.Ticks)
@@ -223,6 +291,8 @@ internal sealed partial class ChatServiceSession {
         foreach (var threadId in threadIdsToRemove) {
             _lastWeightedToolNamesByThreadId.Remove(threadId);
             _lastWeightedToolSubsetSeenUtcTicks.Remove(threadId);
+            _lastUserIntentByThreadId.Remove(threadId);
+            _lastUserIntentSeenUtcTicks.Remove(threadId);
         }
     }
 
@@ -351,7 +421,89 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        return text;
+        return NormalizeRoutingUserText(text);
+    }
+
+    private static string NormalizeRoutingUserText(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        // Strip code fences and inline code so routing focuses on intent, not pasted snippets.
+        normalized = StripCodeFences(normalized);
+        normalized = StripInlineCode(normalized);
+        normalized = CollapseWhitespace(normalized);
+        return normalized.Length == 0 ? (text ?? string.Empty).Trim() : normalized;
+    }
+
+    private static string StripCodeFences(string text) {
+        if (string.IsNullOrWhiteSpace(text) || text.IndexOf("```", StringComparison.Ordinal) < 0) {
+            return text;
+        }
+
+        var sb = new StringBuilder(text.Length);
+        var idx = 0;
+        while (idx < text.Length) {
+            var start = text.IndexOf("```", idx, StringComparison.Ordinal);
+            if (start < 0) {
+                sb.Append(text, idx, text.Length - idx);
+                break;
+            }
+
+            sb.Append(text, idx, start - idx);
+
+            var end = text.IndexOf("```", start + 3, StringComparison.Ordinal);
+            if (end < 0) {
+                break;
+            }
+
+            idx = end + 3;
+        }
+
+        return sb.ToString();
+    }
+
+    private static string StripInlineCode(string text) {
+        if (string.IsNullOrWhiteSpace(text) || text.IndexOf('`', StringComparison.Ordinal) < 0) {
+            return text;
+        }
+
+        // Inline code often wraps important tokens (paths/hostnames). Keep the content and drop delimiters.
+        var sb = new StringBuilder(text.Length);
+        for (var i = 0; i < text.Length; i++) {
+            var ch = text[i];
+            if (ch == '`') {
+                continue;
+            }
+            sb.Append(ch);
+        }
+
+        return sb.ToString();
+    }
+
+    private static string CollapseWhitespace(string text) {
+        if (string.IsNullOrWhiteSpace(text)) {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder(text.Length);
+        var prevSpace = false;
+        for (var i = 0; i < text.Length; i++) {
+            var ch = text[i];
+            if (char.IsWhiteSpace(ch)) {
+                if (!prevSpace) {
+                    sb.Append(' ');
+                    prevSpace = true;
+                }
+                continue;
+            }
+
+            prevSpace = false;
+            sb.Append(ch);
+        }
+
+        return sb.ToString().Trim();
     }
 
     private async Task<IReadOnlyList<ToolDefinition>> TrySelectToolsViaModelPlannerAsync(IntelligenceXClient client, string activeThreadId, string userRequest,

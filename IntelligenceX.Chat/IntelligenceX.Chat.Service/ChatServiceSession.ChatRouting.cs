@@ -56,6 +56,8 @@ internal sealed partial class ChatServiceSession {
         var weightedToolRouting = request.Options?.WeightedToolRouting ?? true;
         var maxCandidateTools = request.Options?.MaxCandidateTools;
         var userRequest = ExtractPrimaryUserRequest(request.Text);
+        RememberUserIntent(threadId, userRequest);
+        var routedUserRequest = ExpandContinuationUserRequest(threadId, userRequest);
         var usedContinuationSubset = false;
         if (weightedToolRouting && toolDefs.Count > 0) {
             if (!TryGetContinuationToolSubset(threadId, userRequest, toolDefs, out var continuationSubset)) {
@@ -63,7 +65,7 @@ internal sealed partial class ChatServiceSession {
                         client,
                         threadId,
                         toolDefs,
-                        userRequest,
+                        routedUserRequest,
                         maxCandidateTools,
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -107,18 +109,18 @@ internal sealed partial class ChatServiceSession {
         var executionNudgeUsed = false;
 
         for (var round = 0; round < Math.Max(1, maxRounds); round++) {
-            var extracted = ToolCallParser.Extract(turn);
+                var extracted = ToolCallParser.Extract(turn);
             if (extracted.Count == 0) {
                 var text = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
                 if (!executionNudgeUsed
                     && ShouldAttemptToolExecutionNudge(
-                        userRequest: userRequest,
+                        userRequest: routedUserRequest,
                         assistantDraft: text,
                         toolsAvailable: toolDefs.Count > 0,
                         priorToolCalls: toolCalls.Count,
                         usedContinuationSubset: usedContinuationSubset)) {
                     executionNudgeUsed = true;
-                    var nudgePrompt = BuildToolExecutionNudgePrompt(userRequest, text);
+                    var nudgePrompt = BuildToolExecutionNudgePrompt(routedUserRequest, text);
                     await TryWriteStatusAsync(
                             writer,
                             request.RequestId,

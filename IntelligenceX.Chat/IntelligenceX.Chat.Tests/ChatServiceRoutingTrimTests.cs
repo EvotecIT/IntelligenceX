@@ -23,6 +23,15 @@ public sealed class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ShouldAttemptToolExecutionNudgeMethod =
         typeof(ChatServiceSession).GetMethod("ShouldAttemptToolExecutionNudge", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldAttemptToolExecutionNudge not found.");
+    private static readonly MethodInfo ExtractPrimaryUserRequestMethod =
+        typeof(ChatServiceSession).GetMethod("ExtractPrimaryUserRequest", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ExtractPrimaryUserRequest not found.");
+    private static readonly MethodInfo RememberUserIntentMethod =
+        typeof(ChatServiceSession).GetMethod("RememberUserIntent", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("RememberUserIntent not found.");
+    private static readonly MethodInfo ExpandContinuationUserRequestMethod =
+        typeof(ChatServiceSession).GetMethod("ExpandContinuationUserRequest", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("ExpandContinuationUserRequest not found.");
     private static readonly MethodInfo ParsePlannerSelectedDefinitionsMethod =
         typeof(ChatServiceSession).GetMethod("ParsePlannerSelectedDefinitions", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ParsePlannerSelectedDefinitions not found.");
@@ -151,6 +160,38 @@ public sealed class ChatServiceRoutingTrimTests {
             new object?[] { userRequest, assistantDraft, true, 0, true });
 
         Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ExtractPrimaryUserRequest_StripsCodeFencesAndInlineCode() {
+        var input = """
+            Please check this:
+            ```powershell
+            Get-EventLog -LogName System
+            ```
+            and also `C:\Temp\ADO-System.evtx`
+            """;
+
+        var result = ExtractPrimaryUserRequestMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.DoesNotContain("Get-EventLog", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("C:\\Temp\\ADO-System.evtx", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Please check this:", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("and also", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_IncludesLastIntent() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+
+        RememberUserIntentMethod.Invoke(session, new object?[] { "thread-001", "Please run forest-wide replication and LDAP diagnostics." });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "run now" });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Contains("forest-wide replication", expanded, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Follow-up:", expanded, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("run now", expanded, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
