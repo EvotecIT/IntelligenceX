@@ -222,8 +222,11 @@ public sealed partial class MainWindow : Window {
                 maxToolRounds = _autonomyMaxToolRounds,
                 parallelTools = _autonomyParallelTools,
                 turnTimeoutSeconds = _autonomyTurnTimeoutSeconds,
-                toolTimeoutSeconds = _autonomyToolTimeoutSeconds
+                toolTimeoutSeconds = _autonomyToolTimeoutSeconds,
+                weightedToolRouting = _autonomyWeightedToolRouting,
+                maxCandidateTools = _autonomyMaxCandidateTools
             },
+            memory = BuildMemoryState(),
             activeProfileName = _appProfileName,
             profileNames = BuildKnownProfiles(),
             activeConversationId = _activeConversationId,
@@ -321,6 +324,55 @@ public sealed partial class MainWindow : Window {
         };
     }
 
+    private object BuildMemoryState() {
+        var normalizedFacts = NormalizeMemoryFacts(_appState.MemoryFacts);
+        _appState.MemoryFacts = normalizedFacts;
+        var facts = new List<object>(normalizedFacts.Count);
+        for (var i = 0; i < normalizedFacts.Count; i++) {
+            var memory = normalizedFacts[i];
+            var updatedLocal = EnsureUtc(memory.UpdatedUtc).ToLocalTime();
+            facts.Add(new {
+                id = memory.Id,
+                fact = memory.Fact,
+                weight = memory.Weight,
+                tags = memory.Tags ?? Array.Empty<string>(),
+                updatedLocal = updatedLocal.ToString(_timestampFormat, CultureInfo.InvariantCulture)
+            });
+        }
+
+        return new {
+            enabled = _persistentMemoryEnabled,
+            count = normalizedFacts.Count,
+            facts = facts.ToArray()
+        };
+    }
+
+    private static object[] BuildToolParameterState(ToolParameterDto[]? parameters) {
+        if (parameters is not { Length: > 0 }) {
+            return Array.Empty<object>();
+        }
+
+        var list = new List<object>(parameters.Length);
+        for (var i = 0; i < parameters.Length; i++) {
+            var parameter = parameters[i];
+            if (parameter is null || string.IsNullOrWhiteSpace(parameter.Name)) {
+                continue;
+            }
+
+            list.Add(new {
+                name = parameter.Name,
+                type = string.IsNullOrWhiteSpace(parameter.Type) ? "any" : parameter.Type,
+                description = parameter.Description ?? string.Empty,
+                required = parameter.Required,
+                enumValues = parameter.EnumValues ?? Array.Empty<string>(),
+                defaultJson = parameter.DefaultJson,
+                exampleJson = parameter.ExampleJson
+            });
+        }
+
+        return list.ToArray();
+    }
+
     private object[] BuildToolState() {
         if (_toolStates.Count == 0) {
             return Array.Empty<object>();
@@ -336,9 +388,11 @@ public sealed partial class MainWindow : Window {
             _toolTags.TryGetValue(name, out var tags);
             _toolPackIds.TryGetValue(name, out var packId);
             _toolPackNames.TryGetValue(name, out var packName);
+            _toolParameters.TryGetValue(name, out var parameters);
             _toolStates.TryGetValue(name, out var enabled);
             var normalizedPackId = NormalizePackId(packId);
             var normalizedPackName = ResolvePackDisplayName(normalizedPackId, packName);
+            var parameterState = BuildToolParameterState(parameters);
             list.Add(new {
                 name,
                 displayName = string.IsNullOrWhiteSpace(displayName) ? FormatToolDisplayName(name) : displayName,
@@ -347,6 +401,7 @@ public sealed partial class MainWindow : Window {
                 packId = string.IsNullOrWhiteSpace(normalizedPackId) ? null : normalizedPackId,
                 packName = string.IsNullOrWhiteSpace(normalizedPackName) ? null : normalizedPackName,
                 tags = tags ?? Array.Empty<string>(),
+                parameters = parameterState,
                 enabled
             });
         }

@@ -145,7 +145,7 @@ public sealed record ChatRequestOptions {
     /// <summary>
     /// Max tool-call rounds per user message.
     /// </summary>
-    public int MaxToolRounds { get; init; } = 3;
+    public int MaxToolRounds { get; init; } = 8;
     /// <summary>
     /// Whether to execute tool calls in parallel when possible.
     /// </summary>
@@ -162,4 +162,13 @@ public sealed record ChatRequestOptions {
     /// Optional tool names to disable for this request.
     /// </summary>
     public string[]? DisabledTools { get; init; }
+    /// <summary>
+    /// Optional override for weighted tool routing (null means service default).
+    /// </summary>
+    public bool? WeightedToolRouting { get; init; }
+    /// <summary>
+    /// Optional cap for how many candidate tools are exposed to the model per turn.
+    /// Null/0 means service-selected default.
+    /// </summary>
+    public int? MaxCandidateTools { get; init; }
 }

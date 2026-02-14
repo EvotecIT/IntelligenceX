@@ -332,7 +332,9 @@
       maxToolRounds: (byId("optAutonomyMaxRounds").value || "").trim(),
       parallelMode: (byId("optAutonomyParallel").value || "default").trim(),
       turnTimeoutSeconds: (byId("optAutonomyTurnTimeout").value || "").trim(),
-      toolTimeoutSeconds: (byId("optAutonomyToolTimeout").value || "").trim()
+      toolTimeoutSeconds: (byId("optAutonomyToolTimeout").value || "").trim(),
+      weightedToolRouting: (byId("optAutonomyWeightedRouting").value || "default").trim(),
+      maxCandidateTools: (byId("optAutonomyMaxCandidates").value || "").trim()
     });
   }
 
@@ -340,8 +342,37 @@
   byId("optAutonomyTurnTimeout").addEventListener("change", postAutonomySettings);
   byId("optAutonomyToolTimeout").addEventListener("change", postAutonomySettings);
   byId("optAutonomyParallel").addEventListener("change", postAutonomySettings);
+  byId("optAutonomyWeightedRouting").addEventListener("change", postAutonomySettings);
+  byId("optAutonomyMaxCandidates").addEventListener("change", postAutonomySettings);
   byId("btnAutonomyReset").addEventListener("click", function() {
     post("reset_autonomy");
+  });
+
+  byId("optMemoryEnabled").addEventListener("change", function(e) {
+    post("set_memory_enabled", { enabled: e.target.checked === true });
+  });
+
+  byId("btnAddMemoryNote").addEventListener("click", function() {
+    var note = (byId("optMemoryNote").value || "").trim();
+    if (!note) {
+      return;
+    }
+
+    post("add_memory_note", { text: note, weight: "3" });
+    byId("optMemoryNote").value = "";
+  });
+
+  byId("optMemoryNote").addEventListener("keydown", function(e) {
+    if (e.key !== "Enter") {
+      return;
+    }
+
+    e.preventDefault();
+    byId("btnAddMemoryNote").click();
+  });
+
+  byId("btnClearMemory").addEventListener("click", function() {
+    post("clear_memory");
   });
 
   byId("optEnableDebugTools").addEventListener("change", function(e) {

@@ -54,7 +54,14 @@
         maxToolRounds: null,
         parallelTools: null,
         turnTimeoutSeconds: null,
-        toolTimeoutSeconds: null
+        toolTimeoutSeconds: null,
+        weightedToolRouting: null,
+        maxCandidateTools: null
+      },
+      memory: {
+        enabled: true,
+        count: 0,
+        facts: []
       },
       activeProfileName: "default",
       profileNames: ["default"],

@@ -97,6 +97,13 @@ internal sealed class ChatAppStateStore : IDisposable {
             }
         }
 
+        if (payload.MemoryFacts is { Count: > 0 } && payload.MemoryFacts.Count > 120) {
+            payload.MemoryFacts = payload.MemoryFacts
+                .OrderByDescending(fact => fact.UpdatedUtc)
+                .Take(120)
+                .ToList();
+        }
+
         var json = JsonSerializer.Serialize(payload, _json);
 
         _db.ExecuteNonQuery(
@@ -159,9 +166,13 @@ internal sealed class ChatAppState {
     public bool? AutonomyParallelTools { get; set; }
     public int? AutonomyTurnTimeoutSeconds { get; set; }
     public int? AutonomyToolTimeoutSeconds { get; set; }
+    public bool? AutonomyWeightedToolRouting { get; set; }
+    public int? AutonomyMaxCandidateTools { get; set; }
     public string ExportSaveMode { get; set; } = ExportPreferencesContract.DefaultSaveMode;
     public string ExportDefaultFormat { get; set; } = ExportPreferencesContract.DefaultFormat;
     public string? ExportLastDirectory { get; set; }
+    public bool PersistentMemoryEnabled { get; set; } = true;
+    public List<ChatMemoryFactState> MemoryFacts { get; set; } = new();
     public bool OnboardingCompleted { get; set; }
     public string? ActiveConversationId { get; set; }
     public string? ThreadId { get; set; }
@@ -183,4 +194,12 @@ internal sealed class ChatMessageState {
     public string Role { get; set; } = "System";
     public string Text { get; set; } = string.Empty;
     public DateTime TimeUtc { get; set; } = DateTime.UtcNow;
+}
+
+internal sealed class ChatMemoryFactState {
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Fact { get; set; } = string.Empty;
+    public int Weight { get; set; } = 3;
+    public string[] Tags { get; set; } = Array.Empty<string>();
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }

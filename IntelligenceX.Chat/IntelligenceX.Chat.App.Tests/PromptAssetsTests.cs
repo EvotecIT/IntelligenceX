@@ -45,4 +45,16 @@ public sealed class PromptAssetsTests {
         Assert.Contains("Start the conversation naturally in 1-2 short sentences.", markdown);
         Assert.Contains("Do not use rigid onboarding scripts.", markdown);
     }
+
+    /// <summary>
+    /// Ensures persistent-memory protocol prompt is available from resources/fallback.
+    /// </summary>
+    [Fact]
+    public void GetPersistentMemoryPrompt_ReturnsProtocolTemplate() {
+        var markdown = PromptAssets.GetPersistentMemoryPrompt();
+
+        Assert.Contains("[Persistent memory protocol]", markdown);
+        Assert.Contains("```ix_memory", markdown);
+        Assert.Contains("\"upserts\"", markdown);
+    }
 }

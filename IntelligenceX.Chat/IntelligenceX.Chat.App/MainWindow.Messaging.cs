@@ -147,11 +147,36 @@ public sealed partial class MainWindow : Window {
                         var parallelMode = TryGetString(root, "parallelMode");
                         var turnTimeout = TryGetString(root, "turnTimeoutSeconds");
                         var toolTimeout = TryGetString(root, "toolTimeoutSeconds");
-                        await SetAutonomyOverridesAsync(maxRounds, parallelMode, turnTimeout, toolTimeout).ConfigureAwait(true);
+                        var weightedRouting = TryGetString(root, "weightedToolRouting");
+                        var maxCandidates = TryGetString(root, "maxCandidateTools");
+                        await SetAutonomyOverridesAsync(maxRounds, parallelMode, turnTimeout, toolTimeout, weightedRouting, maxCandidates)
+                            .ConfigureAwait(true);
                         break;
                     }
                 case "reset_autonomy":
                     await ResetAutonomyOverridesAsync().ConfigureAwait(true);
+                    break;
+                case "set_memory_enabled":
+                    {
+                        var enabled = TryGetBoolean(root, "enabled");
+                        if (enabled.HasValue) {
+                            await SetPersistentMemoryEnabledAsync(enabled.Value).ConfigureAwait(true);
+                        }
+                        break;
+                    }
+                case "add_memory_note":
+                    {
+                        var text = TryGetString(root, "text");
+                        var weight = TryGetString(root, "weight");
+                        var parsedWeight = ParseAutonomyInt(weight, min: 1, max: 5) ?? 3;
+                        await AddMemoryFactAsync(text, parsedWeight).ConfigureAwait(true);
+                        break;
+                    }
+                case "remove_memory_fact":
+                    await RemoveMemoryFactAsync(TryGetString(root, "id")).ConfigureAwait(true);
+                    break;
+                case "clear_memory":
+                    await ClearPersistentMemoryAsync().ConfigureAwait(true);
                     break;
                 case "set_theme":
                     {
