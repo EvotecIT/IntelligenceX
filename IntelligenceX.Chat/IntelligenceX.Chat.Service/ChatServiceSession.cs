@@ -1486,66 +1486,52 @@ internal sealed class ChatServiceSession {
     }
 
     private void TrimWeightedRoutingContextsNoLock() {
-        if (_lastWeightedToolNamesByThreadId.Count <= MaxTrackedWeightedRoutingContexts) {
+        var removeCount = _lastWeightedToolNamesByThreadId.Count - MaxTrackedWeightedRoutingContexts;
+        if (removeCount <= 0) {
             return;
         }
 
-        while (_lastWeightedToolNamesByThreadId.Count > MaxTrackedWeightedRoutingContexts) {
-            string? oldestThreadId = null;
-            long oldestTicks = long.MaxValue;
-            foreach (var pair in _lastWeightedToolNamesByThreadId) {
-                var ticks = _lastWeightedToolSubsetSeenUtcTicks.TryGetValue(pair.Key, out var value) && value > 0
+        var threadIdsToRemove = _lastWeightedToolNamesByThreadId.Keys
+            .Select(threadId => {
+                var ticks = _lastWeightedToolSubsetSeenUtcTicks.TryGetValue(threadId, out var value) && value > 0
                     ? value
                     : long.MinValue;
+                return (ThreadId: threadId, Ticks: ticks);
+            })
+            .OrderBy(item => item.Ticks)
+            .ThenBy(item => item.ThreadId, StringComparer.Ordinal)
+            .Take(removeCount)
+            .Select(item => item.ThreadId)
+            .ToArray();
 
-                if (oldestThreadId is null
-                    || ticks < oldestTicks
-                    || (ticks == oldestTicks && string.CompareOrdinal(pair.Key, oldestThreadId) < 0)) {
-                    oldestTicks = ticks;
-                    oldestThreadId = pair.Key;
-                }
-            }
-
-            if (string.IsNullOrWhiteSpace(oldestThreadId)) {
-                var fallback = _lastWeightedToolNamesByThreadId.Keys.FirstOrDefault();
-                if (string.IsNullOrWhiteSpace(fallback)) {
-                    break;
-                }
-
-                oldestThreadId = fallback;
-            }
-
-            _lastWeightedToolNamesByThreadId.Remove(oldestThreadId);
-            _lastWeightedToolSubsetSeenUtcTicks.Remove(oldestThreadId);
+        foreach (var threadId in threadIdsToRemove) {
+            _lastWeightedToolNamesByThreadId.Remove(threadId);
+            _lastWeightedToolSubsetSeenUtcTicks.Remove(threadId);
         }
     }
 
     private void TrimToolRoutingStatsNoLock() {
-        if (_toolRoutingStats.Count <= MaxTrackedToolRoutingStats) {
+        var removeCount = _toolRoutingStats.Count - MaxTrackedToolRoutingStats;
+        if (removeCount <= 0) {
             return;
         }
 
-        while (_toolRoutingStats.Count > MaxTrackedToolRoutingStats) {
-            string? oldestToolName = null;
-            long oldestTicks = long.MaxValue;
-            foreach (var pair in _toolRoutingStats) {
+        var toolNamesToRemove = _toolRoutingStats
+            .Select(pair => {
                 var stats = pair.Value;
-                var candidateTicks = stats.LastUsedUtcTicks > 0
+                var ticks = stats.LastUsedUtcTicks > 0
                     ? stats.LastUsedUtcTicks
                     : (stats.LastSuccessUtcTicks > 0 ? stats.LastSuccessUtcTicks : long.MinValue);
-                if (oldestToolName is null
-                    || candidateTicks < oldestTicks
-                    || (candidateTicks == oldestTicks && string.CompareOrdinal(pair.Key, oldestToolName) < 0)) {
-                    oldestTicks = candidateTicks;
-                    oldestToolName = pair.Key;
-                }
-            }
+                return (ToolName: pair.Key, Ticks: ticks);
+            })
+            .OrderBy(item => item.Ticks)
+            .ThenBy(item => item.ToolName, StringComparer.Ordinal)
+            .Take(removeCount)
+            .Select(item => item.ToolName)
+            .ToArray();
 
-            if (string.IsNullOrWhiteSpace(oldestToolName)) {
-                break;
-            }
-
-            _toolRoutingStats.Remove(oldestToolName);
+        foreach (var toolName in toolNamesToRemove) {
+            _toolRoutingStats.Remove(toolName);
         }
     }
 
@@ -1582,7 +1568,13 @@ internal sealed class ChatServiceSession {
                     continue;
                 }
 
-                _lastWeightedToolNamesByThreadId[threadId] = pair.Value ?? Array.Empty<string>();
+                var names = pair.Value ?? Array.Empty<string>();
+                var namesClone = new string[names.Length];
+                if (names.Length > 0) {
+                    Array.Copy(names, namesClone, names.Length);
+                }
+
+                _lastWeightedToolNamesByThreadId[threadId] = namesClone;
             }
 
             foreach (var pair in seenTicksByThreadId) {
