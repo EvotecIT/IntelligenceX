@@ -491,7 +491,7 @@ public sealed partial class MainWindow : Window {
             await PublishSessionStateAsync().ConfigureAwait(false);
         } finally {
             // Ensure tools state is refreshed after routing reset even if session publish faults.
-            await PublishOptionsStateAsync().ConfigureAwait(false);
+            await PublishOptionsStateSafeAsync().ConfigureAwait(false);
         }
 
         try {
@@ -505,7 +505,7 @@ public sealed partial class MainWindow : Window {
             try {
                 await PublishSessionStateAsync().ConfigureAwait(false);
             } finally {
-                await PublishOptionsStateAsync().ConfigureAwait(false);
+                await PublishOptionsStateSafeAsync().ConfigureAwait(false);
             }
         }
     }
