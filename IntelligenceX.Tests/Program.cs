@@ -401,6 +401,8 @@ internal static partial class Program {
             TestAnalyzeRunStrictFlagFalseOverridesConfigStrictTrue);
         failed += Run("Analyze run strict equals false overrides config strict true",
             TestAnalyzeRunStrictEqualsFalseOverridesConfigStrictTrue);
+        failed += Run("Analyze run strict equals true overrides config strict false",
+            TestAnalyzeRunStrictEqualsTrueOverridesConfigStrictFalse);
         failed += Run("Analyze run strict flag does not consume following option",
             TestAnalyzeRunStrictFlagDoesNotConsumeFollowingOption);
         failed += Run("Analyze run strict invalid explicit value fails",

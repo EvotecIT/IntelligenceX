@@ -78,6 +78,14 @@ internal static partial class Program {
         AssertEqual(0, exit, "analyze run --strict=false overrides config strict true");
     }
 
+    private static void TestAnalyzeRunStrictEqualsTrueOverridesConfigStrictFalse() {
+        var exit = RunAnalyzeRunWithMissingDotnet(
+            strict: false,
+            strictOverride: true,
+            strictOverrideEqualsSyntax: true);
+        AssertEqual(1, exit, "analyze run --strict=true overrides config strict false");
+    }
+
     private static void TestAnalyzeRunStrictFlagDoesNotConsumeFollowingOption() {
         var exit = RunAnalyzeRunWithMissingDotnet(
             strict: false,
