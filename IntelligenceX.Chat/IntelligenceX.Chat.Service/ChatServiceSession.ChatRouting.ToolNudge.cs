@@ -168,9 +168,11 @@ internal sealed partial class ChatServiceSession {
                 return false;
             }
 
-            var beforeOk = idx == startIndex || !char.IsLetterOrDigit(text[idx - 1]);
+            // Boundaries must be evaluated against the full string (not the scan range), otherwise a range that starts
+            // or ends in the middle of a word could incorrectly treat the hint as a standalone token.
+            var beforeOk = idx == 0 || !char.IsLetterOrDigit(text[idx - 1]);
             var afterIndex = idx + word.Length;
-            var afterOk = afterIndex >= endIndexExclusive || !char.IsLetterOrDigit(text[afterIndex]);
+            var afterOk = afterIndex >= text.Length || !char.IsLetterOrDigit(text[afterIndex]);
             if (beforeOk && afterOk) {
                 return true;
             }
