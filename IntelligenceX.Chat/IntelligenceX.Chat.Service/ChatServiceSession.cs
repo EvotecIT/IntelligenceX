@@ -1822,15 +1822,97 @@ internal sealed class ChatServiceSession {
     }
 
     private static string BuildToolFailureSearchText(ToolOutputDto output) {
-        var parts = new List<string>(4);
-        if (!string.IsNullOrWhiteSpace(output.ErrorCode)) {
-            parts.Add(output.ErrorCode);
-        }
-        if (!string.IsNullOrWhiteSpace(output.Error)) {
-            parts.Add(output.Error);
+        var parts = new List<string>(8);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        AddFailureSearchPart(parts, seen, output.ErrorCode);
+        AddFailureSearchPart(parts, seen, output.Error);
+        AppendFailureSearchContext(parts, seen, output.FailureJson);
+        AppendFailureSearchContext(parts, seen, output.MetaJson);
+        AppendFailureSearchContext(parts, seen, output.Output);
+        return parts.Count == 0 ? string.Empty : string.Join(" ", parts);
+    }
+
+    private static void AppendFailureSearchContext(List<string> parts, HashSet<string> seen, string? rawText) {
+        if (string.IsNullOrWhiteSpace(rawText)) {
+            return;
         }
 
-        return parts.Count == 0 ? string.Empty : string.Join(" ", parts);
+        if (TryAppendFailureJsonSignals(parts, seen, rawText!)) {
+            return;
+        }
+
+        AddFailureSearchPart(parts, seen, rawText);
+    }
+
+    private static bool TryAppendFailureJsonSignals(List<string> parts, HashSet<string> seen, string rawText) {
+        try {
+            var parsed = JsonLite.Parse(rawText);
+            var obj = parsed?.AsObject();
+            if (obj is null) {
+                return false;
+            }
+
+            var before = parts.Count;
+            AppendFailureSignalsFromObject(parts, seen, obj);
+            return parts.Count > before;
+        } catch {
+            return false;
+        }
+    }
+
+    private static void AppendFailureSignalsFromObject(List<string> parts, HashSet<string> seen, JsonObject obj) {
+        AddFailureSearchPart(parts, seen, obj.GetString("error_code"));
+        AddFailureSearchPart(parts, seen, obj.GetString("code"));
+        AddFailureSearchPart(parts, seen, obj.GetString("error"));
+        AddFailureSearchPart(parts, seen, obj.GetString("message"));
+        AddFailureSearchPart(parts, seen, obj.GetString("reason"));
+        AddFailureSearchPart(parts, seen, obj.GetString("exception"));
+        AddFailureSearchPart(parts, seen, obj.GetString("exception_type"));
+        AddFailureSearchPart(parts, seen, obj.GetString("exceptionType"));
+        AddFailureSearchPart(parts, seen, obj.GetString("details"));
+
+        try {
+            if (obj.GetObject("failure") is JsonObject failureObj) {
+                AddFailureSearchPart(parts, seen, failureObj.GetString("code"));
+                AddFailureSearchPart(parts, seen, failureObj.GetString("error"));
+                AddFailureSearchPart(parts, seen, failureObj.GetString("message"));
+                AddFailureSearchPart(parts, seen, failureObj.GetString("reason"));
+            }
+        } catch {
+            // best-effort extraction only
+        }
+
+        try {
+            if (obj.GetObject("meta") is JsonObject metaObj) {
+                AddFailureSearchPart(parts, seen, metaObj.GetString("error_code"));
+                AddFailureSearchPart(parts, seen, metaObj.GetString("error"));
+                AddFailureSearchPart(parts, seen, metaObj.GetString("message"));
+                AddFailureSearchPart(parts, seen, metaObj.GetString("reason"));
+            }
+        } catch {
+            // best-effort extraction only
+        }
+    }
+
+    private static void AddFailureSearchPart(List<string> parts, HashSet<string> seen, string? rawText) {
+        var compact = CompactFailureText(rawText);
+        if (compact.Length == 0) {
+            return;
+        }
+
+        if (seen.Add(compact)) {
+            parts.Add(compact);
+        }
+    }
+
+    private static string CompactFailureText(string? rawText) {
+        if (string.IsNullOrWhiteSpace(rawText)) {
+            return string.Empty;
+        }
+
+        var compact = Regex.Replace(rawText.Trim(), @"\s+", " ");
+        const int maxLength = 768;
+        return compact.Length <= maxLength ? compact : compact[..maxLength];
     }
 
     private static bool IsLikelyTransientToolException(Exception ex) {
