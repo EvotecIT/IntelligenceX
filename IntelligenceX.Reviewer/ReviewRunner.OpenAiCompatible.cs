@@ -11,6 +11,7 @@ namespace IntelligenceX.Reviewer;
 
 internal sealed partial class ReviewRunner {
     private const int OpenAiCompatibleMaxRedirects = 5;
+    private sealed record OpenAiCompatibleRawResponse(HttpStatusCode StatusCode, string Body);
 
     private async Task RunOpenAiCompatiblePreflightAsync(TimeSpan timeout, CancellationToken cancellationToken) {
         var endpoint = ResolveOpenAiCompatibleModelsEndpoint(_settings.OpenAICompatibleBaseUrl, _settings.OpenAICompatibleAllowInsecureHttp);
@@ -20,11 +21,12 @@ internal sealed partial class ReviewRunner {
 
         // Treat any HTTP response as "reachable" (including 401/403/404/405). This is a connectivity check, not auth validation.
         try {
-            using var response = await SendOpenAiCompatibleWithRedirectsAsync(
+            var response = await SendOpenAiCompatibleWithRedirectsAsync(
                     uri => new HttpRequestMessage(HttpMethod.Get, uri),
                     endpoint,
+                    readBodyOnSuccess: false,
+                    readBodyOnError: false,
                     timeoutCts.Token).ConfigureAwait(false);
-
             if (_settings.Diagnostics) {
                 Console.Error.WriteLine(
                     $"Connectivity preflight returned HTTP {(int)response.StatusCode} for {endpoint.Host} (reachable).");
@@ -98,22 +100,19 @@ internal sealed partial class ReviewRunner {
         };
         var payloadJson = JsonSerializer.Serialize(payload);
 
-        using var response = await SendOpenAiCompatibleWithRedirectsAsync(uri => {
+        var response = await SendOpenAiCompatibleWithRedirectsAsync(uri => {
                 var request = new HttpRequestMessage(HttpMethod.Post, uri);
                 request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
                 request.Content = new StringContent(payloadJson, Encoding.UTF8, "application/json");
                 return request;
-            }, endpoint, timeoutCts.Token)
+            }, endpoint, readBodyOnSuccess: true, readBodyOnError: _settings.Diagnostics, timeoutCts.Token)
             .ConfigureAwait(false);
 
-        // Safe-by-default: do not read or include remote error bodies unless diagnostics are explicitly enabled.
-        var responseText = string.Empty;
-        if (response.IsSuccessStatusCode || _settings.Diagnostics) {
-            responseText = await response.Content.ReadAsStringAsync(timeoutCts.Token).ConfigureAwait(false);
-        }
+        var code = (int)response.StatusCode;
+        var isSuccess = code >= 200 && code <= 299;
+        var responseText = response.Body;
 
-        if (!response.IsSuccessStatusCode) {
-            var code = (int)response.StatusCode;
+        if (!isSuccess) {
             var body = FormatOpenAiCompatibleErrorBody(responseText, apiKey, _settings.Diagnostics);
             throw new InvalidOperationException($"OpenAI-compatible request failed (HTTP {code}). {body}");
         }
@@ -121,25 +120,29 @@ internal sealed partial class ReviewRunner {
         return ExtractOpenAiCompatibleOutput(responseText);
     }
 
-    private async Task<HttpResponseMessage> SendOpenAiCompatibleWithRedirectsAsync(
+    private async Task<OpenAiCompatibleRawResponse> SendOpenAiCompatibleWithRedirectsAsync(
         Func<Uri, HttpRequestMessage> createRequest,
         Uri endpoint,
+        bool readBodyOnSuccess,
+        bool readBodyOnError,
         CancellationToken cancellationToken) {
         var current = endpoint;
         for (var redirect = 0; redirect <= OpenAiCompatibleMaxRedirects; redirect++) {
-            HttpResponseMessage response;
-            using (var request = createRequest(current)) {
-                response = await OpenAiCompatibleHttp.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
-                    .ConfigureAwait(false);
-            }
+            using var request = createRequest(current);
+            using var response = await OpenAiCompatibleHttp.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+                .ConfigureAwait(false);
 
             if (!IsRedirectStatusCode(response.StatusCode)) {
-                return response;
+                var shouldReadBody = response.IsSuccessStatusCode ? readBodyOnSuccess : readBodyOnError;
+                var body = string.Empty;
+                if (shouldReadBody) {
+                    body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                }
+                return new OpenAiCompatibleRawResponse(response.StatusCode, body);
             }
 
             if (redirect == OpenAiCompatibleMaxRedirects) {
                 var status = (int)response.StatusCode;
-                response.Dispose();
                 throw new InvalidOperationException(
                     $"OpenAI-compatible request failed: too many redirects (last HTTP {status}). Check your baseUrl/proxy configuration.");
             }
@@ -147,20 +150,18 @@ internal sealed partial class ReviewRunner {
             var location = response.Headers.Location;
             if (location is null) {
                 var status = (int)response.StatusCode;
-                response.Dispose();
                 throw new InvalidOperationException(
                     $"OpenAI-compatible request failed: redirect (HTTP {status}) without Location header.");
             }
 
             var next = ResolveRedirectUri(current, location);
-            ValidateOpenAiCompatibleRedirectUri(next, _settings.OpenAICompatibleAllowInsecureHttp);
+            ValidateOpenAiCompatibleRedirectUri(current, next, _settings.OpenAICompatibleAllowInsecureHttp);
 
             if (_settings.Diagnostics) {
                 Console.Error.WriteLine(
                     $"OpenAI-compatible redirect {(int)response.StatusCode}: {current} -> {next}");
             }
 
-            response.Dispose();
             current = next;
         }
 
@@ -182,15 +183,41 @@ internal sealed partial class ReviewRunner {
         return new Uri(requestUri, location);
     }
 
-    private static void ValidateOpenAiCompatibleRedirectUri(Uri uri, bool allowInsecureHttp) {
-        if (!uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
-            !uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)) {
+    private static void ValidateOpenAiCompatibleRedirectUri(Uri from, Uri to, bool allowInsecureHttp) {
+        if (!to.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
+            !to.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)) {
             throw new InvalidOperationException(
-                $"OpenAI-compatible redirect must use http:// or https:// (got '{uri.Scheme}').");
+                $"OpenAI-compatible redirect must use http:// or https:// (got '{to.Scheme}').");
         }
-        if (uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) &&
-            !allowInsecureHttp &&
-            !uri.IsLoopback) {
+
+        // Redirects should be predictable; don't allow jumping to a different host by default.
+        if (!string.Equals(from.Host, to.Host, StringComparison.OrdinalIgnoreCase)) {
+            throw new InvalidOperationException(
+                $"OpenAI-compatible redirect to a different host is not allowed ({from.Host} -> {to.Host}). " +
+                "Update the baseUrl to the final host instead.");
+        }
+
+        var fromIsHttps = from.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
+        var toIsHttp = to.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase);
+        if (toIsHttp && !allowInsecureHttp) {
+            // Prevent accidental scheme downgrade even on loopback unless explicitly allowed.
+            if (fromIsHttps) {
+                throw new InvalidOperationException(
+                    "OpenAI-compatible redirect attempted to downgrade from https:// to http://. " +
+                    "Set review.openaiCompatible.allowInsecureHttp=true to override.");
+            }
+            if (!to.IsLoopback) {
+                throw new InvalidOperationException(
+                    "OpenAI-compatible redirect attempted to use http:// for a non-loopback host. " +
+                    "Set review.openaiCompatible.allowInsecureHttp=true to override.");
+            }
+        }
+
+        if (toIsHttp && allowInsecureHttp) {
+            return;
+        }
+
+        if (toIsHttp && !to.IsLoopback) {
             throw new InvalidOperationException(
                 "OpenAI-compatible redirect attempted to use http:// for a non-loopback host. " +
                 "Set review.openaiCompatible.allowInsecureHttp=true to override.");
