@@ -7,7 +7,8 @@ namespace IntelligenceX.Reviewer;
 internal sealed partial class ReviewRunner {
     // Infinite timeout here; each call applies its own CTS-based timeout.
     private static readonly HttpClient PreflightHttp = CreatePreflightHttp();
-    private static readonly HttpClient OpenAiCompatibleHttp = CreateOpenAiCompatibleHttp();
+    private static readonly SocketsHttpHandler OpenAiCompatibleHandler = CreateOpenAiCompatibleHandler();
+    private static readonly HttpClient OpenAiCompatibleHttp = CreateOpenAiCompatibleHttp(OpenAiCompatibleHandler);
 
     private static HttpClient CreatePreflightHttp() {
         return new HttpClient {
@@ -15,16 +16,18 @@ internal sealed partial class ReviewRunner {
         };
     }
 
-    private static HttpClient CreateOpenAiCompatibleHttp() {
+    private static SocketsHttpHandler CreateOpenAiCompatibleHandler() {
         // We handle redirects ourselves to avoid "POST becomes GET" behavior on 301/302/303,
         // and to apply security checks consistently.
-        var handler = new SocketsHttpHandler {
+        return new SocketsHttpHandler {
             AllowAutoRedirect = false
         };
+    }
 
-        return new HttpClient(handler) {
+    private static HttpClient CreateOpenAiCompatibleHttp(SocketsHttpHandler handler) {
+        // Align handler + HttpClient lifetimes explicitly; avoids subtle disposal issues if this ever changes.
+        return new HttpClient(handler, disposeHandler: false) {
             Timeout = Timeout.InfiniteTimeSpan
         };
     }
 }
-
