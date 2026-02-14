@@ -1011,14 +1011,16 @@ internal sealed class ChatServiceSession {
         }
         toolDefs = SanitizeToolDefinitions(toolDefs);
         var originalToolCount = toolDefs.Count;
+        var routingInsights = new List<ToolRoutingInsight>();
         var weightedToolRouting = request.Options?.WeightedToolRouting ?? true;
         var maxCandidateTools = request.Options?.MaxCandidateTools;
         if (weightedToolRouting && toolDefs.Count > 0) {
             var userRequest = ExtractPrimaryUserRequest(request.Text);
             if (!TryGetContinuationToolSubset(threadId, userRequest, toolDefs, out var continuationSubset)) {
-                toolDefs = SelectWeightedToolSubset(toolDefs, userRequest, maxCandidateTools);
+                toolDefs = SelectWeightedToolSubset(toolDefs, userRequest, maxCandidateTools, out routingInsights);
             } else {
                 toolDefs = continuationSubset;
+                routingInsights = BuildContinuationRoutingInsights(toolDefs);
             }
             RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
         }
@@ -1045,6 +1047,7 @@ internal sealed class ChatServiceSession {
                     status: "routing",
                     message: $"Tool routing selected {toolDefs.Count} of {originalToolCount} tools for this turn.")
                 .ConfigureAwait(false);
+            await EmitRoutingInsightsAsync(writer, request.RequestId, threadId, routingInsights).ConfigureAwait(false);
         }
 
         await TryWriteStatusAsync(writer, request.RequestId, threadId, status: "thinking").ConfigureAwait(false);
@@ -1133,7 +1136,9 @@ internal sealed class ChatServiceSession {
         return sanitized.Count == 0 ? Array.Empty<ToolDefinition>() : sanitized;
     }
 
-    private IReadOnlyList<ToolDefinition> SelectWeightedToolSubset(IReadOnlyList<ToolDefinition> definitions, string requestText, int? maxCandidateTools) {
+    private IReadOnlyList<ToolDefinition> SelectWeightedToolSubset(IReadOnlyList<ToolDefinition> definitions, string requestText, int? maxCandidateTools,
+        out List<ToolRoutingInsight> insights) {
+        insights = new List<ToolRoutingInsight>();
         if (definitions.Count <= 12) {
             return definitions;
         }
@@ -1159,19 +1164,23 @@ internal sealed class ChatServiceSession {
             var definition = definitions[i];
             var searchText = BuildToolSearchText(definition);
             var score = 0d;
-            if (userRequest.IndexOf(definition.Name, StringComparison.OrdinalIgnoreCase) >= 0) {
+            var directNameMatch = userRequest.IndexOf(definition.Name, StringComparison.OrdinalIgnoreCase) >= 0;
+            if (directNameMatch) {
                 score += 6d;
             }
 
             var packId = InferPackIdFromToolName(definition.Name, definition.Tags);
-            if (IsPackMentioned(userRequest, packId)) {
+            var packMatch = IsPackMentioned(userRequest, packId);
+            if (packMatch) {
                 score += 2.5d;
             }
 
+            var tokenHits = 0;
             for (var t = 0; t < tokens.Count; t++) {
                 var token = tokens[t];
                 if (searchText.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0) {
                     score += 0.9d;
+                    tokenHits++;
                 }
 
                 if (definition.Name.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0) {
@@ -1179,12 +1188,19 @@ internal sealed class ChatServiceSession {
                 }
             }
 
-            score += ReadToolRoutingAdjustment(definition.Name);
+            var adjustment = ReadToolRoutingAdjustment(definition.Name);
+            score += adjustment;
             if (score > 0.01d) {
                 hasSignal = true;
             }
 
-            scored.Add(new ToolScore(definition, score));
+            scored.Add(new ToolScore(
+                Definition: definition,
+                Score: score,
+                TokenHits: tokenHits,
+                DirectNameMatch: directNameMatch,
+                PackMatch: packMatch,
+                Adjustment: adjustment));
         }
 
         if (!hasSignal) {
@@ -1233,7 +1249,104 @@ internal sealed class ChatServiceSession {
             return definitions;
         }
 
+        insights = BuildRoutingInsights(scored, selectedDefs);
         return selectedDefs;
+    }
+
+    private static List<ToolRoutingInsight> BuildRoutingInsights(IReadOnlyList<ToolScore> scored, IReadOnlyList<ToolDefinition> selectedDefs) {
+        if (selectedDefs.Count == 0 || scored.Count == 0) {
+            return new List<ToolRoutingInsight>();
+        }
+
+        var selectedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < selectedDefs.Count; i++) {
+            selectedNames.Add(selectedDefs[i].Name);
+        }
+
+        var maxScore = scored[0].Score <= 0 ? 1d : scored[0].Score;
+        var insights = new List<ToolRoutingInsight>();
+        for (var i = 0; i < scored.Count; i++) {
+            var toolScore = scored[i];
+            if (!selectedNames.Contains(toolScore.Definition.Name)) {
+                continue;
+            }
+
+            var confidenceValue = Math.Clamp(toolScore.Score / maxScore, 0d, 1d);
+            var confidence = confidenceValue >= 0.72d ? "high" : confidenceValue >= 0.45d ? "medium" : "low";
+            var reasons = new List<string>();
+            if (toolScore.DirectNameMatch) {
+                reasons.Add("direct name match");
+            }
+            if (toolScore.PackMatch) {
+                reasons.Add("pack intent match");
+            }
+            if (toolScore.TokenHits > 0) {
+                reasons.Add($"{toolScore.TokenHits} token matches");
+            }
+            if (toolScore.Adjustment > 0.2d) {
+                reasons.Add("recent tool success");
+            } else if (toolScore.Adjustment < -0.2d) {
+                reasons.Add("recent tool failures");
+            }
+
+            if (reasons.Count == 0) {
+                reasons.Add("general relevance");
+            }
+
+            insights.Add(new ToolRoutingInsight(
+                ToolName: toolScore.Definition.Name,
+                Confidence: confidence,
+                Score: Math.Round(toolScore.Score, 3),
+                Reason: string.Join(", ", reasons)));
+        }
+
+        insights.Sort(static (a, b) => b.Score.CompareTo(a.Score));
+        if (insights.Count > 12) {
+            insights.RemoveRange(12, insights.Count - 12);
+        }
+
+        return insights;
+    }
+
+    private static List<ToolRoutingInsight> BuildContinuationRoutingInsights(IReadOnlyList<ToolDefinition> selectedDefs) {
+        var list = new List<ToolRoutingInsight>(selectedDefs.Count);
+        for (var i = 0; i < selectedDefs.Count && i < 12; i++) {
+            var name = selectedDefs[i].Name;
+            if (string.IsNullOrWhiteSpace(name)) {
+                continue;
+            }
+
+            list.Add(new ToolRoutingInsight(
+                ToolName: name.Trim(),
+                Confidence: "high",
+                Score: 1d,
+                Reason: "continuation follow-up reuse"));
+        }
+
+        return list;
+    }
+
+    private async Task EmitRoutingInsightsAsync(StreamWriter writer, string requestId, string threadId, IReadOnlyList<ToolRoutingInsight> insights) {
+        if (insights.Count == 0) {
+            return;
+        }
+
+        for (var i = 0; i < insights.Count; i++) {
+            var insight = insights[i];
+            var payload = JsonSerializer.Serialize(new {
+                confidence = insight.Confidence,
+                score = insight.Score,
+                reason = insight.Reason
+            });
+            await TryWriteStatusAsync(
+                    writer,
+                    requestId,
+                    threadId,
+                    status: "routing_tool",
+                    toolName: insight.ToolName,
+                    message: payload)
+                .ConfigureAwait(false);
+        }
     }
 
     private bool TryGetContinuationToolSubset(string threadId, string userRequest, IReadOnlyList<ToolDefinition> allDefinitions,
@@ -1484,7 +1597,25 @@ internal sealed class ChatServiceSession {
         public long LastSuccessUtcTicks { get; set; }
     }
 
-    private readonly record struct ToolScore(ToolDefinition Definition, double Score);
+    private readonly record struct ToolScore(
+        ToolDefinition Definition,
+        double Score,
+        int TokenHits,
+        bool DirectNameMatch,
+        bool PackMatch,
+        double Adjustment);
+
+    private readonly record struct ToolRoutingInsight(
+        string ToolName,
+        string Confidence,
+        double Score,
+        string Reason);
+
+    private readonly record struct ToolRetryProfile(
+        int MaxAttempts,
+        int DelayBaseMs,
+        bool RetryOnTimeout,
+        bool RetryOnTransport);
 
     private static async Task<TurnInfo> ChatWithToolSchemaRecoveryAsync(IntelligenceXClient client, ChatInput input, ChatOptions options,
         CancellationToken cancellationToken) {
@@ -1559,21 +1690,32 @@ internal sealed class ChatServiceSession {
                 hints: new[] { "Call list_tools to list available tools.", "Check that the correct packs are enabled." },
                 isTransient: false);
 
-            var meta = TryExtractToolOutputMetadata(output);
-            return new ToolOutputDto {
-                CallId = call.CallId,
-                Output = output,
-                Ok = meta.Ok,
-                ErrorCode = meta.ErrorCode,
-                Error = meta.Error,
-                Hints = meta.Hints,
-                IsTransient = meta.IsTransient,
-                SummaryMarkdown = meta.SummaryMarkdown,
-                MetaJson = meta.MetaJson,
-                RenderJson = meta.RenderJson,
-                FailureJson = meta.FailureJson
-            };
+            return BuildToolOutputDto(call.CallId, output);
         }
+
+        var profile = ResolveRetryProfile(call.Name);
+        ToolOutputDto? lastFailure = null;
+        for (var attempt = 1; attempt <= profile.MaxAttempts; attempt++) {
+            var output = await ExecuteToolAttemptAsync(tool, call, toolTimeoutSeconds, cancellationToken).ConfigureAwait(false);
+            if (!ShouldRetryToolCall(output, profile, attempt)) {
+                return output;
+            }
+
+            lastFailure = output;
+            if (profile.DelayBaseMs > 0) {
+                var delayMs = Math.Min(800, profile.DelayBaseMs * attempt);
+                try {
+                    await Task.Delay(delayMs, cancellationToken).ConfigureAwait(false);
+                } catch (OperationCanceledException) {
+                    return output;
+                }
+            }
+        }
+
+        return lastFailure ?? await ExecuteToolAttemptAsync(tool, call, toolTimeoutSeconds, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<ToolOutputDto> ExecuteToolAttemptAsync(ITool tool, ToolCall call, int toolTimeoutSeconds, CancellationToken cancellationToken) {
         using var toolCts = CreateTimeoutCts(cancellationToken, toolTimeoutSeconds);
         var toolToken = toolCts?.Token ?? cancellationToken;
         try {
@@ -1582,63 +1724,155 @@ internal sealed class ChatServiceSession {
             if (_options.Redact) {
                 text = RedactText(text);
             }
-            var meta = TryExtractToolOutputMetadata(text);
-            return new ToolOutputDto {
-                CallId = call.CallId,
-                Output = text,
-                Ok = meta.Ok,
-                ErrorCode = meta.ErrorCode,
-                Error = meta.Error,
-                Hints = meta.Hints,
-                IsTransient = meta.IsTransient,
-                SummaryMarkdown = meta.SummaryMarkdown,
-                MetaJson = meta.MetaJson,
-                RenderJson = meta.RenderJson,
-                FailureJson = meta.FailureJson
-            };
+            return BuildToolOutputDto(call.CallId, text);
         } catch (OperationCanceledException) when (toolCts is not null && toolCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested) {
             var output = ToolOutputEnvelope.Error(
                 errorCode: "tool_timeout",
                 error: $"Tool '{call.Name}' timed out after {toolTimeoutSeconds}s.",
                 hints: new[] { "Increase toolTimeoutSeconds, or narrow the query (OU scoping, tighter filters)." },
                 isTransient: true);
-
-            var meta = TryExtractToolOutputMetadata(output);
-            return new ToolOutputDto {
-                CallId = call.CallId,
-                Output = output,
-                Ok = meta.Ok,
-                ErrorCode = meta.ErrorCode,
-                Error = meta.Error,
-                Hints = meta.Hints,
-                IsTransient = meta.IsTransient,
-                SummaryMarkdown = meta.SummaryMarkdown,
-                MetaJson = meta.MetaJson,
-                RenderJson = meta.RenderJson,
-                FailureJson = meta.FailureJson
-            };
+            return BuildToolOutputDto(call.CallId, output);
         } catch (Exception ex) {
+            var isTransient = IsLikelyTransientToolException(ex);
             var output = ToolOutputEnvelope.Error(
                 errorCode: "tool_exception",
                 error: $"{ex.GetType().Name}: {ex.Message}",
-                hints: new[] { "Try again. If it keeps failing, narrow the query and capture tool args/output." },
-                isTransient: false);
-
-            var meta = TryExtractToolOutputMetadata(output);
-            return new ToolOutputDto {
-                CallId = call.CallId,
-                Output = output,
-                Ok = meta.Ok,
-                ErrorCode = meta.ErrorCode,
-                Error = meta.Error,
-                Hints = meta.Hints,
-                IsTransient = meta.IsTransient,
-                SummaryMarkdown = meta.SummaryMarkdown,
-                MetaJson = meta.MetaJson,
-                RenderJson = meta.RenderJson,
-                FailureJson = meta.FailureJson
-            };
+                hints: new[] {
+                    "Try again. If it keeps failing, narrow the query and capture tool args/output.",
+                    "Check tool parameter names and value types in the tool details panel."
+                },
+                isTransient: isTransient);
+            return BuildToolOutputDto(call.CallId, output);
         }
+    }
+
+    private static ToolOutputDto BuildToolOutputDto(string callId, string output) {
+        var meta = TryExtractToolOutputMetadata(output);
+        return new ToolOutputDto {
+            CallId = callId,
+            Output = output,
+            Ok = meta.Ok,
+            ErrorCode = meta.ErrorCode,
+            Error = meta.Error,
+            Hints = meta.Hints,
+            IsTransient = meta.IsTransient,
+            SummaryMarkdown = meta.SummaryMarkdown,
+            MetaJson = meta.MetaJson,
+            RenderJson = meta.RenderJson,
+            FailureJson = meta.FailureJson
+        };
+    }
+
+    private static bool ShouldRetryToolCall(ToolOutputDto output, ToolRetryProfile profile, int attempt) {
+        if (attempt >= profile.MaxAttempts) {
+            return false;
+        }
+        if (output.Ok is true) {
+            return false;
+        }
+
+        if (string.Equals(output.ErrorCode, "tool_not_registered", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+        if (IsLikelyPermanentToolFailure(output)) {
+            return false;
+        }
+        if (output.IsTransient is true) {
+            return true;
+        }
+
+        var text = BuildToolFailureSearchText(output);
+        if (text.Length == 0) {
+            return false;
+        }
+
+        var timeoutSignal = text.Contains("timed out", StringComparison.OrdinalIgnoreCase)
+                            || text.Contains("timeout", StringComparison.OrdinalIgnoreCase)
+                            || text.Contains("rpc server unavailable", StringComparison.OrdinalIgnoreCase)
+                            || text.Contains("server unavailable", StringComparison.OrdinalIgnoreCase);
+        if (timeoutSignal && profile.RetryOnTimeout) {
+            return true;
+        }
+
+        var transportSignal = text.Contains("temporarily unavailable", StringComparison.OrdinalIgnoreCase)
+                              || text.Contains("connection reset", StringComparison.OrdinalIgnoreCase)
+                              || text.Contains("connection closed", StringComparison.OrdinalIgnoreCase)
+                              || text.Contains("network", StringComparison.OrdinalIgnoreCase)
+                              || text.Contains("try again", StringComparison.OrdinalIgnoreCase)
+                              || text.Contains("throttl", StringComparison.OrdinalIgnoreCase);
+        return transportSignal && profile.RetryOnTransport;
+    }
+
+    private static bool IsLikelyPermanentToolFailure(ToolOutputDto output) {
+        var text = BuildToolFailureSearchText(output);
+        if (text.Length == 0) {
+            return false;
+        }
+
+        return text.Contains("unsupported columns", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("unknown projection", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("invalid parameter", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("invalid argument", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("missing required", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("cannot bind parameter", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("access denied", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("permission denied", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildToolFailureSearchText(ToolOutputDto output) {
+        var parts = new List<string>(6);
+        if (!string.IsNullOrWhiteSpace(output.ErrorCode)) {
+            parts.Add(output.ErrorCode);
+        }
+        if (!string.IsNullOrWhiteSpace(output.Error)) {
+            parts.Add(output.Error);
+        }
+        if (output.Hints is { Length: > 0 }) {
+            parts.Add(string.Join(" ", output.Hints));
+        }
+
+        return parts.Count == 0 ? string.Empty : string.Join(" ", parts);
+    }
+
+    private static bool IsLikelyTransientToolException(Exception ex) {
+        if (ex is TimeoutException || ex is IOException) {
+            return true;
+        }
+
+        var name = ex.GetType().FullName ?? ex.GetType().Name;
+        if (name.IndexOf("SocketException", StringComparison.OrdinalIgnoreCase) >= 0
+            || name.IndexOf("HttpRequestException", StringComparison.OrdinalIgnoreCase) >= 0
+            || name.IndexOf("TaskCanceledException", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return true;
+        }
+
+        var message = ex.Message ?? string.Empty;
+        return message.IndexOf("timed out", StringComparison.OrdinalIgnoreCase) >= 0
+               || message.IndexOf("timeout", StringComparison.OrdinalIgnoreCase) >= 0
+               || message.IndexOf("temporarily", StringComparison.OrdinalIgnoreCase) >= 0
+               || message.IndexOf("unavailable", StringComparison.OrdinalIgnoreCase) >= 0
+               || message.IndexOf("try again", StringComparison.OrdinalIgnoreCase) >= 0
+               || message.IndexOf("connection", StringComparison.OrdinalIgnoreCase) >= 0
+               || message.IndexOf("throttl", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static ToolRetryProfile ResolveRetryProfile(string? toolName) {
+        var normalized = (toolName ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.StartsWith("ad_", StringComparison.Ordinal)) {
+            return new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 200, RetryOnTimeout: true, RetryOnTransport: true);
+        }
+        if (normalized.StartsWith("eventlog_", StringComparison.Ordinal)) {
+            return new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 150, RetryOnTimeout: true, RetryOnTransport: true);
+        }
+        if (normalized.StartsWith("system_", StringComparison.Ordinal)
+            || normalized.StartsWith("wsl_", StringComparison.Ordinal)) {
+            return new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 120, RetryOnTimeout: true, RetryOnTransport: true);
+        }
+        if (normalized.StartsWith("fs_", StringComparison.Ordinal)) {
+            return new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 90, RetryOnTimeout: true, RetryOnTransport: false);
+        }
+
+        return new ToolRetryProfile(MaxAttempts: 1, DelayBaseMs: 0, RetryOnTimeout: false, RetryOnTransport: false);
     }
 
     private static ToolOutputMetadata TryExtractToolOutputMetadata(string output) {

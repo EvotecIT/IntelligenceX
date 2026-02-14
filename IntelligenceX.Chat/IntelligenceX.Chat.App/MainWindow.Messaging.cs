@@ -486,7 +486,9 @@ public sealed partial class MainWindow : Window {
         _activeTurnRequestId = requestId;
         _cancelRequestedTurnRequestId = null;
         _activeRequestConversationId = turn.ConversationId;
+        ClearToolRoutingInsights();
         await PublishSessionStateAsync().ConfigureAwait(false);
+        await PublishOptionsStateAsync().ConfigureAwait(false);
 
         try {
             await ExecuteChatTurnWithReconnectAsync(turn).ConfigureAwait(false);
@@ -681,7 +683,11 @@ public sealed partial class MainWindow : Window {
                         break;
                     }
 
+                    var routingInsightUpdated = ApplyToolRoutingInsight(status);
                     _ = SetActivityAsync(IsTerminalChatStatus(status.Status) ? null : FormatActivityText(status));
+                    if (routingInsightUpdated) {
+                        _ = PublishOptionsStateAsync();
+                    }
                     if (VerboseServiceLogs || _debugMode) {
                         AppendSystem(FormatStatusTrace(status));
                     }

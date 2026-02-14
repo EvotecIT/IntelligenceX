@@ -87,6 +87,9 @@ public sealed partial class MainWindow : Window {
                 _toolPackNames.Remove(toolName);
                 _toolTags.Remove(toolName);
                 _toolParameters.Remove(toolName);
+                _toolRoutingConfidence.Remove(toolName);
+                _toolRoutingReason.Remove(toolName);
+                _toolRoutingScore.Remove(toolName);
             }
         }
     }
@@ -449,10 +452,77 @@ public sealed partial class MainWindow : Window {
             return Array.Empty<string>();
         }
 
-        var lines = new List<string>();
         var lowerText = (userText ?? string.Empty).Trim().ToLowerInvariant();
+        var userTokens = TokenizeMemorySemanticText(lowerText);
+        var scoredFacts = new List<ScoredMemoryFact>(facts.Count);
 
-        facts.Sort(static (a, b) => {
+        foreach (var fact in facts) {
+            var text = (fact.Fact ?? string.Empty).Trim();
+            if (text.Length == 0) {
+                continue;
+            }
+
+            var normalizedFactText = text.ToLowerInvariant();
+            var score = fact.Weight * 1.4d;
+            var semanticHits = 0;
+
+            if (lowerText.Length > 0
+                && (lowerText.Contains(normalizedFactText, StringComparison.Ordinal)
+                    || normalizedFactText.Contains(lowerText, StringComparison.Ordinal))) {
+                score += 2.25d;
+                semanticHits += 2;
+            }
+
+            var factTokens = TokenizeMemorySemanticText(normalizedFactText);
+            var factTokenOverlap = CountTokenOverlap(userTokens, factTokens);
+            if (factTokenOverlap > 0) {
+                score += Math.Min(5d, factTokenOverlap * 1.35d);
+                semanticHits += factTokenOverlap;
+            }
+
+            var tags = fact.Tags ?? Array.Empty<string>();
+            for (var i = 0; i < tags.Length; i++) {
+                var tag = (tags[i] ?? string.Empty).Trim().ToLowerInvariant();
+                if (tag.Length == 0) {
+                    continue;
+                }
+
+                if (lowerText.Length > 0 && lowerText.Contains(tag, StringComparison.Ordinal)) {
+                    score += 1.1d;
+                    semanticHits++;
+                }
+
+                var tagTokens = TokenizeMemorySemanticText(tag);
+                var tagTokenOverlap = CountTokenOverlap(userTokens, tagTokens);
+                if (tagTokenOverlap > 0) {
+                    score += Math.Min(2.5d, tagTokenOverlap * 0.75d);
+                    semanticHits += tagTokenOverlap;
+                }
+            }
+
+            var updatedUtc = EnsureUtc(fact.UpdatedUtc == default ? DateTime.UtcNow : fact.UpdatedUtc);
+            var ageHours = (DateTime.UtcNow - updatedUtc).TotalHours;
+            if (ageHours <= 24d) {
+                score += 0.9d;
+            } else if (ageHours <= 72d) {
+                score += 0.55d;
+            } else if (ageHours <= 168d) {
+                score += 0.2d;
+            }
+
+            scoredFacts.Add(new ScoredMemoryFact(text, fact.Weight, updatedUtc, score, semanticHits));
+        }
+
+        if (scoredFacts.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        scoredFacts.Sort(static (a, b) => {
+            var scoreCompare = b.Score.CompareTo(a.Score);
+            if (scoreCompare != 0) {
+                return scoreCompare;
+            }
+
             var weightCompare = b.Weight.CompareTo(a.Weight);
             if (weightCompare != 0) {
                 return weightCompare;
@@ -461,36 +531,87 @@ public sealed partial class MainWindow : Window {
             return b.UpdatedUtc.CompareTo(a.UpdatedUtc);
         });
 
-        foreach (var fact in facts) {
-            var text = (fact.Fact ?? string.Empty).Trim();
-            if (text.Length == 0) {
+        var lines = new List<string>(Math.Min(10, scoredFacts.Count));
+        for (var i = 0; i < scoredFacts.Count && lines.Count < 10; i++) {
+            var fact = scoredFacts[i];
+            var include = i < 2
+                          || fact.Score >= 3.2d
+                          || fact.SemanticHits >= 2
+                          || (fact.SemanticHits >= 1 && fact.Score >= 2.5d);
+            if (!include) {
                 continue;
             }
 
-            var score = fact.Weight;
-            var tags = fact.Tags ?? Array.Empty<string>();
-            for (var i = 0; i < tags.Length; i++) {
-                var tag = (tags[i] ?? string.Empty).Trim().ToLowerInvariant();
-                if (tag.Length > 0 && lowerText.Contains(tag, StringComparison.Ordinal)) {
-                    score += 2;
-                }
-            }
+            lines.Add(fact.Text);
+        }
 
-            if (lowerText.Length > 0 && lowerText.Contains(text.ToLowerInvariant(), StringComparison.Ordinal)) {
-                score += 2;
-            }
-
-            if (score >= 3 || lines.Count < 3) {
-                lines.Add(text);
-            }
-
-            if (lines.Count >= 8) {
-                break;
+        if (lines.Count == 0) {
+            var fallbackCount = Math.Min(3, scoredFacts.Count);
+            for (var i = 0; i < fallbackCount; i++) {
+                lines.Add(scoredFacts[i].Text);
             }
         }
 
         return lines.Count == 0 ? Array.Empty<string>() : lines;
     }
+
+    private static HashSet<string> TokenizeMemorySemanticText(string text) {
+        var tokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(text)) {
+            return tokens;
+        }
+
+        var parts = Regex.Split(text, @"[^a-z0-9_]+");
+        for (var i = 0; i < parts.Length; i++) {
+            var token = (parts[i] ?? string.Empty).Trim().ToLowerInvariant();
+            if (token.Length < 3 || MemoryTokenStopWords.Contains(token)) {
+                continue;
+            }
+
+            tokens.Add(token);
+        }
+
+        return tokens;
+    }
+
+    private static int CountTokenOverlap(IReadOnlySet<string> left, IReadOnlySet<string> right) {
+        if (left.Count == 0 || right.Count == 0) {
+            return 0;
+        }
+
+        var overlap = 0;
+        if (left.Count <= right.Count) {
+            foreach (var token in left) {
+                if (right.Contains(token)) {
+                    overlap++;
+                }
+            }
+
+            return overlap;
+        }
+
+        foreach (var token in right) {
+            if (left.Contains(token)) {
+                overlap++;
+            }
+        }
+
+        return overlap;
+    }
+
+    private static readonly HashSet<string> MemoryTokenStopWords = new(StringComparer.OrdinalIgnoreCase) {
+        "the", "and", "with", "from", "that", "this", "for", "you", "your", "have", "show", "give", "list",
+        "check", "please", "about", "into", "just", "today", "need", "want", "when", "what", "where", "then",
+        "them", "they", "their", "there", "after", "before", "will", "should", "would", "could", "also", "been",
+        "being", "while", "does", "did", "done", "using", "used", "more", "same", "again"
+    };
+
+    private readonly record struct ScoredMemoryFact(
+        string Text,
+        int Weight,
+        DateTime UpdatedUtc,
+        double Score,
+        int SemanticHits);
 
     private static List<ChatMemoryFactState> NormalizeMemoryFacts(List<ChatMemoryFactState>? facts) {
         if (facts is null || facts.Count == 0) {
