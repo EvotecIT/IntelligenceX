@@ -69,6 +69,8 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
         var queryTokens = SplitTokens(query);
         var logToken = string.IsNullOrWhiteSpace(logHint) ? null : logHint;
 
+        // Collect one extra match so we can report `truncated` accurately without scanning the entire tree.
+        var maxMatchesToCollect = maxResults + 1;
         var matches = new List<EvtxFindFile>(Math.Min(64, maxResults));
         var scannedDirs = 0;
         var scannedFiles = 0;
@@ -88,7 +90,7 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             while (queue.Count > 0) {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if (matches.Count >= maxResults) {
+                if (matches.Count >= maxMatchesToCollect) {
                     break;
                 }
 
@@ -103,14 +105,15 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                 IEnumerable<string> files;
                 try {
                     files = Directory.EnumerateFiles(dir, "*.evtx", SearchOption.TopDirectoryOnly);
-                } catch {
+                } catch (Exception ex) when (
+                    ex is UnauthorizedAccessException or DirectoryNotFoundException or PathTooLongException or IOException) {
                     continue;
                 }
 
                 foreach (var file in files) {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    if (matches.Count >= maxResults) {
+                    if (matches.Count >= maxMatchesToCollect) {
                         break;
                     }
 
@@ -132,12 +135,13 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                             FileName: info.Name,
                             SizeBytes: info.Length,
                             LastWriteTimeUtc: info.LastWriteTimeUtc));
-                    } catch {
+                    } catch (Exception ex) when (
+                        ex is UnauthorizedAccessException or FileNotFoundException or PathTooLongException or IOException) {
                         // Ignore file races/access issues.
                     }
                 }
 
-                if (matches.Count >= maxResults || hitScanBudget) {
+                if (matches.Count >= maxMatchesToCollect || hitScanBudget) {
                     break;
                 }
 
@@ -148,7 +152,8 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                 IEnumerable<string> subDirs;
                 try {
                     subDirs = Directory.EnumerateDirectories(dir, "*", SearchOption.TopDirectoryOnly);
-                } catch {
+                } catch (Exception ex) when (
+                    ex is UnauthorizedAccessException or DirectoryNotFoundException or PathTooLongException or IOException) {
                     continue;
                 }
 
@@ -162,7 +167,7 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                 }
             }
 
-            if (matches.Count >= maxResults || hitScanBudget) {
+            if (matches.Count >= maxMatchesToCollect || hitScanBudget) {
                 break;
             }
         }
@@ -173,8 +178,8 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             .ToArray();
 
         // We may stop early either because we hit max_results or because we hit scan budgets.
-        var truncated = hitScanBudget || ordered.Length >= maxResults;
-        var selected = ordered.Length > maxResults ? ordered.Take(maxResults).ToArray() : ordered;
+        var truncated = hitScanBudget || ordered.Length > maxResults;
+        var selected = truncated ? ordered.Take(maxResults).ToArray() : ordered;
 
         var result = new EvtxFindResult(
             Files: selected,
