@@ -589,13 +589,16 @@ public sealed partial class MainWindow : Window {
         }
 
         var ordered = new List<ChatMemoryFactState>(facts);
-        ordered.Sort(static (a, b) => {
+        var nowUtc = DateTime.UtcNow;
+        ordered.Sort((a, b) => {
             var weightCompare = b.Weight.CompareTo(a.Weight);
             if (weightCompare != 0) {
                 return weightCompare;
             }
 
-            return b.UpdatedUtc.CompareTo(a.UpdatedUtc);
+            var aUpdatedUtc = NormalizeMemoryUpdatedUtcForRecency(a.UpdatedUtc, nowUtc);
+            var bUpdatedUtc = NormalizeMemoryUpdatedUtcForRecency(b.UpdatedUtc, nowUtc);
+            return bUpdatedUtc.CompareTo(aUpdatedUtc);
         });
 
         var lines = new List<string>(8);

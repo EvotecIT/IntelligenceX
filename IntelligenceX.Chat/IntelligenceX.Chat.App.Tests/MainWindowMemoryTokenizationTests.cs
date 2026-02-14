@@ -25,6 +25,11 @@ public sealed class MainWindowMemoryTokenizationTests {
         BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("NormalizeMemoryUpdatedUtcForRecency not found.");
 
+    private static readonly MethodInfo BuildPersistentMemoryLinesForEmptyQueryMethod = typeof(MainWindow).GetMethod(
+        "BuildPersistentMemoryLinesForEmptyQuery",
+        BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildPersistentMemoryLinesForEmptyQuery not found.");
+
     /// <summary>
     /// Ensures tokenization yields stable semantic tokens for precomposed/decomposed Unicode forms.
     /// </summary>
@@ -117,6 +122,48 @@ public sealed class MainWindowMemoryTokenizationTests {
         Assert.Equal(DateTimeKind.Utc, normalized.Kind);
     }
 
+    /// <summary>
+    /// Ensures empty-query ranking uses normalized UTC ordering when timestamp kinds are mixed.
+    /// </summary>
+    [Fact]
+    public void BuildPersistentMemoryLinesForEmptyQuery_NormalizesUpdatedUtcBeforeSorting() {
+        var nowUtc = DateTime.UtcNow;
+        var localOffset = TimeZoneInfo.Local.GetUtcOffset(nowUtc);
+        if (localOffset == TimeSpan.Zero) {
+            return;
+        }
+
+        var gapMinutes = Math.Max(1, (int)Math.Min(20, Math.Abs(localOffset.TotalMinutes) / 2d));
+        var gap = TimeSpan.FromMinutes(gapMinutes);
+        var unspecifiedActualUtc = localOffset > TimeSpan.Zero ? nowUtc - (gap + gap) : nowUtc - gap;
+        var utcActualUtc = localOffset > TimeSpan.Zero ? nowUtc - gap : nowUtc - (gap + gap);
+        var unspecifiedLocalClock = TimeZoneInfo.ConvertTimeFromUtc(unspecifiedActualUtc, TimeZoneInfo.Local);
+        var unspecifiedUpdated = DateTime.SpecifyKind(unspecifiedLocalClock, DateTimeKind.Unspecified);
+        var utcUpdated = DateTime.SpecifyKind(utcActualUtc, DateTimeKind.Utc);
+
+        var facts = new List<ChatMemoryFactState> {
+            new() {
+                Fact = "utc-fact",
+                Weight = 3,
+                UpdatedUtc = utcUpdated
+            },
+            new() {
+                Fact = "unspecified-fact",
+                Weight = 3,
+                UpdatedUtc = unspecifiedUpdated
+            }
+        };
+
+        var normalizedUtc = InvokeNormalizeMemoryUpdatedUtcForRecency(utcUpdated, nowUtc);
+        var normalizedUnspecified = InvokeNormalizeMemoryUpdatedUtcForRecency(unspecifiedUpdated, nowUtc);
+        var expectedFirst = normalizedUnspecified > normalizedUtc ? "unspecified-fact" : "utc-fact";
+
+        var lines = InvokeBuildPersistentMemoryLinesForEmptyQuery(facts);
+
+        Assert.NotEmpty(lines);
+        Assert.Equal(expectedFirst, lines[0]);
+    }
+
     private static HashSet<string> InvokeTokenize(string input) {
         var result = TokenizeMethod.Invoke(null, new object?[] { input });
         return Assert.IsType<HashSet<string>>(result);
@@ -133,5 +180,10 @@ public sealed class MainWindowMemoryTokenizationTests {
     private static DateTime InvokeNormalizeMemoryUpdatedUtcForRecency(DateTime value, DateTime nowUtc) {
         var result = NormalizeMemoryUpdatedUtcForRecencyMethod.Invoke(null, new object?[] { value, nowUtc });
         return Assert.IsType<DateTime>(result);
+    }
+
+    private static IReadOnlyList<string> InvokeBuildPersistentMemoryLinesForEmptyQuery(List<ChatMemoryFactState> facts) {
+        var result = BuildPersistentMemoryLinesForEmptyQueryMethod.Invoke(null, new object?[] { facts });
+        return Assert.IsAssignableFrom<IReadOnlyList<string>>(result);
     }
 }
