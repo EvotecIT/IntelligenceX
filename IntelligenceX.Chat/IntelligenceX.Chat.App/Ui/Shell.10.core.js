@@ -990,6 +990,33 @@
     return null;
   }
 
+  function normalizePackSourceKind(value) {
+    var normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "builtin" || normalized === "closed_source" || normalized === "open_source") {
+      return normalized;
+    }
+    return "open_source";
+  }
+
+  function packSourceKind(packId) {
+    var pack = findPackById(packId);
+    if (!pack) {
+      return "open_source";
+    }
+    return normalizePackSourceKind(pack.sourceKind);
+  }
+
+  function packSourceLabel(sourceKind) {
+    var normalized = normalizePackSourceKind(sourceKind);
+    if (normalized === "builtin") {
+      return "Built-in";
+    }
+    if (normalized === "closed_source") {
+      return "Closed source";
+    }
+    return "Open source";
+  }
+
   function mapCategoryToPackId(category) {
     var normalized = normalizePackId(category);
     if (normalized === "ad") return "ad";

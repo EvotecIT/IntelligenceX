@@ -145,7 +145,7 @@ public sealed record ChatRequestOptions {
     /// <summary>
     /// Max tool-call rounds per user message.
     /// </summary>
-    public int MaxToolRounds { get; init; } = 8;
+    public int MaxToolRounds { get; init; } = 24;
     /// <summary>
     /// Whether to execute tool calls in parallel when possible.
     /// </summary>

@@ -16,7 +16,7 @@ internal sealed class ServiceOptions {
     public string? StateDbPath { get; set; }
     public bool NoStateDb { get; set; }
 
-    public int MaxToolRounds { get; set; } = 8;
+    public int MaxToolRounds { get; set; } = 24;
     public bool ParallelTools { get; set; } = true;
     public int TurnTimeoutSeconds { get; set; }
     public int ToolTimeoutSeconds { get; set; }
@@ -282,7 +282,7 @@ internal sealed class ServiceOptions {
         Console.WriteLine("  --no-state-db           Disable SQLite state storage (profiles unavailable).");
         Console.WriteLine("  --allow-root <PATH>     Allow filesystem/evtx operations under PATH (repeatable).");
         Console.WriteLine("  --instructions-file <PATH>  Load system instructions from a file (default: bundled HostSystemPrompt.md).");
-        Console.WriteLine("  --max-tool-rounds <N>   Max tool-call rounds per user message (default: 3).");
+        Console.WriteLine("  --max-tool-rounds <N>   Max tool-call rounds per user message (default: 24).");
         Console.WriteLine("  --parallel-tools        Execute tool calls in parallel when possible (default: on).");
         Console.WriteLine("  --no-parallel-tools     Disable parallel tool calls.");
         Console.WriteLine("  --turn-timeout-seconds <N>  Per-turn timeout in seconds (0 = no timeout; default: 0).");

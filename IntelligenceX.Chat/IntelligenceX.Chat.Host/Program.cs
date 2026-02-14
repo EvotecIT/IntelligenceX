@@ -327,7 +327,7 @@ internal static partial class Program {
         Console.WriteLine("  --max-table-rows <N>    Max rows to show in table-like output (0 = no limit; default: 20).");
         Console.WriteLine("  --max-sample <N>        Max sample items to show from long lists (0 = no limit; default: 10).");
         Console.WriteLine("  --redact                Best-effort redact output for display/logging (default: off).");
-        Console.WriteLine("  --max-tool-rounds <N>   Max tool-call rounds per user message (default: 3).");
+        Console.WriteLine("  --max-tool-rounds <N>   Max tool-call rounds per user message (default: 24).");
         Console.WriteLine("  --parallel-tools        Execute tool calls in parallel when possible.");
         Console.WriteLine("  --turn-timeout-seconds <N>  Per-turn timeout in seconds (0 = no timeout; default: 0).");
         Console.WriteLine("  --tool-timeout-seconds <N>  Per-tool timeout in seconds (0 = no timeout; default: 0).");
