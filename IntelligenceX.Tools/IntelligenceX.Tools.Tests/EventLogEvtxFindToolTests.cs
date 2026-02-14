@@ -100,5 +100,47 @@ public class EventLogEvtxFindToolTests {
             }
         }
     }
-}
 
+    [Fact]
+    public async Task EvtxFind_ReturnsNewestFilesWhenMoreThanMaxResultsExist() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-evtx-find-" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tempRoot);
+        try {
+            // Make ordering deterministic: distinct timestamps.
+            var t0 = new DateTime(2026, 02, 14, 12, 00, 00, DateTimeKind.Utc);
+
+            var f1 = Path.Combine(tempRoot, "old.evtx");
+            var f2 = Path.Combine(tempRoot, "mid.evtx");
+            var f3 = Path.Combine(tempRoot, "new.evtx");
+            File.WriteAllText(f1, "x");
+            File.WriteAllText(f2, "x");
+            File.WriteAllText(f3, "x");
+            File.SetLastWriteTimeUtc(f1, t0.AddMinutes(1));
+            File.SetLastWriteTimeUtc(f2, t0.AddMinutes(2));
+            File.SetLastWriteTimeUtc(f3, t0.AddMinutes(3));
+
+            var options = new EventLogToolOptions();
+            options.AllowedRoots.Add(tempRoot);
+            var tool = new EventLogEvtxFindTool(options);
+
+            var args = new JsonObject().Add("max_results", 2);
+            var json = await tool.InvokeAsync(args, CancellationToken.None);
+
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            Assert.True(root.GetProperty("ok").GetBoolean());
+
+            var names = root.GetProperty("files").EnumerateArray()
+                .Select(static x => x.GetProperty("file_name").GetString())
+                .ToArray();
+
+            Assert.Equal(new[] { "new.evtx", "mid.evtx" }, names);
+        } finally {
+            try {
+                Directory.Delete(tempRoot, recursive: true);
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
+    }
+}

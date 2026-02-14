@@ -75,9 +75,8 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
         var queryTokens = SplitTokens(query);
         var logToken = string.IsNullOrWhiteSpace(logHint) ? null : logHint;
 
-        // Collect one extra match so we can report `truncated` accurately without scanning the entire tree.
-        var maxMatchesToCollect = maxResults + 1;
-        var matches = new List<EvtxFindFile>(Math.Min(64, maxResults));
+        var best = new List<EvtxFindFile>(Math.Min(64, maxResults));
+        var matchCount = 0;
         var scannedDirs = 0;
         var scannedFiles = 0;
         var hitScanBudget = false;
@@ -95,10 +94,6 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
 
             while (queue.Count > 0) {
                 cancellationToken.ThrowIfCancellationRequested();
-
-                if (matches.Count >= maxMatchesToCollect) {
-                    break;
-                }
 
                 if (scannedDirs >= MaxDirsScanned || scannedFiles >= MaxFilesScanned) {
                     hitScanBudget = true;
@@ -119,10 +114,6 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                 foreach (var file in files) {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    if (matches.Count >= maxMatchesToCollect) {
-                        break;
-                    }
-
                     if (scannedFiles >= MaxFilesScanned) {
                         hitScanBudget = true;
                         break;
@@ -136,18 +127,20 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
 
                     try {
                         var info = new FileInfo(file);
-                        matches.Add(new EvtxFindFile(
+                        var candidate = new EvtxFindFile(
                             Path: info.FullName,
                             FileName: info.Name,
                             SizeBytes: info.Length,
-                            LastWriteTimeUtc: info.LastWriteTimeUtc));
+                            LastWriteTimeUtc: info.LastWriteTimeUtc);
+                        matchCount++;
+                        ConsiderCandidate(best, candidate, maxResults);
                     } catch (Exception ex) when (
                         ex is UnauthorizedAccessException or FileNotFoundException or PathTooLongException or IOException) {
                         // Ignore file races/access issues.
                     }
                 }
 
-                if (matches.Count >= maxMatchesToCollect || hitScanBudget) {
+                if (hitScanBudget) {
                     break;
                 }
 
@@ -173,19 +166,13 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                 }
             }
 
-            if (matches.Count >= maxMatchesToCollect || hitScanBudget) {
+            if (hitScanBudget) {
                 break;
             }
         }
 
-        var ordered = matches
-            .OrderByDescending(static x => x.LastWriteTimeUtc)
-            .ThenBy(static x => x.FileName, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        // We may stop early either because we hit max_results or because we hit scan budgets.
-        var truncated = hitScanBudget || ordered.Length > maxResults;
-        var selected = truncated ? ordered.Take(maxResults).ToArray() : ordered;
+        var truncated = matchCount > maxResults;
+        var selected = best;
 
         var result = new EvtxFindResult(
             Files: selected,
@@ -208,11 +195,13 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             rowsPath: "files",
             headers: new[] { "File", "LastWriteUtc", "Size", "Path" },
             previewRows: preview.Rows,
-            count: selected.Length,
+            count: selected.Count,
             truncated: truncated,
             scanned: scannedFiles,
             metaMutate: meta => {
                 meta["scanned_directories"] = JsonValue.From(scannedDirs);
+                meta["scan_budget_hit"] = JsonValue.From(hitScanBudget);
+                meta["match_count"] = JsonValue.From(matchCount);
             },
             columns: new[] {
                 new ToolColumn("file_name", "File", "string"),
@@ -220,6 +209,53 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                 new ToolColumn("size_bytes", "Size", "number"),
                 new ToolColumn("path", "Path", "string")
             });
+    }
+
+    private static readonly IComparer<EvtxFindFile> BestComparer = Comparer<EvtxFindFile>.Create(CompareBest);
+
+    // Negative means "a is better than b" (earlier in output ordering).
+    private static int CompareBest(EvtxFindFile a, EvtxFindFile b) {
+        var cmp = b.LastWriteTimeUtc.CompareTo(a.LastWriteTimeUtc);
+        if (cmp != 0) {
+            return cmp;
+        }
+
+        cmp = string.Compare(a.FileName, b.FileName, StringComparison.OrdinalIgnoreCase);
+        if (cmp != 0) {
+            return cmp;
+        }
+
+        return string.Compare(a.Path, b.Path, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void ConsiderCandidate(List<EvtxFindFile> best, EvtxFindFile candidate, int maxResults) {
+        if (maxResults <= 0) {
+            return;
+        }
+
+        if (best.Count < maxResults) {
+            InsertSorted(best, candidate);
+            return;
+        }
+
+        // best is kept in output order (best -> worst).
+        var worst = best[^1];
+        if (BestComparer.Compare(candidate, worst) >= 0) {
+            return;
+        }
+
+        InsertSorted(best, candidate);
+        if (best.Count > maxResults) {
+            best.RemoveAt(best.Count - 1);
+        }
+    }
+
+    private static void InsertSorted(List<EvtxFindFile> best, EvtxFindFile candidate) {
+        var idx = best.BinarySearch(candidate, BestComparer);
+        if (idx < 0) {
+            idx = ~idx;
+        }
+        best.Insert(idx, candidate);
     }
 
     private static bool IsMatch(string path, IReadOnlyList<string> queryTokens, string? logHint) {
