@@ -157,6 +157,10 @@ public sealed partial class MainWindow : Window {
     private readonly Dictionary<string, string> _toolRoutingConfidence = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _toolRoutingReason = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, double> _toolRoutingScore = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, MemorySemanticVectorCacheEntry> _memorySemanticVectorCache = new(StringComparer.OrdinalIgnoreCase);
+    private MemoryDebugSnapshot? _lastMemoryDebugSnapshot;
+    private readonly List<MemoryDebugSnapshot> _memoryDebugHistory = new();
+    private int _memoryDebugSequence;
     private string _appProfileName = ResolveAppProfileName(Environment.GetEnvironmentVariable("IXCHAT_PROFILE"));
     private readonly ChatAppStateStore _stateStore = new(ChatAppStateStore.GetDefaultDbPath());
     private readonly SemaphoreSlim _stateWriteGate = new(1, 1);
@@ -211,6 +215,26 @@ public sealed partial class MainWindow : Window {
         public string? ThemePreset { get; set; }
         public bool HasThemePreset { get; set; }
         public ProfileUpdateScope Scope { get; set; }
+    }
+
+    private sealed class MemorySemanticVectorCacheEntry {
+        public required string Signature { get; init; }
+        public required Dictionary<int, double> Vector { get; init; }
+    }
+
+    private sealed class MemoryDebugSnapshot {
+        public DateTime UpdatedUtc { get; init; }
+        public int Sequence { get; init; }
+        public int AvailableFacts { get; init; }
+        public int CandidateFacts { get; init; }
+        public int SelectedFacts { get; init; }
+        public int UserTokenCount { get; init; }
+        public double TopScore { get; init; }
+        public double TopSemanticSimilarity { get; init; }
+        public double AverageSelectedSimilarity { get; init; }
+        public double AverageSelectedRelevance { get; init; }
+        public int CacheEntries { get; init; }
+        public string Quality { get; init; } = "none";
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -699,6 +723,10 @@ public sealed partial class MainWindow : Window {
         _persistentMemoryEnabled = _appState.PersistentMemoryEnabled;
         _appState.PersistentMemoryEnabled = _persistentMemoryEnabled;
         _appState.MemoryFacts = NormalizeMemoryFacts(_appState.MemoryFacts);
+        _memorySemanticVectorCache.Clear();
+        _lastMemoryDebugSnapshot = null;
+        _memoryDebugHistory.Clear();
+        _memoryDebugSequence = 0;
 
         var repairedLegacyTranscriptState = LoadConversationsFromState(_appState);
         ActivateConversation(ResolveInitialConversationId(_appState));

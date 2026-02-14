@@ -230,6 +230,7 @@ public sealed partial class MainWindow : Window {
                 maxCandidateTools = _autonomyMaxCandidateTools
             },
             memory = BuildMemoryState(),
+            memoryDebug = BuildMemoryDebugState(),
             activeProfileName = _appProfileName,
             profileNames = BuildKnownProfiles(),
             activeConversationId = _activeConversationId,
@@ -348,6 +349,55 @@ public sealed partial class MainWindow : Window {
             count = normalizedFacts.Count,
             facts = facts.ToArray()
         };
+    }
+
+    private object? BuildMemoryDebugState() {
+        var snapshot = _lastMemoryDebugSnapshot;
+        if (snapshot is null) {
+            return null;
+        }
+
+        var updatedLocal = EnsureUtc(snapshot.UpdatedUtc).ToLocalTime();
+        var history = BuildMemoryDebugHistoryState();
+        return new {
+            updatedLocal = updatedLocal.ToString(_timestampFormat, CultureInfo.InvariantCulture),
+            sequence = snapshot.Sequence,
+            availableFacts = snapshot.AvailableFacts,
+            candidateFacts = snapshot.CandidateFacts,
+            selectedFacts = snapshot.SelectedFacts,
+            userTokenCount = snapshot.UserTokenCount,
+            topScore = snapshot.TopScore,
+            topSemanticSimilarity = snapshot.TopSemanticSimilarity,
+            averageSelectedSimilarity = snapshot.AverageSelectedSimilarity,
+            averageSelectedRelevance = snapshot.AverageSelectedRelevance,
+            cacheEntries = snapshot.CacheEntries,
+            quality = snapshot.Quality,
+            history
+        };
+    }
+
+    private object[] BuildMemoryDebugHistoryState() {
+        if (_memoryDebugHistory.Count == 0) {
+            return Array.Empty<object>();
+        }
+
+        var start = Math.Max(0, _memoryDebugHistory.Count - 12);
+        var list = new List<object>(_memoryDebugHistory.Count - start);
+        for (var i = start; i < _memoryDebugHistory.Count; i++) {
+            var item = _memoryDebugHistory[i];
+            var updatedLocal = EnsureUtc(item.UpdatedUtc).ToLocalTime();
+            list.Add(new {
+                updatedLocal = updatedLocal.ToString(_timestampFormat, CultureInfo.InvariantCulture),
+                sequence = item.Sequence,
+                selectedFacts = item.SelectedFacts,
+                userTokenCount = item.UserTokenCount,
+                averageSelectedSimilarity = item.AverageSelectedSimilarity,
+                averageSelectedRelevance = item.AverageSelectedRelevance,
+                quality = item.Quality
+            });
+        }
+
+        return list.ToArray();
     }
 
     private static object[] BuildToolParameterState(ToolParameterDto[]? parameters) {

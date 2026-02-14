@@ -152,6 +152,34 @@
     post("omd_copy", { text: buildWheelDiagnosticsText() });
   }
 
+  function buildMemoryDiagnosticsText() {
+    var lines = [];
+    lines.push("IntelligenceX Memory Diagnostics");
+    var snap = state.options.memoryDebug || null;
+    if (!snap) {
+      lines.push("status: unavailable");
+      return lines.join("\n");
+    }
+
+    lines.push("updated_local: " + (snap.updatedLocal || ""));
+    lines.push("");
+    lines.push("stats:");
+    lines.push("  facts: " + (snap.availableFacts || 0));
+    lines.push("  candidates: " + (snap.candidateFacts || 0));
+    lines.push("  selected: " + (snap.selectedFacts || 0));
+    lines.push("  user_tokens: " + (snap.userTokenCount || 0));
+    lines.push("  top_score: " + (typeof snap.topScore === "number" ? snap.topScore.toFixed(3) : "0.000"));
+    lines.push("  top_similarity: " + (typeof snap.topSemanticSimilarity === "number" ? snap.topSemanticSimilarity.toFixed(3) : "0.000"));
+    lines.push("  avg_selected_similarity: " + (typeof snap.averageSelectedSimilarity === "number" ? snap.averageSelectedSimilarity.toFixed(3) : "0.000"));
+    lines.push("  avg_selected_relevance: " + (typeof snap.averageSelectedRelevance === "number" ? snap.averageSelectedRelevance.toFixed(3) : "0.000"));
+    lines.push("  cache_entries: " + (snap.cacheEntries || 0));
+    return lines.join("\n");
+  }
+
+  function copyMemoryDiagnosticsToClipboard() {
+    post("omd_copy", { text: buildMemoryDiagnosticsText() });
+  }
+
   if (menuWheelDiagnostics) {
     menuWheelDiagnostics.addEventListener("click", function() {
       copyWheelDiagnosticsToClipboard();
@@ -392,6 +420,20 @@
       return;
     }
     copyWheelDiagnosticsToClipboard();
+  });
+
+  byId("btnDebugCopyMemory").addEventListener("click", function() {
+    if (!normalizeBool(state.options.debugToolsEnabled)) {
+      return;
+    }
+    copyMemoryDiagnosticsToClipboard();
+  });
+
+  byId("btnDebugRecomputeMemory").addEventListener("click", function() {
+    if (!normalizeBool(state.options.debugToolsEnabled)) {
+      return;
+    }
+    post("debug_memory_recompute");
   });
 
   byId("btnDebugCopyStartupLog").addEventListener("click", function() {
@@ -665,4 +707,3 @@
   });
 
   promptEl.addEventListener("input", autoResizePrompt);
-

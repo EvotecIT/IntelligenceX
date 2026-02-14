@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -15,6 +17,15 @@ namespace IntelligenceX.Chat.Tests;
 public sealed class ChatServiceRoutingTrimTests {
     private const int MaxTrackedToolRoutingStats = 512;
     private const int MaxTrackedWeightedRoutingContexts = 256;
+    private static readonly MethodInfo LooksLikeContinuationFollowUpMethod =
+        typeof(ChatServiceSession).GetMethod("LooksLikeContinuationFollowUp", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("LooksLikeContinuationFollowUp not found.");
+    private static readonly MethodInfo ShouldAttemptToolExecutionNudgeMethod =
+        typeof(ChatServiceSession).GetMethod("ShouldAttemptToolExecutionNudge", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ShouldAttemptToolExecutionNudge not found.");
+    private static readonly MethodInfo ParsePlannerSelectedDefinitionsMethod =
+        typeof(ChatServiceSession).GetMethod("ParsePlannerSelectedDefinitions", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ParsePlannerSelectedDefinitions not found.");
 
     [Fact]
     public void TrimToolRoutingStatsForTesting_RemovesNonPositiveTimestampEntriesFirst() {
@@ -89,5 +100,88 @@ public sealed class ChatServiceRoutingTrimTests {
 
         var names = session.GetTrackedToolRoutingStatNamesForTesting();
         Assert.Contains(names, static name => string.Equals(name, "ad_replication_summary", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("run now")]
+    [InlineData("go for it")]
+    [InlineData("do it")]
+    [InlineData("yes run it")]
+    [InlineData("dzialaj")]
+    [InlineData("uruchom to")]
+    [InlineData("dalej?")]
+    [InlineData("继续")]
+    [InlineData("继续执行")]
+    public void LooksLikeContinuationFollowUp_RecognizesCompactFollowUpsAcrossLanguages(string userText) {
+        var result = LooksLikeContinuationFollowUpMethod.Invoke(null, new object?[] { userText });
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForDeferredDraftWithoutToolCalls() {
+        var userRequest = "run now?";
+        var assistantDraft = "If you say \"run now\", I'll execute forest-wide checks immediately.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, true });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForExplicitCapabilityBlocker() {
+        var userRequest = "Get top 5 events from ADO system log.";
+        var assistantDraft = "I can't query remote ADO live logs directly without machine access.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, true });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ParsePlannerSelectedDefinitions_ParsesStrictJsonToolNames() {
+        var defs = BuildPlannerTestDefinitions();
+        var plannerText = "{\"tool_names\":[\"ad_replication_summary\",\"eventlog_live_query\"]}";
+
+        var result = ParsePlannerSelectedDefinitionsMethod.Invoke(
+            null,
+            new object?[] { plannerText, defs, 4 });
+
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(result);
+        Assert.Collection(
+            selected,
+            item => Assert.Equal("ad_replication_summary", item.Name),
+            item => Assert.Equal("eventlog_live_query", item.Name));
+    }
+
+    [Fact]
+    public void ParsePlannerSelectedDefinitions_ParsesFencedJsonAndHonorsLimit() {
+        var defs = BuildPlannerTestDefinitions();
+        var plannerText = """
+            ```json
+            {"tool_names":["eventlog_live_query","system_services_list","ad_replication_summary"]}
+            ```
+            """;
+
+        var result = ParsePlannerSelectedDefinitionsMethod.Invoke(
+            null,
+            new object?[] { plannerText, defs, 2 });
+
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(result);
+        Assert.Equal(2, selected.Count);
+        Assert.Equal("eventlog_live_query", selected[0].Name);
+        Assert.Equal("system_services_list", selected[1].Name);
+    }
+
+    private static IReadOnlyList<ToolDefinition> BuildPlannerTestDefinitions() {
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        return new[] {
+            new ToolDefinition("ad_replication_summary", "AD replication summary", schema),
+            new ToolDefinition("eventlog_live_query", "Event log live query", schema),
+            new ToolDefinition("system_services_list", "System services list", schema)
+        };
     }
 }

@@ -24,6 +24,26 @@ public sealed class MainWindowMemoryTokenizationTests {
         BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("CountNewTokenMatches not found.");
 
+    private static readonly MethodInfo BuildSemanticMemoryVectorMethod = typeof(MainWindow).GetMethod(
+        "BuildSemanticMemoryVector",
+        BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildSemanticMemoryVector not found.");
+
+    private static readonly MethodInfo ComputeSemanticVectorCosineMethod = typeof(MainWindow).GetMethod(
+        "ComputeSemanticVectorCosine",
+        BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ComputeSemanticVectorCosine not found.");
+
+    private static readonly MethodInfo ComputeMmrLambdaMethod = typeof(MainWindow).GetMethod(
+        "ComputeMmrLambda",
+        BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ComputeMmrLambda not found.");
+
+    private static readonly MethodInfo ComputeMinimumRelevanceGateMethod = typeof(MainWindow).GetMethod(
+        "ComputeMinimumRelevanceGate",
+        BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ComputeMinimumRelevanceGate not found.");
+
     private static readonly MethodInfo NormalizeMemoryUpdatedUtcForRecencyMethod = typeof(MainWindow).GetMethod(
         "NormalizeMemoryUpdatedUtcForRecency",
         BindingFlags.NonPublic | BindingFlags.Static)
@@ -65,6 +85,96 @@ public sealed class MainWindowMemoryTokenizationTests {
         Assert.Single(precomposed);
         Assert.Single(decomposed);
         Assert.True(precomposed.SetEquals(decomposed));
+    }
+
+    /// <summary>
+    /// Ensures short non-Latin words are preserved while numeric-only/short Latin filler tokens are dropped.
+    /// </summary>
+    [Fact]
+    public void TokenizeMemorySemanticText_KeepsNonLatinSignalAndDropsNumericNoise() {
+        var tokens = InvokeTokenize("\u7ee7\u7eed \u6267\u884c to do ad0 42");
+
+        Assert.Contains("\u7ee7\u7eed", tokens);
+        Assert.Contains("\u6267\u884c", tokens);
+        Assert.Contains("ad0", tokens);
+        Assert.DoesNotContain("42", tokens);
+        Assert.DoesNotContain("to", tokens);
+        Assert.DoesNotContain("do", tokens);
+    }
+
+    /// <summary>
+    /// Ensures English verbs are not hardcoded out via stopword lists.
+    /// </summary>
+    [Fact]
+    public void TokenizeMemorySemanticText_DoesNotDropEnglishActionWordsByHardcodedList() {
+        var tokens = InvokeTokenize("check replication health");
+
+        Assert.Contains("check", tokens);
+        Assert.Contains("replication", tokens);
+        Assert.Contains("health", tokens);
+    }
+
+    /// <summary>
+    /// Ensures semantic vectors score related phrasing above unrelated content.
+    /// </summary>
+    [Fact]
+    public void SemanticMemoryVector_CosineSimilarityRanksRelatedTextHigher() {
+        var query = InvokeBuildSemanticMemoryVector("replication health on ado1");
+        var related = InvokeBuildSemanticMemoryVector("ado1 replication status and health");
+        var unrelated = InvokeBuildSemanticMemoryVector("certificate expiration report for exchange");
+
+        var relatedScore = InvokeComputeSemanticVectorCosine(query, related);
+        var unrelatedScore = InvokeComputeSemanticVectorCosine(query, unrelated);
+
+        Assert.True(relatedScore > unrelatedScore);
+        Assert.True(relatedScore >= 0d && relatedScore <= 1d);
+        Assert.True(unrelatedScore >= 0d && unrelatedScore <= 1d);
+    }
+
+    /// <summary>
+    /// Ensures non-Latin semantic vectors still produce stable positive similarity.
+    /// </summary>
+    [Fact]
+    public void SemanticMemoryVector_CosineSimilaritySupportsNonLatinPhrases() {
+        var query = InvokeBuildSemanticMemoryVector("\u7ee7\u7eed \u68c0\u67e5 AD0 \u590d\u5236");
+        var related = InvokeBuildSemanticMemoryVector("\u68c0\u67e5 AD0 \u590d\u5236 \u7ee7\u7eed");
+        var unrelated = InvokeBuildSemanticMemoryVector("\u7535\u5b50\u90ae\u4ef6 \u53d1\u9001 \u62a5\u544a");
+
+        var relatedScore = InvokeComputeSemanticVectorCosine(query, related);
+        var unrelatedScore = InvokeComputeSemanticVectorCosine(query, unrelated);
+
+        Assert.True(relatedScore > 0d);
+        Assert.True(relatedScore > unrelatedScore);
+    }
+
+    /// <summary>
+    /// Ensures MMR relevance weight increases as user requests become more specific.
+    /// </summary>
+    [Fact]
+    public void ComputeMmrLambda_IncreasesWithUserTokenCount() {
+        var shortLambda = InvokeComputeMmrLambda(1);
+        var mediumLambda = InvokeComputeMmrLambda(4);
+        var longLambda = InvokeComputeMmrLambda(8);
+
+        Assert.True(shortLambda < mediumLambda);
+        Assert.True(mediumLambda < longLambda);
+        Assert.InRange(shortLambda, 0d, 1d);
+        Assert.InRange(longLambda, 0d, 1d);
+    }
+
+    /// <summary>
+    /// Ensures minimum relevance gate is stricter for longer, more precise user requests.
+    /// </summary>
+    [Fact]
+    public void ComputeMinimumRelevanceGate_IncreasesWithUserTokenCount() {
+        var shortGate = InvokeComputeMinimumRelevanceGate(1);
+        var mediumGate = InvokeComputeMinimumRelevanceGate(4);
+        var longGate = InvokeComputeMinimumRelevanceGate(8);
+
+        Assert.True(shortGate < mediumGate);
+        Assert.True(mediumGate < longGate);
+        Assert.InRange(shortGate, 0d, 1d);
+        Assert.InRange(longGate, 0d, 1d);
     }
 
     /// <summary>
@@ -285,6 +395,28 @@ public sealed class MainWindowMemoryTokenizationTests {
         HashSet<string> seen) {
         var result = CountNewTokenMatchesMethod.Invoke(null, new object?[] { userTokens, candidateTokens, seen });
         return Assert.IsType<int>(result);
+    }
+
+    private static Dictionary<int, double> InvokeBuildSemanticMemoryVector(string text) {
+        var result = BuildSemanticMemoryVectorMethod.Invoke(null, new object?[] { text });
+        return Assert.IsType<Dictionary<int, double>>(result);
+    }
+
+    private static double InvokeComputeSemanticVectorCosine(
+        IReadOnlyDictionary<int, double> left,
+        IReadOnlyDictionary<int, double> right) {
+        var result = ComputeSemanticVectorCosineMethod.Invoke(null, new object?[] { left, right });
+        return Assert.IsType<double>(result);
+    }
+
+    private static double InvokeComputeMmrLambda(int userTokenCount) {
+        var result = ComputeMmrLambdaMethod.Invoke(null, new object?[] { userTokenCount });
+        return Assert.IsType<double>(result);
+    }
+
+    private static double InvokeComputeMinimumRelevanceGate(int userTokenCount) {
+        var result = ComputeMinimumRelevanceGateMethod.Invoke(null, new object?[] { userTokenCount });
+        return Assert.IsType<double>(result);
     }
 
     private static DateTime InvokeNormalizeMemoryUpdatedUtcForRecency(DateTime value, DateTime nowUtc) {

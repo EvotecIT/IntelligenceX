@@ -147,7 +147,7 @@ public class ToolSchemaSnapshotTests {
 
         yield return new object[] {
             "ad_monitoring_probe_run",
-            new[] { "probe_kind", "name", "targets", "domain_controller", "domain_name", "forest_name", "include_domains", "exclude_domains", "include_domain_controllers", "exclude_domain_controllers", "skip_rodc", "include_trusts", "timeout_ms", "retries", "retry_delay_ms", "max_concurrency", "protocol", "split_protocol_results", "dns_queries", "verify_certificate", "include_global_catalog", "include_facts", "identity", "stale_threshold_hours", "include_sysvol", "test_sysvol_shares", "test_ports", "test_ping", "query_mode", "include_children", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "probe_kind", "name", "targets", "domain_controller", "domain_name", "forest_name", "include_domains", "exclude_domains", "include_domain_controllers", "exclude_domain_controllers", "skip_rodc", "include_trusts", "discovery_fallback", "timeout_ms", "retries", "retry_delay_ms", "max_concurrency", "protocol", "split_protocol_results", "dns_queries", "verify_certificate", "include_global_catalog", "include_facts", "identity", "stale_threshold_hours", "include_sysvol", "test_sysvol_shares", "test_ports", "test_ping", "query_mode", "include_children", "columns", "sort_by", "sort_direction", "top" },
             new[] { "probe_kind" }
         };
 

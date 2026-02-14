@@ -54,13 +54,24 @@ internal sealed partial class ChatServiceSession {
         var routingInsights = new List<ToolRoutingInsight>();
         var weightedToolRouting = request.Options?.WeightedToolRouting ?? true;
         var maxCandidateTools = request.Options?.MaxCandidateTools;
+        var userRequest = ExtractPrimaryUserRequest(request.Text);
+        var usedContinuationSubset = false;
         if (weightedToolRouting && toolDefs.Count > 0) {
-            var userRequest = ExtractPrimaryUserRequest(request.Text);
             if (!TryGetContinuationToolSubset(threadId, userRequest, toolDefs, out var continuationSubset)) {
-                toolDefs = SelectWeightedToolSubset(toolDefs, userRequest, maxCandidateTools, out routingInsights);
+                var routed = await SelectWeightedToolSubsetAsync(
+                        client,
+                        threadId,
+                        toolDefs,
+                        userRequest,
+                        maxCandidateTools,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                toolDefs = routed.Definitions;
+                routingInsights = routed.Insights;
             } else {
                 toolDefs = continuationSubset;
                 routingInsights = BuildContinuationRoutingInsights(toolDefs);
+                usedContinuationSubset = true;
             }
             RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
         }
@@ -92,11 +103,33 @@ internal sealed partial class ChatServiceSession {
 
         await TryWriteStatusAsync(writer, request.RequestId, threadId, status: "thinking").ConfigureAwait(false);
         TurnInfo turn = await ChatWithToolSchemaRecoveryAsync(client, ChatInput.FromText(request.Text), options, turnToken).ConfigureAwait(false);
+        var executionNudgeUsed = false;
 
         for (var round = 0; round < Math.Max(1, maxRounds); round++) {
             var extracted = ToolCallParser.Extract(turn);
             if (extracted.Count == 0) {
                 var text = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
+                if (!executionNudgeUsed
+                    && ShouldAttemptToolExecutionNudge(
+                        userRequest: userRequest,
+                        assistantDraft: text,
+                        toolsAvailable: toolDefs.Count > 0,
+                        priorToolCalls: toolCalls.Count,
+                        usedContinuationSubset: usedContinuationSubset)) {
+                    executionNudgeUsed = true;
+                    var nudgePrompt = BuildToolExecutionNudgePrompt(userRequest, text);
+                    await TryWriteStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            status: "thinking",
+                            message: "Re-planning to execute available tools in this turn.")
+                        .ConfigureAwait(false);
+                    options.NewThread = false;
+                    turn = await ChatWithToolSchemaRecoveryAsync(client, ChatInput.FromText(nudgePrompt), options, turnToken).ConfigureAwait(false);
+                    continue;
+                }
+
                 if (_options.Redact) {
                     text = RedactText(text);
                 }
@@ -176,6 +209,146 @@ internal sealed partial class ChatServiceSession {
         return sanitized.Count == 0 ? Array.Empty<ToolDefinition>() : sanitized;
     }
 
+    private static bool ShouldAttemptToolExecutionNudge(string userRequest, string assistantDraft, bool toolsAvailable, int priorToolCalls,
+        bool usedContinuationSubset) {
+        if (!toolsAvailable || priorToolCalls > 0 || !usedContinuationSubset) {
+            return false;
+        }
+
+        if (!LooksLikeCompactFollowUp(userRequest)) {
+            return false;
+        }
+
+        var draft = (assistantDraft ?? string.Empty).Trim();
+        if (draft.Length == 0 || draft.Length > 2400) {
+            return false;
+        }
+
+        var asksAnotherQuestion = draft.Contains('?', StringComparison.Ordinal);
+        if (asksAnotherQuestion) {
+            return true;
+        }
+
+        // Language-agnostic "acknowledgement-like" draft: short, no structured output, no numeric evidence.
+        var hasStructuredOutput = draft.Contains('\n', StringComparison.Ordinal)
+                                  || draft.Contains('|', StringComparison.Ordinal)
+                                  || draft.Contains('{', StringComparison.Ordinal)
+                                  || draft.Contains('[', StringComparison.Ordinal);
+        if (hasStructuredOutput) {
+            return false;
+        }
+
+        var hasNumericSignal = false;
+        for (var i = 0; i < draft.Length; i++) {
+            if (char.IsDigit(draft[i])) {
+                hasNumericSignal = true;
+                break;
+            }
+        }
+
+        return !hasNumericSignal && draft.Length <= 220;
+    }
+
+    private static bool LooksLikeCompactFollowUp(string userRequest) {
+        var normalized = (userRequest ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        if (normalized.Contains('\n', StringComparison.Ordinal)) {
+            return false;
+        }
+
+        if (normalized.Length > 80) {
+            return false;
+        }
+
+        var tokenCount = CountLetterDigitTokens(normalized, maxTokens: 12);
+        if (tokenCount == 0) {
+            return false;
+        }
+
+        if (tokenCount <= 6 && normalized.Length <= 64) {
+            return true;
+        }
+
+        return tokenCount <= 8 && normalized.Length <= 80 && normalized.Contains('?', StringComparison.Ordinal);
+    }
+
+    private static int CountLetterDigitTokens(string text, int maxTokens) {
+        var tokenCount = 0;
+        var inToken = false;
+        for (var i = 0; i < text.Length; i++) {
+            var ch = text[i];
+            if (char.IsLetterOrDigit(ch)) {
+                if (!inToken) {
+                    tokenCount++;
+                    if (tokenCount >= maxTokens) {
+                        return tokenCount;
+                    }
+                    inToken = true;
+                }
+            } else {
+                inToken = false;
+            }
+        }
+
+        return tokenCount;
+    }
+
+    private static string BuildToolExecutionNudgePrompt(string userRequest, string assistantDraft) {
+        var requestText = string.IsNullOrWhiteSpace(userRequest) ? "(empty)" : userRequest.Trim();
+        var draftText = string.IsNullOrWhiteSpace(assistantDraft) ? "(empty)" : assistantDraft.Trim();
+        return $$"""
+            [Execution correction]
+            The previous assistant draft did not execute tools.
+
+            User request:
+            {{requestText}}
+
+            Previous assistant draft:
+            {{draftText}}
+
+            Execute available tools now when they can satisfy this request.
+            Do not ask for another confirmation unless a required input cannot be inferred or discovered.
+            If tools truly cannot satisfy the request, explain the exact blocker and the minimal missing input.
+            """;
+    }
+
+    private async Task<(IReadOnlyList<ToolDefinition> Definitions, List<ToolRoutingInsight> Insights)> SelectWeightedToolSubsetAsync(
+        IntelligenceXClient client,
+        string threadId,
+        IReadOnlyList<ToolDefinition> definitions,
+        string requestText,
+        int? maxCandidateTools,
+        CancellationToken cancellationToken) {
+        if (definitions.Count <= 12) {
+            return (definitions, new List<ToolRoutingInsight>());
+        }
+
+        var userRequest = ExtractPrimaryUserRequest(requestText);
+        if (ShouldSkipWeightedRouting(userRequest)) {
+            return (definitions, new List<ToolRoutingInsight>());
+        }
+
+        var limit = ResolveMaxCandidateToolsLimit(maxCandidateTools, definitions.Count);
+        if (limit >= definitions.Count) {
+            return (definitions, new List<ToolRoutingInsight>());
+        }
+
+        var planned = await TrySelectToolsViaModelPlannerAsync(client, threadId, userRequest, definitions, limit, cancellationToken).ConfigureAwait(false);
+        if (planned.Count > 0) {
+            var selected = EnsureMinimumToolSelection(userRequest, definitions, planned, limit);
+            if (selected.Count > 0 && selected.Count < definitions.Count) {
+                var plannerInsights = BuildModelRoutingInsights(selected, plannedCount: planned.Count);
+                return (selected, plannerInsights);
+            }
+        }
+
+        var fallback = SelectWeightedToolSubset(definitions, userRequest, maxCandidateTools, out var fallbackInsights);
+        return (fallback, fallbackInsights);
+    }
+
     private IReadOnlyList<ToolDefinition> SelectWeightedToolSubset(IReadOnlyList<ToolDefinition> definitions, string requestText, int? maxCandidateTools,
         out List<ToolRoutingInsight> insights) {
         insights = new List<ToolRoutingInsight>();
@@ -188,11 +361,6 @@ internal sealed partial class ChatServiceSession {
             return definitions;
         }
 
-        var tokens = TokenizeForToolRouting(userRequest);
-        if (tokens.Count == 0) {
-            return definitions;
-        }
-
         var limit = ResolveMaxCandidateToolsLimit(maxCandidateTools, definitions.Count);
         if (limit >= definitions.Count) {
             return definitions;
@@ -202,30 +370,10 @@ internal sealed partial class ChatServiceSession {
         var hasSignal = false;
         for (var i = 0; i < definitions.Count; i++) {
             var definition = definitions[i];
-            var searchText = BuildToolSearchText(definition);
             var score = 0d;
             var directNameMatch = userRequest.IndexOf(definition.Name, StringComparison.OrdinalIgnoreCase) >= 0;
             if (directNameMatch) {
                 score += 6d;
-            }
-
-            var packId = InferPackIdFromToolName(definition.Name, definition.Tags);
-            var packMatch = IsPackMentioned(userRequest, packId);
-            if (packMatch) {
-                score += 2.5d;
-            }
-
-            var tokenHits = 0;
-            for (var t = 0; t < tokens.Count; t++) {
-                var token = tokens[t];
-                if (searchText.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0) {
-                    score += 0.9d;
-                    tokenHits++;
-                }
-
-                if (definition.Name.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0) {
-                    score += 0.9d;
-                }
             }
 
             var adjustment = ReadToolRoutingAdjustment(definition.Name);
@@ -237,9 +385,7 @@ internal sealed partial class ChatServiceSession {
             scored.Add(new ToolScore(
                 Definition: definition,
                 Score: score,
-                TokenHits: tokenHits,
                 DirectNameMatch: directNameMatch,
-                PackMatch: packMatch,
                 Adjustment: adjustment));
         }
 
@@ -316,12 +462,6 @@ internal sealed partial class ChatServiceSession {
             var reasons = new List<string>();
             if (toolScore.DirectNameMatch) {
                 reasons.Add("direct name match");
-            }
-            if (toolScore.PackMatch) {
-                reasons.Add("pack intent match");
-            }
-            if (toolScore.TokenHits > 0) {
-                reasons.Add($"{toolScore.TokenHits} token matches");
             }
             if (toolScore.Adjustment > 0.2d) {
                 reasons.Add("recent tool success");
