@@ -464,6 +464,19 @@ public sealed partial class MainWindow : Window {
         _toolRoutingConfidence.Clear();
         _toolRoutingReason.Clear();
         _toolRoutingScore.Clear();
+
+        // Keep explicit per-tool keys so the next options publish clears stale routing state
+        // for every visible tool row even if no fresh routing_tool events arrive this turn.
+        if (_toolStates.Count == 0) {
+            return;
+        }
+
+        var toolNames = new List<string>(_toolStates.Keys);
+        for (var i = 0; i < toolNames.Count; i++) {
+            var name = toolNames[i];
+            _toolRoutingConfidence[name] = string.Empty;
+            _toolRoutingReason[name] = string.Empty;
+        }
     }
 
     private bool ApplyToolRoutingInsight(ChatStatusMessage status) {
