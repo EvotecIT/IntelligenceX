@@ -1,8 +1,7 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Reflection;
-using System.Runtime.CompilerServices;
+using System.IO;
+using IntelligenceX.Chat.Service;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -14,135 +13,55 @@ public sealed class ChatServiceRoutingTrimTests {
     private const int MaxTrackedToolRoutingStats = 512;
     private const int MaxTrackedWeightedRoutingContexts = 256;
 
-    private static readonly Type ChatServiceSessionType =
-        Type.GetType("IntelligenceX.Chat.Service.ChatServiceSession, IntelligenceX.Chat.Service")
-        ?? throw new InvalidOperationException("ChatServiceSession type not found.");
-
-    private static readonly Type ToolRoutingStatsType = ChatServiceSessionType.GetNestedType(
-        "ToolRoutingStats",
-        BindingFlags.NonPublic)
-        ?? throw new InvalidOperationException("ToolRoutingStats type not found.");
-
-    private static readonly MethodInfo TrimToolRoutingStatsNoLockMethod = ChatServiceSessionType.GetMethod(
-        "TrimToolRoutingStatsNoLock",
-        BindingFlags.NonPublic | BindingFlags.Instance)
-        ?? throw new InvalidOperationException("TrimToolRoutingStatsNoLock method not found.");
-
-    private static readonly MethodInfo TrimWeightedRoutingContextsNoLockMethod = ChatServiceSessionType.GetMethod(
-        "TrimWeightedRoutingContextsNoLock",
-        BindingFlags.NonPublic | BindingFlags.Instance)
-        ?? throw new InvalidOperationException("TrimWeightedRoutingContextsNoLock method not found.");
-
-    private static readonly FieldInfo ToolRoutingStatsField = ChatServiceSessionType.GetField(
-        "_toolRoutingStats",
-        BindingFlags.NonPublic | BindingFlags.Instance)
-        ?? throw new InvalidOperationException("_toolRoutingStats field not found.");
-
-    private static readonly FieldInfo LastWeightedToolNamesByThreadIdField = ChatServiceSessionType.GetField(
-        "_lastWeightedToolNamesByThreadId",
-        BindingFlags.NonPublic | BindingFlags.Instance)
-        ?? throw new InvalidOperationException("_lastWeightedToolNamesByThreadId field not found.");
-
-    private static readonly FieldInfo LastWeightedToolSubsetSeenUtcTicksField = ChatServiceSessionType.GetField(
-        "_lastWeightedToolSubsetSeenUtcTicks",
-        BindingFlags.NonPublic | BindingFlags.Instance)
-        ?? throw new InvalidOperationException("_lastWeightedToolSubsetSeenUtcTicks field not found.");
-
     [Fact]
-    public void TrimToolRoutingStatsNoLock_RemovesNonPositiveTimestampEntriesFirst() {
-        var setup = CreateSessionForTrimTests();
+    public void TrimToolRoutingStatsForTesting_RemovesNonPositiveTimestampEntriesFirst() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+
+        var stats = new Dictionary<string, (long LastUsedUtcTicks, long LastSuccessUtcTicks)>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < MaxTrackedToolRoutingStats; i++) {
-            setup.ToolRoutingStats.Add($"active-{i:D3}", CreateToolRoutingStats(10_000L + i, 0));
+            stats[$"active-{i:D3}"] = (10_000L + i, 0);
         }
 
-        setup.ToolRoutingStats.Add("stale-zero", CreateToolRoutingStats(0, 0));
-        setup.ToolRoutingStats.Add("stale-negative", CreateToolRoutingStats(-50, -50));
+        stats["stale-zero"] = (0, 0);
+        stats["stale-negative"] = (-50, -50);
 
-        TrimToolRoutingStatsNoLockMethod.Invoke(setup.Session, null);
+        session.SetToolRoutingStatsForTesting(stats);
+        session.TrimToolRoutingStatsForTesting();
 
-        Assert.Equal(MaxTrackedToolRoutingStats, setup.ToolRoutingStats.Count);
-        Assert.False(ContainsToolRoutingStatsKey(setup.ToolRoutingStats, "stale-zero"));
-        Assert.False(ContainsToolRoutingStatsKey(setup.ToolRoutingStats, "stale-negative"));
-        Assert.True(ContainsToolRoutingStatsKey(setup.ToolRoutingStats, "active-000"));
-        Assert.True(ContainsToolRoutingStatsKey(setup.ToolRoutingStats, $"active-{MaxTrackedToolRoutingStats - 1:D3}"));
+        var names = new HashSet<string>(session.GetTrackedToolRoutingStatNamesForTesting(), StringComparer.OrdinalIgnoreCase);
+
+        Assert.Equal(MaxTrackedToolRoutingStats, names.Count);
+        Assert.DoesNotContain("stale-zero", names);
+        Assert.DoesNotContain("stale-negative", names);
+        Assert.Contains("active-000", names);
+        Assert.Contains($"active-{MaxTrackedToolRoutingStats - 1:D3}", names);
     }
 
     [Fact]
-    public void TrimWeightedRoutingContextsNoLock_RemovesMissingAndZeroTickEntriesFirst() {
-        var setup = CreateSessionForTrimTests();
+    public void TrimWeightedRoutingContextsForTesting_RemovesMissingAndZeroTickEntriesFirst() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+
+        var names = new Dictionary<string, string[]>(StringComparer.Ordinal);
+        var seenTicks = new Dictionary<string, long>(StringComparer.Ordinal);
         for (var i = 0; i < MaxTrackedWeightedRoutingContexts; i++) {
             var threadId = $"thread-{i:D3}";
-            setup.WeightedToolNamesByThreadId[threadId] = new[] { $"tool-{i:D3}" };
-            setup.WeightedToolSubsetSeenUtcTicks[threadId] = 50_000L + i;
+            names[threadId] = new[] { $"tool-{i:D3}" };
+            seenTicks[threadId] = 50_000L + i;
         }
 
-        setup.WeightedToolNamesByThreadId["thread-missing"] = new[] { "tool-missing" };
-        setup.WeightedToolNamesByThreadId["thread-zero"] = new[] { "tool-zero" };
-        setup.WeightedToolSubsetSeenUtcTicks["thread-zero"] = 0;
+        names["thread-missing"] = new[] { "tool-missing" };
+        names["thread-zero"] = new[] { "tool-zero" };
+        seenTicks["thread-zero"] = 0;
 
-        TrimWeightedRoutingContextsNoLockMethod.Invoke(setup.Session, null);
+        session.SetWeightedRoutingContextsForTesting(names, seenTicks);
+        session.TrimWeightedRoutingContextsForTesting();
 
-        Assert.Equal(MaxTrackedWeightedRoutingContexts, setup.WeightedToolNamesByThreadId.Count);
-        Assert.False(setup.WeightedToolNamesByThreadId.ContainsKey("thread-missing"));
-        Assert.False(setup.WeightedToolNamesByThreadId.ContainsKey("thread-zero"));
-        Assert.True(setup.WeightedToolNamesByThreadId.ContainsKey("thread-000"));
-        Assert.True(setup.WeightedToolNamesByThreadId.ContainsKey($"thread-{MaxTrackedWeightedRoutingContexts - 1:D3}"));
+        var trackedThreadIds = new HashSet<string>(session.GetTrackedWeightedRoutingContextThreadIdsForTesting(), StringComparer.Ordinal);
+
+        Assert.Equal(MaxTrackedWeightedRoutingContexts, trackedThreadIds.Count);
+        Assert.DoesNotContain("thread-missing", trackedThreadIds);
+        Assert.DoesNotContain("thread-zero", trackedThreadIds);
+        Assert.Contains("thread-000", trackedThreadIds);
+        Assert.Contains($"thread-{MaxTrackedWeightedRoutingContexts - 1:D3}", trackedThreadIds);
     }
-
-    private static SessionTrimTestState CreateSessionForTrimTests() {
-        var session = RuntimeHelpers.GetUninitializedObject(ChatServiceSessionType);
-
-        var routingStats = (IDictionary)Activator.CreateInstance(
-            typeof(Dictionary<,>).MakeGenericType(typeof(string), ToolRoutingStatsType),
-            StringComparer.OrdinalIgnoreCase)!
-            ?? throw new InvalidOperationException("Failed to create tool routing stats dictionary.");
-
-        var weightedToolNamesByThreadId = new Dictionary<string, string[]>(StringComparer.Ordinal);
-        var weightedToolSubsetSeenUtcTicks = new Dictionary<string, long>(StringComparer.Ordinal);
-
-        ToolRoutingStatsField.SetValue(session, routingStats);
-        LastWeightedToolNamesByThreadIdField.SetValue(session, weightedToolNamesByThreadId);
-        LastWeightedToolSubsetSeenUtcTicksField.SetValue(session, weightedToolSubsetSeenUtcTicks);
-
-        return new SessionTrimTestState(
-            session,
-            routingStats,
-            weightedToolNamesByThreadId,
-            weightedToolSubsetSeenUtcTicks);
-    }
-
-    private static object CreateToolRoutingStats(long lastUsedUtcTicks, long lastSuccessUtcTicks) {
-        var stats = Activator.CreateInstance(ToolRoutingStatsType)
-            ?? throw new InvalidOperationException("Failed to create ToolRoutingStats.");
-
-        SetToolRoutingStatsProperty(stats, "LastUsedUtcTicks", lastUsedUtcTicks);
-        SetToolRoutingStatsProperty(stats, "LastSuccessUtcTicks", lastSuccessUtcTicks);
-        return stats;
-    }
-
-    private static void SetToolRoutingStatsProperty(object stats, string propertyName, long value) {
-        var property = ToolRoutingStatsType.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance)
-            ?? throw new InvalidOperationException($"Property {propertyName} not found on ToolRoutingStats.");
-
-        property.SetValue(stats, value);
-    }
-
-    private static bool ContainsToolRoutingStatsKey(IDictionary routingStats, string key) {
-        var containsKeyMethod = routingStats.GetType().GetMethod(
-            "ContainsKey",
-            BindingFlags.Public | BindingFlags.Instance,
-            null,
-            new[] { typeof(string) },
-            null)
-            ?? throw new InvalidOperationException("ContainsKey(string) not found on tool routing stats dictionary.");
-
-        var result = containsKeyMethod.Invoke(routingStats, new object?[] { key });
-        return Assert.IsType<bool>(result);
-    }
-
-    private readonly record struct SessionTrimTestState(
-        object Session,
-        IDictionary ToolRoutingStats,
-        Dictionary<string, string[]> WeightedToolNamesByThreadId,
-        Dictionary<string, long> WeightedToolSubsetSeenUtcTicks);
 }
