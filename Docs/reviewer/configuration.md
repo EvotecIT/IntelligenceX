@@ -62,6 +62,9 @@ This provider uses `POST /v1/chat/completions` and requires:
 - `review.openaiCompatible.baseUrl`
 - an API key (via `review.openaiCompatible.apiKeyEnv`, `OPENAI_COMPATIBLE_API_KEY`, or `review.openaiCompatible.apiKey`)
 
+Security note: `baseUrl` must use `https://` for non-loopback hosts by default. Plain `http://` is allowed only for loopback
+(for example `http://localhost:11434`). To override this, set `review.openaiCompatible.allowInsecureHttp: true`.
+
 ```json
 {
   "review": {
@@ -70,6 +73,7 @@ This provider uses `POST /v1/chat/completions` and requires:
     "openaiCompatible": {
       "baseUrl": "http://localhost:11434",
       "apiKeyEnv": "OPENAI_COMPATIBLE_API_KEY",
+      "allowInsecureHttp": false,
       "timeoutSeconds": 60
     }
   }

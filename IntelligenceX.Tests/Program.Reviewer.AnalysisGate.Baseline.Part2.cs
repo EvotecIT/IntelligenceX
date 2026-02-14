@@ -223,6 +223,11 @@ internal static partial class Program {
         AssertNotNull(apiKeyEnv, "reviewer schema openaiCompatible apiKeyEnv property");
         AssertEqual("string", apiKeyEnv!.GetString("type") ?? string.Empty, "reviewer schema openaiCompatible apiKeyEnv type");
 
+        var allowInsecureHttp = openAiCompatibleProps.GetObject("allowInsecureHttp");
+        AssertNotNull(allowInsecureHttp, "reviewer schema openaiCompatible allowInsecureHttp property");
+        AssertEqual("boolean", allowInsecureHttp!.GetString("type") ?? string.Empty,
+            "reviewer schema openaiCompatible allowInsecureHttp type");
+
         var timeoutSeconds = openAiCompatibleProps.GetObject("timeoutSeconds");
         AssertNotNull(timeoutSeconds, "reviewer schema openaiCompatible timeoutSeconds property");
         AssertEqual("integer", timeoutSeconds!.GetString("type") ?? string.Empty,

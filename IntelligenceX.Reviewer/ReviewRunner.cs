@@ -388,7 +388,7 @@ internal sealed class ReviewRunner {
     }
 
     private async Task RunOpenAiCompatiblePreflightAsync(TimeSpan timeout, CancellationToken cancellationToken) {
-        var endpoint = ResolveOpenAiCompatibleEndpoint(_settings.OpenAICompatibleBaseUrl);
+        var endpoint = ResolveOpenAiCompatibleEndpoint(_settings.OpenAICompatibleBaseUrl, _settings.OpenAICompatibleAllowInsecureHttp);
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(timeout);
@@ -444,7 +444,7 @@ internal sealed class ReviewRunner {
         if (string.IsNullOrWhiteSpace(_settings.Model)) {
             throw new InvalidOperationException("OpenAI-compatible provider requires review.model to be set.");
         }
-        var endpoint = ResolveOpenAiCompatibleEndpoint(_settings.OpenAICompatibleBaseUrl);
+        var endpoint = ResolveOpenAiCompatibleEndpoint(_settings.OpenAICompatibleBaseUrl, _settings.OpenAICompatibleAllowInsecureHttp);
         var apiKey = ResolveOpenAiCompatibleApiKey();
 
         var timeoutSeconds = Math.Max(1, _settings.OpenAICompatibleTimeoutSeconds);
@@ -475,13 +475,25 @@ internal sealed class ReviewRunner {
         return ExtractOpenAiCompatibleOutput(responseText);
     }
 
-    private static Uri ResolveOpenAiCompatibleEndpoint(string? baseUrl) {
+    private static Uri ResolveOpenAiCompatibleEndpoint(string? baseUrl, bool allowInsecureHttp) {
         var trimmed = (baseUrl ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(trimmed)) {
             throw new InvalidOperationException("OpenAI-compatible provider requires review.openaiCompatible.baseUrl.");
         }
         if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var baseUri)) {
             throw new InvalidOperationException($"OpenAI-compatible baseUrl is invalid: '{trimmed}'.");
+        }
+        if (!baseUri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
+            !baseUri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)) {
+            throw new InvalidOperationException(
+                $"OpenAI-compatible baseUrl must use http:// or https:// (got '{baseUri.Scheme}').");
+        }
+        if (baseUri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) &&
+            !allowInsecureHttp &&
+            !baseUri.IsLoopback) {
+            throw new InvalidOperationException(
+                "OpenAI-compatible baseUrl must use https:// for non-loopback hosts. " +
+                "Set review.openaiCompatible.allowInsecureHttp=true (or OPENAI_COMPATIBLE_ALLOW_INSECURE_HTTP=1) to override.");
         }
 
         var normalized = baseUri.ToString().TrimEnd('/');

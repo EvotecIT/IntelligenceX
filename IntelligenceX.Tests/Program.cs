@@ -382,6 +382,8 @@ internal static partial class Program {
             TestAnalyzeGateDuplicationOverallDeltaMissingBaselineIsUnavailable);
         failed += Run("Analyze gate duplication file delta blocks when increase exceeds allowed",
             TestAnalyzeGateDuplicationFileDeltaBlocksWhenIncreaseExceedsAllowed);
+        failed += Run("Analyze gate duplication file baseline loads paths with colon",
+            TestAnalyzeGateDuplicationFileBaselineLoadsPathsWithColon);
         failed += Run("Analyze gate write baseline includes duplication file snapshots when configured",
             TestAnalyzeGateWriteBaselineIncludesDuplicationFileSnapshotsWhenConfigured);
         failed += Run("Analyze gate write baseline includes duplication overall snapshot",
@@ -498,6 +500,7 @@ internal static partial class Program {
         failed += Run("Review provider contract capabilities", TestReviewProviderContractCapabilities);
         failed += Run("Review provider config alias", TestReviewProviderConfigAlias);
         failed += Run("Review provider invalid config throws", TestReviewProviderConfigInvalidThrows);
+        failed += Run("OpenAI-compatible rejects http non-loopback by default", TestReviewOpenAiCompatibleRejectsHttpNonLoopbackByDefault);
         failed += Run("Review config loader reads openaiAccountRotation camelCase",
             TestReviewConfigLoaderReadsOpenAiAccountRotationCamelCase);
         failed += Run("Review config loader reads legacy includeRelatedPullRequests alias",

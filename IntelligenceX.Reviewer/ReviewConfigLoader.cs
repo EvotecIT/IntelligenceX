@@ -343,6 +343,7 @@ internal static class ReviewConfigLoader {
         settings.OpenAICompatibleApiKeyEnv = openAi.GetString("apiKeyEnv") ?? settings.OpenAICompatibleApiKeyEnv;
         settings.OpenAICompatibleApiKey = openAi.GetString("apiKey") ?? settings.OpenAICompatibleApiKey;
         settings.OpenAICompatibleTimeoutSeconds = ReadInt(openAi, "timeoutSeconds", settings.OpenAICompatibleTimeoutSeconds);
+        settings.OpenAICompatibleAllowInsecureHttp = ReadBool(openAi, "allowInsecureHttp", settings.OpenAICompatibleAllowInsecureHttp);
     }
 
     private static void ApplyCopilot(JsonObject root, ReviewSettings settings) {

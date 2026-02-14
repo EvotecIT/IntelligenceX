@@ -326,7 +326,7 @@ internal static partial class AnalyzeGateCommand {
                     }
 
                     var delta = Math.Round(current.DuplicatedPercent - baseline.DuplicatedPercent, 2, MidpointRounding.AwayFromZero);
-                    if (delta - allowedIncrease <= double.Epsilon) {
+                    if (delta <= allowedIncrease) {
                         continue;
                     }
 
@@ -370,7 +370,7 @@ internal static partial class AnalyzeGateCommand {
                     }
 
                     var delta = Math.Round(current.DuplicatedPercent - baseline.DuplicatedPercent, 2, MidpointRounding.AwayFromZero);
-                    if (delta - allowedIncrease <= double.Epsilon) {
+                    if (delta <= allowedIncrease) {
                         continue;
                     }
 

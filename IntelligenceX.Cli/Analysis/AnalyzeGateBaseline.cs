@@ -313,24 +313,35 @@ internal static class AnalyzeGateBaseline {
             return false;
         }
 
-        path = (tokens[2] ?? string.Empty).Trim().Replace('\\', '/');
-        if (!int.TryParse(tokens[3], out duplicatedLines) || duplicatedLines < 0) {
-            return false;
+        // Optional suffix: :scope:changed-files
+        var effectiveLength = tokens.Length;
+        if (effectiveLength >= 2 &&
+            tokens[effectiveLength - 2].Equals("scope", StringComparison.OrdinalIgnoreCase) &&
+            tokens[effectiveLength - 1].Equals("changed-files", StringComparison.OrdinalIgnoreCase)) {
+            scope = "changed-files";
+            effectiveLength -= 2;
         }
-        if (!int.TryParse(tokens[4], out significantLines) || significantLines < 0) {
-            return false;
-        }
-        if (!int.TryParse(tokens[5], out windowLines) || windowLines < 0) {
+
+        // Expected tail (after stripping optional scope): :<duplicated>:<significant>:<windowLines>
+        if (effectiveLength < 6) {
             return false;
         }
 
-        for (var i = 6; i < tokens.Length - 1; i++) {
-            if (tokens[i].Equals("scope", StringComparison.OrdinalIgnoreCase) &&
-                tokens[i + 1].Equals("changed-files", StringComparison.OrdinalIgnoreCase)) {
-                scope = "changed-files";
-                break;
-            }
+        if (!int.TryParse(tokens[effectiveLength - 3], out duplicatedLines) || duplicatedLines < 0) {
+            return false;
         }
+        if (!int.TryParse(tokens[effectiveLength - 2], out significantLines) || significantLines < 0) {
+            return false;
+        }
+        if (!int.TryParse(tokens[effectiveLength - 1], out windowLines) || windowLines < 0) {
+            return false;
+        }
+
+        var pathTokenCount = effectiveLength - 5;
+        if (pathTokenCount <= 0) {
+            return false;
+        }
+        path = string.Join(":", tokens, 2, pathTokenCount).Trim().Replace('\\', '/');
         return true;
     }
 

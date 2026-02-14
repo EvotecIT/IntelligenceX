@@ -170,6 +170,13 @@ internal sealed partial class ReviewSettings {
             settings.OpenAICompatibleTimeoutSeconds =
                 ParsePositiveInt(openAiCompatibleTimeout, settings.OpenAICompatibleTimeoutSeconds);
         }
+        var openAiCompatibleAllowInsecure = GetInput(
+            "openai_compatible_allow_insecure_http",
+            "OPENAI_COMPATIBLE_ALLOW_INSECURE_HTTP");
+        if (!string.IsNullOrWhiteSpace(openAiCompatibleAllowInsecure)) {
+            settings.OpenAICompatibleAllowInsecureHttp =
+                ParseBoolean(openAiCompatibleAllowInsecure, settings.OpenAICompatibleAllowInsecureHttp);
+        }
 
         var overwriteSummary = GetInput("overwrite_summary", "OVERWRITE_SUMMARY");
         if (!string.IsNullOrWhiteSpace(overwriteSummary)) {

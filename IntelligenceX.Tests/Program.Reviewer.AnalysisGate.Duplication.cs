@@ -796,6 +796,42 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeGateDuplicationFileBaselineLoadsPathsWithColon() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-dup-file-baseline-colon-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var baselinePath = Path.Combine(temp, "analysis-baseline.json");
+            File.WriteAllText(baselinePath, """
+{
+  "schema": "intelligencex.analysis-baseline.v1",
+  "items": [
+    {
+      "path": ".intelligencex/duplication-file",
+      "line": 0,
+      "severity": "info",
+      "ruleId": "IXDUP001",
+      "tool": "IntelligenceX.Maintainability",
+      "fingerprint": "IXDUP001:file:C:\\src\\test.cs:20:100:8:scope:changed-files"
+    }
+  ]
+}
+""");
+
+            var ok = IntelligenceX.Cli.Analysis.AnalyzeGateBaseline.TryLoadDuplicationFileBaselines(
+                baselinePath,
+                out var baselines,
+                out var error);
+            AssertEqual(true, ok, "duplication file baseline loads colon path ok");
+            AssertEqual(true, string.IsNullOrWhiteSpace(error), "duplication file baseline loads colon path error empty");
+            AssertEqual(true, baselines.ContainsKey("IXDUP001|changed-files|C:/src/test.cs"),
+                "duplication file baseline loads colon path key");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalyzeGateWriteBaselineIncludesDuplicationFileSnapshotsWhenConfigured() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-dup-baseline-files-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

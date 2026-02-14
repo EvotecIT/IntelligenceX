@@ -205,6 +205,29 @@ internal static partial class Program {
         }
     }
 
+    private static void TestReviewOpenAiCompatibleRejectsHttpNonLoopbackByDefault() {
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAICompatible,
+            Model = "test-model",
+            OpenAICompatibleBaseUrl = "http://example.com",
+            OpenAICompatibleApiKey = "test",
+            RetryCount = 1,
+            RetryDelaySeconds = 1,
+            RetryMaxDelaySeconds = 1,
+            ProviderHealthChecks = false,
+            Preflight = false,
+            FailOpen = false,
+            Diagnostics = false
+        };
+
+        AssertThrows<InvalidOperationException>(() => {
+            var runner = new ReviewRunner(settings);
+            runner.RunAsync("hi", onPartial: null, updateInterval: null, CancellationToken.None)
+                .GetAwaiter()
+                .GetResult();
+        }, "openai-compatible rejects http non-loopback by default");
+    }
+
     private static void TestReviewConfigLoaderReadsOpenAiAccountRotationCamelCase() {
         var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
         var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-rotation-{Guid.NewGuid():N}.json");

@@ -125,6 +125,11 @@ internal sealed partial class ReviewSettings {
     /// </summary>
     public int OpenAICompatibleTimeoutSeconds { get; set; } = 60;
     /// <summary>
+    /// When true, allows non-loopback <c>http://</c> base URLs for the OpenAI-compatible provider.
+    /// This is not recommended because the provider sends a bearer API key on every request.
+    /// </summary>
+    public bool OpenAICompatibleAllowInsecureHttp { get; set; }
+    /// <summary>
     /// Optional ChatGPT account id to use when multiple OpenAI bundles are present in the auth store.
     /// </summary>
     public string? OpenAiAccountId { get; set; }

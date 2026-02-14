@@ -73,6 +73,7 @@
             "baseUrl": { "type": "string" },
             "apiKeyEnv": { "type": "string" },
             "apiKey": { "type": "string" },
+            "allowInsecureHttp": { "type": "boolean" },
             "timeoutSeconds": { "type": "integer", "minimum": 1 }
           }
         },
@@ -83,6 +84,7 @@
             "baseUrl": { "type": "string" },
             "apiKeyEnv": { "type": "string" },
             "apiKey": { "type": "string" },
+            "allowInsecureHttp": { "type": "boolean" },
             "timeoutSeconds": { "type": "integer", "minimum": 1 }
           }
         },
