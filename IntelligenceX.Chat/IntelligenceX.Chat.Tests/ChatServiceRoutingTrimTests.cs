@@ -165,6 +165,23 @@ public sealed class ChatServiceRoutingTrimTests {
         Assert.True(Assert.IsType<bool>(result));
     }
 
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerWhenDraftLooksLikeExecutionCorrectionEcho() {
+        var userRequest = "run now";
+        var assistantDraft = """
+            [Execution correction]
+            The previous assistant draft did not execute tools.
+
+            Execute available tools now when they can satisfy this request.
+            """;
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, true });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
     [Theory]
     [InlineData("run now")]
     [InlineData("yes - run now")]

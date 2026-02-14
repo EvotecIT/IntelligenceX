@@ -37,6 +37,13 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        // Guard against accidental feedback loops where the assistant echoes the correction prompt itself.
+        if (draft.Contains("[Execution correction]", StringComparison.OrdinalIgnoreCase)
+            || draft.Contains("previous assistant draft did not execute tools", StringComparison.OrdinalIgnoreCase)
+            || draft.Contains("Execute available tools now", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
         // If the assistant explicitly told the user to "say/type/etc." a quoted phrase, accept echoing that phrase even when
         // weighted continuation routing wasn't used (for example after a restart or when tool routing kept full tool lists).
         var echoedCallToAction = UserMatchesAssistantCallToAction(request, draft);
