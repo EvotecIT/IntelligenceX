@@ -453,6 +453,10 @@ public sealed partial class MainWindow : Window {
         }
 
         var lowerText = (userText ?? string.Empty).Trim().ToLowerInvariant();
+        if (lowerText.Length == 0) {
+            return BuildPersistentMemoryLinesForEmptyQuery(facts);
+        }
+
         var userTokens = TokenizeMemorySemanticText(lowerText);
         var scoredFacts = new List<ScoredMemoryFact>(facts.Count);
 
@@ -549,6 +553,36 @@ public sealed partial class MainWindow : Window {
             var fallbackCount = Math.Min(3, scoredFacts.Count);
             for (var i = 0; i < fallbackCount; i++) {
                 lines.Add(scoredFacts[i].Text);
+            }
+        }
+
+        return lines.Count == 0 ? Array.Empty<string>() : lines;
+    }
+
+    private static IReadOnlyList<string> BuildPersistentMemoryLinesForEmptyQuery(List<ChatMemoryFactState> facts) {
+        if (facts.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var ordered = new List<ChatMemoryFactState>(facts);
+        ordered.Sort(static (a, b) => {
+            var weightCompare = b.Weight.CompareTo(a.Weight);
+            if (weightCompare != 0) {
+                return weightCompare;
+            }
+
+            return b.UpdatedUtc.CompareTo(a.UpdatedUtc);
+        });
+
+        var lines = new List<string>(8);
+        for (var i = 0; i < ordered.Count && lines.Count < 8; i++) {
+            var text = (ordered[i].Fact ?? string.Empty).Trim();
+            if (text.Length == 0) {
+                continue;
+            }
+
+            if (ordered[i].Weight >= 3 || lines.Count < 3) {
+                lines.Add(text);
             }
         }
 

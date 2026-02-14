@@ -27,6 +27,8 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
+    private const int MaxRoutingInsightPayloadChars = 4096;
+
     private void ClearConversation() {
         var conversation = GetActiveConversation();
         conversation.Messages.Clear();
@@ -500,12 +502,16 @@ public sealed partial class MainWindow : Window {
         score = null;
 
         var json = (payload ?? string.Empty).Trim();
-        if (json.Length == 0 || json[0] != '{') {
+        if (json.Length == 0 || json[0] != '{' || json.Length > MaxRoutingInsightPayloadChars) {
             return false;
         }
 
         try {
-            using var doc = JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(json, new JsonDocumentOptions {
+                MaxDepth = 8,
+                CommentHandling = JsonCommentHandling.Disallow,
+                AllowTrailingCommas = false
+            });
             var root = doc.RootElement;
             if (root.ValueKind != JsonValueKind.Object) {
                 return false;
