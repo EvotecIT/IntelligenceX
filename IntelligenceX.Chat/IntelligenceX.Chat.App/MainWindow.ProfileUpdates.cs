@@ -530,18 +530,20 @@ public sealed partial class MainWindow : Window {
             return Array.Empty<string>();
         }
 
-        scoredFacts.Sort(static (a, b) => {
-            var scoreCompare = b.Score.CompareTo(a.Score);
+        scoredFacts.Sort(static (left, right) => {
+            var scoreCompare = right.Score.CompareTo(left.Score);
             if (scoreCompare != 0) {
                 return scoreCompare;
             }
 
-            var weightCompare = b.Weight.CompareTo(a.Weight);
+            var weightCompare = right.Weight.CompareTo(left.Weight);
             if (weightCompare != 0) {
                 return weightCompare;
             }
 
-            return b.UpdatedUtc.CompareTo(a.UpdatedUtc);
+            var leftUpdatedUtc = left.UpdatedUtc;
+            var rightUpdatedUtc = right.UpdatedUtc;
+            return rightUpdatedUtc.CompareTo(leftUpdatedUtc);
         });
 
         var lines = new List<string>(Math.Min(10, scoredFacts.Count));
