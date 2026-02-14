@@ -1497,16 +1497,22 @@ internal sealed class ChatServiceSession {
                 var ticks = _lastWeightedToolSubsetSeenUtcTicks.TryGetValue(pair.Key, out var value)
                     ? value
                     : long.MinValue;
-                if (ticks >= oldestTicks) {
-                    continue;
-                }
 
-                oldestTicks = ticks;
-                oldestThreadId = pair.Key;
+                if (oldestThreadId is null
+                    || ticks < oldestTicks
+                    || (ticks == oldestTicks && string.CompareOrdinal(pair.Key, oldestThreadId) < 0)) {
+                    oldestTicks = ticks;
+                    oldestThreadId = pair.Key;
+                }
             }
 
             if (string.IsNullOrWhiteSpace(oldestThreadId)) {
-                break;
+                var fallback = _lastWeightedToolNamesByThreadId.Keys.FirstOrDefault();
+                if (string.IsNullOrWhiteSpace(fallback)) {
+                    break;
+                }
+
+                oldestThreadId = fallback;
             }
 
             _lastWeightedToolNamesByThreadId.Remove(oldestThreadId);

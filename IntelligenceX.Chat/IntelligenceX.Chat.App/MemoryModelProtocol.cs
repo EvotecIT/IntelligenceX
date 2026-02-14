@@ -106,7 +106,7 @@ internal static class MemoryModelProtocol {
                 }
             }
         } catch (Exception ex) {
-            Debug.WriteLine("MemoryModelProtocol.TryExtractLastMemoryUpdate parse failure: " + ex.Message);
+            Debug.WriteLine("MemoryModelProtocol.TryExtractLastMemoryUpdate parse failure: " + ex);
             return false;
         }
 
