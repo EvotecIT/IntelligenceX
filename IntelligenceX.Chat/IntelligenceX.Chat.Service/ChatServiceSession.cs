@@ -1367,6 +1367,7 @@ internal sealed class ChatServiceSession {
             }
 
             _lastWeightedToolSubsetSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
+            TrimWeightedRoutingContextsNoLock();
         }
 
         var preferred = new HashSet<string>(previousNames!, StringComparer.OrdinalIgnoreCase);
