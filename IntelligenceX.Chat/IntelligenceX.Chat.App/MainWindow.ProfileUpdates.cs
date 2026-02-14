@@ -585,18 +585,23 @@ public sealed partial class MainWindow : Window {
         }
 
         if (value.Kind == DateTimeKind.Utc) {
-            return value;
+            return ClampMemoryUpdatedUtcToNow(value, nowUtc);
         }
 
         if (value.Kind == DateTimeKind.Local) {
-            return value.ToUniversalTime();
+            return ClampMemoryUpdatedUtcToNow(value.ToUniversalTime(), nowUtc);
         }
 
         var unspecifiedAsUtc = DateTime.SpecifyKind(value, DateTimeKind.Utc);
         var unspecifiedAsLocalUtc = DateTime.SpecifyKind(value, DateTimeKind.Local).ToUniversalTime();
         var utcDistanceHours = Math.Abs((nowUtc - unspecifiedAsUtc).TotalHours);
         var localDistanceHours = Math.Abs((nowUtc - unspecifiedAsLocalUtc).TotalHours);
-        return localDistanceHours <= utcDistanceHours ? unspecifiedAsLocalUtc : unspecifiedAsUtc;
+        var selectedUtc = localDistanceHours <= utcDistanceHours ? unspecifiedAsLocalUtc : unspecifiedAsUtc;
+        return ClampMemoryUpdatedUtcToNow(selectedUtc, nowUtc);
+    }
+
+    private static DateTime ClampMemoryUpdatedUtcToNow(DateTime valueUtc, DateTime nowUtc) {
+        return valueUtc > nowUtc ? nowUtc : valueUtc;
     }
 
     private static IReadOnlyList<string> BuildPersistentMemoryLinesForEmptyQuery(List<ChatMemoryFactState> facts) {

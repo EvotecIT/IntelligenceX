@@ -117,6 +117,20 @@ public sealed class MainWindowMemoryTokenizationTests {
     }
 
     /// <summary>
+    /// Ensures future UTC timestamps are clamped to the scoring clock.
+    /// </summary>
+    [Fact]
+    public void NormalizeMemoryUpdatedUtcForRecency_ClampsFutureUtcValues() {
+        var nowUtc = new DateTime(2026, 2, 14, 10, 0, 0, DateTimeKind.Utc);
+        var futureUtc = nowUtc.AddHours(4);
+
+        var normalized = InvokeNormalizeMemoryUpdatedUtcForRecency(futureUtc, nowUtc);
+
+        Assert.Equal(DateTimeKind.Utc, normalized.Kind);
+        Assert.Equal(nowUtc, normalized);
+    }
+
+    /// <summary>
     /// Ensures unspecified timestamps prefer the interpretation closest to the scoring clock.
     /// </summary>
     [Fact]
@@ -134,6 +148,20 @@ public sealed class MainWindowMemoryTokenizationTests {
 
         Assert.Equal(expected, normalized);
         Assert.Equal(DateTimeKind.Utc, normalized.Kind);
+    }
+
+    /// <summary>
+    /// Ensures unspecified timestamps never normalize to values after the scoring clock.
+    /// </summary>
+    [Fact]
+    public void NormalizeMemoryUpdatedUtcForRecency_ClampsFutureUnspecifiedValues() {
+        var nowUtc = new DateTime(2026, 2, 14, 10, 0, 0, DateTimeKind.Utc);
+        var unspecifiedFuture = DateTime.SpecifyKind(nowUtc.AddHours(3), DateTimeKind.Unspecified);
+
+        var normalized = InvokeNormalizeMemoryUpdatedUtcForRecency(unspecifiedFuture, nowUtc);
+
+        Assert.Equal(DateTimeKind.Utc, normalized.Kind);
+        Assert.True(normalized <= nowUtc);
     }
 
     /// <summary>

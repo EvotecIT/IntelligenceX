@@ -742,7 +742,23 @@ public sealed partial class MainWindow : Window {
 
     private async Task PublishOptionsStateSafeAsync() {
         try {
-            await RunOnUiThreadAsync(() => PublishOptionsStateAsync()).ConfigureAwait(false);
+            if (_dispatcher.HasThreadAccess) {
+                await PublishOptionsStateAsync().ConfigureAwait(false);
+            } else {
+                var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+                if (!_dispatcher.TryEnqueue(async () => {
+                    try {
+                        await PublishOptionsStateAsync().ConfigureAwait(false);
+                        tcs.TrySetResult(null);
+                    } catch (Exception ex) {
+                        tcs.TrySetException(ex);
+                    }
+                })) {
+                    tcs.TrySetException(new InvalidOperationException("Failed to dispatch options refresh to UI thread."));
+                }
+
+                await tcs.Task.ConfigureAwait(false);
+            }
         } catch (Exception ex) {
             if (VerboseServiceLogs || _debugMode) {
                 try {
