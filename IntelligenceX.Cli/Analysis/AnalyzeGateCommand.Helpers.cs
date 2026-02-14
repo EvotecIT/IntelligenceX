@@ -114,8 +114,13 @@ internal static partial class AnalyzeGateCommand {
                 .Where(file => !useChangedFileScope || changedPaths.Contains(NormalizeChangedPath(file.Path)))
                 .ToList();
             foreach (var file in files) {
+                // Normalize deterministically so baseline snapshot matching and file-delta keys don't depend on how the analyzer emits paths.
+                var normalizedPath = AnalyzeGateBaseline.NormalizeDuplicationPathForKey(file.Path);
+                if (string.IsNullOrWhiteSpace(normalizedPath)) {
+                    normalizedPath = (file.Path ?? string.Empty).Trim().Replace('\\', '/');
+                }
+
                 if (file.SignificantLines > 0) {
-                    var normalizedPath = file.Path.Replace('\\', '/');
                     var snapshotFingerprint = BuildDuplicationFileSnapshotFingerprint(
                         ruleId,
                         normalizedPath,
@@ -145,7 +150,7 @@ internal static partial class AnalyzeGateCommand {
                     continue;
                 }
 
-                var path = file.Path.Replace('\\', '/');
+                var path = normalizedPath;
                 var line = file.FirstDuplicatedLine > 0 ? file.FirstDuplicatedLine : 1;
                 var fingerprint = !string.IsNullOrWhiteSpace(file.Fingerprint)
                     ? file.Fingerprint
@@ -225,7 +230,10 @@ internal static partial class AnalyzeGateCommand {
     private static string BuildDuplicationFileSnapshotFingerprint(string ruleId, string path, int duplicatedLines, int significantLines,
         int windowLines, string scope) {
         // Encode the path so the fingerprint remains unambiguous when ':' appears in file names.
-        var normalizedPath = (path ?? string.Empty).Trim().Replace('\\', '/');
+        var normalizedPath = AnalyzeGateBaseline.NormalizeDuplicationPathForKey(path);
+        if (string.IsNullOrWhiteSpace(normalizedPath)) {
+            normalizedPath = (path ?? string.Empty).Trim().Replace('\\', '/');
+        }
         var encodedPath = Uri.EscapeDataString(normalizedPath);
         var scopeSuffix = scope == "changed-files" ? ":scope:changed-files" : string.Empty;
         return $"{ruleId}:file-uri:{encodedPath}:{duplicatedLines}:{significantLines}:{windowLines}{scopeSuffix}";
@@ -243,7 +251,11 @@ internal static partial class AnalyzeGateCommand {
     }
 
     private static string NormalizeChangedPath(string path) {
-        var normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
+        var normalized = AnalyzeGateBaseline.NormalizeDuplicationPathForKey(path);
+        if (!string.IsNullOrWhiteSpace(normalized)) {
+            return normalized;
+        }
+        normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
         while (normalized.StartsWith("./", StringComparison.Ordinal)) {
             normalized = normalized.Substring(2);
         }

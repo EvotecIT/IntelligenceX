@@ -25,6 +25,7 @@ internal sealed partial class ReviewRunner {
         try {
             var response = await SendOpenAiCompatibleWithRedirectsAsync(
                     uri => new HttpRequestMessage(HttpMethod.Get, uri),
+                    null,
                     endpoint,
                     readBodyOnSuccess: false,
                     readBodyOnError: false,
@@ -108,9 +109,8 @@ internal sealed partial class ReviewRunner {
         var response = await SendOpenAiCompatibleWithRedirectsAsync(uri => {
                 var request = new HttpRequestMessage(HttpMethod.Post, uri);
                 request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
-                request.Content = new StringContent(payloadJson, Encoding.UTF8, "application/json");
                 return request;
-            }, endpoint, readBodyOnSuccess: true, readBodyOnError: _settings.Diagnostics, timeoutCts.Token)
+            }, () => new StringContent(payloadJson, Encoding.UTF8, "application/json"), endpoint, readBodyOnSuccess: true, readBodyOnError: _settings.Diagnostics, timeoutCts.Token)
             .ConfigureAwait(false);
 
         var code = (int)response.StatusCode;
@@ -127,6 +127,7 @@ internal sealed partial class ReviewRunner {
 
     private async Task<OpenAiCompatibleRawResponse> SendOpenAiCompatibleWithRedirectsAsync(
         Func<Uri, HttpRequestMessage> createRequest,
+        Func<HttpContent?>? createContent,
         Uri endpoint,
         bool readBodyOnSuccess,
         bool readBodyOnError,
@@ -138,9 +139,11 @@ internal sealed partial class ReviewRunner {
             using var request = createRequest(current);
             if (redirectMethodOverride is not null) {
                 request.Method = redirectMethodOverride;
-                if (redirectDropsContent) {
-                    request.Content = null;
-                }
+            }
+            if (redirectDropsContent) {
+                request.Content = null;
+            } else if (createContent is not null && request.Method != HttpMethod.Get && request.Method != HttpMethod.Head) {
+                request.Content = createContent();
             }
             using var response = await OpenAiCompatibleHttp.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
                 .ConfigureAwait(false);

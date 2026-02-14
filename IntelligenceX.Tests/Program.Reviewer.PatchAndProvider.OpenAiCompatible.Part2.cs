@@ -74,5 +74,60 @@ internal static partial class Program {
             AssertContainsText(ex.Message, "different host", "openai-compatible rejects cross-host redirect");
         }
     }
+    private static void TestReviewOpenAiCompatiblePreservesPostBodyAcrossRedirects() {
+        var requestBodies = new List<string>();
+        var requestMethods = new List<string>();
+        using var server = new OpenAiCompatibleTestServer((method, path, body) => {
+            requestMethods.Add(method);
+            requestBodies.Add(body);
+            if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/chat/completions", StringComparison.OrdinalIgnoreCase)) {
+                return (302, "Found", "{}", new Dictionary<string, string> {
+                    ["Location"] = "/v1/chat/completions2"
+                });
+            }
+            if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/chat/completions2", StringComparison.OrdinalIgnoreCase)) {
+                return (302, "Found", "{}", new Dictionary<string, string> {
+                    ["Location"] = "/v1/chat/completions3"
+                });
+            }
+            if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/chat/completions3", StringComparison.OrdinalIgnoreCase)) {
+                return (200, "OK", "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}", null);
+            }
+            return (404, "Not Found", "{}", null);
+        });
+
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAICompatible,
+            ProviderHealthChecks = false,
+            Preflight = false,
+            Model = "test-model",
+            OpenAICompatibleBaseUrl = server.BaseUri.ToString(),
+            OpenAICompatibleApiKey = "test",
+            OpenAICompatibleTimeoutSeconds = 10,
+            RetryCount = 1,
+            RetryDelaySeconds = 1,
+            RetryMaxDelaySeconds = 1,
+            FailOpen = false,
+            Diagnostics = false
+        };
+
+        var runner = new ReviewRunner(settings);
+        var output = runner.RunAsync("hi", onPartial: null, updateInterval: null, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        AssertContainsText(output, "ok", "openai-compatible output" );
+
+        AssertEqual(3, requestBodies.Count, "openai-compatible request count (redirect chain)");
+        AssertEqual(true, requestBodies[0].Length > 0, "openai-compatible first request has body");
+        AssertEqual(requestBodies[0], requestBodies[1], "openai-compatible redirect preserves body (2)");
+        AssertEqual(requestBodies[0], requestBodies[2], "openai-compatible redirect preserves body (3)");
+        AssertEqual("POST", requestMethods[0].ToUpperInvariant(), "openai-compatible method (1)");
+        AssertEqual("POST", requestMethods[1].ToUpperInvariant(), "openai-compatible method (2)");
+        AssertEqual("POST", requestMethods[2].ToUpperInvariant(), "openai-compatible method (3)");
+    }
+
 }
 #endif
