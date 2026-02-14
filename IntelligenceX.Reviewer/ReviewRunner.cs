@@ -8,6 +8,7 @@ using System.Net.Sockets;
 using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Copilot;
@@ -388,19 +389,26 @@ internal sealed class ReviewRunner {
     }
 
     private async Task RunOpenAiCompatiblePreflightAsync(TimeSpan timeout, CancellationToken cancellationToken) {
-        var endpoint = ResolveOpenAiCompatibleEndpoint(_settings.OpenAICompatibleBaseUrl, _settings.OpenAICompatibleAllowInsecureHttp);
+        var endpoint = ResolveOpenAiCompatibleModelsEndpoint(_settings.OpenAICompatibleBaseUrl, _settings.OpenAICompatibleAllowInsecureHttp);
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(timeout);
 
-        // Treat any HTTP response as "reachable" (including 401/403/404). This is a connectivity check, not auth validation.
+        // Treat any HTTP response as "reachable" (including 401/403/404/405). This is a connectivity check, not auth validation.
         using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
         try {
             using var _ = await OpenAiCompatibleHttp.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token)
                 .ConfigureAwait(false);
         } catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested) {
             throw new TimeoutException($"Connectivity preflight timed out after {timeout.TotalSeconds:0.#}s for {endpoint.Host}.", ex);
-        } catch (HttpRequestException ex) when (!ex.StatusCode.HasValue) {
+        } catch (HttpRequestException ex) {
+            if (ex.StatusCode.HasValue) {
+                if (_settings.Diagnostics) {
+                    Console.Error.WriteLine(
+                        $"Connectivity preflight returned HTTP {(int)ex.StatusCode.Value} for {endpoint.Host} (reachable).");
+                }
+                return;
+            }
             throw new InvalidOperationException(
                 $"Connectivity preflight failed for {endpoint.Host}. Check URL, DNS, proxy, and network settings.", ex);
         }
@@ -464,18 +472,18 @@ internal sealed class ReviewRunner {
 
         using var response = await OpenAiCompatibleHttp.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token)
             .ConfigureAwait(false);
-        var responseText = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        var responseText = await response.Content.ReadAsStringAsync(timeoutCts.Token).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode) {
             var code = (int)response.StatusCode;
-            var body = SanitizeErrorContent(responseText);
+            var body = FormatOpenAiCompatibleErrorBody(responseText, apiKey, _settings.Diagnostics);
             throw new InvalidOperationException($"OpenAI-compatible request failed (HTTP {code}). {body}");
         }
 
         return ExtractOpenAiCompatibleOutput(responseText);
     }
 
-    private static Uri ResolveOpenAiCompatibleEndpoint(string? baseUrl, bool allowInsecureHttp) {
+    private static Uri ResolveOpenAiCompatibleBaseUri(string? baseUrl, bool allowInsecureHttp) {
         var trimmed = (baseUrl ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(trimmed)) {
             throw new InvalidOperationException("OpenAI-compatible provider requires review.openaiCompatible.baseUrl.");
@@ -495,7 +503,11 @@ internal sealed class ReviewRunner {
                 "OpenAI-compatible baseUrl must use https:// for non-loopback hosts. " +
                 "Set review.openaiCompatible.allowInsecureHttp=true (or OPENAI_COMPATIBLE_ALLOW_INSECURE_HTTP=1) to override.");
         }
+        return baseUri;
+    }
 
+    private static Uri ResolveOpenAiCompatibleEndpoint(string? baseUrl, bool allowInsecureHttp) {
+        var baseUri = ResolveOpenAiCompatibleBaseUri(baseUrl, allowInsecureHttp);
         var normalized = baseUri.ToString().TrimEnd('/');
         if (normalized.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)) {
             normalized += "/chat/completions";
@@ -504,6 +516,20 @@ internal sealed class ReviewRunner {
         }
         if (!Uri.TryCreate(normalized, UriKind.Absolute, out var endpoint)) {
             throw new InvalidOperationException($"OpenAI-compatible endpoint is invalid: '{normalized}'.");
+        }
+        return endpoint;
+    }
+
+    private static Uri ResolveOpenAiCompatibleModelsEndpoint(string? baseUrl, bool allowInsecureHttp) {
+        var baseUri = ResolveOpenAiCompatibleBaseUri(baseUrl, allowInsecureHttp);
+        var normalized = baseUri.ToString().TrimEnd('/');
+        if (normalized.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)) {
+            normalized += "/models";
+        } else {
+            normalized += "/v1/models";
+        }
+        if (!Uri.TryCreate(normalized, UriKind.Absolute, out var endpoint)) {
+            throw new InvalidOperationException($"OpenAI-compatible models endpoint is invalid: '{normalized}'.");
         }
         return endpoint;
     }
@@ -560,6 +586,21 @@ internal sealed class ReviewRunner {
         } catch (JsonException ex) {
             throw new InvalidOperationException("OpenAI-compatible response was not valid JSON.", ex);
         }
+    }
+
+    private static readonly Regex BearerTokenRegex =
+        new("Bearer\\s+[A-Za-z0-9._\\-]{8,}", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static string FormatOpenAiCompatibleErrorBody(string? content, string? apiKey, bool diagnostics) {
+        if (!diagnostics) {
+            return "Response body omitted (set review.diagnostics=true to include sanitized output).";
+        }
+        var sanitized = SanitizeErrorContent(content);
+        if (!string.IsNullOrWhiteSpace(apiKey)) {
+            sanitized = sanitized.Replace(apiKey.Trim(), "[REDACTED]");
+        }
+        sanitized = BearerTokenRegex.Replace(sanitized, "Bearer [REDACTED]");
+        return sanitized;
     }
 
     private static string SanitizeErrorContent(string? content) {

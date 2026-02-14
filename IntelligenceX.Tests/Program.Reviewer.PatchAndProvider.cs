@@ -2,6 +2,119 @@ namespace IntelligenceX.Tests;
 
 #if INTELLIGENCEX_REVIEWER
 internal static partial class Program {
+    private sealed class OpenAiCompatibleTestServer : IDisposable {
+        private readonly TcpListener _listener;
+        private readonly Task _loop;
+        private readonly Func<string, string, string, (int Code, string Status, string Body)> _handler;
+
+        public OpenAiCompatibleTestServer(Func<string, string, string, (int Code, string Status, string Body)> handler) {
+            _handler = handler;
+            _listener = new TcpListener(IPAddress.Loopback, 0);
+            _listener.Start();
+            BaseUri = new Uri($"http://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}");
+            _loop = Task.Run(LoopAsync);
+        }
+
+        public Uri BaseUri { get; }
+
+        private async Task LoopAsync() {
+            try {
+                while (true) {
+                    TcpClient client;
+                    try {
+                        client = await _listener.AcceptTcpClientAsync().ConfigureAwait(false);
+                    } catch (ObjectDisposedException) {
+                        break;
+                    }
+
+                    _ = Task.Run(() => HandleClientAsync(client));
+                }
+            } catch {
+                // Ignore test server loop failures.
+            }
+        }
+
+        private async Task HandleClientAsync(TcpClient client) {
+            using var _ = client;
+            using var stream = client.GetStream();
+
+            var headerBytes = new List<byte>(1024);
+            var delimiter = new byte[] { 13, 10, 13, 10 };
+            var matched = 0;
+            var singleByte = new byte[1];
+
+            while (true) {
+                var read = await stream.ReadAsync(singleByte, 0, 1).ConfigureAwait(false);
+                if (read == 0) {
+                    return;
+                }
+                var b = singleByte[0];
+                headerBytes.Add(b);
+
+                if (b == delimiter[matched]) {
+                    matched++;
+                    if (matched == delimiter.Length) {
+                        break;
+                    }
+                } else {
+                    matched = b == delimiter[0] ? 1 : 0;
+                }
+            }
+
+            var headerText = Encoding.ASCII.GetString(headerBytes.ToArray());
+            var lines = headerText.Split(new[] { "\r\n" }, StringSplitOptions.None);
+            var requestLine = lines.Length > 0 ? lines[0] : string.Empty;
+            var parts = requestLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2) {
+                return;
+            }
+            var method = parts[0];
+            var path = parts[1];
+
+            var contentLength = 0;
+            foreach (var line in lines) {
+                if (line.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase)) {
+                    int.TryParse(line.Substring("Content-Length:".Length).Trim(), out contentLength);
+                }
+            }
+
+            var body = string.Empty;
+            if (contentLength > 0) {
+                var buffer = new byte[contentLength];
+                var total = 0;
+                while (total < contentLength) {
+                    var read = await stream.ReadAsync(buffer, total, contentLength - total).ConfigureAwait(false);
+                    if (read == 0) {
+                        break;
+                    }
+                    total += read;
+                }
+                body = Encoding.UTF8.GetString(buffer, 0, total);
+            }
+
+            var (code, status, responseBody) = _handler(method, path, body);
+            var responseBytes = Encoding.UTF8.GetBytes(responseBody ?? string.Empty);
+            var responseHeader =
+                $"HTTP/1.1 {code} {status}\r\n" +
+                "Content-Type: application/json\r\n" +
+                $"Content-Length: {responseBytes.Length}\r\n" +
+                "Connection: close\r\n" +
+                "\r\n";
+            var headerOut = Encoding.ASCII.GetBytes(responseHeader);
+            await stream.WriteAsync(headerOut, 0, headerOut.Length).ConfigureAwait(false);
+            await stream.WriteAsync(responseBytes, 0, responseBytes.Length).ConfigureAwait(false);
+        }
+
+        public void Dispose() {
+            _listener.Stop();
+            try {
+                _loop.Wait(TimeSpan.FromSeconds(1));
+            } catch {
+                // Ignore.
+            }
+        }
+    }
+
     private static void TestTrimPatchPreservesCrlf() {
         var patch = string.Join("\r\n", new[] {
             "diff --git a/file.txt b/file.txt",
@@ -226,6 +339,41 @@ internal static partial class Program {
                 .GetAwaiter()
                 .GetResult();
         }, "openai-compatible rejects http non-loopback by default");
+    }
+
+    private static void TestReviewOpenAiCompatiblePreflightTreats405AsReachable() {
+        using var server = new OpenAiCompatibleTestServer((method, path, _) => {
+            if (method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/models", StringComparison.OrdinalIgnoreCase)) {
+                return (405, "Method Not Allowed", "{\"error\":\"nope\"}");
+            }
+            if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/chat/completions", StringComparison.OrdinalIgnoreCase)) {
+                return (200, "OK", "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}");
+            }
+            return (404, "Not Found", "{}");
+        });
+
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAICompatible,
+            ProviderHealthChecks = true,
+            Preflight = false,
+            Model = "test-model",
+            OpenAICompatibleBaseUrl = server.BaseUri.ToString(),
+            OpenAICompatibleApiKey = "test",
+            OpenAICompatibleTimeoutSeconds = 10,
+            RetryCount = 1,
+            RetryDelaySeconds = 1,
+            RetryMaxDelaySeconds = 1,
+            FailOpen = false,
+            Diagnostics = false
+        };
+
+        var runner = new ReviewRunner(settings);
+        var result = runner.RunAsync("hi", onPartial: null, updateInterval: null, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        AssertEqual("ok", result, "openai-compatible preflight treats 405 as reachable");
     }
 
     private static void TestReviewConfigLoaderReadsOpenAiAccountRotationCamelCase() {
