@@ -142,7 +142,7 @@ public sealed class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void CountLetterDigitTokens_ReturnsMaxPlusOneWhenOverLimit() {
+    public void CountLetterDigitTokens_CapsAtMaxTokens() {
         var twelve = "a b c d e f g h i j k l";
         var thirteen = "a b c d e f g h i j k l m";
 
@@ -150,7 +150,7 @@ public sealed class ChatServiceRoutingTrimTests {
         Assert.Equal(12, Assert.IsType<int>(result12));
 
         var result13 = CountLetterDigitTokensMethod.Invoke(null, new object?[] { thirteen, 12 });
-        Assert.Equal(13, Assert.IsType<int>(result13));
+        Assert.Equal(12, Assert.IsType<int>(result13));
     }
 
     [Fact]
