@@ -746,10 +746,27 @@ public sealed partial class MainWindow : Window {
                 await PublishOptionsStateAsync().ConfigureAwait(false);
             } else {
                 var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
-                if (!_dispatcher.TryEnqueue(async () => {
+                if (!_dispatcher.TryEnqueue(() => {
                     try {
-                        await PublishOptionsStateAsync().ConfigureAwait(false);
-                        tcs.TrySetResult(null);
+                        var publishTask = PublishOptionsStateAsync();
+                        if (publishTask.IsCompletedSuccessfully) {
+                            tcs.TrySetResult(null);
+                            return;
+                        }
+
+                        _ = publishTask.ContinueWith(task => {
+                            if (task.IsCanceled) {
+                                tcs.TrySetCanceled();
+                                return;
+                            }
+
+                            if (task.IsFaulted) {
+                                tcs.TrySetException(task.Exception?.InnerException ?? task.Exception!);
+                                return;
+                            }
+
+                            tcs.TrySetResult(null);
+                        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
                     } catch (Exception ex) {
                         tcs.TrySetException(ex);
                     }
