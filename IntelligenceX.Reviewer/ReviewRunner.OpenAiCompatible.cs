@@ -4,8 +4,10 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using STJ = System.Text.Json.Nodes;
 
 namespace IntelligenceX.Reviewer;
 
@@ -32,7 +34,10 @@ internal sealed partial class ReviewRunner {
                     $"Connectivity preflight returned HTTP {(int)response.StatusCode} for {endpoint.Host} (reachable).");
             }
         } catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested) {
-            throw new TimeoutException($"Connectivity preflight timed out after {timeout.TotalSeconds:0.#}s for {endpoint.Host}.", ex);
+            throw new TimeoutException(
+                $"Connectivity preflight timed out after {timeout.TotalSeconds:0.#}s for {endpoint.Host}. " +
+                "If your gateway blocks /v1/models (or requires auth), set review.preflight=false or enable review.providerHealthChecks=true.",
+                ex);
         } catch (HttpRequestException ex) {
             // In some environments HttpClient may throw HttpRequestException with StatusCode; treat that as "reachable".
             if (ex.StatusCode.HasValue) {
@@ -355,7 +360,11 @@ internal sealed partial class ReviewRunner {
         if (!diagnostics) {
             return "Response body omitted (set review.diagnostics=true to include sanitized output).";
         }
-        var sanitized = SanitizeErrorContent(content);
+        if (string.IsNullOrWhiteSpace(content)) {
+            return "Response body was empty.";
+        }
+
+        var sanitized = content.Trim();
         if (!string.IsNullOrWhiteSpace(apiKey)) {
             sanitized = sanitized.Replace(apiKey.Trim(), "[REDACTED]");
         }
@@ -367,10 +376,13 @@ internal sealed partial class ReviewRunner {
             }
             return m.Value.Substring(0, idx) + ":\"[REDACTED]\"";
         });
-        return sanitized;
+        if (TrySanitizeOpenAiCompatibleErrorBodyJson(sanitized, apiKey, out var sanitizedJson)) {
+            sanitized = sanitizedJson;
+        }
+        return SanitizeErrorContent(sanitized);
     }
 
-    private static string SanitizeErrorContent(string? content) {
+    private static string SanitizeErrorContent(string content) {
         var text = (content ?? string.Empty)
             .Replace("\r", " ")
             .Replace("\n", " ")
@@ -382,5 +394,86 @@ internal sealed partial class ReviewRunner {
             text = text.Substring(0, 240) + "...";
         }
         return "Body: " + text;
+    }
+
+    private static bool TrySanitizeOpenAiCompatibleErrorBodyJson(string content, string? apiKey, out string sanitized) {
+        sanitized = string.Empty;
+        var trimmed = (content ?? string.Empty).TrimStart();
+        if (!(trimmed.StartsWith("{", StringComparison.Ordinal) || trimmed.StartsWith("[", StringComparison.Ordinal))) {
+            return false;
+        }
+
+        STJ.JsonNode? root;
+        try {
+            root = STJ.JsonNode.Parse(trimmed);
+        } catch {
+            return false;
+        }
+        if (root is null) {
+            return false;
+        }
+
+        root = SanitizeNode(root, apiKey, propertyName: null);
+        if (root is null) {
+            return false;
+        }
+        try {
+            sanitized = root.ToJsonString(new JsonSerializerOptions {
+                WriteIndented = false
+            });
+            return !string.IsNullOrWhiteSpace(sanitized);
+        } catch {
+            return false;
+        }
+    }
+
+    private static STJ.JsonNode? SanitizeNode(STJ.JsonNode? node, string? apiKey, string? propertyName) {
+        if (node is null) {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(propertyName) && IsSensitiveKey(propertyName)) {
+            return STJ.JsonValue.Create("[REDACTED]");
+        }
+
+        if (node is STJ.JsonObject obj) {
+            foreach (var kvp in obj.ToList()) {
+                obj[kvp.Key] = SanitizeNode(kvp.Value, apiKey, kvp.Key);
+            }
+            return obj;
+        }
+        if (node is STJ.JsonArray arr) {
+            for (var i = 0; i < arr.Count; i++) {
+                arr[i] = SanitizeNode(arr[i], apiKey, propertyName: null);
+            }
+            return arr;
+        }
+        if (node is STJ.JsonValue value) {
+            if (value.TryGetValue<string>(out var s)) {
+                var updated = s;
+                if (!string.IsNullOrWhiteSpace(apiKey) && updated.Contains(apiKey.Trim(), StringComparison.Ordinal)) {
+                    updated = updated.Replace(apiKey.Trim(), "[REDACTED]");
+                }
+                updated = BearerTokenRegex.Replace(updated, "Bearer [REDACTED]");
+                if (!string.Equals(updated, s, StringComparison.Ordinal)) {
+                    return STJ.JsonValue.Create(updated);
+                }
+            }
+            return node;
+        }
+        return node;
+    }
+
+    private static bool IsSensitiveKey(string key) {
+        if (string.IsNullOrWhiteSpace(key)) {
+            return false;
+        }
+        var normalized = key.Trim().ToLowerInvariant();
+        return normalized.Contains("api_key", StringComparison.Ordinal) ||
+               normalized.Contains("apikey", StringComparison.Ordinal) ||
+               normalized.Contains("api-key", StringComparison.Ordinal) ||
+               normalized.Contains("token", StringComparison.Ordinal) ||
+               normalized.Contains("secret", StringComparison.Ordinal) ||
+               normalized.Contains("authorization", StringComparison.Ordinal);
     }
 }

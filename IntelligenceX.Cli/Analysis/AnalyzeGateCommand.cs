@@ -378,6 +378,11 @@ internal static partial class AnalyzeGateCommand {
                     }
                     if (baseline.WindowLines != current.WindowLines) {
                         windowMismatch++;
+                        Console.WriteLine(
+                            $"Static analysis duplication file delta gate: unavailable (baseline window mismatch for {current.RuleId} scope={current.Scope} file={current.Path}: baseline={baseline.WindowLines} current={current.WindowLines}).");
+                        if (analysisSettings.Gate.Duplication.FailOnUnavailable) {
+                            return Task.FromResult(ExitGateFailed);
+                        }
                         continue;
                     }
                     if (baseline.SignificantLines <= 0) {

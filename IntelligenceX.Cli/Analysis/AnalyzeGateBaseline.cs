@@ -284,16 +284,48 @@ internal static class AnalyzeGateBaseline {
     }
 
     internal static string NormalizeDuplicationPathForKey(string? path) {
-        // Duplication metrics + baselines can include "./" prefixes and mixed separators; normalize so delta gating finds matches.
+        // Duplication metrics + baselines can include "./" prefixes, mixed separators, repeated slashes, or safe ../ segments.
+        // Normalize so delta gating finds matches deterministically while avoiding path traversal above the root.
         var normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
+
         var hasDotRelativePrefix = normalized.StartsWith(".", StringComparison.Ordinal);
+        var hasLeadingSlash = normalized.StartsWith("/", StringComparison.Ordinal);
+
         while (normalized.StartsWith("./", StringComparison.Ordinal)) {
             normalized = normalized.Substring(2);
         }
-        if (hasDotRelativePrefix) {
-            normalized = normalized.TrimStart('/');
+        while (normalized.Contains("//", StringComparison.Ordinal)) {
+            normalized = normalized.Replace("//", "/", StringComparison.Ordinal);
         }
-        return normalized;
+
+        var parts = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) {
+            return string.Empty;
+        }
+
+        var stack = new List<string>(parts.Length);
+        foreach (var part in parts) {
+            if (part.Equals(".", StringComparison.Ordinal)) {
+                continue;
+            }
+            if (part.Equals("..", StringComparison.Ordinal)) {
+                if (stack.Count == 0) {
+                    return string.Empty;
+                }
+                stack.RemoveAt(stack.Count - 1);
+                continue;
+            }
+            stack.Add(part);
+        }
+
+        var rebuilt = string.Join("/", stack);
+        if (hasDotRelativePrefix) {
+            rebuilt = rebuilt.TrimStart('/');
+        }
+        if (hasLeadingSlash && !rebuilt.StartsWith("/", StringComparison.Ordinal)) {
+            rebuilt = "/" + rebuilt;
+        }
+        return rebuilt;
     }
 
     private static bool TryParseDuplicationOverallFingerprint(string fingerprint, out int duplicatedLines, out int significantLines,

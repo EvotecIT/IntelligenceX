@@ -388,6 +388,12 @@ internal static partial class Program {
             TestAnalyzeGateDuplicationFileDeltaBlocksWhenIncreaseExceedsAllowed);
         failed += Run("Analyze gate duplication file delta normalizes ./ paths",
             TestAnalyzeGateDuplicationFileDeltaNormalizesDotRelativePaths);
+        failed += Run("Analyze gate duplication file delta normalizes ../ paths",
+            TestAnalyzeGateDuplicationFileDeltaNormalizesParentRelativePaths);
+        failed += Run("Analyze gate duplication file delta normalizes // paths",
+            TestAnalyzeGateDuplicationFileDeltaNormalizesDoubleSlashes);
+        failed += Run("Analyze gate duplication file delta window mismatch unavailable",
+            TestAnalyzeGateDuplicationFileDeltaWindowMismatchIsUnavailable);
         failed += Run("Analyze gate duplication overall baseline skips null items", TestAnalyzeGateDuplicationOverallBaselineSkipsNullItems);
         failed += Run("Analyze gate duplication overall baseline rejects malformed fingerprints",
             TestAnalyzeGateDuplicationOverallBaselineRejectsMalformedFingerprints);
@@ -520,6 +526,7 @@ internal static partial class Program {
         failed += Run("OpenAI-compatible 303 redirect switches POST to GET", TestReviewOpenAiCompatibleRedirect303SwitchesToGet);
         failed += Run("OpenAI-compatible non-diagnostics omits remote error body",
             TestReviewOpenAiCompatibleDoesNotLeakErrorBodyWhenDiagnosticsFalse);
+        failed += Run("OpenAI-compatible rejects cross-host redirects", TestReviewOpenAiCompatibleRejectsCrossHostRedirects);
         failed += Run("Review config loader reads openaiAccountRotation camelCase",
             TestReviewConfigLoaderReadsOpenAiAccountRotationCamelCase);
         failed += Run("Review config loader reads legacy includeRelatedPullRequests alias",

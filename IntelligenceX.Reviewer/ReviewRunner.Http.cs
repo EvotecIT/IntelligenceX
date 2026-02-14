@@ -20,7 +20,12 @@ internal sealed partial class ReviewRunner {
         // We handle redirects ourselves to avoid "POST becomes GET" behavior on 301/302/303,
         // and to apply security checks consistently.
         return new SocketsHttpHandler {
-            AllowAutoRedirect = false
+            AllowAutoRedirect = false,
+
+            // Help long-running processes avoid stale DNS/pooled connections.
+            // The per-request CTS controls end-to-end timeouts.
+            PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+            PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2)
         };
     }
 
