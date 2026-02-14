@@ -27,7 +27,7 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
-    private const int SafeDefaultMaxToolRounds = 8;
+    private const int SafeDefaultMaxToolRounds = 24;
     private const bool SafeDefaultParallelTools = true;
     private const int SafeDefaultTurnTimeoutSeconds = 180;
     private const int SafeDefaultToolTimeoutSeconds = 60;
