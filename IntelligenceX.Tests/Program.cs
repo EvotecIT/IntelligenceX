@@ -403,6 +403,8 @@ internal static partial class Program {
             TestAnalyzeRunStrictEqualsFalseOverridesConfigStrictTrue);
         failed += Run("Analyze run strict flag does not consume following option",
             TestAnalyzeRunStrictFlagDoesNotConsumeFollowingOption);
+        failed += Run("Analyze run strict invalid explicit value fails",
+            TestAnalyzeRunStrictFlagInvalidExplicitValueFails);
         failed += Run("Analyze run pack override skips configured csharp runner failure",
             TestAnalyzeRunPacksOverrideSkipsConfiguredCsharpFailure);
         failed += Run("Analyze run invalid pack override fails", TestAnalyzeRunInvalidPackOverrideFails);

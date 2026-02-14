@@ -87,6 +87,13 @@ internal static partial class Program {
         AssertEqual(0, exit, "analyze run --strict does not consume following option token");
     }
 
+    private static void TestAnalyzeRunStrictFlagInvalidExplicitValueFails() {
+        var exit = RunAnalyzeRunWithMissingDotnet(
+            strict: false,
+            strictOverrideRawValue: "maybe");
+        AssertEqual(1, exit, "analyze run --strict invalid explicit value fails");
+    }
+
     private static void TestAnalyzeRunPacksOverrideSkipsConfiguredCsharpFailure() {
         var exit = RunAnalyzeRunWithMissingDotnet(strict: true, packsOverride: "internal-default");
         AssertEqual(0, exit, "analyze run pack override skips configured csharp runner failure");
@@ -102,7 +109,8 @@ internal static partial class Program {
         bool? strictOverride = null,
         bool strictOverrideEqualsSyntax = false,
         string? packsOverride = null,
-        bool strictBeforePacks = false) {
+        bool strictBeforePacks = false,
+        string? strictOverrideRawValue = null) {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-run-strict-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try {
@@ -178,6 +186,12 @@ internal static partial class Program {
             };
 
             void AppendStrictOverride() {
+                if (!string.IsNullOrWhiteSpace(strictOverrideRawValue)) {
+                    args.Add("--strict");
+                    args.Add(strictOverrideRawValue);
+                    return;
+                }
+
                 if (!strictOverride.HasValue) {
                     return;
                 }

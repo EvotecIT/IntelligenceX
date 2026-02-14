@@ -309,11 +309,21 @@ internal static partial class AnalyzeRunCommand {
                 continue;
             }
             if (arg.Equals("--strict", StringComparison.OrdinalIgnoreCase)) {
-                if (i + 1 < args.Length && TryParseStrictValue(args[i + 1], out var parsedStrict)) {
-                    i++;
-                    options.Strict = parsedStrict;
-                    options.StrictSet = true;
-                    continue;
+                if (i + 1 < args.Length) {
+                    var strictCandidate = args[i + 1];
+                    if (TryParseStrictValue(strictCandidate, out var parsedStrict)) {
+                        i++;
+                        options.Strict = parsedStrict;
+                        options.StrictSet = true;
+                        continue;
+                    }
+
+                    // Invalid explicit values (for example "--strict maybe") must fail.
+                    // If the next token looks like another option, keep implicit "--strict=true".
+                    if (!strictCandidate.StartsWith("-", StringComparison.Ordinal)) {
+                        error = $"Invalid value for --strict: {strictCandidate}. Expected true|false.";
+                        return false;
+                    }
                 }
                 options.Strict = true;
                 options.StrictSet = true;
