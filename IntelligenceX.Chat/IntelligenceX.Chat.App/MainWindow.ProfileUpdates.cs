@@ -749,6 +749,10 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task ApplyUserProfileIntentAsync(string userText) {
+        if (TryExtractMemoryIntent(userText, out var memoryFact)) {
+            await AddMemoryFactAsync(memoryFact, weight: 3, tags: new[] { "user-intent" }).ConfigureAwait(false);
+        }
+
         var intent = ParseUserProfileIntent(userText);
         if (!intent.HasUserName && !intent.HasAssistantPersona && !intent.HasThemePreset) {
             return;
@@ -769,6 +773,54 @@ public sealed partial class MainWindow : Window {
         };
 
         _ = await ApplyProfileUpdateAsync(update, autoCompleteOnboardingForProfileScope: true).ConfigureAwait(false);
+    }
+
+    private static bool TryExtractMemoryIntent(string userText, out string? memoryFact) {
+        memoryFact = null;
+        var normalized = (userText ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        if (TryExtractMemoryFactFromRegex(MemoryRememberIntentRegex, normalized, out memoryFact)) {
+            return true;
+        }
+
+        if (TryExtractMemoryFactFromRegex(MemoryFutureIntentRegex, normalized, out memoryFact)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryExtractMemoryFactFromRegex(Regex regex, string text, out string? memoryFact) {
+        memoryFact = null;
+        var match = regex.Match(text);
+        if (!match.Success) {
+            return false;
+        }
+
+        var group = match.Groups["value"];
+        if (!group.Success) {
+            return false;
+        }
+
+        var candidate = group.Value.Trim().Trim('.', '!', '?', ';', ':');
+        if (candidate.Length < 6) {
+            return false;
+        }
+
+        if (candidate.StartsWith("to ", StringComparison.OrdinalIgnoreCase)) {
+            // Avoid storing imperative tasks accidentally.
+            return false;
+        }
+
+        if (candidate.Length > 220) {
+            candidate = candidate[..220].TrimEnd();
+        }
+
+        memoryFact = candidate;
+        return true;
     }
 
     private UserProfileIntent ParseUserProfileIntent(string userText) {

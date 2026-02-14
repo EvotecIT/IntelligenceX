@@ -54,6 +54,8 @@ public sealed partial class MainWindow : Window {
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex SessionScopeIntentRegex = new(@"\b(?:for\s+(?:this\s+)?(?:session|chat)|this\s+session(?:\s+only)?|for\s+now|temporar(?:y|ily)|just\s+for\s+now|only\s+for\s+this\s+conversation)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex ProfileScopeIntentRegex = new(@"\b(?:save|remember|default(?:\s+profile)?|always|permanent(?:ly)?|persist(?:ent|ently)?|for\s+all\s+future\s+chats)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex MemoryRememberIntentRegex = new(@"\b(?:remember(?:\s+this|\s+that)?|save\s+this|store\s+this)\b[\s,:-]*(?<value>[^\r\n]{6,240})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex MemoryFutureIntentRegex = new(@"\bfor\s+next\s+time\b[\s,:-]*(?<value>[^\r\n]{6,220})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     [DllImport("user32.dll")]
     private static extern bool ReleaseCapture();
