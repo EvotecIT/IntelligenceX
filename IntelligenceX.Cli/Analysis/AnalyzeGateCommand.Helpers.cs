@@ -262,6 +262,22 @@ internal static partial class AnalyzeGateCommand {
         return normalized;
     }
 
+    private static double ClampPercentIncrease(double value, string settingName) {
+        if (double.IsNaN(value) || double.IsInfinity(value)) {
+            Console.WriteLine($"Static analysis duplication delta gate: invalid {settingName}={value}; clamped to 0.");
+            return 0;
+        }
+        if (value < 0) {
+            Console.WriteLine($"Static analysis duplication delta gate: invalid {settingName}={value}; clamped to 0.");
+            return 0;
+        }
+        if (value > 100) {
+            Console.WriteLine($"Static analysis duplication delta gate: invalid {settingName}={value}; clamped to 100.");
+            return 100;
+        }
+        return value;
+    }
+
     private static string FormatPercent(double value) {
         return value.ToString("0.##", CultureInfo.InvariantCulture);
     }

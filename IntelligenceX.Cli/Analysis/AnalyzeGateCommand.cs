@@ -307,7 +307,7 @@ internal static partial class AnalyzeGateCommand {
                     return Task.FromResult(ExitGateFailed);
                 }
             } else {
-                var allowedIncrease = analysisSettings.Gate.Duplication.MaxOverallPercentIncrease!.Value;
+                var allowedIncrease = ClampPercentIncrease(analysisSettings.Gate.Duplication.MaxOverallPercentIncrease!.Value, "analysis.gate.duplication.maxOverallPercentIncrease");
                 var windowMismatch = 0;
                 foreach (var current in duplicationEvaluation.OverallSnapshots ?? Array.Empty<DuplicationOverallSnapshot>()) {
                     if (current.SignificantLines <= 0) {
@@ -364,7 +364,7 @@ internal static partial class AnalyzeGateCommand {
                     return Task.FromResult(ExitGateFailed);
                 }
             } else {
-                var allowedIncrease = analysisSettings.Gate.Duplication.MaxFilePercentIncrease!.Value;
+                var allowedIncrease = ClampPercentIncrease(analysisSettings.Gate.Duplication.MaxFilePercentIncrease!.Value, "analysis.gate.duplication.maxFilePercentIncrease");
                 var missingBaseline = 0;
                 var windowMismatch = 0;
                 foreach (var current in duplicationEvaluation.FileSnapshots ?? Array.Empty<DuplicationFileSnapshot>()) {

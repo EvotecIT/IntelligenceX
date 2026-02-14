@@ -4,7 +4,7 @@ namespace IntelligenceX.Tests;
 internal static partial class Program {
     private static void TestReviewOpenAiCompatibleDoesNotLeakErrorBodyWhenDiagnosticsFalse() {
         const string secret = "SECRET_TOKEN_123";
-        using var server = new OpenAiCompatibleTestServer((method, path, _) => {
+        using var server = new OpenAiCompatibleTestServer((method, path, _, _) => {
             if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
                 path.Equals("/v1/chat/completions", StringComparison.OrdinalIgnoreCase)) {
                 return (401, "Unauthorized", "{\"authorization\":\"Bearer " + secret + "\"}", null);
@@ -39,7 +39,7 @@ internal static partial class Program {
     }
 
     private static void TestReviewOpenAiCompatibleRejectsCrossHostRedirects() {
-        using var server = new OpenAiCompatibleTestServer((method, path, _) => {
+        using var server = new OpenAiCompatibleTestServer((method, path, _, _) => {
             if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
                 path.Equals("/v1/chat/completions", StringComparison.OrdinalIgnoreCase)) {
                 return (302, "Found", "{}", new Dictionary<string, string> {
@@ -77,9 +77,11 @@ internal static partial class Program {
     private static void TestReviewOpenAiCompatiblePreservesPostBodyAcrossRedirects() {
         var requestBodies = new List<string>();
         var requestMethods = new List<string>();
-        using var server = new OpenAiCompatibleTestServer((method, path, body) => {
+        var requestAuth = new List<string>();
+        using var server = new OpenAiCompatibleTestServer((method, path, body, headers) => {
             requestMethods.Add(method);
             requestBodies.Add(body);
+            requestAuth.Add(headers.TryGetValue("Authorization", out var auth) ? auth : string.Empty);
             if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
                 path.Equals("/v1/chat/completions", StringComparison.OrdinalIgnoreCase)) {
                 return (302, "Found", "{}", new Dictionary<string, string> {
@@ -127,6 +129,9 @@ internal static partial class Program {
         AssertEqual("POST", requestMethods[0].ToUpperInvariant(), "openai-compatible method (1)");
         AssertEqual("POST", requestMethods[1].ToUpperInvariant(), "openai-compatible method (2)");
         AssertEqual("POST", requestMethods[2].ToUpperInvariant(), "openai-compatible method (3)");
+        AssertContainsText(requestAuth[0], "Bearer test", "openai-compatible sends Authorization on first request");
+        AssertEqual(string.Empty, requestAuth[1], "openai-compatible drops Authorization on redirect (2)");
+        AssertEqual(string.Empty, requestAuth[2], "openai-compatible drops Authorization on redirect (3)");
     }
 
 }

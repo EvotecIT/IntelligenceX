@@ -5,9 +5,9 @@ internal static partial class Program {
     private sealed class OpenAiCompatibleTestServer : IDisposable {
         private readonly TcpListener _listener;
         private readonly Task _loop;
-        private readonly Func<string, string, string, (int Code, string Status, string Body, Dictionary<string, string>? Headers)> _handler;
+        private readonly Func<string, string, string, Dictionary<string, string>, (int Code, string Status, string Body, Dictionary<string, string>? Headers)> _handler;
 
-        public OpenAiCompatibleTestServer(Func<string, string, string, (int Code, string Status, string Body, Dictionary<string, string>? Headers)> handler) {
+        public OpenAiCompatibleTestServer(Func<string, string, string, Dictionary<string, string>, (int Code, string Status, string Body, Dictionary<string, string>? Headers)> handler) {
             _handler = handler;
             _listener = new TcpListener(IPAddress.Loopback, 0);
             _listener.Start();
@@ -71,10 +71,22 @@ internal static partial class Program {
             var method = parts[0];
             var path = parts[1];
 
+            var requestHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var contentLength = 0;
-            foreach (var line in lines) {
-                if (line.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase)) {
-                    int.TryParse(line.Substring("Content-Length:".Length).Trim(), out contentLength);
+            for (var i = 1; i < lines.Length; i++) {
+                var line = lines[i];
+                if (string.IsNullOrWhiteSpace(line)) {
+                    break;
+                }
+                var colon = line.IndexOf(':');
+                if (colon <= 0) {
+                    continue;
+                }
+                var key = line.Substring(0, colon).Trim();
+                var value = line.Substring(colon + 1).Trim();
+                requestHeaders[key] = value;
+                if (key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)) {
+                    int.TryParse(value, out contentLength);
                 }
             }
 
@@ -92,13 +104,13 @@ internal static partial class Program {
                 body = Encoding.UTF8.GetString(buffer, 0, total);
             }
 
-            var (code, status, responseBody, headers) = _handler(method, path, body);
+            var (code, status, responseBody, responseHeaders) = _handler(method, path, body, requestHeaders);
             var responseBytes = Encoding.UTF8.GetBytes(responseBody ?? string.Empty);
             var responseHeaderBuilder = new System.Text.StringBuilder();
             responseHeaderBuilder.Append($"HTTP/1.1 {code} {status}\r\n");
             responseHeaderBuilder.Append("Content-Type: application/json\r\n");
-            if (headers is not null) {
-                foreach (var kvp in headers) {
+            if (responseHeaders is not null) {
+                foreach (var kvp in responseHeaders) {
                     responseHeaderBuilder.Append(kvp.Key);
                     responseHeaderBuilder.Append(": ");
                     responseHeaderBuilder.Append(kvp.Value);
@@ -353,7 +365,7 @@ internal static partial class Program {
     }
 
     private static void TestReviewOpenAiCompatiblePreflightTreats405AsReachable() {
-        using var server = new OpenAiCompatibleTestServer((method, path, _) => {
+        using var server = new OpenAiCompatibleTestServer((method, path, _, _) => {
             if (method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
                 path.Equals("/v1/models", StringComparison.OrdinalIgnoreCase)) {
                 return (405, "Method Not Allowed", "{\"error\":\"nope\"}", null);
@@ -388,7 +400,7 @@ internal static partial class Program {
     }
 
     private static void TestReviewOpenAiCompatibleFollowsRedirects() {
-        using var server = new OpenAiCompatibleTestServer((method, path, _) => {
+        using var server = new OpenAiCompatibleTestServer((method, path, body, _) => {
             if (method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
                 path.Equals("/v1/models", StringComparison.OrdinalIgnoreCase)) {
                 return (302, "Found", "{}", new Dictionary<string, string> {
@@ -409,7 +421,7 @@ internal static partial class Program {
             if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
                 path.Equals("/v1/chat/completions-redirected", StringComparison.OrdinalIgnoreCase)) {
                 // Ensure redirect replays the POST body (gateways commonly redirect with 302 and still expect POST).
-                if (string.IsNullOrWhiteSpace(_)) {
+                if (string.IsNullOrWhiteSpace(body)) {
                     return (400, "Bad Request", "{\"error\":\"expected POST body\"}", null);
                 }
                 return (200, "OK", "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}", null);
@@ -441,7 +453,7 @@ internal static partial class Program {
     }
 
     private static void TestReviewOpenAiCompatibleRedirect303SwitchesToGet() {
-        using var server = new OpenAiCompatibleTestServer((method, path, body) => {
+        using var server = new OpenAiCompatibleTestServer((method, path, body, _) => {
             if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
                 path.Equals("/v1/chat/completions", StringComparison.OrdinalIgnoreCase)) {
                 return (303, "See Other", "{}", new Dictionary<string, string> {
