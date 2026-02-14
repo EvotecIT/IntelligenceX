@@ -1481,9 +1481,8 @@ internal sealed class ChatServiceSession {
                     stats.Failures++;
                 }
             }
+            TrimToolRoutingStatsNoLock();
         }
-
-        TrimToolRoutingStats();
     }
 
     private void TrimWeightedRoutingContextsNoLock() {
@@ -1521,34 +1520,32 @@ internal sealed class ChatServiceSession {
         }
     }
 
-    private void TrimToolRoutingStats() {
-        lock (_toolRoutingStatsLock) {
-            if (_toolRoutingStats.Count <= MaxTrackedToolRoutingStats) {
-                return;
-            }
+    private void TrimToolRoutingStatsNoLock() {
+        if (_toolRoutingStats.Count <= MaxTrackedToolRoutingStats) {
+            return;
+        }
 
-            while (_toolRoutingStats.Count > MaxTrackedToolRoutingStats) {
-                string? oldestToolName = null;
-                long oldestTicks = long.MaxValue;
-                foreach (var pair in _toolRoutingStats) {
-                    var stats = pair.Value;
-                    var candidateTicks = stats.LastUsedUtcTicks > 0
-                        ? stats.LastUsedUtcTicks
-                        : stats.LastSuccessUtcTicks;
-                    if (candidateTicks >= oldestTicks) {
-                        continue;
-                    }
-
-                    oldestTicks = candidateTicks;
-                    oldestToolName = pair.Key;
+        while (_toolRoutingStats.Count > MaxTrackedToolRoutingStats) {
+            string? oldestToolName = null;
+            long oldestTicks = long.MaxValue;
+            foreach (var pair in _toolRoutingStats) {
+                var stats = pair.Value;
+                var candidateTicks = stats.LastUsedUtcTicks > 0
+                    ? stats.LastUsedUtcTicks
+                    : stats.LastSuccessUtcTicks;
+                if (candidateTicks >= oldestTicks) {
+                    continue;
                 }
 
-                if (string.IsNullOrWhiteSpace(oldestToolName)) {
-                    break;
-                }
-
-                _toolRoutingStats.Remove(oldestToolName);
+                oldestTicks = candidateTicks;
+                oldestToolName = pair.Key;
             }
+
+            if (string.IsNullOrWhiteSpace(oldestToolName)) {
+                break;
+            }
+
+            _toolRoutingStats.Remove(oldestToolName);
         }
     }
 
