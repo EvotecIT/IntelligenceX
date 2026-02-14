@@ -1695,15 +1695,15 @@ internal sealed class ChatServiceSession {
 
         var profile = ResolveRetryProfile(call.Name);
         ToolOutputDto? lastFailure = null;
-        for (var attempt = 1; attempt <= profile.MaxAttempts; attempt++) {
+        for (var attemptIndex = 0; attemptIndex < profile.MaxAttempts; attemptIndex++) {
             var output = await ExecuteToolAttemptAsync(tool, call, toolTimeoutSeconds, cancellationToken).ConfigureAwait(false);
-            if (!ShouldRetryToolCall(output, profile, attempt)) {
+            if (!ShouldRetryToolCall(output, profile, attemptIndex)) {
                 return output;
             }
 
             lastFailure = output;
             if (profile.DelayBaseMs > 0) {
-                var delayMs = Math.Min(800, profile.DelayBaseMs * attempt);
+                var delayMs = Math.Min(800, profile.DelayBaseMs * (attemptIndex + 1));
                 try {
                     await Task.Delay(delayMs, cancellationToken).ConfigureAwait(false);
                 } catch (OperationCanceledException) {
@@ -1763,8 +1763,9 @@ internal sealed class ChatServiceSession {
         };
     }
 
-    private static bool ShouldRetryToolCall(ToolOutputDto output, ToolRetryProfile profile, int attempt) {
-        if (attempt >= profile.MaxAttempts) {
+    private static bool ShouldRetryToolCall(ToolOutputDto output, ToolRetryProfile profile, int attemptIndex) {
+        // attemptIndex is zero-based current attempt. We can only retry when there is another slot left.
+        if (attemptIndex + 1 >= profile.MaxAttempts) {
             return false;
         }
         if (output.Ok is true) {
