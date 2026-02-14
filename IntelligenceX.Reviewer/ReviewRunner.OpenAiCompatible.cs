@@ -153,6 +153,8 @@ internal sealed partial class ReviewRunner {
                 var body = string.Empty;
                 if (shouldReadBody) {
                     body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                } else {
+                    await DrainOpenAiCompatibleBodyAsync(response, cancellationToken).ConfigureAwait(false);
                 }
                 return new OpenAiCompatibleRawResponse(response.StatusCode, body);
             }
@@ -170,6 +172,7 @@ internal sealed partial class ReviewRunner {
                     $"OpenAI-compatible request failed: redirect (HTTP {status}) without Location header.");
             }
 
+            await DrainOpenAiCompatibleBodyAsync(response, cancellationToken).ConfigureAwait(false);
             var next = ResolveRedirectUri(current, location);
             ValidateOpenAiCompatibleRedirectUri(current, next, _settings.OpenAICompatibleAllowInsecureHttp);
 
@@ -189,6 +192,34 @@ internal sealed partial class ReviewRunner {
         }
 
         throw new InvalidOperationException("OpenAI-compatible redirect loop ended unexpectedly.");
+    }
+
+    private const int OpenAiCompatibleMaxDrainBytes = 256 * 1024;
+
+    private static async Task DrainOpenAiCompatibleBodyAsync(HttpResponseMessage response, CancellationToken cancellationToken) {
+        if (response.Content is null) {
+            return;
+        }
+        try {
+            var length = response.Content.Headers.ContentLength;
+            if (length.HasValue && length.Value > OpenAiCompatibleMaxDrainBytes) {
+                return;
+            }
+
+            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            var buffer = new byte[8192];
+            var remaining = OpenAiCompatibleMaxDrainBytes;
+            while (remaining > 0) {
+                var read = await stream.ReadAsync(buffer.AsMemory(0, Math.Min(buffer.Length, remaining)), cancellationToken)
+                    .ConfigureAwait(false);
+                if (read <= 0) {
+                    break;
+                }
+                remaining -= read;
+            }
+        } catch {
+            // Ignore drain failures; response disposal will still release resources.
+        }
     }
 
     private static bool IsRedirectStatusCode(HttpStatusCode status) {
