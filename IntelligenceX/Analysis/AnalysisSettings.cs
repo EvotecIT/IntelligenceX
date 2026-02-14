@@ -181,6 +181,11 @@ public sealed class AnalysisGateDuplicationSettings {
     /// </summary>
     public double? MaxOverallPercent { get; set; }
     /// <summary>
+    /// Optional allowed increase (in percentage points, 0-100) compared to the baseline overall duplication snapshot.
+    /// Requires <c>analysis.gate.baselinePath</c> to be configured and present.
+    /// </summary>
+    public double? MaxOverallPercentIncrease { get; set; }
+    /// <summary>
     /// Scope used for duplication gating. Supported values: <c>changed-files</c> (default) and <c>all</c>.
     /// </summary>
     public string Scope { get; set; } = "changed-files";

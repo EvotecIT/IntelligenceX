@@ -117,9 +117,9 @@ public static partial class ReviewerApp {
     }
 
     private static readonly RunOptionSpec[] RunOptionSpecs = {
-        new RunOptionSpec("--provider", "<openai|codex|copilot|azure>", "AI provider or Azure DevOps code host (aliases: azuredevops, azure-devops, ado)", true,
+        new RunOptionSpec("--provider", "<openai|codex|chatgpt|openai-codex|copilot|azure>", "AI provider or Azure DevOps code host (aliases: azuredevops, azure-devops, ado)", true,
             (options, value) => options.Provider = value),
-        new RunOptionSpec("--provider-fallback", "<openai|codex|copilot>", "Optional fallback AI provider when the primary provider fails", true,
+        new RunOptionSpec("--provider-fallback", "<openai|codex|chatgpt|openai-codex|copilot>", "Optional fallback AI provider when the primary provider fails", true,
             (options, value) => options.ProviderFallback = value),
         new RunOptionSpec("--code-host", "<github|azure>", "Override code host (azure/azuredevops supported)", true,
             (options, value) => options.CodeHost = value),
@@ -160,11 +160,12 @@ public static partial class ReviewerApp {
             }
         }
         if (!string.IsNullOrWhiteSpace(options.Provider) && !IsValidProvider(options.Provider)) {
-            options.Errors.Add($"Unsupported provider '{options.Provider}'. Use openai, codex, copilot, or azure/azuredevops.");
+            options.Errors.Add(
+                $"Unsupported provider '{options.Provider}'. Use openai/codex/chatgpt/openai-codex, copilot, or azure/azuredevops.");
         }
         if (!string.IsNullOrWhiteSpace(options.ProviderFallback) && !IsValidAiProvider(options.ProviderFallback)) {
             options.Errors.Add(
-                $"Unsupported provider fallback '{options.ProviderFallback}'. Use openai, codex, or copilot.");
+                $"Unsupported provider fallback '{options.ProviderFallback}'. Use openai/codex/chatgpt/openai-codex or copilot.");
         }
         if (!string.IsNullOrWhiteSpace(options.CodeHost) && !IsValidCodeHost(options.CodeHost)) {
             options.Errors.Add($"Unsupported code host '{options.CodeHost}'. Use github or azure/azuredevops.");

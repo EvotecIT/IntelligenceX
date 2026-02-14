@@ -119,6 +119,13 @@ internal static partial class Program {
         AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("CODEX", out var codexUpper), "provider codex uppercase alias");
         AssertEqual(ReviewProvider.OpenAI, codexUpper, "provider codex uppercase value");
 
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("chatgpt", out var chatGpt), "provider chatgpt alias");
+        AssertEqual(ReviewProvider.OpenAI, chatGpt, "provider chatgpt value");
+
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("openai-codex", out var openAiCodex),
+            "provider openai-codex alias");
+        AssertEqual(ReviewProvider.OpenAI, openAiCodex, "provider openai-codex value");
+
         AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("copilot", out var copilot), "provider copilot alias");
         AssertEqual(ReviewProvider.Copilot, copilot, "provider copilot value");
 
@@ -158,6 +165,24 @@ internal static partial class Program {
             var settings = new ReviewSettings();
             ReviewConfigLoader.Apply(settings);
             AssertEqual(ReviewProvider.OpenAI, settings.Provider, "provider codex config");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
+    private static void TestReviewProviderConfigInvalidThrows() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-invalid-provider-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path, "{ \"review\": { \"provider\": \"open-ai\" } }");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            AssertThrows<InvalidOperationException>(() => {
+                var settings = new ReviewSettings();
+                ReviewConfigLoader.Apply(settings);
+            }, "provider invalid config throws");
         } finally {
             Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
             if (File.Exists(path)) {
@@ -232,11 +257,20 @@ internal static partial class Program {
             AssertEqual(ReviewProvider.Copilot, settings.ProviderFallback, "provider fallback env value");
 
             Environment.SetEnvironmentVariable("REVIEW_PROVIDER_FALLBACK", "azure");
-            settings = ReviewSettings.FromEnvironment();
-            AssertEqual(null, settings.ProviderFallback, "provider fallback env invalid");
+            AssertThrows<InvalidOperationException>(() => ReviewSettings.FromEnvironment(), "provider fallback env invalid throws");
         } finally {
             Environment.SetEnvironmentVariable("REVIEW_PROVIDER", previousProvider);
             Environment.SetEnvironmentVariable("REVIEW_PROVIDER_FALLBACK", previousFallback);
+        }
+    }
+
+    private static void TestReviewProviderEnvInvalidThrows() {
+        var previousProvider = Environment.GetEnvironmentVariable("REVIEW_PROVIDER");
+        try {
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER", "open-ai");
+            AssertThrows<InvalidOperationException>(() => ReviewSettings.FromEnvironment(), "provider invalid env throws");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_PROVIDER", previousProvider);
         }
     }
 
@@ -250,6 +284,24 @@ internal static partial class Program {
             ReviewConfigLoader.Apply(settings);
             AssertEqual(ReviewProvider.OpenAI, settings.Provider, "provider fallback config primary");
             AssertEqual(ReviewProvider.Copilot, settings.ProviderFallback, "provider fallback config value");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
+    private static void TestReviewProviderFallbackConfigInvalidThrows() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-fallback-invalid-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path, "{ \"review\": { \"provider\": \"openai\", \"providerFallback\": \"azure\" } }");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            AssertThrows<InvalidOperationException>(() => {
+                var settings = new ReviewSettings();
+                ReviewConfigLoader.Apply(settings);
+            }, "provider fallback config invalid throws");
         } finally {
             Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
             if (File.Exists(path)) {

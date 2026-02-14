@@ -80,6 +80,7 @@ internal static partial class AnalyzeGateCommand {
         var duplication = settings.Gate.Duplication;
         var scope = NormalizeDuplicationScope(duplication.Scope);
         var useChangedFileScope = scope == "changed-files" && changedPaths is { Count: > 0 };
+        var effectiveScope = useChangedFileScope ? "changed-files" : "all";
         var metricsPath = ResolveWorkspaceBoundFilePath(workspace, duplication.MetricsPath);
         if (metricsPath is null) {
             return DuplicationGateEvaluation.Unavailable($"metrics path resolves outside workspace: {duplication.MetricsPath}");
@@ -103,6 +104,7 @@ internal static partial class AnalyzeGateCommand {
         }
 
         var violations = new List<AnalysisFinding>();
+        var overallSnapshots = new List<DuplicationOverallSnapshot>();
         foreach (var rule in selectedRules) {
             var ruleId = rule.RuleId.Trim();
             var tool = string.IsNullOrWhiteSpace(rule.Tool) ? "IntelligenceX.Maintainability" : rule.Tool.Trim();
@@ -137,14 +139,23 @@ internal static partial class AnalyzeGateCommand {
                 ? 0
                 : Math.Round((scopedDuplicatedSignificantLines * 100.0) / scopedTotalSignificantLines, 2,
                     MidpointRounding.AwayFromZero);
+            var overallScopeSuffix = useChangedFileScope ? ":scope:changed-files" : string.Empty;
+            var overallFingerprint =
+                $"{ruleId}:overall:{scopedDuplicatedSignificantLines}:{scopedTotalSignificantLines}:{rule.WindowLines}{overallScopeSuffix}";
+            overallSnapshots.Add(new DuplicationOverallSnapshot(
+                RuleId: ruleId,
+                Tool: tool,
+                Scope: effectiveScope,
+                SignificantLines: scopedTotalSignificantLines,
+                DuplicatedLines: scopedDuplicatedSignificantLines,
+                DuplicatedPercent: scopedOverallPercent,
+                WindowLines: rule.WindowLines,
+                Fingerprint: overallFingerprint));
             if (duplication.MaxOverallPercent.HasValue &&
                 scopedTotalSignificantLines > 0 &&
                 scopedDuplicatedSignificantLines > 0 &&
                 scopedOverallPercent - duplication.MaxOverallPercent.Value > double.Epsilon) {
                 var overallThreshold = duplication.MaxOverallPercent.Value;
-                var overallScopeSuffix = useChangedFileScope ? ":scope:changed-files" : string.Empty;
-                var overallFingerprint =
-                    $"{ruleId}:overall:{scopedDuplicatedSignificantLines}:{scopedTotalSignificantLines}:{rule.WindowLines}{overallScopeSuffix}";
                 var scopeLabel = useChangedFileScope ? " (scope=changed-files)" : string.Empty;
                 var overallMessage =
                     $"Overall duplicated significant lines{scopeLabel}: {scopedDuplicatedSignificantLines}/{scopedTotalSignificantLines} ({FormatPercent(scopedOverallPercent)}%) exceeds limit {FormatPercent(overallThreshold)}%.";
@@ -153,7 +164,7 @@ internal static partial class AnalyzeGateCommand {
             }
         }
 
-        return DuplicationGateEvaluation.WithData(metricsPath, selectedRules.Count, violations, scope);
+        return DuplicationGateEvaluation.WithData(metricsPath, selectedRules.Count, violations, overallSnapshots, effectiveScope);
     }
 
     private static int ResolveUnavailableExit(AnalysisSettings settings, bool findingsRequireBaseline,
@@ -260,35 +271,45 @@ internal static partial class AnalyzeGateCommand {
             if (string.IsNullOrWhiteSpace(file) || file.StartsWith("#", StringComparison.Ordinal)) {
                 continue;
             }
-            if (Path.IsPathRooted(file)) {
-                string relative;
-                try {
-                    var full = Path.GetFullPath(file);
-                    relative = Path.GetRelativePath(fullWorkspace, full);
-                } catch (Exception ex) {
-                    error = $"Invalid changed file entry '{file}': {ex.Message}";
-                    return Array.Empty<PullRequestFile>();
-                }
-                var normalizedRel = relative.Replace('\\', '/');
-                if (Path.IsPathRooted(relative) ||
-                    normalizedRel.Equals("..", StringComparison.Ordinal) ||
-                    normalizedRel.StartsWith("../", StringComparison.Ordinal)) {
-                    error = $"Invalid changed file entry outside workspace: {file}";
-                    return Array.Empty<PullRequestFile>();
-                }
-                file = normalizedRel;
-            } else {
-                file = file.Replace('\\', '/');
+            var relativePath = TryNormalizeChangedFilePath(fullWorkspace, file, out var entryError);
+            if (relativePath is null) {
+                error = entryError;
+                return Array.Empty<PullRequestFile>();
             }
-            if (file.StartsWith("./", StringComparison.Ordinal)) {
-                file = file.Substring(2);
-            }
-            if (string.IsNullOrWhiteSpace(file)) {
+            if (string.IsNullOrWhiteSpace(relativePath)) {
                 continue;
             }
-            list.Add(new PullRequestFile(file, "modified", patch: null));
+            list.Add(new PullRequestFile(relativePath, "modified", patch: null));
         }
         return list;
+    }
+
+    private static string? TryNormalizeChangedFilePath(string fullWorkspace, string file, out string? error) {
+        error = null;
+        try {
+            var candidateFullPath = Path.IsPathRooted(file)
+                ? Path.GetFullPath(file)
+                : Path.GetFullPath(Path.Combine(fullWorkspace, file));
+            var relative = Path.GetRelativePath(fullWorkspace, candidateFullPath).Replace('\\', '/');
+            if (Path.IsPathRooted(relative) ||
+                relative.Equals("..", StringComparison.Ordinal) ||
+                relative.StartsWith("../", StringComparison.Ordinal)) {
+                error = $"Invalid changed file entry outside workspace: {file}";
+                return null;
+            }
+
+            var normalized = relative.Trim('/');
+            if (normalized.StartsWith("./", StringComparison.Ordinal)) {
+                normalized = normalized.Substring(2);
+            }
+            if (normalized.Equals(".", StringComparison.Ordinal)) {
+                return string.Empty;
+            }
+            return normalized;
+        } catch (Exception ex) {
+            error = $"Invalid changed file entry '{file}': {ex.Message}";
+            return null;
+        }
     }
 
     private static List<string> EvaluateHotspotsToReview(
@@ -500,6 +521,7 @@ internal static partial class AnalyzeGateCommand {
         string? MetricsPath,
         int RulesEvaluated,
         IReadOnlyList<AnalysisFinding> Violations,
+        IReadOnlyList<DuplicationOverallSnapshot> OverallSnapshots,
         string Scope,
         string? UnavailableReason) {
         public static DuplicationGateEvaluation Disabled => new(
@@ -507,16 +529,18 @@ internal static partial class AnalyzeGateCommand {
             MetricsPath: null,
             RulesEvaluated: 0,
             Violations: Array.Empty<AnalysisFinding>(),
+            OverallSnapshots: Array.Empty<DuplicationOverallSnapshot>(),
             Scope: "changed-files",
             UnavailableReason: null);
 
         public static DuplicationGateEvaluation WithData(string metricsPath, int rulesEvaluated,
-            IReadOnlyList<AnalysisFinding> violations, string scope) {
+            IReadOnlyList<AnalysisFinding> violations, IReadOnlyList<DuplicationOverallSnapshot> overallSnapshots, string scope) {
             return new DuplicationGateEvaluation(
                 Available: true,
                 MetricsPath: metricsPath,
                 RulesEvaluated: rulesEvaluated,
                 Violations: violations ?? Array.Empty<AnalysisFinding>(),
+                OverallSnapshots: overallSnapshots ?? Array.Empty<DuplicationOverallSnapshot>(),
                 Scope: scope,
                 UnavailableReason: null);
         }
@@ -527,10 +551,21 @@ internal static partial class AnalyzeGateCommand {
                 MetricsPath: null,
                 RulesEvaluated: 0,
                 Violations: Array.Empty<AnalysisFinding>(),
+                OverallSnapshots: Array.Empty<DuplicationOverallSnapshot>(),
                 Scope: "changed-files",
                 UnavailableReason: reason);
         }
     }
+
+    private sealed record DuplicationOverallSnapshot(
+        string RuleId,
+        string Tool,
+        string Scope,
+        int SignificantLines,
+        int DuplicatedLines,
+        double DuplicatedPercent,
+        int WindowLines,
+        string Fingerprint);
 
     private sealed class GateOptions {
         public bool ShowHelp { get; set; }

@@ -37,11 +37,11 @@ internal static class ReviewConfigLoader {
 
         var provider = reviewObj.GetString("provider");
         if (!string.IsNullOrWhiteSpace(provider)) {
-            settings.Provider = ReviewProviderContracts.ParseProviderOrDefault(provider, settings.Provider);
+            settings.Provider = ReviewProviderContracts.ParseProviderOrThrow(provider, "review.provider");
         }
         var providerFallback = reviewObj.GetString("providerFallback");
-        if (ReviewProviderContracts.TryParseProviderAlias(providerFallback, out var parsedFallback)) {
-            settings.ProviderFallback = parsedFallback;
+        if (!string.IsNullOrWhiteSpace(providerFallback)) {
+            settings.ProviderFallback = ReviewProviderContracts.ParseProviderOrThrow(providerFallback, "review.providerFallback");
         }
 
         var codeHost = reviewObj.GetString("codeHost");

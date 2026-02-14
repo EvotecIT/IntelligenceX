@@ -176,6 +176,7 @@
                 "ruleIds": { "type": "array", "items": { "type": "string" } },
                 "maxFilePercent": { "type": "number", "minimum": 0, "maximum": 100 },
                 "maxOverallPercent": { "type": "number", "minimum": 0, "maximum": 100 },
+                "maxOverallPercentIncrease": { "type": "number", "minimum": 0, "maximum": 100 },
                 "scope": { "type": "string", "enum": ["changed-files", "all"] },
                 "newIssuesOnly": { "type": "boolean" },
                 "failOnUnavailable": { "type": "boolean" }

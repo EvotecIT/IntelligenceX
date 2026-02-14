@@ -5,6 +5,9 @@
       "all-50"
     ],
     "configMode": "respect",
+    "run": {
+      "strict": true
+    },
     "gate": {
       "enabled": true,
       "minSeverity": "warning",

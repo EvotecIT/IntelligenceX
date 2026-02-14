@@ -15,6 +15,7 @@ internal static partial class AnalyzeGateCommand {
     private const int ExitError = 1;
     private const int ExitGateFailed = 2;
     private const string DuplicationOverallPath = ".intelligencex/duplication-overall";
+    private const string DuplicationOverallDeltaPath = ".intelligencex/duplication-overall-delta";
 
     public static Task<int> RunAsync(string[] args) {
         var options = ParseArgs(args, out var error);
@@ -174,10 +175,13 @@ internal static partial class AnalyzeGateCommand {
         var duplicationEnabled = analysisSettings.Gate.Duplication.Enabled;
         var duplicationUseNewIssuesOnly = duplicationEnabled &&
             (useNewIssuesOnly || analysisSettings.Gate.Duplication.NewIssuesOnly);
+        var duplicationUseOverallDelta = duplicationEnabled &&
+                                        analysisSettings.Gate.Duplication.MaxOverallPercentIncrease.HasValue;
+        var duplicationRequiresBaseline = duplicationUseNewIssuesOnly || duplicationUseOverallDelta;
         var configuredBaselinePath = !string.IsNullOrWhiteSpace(options.BaselinePath)
             ? options.BaselinePath
             : analysisSettings.Gate.BaselinePath;
-        var baselineRequired = useNewIssuesOnly || duplicationUseNewIssuesOnly;
+        var baselineRequired = useNewIssuesOnly || duplicationUseNewIssuesOnly || duplicationUseOverallDelta;
         var baselineSuppressed = 0;
         var duplicationBaselineSuppressed = 0;
         var baselineLoadedCount = 0;
@@ -203,6 +207,15 @@ internal static partial class AnalyzeGateCommand {
             var baselineItems = new List<AnalysisFinding>(violations);
             if (duplicationEvaluation.Available) {
                 baselineItems.AddRange(duplicationViolations);
+                foreach (var snapshot in duplicationEvaluation.OverallSnapshots ?? Array.Empty<DuplicationOverallSnapshot>()) {
+                    if (snapshot.SignificantLines <= 0) {
+                        continue;
+                    }
+                    var message =
+                        $"Overall duplication snapshot (scope={snapshot.Scope}): {snapshot.DuplicatedLines}/{snapshot.SignificantLines} ({FormatPercent(snapshot.DuplicatedPercent)}%).";
+                    baselineItems.Add(new AnalysisFinding(DuplicationOverallPath, 0, message, "info", snapshot.RuleId, snapshot.Tool,
+                        snapshot.Fingerprint));
+                }
             }
             var writeResult = AnalyzeGateBaseline.TryWriteBaselineFile(writePath, baselineItems, out var writeError);
             if (!writeResult) {
@@ -215,13 +228,13 @@ internal static partial class AnalyzeGateCommand {
         if (baselineRequired) {
             if (string.IsNullOrWhiteSpace(configuredBaselinePath)) {
                 Console.WriteLine("Static analysis gate: unavailable (new-issues mode requires analysis.gate.baselinePath).");
-                return Task.FromResult(ResolveUnavailableExit(analysisSettings, useNewIssuesOnly, duplicationUseNewIssuesOnly));
+                return Task.FromResult(ResolveUnavailableExit(analysisSettings, useNewIssuesOnly, duplicationRequiresBaseline));
             }
 
             var baselinePath = ResolveWorkspaceBoundPath(workspace, configuredBaselinePath);
             if (baselinePath is null) {
                 Console.WriteLine($"Static analysis gate: unavailable (baseline path resolves outside workspace: {configuredBaselinePath}).");
-                return Task.FromResult(ResolveUnavailableExit(analysisSettings, useNewIssuesOnly, duplicationUseNewIssuesOnly));
+                return Task.FromResult(ResolveUnavailableExit(analysisSettings, useNewIssuesOnly, duplicationRequiresBaseline));
             }
             baselinePathResolved = baselinePath;
 
@@ -233,7 +246,7 @@ internal static partial class AnalyzeGateCommand {
                 out var baselineError);
             if (!baselineResult) {
                 Console.WriteLine($"Static analysis gate: unavailable ({baselineError}).");
-                return Task.FromResult(ResolveUnavailableExit(analysisSettings, useNewIssuesOnly, duplicationUseNewIssuesOnly));
+                return Task.FromResult(ResolveUnavailableExit(analysisSettings, useNewIssuesOnly, duplicationRequiresBaseline));
             }
             if (baselineSchemaInferred) {
                 Console.WriteLine($"Static analysis baseline schema inferred as '{baselineSchema}' (schema property missing).");
@@ -265,6 +278,49 @@ internal static partial class AnalyzeGateCommand {
                     newDuplicationViolations.Add(violation);
                 }
                 duplicationViolations = newDuplicationViolations;
+            }
+        }
+
+        if (duplicationUseOverallDelta && duplicationEvaluation.Available) {
+            var deltaResult = AnalyzeGateBaseline.TryLoadDuplicationOverallBaselines(
+                baselinePathResolved,
+                out var baselineOverallByRule,
+                out var deltaError);
+            if (!deltaResult) {
+                Console.WriteLine($"Static analysis duplication delta gate: unavailable ({deltaError}).");
+                if (analysisSettings.Gate.Duplication.FailOnUnavailable) {
+                    return Task.FromResult(ExitGateFailed);
+                }
+            } else {
+                var allowedIncrease = analysisSettings.Gate.Duplication.MaxOverallPercentIncrease!.Value;
+                foreach (var current in duplicationEvaluation.OverallSnapshots ?? Array.Empty<DuplicationOverallSnapshot>()) {
+                    if (current.SignificantLines <= 0) {
+                        continue;
+                    }
+
+                    if (!baselineOverallByRule.TryGetValue($"{current.RuleId}|{current.Scope}", out var baseline)) {
+                        Console.WriteLine(
+                            $"Static analysis duplication delta gate: unavailable (baseline missing overall snapshot for {current.RuleId} scope={current.Scope}).");
+                        if (analysisSettings.Gate.Duplication.FailOnUnavailable) {
+                            return Task.FromResult(ExitGateFailed);
+                        }
+                        continue;
+                    }
+                    if (baseline.SignificantLines <= 0) {
+                        continue;
+                    }
+
+                    var delta = Math.Round(current.DuplicatedPercent - baseline.DuplicatedPercent, 2, MidpointRounding.AwayFromZero);
+                    if (delta - allowedIncrease <= double.Epsilon) {
+                        continue;
+                    }
+
+                    var message =
+                        $"Overall duplication increased (scope={current.Scope}): baseline {FormatPercent(baseline.DuplicatedPercent)}% -> current {FormatPercent(current.DuplicatedPercent)}% (+{FormatPercent(delta)}pp) exceeds allowed +{FormatPercent(allowedIncrease)}pp.";
+                    var fingerprint = $"{current.RuleId}:overall-delta:{FormatPercent(baseline.DuplicatedPercent)}->{FormatPercent(current.DuplicatedPercent)}:allow:+{FormatPercent(allowedIncrease)}:scope:{current.Scope}";
+                    duplicationViolations.Add(new AnalysisFinding(DuplicationOverallDeltaPath, 0, message, "warning", current.RuleId, current.Tool,
+                        fingerprint));
+                }
             }
         }
 
