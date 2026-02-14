@@ -94,6 +94,16 @@ internal static partial class Program {
         AssertEqual(1, exit, "analyze run --strict invalid explicit value fails");
     }
 
+    private static void TestAnalyzeRunStrictFlagAllowsKnownOptionLookaheadWithDashValue() {
+        var exit = RunAnalyzeRunWithMissingDotnet(
+            strict: false,
+            strictOverride: true,
+            strictBeforeFramework: true,
+            frameworkOverride: "-1",
+            packsOverride: "internal-default");
+        AssertEqual(0, exit, "analyze run --strict keeps known option lookahead with dash-prefixed value");
+    }
+
     private static void TestAnalyzeRunPacksOverrideSkipsConfiguredCsharpFailure() {
         var exit = RunAnalyzeRunWithMissingDotnet(strict: true, packsOverride: "internal-default");
         AssertEqual(0, exit, "analyze run pack override skips configured csharp runner failure");
@@ -110,7 +120,9 @@ internal static partial class Program {
         bool strictOverrideEqualsSyntax = false,
         string? packsOverride = null,
         bool strictBeforePacks = false,
-        string? strictOverrideRawValue = null) {
+        string? strictOverrideRawValue = null,
+        bool strictBeforeFramework = false,
+        string? frameworkOverride = null) {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-run-strict-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try {
@@ -185,15 +197,15 @@ internal static partial class Program {
                 "--dotnet-command", "__ix_missing_dotnet_command__"
             };
 
-            void AppendStrictOverride() {
+            bool AppendStrictOverride() {
                 if (!string.IsNullOrWhiteSpace(strictOverrideRawValue)) {
                     args.Add("--strict");
                     args.Add(strictOverrideRawValue);
-                    return;
+                    return true;
                 }
 
                 if (!strictOverride.HasValue) {
-                    return;
+                    return false;
                 }
                 if (strictOverrideEqualsSyntax) {
                     args.Add("--strict=" + strictOverride.Value.ToString().ToLowerInvariant());
@@ -203,10 +215,21 @@ internal static partial class Program {
                         args.Add("false");
                     }
                 }
+                return true;
             }
 
-            if (strictBeforePacks) {
-                AppendStrictOverride();
+            var strictAppended = false;
+            if (strictBeforeFramework) {
+                strictAppended = AppendStrictOverride();
+            }
+
+            if (!string.IsNullOrWhiteSpace(frameworkOverride)) {
+                args.Add("--framework");
+                args.Add(frameworkOverride);
+            }
+
+            if (strictBeforePacks && !strictAppended) {
+                strictAppended = AppendStrictOverride();
             }
 
             if (!string.IsNullOrWhiteSpace(packsOverride)) {
@@ -214,7 +237,7 @@ internal static partial class Program {
                 args.Add(packsOverride);
             }
 
-            if (!strictBeforePacks) {
+            if (!strictAppended) {
                 AppendStrictOverride();
             }
 

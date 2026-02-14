@@ -319,8 +319,8 @@ internal static partial class AnalyzeRunCommand {
                     }
 
                     // Invalid explicit values (for example "--strict maybe") must fail.
-                    // If the next token looks like another option, keep implicit "--strict=true".
-                    if (!strictCandidate.StartsWith("-", StringComparison.Ordinal)) {
+                    // If the next token is another known option, keep implicit "--strict=true".
+                    if (!IsAnalyzeRunOptionToken(strictCandidate)) {
                         error = $"Invalid value for --strict: {strictCandidate}. Expected true|false.";
                         return false;
                     }
@@ -333,6 +333,24 @@ internal static partial class AnalyzeRunCommand {
             return false;
         }
         return true;
+    }
+
+    private static bool IsAnalyzeRunOptionToken(string token) {
+        return token.Equals("--help", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("-h", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--config", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--workspace", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--out", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--dotnet-command", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--framework", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--dotnet-framework", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--pwsh-command", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--npx-command", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--ruff-command", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--pack", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--packs", StringComparison.OrdinalIgnoreCase) ||
+            token.Equals("--strict", StringComparison.OrdinalIgnoreCase) ||
+            token.StartsWith("--strict=", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool TryAddPackValues(ICollection<string> packs, string? raw, out string? error) {
