@@ -22,6 +22,9 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
     private const int MaxDefaultResults = 20;
     private const int MaxMaxResults = 80;
 
+    // EVTX discovery can touch a lot of the filesystem; cap concurrent scans to avoid threadpool/disk contention.
+    private static readonly SemaphoreSlim ScanConcurrency = new(initialCount: 2, maxCount: 2);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "eventlog_evtx_find",
         "Find local .evtx files under allowed roots (read-only, bounded scan). Use this when you have exported EVTX logs but don't know the exact path.",
@@ -52,9 +55,14 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
     public override ToolDefinition Definition => DefinitionValue;
 
     /// <inheritdoc />
-    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        // Directory enumeration is synchronous; offload to avoid blocking the tool runner thread.
-        return Task.Run(() => InvokeCore(arguments, cancellationToken), cancellationToken);
+    protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        await ScanConcurrency.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try {
+            // Directory enumeration is synchronous; offload to avoid blocking the tool runner thread.
+            return await Task.Run(() => InvokeCore(arguments, cancellationToken), cancellationToken).ConfigureAwait(false);
+        } finally {
+            ScanConcurrency.Release();
+        }
     }
 
     private string InvokeCore(JsonObject? arguments, CancellationToken cancellationToken) {
