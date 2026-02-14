@@ -391,6 +391,8 @@ internal static partial class Program {
         failed += Run("Analyze run strict from config fails runner failure", TestAnalyzeRunStrictFromConfigFailsRunnerFailure);
         failed += Run("Analyze run strict false flag overrides config strict true",
             TestAnalyzeRunStrictFlagFalseOverridesConfigStrictTrue);
+        failed += Run("Analyze run strict equals false overrides config strict true",
+            TestAnalyzeRunStrictEqualsFalseOverridesConfigStrictTrue);
         failed += Run("Analyze run pack override skips configured csharp runner failure",
             TestAnalyzeRunPacksOverrideSkipsConfiguredCsharpFailure);
         failed += Run("Analyze run invalid pack override fails", TestAnalyzeRunInvalidPackOverrideFails);

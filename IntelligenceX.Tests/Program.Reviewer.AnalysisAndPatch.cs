@@ -70,6 +70,14 @@ internal static partial class Program {
         AssertEqual(0, exit, "analyze run strict false flag overrides config strict true");
     }
 
+    private static void TestAnalyzeRunStrictEqualsFalseOverridesConfigStrictTrue() {
+        var exit = RunAnalyzeRunWithMissingDotnet(
+            strict: true,
+            strictOverride: false,
+            strictOverrideEqualsSyntax: true);
+        AssertEqual(0, exit, "analyze run --strict=false overrides config strict true");
+    }
+
     private static void TestAnalyzeRunPacksOverrideSkipsConfiguredCsharpFailure() {
         var exit = RunAnalyzeRunWithMissingDotnet(strict: true, packsOverride: "internal-default");
         AssertEqual(0, exit, "analyze run pack override skips configured csharp runner failure");
@@ -83,6 +91,7 @@ internal static partial class Program {
     private static int RunAnalyzeRunWithMissingDotnet(
         bool strict,
         bool? strictOverride = null,
+        bool strictOverrideEqualsSyntax = false,
         string? packsOverride = null) {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-run-strict-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
@@ -162,9 +171,13 @@ internal static partial class Program {
                 args.Add(packsOverride);
             }
             if (strictOverride.HasValue) {
-                args.Add("--strict");
-                if (!strictOverride.Value) {
-                    args.Add("false");
+                if (strictOverrideEqualsSyntax) {
+                    args.Add("--strict=" + strictOverride.Value.ToString().ToLowerInvariant());
+                } else {
+                    args.Add("--strict");
+                    if (!strictOverride.Value) {
+                        args.Add("false");
+                    }
                 }
             }
 

@@ -298,6 +298,16 @@ internal static partial class AnalyzeRunCommand {
                 }
                 continue;
             }
+            if (arg.StartsWith("--strict=", StringComparison.OrdinalIgnoreCase)) {
+                var strictValue = arg.Substring("--strict=".Length);
+                if (!TryParseStrictValue(strictValue, out var parsedStrict)) {
+                    error = $"Invalid value for --strict: {strictValue}. Expected true|false.";
+                    return false;
+                }
+                options.Strict = parsedStrict;
+                options.StrictSet = true;
+                continue;
+            }
             if (arg.Equals("--strict", StringComparison.OrdinalIgnoreCase)) {
                 if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal)) {
                     var strictValue = args[++i];
