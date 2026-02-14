@@ -53,6 +53,7 @@ See [Web Setup UI](/docs/reviewer/setup-web/) for limitations and security notes
 - Authenticates GitHub (device flow, PAT, or GitHub App)
 - Lets you pick single or multiple repos
 - Builds reviewer config via presets or custom JSON
+- Preset flow exposes static-analysis controls (gate, runner strict mode, packs, export path)
 - Can load existing config from a repo and preview the workflow
 - Summary includes workflow status (managed/unmanaged) from the first selected repo
 - Logs into ChatGPT (native transport) if secrets are needed

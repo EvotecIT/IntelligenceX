@@ -275,6 +275,9 @@ Enable analysis summaries and inline findings sourced from SARIF or Intelligence
     "configMode": "respect",
     "disabledRules": ["CA2000"],
     "severityOverrides": { "CA1062": "error" },
+    "run": {
+      "strict": false
+    },
     "gate": {
       "enabled": true,
       "minSeverity": "warning",
@@ -310,6 +313,18 @@ Enable analysis summaries and inline findings sourced from SARIF or Intelligence
 - `failOnNoEnabledRules`: fail when `analysis.packs` selects zero rules.
 - `includeOutsidePackRules`: when `true`, findings from non-enabled rules can still fail the gate.
 - `failOnHotspotsToReview`: when `true`, security hotspots in `to-review` state can fail the gate (after `minSeverity`/`types` filtering).
+
+`analysis.run.strict` controls `intelligencex analyze run` exit semantics:
+- `false` (default): tool runner failures are reported as warnings and the command exits `0`.
+- `true`: any tool runner failure returns exit `1`.
+- `--strict` or `--strict true`: force strict behavior for that invocation.
+- `--strict false`: force non-strict behavior for that invocation (even if config has `run.strict=true`).
+- `--pack <id>` / `--packs <id1,id2>`: override `analysis.packs` for that invocation.
+- Setup shortcut: `intelligencex setup --with-config --analysis-enabled true --analysis-run-strict true`.
+
+Setup analysis option constraints:
+- `--analysis-*` options are supported only for `setup` when generating config from presets (`--with-config` and no `--config-json/--config-path` override).
+- `--analysis-gate`, `--analysis-run-strict`, `--analysis-packs`, and `--analysis-export-path` require `--analysis-enabled true`.
 
 ## Summary stability (avoid noisy reruns)
 

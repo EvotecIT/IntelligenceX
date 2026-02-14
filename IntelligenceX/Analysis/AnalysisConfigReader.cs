@@ -32,6 +32,10 @@ public static class AnalysisConfigReader {
         if (disabledRules is not null) {
             settings.DisabledRules = disabledRules;
         }
+        var run = analysis.GetObject("run");
+        if (run is not null) {
+            settings.Run.Strict = ReadBool(run, "strict", settings.Run.Strict);
+        }
         var overrides = AnalysisJsonHelpers.ReadStringMap(analysis, "severityOverrides");
         if (overrides is not null) {
             var normalizedOverrides = new Dictionary<string, string>(System.StringComparer.OrdinalIgnoreCase);

@@ -5,7 +5,7 @@ using System.Text.Json.Nodes;
 namespace IntelligenceX.Cli.Setup;
 
 internal static class SetupAnalysisConfig {
-    public static JsonObject Build(bool enabled, bool gateEnabled, IReadOnlyList<string> packs) {
+    public static JsonObject Build(bool enabled, bool gateEnabled, IReadOnlyList<string> packs, bool runStrict = false) {
         var packIds = NormalizePacks(packs);
         var packsNode = new JsonArray();
         foreach (var pack in packIds) {
@@ -16,6 +16,9 @@ internal static class SetupAnalysisConfig {
             ["enabled"] = enabled,
             ["packs"] = packsNode,
             ["configMode"] = "respect",
+            ["run"] = new JsonObject {
+                ["strict"] = runStrict
+            },
             ["gate"] = new JsonObject {
                 // Default to non-blocking onboarding; teams can enable gating explicitly.
                 ["enabled"] = gateEnabled,
@@ -41,21 +44,22 @@ internal static class SetupAnalysisConfig {
     public static void Apply(JsonObject root,
         bool enabledSet, bool enabled,
         bool gateEnabledSet, bool gateEnabled,
-        bool packsSet, IReadOnlyList<string> packs) {
+        bool packsSet, IReadOnlyList<string> packs,
+        bool runStrictSet = false, bool runStrict = false) {
         var analysis = root["analysis"] as JsonObject;
         if (analysis is null) {
             // If the caller is toggling analysis on/off, we need a baseline object to edit.
-            // When enabling (or setting packs/gate), initialize a full config; when disabling, a minimal object is fine.
-            var inferredEnabled = enabledSet ? enabled : (gateEnabledSet || packsSet);
+            // When enabling (or setting packs/gate/run strict), initialize a full config; when disabling, a minimal object is fine.
+            var inferredEnabled = enabledSet ? enabled : (gateEnabledSet || packsSet || runStrictSet);
             analysis = inferredEnabled
-                ? Build(enabled: true, gateEnabled: gateEnabled, packs: packs)
+                ? Build(enabled: true, gateEnabled: gateEnabled, packs: packs, runStrict: runStrictSet && runStrict)
                 : new JsonObject();
         }
 
         if (enabledSet) {
             analysis["enabled"] = enabled;
-        } else if (analysis["enabled"] is null && (gateEnabledSet || packsSet)) {
-            // If the user sets packs/gate without explicitly enabling analysis, infer enabled=true.
+        } else if (analysis["enabled"] is null && (gateEnabledSet || packsSet || runStrictSet)) {
+            // If the user sets packs/gate/run strict without explicitly enabling analysis, infer enabled=true.
             analysis["enabled"] = true;
         }
 
@@ -72,6 +76,11 @@ internal static class SetupAnalysisConfig {
             var gate = analysis["gate"] as JsonObject ?? new JsonObject();
             gate["enabled"] = gateEnabled;
             analysis["gate"] = gate;
+        }
+        if (runStrictSet) {
+            var run = analysis["run"] as JsonObject ?? new JsonObject();
+            run["strict"] = runStrict;
+            analysis["run"] = run;
         }
 
         root["analysis"] = analysis;
@@ -107,4 +116,3 @@ internal static class SetupAnalysisConfig {
         return normalized.Count == 0 ? new[] { "all-50" } : normalized;
     }
 }
-

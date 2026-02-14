@@ -55,6 +55,127 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeRunNonStrictAllowsRunnerFailure() {
+        var exit = RunAnalyzeRunWithMissingDotnet(strict: false);
+        AssertEqual(0, exit, "analyze run non-strict exits success on runner failure");
+    }
+
+    private static void TestAnalyzeRunStrictFromConfigFailsRunnerFailure() {
+        var exit = RunAnalyzeRunWithMissingDotnet(strict: true);
+        AssertEqual(1, exit, "analyze run strict from config exits failure on runner failure");
+    }
+
+    private static void TestAnalyzeRunStrictFlagFalseOverridesConfigStrictTrue() {
+        var exit = RunAnalyzeRunWithMissingDotnet(strict: true, strictOverride: false);
+        AssertEqual(0, exit, "analyze run strict false flag overrides config strict true");
+    }
+
+    private static void TestAnalyzeRunPacksOverrideSkipsConfiguredCsharpFailure() {
+        var exit = RunAnalyzeRunWithMissingDotnet(strict: true, packsOverride: "internal-default");
+        AssertEqual(0, exit, "analyze run pack override skips configured csharp runner failure");
+    }
+
+    private static void TestAnalyzeRunInvalidPackOverrideFails() {
+        var exit = RunAnalyzeRunWithMissingDotnet(strict: false, packsOverride: "all-50,--force");
+        AssertEqual(1, exit, "analyze run invalid pack override fails");
+    }
+
+    private static int RunAnalyzeRunWithMissingDotnet(
+        bool strict,
+        bool? strictOverride = null,
+        string? packsOverride = null) {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-run-strict-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "csharp"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal"));
+            Directory.CreateDirectory(Path.Combine(temp, "Analysis", "Packs"));
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "reviewer.json"), $$"""
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["csharp-default"],
+    "run": {
+      "strict": {{strict.ToString().ToLowerInvariant()}}
+    }
+  }
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "csharp", "IXCS001.json"), """
+{
+  "id": "IXCS001",
+  "language": "csharp",
+  "tool": "roslyn",
+  "toolRuleId": "CS0001",
+  "type": "bug",
+  "title": "C# smoke rule",
+  "description": "Ensures C# analyzer runner is selected.",
+  "category": "Reliability",
+  "defaultSeverity": "warning"
+}
+""");
+
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "csharp-default.json"), """
+{
+  "id": "csharp-default",
+  "label": "C# Default",
+  "rules": ["IXCS001"]
+}
+""");
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Catalog", "rules", "internal", "IXINT001.json"), """
+{
+  "id": "IXINT001",
+  "language": "internal",
+  "tool": "IntelligenceX.Maintainability",
+  "toolRuleId": "IXINT001",
+  "type": "maintainability",
+  "title": "Internal smoke rule",
+  "description": "Used for analyze run pack override tests.",
+  "category": "Maintainability",
+  "defaultSeverity": "warning",
+  "tags": [
+    "max-lines:10000",
+    "include-ext:.cs"
+  ]
+}
+""");
+            File.WriteAllText(Path.Combine(temp, "Analysis", "Packs", "internal-default.json"), """
+{
+  "id": "internal-default",
+  "label": "Internal Default",
+  "rules": ["IXINT001"]
+}
+""");
+
+            var output = Path.Combine(temp, "artifacts");
+            var args = new List<string> {
+                "--workspace", temp,
+                "--config", Path.Combine(temp, ".intelligencex", "reviewer.json"),
+                "--out", output,
+                "--dotnet-command", "__ix_missing_dotnet_command__"
+            };
+            if (!string.IsNullOrWhiteSpace(packsOverride)) {
+                args.Add("--packs");
+                args.Add(packsOverride);
+            }
+            if (strictOverride.HasValue) {
+                args.Add("--strict");
+                if (!strictOverride.Value) {
+                    args.Add("false");
+                }
+            }
+
+            return IntelligenceX.Cli.Analysis.AnalyzeRunCommand.RunAsync(args.ToArray()).GetAwaiter().GetResult();
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalyzeRunInternalFileSizeRule() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-size-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

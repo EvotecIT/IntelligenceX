@@ -67,6 +67,7 @@
         "reviewThreadsAutoResolveAIReply": { "type": "boolean" },
         "reviewThreadsAutoResolveSummaryComment": { "type": "boolean" },
         "includeRelatedPrs": { "type": "boolean" },
+        "includeRelatedPullRequests": { "type": "boolean" },
         "maxCommentChars": { "type": "integer", "minimum": 0 },
         "maxComments": { "type": "integer", "minimum": 0 },
         "commentSearchLimit": { "type": "integer", "minimum": 1 },
@@ -135,6 +136,13 @@
         "packs": { "type": "array", "items": { "type": "string" } },
         "disabledRules": { "type": "array", "items": { "type": "string" } },
         "severityOverrides": { "type": "object", "additionalProperties": { "type": "string" } },
+        "run": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "strict": { "type": "boolean" }
+          }
+        },
         "hotspots": {
           "type": "object",
           "additionalProperties": true,

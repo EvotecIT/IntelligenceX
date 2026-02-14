@@ -113,5 +113,103 @@ internal static partial class Program {
             }
         }
     }
+
+    private static void TestReviewSettingsLoadConfigAllowsZeroForNonNegativeLimits() {
+        var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-review-zero-limits-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(configPath, """
+{
+  "review": {
+    "maxFiles": 0,
+    "maxPatchChars": 0,
+    "maxInlineComments": 0,
+    "maxCommentChars": 0,
+    "maxComments": 0,
+    "commentSearchLimit": 0
+  }
+}
+""");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", configPath);
+            var settings = ReviewSettings.Load();
+            AssertEqual(0, settings.MaxFiles, "review settings config maxFiles zero");
+            AssertEqual(0, settings.MaxPatchChars, "review settings config maxPatchChars zero");
+            AssertEqual(0, settings.MaxInlineComments, "review settings config maxInlineComments zero");
+            AssertEqual(0, settings.MaxCommentChars, "review settings config maxCommentChars zero");
+            AssertEqual(0, settings.MaxComments, "review settings config maxComments zero");
+            AssertEqual(500, settings.CommentSearchLimit, "review settings config commentSearchLimit zero falls back");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
+            if (File.Exists(configPath)) {
+                File.Delete(configPath);
+            }
+        }
+    }
+
+    private static void TestReviewSettingsFromEnvironmentAllowsZeroForNonNegativeLimits() {
+        var previousMaxFiles = Environment.GetEnvironmentVariable("OPENAI_MAX_FILES");
+        var previousMaxPatchChars = Environment.GetEnvironmentVariable("OPENAI_MAX_PATCH_CHARS");
+        var previousMaxInlineComments = Environment.GetEnvironmentVariable("OPENAI_MAX_INLINE_COMMENTS");
+        var previousMaxCommentChars = Environment.GetEnvironmentVariable("REVIEW_MAX_COMMENT_CHARS");
+        var previousMaxComments = Environment.GetEnvironmentVariable("REVIEW_MAX_COMMENTS");
+        var previousCommentSearchLimit = Environment.GetEnvironmentVariable("REVIEW_COMMENT_SEARCH_LIMIT");
+        try {
+            Environment.SetEnvironmentVariable("OPENAI_MAX_FILES", "0");
+            Environment.SetEnvironmentVariable("OPENAI_MAX_PATCH_CHARS", "0");
+            Environment.SetEnvironmentVariable("OPENAI_MAX_INLINE_COMMENTS", "0");
+            Environment.SetEnvironmentVariable("REVIEW_MAX_COMMENT_CHARS", "0");
+            Environment.SetEnvironmentVariable("REVIEW_MAX_COMMENTS", "0");
+            Environment.SetEnvironmentVariable("REVIEW_COMMENT_SEARCH_LIMIT", "0");
+
+            var settings = ReviewSettings.FromEnvironment();
+            AssertEqual(0, settings.MaxFiles, "review settings env maxFiles zero");
+            AssertEqual(0, settings.MaxPatchChars, "review settings env maxPatchChars zero");
+            AssertEqual(0, settings.MaxInlineComments, "review settings env maxInlineComments zero");
+            AssertEqual(0, settings.MaxCommentChars, "review settings env maxCommentChars zero");
+            AssertEqual(0, settings.MaxComments, "review settings env maxComments zero");
+            AssertEqual(500, settings.CommentSearchLimit, "review settings env commentSearchLimit zero falls back");
+        } finally {
+            Environment.SetEnvironmentVariable("OPENAI_MAX_FILES", previousMaxFiles);
+            Environment.SetEnvironmentVariable("OPENAI_MAX_PATCH_CHARS", previousMaxPatchChars);
+            Environment.SetEnvironmentVariable("OPENAI_MAX_INLINE_COMMENTS", previousMaxInlineComments);
+            Environment.SetEnvironmentVariable("REVIEW_MAX_COMMENT_CHARS", previousMaxCommentChars);
+            Environment.SetEnvironmentVariable("REVIEW_MAX_COMMENTS", previousMaxComments);
+            Environment.SetEnvironmentVariable("REVIEW_COMMENT_SEARCH_LIMIT", previousCommentSearchLimit);
+        }
+    }
+
+    private static void TestSetupGeneratedReviewerConfigValidatesAndLoadsWithCanonicalRelatedPrs() {
+        var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-setup-reviewer-config-{Guid.NewGuid():N}.json");
+        try {
+            var content = IntelligenceX.Cli.Setup.SetupRunner.BuildReviewerConfigJson(new[] {
+                "--provider", "openai",
+                "--review-profile", "security",
+                "--review-mode", "summary",
+                "--include-related-prs", "false",
+                "--with-config"
+            });
+            AssertContainsText(content, "\"includeRelatedPrs\": false", "setup config emits canonical includeRelatedPrs");
+            AssertEqual(false, content.Contains("includeRelatedPullRequests", StringComparison.Ordinal),
+                "setup config omits legacy includeRelatedPullRequests");
+
+            File.WriteAllText(configPath, content);
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", configPath);
+
+            var validation = ReviewConfigValidator.ValidateCurrent();
+            AssertNotNull(validation, "setup config validator result");
+            AssertEqual(0, validation!.Errors.Count, "setup config validator has no errors");
+
+            var settings = ReviewSettings.Load();
+            AssertEqual("security", settings.Profile, "setup config runtime profile");
+            AssertEqual("summary", settings.Mode, "setup config runtime mode");
+            AssertEqual(false, settings.IncludeRelatedPrs, "setup config runtime includeRelatedPrs");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
+            if (File.Exists(configPath)) {
+                File.Delete(configPath);
+            }
+        }
+    }
 }
 #endif

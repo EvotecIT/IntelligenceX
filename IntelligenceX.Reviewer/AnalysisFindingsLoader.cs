@@ -413,7 +413,7 @@ internal static class AnalysisFindingsLoader {
             try {
                 var full = Path.GetFullPath(trimmed);
                 var baseFull = Path.GetFullPath(workspace);
-                trimmed = full.StartsWith(baseFull, StringComparison.OrdinalIgnoreCase)
+                trimmed = IsWithinWorkspace(baseFull, full)
                     ? Path.GetRelativePath(baseFull, full).Replace('\\', '/')
                     : full.Replace('\\', '/');
             } catch {

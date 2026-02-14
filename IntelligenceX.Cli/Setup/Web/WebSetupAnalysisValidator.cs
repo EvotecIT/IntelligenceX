@@ -9,22 +9,26 @@ internal static class WebSetupAnalysisValidator {
         bool hasConfigOverride,
         bool? analysisEnabled,
         bool? analysisGateEnabled,
+        bool? analysisRunStrict,
         string? analysisPacks,
         string? analysisExportPath,
         out bool? normalizedEnabled,
         out bool? normalizedGateEnabled,
+        out bool? normalizedRunStrict,
         out string? normalizedPacks,
         out string? normalizedExportPath,
         out string? error) {
         error = null;
         normalizedEnabled = null;
         normalizedGateEnabled = null;
+        normalizedRunStrict = null;
         normalizedPacks = null;
         normalizedExportPath = null;
 
         var hasAnyAnalysis =
             analysisEnabled.HasValue ||
             analysisGateEnabled.HasValue ||
+            analysisRunStrict.HasValue ||
             !string.IsNullOrWhiteSpace(analysisPacks) ||
             !string.IsNullOrWhiteSpace(analysisExportPath);
 
@@ -40,6 +44,7 @@ internal static class WebSetupAnalysisValidator {
         normalizedEnabled = analysisEnabled;
         if (analysisEnabled == true) {
             normalizedGateEnabled = analysisGateEnabled;
+            normalizedRunStrict = analysisRunStrict;
             if (!SetupAnalysisPacks.TryNormalizeCsv(analysisPacks, out normalizedPacks, out error)) {
                 return false;
             }
@@ -50,14 +55,16 @@ internal static class WebSetupAnalysisValidator {
         }
 
         if (analysisGateEnabled.HasValue ||
+            analysisRunStrict.HasValue ||
             !string.IsNullOrWhiteSpace(analysisPacks) ||
             !string.IsNullOrWhiteSpace(analysisExportPath)) {
-            error = "analysisGateEnabled/analysisPacks/analysisExportPath require analysisEnabled=true.";
+            error = "analysisGateEnabled/analysisRunStrict/analysisPacks/analysisExportPath require analysisEnabled=true.";
             return false;
         }
 
         // Ensure no stray values accidentally override defaults.
         normalizedGateEnabled = null;
+        normalizedRunStrict = null;
         normalizedPacks = null;
         normalizedExportPath = null;
         return true;

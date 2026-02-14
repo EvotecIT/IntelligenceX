@@ -337,6 +337,11 @@ internal static class WizardPrompts {
         return AnsiConsole.Confirm("Fail CI on static analysis findings?", current);
     }
 
+    public static bool PromptAnalysisRunStrict(bool current) {
+        AnsiConsole.MarkupLine("[grey]Runner strict semantics: fail when analyzer runner/tool execution errors occur. Docs: Docs/reviewer/static-analysis.md[/]");
+        return AnsiConsole.Confirm("Fail CI on analyzer runner/tool errors?", current);
+    }
+
     public static string? PromptAnalysisExportPath(string? current) {
         while (true) {
             var currentHint = string.IsNullOrWhiteSpace(current) ? string.Empty : $" (current: {current})";

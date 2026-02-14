@@ -227,17 +227,17 @@ internal sealed partial class ReviewSettings {
 
         var maxFiles = GetInput("max_files", "OPENAI_MAX_FILES");
         if (!string.IsNullOrWhiteSpace(maxFiles)) {
-            settings.MaxFiles = ParsePositiveInt(maxFiles, settings.MaxFiles);
+            settings.MaxFiles = ParseNonNegativeInt(maxFiles, settings.MaxFiles);
         }
 
         var maxPatchChars = GetInput("max_patch_chars", "OPENAI_MAX_PATCH_CHARS");
         if (!string.IsNullOrWhiteSpace(maxPatchChars)) {
-            settings.MaxPatchChars = ParsePositiveInt(maxPatchChars, settings.MaxPatchChars);
+            settings.MaxPatchChars = ParseNonNegativeInt(maxPatchChars, settings.MaxPatchChars);
         }
 
         var maxInlineComments = GetInput("max_inline_comments", "OPENAI_MAX_INLINE_COMMENTS");
         if (!string.IsNullOrWhiteSpace(maxInlineComments)) {
-            settings.MaxInlineComments = ParsePositiveInt(maxInlineComments, settings.MaxInlineComments);
+            settings.MaxInlineComments = ParseNonNegativeInt(maxInlineComments, settings.MaxInlineComments);
         }
         var policyRulePreviewItems = GetInput("analysis_policy_rule_preview_items",
             "REVIEW_ANALYSIS_POLICY_RULE_PREVIEW_ITEMS");
@@ -642,11 +642,11 @@ internal sealed partial class ReviewSettings {
         }
         var maxCommentChars = GetInput("max_comment_chars", "REVIEW_MAX_COMMENT_CHARS");
         if (!string.IsNullOrWhiteSpace(maxCommentChars)) {
-            settings.MaxCommentChars = ParsePositiveInt(maxCommentChars, settings.MaxCommentChars);
+            settings.MaxCommentChars = ParseNonNegativeInt(maxCommentChars, settings.MaxCommentChars);
         }
         var maxComments = GetInput("max_comments", "REVIEW_MAX_COMMENTS");
         if (!string.IsNullOrWhiteSpace(maxComments)) {
-            settings.MaxComments = ParsePositiveInt(maxComments, settings.MaxComments);
+            settings.MaxComments = ParseNonNegativeInt(maxComments, settings.MaxComments);
         }
         var commentSearchLimit = GetInput("comment_search_limit", "REVIEW_COMMENT_SEARCH_LIMIT");
         if (!string.IsNullOrWhiteSpace(commentSearchLimit)) {

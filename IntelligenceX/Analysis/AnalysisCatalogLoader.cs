@@ -321,11 +321,33 @@ public static class AnalysisCatalogLoader {
         var rootFull = Path.GetFullPath(root);
         foreach (var file in Directory.EnumerateFiles(root, "*.json", searchOption)) {
             var full = Path.GetFullPath(file);
-            if (!full.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase)) {
+            if (!IsUnderRoot(rootFull, full)) {
                 continue;
             }
             yield return full;
         }
+    }
+
+    private static bool IsUnderRoot(string rootFullPath, string candidateFullPath) {
+        if (string.IsNullOrWhiteSpace(rootFullPath) || string.IsNullOrWhiteSpace(candidateFullPath)) {
+            return false;
+        }
+
+        var root = TrimEndingDirectorySeparators(rootFullPath);
+        var candidate = TrimEndingDirectorySeparators(candidateFullPath);
+        if (string.Equals(candidate, root, StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        var prefix = root + Path.DirectorySeparatorChar;
+        return candidate.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string TrimEndingDirectorySeparators(string path) {
+        if (string.IsNullOrEmpty(path)) {
+            return string.Empty;
+        }
+        return path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 
     private sealed class AnalysisRuleOverride {

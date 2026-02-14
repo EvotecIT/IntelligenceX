@@ -166,6 +166,35 @@ internal static partial class Program {
         AssertEqual(0, validation.Errors.Count, "catalog validator built-in errors");
     }
 
+    private static void TestAnalysisCatalogLoaderUnderRootRejectsSiblingPrefixPath() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-catalog-loader-root-" + Guid.NewGuid().ToString("N"));
+        var sibling = temp + "2";
+        Directory.CreateDirectory(temp);
+        Directory.CreateDirectory(sibling);
+        try {
+            var flags = global::System.Reflection.BindingFlags.NonPublic | global::System.Reflection.BindingFlags.Static;
+            var method = typeof(IntelligenceX.Analysis.AnalysisCatalogLoader).GetMethod("IsUnderRoot", flags);
+            AssertNotNull(method, "analysis catalog loader IsUnderRoot exists");
+
+            var rootPath = Path.GetFullPath(temp);
+            var nestedPath = Path.Combine(rootPath, "Analysis", "Catalog", "rules", "internal", "IX001.json");
+            var siblingPath = Path.Combine(Path.GetFullPath(sibling), "Analysis", "Catalog", "rules", "internal", "IX001.json");
+
+            var nestedResult = (bool)method!.Invoke(null, new object[] { rootPath, nestedPath })!;
+            var siblingResult = (bool)method!.Invoke(null, new object[] { rootPath, siblingPath })!;
+
+            AssertEqual(true, nestedResult, "analysis catalog loader accepts nested path");
+            AssertEqual(false, siblingResult, "analysis catalog loader rejects sibling prefix path");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+            if (Directory.Exists(sibling)) {
+                Directory.Delete(sibling, true);
+            }
+        }
+    }
+
     private static void TestAnalysisCatalogValidatorDetectsInvalidCatalog() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analysis-validate-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

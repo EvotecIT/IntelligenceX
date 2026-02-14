@@ -138,6 +138,7 @@ const appPem = $('appPem');
 const installation = $('installation');
 const analysisEnabled = $('analysisEnabled');
 const analysisGate = $('analysisGate');
+const analysisRunStrict = $('analysisRunStrict');
 const analysisPacks = $('analysisPacks');
 const analysisExportPath = $('analysisExportPath');
 const openAiAccountIdInput = $('openAiAccountId');
@@ -870,6 +871,7 @@ function buildReviewTable() {
   const analysisExportPathValue = analysisState === 'enabled' && analysisExportPath && analysisExportPath.value.trim().length > 0
     ? analysisExportPath.value.trim()
     : '';
+  const analysisRunStrictValue = analysisState === 'enabled' && analysisRunStrict && analysisRunStrict.checked;
   const providerLabel = selectedProvider === 'openai' ? 'ChatGPT / OpenAI' : 'GitHub Copilot';
   const profileLabels = {
     balanced: 'Balanced',
@@ -886,6 +888,7 @@ function buildReviewTable() {
   const safeReviewCommentMode = escapeHtml(reviewCommentMode && reviewCommentMode.value ? reviewCommentMode.value : 'default');
   const safeAnalysisState = escapeHtml(analysisState);
   const safeAnalysisExportPath = escapeHtml(analysisExportPathValue);
+  const safeAnalysisRunStrict = analysisRunStrictValue ? 'enabled' : 'disabled';
   const openAiAccountIdValue = openAiAccountIdInput ? openAiAccountIdInput.value.trim() : '';
   const openAiAccountIdsValue = openAiAccountIdsInput
     ? normalizeOpenAiAccountIdsCsv(openAiAccountIdsInput.value).join(',')
@@ -946,6 +949,11 @@ function buildReviewTable() {
         <span class="review-label">Static analysis</span>
         <span class="review-value">${safeAnalysisState}</span>
       </div>
+      ${analysisState === 'enabled' ? `
+      <div class="review-item">
+        <span class="review-label">Analysis runner strict</span>
+        <span class="review-value">${safeAnalysisRunStrict}</span>
+      </div>` : ''}
       ${analysisExportPathValue ? `
       <div class="review-item">
         <span class="review-label">Analysis export path</span>
@@ -1047,6 +1055,7 @@ function buildRequestBody(dryRun) {
     !hasConfigOverride;
   const analysisEnabledValue = wantAnalysis && analysisEnabled && analysisEnabled.checked ? true : null;
   const analysisOn = analysisEnabledValue === true;
+  const analysisRunStrictValue = analysisOn && analysisRunStrict && analysisRunStrict.checked;
   const packsRaw = analysisPacks ? analysisPacks.value.trim() : '';
   const exportPathRaw = analysisExportPath ? analysisExportPath.value.trim() : '';
   const openAiAccountIdValue = openAiAccountIdInput ? openAiAccountIdInput.value.trim() : '';
@@ -1082,6 +1091,8 @@ function buildRequestBody(dryRun) {
     if (openAiAccountIdValue.length > 0) body.openAIAccountId = openAiAccountIdValue;
     if (openAiAccountIdsValue.length > 0) {
       body.openAIAccountIds = openAiAccountIdsValue;
+    }
+    if (openAiAccountIdValue.length > 0 || openAiAccountIdsValue.length > 0) {
       body.openAIAccountRotation = openAiAccountRotationValue;
       body.openAIAccountFailover = openAiAccountFailoverValue;
     }
@@ -1090,6 +1101,7 @@ function buildRequestBody(dryRun) {
     body.analysisEnabled = analysisEnabledValue;
     if (analysisOn) {
       body.analysisGateEnabled = !!(analysisGate && analysisGate.checked);
+      body.analysisRunStrict = !!analysisRunStrictValue;
       if (packsRaw.length > 0) body.analysisPacks = packsRaw;
       if (exportPathRaw.length > 0) body.analysisExportPath = exportPathRaw;
     }
@@ -1644,6 +1656,7 @@ function updateAnalysisControls() {
 
   if (analysisEnabled) analysisEnabled.disabled = !applicable;
   if (analysisGate) analysisGate.disabled = !enabled;
+  if (analysisRunStrict) analysisRunStrict.disabled = !enabled;
   if (analysisPacks) analysisPacks.disabled = !enabled;
   if (analysisExportPath) analysisExportPath.disabled = !enabled;
 

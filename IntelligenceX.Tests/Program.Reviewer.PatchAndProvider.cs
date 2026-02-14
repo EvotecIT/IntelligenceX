@@ -183,6 +183,25 @@ internal static partial class Program {
         }
     }
 
+    private static void TestReviewConfigLoaderReadsLegacyIncludeRelatedPullRequestsAlias() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-related-prs-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path, "{ \"review\": { \"includeRelatedPullRequests\": false } }");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings {
+                IncludeRelatedPrs = true
+            };
+            ReviewConfigLoader.Apply(settings);
+            AssertEqual(false, settings.IncludeRelatedPrs, "review config loader includeRelatedPullRequests alias");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
     private static void TestReviewProviderFallbackEnv() {
         var previousProvider = Environment.GetEnvironmentVariable("REVIEW_PROVIDER");
         var previousFallback = Environment.GetEnvironmentVariable("REVIEW_PROVIDER_FALLBACK");

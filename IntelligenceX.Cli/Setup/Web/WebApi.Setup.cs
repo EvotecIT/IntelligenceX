@@ -43,6 +43,22 @@ internal sealed partial class WebApi {
         return BuildSetupArgsForRepo(request, routeDryRun: false, "owner/repo");
     }
 
+    internal static string[] BuildSetupArgsForAnalysisRunStrictTests(
+        bool? analysisEnabled,
+        bool? analysisRunStrict,
+        bool withConfig = true,
+        bool hasConfigOverride = false) {
+        var request = new SetupRequest {
+            Repo = "owner/repo",
+            GitHubToken = "token",
+            WithConfig = withConfig,
+            AnalysisEnabled = analysisEnabled,
+            AnalysisRunStrict = analysisRunStrict,
+            ConfigJson = hasConfigOverride ? "{}" : null
+        };
+        return BuildSetupArgsForRepo(request, routeDryRun: false, "owner/repo");
+    }
+
     internal static bool ResolveWithConfigFromArgsForTests(params string[] args) {
         return ResolveWithConfigFromArgs(args);
     }
@@ -70,6 +86,47 @@ internal sealed partial class WebApi {
             hasConfigOverride,
             out var error);
         return (success, error);
+    }
+
+    internal static (
+        bool Success,
+        bool? NormalizedEnabled,
+        bool? NormalizedGateEnabled,
+        bool? NormalizedRunStrict,
+        string? NormalizedPacks,
+        string? NormalizedExportPath,
+        string? Error) ValidateAnalysisForTests(
+        bool isSetup,
+        bool withConfig,
+        bool hasConfigOverride,
+        bool? analysisEnabled,
+        bool? analysisGateEnabled,
+        bool? analysisRunStrict,
+        string? analysisPacks,
+        string? analysisExportPath) {
+        var success = WebSetupAnalysisValidator.TryValidateAndNormalize(
+            isSetup: isSetup,
+            withConfig: withConfig,
+            hasConfigOverride: hasConfigOverride,
+            analysisEnabled: analysisEnabled,
+            analysisGateEnabled: analysisGateEnabled,
+            analysisRunStrict: analysisRunStrict,
+            analysisPacks: analysisPacks,
+            analysisExportPath: analysisExportPath,
+            normalizedEnabled: out var normalizedEnabled,
+            normalizedGateEnabled: out var normalizedGateEnabled,
+            normalizedRunStrict: out var normalizedRunStrict,
+            normalizedPacks: out var normalizedPacks,
+            normalizedExportPath: out var normalizedExportPath,
+            error: out var error);
+        return (
+            success,
+            normalizedEnabled,
+            normalizedGateEnabled,
+            normalizedRunStrict,
+            normalizedPacks,
+            normalizedExportPath,
+            error);
     }
 
     internal static (bool ExpectOrgSecret, string? SecretOrg) ResolveOrgSecretVerificationContextForTests(
@@ -288,10 +345,12 @@ internal sealed partial class WebApi {
             hasConfigOverride: hasConfigOverride,
             analysisEnabled: request.AnalysisEnabled,
             analysisGateEnabled: request.AnalysisGateEnabled,
+            analysisRunStrict: request.AnalysisRunStrict,
             analysisPacks: request.AnalysisPacks,
             analysisExportPath: request.AnalysisExportPath,
             normalizedEnabled: out var normalizedEnabled,
             normalizedGateEnabled: out var normalizedGateEnabled,
+            normalizedRunStrict: out var normalizedRunStrict,
             normalizedPacks: out var normalizedPacks,
             normalizedExportPath: out var normalizedExportPath,
             error: out var analysisError)) {
@@ -301,6 +360,7 @@ internal sealed partial class WebApi {
         }
         request.AnalysisEnabled = normalizedEnabled;
         request.AnalysisGateEnabled = normalizedGateEnabled;
+        request.AnalysisRunStrict = normalizedRunStrict;
         request.AnalysisPacks = normalizedPacks;
         request.AnalysisExportPath = normalizedExportPath;
         if (!TryValidateAndNormalizeOpenAiAccountRouting(request, isSetup, withConfig, hasConfigOverride, out var routingError)) {
@@ -407,10 +467,12 @@ internal sealed partial class WebApi {
             hasConfigOverride: hasConfigOverride,
             analysisEnabled: request.AnalysisEnabled,
             analysisGateEnabled: request.AnalysisGateEnabled,
+            analysisRunStrict: request.AnalysisRunStrict,
             analysisPacks: request.AnalysisPacks,
             analysisExportPath: request.AnalysisExportPath,
             normalizedEnabled: out var normalizedEnabled,
             normalizedGateEnabled: out var normalizedGateEnabled,
+            normalizedRunStrict: out var normalizedRunStrict,
             normalizedPacks: out var normalizedPacks,
             normalizedExportPath: out var normalizedExportPath,
             error: out var analysisError)) {
@@ -420,6 +482,7 @@ internal sealed partial class WebApi {
         }
         request.AnalysisEnabled = normalizedEnabled;
         request.AnalysisGateEnabled = normalizedGateEnabled;
+        request.AnalysisRunStrict = normalizedRunStrict;
         request.AnalysisPacks = normalizedPacks;
         request.AnalysisExportPath = normalizedExportPath;
         if (!TryValidateAndNormalizeOpenAiAccountRouting(request, isSetup, withConfig, hasConfigOverride, out var routingError)) {

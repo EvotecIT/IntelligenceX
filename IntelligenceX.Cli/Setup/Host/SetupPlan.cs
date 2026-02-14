@@ -40,6 +40,7 @@ internal sealed class SetupPlan {
     // Reviewer config extras (written into .intelligencex/reviewer.json when WithConfig=true).
     public bool? AnalysisEnabled { get; init; }
     public bool? AnalysisGateEnabled { get; init; }
+    public bool? AnalysisRunStrict { get; init; }
     public string? AnalysisPacks { get; init; }
     public string? AnalysisExportPath { get; init; }
 }

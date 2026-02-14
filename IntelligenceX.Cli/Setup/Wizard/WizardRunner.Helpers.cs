@@ -17,6 +17,7 @@ internal static partial class WizardRunner {
         if (state.Operation != WizardOperation.Setup || state.ConfigMode != ConfigMode.Preset) {
             state.AnalysisEnabled = null;
             state.AnalysisGateEnabled = null;
+            state.AnalysisRunStrict = null;
             state.AnalysisPacks = null;
             state.AnalysisExportPath = null;
             return;
@@ -29,6 +30,7 @@ internal static partial class WizardRunner {
         state.AnalysisEnabled = analysisEnabled;
         if (!analysisEnabled) {
             state.AnalysisGateEnabled = null;
+            state.AnalysisRunStrict = null;
             state.AnalysisPacks = null;
             state.AnalysisExportPath = null;
             return;
@@ -38,11 +40,13 @@ internal static partial class WizardRunner {
         if (string.Equals(state.AnalysisPacks, WizardPrompts.DisableAnalysisSelection, StringComparison.Ordinal)) {
             state.AnalysisEnabled = false;
             state.AnalysisGateEnabled = null;
+            state.AnalysisRunStrict = null;
             state.AnalysisPacks = null;
             state.AnalysisExportPath = null;
             return;
         }
         state.AnalysisGateEnabled = WizardPrompts.PromptAnalysisGateEnabled(state.AnalysisGateEnabled ?? false);
+        state.AnalysisRunStrict = WizardPrompts.PromptAnalysisRunStrict(state.AnalysisRunStrict ?? false);
         state.AnalysisExportPath = WizardPrompts.PromptAnalysisExportPath(state.AnalysisExportPath);
     }
 
@@ -86,6 +90,7 @@ internal static partial class WizardRunner {
             BranchName = state.BranchName,
             AnalysisEnabled = analysisApplies ? state.AnalysisEnabled : null,
             AnalysisGateEnabled = analysisApplies ? state.AnalysisGateEnabled : null,
+            AnalysisRunStrict = analysisApplies && state.AnalysisEnabled == true ? state.AnalysisRunStrict : null,
             AnalysisPacks = analysisApplies ? state.AnalysisPacks : null,
             AnalysisExportPath = analysisApplies && state.AnalysisEnabled == true ? state.AnalysisExportPath : null
         };

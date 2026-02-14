@@ -189,9 +189,9 @@ internal static class ReviewConfigLoader {
     }
 
     private static void ApplyNumbers(JsonObject obj, ReviewSettings settings) {
-        settings.MaxFiles = ReadInt(obj, "maxFiles", settings.MaxFiles);
-        settings.MaxPatchChars = ReadInt(obj, "maxPatchChars", settings.MaxPatchChars);
-        settings.MaxInlineComments = ReadInt(obj, "maxInlineComments", settings.MaxInlineComments);
+        settings.MaxFiles = ReadNonNegativeInt(obj, "maxFiles", settings.MaxFiles);
+        settings.MaxPatchChars = ReadNonNegativeInt(obj, "maxPatchChars", settings.MaxPatchChars);
+        settings.MaxInlineComments = ReadNonNegativeInt(obj, "maxInlineComments", settings.MaxInlineComments);
         settings.WaitSeconds = ReadInt(obj, "waitSeconds", settings.WaitSeconds);
         settings.IdleSeconds = ReadInt(obj, "idleSeconds", settings.IdleSeconds);
         settings.ProgressUpdateSeconds = ReadInt(obj, "progressUpdateSeconds", settings.ProgressUpdateSeconds);
@@ -308,8 +308,8 @@ internal static class ReviewConfigLoader {
         settings.ReviewThreadsAutoResolveAIReply = ReadBool(obj, "reviewThreadsAutoResolveAIReply", settings.ReviewThreadsAutoResolveAIReply);
         settings.ReviewThreadsAutoResolveSummaryComment = ReadBool(obj, "reviewThreadsAutoResolveSummaryComment",
             settings.ReviewThreadsAutoResolveSummaryComment);
-        settings.MaxCommentChars = ReadInt(obj, "maxCommentChars", settings.MaxCommentChars);
-        settings.MaxComments = ReadInt(obj, "maxComments", settings.MaxComments);
+        settings.MaxCommentChars = ReadNonNegativeInt(obj, "maxCommentChars", settings.MaxCommentChars);
+        settings.MaxComments = ReadNonNegativeInt(obj, "maxComments", settings.MaxComments);
         settings.CommentSearchLimit = ReadInt(obj, "commentSearchLimit", settings.CommentSearchLimit);
         settings.GitHubMaxConcurrency = Math.Max(1, ReadInt(obj, "githubMaxConcurrency", settings.GitHubMaxConcurrency));
         settings.ContextDenyEnabled = ReadBool(obj, "contextDenyEnabled", settings.ContextDenyEnabled);
@@ -318,6 +318,7 @@ internal static class ReviewConfigLoader {
             settings.ContextDenyPatterns = contextDenyPatterns;
         }
         settings.IncludeRelatedPrs = ReadBool(obj, "includeRelatedPrs", settings.IncludeRelatedPrs);
+        settings.IncludeRelatedPrs = ReadBool(obj, "includeRelatedPullRequests", settings.IncludeRelatedPrs);
         settings.RelatedPrsQuery = obj.GetString("relatedPrsQuery") ?? settings.RelatedPrsQuery;
         settings.MaxRelatedPrs = ReadInt(obj, "maxRelatedPrs", settings.MaxRelatedPrs);
     }

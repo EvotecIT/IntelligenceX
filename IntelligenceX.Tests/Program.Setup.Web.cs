@@ -142,6 +142,53 @@ internal static partial class Program {
         AssertEqual("false", args[failoverIndex + 1], "web setup args openai account failover value");
     }
 
+    private static void TestWebSetupBuildSetupArgsPropagatesOpenAiAccountRoutingWithPrimaryOnly() {
+        var args = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupArgsForOpenAiAccountRoutingTests(
+            openAiAccountId: "acc-primary",
+            openAiAccountIds: null,
+            openAiAccountRotation: "round-robin",
+            openAiAccountFailover: false);
+
+        AssertEqual(true, Array.IndexOf(args, "--openai-account-id") >= 0, "web setup args openai primary-only id flag");
+        AssertEqual(false, Array.IndexOf(args, "--openai-account-ids") >= 0, "web setup args openai primary-only ids flag");
+        AssertEqual(true, Array.IndexOf(args, "--openai-account-rotation") >= 0,
+            "web setup args openai primary-only rotation flag");
+        AssertEqual(true, Array.IndexOf(args, "--openai-account-failover") >= 0,
+            "web setup args openai primary-only failover flag");
+
+        var idIndex = Array.IndexOf(args, "--openai-account-id");
+        AssertEqual("acc-primary", args[idIndex + 1], "web setup args openai primary-only id value");
+        var rotationIndex = Array.IndexOf(args, "--openai-account-rotation");
+        AssertEqual("round-robin", args[rotationIndex + 1], "web setup args openai primary-only rotation value");
+        var failoverIndex = Array.IndexOf(args, "--openai-account-failover");
+        AssertEqual("false", args[failoverIndex + 1], "web setup args openai primary-only failover value");
+    }
+
+    private static void TestWebSetupBuildSetupArgsPropagatesAnalysisRunStrict() {
+        var args = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupArgsForAnalysisRunStrictTests(
+            analysisEnabled: true,
+            analysisRunStrict: true);
+        AssertEqual(true, Array.IndexOf(args, "--analysis-enabled") >= 0, "web setup args analysis enabled flag");
+        AssertEqual(true, Array.IndexOf(args, "--analysis-run-strict") >= 0,
+            "web setup args analysis run strict flag");
+        var runStrictIndex = Array.IndexOf(args, "--analysis-run-strict");
+        AssertEqual("true", args[runStrictIndex + 1], "web setup args analysis run strict value");
+
+        var disabledArgs = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupArgsForAnalysisRunStrictTests(
+            analysisEnabled: false,
+            analysisRunStrict: true);
+        AssertEqual(false, Array.IndexOf(disabledArgs, "--analysis-run-strict") >= 0,
+            "web setup args analysis run strict omitted when analysis disabled");
+
+        var overrideArgs = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupArgsForAnalysisRunStrictTests(
+            analysisEnabled: true,
+            analysisRunStrict: true,
+            withConfig: true,
+            hasConfigOverride: true);
+        AssertEqual(false, Array.IndexOf(overrideArgs, "--analysis-run-strict") >= 0,
+            "web setup args analysis run strict omitted for config override");
+    }
+
     private static void TestWebSetupResolveWithConfigFromArgs() {
         AssertEqual(true, IntelligenceX.Cli.Setup.Web.WebApi.ResolveWithConfigFromArgsForTests(
             "--repo", "owner/repo", "--with-config"), "web setup resolve with-config flag");
@@ -197,6 +244,57 @@ internal static partial class Program {
         AssertContainsText(result.Error ?? string.Empty,
             "rotation must be one of",
             "web setup openai routing invalid rotation primary-only error");
+    }
+
+    private static void TestWebSetupAnalysisValidationNormalizesRunStrict() {
+        var result = IntelligenceX.Cli.Setup.Web.WebApi.ValidateAnalysisForTests(
+            isSetup: true,
+            withConfig: true,
+            hasConfigOverride: false,
+            analysisEnabled: true,
+            analysisGateEnabled: true,
+            analysisRunStrict: true,
+            analysisPacks: "all-50",
+            analysisExportPath: ".intelligencex/analyzers");
+        AssertEqual(true, result.Success, "web setup analysis validation success");
+        AssertEqual(true, result.NormalizedEnabled, "web setup analysis validation normalized enabled");
+        AssertEqual(true, result.NormalizedGateEnabled, "web setup analysis validation normalized gate");
+        AssertEqual(true, result.NormalizedRunStrict, "web setup analysis validation normalized run strict");
+        AssertEqual("all-50", result.NormalizedPacks, "web setup analysis validation normalized packs");
+        AssertEqual(".intelligencex/analyzers", result.NormalizedExportPath,
+            "web setup analysis validation normalized export path");
+    }
+
+    private static void TestWebSetupAnalysisValidationRejectsRunStrictWithoutAnalysisEnabled() {
+        var result = IntelligenceX.Cli.Setup.Web.WebApi.ValidateAnalysisForTests(
+            isSetup: true,
+            withConfig: true,
+            hasConfigOverride: false,
+            analysisEnabled: false,
+            analysisGateEnabled: null,
+            analysisRunStrict: true,
+            analysisPacks: null,
+            analysisExportPath: null);
+        AssertEqual(false, result.Success, "web setup analysis validation run strict requires analysis enabled");
+        AssertContainsText(result.Error ?? string.Empty,
+            "analysisGateEnabled/analysisRunStrict/analysisPacks/analysisExportPath require analysisEnabled=true",
+            "web setup analysis validation run strict requires analysis enabled error");
+    }
+
+    private static void TestWebSetupAnalysisValidationRejectsRunStrictOutsidePresetGeneration() {
+        var result = IntelligenceX.Cli.Setup.Web.WebApi.ValidateAnalysisForTests(
+            isSetup: true,
+            withConfig: true,
+            hasConfigOverride: true,
+            analysisEnabled: null,
+            analysisGateEnabled: null,
+            analysisRunStrict: true,
+            analysisPacks: null,
+            analysisExportPath: null);
+        AssertEqual(false, result.Success, "web setup analysis validation run strict rejected for config override");
+        AssertContainsText(result.Error ?? string.Empty,
+            "only supported for setup when generating config from presets",
+            "web setup analysis validation run strict config override error");
     }
 
     private static void TestWebSetupPostApplyVerifySkipsCallbackWhenApplyFails() {

@@ -34,6 +34,7 @@ internal sealed partial class WebApi {
             ReviewCommentMode = request.ReviewCommentMode,
             AnalysisEnabled = analysisApplies ? request.AnalysisEnabled : null,
             AnalysisGateEnabled = analysisApplies && request.AnalysisEnabled == true ? request.AnalysisGateEnabled : null,
+            AnalysisRunStrict = analysisApplies && request.AnalysisEnabled == true ? request.AnalysisRunStrict : null,
             AnalysisPacks = analysisApplies && request.AnalysisEnabled == true ? request.AnalysisPacks : null,
             AnalysisExportPath = analysisApplies && request.AnalysisEnabled == true ? request.AnalysisExportPath : null,
             SkipSecret = request.SkipSecret,
