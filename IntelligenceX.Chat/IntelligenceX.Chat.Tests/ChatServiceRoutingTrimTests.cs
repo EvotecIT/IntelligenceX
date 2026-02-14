@@ -23,9 +23,30 @@ public sealed class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ShouldAttemptToolExecutionNudgeMethod =
         typeof(ChatServiceSession).GetMethod("ShouldAttemptToolExecutionNudge", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldAttemptToolExecutionNudge not found.");
+    private static readonly MethodInfo ExtractPrimaryUserRequestMethod =
+        typeof(ChatServiceSession).GetMethod("ExtractPrimaryUserRequest", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ExtractPrimaryUserRequest not found.");
+    private static readonly MethodInfo ExtractIntentUserTextMethod =
+        typeof(ChatServiceSession).GetMethod("ExtractIntentUserText", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ExtractIntentUserText not found.");
+    private static readonly MethodInfo RememberUserIntentMethod =
+        typeof(ChatServiceSession).GetMethod("RememberUserIntent", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("RememberUserIntent not found.");
+    private static readonly MethodInfo ExpandContinuationUserRequestMethod =
+        typeof(ChatServiceSession).GetMethod("ExpandContinuationUserRequest", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("ExpandContinuationUserRequest not found.");
     private static readonly MethodInfo ParsePlannerSelectedDefinitionsMethod =
         typeof(ChatServiceSession).GetMethod("ParsePlannerSelectedDefinitions", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ParsePlannerSelectedDefinitions not found.");
+    private static readonly FieldInfo ToolRoutingContextLockField =
+        typeof(ChatServiceSession).GetField("_toolRoutingContextLock", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolRoutingContextLock not found.");
+    private static readonly FieldInfo LastUserIntentByThreadIdField =
+        typeof(ChatServiceSession).GetField("_lastUserIntentByThreadId", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_lastUserIntentByThreadId not found.");
+    private static readonly FieldInfo LastUserIntentSeenUtcTicksField =
+        typeof(ChatServiceSession).GetField("_lastUserIntentSeenUtcTicks", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_lastUserIntentSeenUtcTicks not found.");
 
     [Fact]
     public void TrimToolRoutingStatsForTesting_RemovesNonPositiveTimestampEntriesFirst() {
@@ -151,6 +172,231 @@ public sealed class ChatServiceRoutingTrimTests {
             new object?[] { userRequest, assistantDraft, true, 0, true });
 
         Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ExtractPrimaryUserRequest_StripsCodeFencesAndInlineCode() {
+        var input = """
+            Please check this:
+            ```powershell
+            Get-EventLog -LogName System
+            ```
+            and also `C:\Temp\ADO-System.evtx`
+            """;
+
+        var result = ExtractPrimaryUserRequestMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.DoesNotContain("Get-EventLog", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("C:\\Temp\\ADO-System.evtx", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Please check this:", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("and also", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExtractPrimaryUserRequest_DoesNotDropIntentWhenFenceUnclosedAfterIntent() {
+        var input = """
+            Please run the checks first.
+            ```powershell
+            Get-EventLog -LogName System
+            """;
+
+        var result = ExtractPrimaryUserRequestMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("Please run the checks first.", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Get-EventLog", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExtractPrimaryUserRequest_PreservesTrailingPlainTextAfterUnclosedFence() {
+        var input = """
+            Please run the checks first.
+            ```powershell
+            Get-EventLog -LogName System
+            then run now
+            """;
+
+        var result = ExtractPrimaryUserRequestMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("Please run the checks first.", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Get-EventLog", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("then run now", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExtractPrimaryUserRequest_ReturnsEmptyWhenFenceUnclosedAtStart() {
+        var input = """
+            ```powershell
+            Get-EventLog -LogName System
+            """;
+
+        var result = ExtractPrimaryUserRequestMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Equal(string.Empty, text);
+    }
+
+    [Fact]
+    public void ExtractPrimaryUserRequest_DoesNotConcatenateTokensWhenBackticksAreOdd() {
+        var input = "please `run now";
+
+        var result = ExtractPrimaryUserRequestMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("run now", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExtractPrimaryUserRequest_ReturnsEmptyForAllCodeMessages() {
+        var input = """
+            ```powershell
+            Get-EventLog -LogName System
+            ```
+            """;
+
+        var result = ExtractPrimaryUserRequestMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Equal(string.Empty, text);
+    }
+
+    [Fact]
+    public void ExtractIntentUserText_RemovesFenceMarkersButKeepsContent() {
+        var input = """
+            ```powershell
+            Get-EventLog -LogName System
+            ```
+            """;
+
+        var result = ExtractIntentUserTextMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("Get-EventLog -LogName System", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("```", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_IncludesLastIntent() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+
+        RememberUserIntentMethod.Invoke(session, new object?[] { "thread-001", "Please run forest-wide replication and LDAP diagnostics." });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "run now" });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Contains("forest-wide replication", expanded, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Follow-up:", expanded, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("run now", expanded, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_ReturnsOriginalTextWhenNotAFollowUp() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var input = "  Please check the replication health for this domain today.  ";
+
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_PreservesWhitespaceWhenNoIntentCached() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var input = "  run now  ";
+
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_RespectsMaxAge() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        RememberUserIntentMethod.Invoke(session, new object?[] { "thread-001", "Please run forest-wide replication." });
+
+        var gate = ToolRoutingContextLockField.GetValue(session)!;
+        lock (gate) {
+            var ticks = (Dictionary<string, long>)LastUserIntentSeenUtcTicksField.GetValue(session)!;
+            ticks["thread-001"] = DateTime.UtcNow.AddHours(-1).Ticks;
+        }
+
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "run now" });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.DoesNotContain("Follow-up:", expanded, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("run now", expanded);
+    }
+
+    [Fact]
+    public void TrimWeightedRoutingContextsForTesting_PrefersMostRecentTicksAcrossContexts() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+
+        var names = new Dictionary<string, string[]>(StringComparer.Ordinal);
+        var seenTicks = new Dictionary<string, long>(StringComparer.Ordinal);
+        for (var i = 0; i < MaxTrackedWeightedRoutingContexts + 1; i++) {
+            var threadId = $"thread-{i:D3}";
+            names[threadId] = new[] { $"tool-{i:D3}" };
+            seenTicks[threadId] = 10_000L + i;
+        }
+
+        // Make thread-000 look old in weighted context...
+        seenTicks["thread-000"] = 1;
+        session.SetWeightedRoutingContextsForTesting(names, seenTicks);
+
+        // ...but recent in intent context, so it should not be evicted.
+        var gate = ToolRoutingContextLockField.GetValue(session)!;
+        lock (gate) {
+            var intents = (Dictionary<string, string>)LastUserIntentByThreadIdField.GetValue(session)!;
+            var intentTicks = (Dictionary<string, long>)LastUserIntentSeenUtcTicksField.GetValue(session)!;
+            intents.Clear();
+            intentTicks.Clear();
+            intents["thread-000"] = "intent";
+            intentTicks["thread-000"] = 999_999;
+        }
+
+        session.TrimWeightedRoutingContextsForTesting();
+        var tracked = new HashSet<string>(session.GetTrackedWeightedRoutingContextThreadIdsForTesting(), StringComparer.Ordinal);
+
+        Assert.Contains("thread-000", tracked);
+        Assert.DoesNotContain("thread-001", tracked);
+        Assert.Contains("thread-002", tracked);
+    }
+
+    [Fact]
+    public void TrimWeightedRoutingContextsForTesting_EvictsMissingIntentTickEntriesFirst() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+
+        var gate = ToolRoutingContextLockField.GetValue(session)!;
+        lock (gate) {
+            var intents = (Dictionary<string, string>)LastUserIntentByThreadIdField.GetValue(session)!;
+            var intentTicks = (Dictionary<string, long>)LastUserIntentSeenUtcTicksField.GetValue(session)!;
+            intents.Clear();
+            intentTicks.Clear();
+
+            for (var i = 0; i < MaxTrackedWeightedRoutingContexts + 1; i++) {
+                var threadId = $"thread-{i:D3}";
+                intents[threadId] = "intent";
+                if (threadId != "thread-000") {
+                    intentTicks[threadId] = 10_000L + i;
+                }
+            }
+
+            // Ensure there's a clear oldest "known" tick so eviction is deterministic.
+            intentTicks["thread-001"] = 1;
+        }
+
+        session.TrimWeightedRoutingContextsForTesting();
+        HashSet<string> tracked;
+        lock (gate) {
+            var intents = (Dictionary<string, string>)LastUserIntentByThreadIdField.GetValue(session)!;
+            tracked = new HashSet<string>(intents.Keys, StringComparer.Ordinal);
+        }
+
+        Assert.DoesNotContain("thread-000", tracked);
+        Assert.Contains("thread-001", tracked);
     }
 
     [Fact]

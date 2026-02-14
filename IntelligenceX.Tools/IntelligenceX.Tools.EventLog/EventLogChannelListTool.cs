@@ -7,13 +7,15 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Tools.EventLog;
 
 /// <summary>
-/// Lists Windows Event Log channels on the local machine.
+/// Lists Windows Event Log channels on the local or remote machine.
 /// </summary>
 public sealed class EventLogChannelListTool : EventLogToolBase, ITool {
     private static readonly ToolDefinition DefinitionValue = new(
         "eventlog_channels_list",
-        "List Windows Event Log channels available on this machine (read-only, capped).",
+        "List Windows Event Log channels available on this machine (or remote machine_name) (read-only, capped).",
         ToolSchema.Object(
+                ("machine_name", ToolSchema.String("Optional remote machine name/FQDN. Omit for local machine.")),
+                ("session_timeout_ms", ToolSchema.Integer("Optional session timeout in milliseconds for remote queries.")),
                 ("name_contains", ToolSchema.String("Optional case-insensitive name filter.")),
                 ("max_channels", ToolSchema.Integer("Optional maximum channels to return (capped).")))
             .NoAdditionalProperties());

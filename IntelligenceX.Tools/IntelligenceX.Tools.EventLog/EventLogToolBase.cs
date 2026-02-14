@@ -107,9 +107,27 @@ public abstract class EventLogToolBase : ToolBase {
         var nameContains = arguments?.GetString("name_contains");
         var max = ToolArgs.GetCappedInt32(arguments, maxArgumentName, Options.MaxResults, 1, Options.MaxResults);
 
+        var machineNameNormalized = (arguments?.GetString("machine_name") ?? string.Empty).Trim();
+        string? machineName = machineNameNormalized.Length == 0 ? null : machineNameNormalized;
+        if (machineName is { Length: > 260 }) {
+            machineName = machineName.Substring(0, 260);
+        }
+
+        int? sessionTimeoutMs = null;
+        var timeoutRaw = arguments?.GetInt64("session_timeout_ms");
+        if (timeoutRaw.HasValue) {
+            var normalizedLong = Math.Clamp(timeoutRaw.Value, (long)int.MinValue, (long)int.MaxValue);
+            var normalized = (int)normalizedLong;
+            if (normalized > 0) {
+                sessionTimeoutMs = Math.Clamp(normalized, 1000, 600_000);
+            }
+        }
+
         var request = new EventCatalogQueryRequest {
             NameContains = nameContains,
-            MaxResults = max
+            MaxResults = max,
+            MachineName = machineName,
+            SessionTimeoutMs = sessionTimeoutMs
         };
 
         if (providers) {
