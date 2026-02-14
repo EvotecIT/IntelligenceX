@@ -26,9 +26,11 @@ internal static class UiShellAssets {
         "Shell.10.core.js",
         "Shell.12.core.helpers.js",
         "Shell.15.core.tools.js",
+        "Shell.18.core.tools.rendering.js",
         "Shell.16.core.datatables.js",
         "Shell.17.core.dataview.js",
-        "Shell.20.bindings.js"
+        "Shell.20.bindings.js",
+        "Shell.22.bindings.wheel.js"
     ];
 
     private static readonly string[] CssManifest = [
