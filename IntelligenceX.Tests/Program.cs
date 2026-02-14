@@ -384,6 +384,8 @@ internal static partial class Program {
             TestAnalyzeGateDuplicationFileDeltaBlocksWhenIncreaseExceedsAllowed);
         failed += Run("Analyze gate duplication file baseline loads paths with colon",
             TestAnalyzeGateDuplicationFileBaselineLoadsPathsWithColon);
+        failed += Run("Analyze gate duplication file baseline loads paths containing scope suffix tokens",
+            TestAnalyzeGateDuplicationFileBaselineLoadsPathsContainingScopeSuffixTokens);
         failed += Run("Analyze gate write baseline includes duplication file snapshots when configured",
             TestAnalyzeGateWriteBaselineIncludesDuplicationFileSnapshotsWhenConfigured);
         failed += Run("Analyze gate write baseline includes duplication overall snapshot",

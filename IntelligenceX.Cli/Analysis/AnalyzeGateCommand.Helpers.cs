@@ -113,15 +113,21 @@ internal static partial class AnalyzeGateCommand {
                 .Where(static file => !string.IsNullOrWhiteSpace(file.Path))
                 .Where(file => !useChangedFileScope || changedPaths.Contains(NormalizeChangedPath(file.Path)))
                 .ToList();
-            var fileScopeSuffix = useChangedFileScope ? ":scope:changed-files" : string.Empty;
             foreach (var file in files) {
                 if (file.SignificantLines > 0) {
-                    var snapshotFingerprint = $"{ruleId}:file:{file.Path.Replace('\\', '/')}:{file.DuplicatedLines}:{file.SignificantLines}:{rule.WindowLines}{fileScopeSuffix}";
+                    var normalizedPath = file.Path.Replace('\\', '/');
+                    var snapshotFingerprint = BuildDuplicationFileSnapshotFingerprint(
+                        ruleId,
+                        normalizedPath,
+                        file.DuplicatedLines,
+                        file.SignificantLines,
+                        rule.WindowLines,
+                        effectiveScope);
                     fileSnapshots.Add(new DuplicationFileSnapshot(
                         RuleId: ruleId,
                         Tool: tool,
                         Scope: effectiveScope,
-                        Path: file.Path.Replace('\\', '/'),
+                        Path: normalizedPath,
                         SignificantLines: file.SignificantLines,
                         DuplicatedLines: file.DuplicatedLines,
                         DuplicatedPercent: file.DuplicatedPercent,
@@ -214,6 +220,15 @@ internal static partial class AnalyzeGateCommand {
             "changed" => "changed-files",
             _ => "changed-files"
         };
+    }
+
+    private static string BuildDuplicationFileSnapshotFingerprint(string ruleId, string path, int duplicatedLines, int significantLines,
+        int windowLines, string scope) {
+        // Encode the path so the fingerprint remains unambiguous when ':' appears in file names.
+        var normalizedPath = (path ?? string.Empty).Trim().Replace('\\', '/');
+        var encodedPath = Uri.EscapeDataString(normalizedPath);
+        var scopeSuffix = scope == "changed-files" ? ":scope:changed-files" : string.Empty;
+        return $"{ruleId}:file-uri:{encodedPath}:{duplicatedLines}:{significantLines}:{windowLines}{scopeSuffix}";
     }
 
     private static HashSet<string> BuildChangedPathSet(IReadOnlyList<PullRequestFile> files) {

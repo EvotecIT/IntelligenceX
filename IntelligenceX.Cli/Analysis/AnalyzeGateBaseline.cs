@@ -154,7 +154,11 @@ internal static class AnalyzeGateBaseline {
         baselines = new Dictionary<string, DuplicationOverallBaseline>(StringComparer.OrdinalIgnoreCase);
         error = null;
 
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
+        if (string.IsNullOrWhiteSpace(path)) {
+            error = "baseline path not provided";
+            return false;
+        }
+        if (!File.Exists(path)) {
             error = $"baseline file not found: {path}";
             return false;
         }
@@ -309,7 +313,9 @@ internal static class AnalyzeGateBaseline {
         if (tokens.Length < 6) {
             return false;
         }
-        if (!tokens[1].Equals("file", StringComparison.OrdinalIgnoreCase)) {
+        var format = tokens[1].Trim();
+        var isFileUri = format.Equals("file-uri", StringComparison.OrdinalIgnoreCase);
+        if (!isFileUri && !format.Equals("file", StringComparison.OrdinalIgnoreCase)) {
             return false;
         }
 
@@ -325,6 +331,28 @@ internal static class AnalyzeGateBaseline {
         // Expected tail (after stripping optional scope): :<duplicated>:<significant>:<windowLines>
         if (effectiveLength < 6) {
             return false;
+        }
+
+        if (isFileUri) {
+            // Shape: <ruleId>:file-uri:<escapedPath>:<duplicated>:<significant>:<windowLines>[:scope:changed-files]
+            if (effectiveLength != 6) {
+                return false;
+            }
+            if (!int.TryParse(tokens[3], out duplicatedLines) || duplicatedLines < 0) {
+                return false;
+            }
+            if (!int.TryParse(tokens[4], out significantLines) || significantLines < 0) {
+                return false;
+            }
+            if (!int.TryParse(tokens[5], out windowLines) || windowLines < 0) {
+                return false;
+            }
+            try {
+                path = Uri.UnescapeDataString(tokens[2]).Trim().Replace('\\', '/');
+            } catch {
+                return false;
+            }
+            return true;
         }
 
         if (!int.TryParse(tokens[effectiveLength - 3], out duplicatedLines) || duplicatedLines < 0) {

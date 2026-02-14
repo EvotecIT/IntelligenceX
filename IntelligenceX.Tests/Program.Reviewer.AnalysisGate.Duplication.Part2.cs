@@ -237,8 +237,8 @@ internal static partial class Program {
             AssertEqual(true, baselines.Count > 0, "analyze gate write baseline file snapshots baseline has entries");
 
             var firstFingerprint = baselines.Values.First().Fingerprint ?? string.Empty;
-            AssertEqual(true, firstFingerprint.Contains(":file:", StringComparison.OrdinalIgnoreCase),
-                "analyze gate write baseline file snapshots fingerprint includes file prefix");
+            AssertEqual(true, firstFingerprint.Contains(":file-uri:", StringComparison.OrdinalIgnoreCase),
+                "analyze gate write baseline file snapshots fingerprint uses encoded file-uri format");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             if (Directory.Exists(temp)) {
@@ -305,6 +305,41 @@ internal static partial class Program {
             }
         }
     }
+
+    private static void TestAnalyzeGateDuplicationFileBaselineLoadsPathsContainingScopeSuffixTokens() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-dup-file-baseline-scope-in-path-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var baselinePath = Path.Combine(temp, "analysis-baseline.json");
+            File.WriteAllText(baselinePath, """
+{
+  "schema": "intelligencex.analysis-baseline.v1",
+  "items": [
+    {
+      "path": ".intelligencex/duplication-file",
+      "line": 0,
+      "severity": "info",
+      "ruleId": "IXDUP001",
+      "tool": "IntelligenceX.Maintainability",
+      "fingerprint": "IXDUP001:file-uri:%2Ftmp%2Fweird%3Ascope%3Achanged-files%2Ftest.cs:20:100:8:scope:changed-files"
+    }
+  ]
+}
+""");
+
+            var ok = IntelligenceX.Cli.Analysis.AnalyzeGateBaseline.TryLoadDuplicationFileBaselines(
+                baselinePath,
+                out var baselines,
+                out var error);
+            AssertEqual(true, ok, "duplication file baseline loads scope tokens in path ok");
+            AssertEqual(true, string.IsNullOrWhiteSpace(error), "duplication file baseline loads scope tokens in path error empty");
+            AssertEqual(true, baselines.ContainsKey("IXDUP001|changed-files|/tmp/weird:scope:changed-files/test.cs"),
+                "duplication file baseline loads scope tokens in path key");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
 }
 #endif
-
