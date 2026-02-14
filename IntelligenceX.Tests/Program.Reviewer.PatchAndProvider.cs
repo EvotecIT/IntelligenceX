@@ -408,6 +408,10 @@ internal static partial class Program {
             }
             if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
                 path.Equals("/v1/chat/completions-redirected", StringComparison.OrdinalIgnoreCase)) {
+                // Ensure redirect replays the POST body (gateways commonly redirect with 302 and still expect POST).
+                if (string.IsNullOrWhiteSpace(_)) {
+                    return (400, "Bad Request", "{\"error\":\"expected POST body\"}", null);
+                }
                 return (200, "OK", "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}", null);
             }
 
