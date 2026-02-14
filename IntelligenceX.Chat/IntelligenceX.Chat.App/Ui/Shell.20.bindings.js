@@ -429,12 +429,15 @@
     copyMemoryDiagnosticsToClipboard();
   });
 
-  byId("btnDebugRecomputeMemory").addEventListener("click", function() {
-    if (!normalizeBool(state.options.debugToolsEnabled)) {
-      return;
-    }
-    post("debug_memory_recompute");
-  });
+  var btnDebugRecomputeMemory = byId("btnDebugRecomputeMemory");
+  if (btnDebugRecomputeMemory) {
+    btnDebugRecomputeMemory.addEventListener("click", function() {
+      if (!normalizeBool(state.options.debugToolsEnabled)) {
+        return;
+      }
+      post("debug_memory_recompute");
+    });
+  }
 
   byId("btnDebugCopyStartupLog").addEventListener("click", function() {
     if (!normalizeBool(state.options.debugToolsEnabled)) {
