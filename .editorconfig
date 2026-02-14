@@ -19,6 +19,16 @@ insert_final_newline = false
 [*.ps1]
 end_of_line = crlf
 
+# Bash scripts and Git attributes/config metadata
+[*.sh]
+end_of_line = lf
+
+[.gitattributes]
+end_of_line = lf
+
+[.editorconfig]
+end_of_line = lf
+
 #### .NET Code Actions ####
 
 # Type members
