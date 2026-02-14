@@ -270,16 +270,30 @@ internal static class AnalyzeGateBaseline {
                     out var windowLines, out var scope)) {
                 continue;
             }
-            if (string.IsNullOrWhiteSpace(filePath) || significant <= 0) {
+            var normalizedPath = NormalizeDuplicationPathForKey(filePath);
+            if (string.IsNullOrWhiteSpace(normalizedPath) || significant <= 0) {
                 continue;
             }
             var percent = Math.Round((duplicated * 100.0) / significant, 2, MidpointRounding.AwayFromZero);
-            var key = $"{ruleId}|{scope}|{filePath}";
-            baselines[key] = new DuplicationFileBaseline(ruleId, scope, filePath, significant, duplicated, percent, windowLines,
+            var key = $"{ruleId}|{scope}|{normalizedPath}";
+            baselines[key] = new DuplicationFileBaseline(ruleId, scope, normalizedPath, significant, duplicated, percent, windowLines,
                 fingerprint);
         }
 
         return true;
+    }
+
+    internal static string NormalizeDuplicationPathForKey(string? path) {
+        // Duplication metrics + baselines can include "./" prefixes and mixed separators; normalize so delta gating finds matches.
+        var normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
+        var hasDotRelativePrefix = normalized.StartsWith(".", StringComparison.Ordinal);
+        while (normalized.StartsWith("./", StringComparison.Ordinal)) {
+            normalized = normalized.Substring(2);
+        }
+        if (hasDotRelativePrefix) {
+            normalized = normalized.TrimStart('/');
+        }
+        return normalized;
     }
 
     private static bool TryParseDuplicationOverallFingerprint(string fingerprint, out int duplicatedLines, out int significantLines,

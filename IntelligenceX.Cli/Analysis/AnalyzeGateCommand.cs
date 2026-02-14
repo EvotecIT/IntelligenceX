@@ -371,7 +371,8 @@ internal static partial class AnalyzeGateCommand {
                     if (current.SignificantLines <= 0) {
                         continue;
                     }
-                    if (!baselineFilesByKey.TryGetValue($"{current.RuleId}|{current.Scope}|{current.Path}", out var baseline)) {
+                    var currentPathKey = AnalyzeGateBaseline.NormalizeDuplicationPathForKey(current.Path);
+                    if (!baselineFilesByKey.TryGetValue($"{current.RuleId}|{current.Scope}|{currentPathKey}", out var baseline)) {
                         missingBaseline++;
                         continue;
                     }
@@ -390,7 +391,7 @@ internal static partial class AnalyzeGateCommand {
 
                     var message =
                         $"File duplication increased (scope={current.Scope}): {current.Path} baseline {FormatPercent(baseline.DuplicatedPercent)}% -> current {FormatPercent(current.DuplicatedPercent)}% (+{FormatPercent(delta)}pp) exceeds allowed +{FormatPercent(allowedIncrease)}pp.";
-                    var fingerprintPath = Uri.EscapeDataString((current.Path ?? string.Empty).Trim());
+                    var fingerprintPath = Uri.EscapeDataString((currentPathKey ?? string.Empty).Trim());
                     var fingerprint =
                         $"{current.RuleId}:file-delta-uri:{fingerprintPath}:{FormatPercent(baseline.DuplicatedPercent)}->{FormatPercent(current.DuplicatedPercent)}:allow:+{FormatPercent(allowedIncrease)}:scope:{current.Scope}";
                     var findingPath = current.Path ?? string.Empty;

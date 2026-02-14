@@ -386,6 +386,8 @@ internal static partial class Program {
             TestAnalyzeGateDuplicationOverallDeltaMissingBaselineIsUnavailable);
         failed += Run("Analyze gate duplication file delta blocks when increase exceeds allowed",
             TestAnalyzeGateDuplicationFileDeltaBlocksWhenIncreaseExceedsAllowed);
+        failed += Run("Analyze gate duplication file delta normalizes ./ paths",
+            TestAnalyzeGateDuplicationFileDeltaNormalizesDotRelativePaths);
         failed += Run("Analyze gate duplication overall baseline skips null items", TestAnalyzeGateDuplicationOverallBaselineSkipsNullItems);
         failed += Run("Analyze gate duplication file baseline skips null items", TestAnalyzeGateDuplicationFileBaselineSkipsNullItems);
         failed += Run("Analyze gate duplication file baseline loads paths with colon",
