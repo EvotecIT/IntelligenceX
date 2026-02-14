@@ -275,6 +275,31 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
+        // Defensive: if tick/value maps drift (missing/zero ticks), drop incomplete entries so they don't bias eviction.
+        var removedInvalid = false;
+        foreach (var threadId in _lastWeightedToolNamesByThreadId.Keys.ToArray()) {
+            if (!_lastWeightedToolSubsetSeenUtcTicks.TryGetValue(threadId, out var ticks) || ticks <= 0) {
+                _lastWeightedToolNamesByThreadId.Remove(threadId);
+                _lastWeightedToolSubsetSeenUtcTicks.Remove(threadId);
+                removedInvalid = true;
+            }
+        }
+        foreach (var threadId in _lastUserIntentByThreadId.Keys.ToArray()) {
+            if (!_lastUserIntentSeenUtcTicks.TryGetValue(threadId, out var ticks) || ticks <= 0) {
+                _lastUserIntentByThreadId.Remove(threadId);
+                _lastUserIntentSeenUtcTicks.Remove(threadId);
+                removedInvalid = true;
+            }
+        }
+        if (removedInvalid) {
+            weightedRemoveCount = _lastWeightedToolNamesByThreadId.Count - MaxTrackedWeightedRoutingContexts;
+            intentRemoveCount = _lastUserIntentByThreadId.Count - MaxTrackedUserIntentContexts;
+            removeCount = Math.Max(weightedRemoveCount, intentRemoveCount);
+            if (removeCount <= 0) {
+                return;
+            }
+        }
+
         var seenThreadIds = new HashSet<string>(_lastWeightedToolNamesByThreadId.Keys, StringComparer.Ordinal);
         foreach (var threadId in _lastUserIntentByThreadId.Keys) {
             seenThreadIds.Add(threadId);
