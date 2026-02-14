@@ -74,8 +74,9 @@ internal static class UiShellAssets {
             ValidateJavaScriptContracts(js, diagnostics);
 
             if (string.IsNullOrWhiteSpace(template) || string.IsNullOrWhiteSpace(css) || string.IsNullOrWhiteSpace(js) || diagnostics.Count > 0) {
-                _cachedHtml = BuildFallbackHtml(diagnostics);
-                return _cachedHtml;
+                // Do not cache fallback diagnostics HTML. A transient startup packaging issue
+                // should recover automatically on the next Load() call once files are fixed.
+                return BuildFallbackHtml(diagnostics);
             }
 
             _cachedHtml = template
@@ -152,13 +153,8 @@ internal static class UiShellAssets {
                 return string.Empty;
             }
 
-            var extras = splitFiles
-                .Where(name => !manifest.Contains(name, StringComparer.OrdinalIgnoreCase))
-                .ToArray();
-            if (extras.Length > 0) {
-                diagnostics.Add($"{label} split files not listed in manifest: {string.Join(", ", extras)}");
-                return string.Empty;
-            }
+            // Ignore unknown split chunks to stay forward-compatible with packaging variations.
+            // We still compose only manifest files in explicit order for deterministic output.
 
             var parts = new List<string>(manifest.Count);
             foreach (var fileName in manifest) {
