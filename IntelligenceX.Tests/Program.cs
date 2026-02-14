@@ -380,6 +380,8 @@ internal static partial class Program {
             TestAnalyzeGateDuplicationOverallDeltaBlocksWhenIncreaseExceedsAllowed);
         failed += Run("Analyze gate duplication overall delta window mismatch unavailable",
             TestAnalyzeGateDuplicationOverallDeltaWindowMismatchIsUnavailable);
+        failed += Run("Analyze gate duplication overall delta uses baseline written by write-baseline",
+            TestAnalyzeGateDuplicationOverallDeltaUsesBaselineWrittenByWriteBaseline);
         failed += Run("Analyze gate duplication overall delta missing baseline unavailable",
             TestAnalyzeGateDuplicationOverallDeltaMissingBaselineIsUnavailable);
         failed += Run("Analyze gate duplication file delta blocks when increase exceeds allowed",
