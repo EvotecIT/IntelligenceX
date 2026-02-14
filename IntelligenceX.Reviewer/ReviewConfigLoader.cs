@@ -317,8 +317,8 @@ internal static class ReviewConfigLoader {
         if (contextDenyPatterns is not null) {
             settings.ContextDenyPatterns = contextDenyPatterns;
         }
-        settings.IncludeRelatedPrs = ReadBool(obj, "includeRelatedPrs", settings.IncludeRelatedPrs);
-        settings.IncludeRelatedPrs = ReadBool(obj, "includeRelatedPullRequests", settings.IncludeRelatedPrs);
+        var includeRelatedPrs = ReadBool(obj, "includeRelatedPullRequests", settings.IncludeRelatedPrs);
+        settings.IncludeRelatedPrs = ReadBool(obj, "includeRelatedPrs", includeRelatedPrs);
         settings.RelatedPrsQuery = obj.GetString("relatedPrsQuery") ?? settings.RelatedPrsQuery;
         settings.MaxRelatedPrs = ReadInt(obj, "maxRelatedPrs", settings.MaxRelatedPrs);
     }

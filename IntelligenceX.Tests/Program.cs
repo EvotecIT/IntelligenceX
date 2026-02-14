@@ -462,6 +462,8 @@ internal static partial class Program {
             TestReviewConfigLoaderReadsOpenAiAccountRotationCamelCase);
         failed += Run("Review config loader reads legacy includeRelatedPullRequests alias",
             TestReviewConfigLoaderReadsLegacyIncludeRelatedPullRequestsAlias);
+        failed += Run("Review config loader prefers canonical includeRelatedPrs when both keys exist",
+            TestReviewConfigLoaderPrefersCanonicalIncludeRelatedPrsWhenBothKeysPresent);
         failed += Run("Review provider fallback env", TestReviewProviderFallbackEnv);
         failed += Run("Review provider fallback config", TestReviewProviderFallbackConfig);
         failed += Run("Review provider fallback plan", TestReviewProviderFallbackPlan);
