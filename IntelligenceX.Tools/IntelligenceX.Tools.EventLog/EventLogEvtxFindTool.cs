@@ -76,7 +76,8 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
         var logToken = string.IsNullOrWhiteSpace(logHint) ? null : logHint;
 
         var best = new List<EvtxFindFile>(Math.Min(64, maxResults));
-        var matchCount = 0;
+        // Counts all files that match filters, even if we don't keep them in `best` due to max_results.
+        var totalMatches = 0;
         var scannedDirs = 0;
         var scannedFiles = 0;
         var hitScanBudget = false;
@@ -132,7 +133,7 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                             FileName: info.Name,
                             SizeBytes: info.Length,
                             LastWriteTimeUtc: info.LastWriteTimeUtc);
-                        matchCount++;
+                        totalMatches++;
                         ConsiderCandidate(best, candidate, maxResults);
                     } catch (Exception ex) when (
                         ex is UnauthorizedAccessException or FileNotFoundException or PathTooLongException or IOException) {
@@ -171,7 +172,7 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             }
         }
 
-        var truncated = matchCount > maxResults;
+        var truncated = totalMatches > maxResults;
         var selected = best;
 
         var result = new EvtxFindResult(
@@ -201,7 +202,7 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             metaMutate: meta => {
                 meta["scanned_directories"] = JsonValue.From(scannedDirs);
                 meta["scan_budget_hit"] = JsonValue.From(hitScanBudget);
-                meta["match_count"] = JsonValue.From(matchCount);
+                meta["total_matches"] = JsonValue.From(totalMatches);
             },
             columns: new[] {
                 new ToolColumn("file_name", "File", "string"),
