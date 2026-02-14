@@ -1494,7 +1494,7 @@ internal sealed class ChatServiceSession {
             string? oldestThreadId = null;
             long oldestTicks = long.MaxValue;
             foreach (var pair in _lastWeightedToolNamesByThreadId) {
-                var ticks = _lastWeightedToolSubsetSeenUtcTicks.TryGetValue(pair.Key, out var value)
+                var ticks = _lastWeightedToolSubsetSeenUtcTicks.TryGetValue(pair.Key, out var value) && value > 0
                     ? value
                     : long.MinValue;
 
@@ -1532,13 +1532,13 @@ internal sealed class ChatServiceSession {
                 var stats = pair.Value;
                 var candidateTicks = stats.LastUsedUtcTicks > 0
                     ? stats.LastUsedUtcTicks
-                    : stats.LastSuccessUtcTicks;
-                if (candidateTicks >= oldestTicks) {
-                    continue;
+                    : (stats.LastSuccessUtcTicks > 0 ? stats.LastSuccessUtcTicks : long.MinValue);
+                if (oldestToolName is null
+                    || candidateTicks < oldestTicks
+                    || (candidateTicks == oldestTicks && string.CompareOrdinal(pair.Key, oldestToolName) < 0)) {
+                    oldestTicks = candidateTicks;
+                    oldestToolName = pair.Key;
                 }
-
-                oldestTicks = candidateTicks;
-                oldestToolName = pair.Key;
             }
 
             if (string.IsNullOrWhiteSpace(oldestToolName)) {
