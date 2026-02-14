@@ -31,6 +31,8 @@ public sealed partial class MainWindow : Window {
     private const bool SafeDefaultParallelTools = true;
     private const int SafeDefaultTurnTimeoutSeconds = 180;
     private const int SafeDefaultToolTimeoutSeconds = 60;
+    private static readonly StringComparer MemoryTokenComparer = StringComparer.OrdinalIgnoreCase;
+    private static readonly Regex MemoryTokenSplitRegex = new(@"[^\p{L}\p{Nd}_]+", RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private void ReplaceLastAssistantText(string text) {
         ReplaceLastAssistantText(GetActiveConversation(), text);
@@ -469,7 +471,7 @@ public sealed partial class MainWindow : Window {
             var normalizedFactText = text.ToLowerInvariant();
             var score = fact.Weight * 1.4d;
             var semanticHits = 0;
-            var matchedTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var matchedTokens = new HashSet<string>(MemoryTokenComparer);
 
             if (lowerText.Length > 0
                 && (lowerText.Contains(normalizedFactText, StringComparison.Ordinal)
@@ -591,14 +593,14 @@ public sealed partial class MainWindow : Window {
     }
 
     private static HashSet<string> TokenizeMemorySemanticText(string text) {
-        var tokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var tokens = new HashSet<string>(MemoryTokenComparer);
         if (string.IsNullOrWhiteSpace(text)) {
             return tokens;
         }
 
-        var parts = Regex.Split(text, @"[^\p{L}\p{Nd}_]+");
+        var parts = MemoryTokenSplitRegex.Split(text.Normalize(NormalizationForm.FormKC));
         for (var i = 0; i < parts.Length; i++) {
-            var token = (parts[i] ?? string.Empty).Trim().ToLowerInvariant();
+            var token = NormalizeMemoryToken(parts[i]);
             if (token.Length < 3 || MemoryTokenStopWords.Contains(token)) {
                 continue;
             }
@@ -614,12 +616,27 @@ public sealed partial class MainWindow : Window {
             return 0;
         }
 
-        var matches = 0;
-        foreach (var token in candidateTokens) {
-            if (!userTokens.Contains(token)) {
+        var normalizedUserTokens = new HashSet<string>(MemoryTokenComparer);
+        foreach (var token in userTokens) {
+            var normalizedUserToken = NormalizeMemoryToken(token);
+            if (normalizedUserToken.Length == 0) {
                 continue;
             }
-            if (seen.Add(token)) {
+
+            normalizedUserTokens.Add(normalizedUserToken);
+        }
+
+        if (normalizedUserTokens.Count == 0) {
+            return 0;
+        }
+
+        var matches = 0;
+        foreach (var token in candidateTokens) {
+            var normalizedToken = NormalizeMemoryToken(token);
+            if (normalizedToken.Length == 0 || !normalizedUserTokens.Contains(normalizedToken)) {
+                continue;
+            }
+            if (seen.Add(normalizedToken)) {
                 matches++;
             }
         }
@@ -627,7 +644,15 @@ public sealed partial class MainWindow : Window {
         return matches;
     }
 
-    private static readonly HashSet<string> MemoryTokenStopWords = new(StringComparer.OrdinalIgnoreCase) {
+    private static string NormalizeMemoryToken(string? token) {
+        if (string.IsNullOrWhiteSpace(token)) {
+            return string.Empty;
+        }
+
+        return token.Normalize(NormalizationForm.FormKC).Trim();
+    }
+
+    private static readonly HashSet<string> MemoryTokenStopWords = new(MemoryTokenComparer) {
         "the", "and", "with", "from", "that", "this", "for", "you", "your", "have", "show", "give", "list",
         "check", "please", "about", "into", "just", "today", "need", "want", "when", "what", "where", "then",
         "them", "they", "their", "there", "after", "before", "will", "should", "would", "could", "also", "been",
