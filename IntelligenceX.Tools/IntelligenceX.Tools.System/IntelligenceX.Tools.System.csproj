@@ -20,7 +20,7 @@
     <ProjectReference Include="..\IntelligenceX.Tools.Common\IntelligenceX.Tools.Common.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="System.ServiceProcess.ServiceController" Version="9.0.0" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="9.0.13" />
   </ItemGroup>
   <ItemGroup>
     <!-- System tools are engine-first and rely on ComputerX on Windows. -->
