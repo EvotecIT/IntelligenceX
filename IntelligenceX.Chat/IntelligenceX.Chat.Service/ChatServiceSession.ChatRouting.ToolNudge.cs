@@ -392,7 +392,8 @@ internal sealed partial class ChatServiceSession {
             if (char.IsLetterOrDigit(ch)) {
                 if (!inToken) {
                     tokenCount++;
-                    if (tokenCount >= maxTokens) {
+                    if (tokenCount > maxTokens) {
+                        // Returning maxTokens+1 preserves "over limit" signal for callers.
                         return tokenCount;
                     }
                     inToken = true;

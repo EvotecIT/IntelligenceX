@@ -20,6 +20,9 @@ public sealed class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo LooksLikeContinuationFollowUpMethod =
         typeof(ChatServiceSession).GetMethod("LooksLikeContinuationFollowUp", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("LooksLikeContinuationFollowUp not found.");
+    private static readonly MethodInfo CountLetterDigitTokensMethod =
+        typeof(ChatServiceSession).GetMethod("CountLetterDigitTokens", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("CountLetterDigitTokens not found.");
     private static readonly MethodInfo ShouldAttemptToolExecutionNudgeMethod =
         typeof(ChatServiceSession).GetMethod("ShouldAttemptToolExecutionNudge", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldAttemptToolExecutionNudge not found.");
@@ -136,6 +139,18 @@ public sealed class ChatServiceRoutingTrimTests {
     public void LooksLikeContinuationFollowUp_RecognizesCompactFollowUpsAcrossLanguages(string userText) {
         var result = LooksLikeContinuationFollowUpMethod.Invoke(null, new object?[] { userText });
         Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void CountLetterDigitTokens_ReturnsMaxPlusOneWhenOverLimit() {
+        var twelve = "a b c d e f g h i j k l";
+        var thirteen = "a b c d e f g h i j k l m";
+
+        var result12 = CountLetterDigitTokensMethod.Invoke(null, new object?[] { twelve, 12 });
+        Assert.Equal(12, Assert.IsType<int>(result12));
+
+        var result13 = CountLetterDigitTokensMethod.Invoke(null, new object?[] { thirteen, 12 });
+        Assert.Equal(13, Assert.IsType<int>(result13));
     }
 
     [Fact]
