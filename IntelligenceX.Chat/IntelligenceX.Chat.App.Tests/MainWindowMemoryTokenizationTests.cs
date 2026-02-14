@@ -75,6 +75,20 @@ public sealed class MainWindowMemoryTokenizationTests {
     }
 
     /// <summary>
+    /// Ensures locale-sensitive dotted-I forms still overlap after canonical token normalization.
+    /// </summary>
+    [Fact]
+    public void CountNewTokenMatches_MatchesTurkishDottedIForms() {
+        var userTokens = InvokeTokenize("istanbul replication");
+        var candidateTokens = InvokeTokenize("İSTANBUL health");
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var overlap = InvokeCountNewTokenMatches(userTokens, candidateTokens, seen);
+
+        Assert.Equal(1, overlap);
+    }
+
+    /// <summary>
     /// Ensures recency normalization preserves UTC timestamps without alteration.
     /// </summary>
     [Fact]

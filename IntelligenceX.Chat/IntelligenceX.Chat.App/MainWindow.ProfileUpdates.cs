@@ -459,13 +459,13 @@ public sealed partial class MainWindow : Window {
             return Array.Empty<string>();
         }
 
-        var lowerText = (userText ?? string.Empty).Trim().ToLowerInvariant();
-        if (lowerText.Length == 0) {
+        var normalizedUserText = (userText ?? string.Empty).Trim();
+        if (normalizedUserText.Length == 0) {
             return BuildPersistentMemoryLinesForEmptyQuery(facts);
         }
 
         var nowUtc = DateTime.UtcNow;
-        var userTokens = TokenizeMemorySemanticText(lowerText);
+        var userTokens = TokenizeMemorySemanticText(normalizedUserText);
         var scoredFacts = new List<ScoredMemoryFact>(facts.Count);
 
         foreach (var fact in facts) {
@@ -474,19 +474,18 @@ public sealed partial class MainWindow : Window {
                 continue;
             }
 
-            var normalizedFactText = text.ToLowerInvariant();
             var score = fact.Weight * 1.4d;
             var semanticHits = 0;
             var matchedTokens = new HashSet<string>(MemoryTokenComparer);
 
-            if (lowerText.Length > 0
-                && (lowerText.Contains(normalizedFactText, StringComparison.Ordinal)
-                    || normalizedFactText.Contains(lowerText, StringComparison.Ordinal))) {
+            if (normalizedUserText.Length > 0
+                && (normalizedUserText.Contains(text, StringComparison.OrdinalIgnoreCase)
+                    || text.Contains(normalizedUserText, StringComparison.OrdinalIgnoreCase))) {
                 score += 2.25d;
                 semanticHits += 2;
             }
 
-            var factTokens = TokenizeMemorySemanticText(normalizedFactText);
+            var factTokens = TokenizeMemorySemanticText(text);
             var factTokenOverlap = CountNewTokenMatches(userTokens, factTokens, matchedTokens);
             if (factTokenOverlap > 0) {
                 score += Math.Min(5d, factTokenOverlap * 1.35d);
@@ -495,12 +494,12 @@ public sealed partial class MainWindow : Window {
 
             var tags = fact.Tags ?? Array.Empty<string>();
             for (var i = 0; i < tags.Length; i++) {
-                var tag = (tags[i] ?? string.Empty).Trim().ToLowerInvariant();
+                var tag = (tags[i] ?? string.Empty).Trim();
                 if (tag.Length == 0) {
                     continue;
                 }
 
-                if (lowerText.Length > 0 && lowerText.Contains(tag, StringComparison.Ordinal)) {
+                if (normalizedUserText.Length > 0 && normalizedUserText.Contains(tag, StringComparison.OrdinalIgnoreCase)) {
                     score += 1.1d;
                     semanticHits++;
                 }
@@ -690,7 +689,23 @@ public sealed partial class MainWindow : Window {
             return string.Empty;
         }
 
-        return token.Normalize(NormalizationForm.FormKC).Trim();
+        var normalized = token.Normalize(NormalizationForm.FormKC).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        var decomposed = normalized.Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(decomposed.Length);
+        for (var i = 0; i < decomposed.Length; i++) {
+            var category = CharUnicodeInfo.GetUnicodeCategory(decomposed[i]);
+            if (category is UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark or UnicodeCategory.EnclosingMark) {
+                continue;
+            }
+
+            builder.Append(decomposed[i]);
+        }
+
+        return builder.ToString().Normalize(NormalizationForm.FormKC).ToLowerInvariant();
     }
 
     private static readonly HashSet<string> MemoryTokenStopWords = new(MemoryTokenComparer) {
