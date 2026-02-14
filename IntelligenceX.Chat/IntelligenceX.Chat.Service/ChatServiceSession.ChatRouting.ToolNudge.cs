@@ -48,7 +48,7 @@ internal sealed partial class ChatServiceSession {
 
         var asksAnotherQuestion = draft.Contains('?', StringComparison.Ordinal);
         if (asksAnotherQuestion) {
-            return true;
+            return echoedCallToAction || AssistantDraftReferencesUserRequest(request, draft);
         }
 
         // Language-agnostic "acknowledgement-like" draft: short, no structured output, no numeric evidence.
@@ -74,7 +74,7 @@ internal sealed partial class ChatServiceSession {
 
         // Avoid overriding already-good short completions (for example "You're welcome.").
         // Only retry tool execution when the assistant draft still appears tied to the user's follow-up.
-        return AssistantDraftReferencesUserRequest(request, draft);
+        return echoedCallToAction || AssistantDraftReferencesUserRequest(request, draft);
     }
 
     private static bool UserMatchesAssistantCallToAction(string userRequest, string assistantDraft) {

@@ -204,6 +204,18 @@ public sealed class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerOnUnlinkedQuestionDraft() {
+        var userRequest = "run now";
+        var assistantDraft = "Are you sure?";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, true });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
     public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForExplicitCapabilityBlocker() {
         var userRequest = "Get top 5 events from ADO system log.";
         var assistantDraft = "I can't query remote ADO live logs directly without machine access.";
