@@ -742,10 +742,17 @@ public sealed partial class MainWindow : Window {
 
     private async Task PublishOptionsStateSafeAsync() {
         try {
-            await PublishOptionsStateAsync().ConfigureAwait(true);
+            await RunOnUiThreadAsync(() => PublishOptionsStateAsync()).ConfigureAwait(false);
         } catch (Exception ex) {
             if (VerboseServiceLogs || _debugMode) {
-                AppendSystem("Options refresh failed: " + ex.Message);
+                try {
+                    await RunOnUiThreadAsync(() => {
+                        AppendSystem("Options refresh failed: " + ex.Message);
+                        return Task.CompletedTask;
+                    }).ConfigureAwait(false);
+                } catch {
+                    // best-effort logging only
+                }
             }
         }
     }
