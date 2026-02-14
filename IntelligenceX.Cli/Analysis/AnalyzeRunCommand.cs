@@ -319,8 +319,10 @@ internal static partial class AnalyzeRunCommand {
                     }
 
                     // Invalid explicit values (for example "--strict maybe") must fail.
-                    // If the next token is another known option, keep implicit "--strict=true".
-                    if (!IsAnalyzeRunOptionToken(strictCandidate)) {
+                    // If the next token starts with "-" we treat it as another option token and let
+                    // the main argument parser validate/flag it (for example unknown options).
+                    if (!strictCandidate.StartsWith("-", StringComparison.Ordinal) &&
+                        !IsAnalyzeRunOptionToken(strictCandidate)) {
                         error = $"Invalid value for --strict: {strictCandidate}. Expected true|false.";
                         return false;
                     }

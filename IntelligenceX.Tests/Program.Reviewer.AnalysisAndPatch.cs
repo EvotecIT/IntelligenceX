@@ -94,6 +94,12 @@ internal static partial class Program {
         AssertEqual(1, exit, "analyze run --strict invalid explicit value fails");
     }
 
+    private static void TestAnalyzeRunStrictUnknownOptionFailsAsUnknownArgument() {
+        var (exit, output) = RunAnalyzeAndCaptureOutput(new[] { "run", "--strict", "--unknown" });
+        AssertEqual(1, exit, "analyze run --strict with unknown option exits failure");
+        AssertContainsText(output, "Unknown argument: --unknown", "analyze run --strict unknown option error");
+    }
+
     private static void TestAnalyzeRunStrictFlagAllowsKnownOptionLookaheadWithDashValue() {
         var exit = RunAnalyzeRunWithMissingDotnet(
             strict: false,

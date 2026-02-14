@@ -405,6 +405,8 @@ internal static partial class Program {
             TestAnalyzeRunStrictFlagDoesNotConsumeFollowingOption);
         failed += Run("Analyze run strict invalid explicit value fails",
             TestAnalyzeRunStrictFlagInvalidExplicitValueFails);
+        failed += Run("Analyze run strict unknown option fails as unknown argument",
+            TestAnalyzeRunStrictUnknownOptionFailsAsUnknownArgument);
         failed += Run("Analyze run strict keeps known option lookahead with dash-prefixed value",
             TestAnalyzeRunStrictFlagAllowsKnownOptionLookaheadWithDashValue);
         failed += Run("Analyze run pack override skips configured csharp runner failure",
