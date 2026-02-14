@@ -884,6 +884,18 @@ internal static partial class Program {
             AssertEqual(true, File.Exists(baselinePath), "analyze gate write baseline file snapshots baseline exists");
             var content = File.ReadAllText(baselinePath);
             AssertContainsText(content, ".intelligencex/duplication-file", "analyze gate write baseline includes duplication file snapshots");
+
+            var ok = IntelligenceX.Cli.Analysis.AnalyzeGateBaseline.TryLoadDuplicationFileBaselines(
+                baselinePath,
+                out var baselines,
+                out var error);
+            AssertEqual(true, ok, "analyze gate write baseline file snapshots baseline loads");
+            AssertEqual(true, string.IsNullOrWhiteSpace(error), "analyze gate write baseline file snapshots baseline load error empty");
+            AssertEqual(true, baselines.Count > 0, "analyze gate write baseline file snapshots baseline has entries");
+
+            var firstFingerprint = baselines.Values.First().Fingerprint ?? string.Empty;
+            AssertEqual(true, firstFingerprint.Contains(":file:", StringComparison.OrdinalIgnoreCase),
+                "analyze gate write baseline file snapshots fingerprint includes file prefix");
         } finally {
             Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
             if (Directory.Exists(temp)) {
