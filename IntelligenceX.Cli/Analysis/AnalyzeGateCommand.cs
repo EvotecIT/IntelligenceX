@@ -308,6 +308,7 @@ internal static partial class AnalyzeGateCommand {
                 }
             } else {
                 var allowedIncrease = analysisSettings.Gate.Duplication.MaxOverallPercentIncrease!.Value;
+                var windowMismatch = 0;
                 foreach (var current in duplicationEvaluation.OverallSnapshots ?? Array.Empty<DuplicationOverallSnapshot>()) {
                     if (current.SignificantLines <= 0) {
                         continue;
@@ -316,6 +317,15 @@ internal static partial class AnalyzeGateCommand {
                     if (!baselineOverallByRule.TryGetValue($"{current.RuleId}|{current.Scope}", out var baseline)) {
                         Console.WriteLine(
                             $"Static analysis duplication delta gate: unavailable (baseline missing overall snapshot for {current.RuleId} scope={current.Scope}).");
+                        if (analysisSettings.Gate.Duplication.FailOnUnavailable) {
+                            return Task.FromResult(ExitGateFailed);
+                        }
+                        continue;
+                    }
+                    if (baseline.WindowLines > 0 && baseline.WindowLines != current.WindowLines) {
+                        windowMismatch++;
+                        Console.WriteLine(
+                            $"Static analysis duplication delta gate: unavailable (baseline overall snapshot window mismatch for {current.RuleId} scope={current.Scope}: baseline={baseline.WindowLines} current={current.WindowLines}).");
                         if (analysisSettings.Gate.Duplication.FailOnUnavailable) {
                             return Task.FromResult(ExitGateFailed);
                         }
@@ -335,6 +345,10 @@ internal static partial class AnalyzeGateCommand {
                     var fingerprint = $"{current.RuleId}:overall-delta:{FormatPercent(baseline.DuplicatedPercent)}->{FormatPercent(current.DuplicatedPercent)}:allow:+{FormatPercent(allowedIncrease)}:scope:{current.Scope}";
                     duplicationViolations.Add(new AnalysisFinding(DuplicationOverallDeltaPath, 0, message, "warning", current.RuleId, current.Tool,
                         fingerprint));
+                }
+                if (windowMismatch > 0) {
+                    Console.WriteLine(
+                        $"Static analysis duplication delta gate: baseline window mismatch for {windowMismatch} overall snapshot(s) (skipped).");
                 }
             }
         }

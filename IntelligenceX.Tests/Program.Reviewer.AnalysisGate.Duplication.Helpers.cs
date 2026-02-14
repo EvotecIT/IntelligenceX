@@ -13,7 +13,7 @@ internal static partial class Program {
 
     private static void WriteDuplicationMetrics(string metricsPath, double duplicatedPercent, int duplicatedLines,
         int significantLines, int firstLine, string fingerprint, string findingPath = "src/test.cs",
-        double configuredMaxPercent = 25, double? fileConfiguredMaxPercent = null) {
+        double configuredMaxPercent = 25, double? fileConfiguredMaxPercent = null, int windowLines = 8) {
         File.WriteAllText(metricsPath, $$"""
 {
   "schema": "intelligencex.duplication.v1",
@@ -21,7 +21,7 @@ internal static partial class Program {
     {
       "ruleId": "IXDUP001",
       "tool": "IntelligenceX.Maintainability",
-      "windowLines": 8,
+      "windowLines": {{windowLines}},
       "configuredMaxPercent": {{configuredMaxPercent}},
       "totalSignificantLines": {{significantLines}},
       "duplicatedSignificantLines": {{duplicatedLines}},
@@ -44,4 +44,3 @@ internal static partial class Program {
     }
 }
 #endif
-

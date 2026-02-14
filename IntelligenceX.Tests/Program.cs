@@ -378,10 +378,14 @@ internal static partial class Program {
         failed += Run("Analyze gate duplication new-only suppresses baseline finding", TestAnalyzeGateDuplicationNewOnlySuppressesBaselineFindings);
         failed += Run("Analyze gate duplication overall delta blocks when increase exceeds allowed",
             TestAnalyzeGateDuplicationOverallDeltaBlocksWhenIncreaseExceedsAllowed);
+        failed += Run("Analyze gate duplication overall delta window mismatch unavailable",
+            TestAnalyzeGateDuplicationOverallDeltaWindowMismatchIsUnavailable);
         failed += Run("Analyze gate duplication overall delta missing baseline unavailable",
             TestAnalyzeGateDuplicationOverallDeltaMissingBaselineIsUnavailable);
         failed += Run("Analyze gate duplication file delta blocks when increase exceeds allowed",
             TestAnalyzeGateDuplicationFileDeltaBlocksWhenIncreaseExceedsAllowed);
+        failed += Run("Analyze gate duplication overall baseline skips null items", TestAnalyzeGateDuplicationOverallBaselineSkipsNullItems);
+        failed += Run("Analyze gate duplication file baseline skips null items", TestAnalyzeGateDuplicationFileBaselineSkipsNullItems);
         failed += Run("Analyze gate duplication file baseline loads paths with colon",
             TestAnalyzeGateDuplicationFileBaselineLoadsPathsWithColon);
         failed += Run("Analyze gate duplication file baseline loads paths containing scope suffix tokens",

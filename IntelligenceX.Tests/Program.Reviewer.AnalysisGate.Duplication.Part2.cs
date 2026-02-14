@@ -306,6 +306,153 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalyzeGateDuplicationOverallBaselineSkipsNullItems() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-dup-overall-null-items-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var baselinePath = Path.Combine(temp, "analysis-baseline.json");
+            File.WriteAllText(baselinePath, """
+{
+  "schema": "intelligencex.analysis-baseline.v1",
+  "items": [
+    null,
+    {
+      "path": ".intelligencex/duplication-overall",
+      "line": 0,
+      "severity": "info",
+      "ruleId": "IXDUP001",
+      "tool": "IntelligenceX.Maintainability",
+      "fingerprint": "IXDUP001:overall:10:100:8"
+    }
+  ]
+}
+""");
+
+            var ok = IntelligenceX.Cli.Analysis.AnalyzeGateBaseline.TryLoadDuplicationOverallBaselines(
+                baselinePath,
+                out var baselines,
+                out var error);
+            AssertEqual(true, ok, "duplication overall baseline skips null items ok");
+            AssertEqual(true, string.IsNullOrWhiteSpace(error), "duplication overall baseline skips null items error empty");
+            AssertEqual(true, baselines.ContainsKey("IXDUP001|all"), "duplication overall baseline skips null items key exists");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalyzeGateDuplicationFileBaselineSkipsNullItems() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-dup-file-null-items-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try {
+            var baselinePath = Path.Combine(temp, "analysis-baseline.json");
+            File.WriteAllText(baselinePath, """
+{
+  "schema": "intelligencex.analysis-baseline.v1",
+  "items": [
+    null,
+    {
+      "path": ".intelligencex/duplication-file",
+      "line": 0,
+      "severity": "info",
+      "ruleId": "IXDUP001",
+      "tool": "IntelligenceX.Maintainability",
+      "fingerprint": "IXDUP001:file-uri:src%2Ftest.cs:20:100:8"
+    }
+  ]
+}
+""");
+
+            var ok = IntelligenceX.Cli.Analysis.AnalyzeGateBaseline.TryLoadDuplicationFileBaselines(
+                baselinePath,
+                out var baselines,
+                out var error);
+            AssertEqual(true, ok, "duplication file baseline skips null items ok");
+            AssertEqual(true, string.IsNullOrWhiteSpace(error), "duplication file baseline skips null items error empty");
+            AssertEqual(true, baselines.ContainsKey("IXDUP001|all|src/test.cs"), "duplication file baseline skips null items key exists");
+        } finally {
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
+    private static void TestAnalyzeGateDuplicationOverallDeltaWindowMismatchIsUnavailable() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-dup-overall-window-mismatch-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            SeedMinimalGateCatalog(temp);
+            Directory.CreateDirectory(Path.Combine(temp, "artifacts"));
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+
+            WriteEmptyFindings(Path.Combine(temp, "artifacts", "intelligencex.findings.json"));
+
+            // Current metrics have a different window size than the stored baseline snapshot fingerprint.
+            WriteDuplicationMetrics(
+                Path.Combine(temp, "artifacts", "intelligencex.duplication.json"),
+                duplicatedPercent: 11,
+                duplicatedLines: 11,
+                significantLines: 100,
+                firstLine: 12,
+                fingerprint: "ixdup-fp-delta-window-mismatch",
+                windowLines: 9);
+
+            File.WriteAllText(Path.Combine(temp, ".intelligencex", "analysis-baseline.json"), """
+{
+  "schema": "intelligencex.analysis-baseline.v1",
+  "items": [
+    {
+      "path": ".intelligencex/duplication-overall",
+      "line": 0,
+      "severity": "info",
+      "ruleId": "IXDUP001",
+      "tool": "IntelligenceX.Maintainability",
+      "fingerprint": "IXDUP001:overall:10:100:8"
+    }
+  ]
+}
+""");
+
+            var configPath = Path.Combine(temp, ".intelligencex", "reviewer.json");
+            File.WriteAllText(configPath, """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["all-50"],
+    "gate": {
+      "enabled": true,
+      "baselinePath": ".intelligencex/analysis-baseline.json",
+      "failOnUnavailable": true,
+      "duplication": {
+        "enabled": true,
+        "metricsPath": "artifacts/intelligencex.duplication.json",
+        "ruleIds": ["IXDUP001"],
+        "maxOverallPercentIncrease": 10,
+        "failOnUnavailable": true
+      }
+    },
+    "results": { "inputs": ["artifacts/intelligencex.findings.json"] }
+  }
+}
+""");
+
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+            var exit = IntelligenceX.Cli.Analysis.AnalyzeRunner.RunAsync(new[] {
+                "gate",
+                "--workspace", temp,
+                "--config", configPath
+            }).GetAwaiter().GetResult();
+            AssertEqual(2, exit, "analyze gate duplication overall delta window mismatch unavailable");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
+
     private static void TestAnalyzeGateDuplicationFileBaselineLoadsPathsContainingScopeSuffixTokens() {
         var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-dup-file-baseline-scope-in-path-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);

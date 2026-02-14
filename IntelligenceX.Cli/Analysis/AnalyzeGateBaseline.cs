@@ -105,6 +105,9 @@ internal static class AnalyzeGateBaseline {
         }
 
         foreach (var item in items) {
+            if (item is null) {
+                continue;
+            }
             var obj = item.AsObject();
             if (obj is null) {
                 continue;
@@ -197,7 +200,8 @@ internal static class AnalyzeGateBaseline {
             if (string.IsNullOrWhiteSpace(fingerprint)) {
                 continue;
             }
-            if (!TryParseDuplicationOverallFingerprint(fingerprint, out var duplicated, out var significant, out var scope)) {
+            if (!TryParseDuplicationOverallFingerprint(fingerprint, out var duplicated, out var significant, out var windowLines,
+                    out var scope)) {
                 continue;
             }
             if (significant <= 0) {
@@ -205,7 +209,7 @@ internal static class AnalyzeGateBaseline {
             }
             var percent = Math.Round((duplicated * 100.0) / significant, 2, MidpointRounding.AwayFromZero);
             var key = $"{ruleId}|{scope}";
-            baselines[key] = new DuplicationOverallBaseline(ruleId, scope, significant, duplicated, percent, fingerprint);
+            baselines[key] = new DuplicationOverallBaseline(ruleId, scope, significant, duplicated, percent, windowLines, fingerprint);
         }
 
         return true;
@@ -243,6 +247,9 @@ internal static class AnalyzeGateBaseline {
         }
 
         foreach (var item in items) {
+            if (item is null) {
+                continue;
+            }
             var obj = item.AsObject();
             if (obj is null) {
                 continue;
@@ -276,12 +283,13 @@ internal static class AnalyzeGateBaseline {
     }
 
     private static bool TryParseDuplicationOverallFingerprint(string fingerprint, out int duplicatedLines, out int significantLines,
-        out string scope) {
+        out int windowLines, out string scope) {
         duplicatedLines = 0;
         significantLines = 0;
+        windowLines = 0;
         scope = "all";
         var tokens = (fingerprint ?? string.Empty).Split(':');
-        if (tokens.Length < 5) {
+        if (tokens.Length < 4) {
             return false;
         }
         if (!tokens[1].Equals("overall", StringComparison.OrdinalIgnoreCase)) {
@@ -294,8 +302,16 @@ internal static class AnalyzeGateBaseline {
             return false;
         }
 
+        // Optional windowLines was introduced later. Older baselines might not include it, or may place :scope:changed-files
+        // immediately after significantLines.
+        var scopeStartIndex = 4;
+        if (tokens.Length >= 5 && int.TryParse(tokens[4], out var parsedWindowLines) && parsedWindowLines >= 0) {
+            windowLines = parsedWindowLines;
+            scopeStartIndex = 5;
+        }
+
         // Default scope is "all" unless an explicit suffix exists.
-        for (var i = 4; i < tokens.Length - 1; i++) {
+        for (var i = scopeStartIndex; i < tokens.Length - 1; i++) {
             if (tokens[i].Equals("scope", StringComparison.OrdinalIgnoreCase) &&
                 tokens[i + 1].Equals("changed-files", StringComparison.OrdinalIgnoreCase)) {
                 scope = "changed-files";
@@ -452,6 +468,7 @@ internal static class AnalyzeGateBaseline {
         int SignificantLines,
         int DuplicatedLines,
         double DuplicatedPercent,
+        int WindowLines,
         string Fingerprint);
 
     public sealed record DuplicationFileBaseline(
