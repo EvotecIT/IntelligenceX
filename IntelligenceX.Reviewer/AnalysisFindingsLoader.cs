@@ -530,9 +530,7 @@ internal static class AnalysisFindingsLoader {
         var candidate = Path.TrimEndingDirectorySeparator(candidateFullPath)
             .Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
 
-        var comparison = OperatingSystem.IsWindows()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
+        var comparison = GetPathComparison();
 
         if (string.Equals(candidate, root, comparison)) {
             return true;
@@ -541,6 +539,13 @@ internal static class AnalysisFindingsLoader {
         // Separator-aware prefix to avoid /repo2 matching /repo.
         var prefix = root + Path.DirectorySeparatorChar;
         return candidate.StartsWith(prefix, comparison);
+    }
+
+    private static StringComparison GetPathComparison() {
+        // Windows paths are case-insensitive by default; Unix-style paths are case-sensitive.
+        return Path.DirectorySeparatorChar == '\\'
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
     }
 
     private static IEnumerable<JsonObject> EnumerateObjects(JsonArray? array) {

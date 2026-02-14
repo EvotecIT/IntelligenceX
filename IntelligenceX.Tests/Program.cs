@@ -323,6 +323,10 @@ internal static partial class Program {
         failed += Run("Analysis loader rejects sibling prefix paths", TestAnalysisFindingsLoaderWorkspaceBoundRejectsSiblingPrefix);
         failed += Run("Analysis loader does not relativize sibling-prefix absolute path",
             TestAnalysisFindingsLoaderDoesNotRelativizeSiblingPrefixAbsoluteFindingPath);
+        failed += Run("Analysis loader normalize path follows platform case semantics",
+            TestAnalysisFindingsLoaderNormalizePathCaseSensitivityByPlatform);
+        failed += Run("Analysis loader normalize path accepts mixed separators",
+            TestAnalysisFindingsLoaderNormalizePathAcceptsMixedSeparatorsWithinWorkspace);
         failed += Run("Analyze hotspots sync-state writes state file", TestAnalyzeHotspotsSyncStateWritesStateFile);
         failed += Run("Analyze hotspots help has no side effects", TestAnalyzeHotspotsHelpHasNoSideEffects);
         failed += Run("Analyze hotspots state path is workspace-bound", TestAnalyzeHotspotsStatePathIsWorkspaceBound);
