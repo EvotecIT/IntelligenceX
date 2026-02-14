@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using IntelligenceX.Chat.App;
 using Xunit;
 
@@ -36,10 +38,20 @@ public sealed class MainWindowMemoryTokenizationTests {
         BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("TryExtractMemoryFactFromRegex not found.");
 
+    private static readonly MethodInfo ClearPersistentMemoryAsyncMethod = typeof(MainWindow).GetMethod(
+        "ClearPersistentMemoryAsync",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("ClearPersistentMemoryAsync not found.");
+
     private static readonly FieldInfo MemoryRememberIntentRegexField = typeof(MainWindow).GetField(
         "MemoryRememberIntentRegex",
         BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("MemoryRememberIntentRegex not found.");
+
+    private static readonly FieldInfo AppStateField = typeof(MainWindow).GetField(
+        "_appState",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_appState field not found.");
 
     /// <summary>
     /// Ensures tokenization yields stable semantic tokens for precomposed/decomposed Unicode forms.
@@ -243,6 +255,25 @@ public sealed class MainWindowMemoryTokenizationTests {
 
         Assert.False(ok);
         Assert.Null(args[2]);
+    }
+
+    /// <summary>
+    /// Ensures null legacy memory-fact state short-circuits without throwing.
+    /// </summary>
+    [Fact]
+    public async Task ClearPersistentMemoryAsync_ReturnsWhenMemoryFactsNull() {
+        var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+        var state = new ChatAppState {
+            MemoryFacts = null!
+        };
+
+        AppStateField.SetValue(window, state);
+        var invocationResult = ClearPersistentMemoryAsyncMethod.Invoke(window, null);
+        var task = Assert.IsAssignableFrom<Task>(invocationResult);
+
+        await task;
+
+        Assert.Null(state.MemoryFacts);
     }
 
     private static HashSet<string> InvokeTokenize(string input) {

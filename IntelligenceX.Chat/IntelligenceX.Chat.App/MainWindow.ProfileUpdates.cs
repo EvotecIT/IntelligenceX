@@ -851,11 +851,13 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task ClearPersistentMemoryAsync() {
-        if (_appState.MemoryFacts is null || _appState.MemoryFacts.Count == 0) {
+        var facts = _appState.MemoryFacts;
+        if (facts is null || facts.Count == 0) {
             return;
         }
 
-        _appState.MemoryFacts = new List<ChatMemoryFactState>();
+        facts.Clear();
+        _appState.MemoryFacts = facts;
         await PublishOptionsStateAsync().ConfigureAwait(false);
         await PersistAppStateAsync().ConfigureAwait(false);
     }
