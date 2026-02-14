@@ -355,7 +355,14 @@ public static class AnalysisCatalogLoader {
         if (string.IsNullOrEmpty(path)) {
             return string.Empty;
         }
-        return path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var normalized = NormalizeDirectorySeparators(path);
+        var root = NormalizeDirectorySeparators(Path.GetPathRoot(normalized) ?? string.Empty);
+        var minLength = root.Length;
+        var end = normalized.Length;
+        while (end > minLength && IsDirectorySeparator(normalized[end - 1])) {
+            end--;
+        }
+        return end == normalized.Length ? normalized : normalized.Substring(0, end);
     }
 
     private static string NormalizeDirectorySeparators(string path) {
@@ -363,6 +370,10 @@ public static class AnalysisCatalogLoader {
             return path;
         }
         return path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+    }
+
+    private static bool IsDirectorySeparator(char value) {
+        return value == Path.DirectorySeparatorChar || value == Path.AltDirectorySeparatorChar;
     }
 
     private sealed class AnalysisRuleOverride {

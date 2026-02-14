@@ -299,6 +299,8 @@ internal static partial class Program {
             TestAnalysisCatalogLoaderUnderRootCaseSensitivityByPlatform);
         failed += Run("Analysis catalog loader root check accepts mixed separators",
             TestAnalysisCatalogLoaderUnderRootAcceptsMixedSeparators);
+        failed += Run("Analysis catalog loader trim preserves filesystem root",
+            TestAnalysisCatalogLoaderTrimPreservesFilesystemRoot);
         failed += Run("Analysis catalog validator detects invalid catalog", TestAnalysisCatalogValidatorDetectsInvalidCatalog);
         failed += Run("Analysis catalog validator detects missing rule metadata", TestAnalysisCatalogValidatorDetectsMissingRuleMetadata);
         failed += Run("Analysis packs: all-security includes PowerShell", TestAnalysisPacksAllSecurityIncludesPowerShell);

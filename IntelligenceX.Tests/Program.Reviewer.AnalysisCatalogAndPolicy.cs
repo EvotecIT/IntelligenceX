@@ -252,6 +252,27 @@ internal static partial class Program {
         }
     }
 
+    private static void TestAnalysisCatalogLoaderTrimPreservesFilesystemRoot() {
+        var flags = global::System.Reflection.BindingFlags.NonPublic | global::System.Reflection.BindingFlags.Static;
+        var trimMethod = typeof(IntelligenceX.Analysis.AnalysisCatalogLoader)
+            .GetMethod("TrimEndingDirectorySeparators", flags);
+        AssertNotNull(trimMethod, "analysis catalog loader trim helper exists");
+
+        var filesystemRoot = Path.GetPathRoot(Path.GetFullPath(Path.GetTempPath())) ?? string.Empty;
+        if (string.IsNullOrEmpty(filesystemRoot)) {
+            AssertEqual(true, true, "analysis catalog loader root trim setup");
+            return;
+        }
+
+        var trimmedRoot = (string)trimMethod!.Invoke(null, new object[] { filesystemRoot })!;
+        var paddedRoot = filesystemRoot + Path.DirectorySeparatorChar + Path.AltDirectorySeparatorChar;
+        var trimmedPaddedRoot = (string)trimMethod.Invoke(null, new object[] { paddedRoot })!;
+
+        AssertEqual(filesystemRoot, trimmedRoot, "analysis catalog loader trim preserves filesystem root");
+        AssertEqual(filesystemRoot, trimmedPaddedRoot,
+            "analysis catalog loader trim preserves filesystem root with trailing separators");
+    }
+
     private static string TogglePathCase(string path) {
         if (string.IsNullOrEmpty(path)) {
             return string.Empty;
