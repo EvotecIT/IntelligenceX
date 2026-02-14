@@ -1828,11 +1828,11 @@ internal sealed class ChatServiceSession {
         AddFailureSearchPart(parts, seen, output.Error);
         AppendFailureSearchContext(parts, seen, output.FailureJson);
         AppendFailureSearchContext(parts, seen, output.MetaJson);
-        AppendFailureSearchContext(parts, seen, output.Output);
+        AppendFailureSearchContext(parts, seen, output.Output, includeRawFallback: false);
         return parts.Count == 0 ? string.Empty : string.Join(" ", parts);
     }
 
-    private static void AppendFailureSearchContext(List<string> parts, HashSet<string> seen, string? rawText) {
+    private static void AppendFailureSearchContext(List<string> parts, HashSet<string> seen, string? rawText, bool includeRawFallback = true) {
         if (string.IsNullOrWhiteSpace(rawText)) {
             return;
         }
@@ -1841,7 +1841,9 @@ internal sealed class ChatServiceSession {
             return;
         }
 
-        AddFailureSearchPart(parts, seen, rawText);
+        if (includeRawFallback) {
+            AddFailureSearchPart(parts, seen, rawText);
+        }
     }
 
     private static bool TryAppendFailureJsonSignals(List<string> parts, HashSet<string> seen, string rawText) {
