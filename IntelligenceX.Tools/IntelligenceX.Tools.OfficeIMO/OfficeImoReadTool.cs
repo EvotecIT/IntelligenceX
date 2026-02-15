@@ -130,6 +130,14 @@ public sealed class OfficeImoReadTool : OfficeImoToolBase, ITool {
         }
 
         result.Warnings.Add("OfficeIMO.Reader is not available in this build (missing reference).");
+        result.FilesParsed = 0;
+        result.FilesSkipped = result.FilesScanned;
+        result.BytesRead = 0;
+        result.ChunksProduced = 0;
+        result.ChunksReturned = 0;
+        result.TokenEstimateReturned = 0;
+        result.Chunks.Clear();
+        result.Documents.Clear();
         var disabledSummary = ToolMarkdown.SummaryText(
             title: "OfficeIMO read",
             "Reader dependency is unavailable in this build.",
@@ -219,7 +227,13 @@ public sealed class OfficeImoReadTool : OfficeImoToolBase, ITool {
                 isTransient: false));
         }
 
-        var preview = BuildPreviewMarkdown(result.Chunks, maxChunks: 6, maxCharsPerChunk: 1800);
+        FinalizeResultCounters(result, includeFlatChunks, includeDocChunksInPayload);
+        var preview = BuildPreviewMarkdown(
+            chunks: result.Chunks,
+            documents: result.Documents,
+            includeDocumentChunks: includeDocChunksInPayload,
+            maxChunks: 6,
+            maxCharsPerChunk: 1800);
         var meta = ToolOutputHints.Meta(
                 count: includeFlatChunks ? result.Chunks.Count : result.Documents.Count,
                 truncated: result.Truncated)
@@ -258,9 +272,35 @@ public sealed class OfficeImoReadTool : OfficeImoToolBase, ITool {
 #endif
     }
 
-    private static string BuildPreviewMarkdown(IReadOnlyList<OfficeImoChunk> chunks, int maxChunks, int maxCharsPerChunk) {
+    private static string BuildPreviewMarkdown(
+        IReadOnlyList<OfficeImoChunk> chunks,
+        IReadOnlyList<OfficeImoDocument> documents,
+        bool includeDocumentChunks,
+        int maxChunks,
+        int maxCharsPerChunk) {
         if (chunks is null || chunks.Count == 0) {
-            return ToolMarkdown.SummaryText("Preview", "No chunks returned.");
+            if (includeDocumentChunks && documents != null) {
+                var projected = new List<OfficeImoChunk>();
+                for (var i = 0; i < documents.Count; i++) {
+                    var doc = documents[i];
+                    if (doc?.Chunks is null || doc.Chunks.Count == 0) continue;
+                    projected.AddRange(doc.Chunks);
+                    if (projected.Count >= maxChunks) break;
+                }
+                if (projected.Count > 0) {
+                    chunks = projected;
+                }
+            }
+
+            if (chunks is null || chunks.Count == 0) {
+                if (documents != null && documents.Count > 0) {
+                    return ToolMarkdown.SummaryText(
+                        "Preview",
+                        $"Returned {documents.Count} document record(s).",
+                        includeDocumentChunks ? "No chunk text available in preview." : "Per-document chunks were excluded (include_document_chunks=false).");
+                }
+                return ToolMarkdown.SummaryText("Preview", "No chunks returned.");
+            }
         }
 
         var take = Math.Clamp(maxChunks, 1, 25);
@@ -507,8 +547,6 @@ public sealed class OfficeImoReadTool : OfficeImoToolBase, ITool {
 
         officeDocument.ChunksReturned = returnedChunks;
         officeDocument.TokenEstimateReturned = returnedTokens;
-        result.ChunksReturned += returnedChunks;
-        result.TokenEstimateReturned += returnedTokens;
 
         if (includeDocuments) {
             result.Documents.Add(officeDocument);
@@ -537,6 +575,52 @@ public sealed class OfficeImoReadTool : OfficeImoToolBase, ITool {
             SourceLengthBytes = chunk.SourceLengthBytes,
             TokenEstimate = chunk.TokenEstimate
         };
+    }
+
+    private static int SumTokenEstimate(IReadOnlyList<OfficeImoChunk> chunks) {
+        if (chunks is null || chunks.Count == 0) return 0;
+        var total = 0;
+        for (var i = 0; i < chunks.Count; i++) {
+            total += chunks[i]?.TokenEstimate ?? 0;
+        }
+        return total;
+    }
+
+    private static void FinalizeResultCounters(
+        OfficeImoReadResult result,
+        bool includeFlatChunks,
+        bool includeDocumentChunks) {
+        if (result == null) return;
+
+        if (!includeFlatChunks && result.Chunks.Count > 0) {
+            result.Chunks.Clear();
+        }
+
+        var flatCount = result.Chunks.Count;
+        var flatTokens = SumTokenEstimate(result.Chunks);
+
+        var documentCount = 0;
+        var documentTokens = 0;
+        for (var i = 0; i < result.Documents.Count; i++) {
+            var doc = result.Documents[i];
+            if (doc == null) continue;
+
+            if (!includeDocumentChunks && doc.Chunks.Count > 0) {
+                doc.Chunks.Clear();
+            }
+
+            doc.ChunksReturned = doc.Chunks.Count;
+            doc.TokenEstimateReturned = SumTokenEstimate(doc.Chunks);
+
+            if (includeDocumentChunks) {
+                documentCount += doc.ChunksReturned;
+                documentTokens += doc.TokenEstimateReturned;
+            }
+        }
+
+        // Count actual chunk objects present in the payload shape.
+        result.ChunksReturned = flatCount + documentCount;
+        result.TokenEstimateReturned = flatTokens + documentTokens;
     }
 
     private sealed class FolderProgressState {

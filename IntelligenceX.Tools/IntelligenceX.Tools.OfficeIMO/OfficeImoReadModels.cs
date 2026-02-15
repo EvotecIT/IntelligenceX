@@ -63,12 +63,13 @@ public sealed class OfficeImoReadResult {
     public int ChunksProduced { get; set; }
 
     /// <summary>
-    /// Total chunks returned in this tool payload after output shaping caps.
+    /// Total chunk objects returned in this tool payload after output shaping caps.
+    /// In <c>both</c> mode this includes flat chunks plus per-document chunks.
     /// </summary>
     public int ChunksReturned { get; set; }
 
     /// <summary>
-    /// Aggregated token estimate across returned chunks (best-effort).
+    /// Aggregated token estimate across returned chunk objects (best-effort).
     /// </summary>
     public int TokenEstimateReturned { get; set; }
 }

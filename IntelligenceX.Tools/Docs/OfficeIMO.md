@@ -59,6 +59,7 @@
 - `warnings`: per-file warnings (skipped/unsupported/error)
 - `truncated`: indicates cap-based truncation
 - counters: `files_scanned`, `files_parsed`, `files_skipped`, `bytes_read`, `chunks_produced`, `chunks_returned`, `token_estimate_returned`
+  - `chunks_returned`/`token_estimate_returned` reflect chunk objects present in the payload shape; in `both` mode this includes flat chunks plus per-document chunks.
 - `meta`: includes `count`, caps, and output-shape counters
 - `summary_markdown`: compact preview of extracted chunks
 
