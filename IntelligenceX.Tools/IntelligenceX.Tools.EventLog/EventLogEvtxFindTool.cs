@@ -75,6 +75,16 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                 isTransient: false);
         }
 
+        try {
+            Options.Validate();
+        } catch (ArgumentOutOfRangeException ex) {
+            return ToolResponse.Error(
+                "invalid_configuration",
+                $"Event log tool options are invalid: {ex.Message}",
+                hints: new[] { "Fix configuration values for EventLogToolOptions and restart." },
+                isTransient: false);
+        }
+
         var query = (arguments?.GetString("query") ?? string.Empty).Trim();
         var logHint = (arguments?.GetString("log_name") ?? string.Empty).Trim();
         var maxResults = ToolArgs.GetCappedInt32(arguments, "max_results", MaxDefaultResults, 1, MaxMaxResults);
@@ -86,7 +96,7 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
         var tokenComparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
         var queryTokens = SplitTokens(query, tokenComparer);
-        var logToken = string.IsNullOrWhiteSpace(logHint) ? null : logHint;
+        var logTokens = SplitTokens(logHint, tokenComparer);
 
         var best = new List<EvtxFindFile>(Math.Min(64, maxResults));
         // Counts all files that match filters, even if we don't keep them in `best` due to max_results.
@@ -150,7 +160,7 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
 
                     scannedFiles++;
 
-                    if (!IsMatch(file, queryTokens, logToken, comparison)) {
+                    if (!IsMatch(file, queryTokens, logTokens, comparison)) {
                         continue;
                     }
 
@@ -384,7 +394,7 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
         return path;
     }
 
-    private static bool IsMatch(string path, IReadOnlyList<string> queryTokens, string? logHint, StringComparison comparison) {
+    private static bool IsMatch(string path, IReadOnlyList<string> queryTokens, IReadOnlyList<string> logTokens, StringComparison comparison) {
         var haystack = path;
         if (queryTokens.Count > 0) {
             for (var i = 0; i < queryTokens.Count; i++) {
@@ -394,9 +404,11 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(logHint)) {
-            if (haystack.IndexOf(logHint!, comparison) < 0) {
-                return false;
+        if (logTokens.Count > 0) {
+            for (var i = 0; i < logTokens.Count; i++) {
+                if (haystack.IndexOf(logTokens[i], comparison) < 0) {
+                    return false;
+                }
             }
         }
 

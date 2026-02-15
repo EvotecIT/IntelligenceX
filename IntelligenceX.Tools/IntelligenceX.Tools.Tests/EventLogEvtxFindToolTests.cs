@@ -175,6 +175,33 @@ public class EventLogEvtxFindToolTests {
     }
 
     [Fact]
+    public async Task EvtxFind_WhenOptionsInvalid_ReturnsInvalidConfiguration() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-evtx-find-" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tempRoot);
+        try {
+            var options = new EventLogToolOptions();
+            options.AllowedRoots.Add(tempRoot);
+            var tool = new EventLogEvtxFindTool(options);
+
+            // Options are mutable; ensure the tool is resilient even if the host changes values after startup validation.
+            options.EvtxFindMaxFilesScanned = 0;
+
+            var json = await tool.InvokeAsync(new JsonObject().Add("max_results", 10), CancellationToken.None);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            Assert.False(root.GetProperty("ok").GetBoolean());
+            Assert.Equal("invalid_configuration", root.GetProperty("error_code").GetString());
+        } finally {
+            try {
+                Directory.Delete(tempRoot, recursive: true);
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
+    }
+
+    [Fact]
     public void IsUnderRoot_RespectsBoundaryAndTrailingSeparators() {
         var cmp = StringComparison.OrdinalIgnoreCase;
 
