@@ -86,6 +86,8 @@ internal static partial class Program {
             TestSetupTriageBootstrapLinksCommentIncludesAssistiveIssueLinks);
         failed += Run("Setup triage bootstrap links comment handles missing view issue",
             TestSetupTriageBootstrapLinksCommentHandlesMissingViewIssue);
+        failed += Run("Setup triage bootstrap links comment handles label ensure failure",
+            TestSetupTriageBootstrapLinksCommentHandlesLabelEnsureFailure);
         failed += Run("Setup args include OpenAI account routing", TestSetupArgsIncludeOpenAiAccountRouting);
         failed += Run("Setup args include OpenAI account routing with primary only",
             TestSetupArgsIncludeOpenAiAccountRoutingWithPrimaryOnly);

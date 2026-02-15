@@ -20,6 +20,7 @@ internal static partial class SetupRunner {
     private static readonly SemaphoreSlim ProjectInitLock = new(1, 1);
     private readonly record struct AssistiveIssueState(int? IssueNumber);
     private readonly record struct ProjectViewApplyIssueState(int? IssueNumber, int MissingViews, bool DirectCreateSupported);
+    private readonly record struct LabelProvisionState(int CreatedCount, int TotalCount, bool Failed);
 
     private static async Task<List<FilePlan>> PlanTriageBootstrapFilesAsync(
         GitHubApi github,
@@ -101,6 +102,14 @@ internal static partial class SetupRunner {
                 projectOwner,
                 projectNumber).ConfigureAwait(false);
 
+            var labelProvisionState = await EnsureTriageLabelsConfiguredAsync(
+                github,
+                owner,
+                repo,
+                repoFullName,
+                projectOwner,
+                projectNumber).ConfigureAwait(false);
+
             if (controlIssueState.IssueNumber.HasValue) {
                 await UpsertBootstrapLinksCommentAsync(
                     github,
@@ -112,7 +121,8 @@ internal static partial class SetupRunner {
                     controlIssueState.IssueNumber.Value,
                     viewApplyIssueState.IssueNumber,
                     viewApplyIssueState.MissingViews,
-                    viewApplyIssueState.DirectCreateSupported).ConfigureAwait(false);
+                    viewApplyIssueState.DirectCreateSupported,
+                    labelProvisionState).ConfigureAwait(false);
             }
         }
 
@@ -138,13 +148,27 @@ internal static partial class SetupRunner {
         int controlIssueNumber,
         int? viewApplyIssueNumber,
         int missingViews,
-        bool directCreateSupported) {
+        bool directCreateSupported,
+        int labelsCreatedCount,
+        int labelsTotalCount,
+        bool labelsEnsureFailed) {
         var builder = new System.Text.StringBuilder();
         builder.AppendLine(BootstrapLinksCommentMarker);
         builder.AppendLine("## IX Triage Bootstrap Links");
         builder.AppendLine();
         builder.AppendLine($"- Project target: `{projectOwner}#{projectNumber}`");
         builder.AppendLine($"- Control issue: #{controlIssueNumber} ({BuildIssueUrl(repoFullName, controlIssueNumber)})");
+        if (labelsEnsureFailed) {
+            builder.AppendLine(
+                $"- IX labels: ensure failed (run `intelligencex todo project-init --repo {repoFullName} --owner {projectOwner} --project {projectNumber.ToString(CultureInfo.InvariantCulture)} --ensure-labels --no-link-repo --no-ensure-default-views`).");
+        } else if (labelsTotalCount > 0 && labelsCreatedCount > 0) {
+            builder.AppendLine(
+                $"- IX labels: ensured ({labelsTotalCount.ToString(CultureInfo.InvariantCulture)} tracked, {labelsCreatedCount.ToString(CultureInfo.InvariantCulture)} created this run).");
+        } else if (labelsTotalCount > 0) {
+            builder.AppendLine($"- IX labels: ensured (all {labelsTotalCount.ToString(CultureInfo.InvariantCulture)} already present).");
+        } else {
+            builder.AppendLine("- IX labels: not configured.");
+        }
         if (viewApplyIssueNumber.HasValue) {
             builder.AppendLine(
                 $"- Project view apply issue: #{viewApplyIssueNumber.Value} ({BuildIssueUrl(repoFullName, viewApplyIssueNumber.Value)})");
@@ -307,6 +331,39 @@ internal static partial class SetupRunner {
         }
     }
 
+    private static async Task<LabelProvisionState> EnsureTriageLabelsConfiguredAsync(
+        GitHubApi github,
+        string owner,
+        string repo,
+        string repoFullName,
+        string projectOwner,
+        int projectNumber) {
+        try {
+            var result = await github.EnsureRepositoryLabelsAsync(owner, repo, ProjectLabelCatalog.DefaultLabels)
+                .ConfigureAwait(false);
+            if (result.CreatedCount > 0) {
+                Console.WriteLine(
+                    $"Ensured IX labels ({result.TotalCount.ToString(CultureInfo.InvariantCulture)} tracked, " +
+                    $"{result.CreatedCount.ToString(CultureInfo.InvariantCulture)} created).");
+            } else {
+                Console.WriteLine(
+                    $"Ensured IX labels ({result.TotalCount.ToString(CultureInfo.InvariantCulture)} tracked, all already present).");
+            }
+
+            return new LabelProvisionState(
+                CreatedCount: result.CreatedCount,
+                TotalCount: result.TotalCount,
+                Failed: false);
+        } catch (Exception ex) {
+            Console.Error.WriteLine(
+                $"Warning: triage bootstrap could not ensure IX labels. Run `intelligencex todo project-init --repo {repoFullName} --owner {projectOwner} --project {projectNumber.ToString(CultureInfo.InvariantCulture)} --ensure-labels --no-link-repo --no-ensure-default-views` after setup. ({ex.Message})");
+            return new LabelProvisionState(
+                CreatedCount: 0,
+                TotalCount: ProjectLabelCatalog.DefaultLabels.Count,
+                Failed: true);
+        }
+    }
+
     private static async Task UpsertBootstrapLinksCommentAsync(
         GitHubApi github,
         string owner,
@@ -317,7 +374,8 @@ internal static partial class SetupRunner {
         int controlIssueNumber,
         int? viewApplyIssueNumber,
         int missingViews,
-        bool directCreateSupported) {
+        bool directCreateSupported,
+        LabelProvisionState labelProvisionState) {
         try {
             var comment = BuildTriageBootstrapLinksComment(
                 repoFullName,
@@ -326,7 +384,10 @@ internal static partial class SetupRunner {
                 controlIssueNumber,
                 viewApplyIssueNumber,
                 missingViews,
-                directCreateSupported);
+                directCreateSupported,
+                labelProvisionState.CreatedCount,
+                labelProvisionState.TotalCount,
+                labelProvisionState.Failed);
             await github.UpsertIssueCommentWithMarkerAsync(
                 owner,
                 repo,

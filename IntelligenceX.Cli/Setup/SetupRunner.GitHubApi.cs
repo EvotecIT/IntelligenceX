@@ -5,6 +5,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using IntelligenceX.Cli.Todo;
 using Sodium;
 
 namespace IntelligenceX.Cli.Setup;
@@ -80,6 +81,7 @@ internal static partial class SetupRunner {
 
     private sealed class GitHubApi : IDisposable {
         private readonly HttpClient _http;
+        public readonly record struct EnsureRepositoryLabelsResult(int CreatedCount, int TotalCount);
 
         public GitHubApi(string token, string apiBaseUrl) {
             _http = new HttpClient {
@@ -295,6 +297,48 @@ internal static partial class SetupRunner {
             await PatchJsonAsync($"/repos/{owner}/{repo}/actions/variables/{escapedName}", payload).ConfigureAwait(false);
         }
 
+        public async Task<EnsureRepositoryLabelsResult> EnsureRepositoryLabelsAsync(
+            string owner,
+            string repo,
+            IReadOnlyList<ProjectLabelDefinition> labels) {
+            if (labels is null) {
+                throw new ArgumentNullException(nameof(labels));
+            }
+            if (labels.Count == 0) {
+                return new EnsureRepositoryLabelsResult(0, 0);
+            }
+
+            var existing = await GetRepositoryLabelNamesAsync(owner, repo).ConfigureAwait(false);
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var createdCount = 0;
+            var totalCount = 0;
+            foreach (var label in labels) {
+                if (string.IsNullOrWhiteSpace(label.Name) || !seen.Add(label.Name)) {
+                    continue;
+                }
+
+                totalCount++;
+                if (existing.Contains(label.Name)) {
+                    continue;
+                }
+
+                var result = await PostJsonAsync(
+                    $"/repos/{owner}/{repo}/labels",
+                    new {
+                        name = label.Name,
+                        color = label.Color,
+                        description = label.Description
+                    },
+                    allowConflict: true).ConfigureAwait(false);
+                if (result is not null) {
+                    createdCount++;
+                    existing.Add(label.Name);
+                }
+            }
+
+            return new EnsureRepositoryLabelsResult(createdCount, totalCount);
+        }
+
         private async Task<(long Id, string Body)?> TryFindIssueCommentByMarkerAsync(
             string owner,
             string repo,
@@ -333,6 +377,35 @@ internal static partial class SetupRunner {
             }
 
             return null;
+        }
+
+        private async Task<HashSet<string>> GetRepositoryLabelNamesAsync(string owner, string repo) {
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var page = 1; page <= 10; page++) {
+                var json = await GetJsonAsync($"/repos/{owner}/{repo}/labels?per_page=100&page={page}").ConfigureAwait(false);
+                if (json.ValueKind != JsonValueKind.Array || json.GetArrayLength() == 0) {
+                    return names;
+                }
+
+                var count = 0;
+                foreach (var item in json.EnumerateArray()) {
+                    count++;
+                    if (!item.TryGetProperty("name", out var nameProp) || nameProp.ValueKind != JsonValueKind.String) {
+                        continue;
+                    }
+
+                    var name = nameProp.GetString();
+                    if (!string.IsNullOrWhiteSpace(name)) {
+                        names.Add(name.Trim());
+                    }
+                }
+
+                if (count < 100) {
+                    return names;
+                }
+            }
+
+            return names;
         }
 
         public async Task SetSecretAsync(string owner, string repo, string name, string value) {
