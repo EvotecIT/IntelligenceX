@@ -14,6 +14,11 @@ internal static class TodoRunner {
         var rest = args.Skip(1).ToArray();
         return command switch {
             "sync-bot-feedback" => BotFeedbackSyncRunner.RunAsync(rest),
+            "build-triage-index" => TriageIndexRunner.RunAsync(rest),
+            "triage-index" => TriageIndexRunner.RunAsync(rest),
+            "vision-check" => VisionCheckRunner.RunAsync(rest),
+            "project-init" => ProjectInitRunner.RunAsync(rest),
+            "project-sync" => ProjectSyncRunner.RunAsync(rest),
             _ => Task.FromResult(PrintHelpReturn(command))
         };
     }
@@ -35,7 +40,15 @@ internal static class TodoRunner {
     private static void PrintHelp() {
         Console.WriteLine("TODO commands:");
         Console.WriteLine("  intelligencex todo sync-bot-feedback [options]");
+        Console.WriteLine("  intelligencex todo build-triage-index [options]");
+        Console.WriteLine("  intelligencex todo vision-check [options]");
+        Console.WriteLine("  intelligencex todo project-init [options]");
+        Console.WriteLine("  intelligencex todo project-sync [options]");
         Console.WriteLine();
         Console.WriteLine("Use `intelligencex todo sync-bot-feedback --help` for options.");
+        Console.WriteLine("Use `intelligencex todo build-triage-index --help` for options.");
+        Console.WriteLine("Use `intelligencex todo vision-check --help` for options.");
+        Console.WriteLine("Use `intelligencex todo project-init --help` for options.");
+        Console.WriteLine("Use `intelligencex todo project-sync --help` for options.");
     }
 }

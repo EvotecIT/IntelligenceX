@@ -17,6 +17,10 @@ internal static partial class Program {
             AssertEqual(0, exitCode, "todo help exit");
             AssertContainsText(output, "TODO commands:", "todo help header");
             AssertContainsText(output, "sync-bot-feedback", "todo help includes command");
+            AssertContainsText(output, "build-triage-index", "todo help includes triage command");
+            AssertContainsText(output, "vision-check", "todo help includes vision command");
+            AssertContainsText(output, "project-init", "todo help includes project init command");
+            AssertContainsText(output, "project-sync", "todo help includes project sync command");
         } finally {
             Console.SetOut(originalOut);
             Console.SetError(originalError);

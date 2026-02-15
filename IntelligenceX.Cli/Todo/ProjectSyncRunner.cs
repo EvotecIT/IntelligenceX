@@ -1,0 +1,543 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using System.Threading.Tasks;
+using IntelligenceX.Cli.GitHub;
+
+namespace IntelligenceX.Cli.Todo;
+
+internal static class ProjectSyncRunner {
+    internal sealed record ProjectSyncEntry(
+        string Url,
+        string Kind,
+        double? TriageScore,
+        string? DuplicateCluster,
+        string? CanonicalItem,
+        string? VisionFit,
+        double? VisionConfidence
+    );
+
+    private sealed class Options {
+        public string? Owner { get; set; }
+        public int? ProjectNumber { get; set; }
+        public string Repo { get; set; } = "EvotecIT/IntelligenceX";
+        public string ConfigPath { get; set; } = Path.Combine("artifacts", "triage", "ix-project-config.json");
+        public string TriagePath { get; set; } = Path.Combine("artifacts", "triage", "ix-triage-index.json");
+        public string VisionPath { get; set; } = Path.Combine("artifacts", "triage", "ix-vision-check.json");
+        public int MaxItems { get; set; } = 500;
+        public int ProjectItemScanLimit { get; set; } = 5000;
+        public bool EnsureFields { get; set; } = true;
+        public bool DryRun { get; set; }
+        public bool ShowHelp { get; set; }
+    }
+
+    public static async Task<int> RunAsync(string[] args) {
+        var options = ParseOptions(args);
+        if (options.ShowHelp) {
+            PrintHelp();
+            return 0;
+        }
+
+        var (authCode, _, authErr) = await GhCli.RunAsync("auth", "status").ConfigureAwait(false);
+        if (authCode != 0) {
+            Console.Error.WriteLine("gh is not authenticated. Run `gh auth login`.");
+            if (!string.IsNullOrWhiteSpace(authErr)) {
+                Console.Error.WriteLine(authErr.Trim());
+            }
+            return 1;
+        }
+
+        if (!TryResolveProjectTarget(options, out var owner, out var projectNumber, out var resolveError)) {
+            Console.Error.WriteLine(resolveError);
+            return 1;
+        }
+
+        if (!File.Exists(options.TriagePath)) {
+            Console.Error.WriteLine($"Triage index not found: {options.TriagePath}");
+            return 1;
+        }
+
+        List<ProjectSyncEntry> entries;
+        try {
+            entries = LoadEntries(options.TriagePath, options.VisionPath, options.MaxItems);
+        } catch (Exception ex) {
+            Console.Error.WriteLine(ex.Message);
+            return 1;
+        }
+        if (entries.Count == 0) {
+            Console.WriteLine("No triage/vision entries to sync.");
+            return 0;
+        }
+
+        var client = new ProjectV2Client();
+        ProjectV2Client.ProjectRef project;
+        try {
+            project = await client.TryGetProjectAsync(owner, projectNumber).ConfigureAwait(false)
+                      ?? throw new InvalidOperationException($"Project {projectNumber} was not found for owner '{owner}'.");
+        } catch (Exception ex) {
+            Console.Error.WriteLine(ex.Message);
+            return 1;
+        }
+
+        IReadOnlyDictionary<string, ProjectV2Client.ProjectField> fields;
+        try {
+            fields = await client.GetProjectFieldsByNameAsync(owner, projectNumber).ConfigureAwait(false);
+            if (options.EnsureFields) {
+                fields = await EnsureFieldsAsync(client, owner, projectNumber).ConfigureAwait(false);
+            }
+        } catch (Exception ex) {
+            Console.Error.WriteLine(ex.Message);
+            return 1;
+        }
+
+        IReadOnlyDictionary<string, ProjectV2Client.ProjectItem> existingItems;
+        try {
+            existingItems = await client.GetProjectItemsByUrlAsync(owner, projectNumber, Math.Max(options.ProjectItemScanLimit, options.MaxItems))
+                .ConfigureAwait(false);
+        } catch (Exception ex) {
+            Console.Error.WriteLine($"Failed to load project items: {ex.Message}");
+            return 1;
+        }
+
+        var itemsByUrl = new Dictionary<string, ProjectV2Client.ProjectItem>(existingItems, StringComparer.OrdinalIgnoreCase);
+        var processed = 0;
+        var added = 0;
+        var updatedFieldValues = 0;
+        var skippedMissing = 0;
+
+        foreach (var entry in entries) {
+            processed++;
+            if (!itemsByUrl.TryGetValue(entry.Url, out var item)) {
+                if (options.DryRun) {
+                    added++;
+                    skippedMissing++;
+                    continue;
+                }
+
+                var content = await client.ResolveContentByUrlAsync(entry.Url).ConfigureAwait(false);
+                if (content is null) {
+                    Console.Error.WriteLine($"Warning: unable to resolve content id for URL: {entry.Url}");
+                    skippedMissing++;
+                    continue;
+                }
+
+                try {
+                    var itemId = await client.AddProjectItemByContentIdAsync(project.Id, content.Id).ConfigureAwait(false);
+                    item = new ProjectV2Client.ProjectItem(itemId, content.Url, content.Id, content.ContentType);
+                    itemsByUrl[entry.Url] = item;
+                    itemsByUrl[content.Url] = item;
+                    added++;
+                } catch (Exception ex) {
+                    Console.Error.WriteLine($"Warning: failed to add project item for URL '{entry.Url}': {ex.Message}");
+                    skippedMissing++;
+                    continue;
+                }
+            }
+
+            if (!options.DryRun) {
+                updatedFieldValues += await ApplyUpdatesAsync(client, project.Id, item.Id, fields, entry).ConfigureAwait(false);
+            }
+        }
+
+        Console.WriteLine($"Project sync target: {owner}#{projectNumber} ({project.Url})");
+        Console.WriteLine($"Entries processed: {processed}");
+        Console.WriteLine($"Items added: {added}");
+        Console.WriteLine($"Field values updated: {(options.DryRun ? 0 : updatedFieldValues)}");
+        Console.WriteLine($"Skipped unresolved items: {skippedMissing}");
+        Console.WriteLine(options.DryRun ? "Dry run complete (no project updates were written)." : "Project sync complete.");
+        return 0;
+    }
+
+    private static Options ParseOptions(string[] args) {
+        var options = new Options();
+        for (var i = 0; i < args.Length; i++) {
+            var arg = args[i];
+            switch (arg) {
+                case "-h":
+                case "--help":
+                    options.ShowHelp = true;
+                    break;
+                case "--owner":
+                    if (i + 1 < args.Length) {
+                        options.Owner = args[++i];
+                    }
+                    break;
+                case "--project":
+                    if (i + 1 < args.Length &&
+                        int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) &&
+                        number > 0) {
+                        options.ProjectNumber = number;
+                    }
+                    break;
+                case "--repo":
+                    if (i + 1 < args.Length) {
+                        options.Repo = args[++i];
+                    }
+                    break;
+                case "--config":
+                    if (i + 1 < args.Length) {
+                        options.ConfigPath = args[++i];
+                    }
+                    break;
+                case "--triage":
+                    if (i + 1 < args.Length) {
+                        options.TriagePath = args[++i];
+                    }
+                    break;
+                case "--vision":
+                    if (i + 1 < args.Length) {
+                        options.VisionPath = args[++i];
+                    }
+                    break;
+                case "--max-items":
+                    if (i + 1 < args.Length &&
+                        int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out var maxItems)) {
+                        options.MaxItems = Math.Max(1, Math.Min(maxItems, 5000));
+                    }
+                    break;
+                case "--project-item-scan-limit":
+                    if (i + 1 < args.Length &&
+                        int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out var scanLimit)) {
+                        options.ProjectItemScanLimit = Math.Max(100, Math.Min(scanLimit, 10000));
+                    }
+                    break;
+                case "--ensure-fields":
+                    options.EnsureFields = true;
+                    break;
+                case "--no-ensure-fields":
+                    options.EnsureFields = false;
+                    break;
+                case "--dry-run":
+                    options.DryRun = true;
+                    break;
+                default:
+                    Console.Error.WriteLine($"Unknown option: {arg}");
+                    options.ShowHelp = true;
+                    break;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(options.Repo) || !options.Repo.Contains('/')) {
+            options.ShowHelp = true;
+        }
+        return options;
+    }
+
+    private static void PrintHelp() {
+        Console.WriteLine("Usage:");
+        Console.WriteLine("  intelligencex todo project-sync [options]");
+        Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --owner <login>          Project owner login (required unless --config resolves it)");
+        Console.WriteLine("  --project <n>            Project number (required unless --config resolves it)");
+        Console.WriteLine("  --repo <owner/name>      Repository context (default: EvotecIT/IntelligenceX)");
+        Console.WriteLine("  --config <path>          Project config JSON from project-init (default: artifacts/triage/ix-project-config.json)");
+        Console.WriteLine("  --triage <path>          Triage index JSON (default: artifacts/triage/ix-triage-index.json)");
+        Console.WriteLine("  --vision <path>          Vision check JSON (default: artifacts/triage/ix-vision-check.json)");
+        Console.WriteLine("  --max-items <n>          Max entries to sync (1-5000, default: 500)");
+        Console.WriteLine("  --project-item-scan-limit <n>  Existing project item scan limit (100-10000, default: 5000)");
+        Console.WriteLine("  --ensure-fields          Ensure IX fields exist before sync (default)");
+        Console.WriteLine("  --no-ensure-fields       Skip field creation");
+        Console.WriteLine("  --dry-run                Compute sync plan without writing project changes");
+        Console.WriteLine();
+        Console.WriteLine("Required token scopes for sync: `read:project` and `project`.");
+    }
+
+    private static bool TryResolveProjectTarget(Options options, out string owner, out int projectNumber, out string error) {
+        owner = options.Owner?.Trim() ?? string.Empty;
+        projectNumber = options.ProjectNumber ?? 0;
+        error = string.Empty;
+
+        if (!string.IsNullOrWhiteSpace(owner) && projectNumber > 0) {
+            return true;
+        }
+
+        if (!File.Exists(options.ConfigPath)) {
+            error = "Owner/project not provided and project config file was not found. Use --owner/--project or run `todo project-init` first.";
+            return false;
+        }
+
+        try {
+            using var doc = JsonDocument.Parse(File.ReadAllText(options.ConfigPath));
+            var root = doc.RootElement;
+            if (string.IsNullOrWhiteSpace(owner)) {
+                owner = ReadString(root, "owner");
+            }
+            if (projectNumber <= 0 &&
+                TryGetProperty(root, "project", out var projectObj) &&
+                projectObj.ValueKind == JsonValueKind.Object) {
+                projectNumber = ReadInt(projectObj, "number");
+            }
+        } catch (Exception ex) {
+            error = $"Failed to parse project config at {options.ConfigPath}: {ex.Message}";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(owner) || projectNumber <= 0) {
+            error = "Unable to resolve owner/project from arguments or config.";
+            return false;
+        }
+        return true;
+    }
+
+    private static List<ProjectSyncEntry> LoadEntries(string triagePath, string visionPath, int maxItems) {
+        using var triageDoc = JsonDocument.Parse(File.ReadAllText(triagePath));
+        JsonDocument? visionDoc = null;
+        if (File.Exists(visionPath)) {
+            visionDoc = JsonDocument.Parse(File.ReadAllText(visionPath));
+        }
+
+        var entries = BuildEntriesFromDocuments(triageDoc.RootElement, visionDoc?.RootElement, maxItems);
+        visionDoc?.Dispose();
+        return entries;
+    }
+
+    internal static List<ProjectSyncEntry> BuildEntriesFromDocuments(JsonElement triageRoot, JsonElement? visionRoot, int maxItems) {
+        var entriesByUrl = new Dictionary<string, ProjectSyncEntry>(StringComparer.OrdinalIgnoreCase);
+        var idToUrl = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var clusterToCanonicalId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        if (TryGetProperty(triageRoot, "items", out var items) && items.ValueKind == JsonValueKind.Array) {
+            foreach (var item in items.EnumerateArray()) {
+                var id = ReadString(item, "id");
+                var url = ReadString(item, "url");
+                if (!string.IsNullOrWhiteSpace(id) && !string.IsNullOrWhiteSpace(url)) {
+                    idToUrl[id] = url;
+                }
+            }
+
+            if (TryGetProperty(triageRoot, "duplicateClusters", out var clusters) && clusters.ValueKind == JsonValueKind.Array) {
+                foreach (var cluster in clusters.EnumerateArray()) {
+                    var clusterId = ReadString(cluster, "id");
+                    var canonicalId = ReadString(cluster, "canonicalItemId");
+                    if (!string.IsNullOrWhiteSpace(clusterId) && !string.IsNullOrWhiteSpace(canonicalId)) {
+                        clusterToCanonicalId[clusterId] = canonicalId;
+                    }
+                }
+            }
+
+            foreach (var item in items.EnumerateArray()) {
+                var url = ReadString(item, "url");
+                if (string.IsNullOrWhiteSpace(url)) {
+                    continue;
+                }
+                var kind = ReadString(item, "kind");
+                if (string.IsNullOrWhiteSpace(kind)) {
+                    kind = "pull_request";
+                }
+                var triageScore = ReadNullableDouble(item, "score");
+                var duplicateClusterId = ReadNullableString(item, "duplicateClusterId");
+
+                string? canonicalUrl = null;
+                if (!string.IsNullOrWhiteSpace(duplicateClusterId) &&
+                    clusterToCanonicalId.TryGetValue(duplicateClusterId, out var canonicalId) &&
+                    idToUrl.TryGetValue(canonicalId, out var canonicalFromId)) {
+                    canonicalUrl = canonicalFromId;
+                }
+
+                entriesByUrl[url] = new ProjectSyncEntry(
+                    Url: url,
+                    Kind: kind,
+                    TriageScore: triageScore,
+                    DuplicateCluster: duplicateClusterId,
+                    CanonicalItem: canonicalUrl,
+                    VisionFit: null,
+                    VisionConfidence: null
+                );
+            }
+        }
+
+        if (visionRoot.HasValue &&
+            TryGetProperty(visionRoot.Value, "assessments", out var assessments) &&
+            assessments.ValueKind == JsonValueKind.Array) {
+            foreach (var assessment in assessments.EnumerateArray()) {
+                var url = ReadString(assessment, "url");
+                if (string.IsNullOrWhiteSpace(url)) {
+                    continue;
+                }
+                var classification = ReadString(assessment, "classification");
+                var confidence = ReadNullableDouble(assessment, "confidence");
+                var score = ReadNullableDouble(assessment, "score");
+
+                if (entriesByUrl.TryGetValue(url, out var existing)) {
+                    entriesByUrl[url] = existing with {
+                        VisionFit = string.IsNullOrWhiteSpace(classification) ? existing.VisionFit : classification,
+                        VisionConfidence = confidence ?? existing.VisionConfidence,
+                        TriageScore = existing.TriageScore ?? score
+                    };
+                } else {
+                    entriesByUrl[url] = new ProjectSyncEntry(
+                        Url: url,
+                        Kind: "pull_request",
+                        TriageScore: score,
+                        DuplicateCluster: null,
+                        CanonicalItem: null,
+                        VisionFit: classification,
+                        VisionConfidence: confidence
+                    );
+                }
+            }
+        }
+
+        return entriesByUrl.Values
+            .OrderBy(entry => VisionPriority(entry.VisionFit))
+            .ThenByDescending(entry => entry.TriageScore ?? double.MinValue)
+            .ThenBy(entry => entry.Url, StringComparer.OrdinalIgnoreCase)
+            .Take(Math.Max(1, maxItems))
+            .ToList();
+    }
+
+    private static int VisionPriority(string? visionFit) {
+        return visionFit?.ToLowerInvariant() switch {
+            "likely-out-of-scope" => 0,
+            "needs-human-review" => 1,
+            "aligned" => 2,
+            _ => 3
+        };
+    }
+
+    private static async Task<IReadOnlyDictionary<string, ProjectV2Client.ProjectField>> EnsureFieldsAsync(
+        ProjectV2Client client,
+        string owner,
+        int projectNumber) {
+        var fields = await client.GetProjectFieldsByNameAsync(owner, projectNumber).ConfigureAwait(false);
+        foreach (var field in ProjectFieldCatalog.DefaultFields) {
+            if (fields.ContainsKey(field.Name)) {
+                continue;
+            }
+            await CreateFieldAsync(owner, projectNumber, field).ConfigureAwait(false);
+        }
+        return await client.GetProjectFieldsByNameAsync(owner, projectNumber).ConfigureAwait(false);
+    }
+
+    private static async Task CreateFieldAsync(string owner, int projectNumber, ProjectFieldDefinition field) {
+        var args = new List<string> {
+            "project", "field-create",
+            projectNumber.ToString(CultureInfo.InvariantCulture),
+            "--owner", owner,
+            "--name", field.Name,
+            "--data-type", field.DataType
+        };
+        if (field.DataType.Equals("SINGLE_SELECT", StringComparison.OrdinalIgnoreCase) &&
+            field.SingleSelectOptions.Count > 0) {
+            args.Add("--single-select-options");
+            args.Add(string.Join(",", field.SingleSelectOptions));
+        }
+        var (code, _, stderr) = await GhCli.RunAsync(args.ToArray()).ConfigureAwait(false);
+        if (code != 0) {
+            throw new InvalidOperationException(
+                $"Failed to create field '{field.Name}' in project #{projectNumber}: {(string.IsNullOrWhiteSpace(stderr) ? "unknown error" : stderr.Trim())}");
+        }
+    }
+
+    private static async Task<int> ApplyUpdatesAsync(
+        ProjectV2Client client,
+        string projectId,
+        string itemId,
+        IReadOnlyDictionary<string, ProjectV2Client.ProjectField> fields,
+        ProjectSyncEntry entry) {
+        var updated = 0;
+
+        if (fields.TryGetValue("Triage Score", out var triageScoreField) && entry.TriageScore.HasValue) {
+            await client.SetNumberFieldAsync(projectId, itemId, triageScoreField.Id, entry.TriageScore.Value).ConfigureAwait(false);
+            updated++;
+        }
+
+        if (fields.TryGetValue("Duplicate Cluster", out var duplicateField) && !string.IsNullOrWhiteSpace(entry.DuplicateCluster)) {
+            await client.SetTextFieldAsync(projectId, itemId, duplicateField.Id, entry.DuplicateCluster).ConfigureAwait(false);
+            updated++;
+        }
+
+        if (fields.TryGetValue("Canonical Item", out var canonicalField) && !string.IsNullOrWhiteSpace(entry.CanonicalItem)) {
+            await client.SetTextFieldAsync(projectId, itemId, canonicalField.Id, entry.CanonicalItem).ConfigureAwait(false);
+            updated++;
+        }
+
+        if (fields.TryGetValue("Vision Fit", out var visionField) && !string.IsNullOrWhiteSpace(entry.VisionFit)) {
+            if (TryResolveOptionId(visionField, entry.VisionFit, out var optionId)) {
+                await client.SetSingleSelectFieldAsync(projectId, itemId, visionField.Id, optionId).ConfigureAwait(false);
+                updated++;
+            } else {
+                Console.Error.WriteLine($"Warning: option '{entry.VisionFit}' not found in field '{visionField.Name}'.");
+            }
+        }
+
+        if (fields.TryGetValue("Vision Confidence", out var confidenceField) && entry.VisionConfidence.HasValue) {
+            await client.SetNumberFieldAsync(projectId, itemId, confidenceField.Id, entry.VisionConfidence.Value).ConfigureAwait(false);
+            updated++;
+        }
+
+        if (fields.TryGetValue("Triage Kind", out var kindField) && !string.IsNullOrWhiteSpace(entry.Kind)) {
+            if (TryResolveOptionId(kindField, entry.Kind, out var kindOptionId)) {
+                await client.SetSingleSelectFieldAsync(projectId, itemId, kindField.Id, kindOptionId).ConfigureAwait(false);
+                updated++;
+            } else {
+                Console.Error.WriteLine($"Warning: option '{entry.Kind}' not found in field '{kindField.Name}'.");
+            }
+        }
+
+        return updated;
+    }
+
+    private static bool TryResolveOptionId(ProjectV2Client.ProjectField field, string optionName, out string optionId) {
+        optionId = string.Empty;
+        foreach (var option in field.OptionsByName) {
+            if (option.Key.Equals(optionName, StringComparison.OrdinalIgnoreCase)) {
+                optionId = option.Value;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool TryGetProperty(JsonElement obj, string name, out JsonElement value) {
+        value = default;
+        if (obj.ValueKind != JsonValueKind.Object) {
+            return false;
+        }
+        return obj.TryGetProperty(name, out value);
+    }
+
+    private static string ReadString(JsonElement obj, string name) {
+        if (!TryGetProperty(obj, name, out var prop) || prop.ValueKind != JsonValueKind.String) {
+            return string.Empty;
+        }
+        return prop.GetString() ?? string.Empty;
+    }
+
+    private static string? ReadNullableString(JsonElement obj, string name) {
+        if (!TryGetProperty(obj, name, out var prop)) {
+            return null;
+        }
+        if (prop.ValueKind == JsonValueKind.Null) {
+            return null;
+        }
+        if (prop.ValueKind != JsonValueKind.String) {
+            return null;
+        }
+        return prop.GetString();
+    }
+
+    private static int ReadInt(JsonElement obj, string name) {
+        if (!TryGetProperty(obj, name, out var prop) || prop.ValueKind != JsonValueKind.Number || !prop.TryGetInt32(out var value)) {
+            return 0;
+        }
+        return value;
+    }
+
+    private static double? ReadNullableDouble(JsonElement obj, string name) {
+        if (!TryGetProperty(obj, name, out var prop)) {
+            return null;
+        }
+        if (prop.ValueKind == JsonValueKind.Null) {
+            return null;
+        }
+        if (prop.ValueKind != JsonValueKind.Number || !prop.TryGetDouble(out var value)) {
+            return null;
+        }
+        return value;
+    }
+}
