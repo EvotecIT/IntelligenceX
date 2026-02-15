@@ -10,31 +10,35 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private const string ActionMarker = "ix:action:v1";
     private const int MaxActionParsingChars = 64 * 1024;
-    private static readonly HashSet<string> ImplicitSingleActionConfirmPhrases = new(StringComparer.OrdinalIgnoreCase) {
-        // Keep this intentionally small and "high precision": when we have a single pending action, we only treat
-        // very common acknowledgements as confirmation. Everything else should fall back to explicit `/act <id>`
-        // or ordinal selection to avoid accidental execution.
-        "ok",
-        "okay",
-        "okej",
-        "sure",
-        "yes",
-        "yep",
-        "yup",
-        "go",
-        "do it",
-        "run it",
-        "tak",
-        "dzialaj",
-        "uruchom",
-        "uruchom to",
-        "dalej",
-        "继续",
-        "继续执行",
-        "好",
-        "好的",
-        "行"
-    };
+    private static readonly HashSet<string> ImplicitSingleActionConfirmPhrases = new(
+        new[] {
+            // Keep this intentionally small and "high precision": when we have a single pending action, we only treat
+            // very common acknowledgements as confirmation. Everything else should fall back to explicit `/act <id>`
+            // or ordinal selection to avoid accidental execution.
+            "ok",
+            "okay",
+            "okej",
+            "sure",
+            "yes",
+            "yep",
+            "yup",
+            "go",
+            "do it",
+            "run it",
+            "tak",
+            "dzialaj",
+            "uruchom",
+            "uruchom to",
+            "dalej",
+            "继续",
+            "继续执行",
+            "好",
+            "好的",
+            "行"
+        }
+            .Select(CanonicalizeImplicitPendingActionConfirmationPhrase)
+            .Where(static phrase => phrase.Length > 0),
+        StringComparer.Ordinal);
 
     private readonly record struct PendingAction(string Id, string Title, string Request);
 
@@ -243,31 +247,26 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool LooksLikeImplicitPendingActionConfirmation(string userText) {
-        var normalized = (userText ?? string.Empty)
+        var raw = (userText ?? string.Empty)
             .Trim()
             .Normalize(NormalizationForm.FormKC);
-        if (normalized.Length == 0 || normalized.Length > 32) {
+        if (raw.Length == 0 || raw.Length > 32) {
             return false;
         }
 
         // Avoid treating follow-up questions as confirmations ("why?", "dalej?", "为什么？").
-        if (normalized.Contains('?', StringComparison.Ordinal) || normalized.Contains('？', StringComparison.Ordinal)) {
+        if (raw.Contains('?', StringComparison.Ordinal) || raw.Contains('？', StringComparison.Ordinal)) {
             return false;
         }
 
         // Avoid accidentally consuming explicit commands or paths.
-        if (normalized.StartsWith("/", StringComparison.Ordinal)
-            || normalized.Contains('\\', StringComparison.Ordinal)
-            || normalized.Contains(':', StringComparison.Ordinal)) {
+        if (raw.StartsWith("/", StringComparison.Ordinal)
+            || raw.Contains('\\', StringComparison.Ordinal)
+            || raw.Contains(':', StringComparison.Ordinal)) {
             return false;
         }
 
-        normalized = normalized.Trim(' ', '\t', '\r', '\n', '.', '!', '"', '\'', '`');
-        if (normalized.Length == 0) {
-            return false;
-        }
-
-        normalized = CollapseWhitespace(normalized).Trim();
+        var normalized = CanonicalizeImplicitPendingActionConfirmationPhrase(raw);
         if (normalized.Length == 0) {
             return false;
         }
@@ -279,6 +278,23 @@ internal sealed partial class ChatServiceSession {
 
         // High-precision allowlist to avoid running tools from benign short messages ("tomorrow", "wait", "thanks").
         return ImplicitSingleActionConfirmPhrases.Contains(normalized);
+    }
+
+    private static string CanonicalizeImplicitPendingActionConfirmationPhrase(string text) {
+        var normalized = (text ?? string.Empty)
+            .Trim()
+            .Normalize(NormalizationForm.FormKC)
+            .Trim(' ', '\t', '\r', '\n', '.', '!', '"', '\'', '`');
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        normalized = CollapseWhitespace(normalized).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        return normalized.ToLowerInvariant();
     }
 
     private static string ReadFirstToken(string text) {

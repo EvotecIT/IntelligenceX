@@ -118,7 +118,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
         var expanded = Assert.IsType<string>(result);
 
-        Assert.Contains("ix_action_selection", expanded, StringComparison.OrdinalIgnoreCase);
+        using var doc = JsonDocument.Parse(expanded);
+        var root = doc.RootElement;
+        Assert.True(root.TryGetProperty("ix_action_selection", out var selection));
+        Assert.Equal("act_001", selection.GetProperty("id").GetString());
     }
 
     [Fact]
