@@ -9,19 +9,6 @@ internal sealed partial class ChatServiceSession {
     private const int MaxQuotedPhraseSpan = 140;
     private const string ExecutionCorrectionMarker = "ix:execution-correction:v1";
 
-    // Narrow, safety-oriented hints: this is not a "phrase list" of confirmations. It's a guard to ensure we only
-    // treat quoted phrases as call-to-action targets when the assistant explicitly instructs the user to say/type/etc.
-    private static readonly string[] ToolNudgeCallToActionHints = new[] {
-        "say",
-        "type",
-        "reply",
-        "respond",
-        "send",
-        "enter",
-        "paste",
-        "write"
-    };
-
     private static bool ShouldAttemptToolExecutionNudge(string userRequest, string assistantDraft, bool toolsAvailable, int priorToolCalls,
         bool usedContinuationSubset) {
         if (!toolsAvailable || priorToolCalls > 0) {
@@ -98,7 +85,7 @@ internal sealed partial class ChatServiceSession {
 
         for (var i = 0; i < phrases.Count; i++) {
             var phrase = phrases[i];
-            if (!LooksLikeCallToActionContext(assistantDraft, phrase.OpenIndex)) {
+            if (!LooksLikeCallToActionContext(assistantDraft, phrase)) {
                 continue;
             }
 
@@ -121,73 +108,67 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
-    private static bool LooksLikeCallToActionContext(string assistantDraft, int quoteIndex) {
-        if (quoteIndex <= 0) {
+    // Keep this language-agnostic: treat a quote as a "say/type this exact phrase" CTA only when local punctuation
+    // makes it look like an instruction snippet, not an incidental quoted error message.
+    private static bool LooksLikeCallToActionContext(string assistantDraft, QuotedPhrase phrase) {
+        if (string.IsNullOrEmpty(assistantDraft)) {
             return false;
         }
 
-        // Constrain to the "local" sentence so earlier CTA phrases don't bleed into later incidental quotes.
-        var windowStart = Math.Max(0, quoteIndex - 72);
-        for (var i = quoteIndex - 1; i >= 0 && (quoteIndex - i) <= 220; i--) {
-            var ch = assistantDraft[i];
-            if (ch == '.' || ch == '!' || ch == '?' || ch == '\n' || ch == '\r') {
-                windowStart = Math.Max(windowStart, i + 1);
-                break;
+        var openIndex = phrase.OpenIndex;
+        var closeIndex = phrase.CloseIndex;
+        if (openIndex < 0 || closeIndex <= openIndex || closeIndex >= assistantDraft.Length) {
+            return false;
+        }
+
+        // Most common CTA pattern: "... \"run now\", I'll execute ..."
+        var after = closeIndex + 1;
+        if (after < assistantDraft.Length) {
+            // Allow tiny whitespace, then comma.
+            var scan = after;
+            var consumedSpace = 0;
+            while (scan < assistantDraft.Length && consumedSpace < 3 && char.IsWhiteSpace(assistantDraft[scan])) {
+                scan++;
+                consumedSpace++;
+            }
+            if (scan < assistantDraft.Length && assistantDraft[scan] == ',') {
+                return true;
             }
         }
 
-        for (var i = 0; i < ToolNudgeCallToActionHints.Length; i++) {
-            if (ContainsWordInRange(assistantDraft, windowStart, quoteIndex, ToolNudgeCallToActionHints[i])) {
+        // Another common CTA pattern: "To proceed: \"run now\""
+        var before = openIndex - 1;
+        var consumedBeforeSpace = 0;
+        while (before >= 0 && consumedBeforeSpace < 3 && char.IsWhiteSpace(assistantDraft[before])) {
+            before--;
+            consumedBeforeSpace++;
+        }
+        if (before >= 0 && assistantDraft[before] == ':') {
+            return true;
+        }
+
+        // Bullet-like CTA: "- \"run now\"" or "1. \"run now\"" on its own line.
+        var lineStart = assistantDraft.LastIndexOf('\n', openIndex);
+        lineStart = lineStart < 0 ? 0 : lineStart + 1;
+        var prefix = assistantDraft.Substring(lineStart, openIndex - lineStart).Trim();
+        if (prefix is "-" or "*" or "•") {
+            return true;
+        }
+        if (prefix.Length > 0) {
+            var allDigitsOrDot = true;
+            for (var i = 0; i < prefix.Length; i++) {
+                var ch = prefix[i];
+                if (!char.IsDigit(ch) && ch != '.') {
+                    allDigitsOrDot = false;
+                    break;
+                }
+            }
+            if (allDigitsOrDot && prefix.Contains('.', StringComparison.Ordinal)) {
                 return true;
             }
         }
 
         return false;
-    }
-
-    private static bool ContainsWordInRange(string text, int startIndex, int endIndexExclusive, string word) {
-        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(word)) {
-            return false;
-        }
-
-        if (startIndex < 0) {
-            startIndex = 0;
-        }
-        if (endIndexExclusive > text.Length) {
-            endIndexExclusive = text.Length;
-        }
-
-        var rangeLength = endIndexExclusive - startIndex;
-        if (rangeLength <= 0 || word.Length > rangeLength) {
-            return false;
-        }
-
-        var scanStart = startIndex;
-        while (true) {
-            var remaining = endIndexExclusive - scanStart;
-            if (remaining < word.Length) {
-                return false;
-            }
-
-            var idx = text.IndexOf(word, scanStart, remaining, StringComparison.OrdinalIgnoreCase);
-            if (idx < 0) {
-                return false;
-            }
-
-            // Boundaries must be evaluated against the full string (not the scan range), otherwise a range that starts
-            // or ends in the middle of a word could incorrectly treat the hint as a standalone token.
-            var beforeOk = idx == 0 || !char.IsLetterOrDigit(text[idx - 1]);
-            var afterIndex = idx + word.Length;
-            var afterOk = afterIndex >= text.Length || !char.IsLetterOrDigit(text[afterIndex]);
-            if (beforeOk && afterOk) {
-                return true;
-            }
-
-            scanStart = idx + 1;
-            if (scanStart >= endIndexExclusive) {
-                return false;
-            }
-        }
     }
 
     private readonly record struct QuotedPhrase(int OpenIndex, int CloseIndex, string Value);
