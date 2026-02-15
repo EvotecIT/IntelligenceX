@@ -152,6 +152,8 @@
       "minNavCoveragePercent": 99,
       "requiredRoutes": "/,/docs/,/404.html,/api/,/search/,/sitemap/,/showcase/",
       "failOnCategories": "budget,nav,link,asset,rendered-console-error,rendered-request-failure",
+      "failOnIssueCodes": "media-img-dimensions,heading-order,head-render-blocking",
+      "maxHeadBlockingResources": 2,
       "rendered": true,
       "renderedEnsureInstalled": true,
       "renderedMaxPages": 8,
