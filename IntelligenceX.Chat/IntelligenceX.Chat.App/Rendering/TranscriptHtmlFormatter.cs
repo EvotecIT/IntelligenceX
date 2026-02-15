@@ -18,6 +18,18 @@ internal static class TranscriptHtmlFormatter {
     private static readonly Regex AssistantOutcomePrefixRegex = new(
         @"^\[(?<kind>[a-z_]+)\]\s*(?<headline>[^\r\n]*)",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex PendingActionLineRegex = new(
+        @"^\s*(?<index>\d+)\.\s+(?<label>.+?)\s+\((?:`)?(?<command>/act\s+(?<id>[^\s)`]+))(?:`)?\)\s*$",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex PendingActionHeadingRegex = new(
+        @"^\s*You can run one of these follow-up actions:\s*$",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex InlineCodeFallbackRegex = new(
+        @"(?<!`)`(?<code>[^`\r\n]+?)`(?!`)",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex PreBlockRegex = new(
+        @"<pre\b[\s\S]*?</pre>",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>
     /// Builds transcript HTML for the chat shell.
@@ -48,7 +60,15 @@ internal static class TranscriptHtmlFormatter {
 
             var role = ResolveRoleStyle(message.Role);
             var isContinuation = string.Equals(previousRoleClass, role.RoleClass, StringComparison.Ordinal);
-            var bodyHtml = RenderBodyHtml(normalizedText, markdownOptions);
+            var actionExtraction = string.Equals(message.Role, "Assistant", StringComparison.OrdinalIgnoreCase)
+                ? ExtractPendingActionsForRendering(normalizedText)
+                : new PendingActionExtraction(normalizedText, Array.Empty<PendingActionRenderItem>());
+            var bodyHtml = string.IsNullOrWhiteSpace(actionExtraction.CleanedText)
+                ? string.Empty
+                : RenderBodyHtml(actionExtraction.CleanedText, markdownOptions);
+            if (actionExtraction.Actions.Count > 0) {
+                bodyHtml = AppendPendingActionChips(bodyHtml, actionExtraction.Actions);
+            }
             var bubbleClass = "bubble";
             if (TryRenderAssistantOutcomeCallout(message.Role, normalizedText, markdownOptions, out var calloutHtml)) {
                 bodyHtml = calloutHtml;
@@ -199,10 +219,129 @@ internal static class TranscriptHtmlFormatter {
 
     private static string RenderBodyHtml(string text, MarkdownRendererOptions markdownOptions) {
         try {
-            return MarkdownRenderer.RenderBodyHtml(text, markdownOptions);
+            var html = MarkdownRenderer.RenderBodyHtml(text, markdownOptions);
+            return EnsureInlineCodeHtml(html);
         } catch {
-            return "<article class='markdown-body'><p>" + WebUtility.HtmlEncode(text) + "</p></article>";
+            return EnsureInlineCodeHtml("<article class='markdown-body'><p>" + WebUtility.HtmlEncode(text) + "</p></article>");
         }
+    }
+
+    private static PendingActionExtraction ExtractPendingActionsForRendering(string text) {
+        if (string.IsNullOrWhiteSpace(text)) {
+            return new PendingActionExtraction(string.Empty, Array.Empty<PendingActionRenderItem>());
+        }
+
+        var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        var kept = new List<string>(lines.Length);
+        var actions = new List<PendingActionRenderItem>();
+        var inFence = false;
+
+        for (var i = 0; i < lines.Length; i++) {
+            var line = lines[i] ?? string.Empty;
+            var trimmed = line.Trim();
+            if (IsFenceBoundary(trimmed)) {
+                inFence = !inFence;
+                kept.Add(line);
+                continue;
+            }
+
+            if (!inFence) {
+                var match = PendingActionLineRegex.Match(trimmed);
+                if (match.Success) {
+                    if (!int.TryParse(match.Groups["index"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var ordinal)) {
+                        ordinal = actions.Count + 1;
+                    }
+
+                    var label = match.Groups["label"].Value.Trim();
+                    var command = match.Groups["command"].Value.Trim();
+                    var id = match.Groups["id"].Value.Trim();
+                    if (label.Length > 0 && command.Length > 0 && id.Length > 0) {
+                        actions.Add(new PendingActionRenderItem(ordinal, label, command, id));
+                        continue;
+                    }
+                }
+
+                if (actions.Count > 0 && PendingActionHeadingRegex.IsMatch(trimmed)) {
+                    continue;
+                }
+            }
+
+            kept.Add(line);
+        }
+
+        if (actions.Count > 0) {
+            kept.RemoveAll(line => PendingActionHeadingRegex.IsMatch((line ?? string.Empty).Trim()));
+        }
+
+        var cleanedText = Regex.Replace(string.Join('\n', kept).Trim(), @"\n{3,}", "\n\n");
+        return new PendingActionExtraction(cleanedText, actions);
+    }
+
+    private static bool IsFenceBoundary(string line) =>
+        !string.IsNullOrWhiteSpace(line) && line.StartsWith("```", StringComparison.Ordinal);
+
+    private static string AppendPendingActionChips(string bodyHtml, IReadOnlyList<PendingActionRenderItem> actions) {
+        if (actions is null || actions.Count == 0) {
+            return bodyHtml;
+        }
+
+        var encoder = HtmlEncoder.Default;
+        var sb = new StringBuilder(bodyHtml ?? string.Empty);
+        sb.Append("<section class='ix-action-cta'><div class='ix-action-cta-title'>Follow-up actions</div><div class='ix-action-cta-list'>");
+        for (var i = 0; i < actions.Count; i++) {
+            var action = actions[i];
+            sb.Append("<button type='button' class='ix-action-btn' data-act-cmd='")
+                .Append(encoder.Encode(action.Command))
+                .Append("' data-act-id='")
+                .Append(encoder.Encode(action.Id))
+                .Append("' aria-label='Run follow-up action ")
+                .Append(action.Ordinal.ToString(CultureInfo.InvariantCulture))
+                .Append("'>")
+                .Append("<span class='ix-action-ordinal'>")
+                .Append(action.Ordinal.ToString(CultureInfo.InvariantCulture))
+                .Append(".</span>")
+                .Append("<span class='ix-action-label'>")
+                .Append(encoder.Encode(action.Label))
+                .Append("</span>")
+                .Append("<code class='ix-action-command'>")
+                .Append(encoder.Encode(action.Command))
+                .Append("</code>")
+                .Append("</button>");
+        }
+        sb.Append("</div></section>");
+        return sb.ToString();
+    }
+
+    private static string EnsureInlineCodeHtml(string html) {
+        if (string.IsNullOrEmpty(html) || html.IndexOf('`', StringComparison.Ordinal) < 0) {
+            return html;
+        }
+
+        var preBlocks = PreBlockRegex.Matches(html);
+        if (preBlocks.Count == 0) {
+            return InlineCodeFallbackRegex.Replace(html, match => "<code>" + match.Groups["code"].Value + "</code>");
+        }
+
+        var sb = new StringBuilder(html.Length + 32);
+        var cursor = 0;
+        for (var i = 0; i < preBlocks.Count; i++) {
+            var pre = preBlocks[i];
+            if (pre.Index > cursor) {
+                var segment = html[cursor..pre.Index];
+                sb.Append(InlineCodeFallbackRegex.Replace(segment, match => "<code>" + match.Groups["code"].Value + "</code>"));
+            }
+
+            sb.Append(pre.Value);
+            cursor = pre.Index + pre.Length;
+        }
+
+        if (cursor < html.Length) {
+            var tail = html[cursor..];
+            sb.Append(InlineCodeFallbackRegex.Replace(tail, match => "<code>" + match.Groups["code"].Value + "</code>"));
+        }
+
+        return sb.ToString();
     }
 
     private static RoleStyle ResolveRoleStyle(string? role) {
@@ -221,5 +360,7 @@ internal static class TranscriptHtmlFormatter {
         return new RoleStyle("system", "System", "S");
     }
 
+    private readonly record struct PendingActionRenderItem(int Ordinal, string Label, string Command, string Id);
+    private readonly record struct PendingActionExtraction(string CleanedText, IReadOnlyList<PendingActionRenderItem> Actions);
     private readonly record struct RoleStyle(string RoleClass, string DisplayName, string Avatar);
 }

@@ -26,6 +26,10 @@ internal static class TranscriptMarkdownNormalizer {
         @"(?<=:\*\*)(?=\S)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    private static readonly Regex TightBoldSuffixRegex = new(
+        @"(\*\*[^*\r\n]+\*\*)(?=[\p{L}\p{N}])",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly Regex MissingSpaceBeforeBoldMetricRegex = new(
         @"(?<=\s)-(?=\*\*)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -64,6 +68,7 @@ internal static class TranscriptMarkdownNormalizer {
         normalized = NumberedChoiceJoinRegex.Replace(normalized, "$1 ");
         normalized = LetterToNumberedChoiceJoinRegex.Replace(normalized, " ");
         normalized = TightBoldValueRegex.Replace(normalized, " ");
+        normalized = TightBoldSuffixRegex.Replace(normalized, "$1 ");
         normalized = MissingSpaceBeforeBoldMetricRegex.Replace(normalized, "- ");
         normalized = SingleStarMetricRegex.Replace(normalized, "- **");
         normalized = CollapsedBulletRegex.Replace(normalized, "\n- **");

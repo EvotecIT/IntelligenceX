@@ -150,6 +150,21 @@
   });
 
   document.addEventListener("click", function(e) {
+    var actionBtn = e.target.closest(".ix-action-btn");
+    if (actionBtn && !actionBtn.disabled) {
+      var cmd = (actionBtn.getAttribute("data-act-cmd") || "").trim();
+      if (!cmd) {
+        return;
+      }
+
+      post("send", { text: cmd });
+      actionBtn.classList.add("done");
+      setTimeout(function() {
+        actionBtn.classList.remove("done");
+      }, 900);
+      return;
+    }
+
     var copyBtn = e.target.closest(".msg-copy-btn");
     if (!copyBtn) {
       return;
