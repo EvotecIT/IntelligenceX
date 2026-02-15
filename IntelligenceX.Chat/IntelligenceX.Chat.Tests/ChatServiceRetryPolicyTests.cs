@@ -150,7 +150,7 @@ public sealed class ChatServiceRetryPolicyTests {
     }
 
     [Fact]
-    public void TryBuildProjectionArgsFallbackCall_DoesNotDropTopWhenNoExplicitProjectionArgs() {
+    public void TryBuildProjectionArgsFallbackCall_DropsTopAsLastResortForProjectionEnvelopeFailures() {
         var call = new ToolCall(
             callId: "call-7",
             name: "eventlog_top_events",
@@ -171,9 +171,9 @@ public sealed class ChatServiceRetryPolicyTests {
         var built = TryBuildProjectionArgsFallbackCallMethod.Invoke(null, args);
         var fallbackCall = Assert.IsType<ToolCall>(args[2]);
 
-        Assert.False(Assert.IsType<bool>(built));
+        Assert.True(Assert.IsType<bool>(built));
         Assert.NotNull(fallbackCall.Arguments);
-        Assert.True(fallbackCall.Arguments!.TryGetValue("top", out _));
+        Assert.False(fallbackCall.Arguments!.TryGetValue("top", out _));
     }
 
     [Fact]

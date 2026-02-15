@@ -265,6 +265,27 @@ internal sealed partial class ChatServiceSession {
             clone.Add(key, kv.Value);
         }
 
+        if (removed.Count == 0
+            && !removeTopArgument
+            && ShouldDropTopForProjectionEnvelopeFallback(arguments, output)) {
+            clone = new JsonObject(StringComparer.Ordinal);
+            foreach (var kv in arguments) {
+                var key = (kv.Key ?? string.Empty).Trim();
+                if (key.Length == 0) {
+                    continue;
+                }
+
+                if (IsProjectionTopArgumentName(key)) {
+                    if (seenRemoved.Add(key)) {
+                        removed.Add(key);
+                    }
+                    continue;
+                }
+
+                clone.Add(key, kv.Value);
+            }
+        }
+
         removedArguments = removed.Count == 0 ? Array.Empty<string>() : removed.ToArray();
         return clone;
     }
@@ -509,6 +530,21 @@ internal sealed partial class ChatServiceSession {
                || text.Contains("between", StringComparison.OrdinalIgnoreCase)
                || text.Contains("table view response envelope", StringComparison.OrdinalIgnoreCase)
                || text.Contains("projection argument", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ShouldDropTopForProjectionEnvelopeFallback(JsonObject arguments, ToolOutputDto output) {
+        if (arguments is null || !HasArgument(arguments, ProjectionTopArgumentName)) {
+            return false;
+        }
+
+        var text = BuildToolFailureSearchText(output);
+        if (text.Length == 0) {
+            return false;
+        }
+
+        return text.Contains("table view response envelope", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("projection argument", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("tabular view", StringComparison.OrdinalIgnoreCase);
     }
 
     private static ToolOutputDto AttachProjectionFallbackMetadata(ToolOutputDto output, ProjectionFallbackInfo info) {
