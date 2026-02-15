@@ -109,15 +109,17 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
                 if (sessionTimeoutValue.Kind != JsonValueKind.Number) {
                     return ToolResponse.Error("invalid_argument", "session_timeout_ms must be a number of milliseconds.");
                 }
-                // Be defensive with untrusted numeric representations (long/int/double) and avoid undefined casts.
-                sessionTimeoutRaw = sessionTimeoutValue.Value switch {
-                    long l => l,
-                    int i => i,
-                    double d => double.IsFinite(d) && d >= long.MinValue && d <= long.MaxValue
-                        ? (long)Math.Truncate(d)
-                        : null,
-                    _ => sessionTimeoutValue.AsInt64()
-                };
+
+                // Avoid relying on raw boxed numeric shapes. We only need bounded ms precision here, so prefer
+                // the model's safe numeric accessors and truncate fractional milliseconds deterministically.
+                var d = sessionTimeoutValue.AsDouble();
+                if (!d.HasValue) {
+                    sessionTimeoutRaw = null;
+                } else if (!double.IsFinite(d.Value)) {
+                    return ToolResponse.Error("invalid_argument", "session_timeout_ms must be a finite number.");
+                } else {
+                    sessionTimeoutRaw = (long)Math.Truncate(d.Value);
+                }
             }
         }
 
@@ -157,18 +159,30 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
                 failure: out failure,
                 cancellationToken: cancellationToken);
         } else {
-            // Live querying is synchronous; for remote sessions, use a small concurrency gate to avoid saturating
-            // the host with concurrent RPC/session work.
+            // Live querying is synchronous; for remote sessions, offload work so callers don't tie up request threads.
+            // Use a small concurrency gate to avoid saturating the host with concurrent RPC/session work.
             await RemoteReadGate.WaitAsync(cancellationToken);
+            (bool Ok, LiveEventQueryResult? Root, LiveEventQueryFailure? Failure) remote;
             try {
-                ok = LiveEventQueryExecutor.TryRead(
-                    request: request,
-                    result: out root,
-                    failure: out failure,
-                    cancellationToken: cancellationToken);
+                // Cancellation is best-effort: we honor it while waiting for the concurrency gate and before starting
+                // the remote read. The underlying synchronous call may or may not observe it once running.
+                cancellationToken.ThrowIfCancellationRequested();
+
+                remote = await Task.Run(() => {
+                    var okInner = LiveEventQueryExecutor.TryRead(
+                        request: request,
+                        result: out var remoteRoot,
+                        failure: out var remoteFailure,
+                        cancellationToken: cancellationToken);
+                    return (Ok: okInner, Root: okInner ? remoteRoot : null, Failure: okInner ? null : remoteFailure);
+                }, CancellationToken.None);
             } finally {
                 RemoteReadGate.Release();
             }
+
+            ok = remote.Ok;
+            root = remote.Root;
+            failure = remote.Failure;
         }
 
         if (!ok) {
