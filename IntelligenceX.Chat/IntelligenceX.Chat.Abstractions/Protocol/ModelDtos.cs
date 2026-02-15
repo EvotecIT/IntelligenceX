@@ -10,9 +10,39 @@ public sealed record ModelListMessage : ChatServiceMessage {
     public ModelInfoDto[] Models { get; init; } = System.Array.Empty<ModelInfoDto>();
 
     /// <summary>
+    /// Favorite model names for the active profile when available.
+    /// </summary>
+    public string[] FavoriteModels { get; init; } = System.Array.Empty<string>();
+
+    /// <summary>
+    /// Recent model names for the active profile when available (most recent first).
+    /// </summary>
+    public string[] RecentModels { get; init; } = System.Array.Empty<string>();
+
+    /// <summary>
+    /// When true, the service is returning a cached response because live model discovery failed.
+    /// </summary>
+    public bool IsStale { get; init; }
+
+    /// <summary>
+    /// Optional warning text when results are partial or stale.
+    /// </summary>
+    public string? Warning { get; init; }
+
+    /// <summary>
     /// Optional pagination cursor.
     /// </summary>
     public string? NextCursor { get; init; }
+}
+
+/// <summary>
+/// Response message for <see cref="ListModelFavoritesRequest"/>.
+/// </summary>
+public sealed record ModelFavoritesMessage : ChatServiceMessage {
+    /// <summary>
+    /// Favorite model names for the active profile.
+    /// </summary>
+    public string[] Models { get; init; } = System.Array.Empty<string>();
 }
 
 /// <summary>

@@ -176,7 +176,7 @@ internal static partial class Program {
             session = nextSession;
 
             Console.WriteLine($"Registered tools: {registry.GetDefinitions().Count}");
-            Console.WriteLine("Commands: /help, /tools, /roots, /profiles, /profile <name>, /models, /model <name>, /exit");
+            Console.WriteLine("Commands: /help, /tools, /roots, /profiles, /profile <name>, /models, /model <name>, /favorites, /favorite <model>, /unfavorite <model>, /exit");
             Console.WriteLine();
         }
 
@@ -266,13 +266,25 @@ internal static partial class Program {
                             }
                         case "/models": {
                                 var models = await client!.ListModelsAsync(cancellationToken).ConfigureAwait(false);
+                                HashSet<string>? favorites = null;
+                                if (!string.IsNullOrWhiteSpace(options.ProfileName)) {
+                                    try {
+                                        var dbPath = string.IsNullOrWhiteSpace(options.StateDbPath) ? ReplOptions.GetDefaultStateDbPath() : options.StateDbPath!.Trim();
+                                        using var prefs = new SqliteModelPreferencesStore(dbPath);
+                                        var favs = await prefs.ListFavoritesAsync(options.ProfileName!, cancellationToken).ConfigureAwait(false);
+                                        favorites = favs.Count == 0 ? null : new HashSet<string>(favs, StringComparer.OrdinalIgnoreCase);
+                                    } catch {
+                                        favorites = null;
+                                    }
+                                }
                                 if (models.Models.Count == 0) {
                                     Console.WriteLine("(no models returned)");
                                 } else {
                                     foreach (var m in models.Models) {
                                         var title = string.IsNullOrWhiteSpace(m.DisplayName) ? m.Model : m.DisplayName;
                                         var marker = m.IsDefault ? " (default)" : string.Empty;
-                                        Console.WriteLine($"- {title} [{m.Model}]{marker}");
+                                        var fav = favorites is not null && favorites.Contains(m.Model) ? " (fav)" : string.Empty;
+                                        Console.WriteLine($"- {title} [{m.Model}]{marker}{fav}");
                                     }
                                 }
                                 continue;
@@ -286,6 +298,66 @@ internal static partial class Program {
                                 client!.ConfigureDefaults(model: options.Model);
                                 session!.ResetThread();
                                 Console.WriteLine($"Model set to: {options.Model} (new thread)");
+
+                                if (!string.IsNullOrWhiteSpace(options.ProfileName)) {
+                                    try {
+                                        var dbPath = string.IsNullOrWhiteSpace(options.StateDbPath) ? ReplOptions.GetDefaultStateDbPath() : options.StateDbPath!.Trim();
+                                        using var prefs = new SqliteModelPreferencesStore(dbPath);
+                                        await prefs.RecordRecentAsync(options.ProfileName!, options.Model, maxRecentsPerProfile: 50, cancellationToken).ConfigureAwait(false);
+                                    } catch {
+                                        // Best-effort.
+                                    }
+                                }
+                                continue;
+                            }
+                        case "/favorites": {
+                                if (string.IsNullOrWhiteSpace(options.ProfileName)) {
+                                    Console.WriteLine("No active profile. Use --profile or /profile <name> first.");
+                                    continue;
+                                }
+
+                                var dbPath = string.IsNullOrWhiteSpace(options.StateDbPath) ? ReplOptions.GetDefaultStateDbPath() : options.StateDbPath!.Trim();
+                                using var prefs = new SqliteModelPreferencesStore(dbPath);
+                                var favs = await prefs.ListFavoritesAsync(options.ProfileName!, cancellationToken).ConfigureAwait(false);
+                                if (favs.Count == 0) {
+                                    Console.WriteLine("(no favorites)");
+                                } else {
+                                    foreach (var m in favs) {
+                                        Console.WriteLine(m);
+                                    }
+                                }
+                                continue;
+                            }
+                        case "/favorite": {
+                                if (string.IsNullOrWhiteSpace(options.ProfileName)) {
+                                    Console.WriteLine("No active profile. Use --profile or /profile <name> first.");
+                                    continue;
+                                }
+                                if (string.IsNullOrWhiteSpace(arg)) {
+                                    Console.WriteLine("Usage: /favorite <model>");
+                                    continue;
+                                }
+
+                                var dbPath = string.IsNullOrWhiteSpace(options.StateDbPath) ? ReplOptions.GetDefaultStateDbPath() : options.StateDbPath!.Trim();
+                                using var prefs = new SqliteModelPreferencesStore(dbPath);
+                                await prefs.SetFavoriteAsync(options.ProfileName!, arg, isFavorite: true, cancellationToken).ConfigureAwait(false);
+                                Console.WriteLine($"Favorited: {arg}");
+                                continue;
+                            }
+                        case "/unfavorite": {
+                                if (string.IsNullOrWhiteSpace(options.ProfileName)) {
+                                    Console.WriteLine("No active profile. Use --profile or /profile <name> first.");
+                                    continue;
+                                }
+                                if (string.IsNullOrWhiteSpace(arg)) {
+                                    Console.WriteLine("Usage: /unfavorite <model>");
+                                    continue;
+                                }
+
+                                var dbPath = string.IsNullOrWhiteSpace(options.StateDbPath) ? ReplOptions.GetDefaultStateDbPath() : options.StateDbPath!.Trim();
+                                using var prefs = new SqliteModelPreferencesStore(dbPath);
+                                await prefs.SetFavoriteAsync(options.ProfileName!, arg, isFavorite: false, cancellationToken).ConfigureAwait(false);
+                                Console.WriteLine($"Unfavorited: {arg}");
                                 continue;
                             }
                         default:
@@ -477,7 +549,7 @@ internal static partial class Program {
         Console.WriteLine("  -h, --help              Show help.");
         Console.WriteLine();
         Console.WriteLine("REPL commands:");
-        Console.WriteLine("  /help, /tools, /roots, /profiles, /profile <name>, /models, /model <name>, /exit");
+        Console.WriteLine("  /help, /tools, /roots, /profiles, /profile <name>, /models, /model <name>, /favorites, /favorite <model>, /unfavorite <model>, /exit");
     }
 
     private static string? LoadInstructions(ReplOptions options) {
