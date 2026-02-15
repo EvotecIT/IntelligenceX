@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <AssemblyName>IntelligenceX.Tools.OfficeIMO</AssemblyName>
+    <PackageId>IntelligenceX.Tools.OfficeIMO</PackageId>
+    <Authors>Przemyslaw Klys</Authors>
+    <Company>Evotec</Company>
+    <Description>OfficeIMO-backed Office document ingestion tools for IntelligenceX tool calling (read-only).</Description>
+    <RepositoryUrl>https://github.com/EvotecIT/IntelligenceX</RepositoryUrl>
+    <IsPackable>true</IsPackable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- Local-dev discovery: OfficeIMO repo is a sibling checkout next to IntelligenceX. -->
+    <OfficeImoReaderProject>$([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot)OfficeIMO\OfficeIMO.Reader\OfficeIMO.Reader.csproj'))</OfficeImoReaderProject>
+    <OfficeImoReaderAvailable Condition="Exists('$(OfficeImoReaderProject)') OR '$(OfficeImoReaderNuGetVersion)' != ''">true</OfficeImoReaderAvailable>
+    <DefineConstants Condition="'$(OfficeImoReaderAvailable)' == 'true'">$(DefineConstants);OFFICEIMO_ENABLED</DefineConstants>
+    <DefineConstants Condition="'$(OfficeImoReaderAvailable)' != 'true'">$(DefineConstants);OFFICEIMO_DISABLED</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Shared core contract reference; path resolved in IntelligenceX.Tools/Directory.Build.props. -->
+    <ProjectReference Include="$(IntelligenceXCoreProject)" Condition="'$(IntelligenceXCoreProject)'!='' AND Exists('$(IntelligenceXCoreProject)')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\IntelligenceX.Tools.Common\IntelligenceX.Tools.Common.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(OfficeImoReaderProject)')">
+    <ProjectReference Include="$(OfficeImoReaderProject)" />
+  </ItemGroup>
+
+  <ItemGroup Condition="!Exists('$(OfficeImoReaderProject)') AND '$(OfficeImoReaderNuGetVersion)' != ''">
+    <PackageReference Include="OfficeIMO.Reader" Version="$(OfficeImoReaderNuGetVersion)" />
+  </ItemGroup>
+</Project>
+
