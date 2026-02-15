@@ -133,6 +133,8 @@ internal sealed partial class ChatServiceSession {
             .ConfigureAwait(false);
         var executionNudgeUsed = false;
         var toolReceiptCorrectionUsed = false;
+        var noToolExecutionWatchdogUsed = false;
+        var executionContractApplies = ShouldEnforceExecuteOrExplainContract(routedUserRequest);
 
         for (var round = 0; round < Math.Max(1, maxRounds); round++) {
             var extracted = ToolCallParser.Extract(turn);
@@ -217,8 +219,60 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
-                // Capture pending actions from the raw assistant text so confirmation routing doesn't depend on
-                // whether redaction changes ids/fields in the displayed output.
+                var shouldAttemptWatchdog = ShouldAttemptNoToolExecutionWatchdog(
+                    userRequest: routedUserRequest,
+                    assistantDraft: text,
+                    toolsAvailable: toolDefs.Count > 0,
+                    priorToolCalls: toolCalls.Count,
+                    priorToolOutputs: toolOutputs.Count,
+                    assistantDraftToolCalls: extracted.Count,
+                    executionNudgeUsed: executionNudgeUsed,
+                    toolReceiptCorrectionUsed: toolReceiptCorrectionUsed,
+                    watchdogAlreadyUsed: noToolExecutionWatchdogUsed,
+                    out var watchdogReason);
+                TraceNoToolExecutionWatchdogDecision(
+                    userRequest: routedUserRequest,
+                    executionContractApplies: executionContractApplies,
+                    toolsAvailable: toolDefs.Count > 0,
+                    priorToolCalls: toolCalls.Count,
+                    priorToolOutputs: toolOutputs.Count,
+                    assistantDraftToolCalls: extracted.Count,
+                    executionNudgeUsed: executionNudgeUsed,
+                    toolReceiptCorrectionUsed: toolReceiptCorrectionUsed,
+                    watchdogAlreadyUsed: noToolExecutionWatchdogUsed,
+                    shouldRetry: shouldAttemptWatchdog,
+                    reason: watchdogReason);
+                if (shouldAttemptWatchdog) {
+                    noToolExecutionWatchdogUsed = true;
+                    var watchdogPrompt = BuildNoToolExecutionWatchdogPrompt(routedUserRequest, text);
+                    await TryWriteStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            status: "thinking",
+                            message: "Re-validating tool execution for this turn.")
+                        .ConfigureAwait(false);
+                    turn = await ChatWithToolSchemaRecoveryAsync(
+                            client,
+                            ChatInput.FromText(watchdogPrompt),
+                            CopyChatOptions(options, newThreadOverride: false),
+                            turnToken)
+                        .ConfigureAwait(false);
+                    continue;
+                }
+
+                if (executionContractApplies) {
+                    var blockerReason = noToolExecutionWatchdogUsed
+                        ? "no_tool_calls_after_watchdog_retry"
+                        : $"execution_contract_unmet_{watchdogReason}";
+                    text = BuildExecutionContractBlockerText(
+                        userRequest: routedUserRequest,
+                        assistantDraft: text,
+                        reason: blockerReason);
+                }
+
+                // Capture pending actions from the finalized assistant text so confirmation routing stays aligned
+                // with what the user actually sees (including contract fallback substitutions).
                 RememberPendingActions(threadId, text);
 
                 if (_options.Redact) {
@@ -287,6 +341,32 @@ internal sealed partial class ChatServiceSession {
         }
 
         throw new InvalidOperationException($"Tool runner exceeded max rounds ({maxRounds}).");
+    }
+
+    private static void TraceNoToolExecutionWatchdogDecision(
+        string userRequest,
+        bool executionContractApplies,
+        bool toolsAvailable,
+        int priorToolCalls,
+        int priorToolOutputs,
+        int assistantDraftToolCalls,
+        bool executionNudgeUsed,
+        bool toolReceiptCorrectionUsed,
+        bool watchdogAlreadyUsed,
+        bool shouldRetry,
+        string reason) {
+        if (!executionContractApplies) {
+            return;
+        }
+
+        var normalized = (userRequest ?? string.Empty).Trim();
+        var tokenCount = CountLetterDigitTokens(normalized, maxTokens: 16);
+        var outcome = shouldRetry ? "retry" : "skip";
+        var watchdogState = watchdogAlreadyUsed ? "used" : "unused";
+        var nudgeState = executionNudgeUsed ? "used" : "unused";
+        var receiptState = toolReceiptCorrectionUsed ? "used" : "unused";
+        Console.Error.WriteLine(
+            $"[tool-watchdog] outcome={outcome} reason={reason} contract=true watchdog={watchdogState} nudge={nudgeState} receipt={receiptState} tools={toolsAvailable} prior_calls={Math.Max(0, priorToolCalls)} prior_outputs={Math.Max(0, priorToolOutputs)} draft_calls={Math.Max(0, assistantDraftToolCalls)} tokens={tokenCount}");
     }
 
     private static void TraceToolExecutionNudgeDecision(

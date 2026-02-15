@@ -12,6 +12,8 @@ internal sealed partial class ChatServiceSession {
     // This keeps any attempted parsing bounded even under adversarial input.
     private const int MaxActionSelectionPayloadChars = 4096;
     private const string ExecutionCorrectionMarker = "ix:execution-correction:v1";
+    private const string ExecutionWatchdogMarker = "ix:execution-watchdog:v1";
+    private const string ExecutionContractMarker = "ix:execution-contract:v1";
     private static readonly JsonDocumentOptions ActionSelectionJsonOptions = new() {
         MaxDepth = 16,
         CommentHandling = JsonCommentHandling.Disallow,
@@ -28,6 +30,67 @@ internal sealed partial class ChatServiceSession {
             assistantDraftToolCalls,
             usedContinuationSubset,
             out _);
+    }
+
+    private static bool ShouldEnforceExecuteOrExplainContract(string userRequest) {
+        return LooksLikeActionSelectionPayload((userRequest ?? string.Empty).Trim());
+    }
+
+    private static bool ShouldAttemptNoToolExecutionWatchdog(
+        string userRequest,
+        string assistantDraft,
+        bool toolsAvailable,
+        int priorToolCalls,
+        int priorToolOutputs,
+        int assistantDraftToolCalls,
+        bool executionNudgeUsed,
+        bool toolReceiptCorrectionUsed,
+        bool watchdogAlreadyUsed,
+        out string reason) {
+        reason = "not_eligible";
+
+        if (watchdogAlreadyUsed) {
+            reason = "watchdog_already_used";
+            return false;
+        }
+
+        if (!ShouldEnforceExecuteOrExplainContract(userRequest)) {
+            reason = "execution_contract_not_applicable";
+            return false;
+        }
+
+        if (!toolsAvailable) {
+            reason = "tools_unavailable";
+            return false;
+        }
+
+        if (priorToolCalls > 0 || priorToolOutputs > 0) {
+            reason = "tool_activity_present";
+            return false;
+        }
+
+        if (assistantDraftToolCalls > 0) {
+            reason = "assistant_draft_has_tool_calls";
+            return false;
+        }
+
+        var draft = (assistantDraft ?? string.Empty).Trim();
+        if (draft.Length == 0) {
+            reason = "empty_assistant_draft";
+            return false;
+        }
+
+        // Avoid correction/watchdog feedback loops if a previous retry prompt is echoed back into the draft.
+        if (draft.Contains(ExecutionWatchdogMarker, StringComparison.OrdinalIgnoreCase)
+            || draft.Contains(ExecutionContractMarker, StringComparison.OrdinalIgnoreCase)) {
+            reason = "watchdog_or_contract_marker_present";
+            return false;
+        }
+
+        reason = (!executionNudgeUsed && !toolReceiptCorrectionUsed)
+            ? "strict_contract_watchdog_retry_no_prior_recovery"
+            : "strict_contract_watchdog_retry";
+        return true;
     }
 
     private static bool EvaluateToolExecutionNudgeDecision(
@@ -688,6 +751,46 @@ internal sealed partial class ChatServiceSession {
             Execute available tools now when they can satisfy this request.
             Do not ask for another confirmation unless a required input cannot be inferred or discovered.
             If tools truly cannot satisfy the request, explain the exact blocker and the minimal missing input.
+            """;
+    }
+
+    private static string BuildNoToolExecutionWatchdogPrompt(string userRequest, string assistantDraft) {
+        var requestText = TrimForPrompt(userRequest, ToolReceiptCorrectionMaxUserRequestChars);
+        var draftText = TrimForPrompt(assistantDraft, ToolReceiptCorrectionMaxDraftChars);
+        return $$"""
+            [Execution watchdog]
+            {{ExecutionWatchdogMarker}}
+            The previous retries still produced zero tool calls in this turn.
+
+            User request:
+            {{requestText}}
+
+            Previous assistant draft:
+            {{draftText}}
+
+            If tools can satisfy this request, call them now in this turn.
+            If tools cannot satisfy this request, do not imply execution. State the exact blocker and the minimal missing input.
+            """;
+    }
+
+    private static string BuildExecutionContractBlockerText(string userRequest, string assistantDraft, string reason) {
+        var requestText = TrimForPrompt(userRequest, 1200);
+        var draftText = TrimForPrompt(assistantDraft, 1200);
+        var reasonCode = string.IsNullOrWhiteSpace(reason) ? "no_tool_calls_after_retries" : reason.Trim();
+        return $$"""
+            [Execution blocked]
+            {{ExecutionContractMarker}}
+            I did not execute tools for this selected action in the current turn, so I cannot report it as completed.
+
+            Selected action request:
+            {{requestText}}
+
+            Latest non-executed draft:
+            {{draftText}}
+
+            Reason code: {{reasonCode}}
+
+            Please retry this action, or provide the minimal missing input if you already know it.
             """;
     }
 }
