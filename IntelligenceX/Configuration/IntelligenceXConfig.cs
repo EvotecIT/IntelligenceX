@@ -327,6 +327,10 @@ public sealed class OpenAIConfig {
         if (CompatibleHttpAllowInsecureHttpNonLoopback.HasValue) {
             options.CompatibleHttpOptions.AllowInsecureHttpNonLoopback = CompatibleHttpAllowInsecureHttpNonLoopback.Value;
         }
+        if (options.TransportKind == OpenAITransportKind.CompatibleHttp) {
+            // Fail fast when config explicitly selects compatible-http transport.
+            options.CompatibleHttpOptions.Validate();
+        }
         if (OpenBrowser.HasValue) {
             options.OpenBrowser = OpenBrowser.Value;
         }
@@ -420,6 +424,10 @@ public sealed class OpenAIConfig {
         }
         if (CompatibleHttpAllowInsecureHttpNonLoopback.HasValue) {
             options.CompatibleHttpOptions.AllowInsecureHttpNonLoopback = CompatibleHttpAllowInsecureHttpNonLoopback.Value;
+        }
+        if (options.TransportKind == OpenAITransportKind.CompatibleHttp) {
+            // Fail fast when config explicitly selects compatible-http transport.
+            options.CompatibleHttpOptions.Validate();
         }
     }
 
