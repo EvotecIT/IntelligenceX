@@ -25,6 +25,9 @@ internal static class ProjectInitRunner {
         public bool VisibilitySpecified { get; set; }
         public bool LinkRepo { get; set; } = true;
         public bool EnsureLabels { get; set; } = true;
+        public bool EnsureDefaultViews { get; set; } = true;
+        public int? ViewTemplateProjectNumber { get; set; }
+        public string? ViewTemplateOwner { get; set; }
         public string OutputPath { get; set; } = Path.Combine("artifacts", "triage", "ix-project-config.json");
         public bool ShowHelp { get; set; }
     }
@@ -46,10 +49,17 @@ internal static class ProjectInitRunner {
         }
 
         var owner = ResolveOwner(options);
+        if (options.ProjectNumber.HasValue && options.ViewTemplateProjectNumber.HasValue) {
+            Console.Error.WriteLine("Choose either --project <n> or --view-template-project <n>, not both.");
+            return 1;
+        }
+
         var client = new ProjectV2Client();
+        ProjectV2Client.OwnerRef? ownerRef = null;
 
         ProjectV2Client.ProjectRef project;
         var createdProject = false;
+        var copiedFromTemplate = false;
         try {
             if (options.ProjectNumber.HasValue) {
                 var existing = await client.TryGetProjectAsync(owner, options.ProjectNumber.Value).ConfigureAwait(false);
@@ -58,8 +68,28 @@ internal static class ProjectInitRunner {
                     return 1;
                 }
                 project = existing;
+            } else if (options.ViewTemplateProjectNumber.HasValue) {
+                ownerRef = await client.GetOwnerAsync(owner).ConfigureAwait(false);
+                var templateOwner = string.IsNullOrWhiteSpace(options.ViewTemplateOwner)
+                    ? owner
+                    : options.ViewTemplateOwner.Trim();
+                var templateProject = await client.TryGetProjectAsync(templateOwner, options.ViewTemplateProjectNumber.Value)
+                    .ConfigureAwait(false);
+                if (templateProject is null) {
+                    Console.Error.WriteLine(
+                        $"Template project {options.ViewTemplateProjectNumber.Value} was not found for owner '{templateOwner}'.");
+                    return 1;
+                }
+
+                project = await client.CopyProjectAsync(
+                    templateProject.Id,
+                    ownerRef.NodeId,
+                    options.Title,
+                    includeDraftIssues: false).ConfigureAwait(false);
+                createdProject = true;
+                copiedFromTemplate = true;
             } else {
-                var ownerRef = await client.GetOwnerAsync(owner).ConfigureAwait(false);
+                ownerRef = await client.GetOwnerAsync(owner).ConfigureAwait(false);
                 project = await client.CreateProjectAsync(ownerRef.NodeId, options.Title).ConfigureAwait(false);
                 createdProject = true;
             }
@@ -115,11 +145,45 @@ internal static class ProjectInitRunner {
             }
         }
 
-        var report = BuildConfigReport(owner, options.Repo, project, fields, options.EnsureLabels);
+        IReadOnlyDictionary<string, ProjectV2Client.ProjectView> views;
+        try {
+            views = await client.GetProjectViewsByNameAsync(owner, project.Number).ConfigureAwait(false);
+        } catch (Exception ex) {
+            Console.Error.WriteLine($"Failed to read project views: {ex.Message}");
+            return 1;
+        }
+
+        var missingDefaultViews = options.EnsureDefaultViews
+            ? ProjectViewCatalog.FindMissingDefaultViews(views)
+            : Array.Empty<ProjectViewDefinition>();
+        var defaultViewCoverage = ProjectViewCatalog.DefaultViews.Count - missingDefaultViews.Count;
+
+        if (options.EnsureDefaultViews && missingDefaultViews.Count > 0) {
+            Console.Error.WriteLine(
+                $"Warning: missing recommended default views ({missingDefaultViews.Count}/{ProjectViewCatalog.DefaultViews.Count}): " +
+                string.Join(", ", missingDefaultViews.Select(view => view.Name)));
+            if (!options.ViewTemplateProjectNumber.HasValue) {
+                Console.Error.WriteLine(
+                    "Tip: use --view-template-project <n> to copy a prepared GitHub Project template with standard views.");
+            }
+        }
+
+        var report = BuildConfigReport(
+            owner,
+            options.Repo,
+            project,
+            fields,
+            views,
+            options.EnsureLabels,
+            options.EnsureDefaultViews,
+            options.ViewTemplateProjectNumber,
+            options.ViewTemplateOwner,
+            copiedFromTemplate);
         WriteText(options.OutputPath, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
 
         Console.WriteLine($"Project ready: #{project.Number} ({project.Url})");
         Console.WriteLine($"Fields ensured: {fields.Count}");
+        Console.WriteLine($"Views discovered: {views.Count} (default coverage: {defaultViewCoverage}/{ProjectViewCatalog.DefaultViews.Count})");
         Console.WriteLine($"Project config written: {options.OutputPath}");
         return 0;
     }
@@ -181,6 +245,24 @@ internal static class ProjectInitRunner {
                 case "--no-ensure-labels":
                     options.EnsureLabels = false;
                     break;
+                case "--ensure-default-views":
+                    options.EnsureDefaultViews = true;
+                    break;
+                case "--no-ensure-default-views":
+                    options.EnsureDefaultViews = false;
+                    break;
+                case "--view-template-project":
+                    if (i + 1 < args.Length &&
+                        int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out var templateNumber) &&
+                        templateNumber > 0) {
+                        options.ViewTemplateProjectNumber = templateNumber;
+                    }
+                    break;
+                case "--view-template-owner":
+                    if (i + 1 < args.Length) {
+                        options.ViewTemplateOwner = args[++i];
+                    }
+                    break;
                 case "--out":
                     if (i + 1 < args.Length) {
                         options.OutputPath = args[++i];
@@ -215,6 +297,10 @@ internal static class ProjectInitRunner {
         Console.WriteLine("  --no-link-repo           Do not link project to repo");
         Console.WriteLine("  --ensure-labels          Ensure IX labels exist in --repo (default)");
         Console.WriteLine("  --no-ensure-labels       Skip repo label setup");
+        Console.WriteLine("  --ensure-default-views   Validate default IX view set presence (default)");
+        Console.WriteLine("  --no-ensure-default-views Skip default view coverage checks");
+        Console.WriteLine("  --view-template-project <n> Copy from an existing template project to preserve saved views");
+        Console.WriteLine("  --view-template-owner <login> Owner of --view-template-project (defaults to --owner/repo owner)");
         Console.WriteLine("  --out <path>             Write project config JSON (default: artifacts/triage/ix-project-config.json)");
         Console.WriteLine();
         Console.WriteLine("Required token scopes for project setup: `project`.");
@@ -268,7 +354,12 @@ internal static class ProjectInitRunner {
         string repo,
         ProjectV2Client.ProjectRef project,
         IReadOnlyDictionary<string, ProjectV2Client.ProjectField> fields,
-        bool labelsEnsured) {
+        IReadOnlyDictionary<string, ProjectV2Client.ProjectView> views,
+        bool labelsEnsured,
+        bool defaultViewsEnsured,
+        int? viewTemplateProjectNumber,
+        string? viewTemplateOwner,
+        bool copiedFromTemplate) {
         var fieldsJson = fields.Values
             .OrderBy(field => field.Name, StringComparer.OrdinalIgnoreCase)
             .Select(field => new {
@@ -282,6 +373,19 @@ internal static class ProjectInitRunner {
                         id = option.Value
                     })
                     .ToList()
+            })
+            .ToList();
+
+        var defaultMissingViews = defaultViewsEnsured
+            ? ProjectViewCatalog.FindMissingDefaultViews(views).Select(view => view.Name).ToList()
+            : new List<string>();
+        var viewsJson = views.Values
+            .OrderBy(view => view.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(view => new {
+                id = view.Id,
+                name = view.Name,
+                layout = view.Layout,
+                url = view.Url
             })
             .ToList();
 
@@ -310,6 +414,29 @@ internal static class ProjectInitRunner {
                         .Cast<object>()
                         .ToList()
                     : new List<object>()
+            },
+            views = new {
+                ensured = defaultViewsEnsured,
+                copiedFromTemplate,
+                templateProjectNumber = viewTemplateProjectNumber,
+                templateOwner = viewTemplateOwner,
+                defaultCoverage = new {
+                    required = ProjectViewCatalog.DefaultViews.Count,
+                    present = defaultViewsEnsured
+                        ? ProjectViewCatalog.DefaultViews.Count - defaultMissingViews.Count
+                        : 0,
+                    missing = defaultMissingViews
+                },
+                recommended = ProjectViewCatalog.DefaultViews
+                    .Select(view => new {
+                        name = view.Name,
+                        layout = view.Layout,
+                        description = view.Description,
+                        filter = view.Filter
+                    })
+                    .Cast<object>()
+                    .ToList(),
+                items = viewsJson
             }
         };
     }

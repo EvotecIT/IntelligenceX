@@ -13,6 +13,7 @@ internal sealed class ProjectV2Client {
     internal sealed record OwnerRef(string Login, string NodeId, string OwnerType);
     internal sealed record ProjectRef(string Id, int Number, string Title, string Url);
     internal sealed record ProjectField(string Id, string Name, string DataType, IReadOnlyDictionary<string, string> OptionsByName);
+    internal sealed record ProjectView(string Id, string Name, string Layout, string Url);
     internal sealed record ProjectItem(string Id, string Url, string ContentId, string ContentType);
     internal sealed record ContentRef(string Id, string Url, string ContentType);
 
@@ -136,6 +137,44 @@ mutation($ownerId: ID!, $title: String!) {
 
         return ParseProjectRef(projectObj) ??
                throw new InvalidOperationException("Unable to parse created project details.");
+    }
+
+    public async Task<ProjectRef> CopyProjectAsync(string sourceProjectId, string ownerNodeId, string title, bool includeDraftIssues) {
+        var mutation = """
+mutation($projectId: ID!, $ownerId: ID!, $title: String!, $includeDraftIssues: Boolean!) {
+  copyProjectV2(input: {
+    projectId: $projectId
+    ownerId: $ownerId
+    title: $title
+    includeDraftIssues: $includeDraftIssues
+  }) {
+    projectV2 {
+      id
+      number
+      title
+      url
+    }
+  }
+}
+""";
+
+        var root = await QueryGraphQlAsync(
+            mutation,
+            ("projectId", sourceProjectId),
+            ("ownerId", ownerNodeId),
+            ("title", title),
+            ("includeDraftIssues", includeDraftIssues ? "true" : "false")
+        ).ConfigureAwait(false);
+
+        if (!TryGetProperty(root, "data", out var data) ||
+            !TryGetProperty(data, "copyProjectV2", out var payload) ||
+            !TryGetProperty(payload, "projectV2", out var projectObj) ||
+            projectObj.ValueKind != JsonValueKind.Object) {
+            throw new InvalidOperationException("GitHub GraphQL response missing project copy payload.");
+        }
+
+        return ParseProjectRef(projectObj) ??
+               throw new InvalidOperationException("Unable to parse copied project details.");
     }
 
     public async Task UpdateProjectAsync(string projectId, string? description, bool? isPublic) {
@@ -295,6 +334,94 @@ query($owner: String!, $number: Int!, $cursor: String) {
         }
 
         return fields;
+    }
+
+    public async Task<IReadOnlyDictionary<string, ProjectView>> GetProjectViewsByNameAsync(string owner, int number) {
+        var views = new Dictionary<string, ProjectView>(StringComparer.OrdinalIgnoreCase);
+        string? cursor = null;
+
+        var query = """
+query($owner: String!, $number: Int!, $cursor: String) {
+  user(login: $owner) {
+    projectV2(number: $number) {
+      views(first: 100, after: $cursor) {
+        nodes {
+          id
+          name
+          layout
+          url
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  }
+  organization(login: $owner) {
+    projectV2(number: $number) {
+      views(first: 100, after: $cursor) {
+        nodes {
+          id
+          name
+          layout
+          url
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  }
+}
+""";
+
+        while (true) {
+            var root = await QueryGraphQlAsync(
+                query,
+                ("owner", owner),
+                ("number", number.ToString(CultureInfo.InvariantCulture)),
+                ("cursor", cursor)
+            ).ConfigureAwait(false);
+
+            if (!TryGetProperty(root, "data", out var data)) {
+                break;
+            }
+
+            var connection = GetProjectConnection(data, "views");
+            if (connection is null ||
+                !TryGetProperty(connection.Value, "nodes", out var nodes) ||
+                nodes.ValueKind != JsonValueKind.Array) {
+                break;
+            }
+
+            foreach (var viewNode in nodes.EnumerateArray()) {
+                var id = ReadString(viewNode, "id");
+                var name = ReadString(viewNode, "name");
+                if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name)) {
+                    continue;
+                }
+
+                var layout = ReadString(viewNode, "layout");
+                var url = ReadString(viewNode, "url");
+                views[name] = new ProjectView(id, name, layout, url);
+            }
+
+            if (!TryGetProperty(connection.Value, "pageInfo", out var pageInfo) ||
+                !TryGetProperty(pageInfo, "hasNextPage", out var hasNextPage) ||
+                hasNextPage.ValueKind != JsonValueKind.True && hasNextPage.ValueKind != JsonValueKind.False ||
+                !hasNextPage.GetBoolean()) {
+                break;
+            }
+
+            cursor = ReadString(pageInfo, "endCursor");
+            if (string.IsNullOrWhiteSpace(cursor)) {
+                break;
+            }
+        }
+
+        return views;
     }
 
     public async Task<IReadOnlyDictionary<string, ProjectItem>> GetProjectItemsByUrlAsync(string owner, int number, int maxItems) {

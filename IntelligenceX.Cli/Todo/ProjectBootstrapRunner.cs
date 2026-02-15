@@ -32,6 +32,9 @@ internal static class ProjectBootstrapRunner {
         public bool IsPublic { get; set; }
         public bool VisibilitySpecified { get; set; }
         public bool LinkRepo { get; set; } = true;
+        public bool EnsureDefaultViews { get; set; } = true;
+        public int? ViewTemplateProjectNumber { get; set; }
+        public string? ViewTemplateOwner { get; set; }
         public string ConfigPath { get; set; } = DefaultConfigPath;
         public string WorkflowPath { get; set; } = DefaultWorkflowPath;
         public string VisionPath { get; set; } = DefaultVisionPath;
@@ -248,6 +251,18 @@ internal static class ProjectBootstrapRunner {
         }
 
         result.Add(options.LinkRepo ? "--link-repo" : "--no-link-repo");
+        result.Add(options.EnsureDefaultViews ? "--ensure-default-views" : "--no-ensure-default-views");
+
+        if (options.ViewTemplateProjectNumber.HasValue && options.ViewTemplateProjectNumber.Value > 0) {
+            result.Add("--view-template-project");
+            result.Add(options.ViewTemplateProjectNumber.Value.ToString(CultureInfo.InvariantCulture));
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.ViewTemplateOwner)) {
+            result.Add("--view-template-owner");
+            result.Add(options.ViewTemplateOwner.Trim());
+        }
+
         return result.ToArray();
     }
 
@@ -317,6 +332,30 @@ internal static class ProjectBootstrapRunner {
                     break;
                 case "--no-link-repo":
                     options.LinkRepo = false;
+                    break;
+                case "--ensure-default-views":
+                    options.EnsureDefaultViews = true;
+                    break;
+                case "--no-ensure-default-views":
+                    options.EnsureDefaultViews = false;
+                    break;
+                case "--view-template-project":
+                    if (i + 1 < args.Length &&
+                        int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out var viewTemplateProjectNumber) &&
+                        viewTemplateProjectNumber > 0) {
+                        options.ViewTemplateProjectNumber = viewTemplateProjectNumber;
+                    } else {
+                        options.ParseFailed = true;
+                        options.ShowHelp = true;
+                    }
+                    break;
+                case "--view-template-owner":
+                    if (i + 1 < args.Length) {
+                        options.ViewTemplateOwner = args[++i];
+                    } else {
+                        options.ParseFailed = true;
+                        options.ShowHelp = true;
+                    }
                     break;
                 case "--config-out":
                     if (i + 1 < args.Length) {
@@ -425,6 +464,10 @@ internal static class ProjectBootstrapRunner {
         Console.WriteLine("  --private                 Set project visibility to private (default)");
         Console.WriteLine("  --link-repo               Link project to --repo (default)");
         Console.WriteLine("  --no-link-repo            Do not link project to repo");
+        Console.WriteLine("  --ensure-default-views    Validate default IX view set presence (default)");
+        Console.WriteLine("  --no-ensure-default-views Skip default view coverage checks");
+        Console.WriteLine("  --view-template-project <n> Copy from a template project to preserve saved views");
+        Console.WriteLine("  --view-template-owner <login> Owner of --view-template-project");
         Console.WriteLine("  --config-out <path>       Project config path (default: artifacts/triage/ix-project-config.json)");
         Console.WriteLine("  --workflow-out <path>     Workflow output path (default: .github/workflows/ix-triage-project-sync.yml)");
         Console.WriteLine("  --vision-out <path>       Vision file output path (default: VISION.md)");
