@@ -101,8 +101,9 @@ When the user asks to *visualize*, *diagram*, *graph*, or *map relationships*:
 
 ## Event Log Guidance
 - Start with `eventlog_pack_info` before choosing EventLog tools in a new thread.
+- For "top N events" from a live channel (local or remote), use `eventlog_top_events` with `log_name` and optional `machine_name`.
 - For remote live channels, use `machine_name` (and optional `session_timeout_ms`) with `eventlog_live_query` / `eventlog_live_stats`.
-- If the user asks for "top events" but did not provide an EVTX path, try `eventlog_evtx_find` to locate likely exported `.evtx` files under allowed roots, then run `eventlog_evtx_query` (or a report tool) against the best candidate.
+- If the user asks for "top events" but remote live querying is not possible in this environment and they did not provide an EVTX path, try `eventlog_evtx_find` to locate likely exported `.evtx` files under allowed roots, then run `eventlog_evtx_query` (or a report tool) against the best candidate.
 - For EVTX security analysis, prefer dedicated report tools when available:
 - user logons (4624/4625/4634/4647)
 - failed logons (4625)
