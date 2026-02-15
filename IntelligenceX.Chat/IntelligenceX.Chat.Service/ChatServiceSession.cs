@@ -32,10 +32,10 @@ internal sealed partial class ChatServiceSession {
     private static readonly TimeSpan PendingActionContextMaxAge = TimeSpan.FromMinutes(20);
     private readonly ServiceOptions _options;
     private readonly Stream _stream;
-    private readonly ToolRegistry _registry;
-    private readonly IReadOnlyList<IToolPack> _packs;
-    private readonly string[] _startupWarnings;
-    private readonly string[] _pluginSearchPaths;
+    private ToolRegistry _registry;
+    private IReadOnlyList<IToolPack> _packs;
+    private string[] _startupWarnings;
+    private string[] _pluginSearchPaths;
     private readonly Dictionary<string, string> _packDisplayNamesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _toolRoutingStatsLock = new();
     private readonly Dictionary<string, ToolRoutingStats> _toolRoutingStats = new(StringComparer.OrdinalIgnoreCase);

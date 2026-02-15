@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -6,6 +7,9 @@ using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Profiles;
 using IntelligenceX.OpenAI;
+using IntelligenceX.Chat.Tooling;
+using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Chat.Service;
 
@@ -188,6 +192,7 @@ internal sealed partial class ChatServiceSession {
             _options.ApplyProfile(profile);
             _options.ProfileName = name;
             _instructions = LoadInstructions(_options);
+            RebuildToolingFromOptions();
 
             var nextClientOptions = BuildClientOptions();
             nextClientOptions.Validate();
@@ -265,5 +270,55 @@ internal sealed partial class ChatServiceSession {
                 Code = "models_failed"
             }, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    private void RebuildToolingFromOptions() {
+        var startupWarnings = new List<string>();
+        var bootstrapOptions = new ToolPackBootstrapOptions {
+            AllowedRoots = _options.AllowedRoots.ToArray(),
+            AdDomainController = _options.AdDomainController,
+            AdDefaultSearchBaseDn = _options.AdDefaultSearchBaseDn,
+            AdMaxResults = _options.AdMaxResults,
+            EnablePowerShellPack = _options.EnablePowerShellPack,
+            PowerShellAllowWrite = _options.PowerShellAllowWrite,
+            EnableTestimoXPack = _options.EnableTestimoXPack,
+            EnableDefaultPluginPaths = _options.EnableDefaultPluginPaths,
+            PluginPaths = _options.PluginPaths.ToArray(),
+            OnBootstrapWarning = warning => RecordBootstrapWarning(startupWarnings, warning)
+        };
+
+        var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(bootstrapOptions);
+        var pluginSearchPaths = NormalizeDistinctStrings(ToolPackBootstrap.GetPluginSearchPaths(bootstrapOptions), maxItems: 32);
+        var warnings = NormalizeDistinctStrings(startupWarnings, maxItems: 64);
+
+        var registry = new ToolRegistry();
+        ToolPackBootstrap.RegisterAll(registry, packs);
+
+        _packs = packs;
+        _pluginSearchPaths = pluginSearchPaths;
+        _startupWarnings = warnings;
+        _registry = registry;
+
+        _packDisplayNamesById.Clear();
+        foreach (var descriptor in ToolPackBootstrap.GetDescriptors(_packs)) {
+            var normalizedPackId = NormalizePackId(descriptor.Id);
+            if (normalizedPackId.Length == 0) {
+                continue;
+            }
+            _packDisplayNamesById[normalizedPackId] = ResolvePackDisplayName(descriptor.Id, descriptor.Name);
+        }
+
+        // Tool sets may have changed; clear caches so routing doesn't assume removed tools.
+        lock (_toolRoutingStatsLock) {
+            _toolRoutingStats.Clear();
+        }
+        lock (_toolRoutingContextLock) {
+            _lastWeightedToolNamesByThreadId.Clear();
+            _lastWeightedToolSubsetSeenUtcTicks.Clear();
+        }
+        _lastUserIntentByThreadId.Clear();
+        _lastUserIntentSeenUtcTicks.Clear();
+        _pendingActionsByThreadId.Clear();
+        _pendingActionsSeenUtcTicks.Clear();
     }
 }
