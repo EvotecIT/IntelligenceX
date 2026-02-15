@@ -551,6 +551,76 @@
     input.value = "";
   });
 
+  function normalizeLocalTransportValue(value) {
+    return String(value || "").toLowerCase() === "compatible-http" ? "compatible-http" : "native";
+  }
+
+  function applyLocalProviderSettings(forceRefresh) {
+    var transport = normalizeLocalTransportValue(byId("optLocalTransport").value || "native");
+    var baseUrl = (byId("optLocalBaseUrl").value || "").trim();
+    var model = (byId("optLocalModelInput").value || "").trim();
+    post("apply_local_provider", {
+      transport: transport,
+      baseUrl: baseUrl,
+      model: model,
+      forceRefresh: forceRefresh !== false
+    });
+  }
+
+  byId("optLocalTransport").addEventListener("change", function(e) {
+    var next = normalizeLocalTransportValue(e.target.value || "native");
+    e.target.value = next;
+    syncCustomSelect(e.target);
+
+    var baseRow = byId("optLocalBaseUrlRow");
+    var baseInput = byId("optLocalBaseUrl");
+    if (baseRow) {
+      baseRow.hidden = next !== "compatible-http";
+    }
+    if (baseInput) {
+      baseInput.disabled = next !== "compatible-http";
+      if (next !== "compatible-http") {
+        baseInput.value = "";
+      }
+    }
+  });
+
+  byId("optLocalModelSelect").addEventListener("change", function(e) {
+    var selected = (e.target.value || "").trim();
+    if (!selected) {
+      return;
+    }
+    byId("optLocalModelInput").value = selected;
+  });
+
+  byId("btnLocalPresetOllama").addEventListener("click", function() {
+    var transport = byId("optLocalTransport");
+    var baseUrl = byId("optLocalBaseUrl");
+    transport.value = "compatible-http";
+    syncCustomSelect(transport);
+    baseUrl.value = "http://127.0.0.1:11434";
+    byId("optLocalBaseUrlRow").hidden = false;
+    baseUrl.disabled = false;
+  });
+
+  byId("btnLocalPresetLmStudio").addEventListener("click", function() {
+    var transport = byId("optLocalTransport");
+    var baseUrl = byId("optLocalBaseUrl");
+    transport.value = "compatible-http";
+    syncCustomSelect(transport);
+    baseUrl.value = "http://127.0.0.1:1234/v1";
+    byId("optLocalBaseUrlRow").hidden = false;
+    baseUrl.disabled = false;
+  });
+
+  byId("btnRefreshModels").addEventListener("click", function() {
+    post("refresh_models", { forceRefresh: true });
+  });
+
+  byId("btnApplyLocalProvider").addEventListener("click", function() {
+    applyLocalProviderSettings(true);
+  });
+
   var btnNewConversation = byId("btnNewConversation");
   if (btnNewConversation) {
     btnNewConversation.addEventListener("click", function() {

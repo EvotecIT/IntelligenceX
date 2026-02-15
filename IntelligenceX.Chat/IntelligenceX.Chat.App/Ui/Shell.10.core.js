@@ -75,6 +75,17 @@
         theme: "default",
         onboardingCompleted: false
       },
+      localModel: {
+        transport: "native",
+        baseUrl: "",
+        model: "gpt-5.3-codex",
+        models: [],
+        favoriteModels: [],
+        recentModels: [],
+        isStale: false,
+        warning: "",
+        profileSaved: false
+      },
       debugToolsEnabled: false,
       toolFilter: "",
       policy: null,

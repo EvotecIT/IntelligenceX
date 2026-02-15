@@ -404,6 +404,118 @@
     hint.textContent = baseText;
   }
 
+  function normalizeLocalTransport(value) {
+    return String(value || "").toLowerCase() === "compatible-http" ? "compatible-http" : "native";
+  }
+
+  function normalizeModelText(value) {
+    return String(value == null ? "" : value).trim();
+  }
+
+  function renderLocalModelOptions() {
+    var local = state.options.localModel || {};
+    var transport = normalizeLocalTransport(local.transport);
+    var baseUrl = String(local.baseUrl || "");
+    var model = normalizeModelText(local.model || "");
+    var models = Array.isArray(local.models) ? local.models : [];
+    var favorites = toStringArray(local.favoriteModels);
+    var recents = toStringArray(local.recentModels);
+    var warning = normalizeModelText(local.warning || "");
+    var isStale = local.isStale === true;
+    var profileSaved = local.profileSaved === true;
+
+    var transportSelect = byId("optLocalTransport");
+    if (transportSelect) {
+      transportSelect.value = transport;
+      syncCustomSelect(transportSelect);
+    }
+
+    var baseUrlRow = byId("optLocalBaseUrlRow");
+    if (baseUrlRow) {
+      baseUrlRow.hidden = transport !== "compatible-http";
+    }
+
+    var baseUrlInput = byId("optLocalBaseUrl");
+    if (baseUrlInput) {
+      baseUrlInput.value = baseUrl;
+      baseUrlInput.disabled = transport !== "compatible-http";
+    }
+
+    var modelInput = byId("optLocalModelInput");
+    if (modelInput) {
+      modelInput.value = model;
+    }
+
+    var modelSelect = byId("optLocalModelSelect");
+    if (modelSelect) {
+      modelSelect.innerHTML = "";
+
+      var manualOption = document.createElement("option");
+      manualOption.value = "";
+      manualOption.textContent = "Manual model input";
+      modelSelect.appendChild(manualOption);
+
+      var seen = {};
+      function pushModelOption(modelName, labelPrefix) {
+        var normalized = normalizeModelText(modelName);
+        if (!normalized) {
+          return;
+        }
+        var key = normalized.toLowerCase();
+        if (seen[key]) {
+          return;
+        }
+        seen[key] = true;
+        var option = document.createElement("option");
+        option.value = normalized;
+        option.textContent = labelPrefix ? (labelPrefix + " " + normalized) : normalized;
+        modelSelect.appendChild(option);
+      }
+
+      for (var r = 0; r < recents.length; r++) {
+        pushModelOption(recents[r], "Recent:");
+      }
+      for (var f = 0; f < favorites.length; f++) {
+        pushModelOption(favorites[f], "Favorite:");
+      }
+      for (var i = 0; i < models.length; i++) {
+        var item = models[i] || {};
+        var modelName = normalizeModelText(item.model || item.Model || item.id || item.Id);
+        if (!modelName) {
+          continue;
+        }
+        var displayName = normalizeModelText(item.displayName || item.DisplayName);
+        pushModelOption(modelName, displayName ? (displayName + " ->") : "");
+      }
+
+      modelSelect.value = model;
+      if (modelSelect.value !== model) {
+        modelSelect.value = "";
+      }
+      syncCustomSelect(modelSelect);
+    }
+
+    var stateNote = byId("optLocalModelsState");
+    if (stateNote) {
+      var parts = [];
+      if (models.length > 0) {
+        parts.push(String(models.length) + " models discovered");
+      } else {
+        parts.push("No discovered models yet");
+      }
+      parts.push(profileSaved ? "service profile saved" : "service profile not saved yet");
+      if (isStale) {
+        parts.push("showing cached results");
+      }
+      if (warning) {
+        parts.push(warning);
+      } else if (transport === "compatible-http" && !baseUrl) {
+        parts.push("Set a base URL, then refresh models.");
+      }
+      stateNote.textContent = parts.join(" | ");
+    }
+  }
+
   function normalizeExportSaveMode(value) {
     var normalized = String(value || "").toLowerCase();
     return normalized === "remember" ? "remember" : "ask";

@@ -333,7 +333,21 @@ public sealed partial class MainWindow : Window {
         }
 
         try {
-            var launchArgs = ServiceLaunchArguments.Build(pipeName, DetachedServiceMode, Environment.ProcessId);
+            var pending = _pendingServiceLaunchProfileOptions;
+            var launchArgs = ServiceLaunchArguments.Build(
+                pipeName,
+                DetachedServiceMode,
+                Environment.ProcessId,
+                pending is null ? null : new ServiceLaunchArguments.ProfileOptions {
+                    LoadProfileName = pending.LoadProfileName,
+                    SaveProfileName = pending.SaveProfileName,
+                    Model = pending.Model,
+                    OpenAITransport = pending.OpenAITransport,
+                    OpenAIBaseUrl = pending.OpenAIBaseUrl,
+                    OpenAIApiKey = pending.OpenAIApiKey,
+                    OpenAIStreaming = pending.OpenAIStreaming,
+                    OpenAIAllowInsecureHttp = pending.OpenAIAllowInsecureHttp
+                });
             var hasExe = File.Exists(exe);
             var psi = new ProcessStartInfo {
                 FileName = hasExe ? exe : "dotnet",
@@ -397,6 +411,7 @@ public sealed partial class MainWindow : Window {
 
             _serviceProcess = p;
             _servicePipeName = pipeName;
+            _pendingServiceLaunchProfileOptions = null;
 
             await Task.Delay(250).ConfigureAwait(true);
             return true;

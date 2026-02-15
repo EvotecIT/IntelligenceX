@@ -143,6 +143,34 @@
             </select>
             <div id="optProfileScopeHint" class="options-note"></div>
           </div>
+          <div class="options-label">Model Runtime</div>
+          <div class="options-note">Configure runtime provider + model and persist it to the active service profile.</div>
+          <div class="options-row">
+            <label class="options-label-inline" for="optLocalTransport">Provider transport</label>
+            <select id="optLocalTransport" class="options-select">
+              <option value="native">OpenAI Native</option>
+              <option value="compatible-http">Compatible HTTP (Ollama / LM Studio)</option>
+            </select>
+          </div>
+          <div class="options-row" id="optLocalBaseUrlRow">
+            <label class="options-label-inline" for="optLocalBaseUrl">Base URL</label>
+            <input id="optLocalBaseUrl" class="options-input options-input-sm" placeholder="http://127.0.0.1:11434" />
+          </div>
+          <div class="options-row">
+            <label class="options-label-inline" for="optLocalModelInput">Model</label>
+            <input id="optLocalModelInput" class="options-input options-input-sm" placeholder="e.g. gpt-5.3-codex or llama3.2" />
+          </div>
+          <div class="options-row">
+            <label class="options-label-inline" for="optLocalModelSelect">Discovered models</label>
+            <select id="optLocalModelSelect" class="options-select"></select>
+          </div>
+          <div class="options-note" id="optLocalModelsState"></div>
+          <div class="options-actions options-actions-wrap">
+            <button id="btnLocalPresetOllama" class="options-btn options-btn-sm options-btn-ghost">Use Ollama URL</button>
+            <button id="btnLocalPresetLmStudio" class="options-btn options-btn-sm options-btn-ghost">Use LM Studio URL</button>
+            <button id="btnRefreshModels" class="options-btn options-btn-sm options-btn-ghost">Refresh Models</button>
+            <button id="btnApplyLocalProvider" class="options-btn options-btn-sm">Apply Runtime</button>
+          </div>
           <div class="options-actions">
             <button id="btnSaveProfile" class="options-btn">Save As Default</button>
             <button id="btnRestartOnboarding" class="options-btn options-btn-ghost">Restart Onboarding</button>
