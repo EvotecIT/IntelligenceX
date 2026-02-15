@@ -53,16 +53,25 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
             return Task.FromResult(ToolResponse.Error("invalid_argument", "log_name is required."));
         }
 
+        // Treat whitespace-only values as "not provided" to avoid accidental remote session behavior.
         var machineName = ToolArgs.GetOptionalTrimmed(arguments, "machine_name");
         if (machineName is { Length: > 260 }) {
             machineName = machineName.Substring(0, 260);
         }
+        if (string.IsNullOrWhiteSpace(machineName)) {
+            machineName = null;
+        }
 
+        // Defensive: options are validated on construction, but keep "top events" semantics stable
+        // even if an upstream host misconfigures MaxResults to 0/negative.
+        var maxEventsCap = Options.MaxResults <= 0
+            ? MaxViewTop
+            : Math.Min(Options.MaxResults, MaxViewTop);
         var maxEvents = ToolArgs.GetPositiveCappedInt32OrDefault(
             arguments: arguments,
             key: "max_events",
             defaultValue: DefaultMaxEvents,
-            maxInclusive: Math.Min(Options.MaxResults, MaxViewTop));
+            maxInclusive: maxEventsCap);
 
         // Default off: formatting messages can be slow/fragile for remote sessions and is not always needed for triage.
         var includeMessage = arguments?.GetBoolean("include_message") ?? false;
