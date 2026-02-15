@@ -20,30 +20,65 @@ internal sealed partial class ChatServiceSession {
 
     private static bool ShouldAttemptToolExecutionNudge(string userRequest, string assistantDraft, bool toolsAvailable, int priorToolCalls,
         int assistantDraftToolCalls, bool usedContinuationSubset) {
+        return EvaluateToolExecutionNudgeDecision(
+            userRequest,
+            assistantDraft,
+            toolsAvailable,
+            priorToolCalls,
+            assistantDraftToolCalls,
+            usedContinuationSubset,
+            out _);
+    }
+
+    private static bool EvaluateToolExecutionNudgeDecision(
+        string userRequest,
+        string assistantDraft,
+        bool toolsAvailable,
+        int priorToolCalls,
+        int assistantDraftToolCalls,
+        bool usedContinuationSubset,
+        out string reason) {
+        reason = "not_eligible";
+
         // Keep the eligibility checks inside this method (not only at the call site) so future callers can't
         // accidentally force a retry when tools can't run or when tool execution is already happening.
-        if (!toolsAvailable || priorToolCalls > 0 || assistantDraftToolCalls > 0) {
+        if (!toolsAvailable) {
+            reason = "tools_unavailable";
+            return false;
+        }
+
+        if (priorToolCalls > 0) {
+            reason = "prior_tool_calls_present";
+            return false;
+        }
+
+        if (assistantDraftToolCalls > 0) {
+            reason = "assistant_draft_has_tool_calls";
             return false;
         }
 
         var request = (userRequest ?? string.Empty).Trim();
         if (request.Length == 0) {
+            reason = "empty_user_request";
             return false;
         }
 
         var draft = (assistantDraft ?? string.Empty).Trim();
         if (draft.Length == 0 || draft.Length > 2400) {
+            reason = draft.Length == 0 ? "empty_assistant_draft" : "assistant_draft_too_long";
             return false;
         }
 
         // Guard against accidental feedback loops where the assistant echoes the correction prompt itself.
         if (draft.Contains(ExecutionCorrectionMarker, StringComparison.OrdinalIgnoreCase)) {
+            reason = "already_contains_execution_correction_marker";
             return false;
         }
 
         // If the user selected an explicit pending action (/act or ordinal selection), we should strongly prefer
         // tool execution over a "talky" draft. This is language-agnostic and works after app restarts.
         if (LooksLikeActionSelectionPayload(request)) {
+            reason = "explicit_action_selection_payload";
             return true;
         }
 
@@ -51,16 +86,24 @@ internal sealed partial class ChatServiceSession {
         // weighted continuation routing wasn't used (for example after a restart or when tool routing kept full tool lists).
         var echoedCallToAction = UserMatchesAssistantCallToAction(request, draft);
         if (!usedContinuationSubset && !echoedCallToAction) {
+            reason = "no_continuation_subset_and_no_cta_echo";
             return false;
         }
 
         if (!echoedCallToAction && !LooksLikeCompactFollowUp(request)) {
+            reason = "request_not_compact_follow_up";
             return false;
         }
 
         var asksAnotherQuestion = draft.Contains('?', StringComparison.Ordinal);
         if (asksAnotherQuestion) {
-            return echoedCallToAction || AssistantDraftReferencesUserRequest(request, draft);
+            if (echoedCallToAction || AssistantDraftReferencesUserRequest(request, draft)) {
+                reason = "assistant_question_linked_to_follow_up";
+                return true;
+            }
+
+            reason = "assistant_question_not_linked";
+            return false;
         }
 
         // Language-agnostic "acknowledgement-like" draft: short, no structured output, no numeric evidence.
@@ -73,7 +116,13 @@ internal sealed partial class ChatServiceSession {
             // Multi-line drafts are usually results/explanations; avoid retrying tools based on incidental quoted text
             // inside structured output (for example JSON like `"run now",`). Only allow the nudge when the CTA quote
             // is formatted as an explicit option/bullet on its own line.
-            return echoedCallToAction && UserMatchesAssistantCallToAction(request, draft, onlyBulletContext: true);
+            if (echoedCallToAction && UserMatchesAssistantCallToAction(request, draft, onlyBulletContext: true)) {
+                reason = "structured_draft_with_explicit_bullet_cta";
+                return true;
+            }
+
+            reason = "structured_draft_not_eligible";
+            return false;
         }
 
         var hasNumericSignal = false;
@@ -85,12 +134,19 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (hasNumericSignal || draft.Length > 220) {
+            reason = hasNumericSignal ? "assistant_draft_has_numeric_signal" : "assistant_draft_too_long_for_nudge";
             return false;
         }
 
         // Avoid overriding already-good short completions (for example "You're welcome.").
         // Only retry tool execution when the assistant draft still appears tied to the user's follow-up.
-        return echoedCallToAction || AssistantDraftReferencesUserRequest(request, draft);
+        if (echoedCallToAction || AssistantDraftReferencesUserRequest(request, draft)) {
+            reason = echoedCallToAction ? "cta_echo_linked_to_follow_up" : "assistant_draft_references_follow_up";
+            return true;
+        }
+
+        reason = "assistant_draft_not_linked_to_follow_up";
+        return false;
     }
 
     private static bool LooksLikeActionSelectionPayload(string text) {
