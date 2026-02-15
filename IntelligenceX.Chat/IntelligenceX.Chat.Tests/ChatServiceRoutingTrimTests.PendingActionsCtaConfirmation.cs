@@ -199,5 +199,116 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Equal(input, expanded);
     }
-}
 
+    [Fact]
+    public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenUserMatchesActionIntentWithoutCtaEcho() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_failed4625
+            title: Run failed logon report (4625)
+            request: Run failed logon report on ADO Security and summarize the top five events.
+            reply: /act act_failed4625
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "failed logons please" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        Assert.Equal("act_failed4625", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenUserUsesNaturalConfirmationWithoutHardcodedPhrase() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_failed4625
+            title: Run failed logon report (4625)
+            request: Run failed logon report on ADO Security and summarize the top five events.
+            reply: /act act_failed4625
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "go ahead and run it" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        Assert.Equal("act_failed4625", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotResolveSinglePendingActionWhenSingleOverlapIsNonTrailing() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_failed4625
+            title: Run failed logon report (4625)
+            request: Run failed logon report on ADO Security and summarize the top five events.
+            reply: /act act_failed4625
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "run later" });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal("run later", expanded);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_ResolvesBestPendingActionByIntentOverlapWhenMultipleActionsExist() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_failed4625
+            title: Failed logons (4625)
+            request: Run failed logon report on ADO Security.
+            reply: /act act_failed4625
+
+            [Action]
+            ix:action:v1
+            id: act_lockout4740
+            title: Account lockouts (4740)
+            request: Run account lockout report on ADO Security.
+            reply: /act act_lockout4740
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "failed logons please" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        Assert.Equal("act_failed4625", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotResolveMultiplePendingActionsOnAmbiguousSingleTokenOverlap() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_failed4625
+            title: Failed logons (4625)
+            request: Run failed logon report on ADO Security.
+            reply: /act act_failed4625
+
+            [Action]
+            ix:action:v1
+            id: act_lockout4740
+            title: Account lockouts (4740)
+            request: Run account lockout report on ADO Security.
+            reply: /act act_lockout4740
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "run it" });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal("run it", expanded);
+    }
+}
