@@ -210,7 +210,9 @@ public sealed class ChatServiceRoutingTrimTests {
 
     [Theory]
     [InlineData("- 'run now'")]
+    [InlineData("-   'run now'")]
     [InlineData("* 'run now'")]
+    [InlineData("*    'run now'")]
     [InlineData("1. 'run now'")]
     [InlineData("1) 'run now'")]
     [InlineData("1: 'run now'")]
@@ -273,6 +275,21 @@ public sealed class ChatServiceRoutingTrimTests {
               "note": "run now",
               "status": "ok"
             }
+            """;
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForMultilineIncidentalQuotedTextWithoutContinuationSubset() {
+        var userRequest = "run now";
+        var assistantDraft = """
+            First line.
+            I saw "run now", in the logs, but I can retry if needed.
             """;
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(

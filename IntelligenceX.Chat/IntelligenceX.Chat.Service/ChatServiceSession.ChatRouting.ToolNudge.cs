@@ -47,7 +47,8 @@ internal sealed partial class ChatServiceSession {
         }
 
         // Language-agnostic "acknowledgement-like" draft: short, no structured output, no numeric evidence.
-        var hasStructuredOutput = draft.Contains('\n', StringComparison.Ordinal)
+        var isMultiLine = draft.Contains('\n', StringComparison.Ordinal) || draft.Contains('\r', StringComparison.Ordinal);
+        var hasStructuredOutput = isMultiLine
                                   || draft.Contains('|', StringComparison.Ordinal)
                                   || draft.Contains('{', StringComparison.Ordinal)
                                   || draft.Contains('[', StringComparison.Ordinal);
