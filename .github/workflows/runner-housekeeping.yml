@@ -3,12 +3,24 @@ name: Self-Hosted Runner Housekeeping
 on:
   schedule:
     - cron: '17 */6 * * *'
+  workflow_run:
+    workflows:
+      - Test .NET Libraries
+      - IntelligenceX Review
+      - Claude Code Review
+      - Analysis Catalog Guardrail
+    types:
+      - completed
   workflow_dispatch:
     inputs:
       min_free_gb:
         description: 'Minimum free disk (GiB) required after cleanup'
         required: false
         default: '20'
+
+concurrency:
+  group: self-hosted-runner-housekeeping-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
   cleanup-linux-runner:
@@ -17,6 +29,16 @@ jobs:
     runs-on: [self-hosted, ubuntu]
     timeout-minutes: 15
     steps:
+      - name: Print trigger context
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Event: ${GITHUB_EVENT_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
+            echo "Source workflow: ${{ github.event.workflow_run.name }}"
+            echo "Source conclusion: ${{ github.event.workflow_run.conclusion }}"
+          fi
+
       - name: Show disk usage before cleanup
         shell: bash
         run: |
@@ -29,10 +51,15 @@ jobs:
         shell: bash
         env:
           INPUT_MIN_FREE_GB: ${{ inputs.min_free_gb }}
+          DEFAULT_MIN_FREE_GB: ${{ vars.IX_RUNNER_HOUSEKEEPING_MIN_FREE_GB }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
 
-          min_free_gb="${INPUT_MIN_FREE_GB:-20}"
+          min_free_gb="${DEFAULT_MIN_FREE_GB:-20}"
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" && -n "${INPUT_MIN_FREE_GB:-}" ]]; then
+            min_free_gb="${INPUT_MIN_FREE_GB}"
+          fi
           if ! [[ "$min_free_gb" =~ ^[0-9]+$ ]]; then
             echo "::error::min_free_gb must be an integer. Received: '$min_free_gb'"
             exit 1
@@ -46,8 +73,14 @@ jobs:
           runner_root="$(cd "${RUNNER_TEMP}/../.." && pwd)"
           work_root="${runner_root}/_work"
           diag_root="${runner_root}/_diag"
+          aggressive_threshold_gb=$((min_free_gb + 5))
 
           echo "Runner root detected as: ${runner_root}"
+          echo "Required free disk after cleanup: ${min_free_gb} GiB"
+          echo "Aggressive cleanup threshold: < ${aggressive_threshold_gb} GiB"
+
+          free_before_gb="$(df -Pk "$runner_root" | awk 'NR==2 { printf "%d", $4 / 1024 / 1024 }')"
+          echo "Free disk before cleanup: ${free_before_gb} GiB"
 
           if [[ -d "$diag_root" ]]; then
             find "$diag_root" -type f -mtime +14 -print -delete || true
@@ -57,20 +90,26 @@ jobs:
             find "${work_root}/_temp" -mindepth 1 -print -exec rm -rf {} + || true
           fi
 
-          if [[ -d "${work_root}/_actions" ]]; then
-            find "${work_root}/_actions" -mindepth 1 -maxdepth 1 -mtime +7 -print -exec rm -rf {} + || true
-          fi
+          if (( free_before_gb < aggressive_threshold_gb )); then
+            echo "Running aggressive cleanup because free disk is below threshold."
 
-          if [[ -d "${work_root}/_tool" ]]; then
-            find "${work_root}/_tool" -mindepth 1 -maxdepth 1 -mtime +30 -print -exec rm -rf {} + || true
-          fi
+            if [[ -d "${work_root}/_actions" ]]; then
+              find "${work_root}/_actions" -mindepth 1 -maxdepth 1 -mtime +7 -print -exec rm -rf {} + || true
+            fi
 
-          if command -v dotnet >/dev/null 2>&1; then
-            dotnet nuget locals all --clear || true
-          fi
+            if [[ -d "${work_root}/_tool" ]]; then
+              find "${work_root}/_tool" -mindepth 1 -maxdepth 1 -mtime +30 -print -exec rm -rf {} + || true
+            fi
 
-          if command -v docker >/dev/null 2>&1; then
-            docker system prune -af --volumes || true
+            if command -v dotnet >/dev/null 2>&1; then
+              dotnet nuget locals all --clear || true
+            fi
+
+            if command -v docker >/dev/null 2>&1; then
+              docker system prune -af --volumes || true
+            fi
+          else
+            echo "Skipping aggressive cleanup; free disk is healthy."
           fi
 
           free_gb="$(df -Pk "$runner_root" | awk 'NR==2 { printf "%d", $4 / 1024 / 1024 }')"
