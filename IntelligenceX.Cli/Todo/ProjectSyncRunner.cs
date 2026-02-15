@@ -143,7 +143,10 @@ internal static class ProjectSyncRunner {
 
         if (options.ApplyLabels && options.EnsureLabels && !options.DryRun) {
             try {
-                await RepositoryLabelManager.EnsureLabelsAsync(options.Repo, ProjectLabelCatalog.DefaultLabels).ConfigureAwait(false);
+                var labelsToEnsure = ProjectLabelCatalog.BuildEnsureLabelCatalog(
+                    entries.Select(entry => entry.Category),
+                    entries.SelectMany(entry => entry.Tags));
+                await RepositoryLabelManager.EnsureLabelsAsync(options.Repo, labelsToEnsure).ConfigureAwait(false);
             } catch (Exception ex) {
                 Console.Error.WriteLine($"Failed to ensure labels before apply-labels: {ex.Message}");
                 return 1;
@@ -815,8 +818,8 @@ internal static class ProjectSyncRunner {
     internal static IReadOnlyList<string> BuildLabelsForEntry(ProjectSyncEntry entry) {
         var labels = new List<string>();
 
-        if (!string.IsNullOrWhiteSpace(entry.Category)) {
-            labels.Add($"ix/category:{entry.Category}");
+        if (ProjectLabelCatalog.TryMapCategoryLabel(entry.Category ?? string.Empty, out var categoryLabel)) {
+            labels.Add(categoryLabel);
         }
 
         foreach (var tag in entry.Tags) {

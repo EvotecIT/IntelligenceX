@@ -31,6 +31,19 @@ internal static partial class Program {
         AssertEqual(true, labels.Contains("ix/decision:merge-candidate", StringComparer.OrdinalIgnoreCase), "decision merge-candidate label");
     }
 
+    private static void TestProjectLabelCatalogBuildEnsureCatalogIncludesDynamicCategoryAndTags() {
+        var labels = IntelligenceX.Cli.Todo.ProjectLabelCatalog.BuildEnsureLabelCatalog(
+            categories: new[] { "security", "ML Ops" },
+            tags: new[] { "docs", "Release Candidate", "unknown-tag" });
+
+        AssertEqual(true, labels.Any(label => label.Name.Equals("ix/category:security", StringComparison.OrdinalIgnoreCase)), "known category label present");
+        AssertEqual(true, labels.Any(label => label.Name.Equals("ix/category:ml-ops", StringComparison.OrdinalIgnoreCase)), "dynamic category label present");
+        AssertEqual(true, labels.Any(label => label.Name.Equals("ix/tag:docs", StringComparison.OrdinalIgnoreCase)), "known tag label present");
+        AssertEqual(true, labels.Any(label => label.Name.Equals("ix/tag:release-candidate", StringComparison.OrdinalIgnoreCase)), "dynamic normalized tag label present");
+        AssertEqual(true, labels.Any(label => label.Name.Equals("ix/tag:unknown-tag", StringComparison.OrdinalIgnoreCase)), "dynamic passthrough tag label present");
+        AssertEqual(1, labels.Count(label => label.Name.Equals("ix/tag:docs", StringComparison.OrdinalIgnoreCase)), "known tag label deduped");
+    }
+
     private static void TestProjectSyncBuildEntriesMergesVisionAndCanonical() {
         const string triageJson = """
 {
@@ -234,11 +247,33 @@ internal static partial class Program {
         AssertEqual(true, labels.Contains("ix/category:security", StringComparer.OrdinalIgnoreCase), "category label");
         AssertEqual(true, labels.Contains("ix/tag:security", StringComparer.OrdinalIgnoreCase), "security tag label");
         AssertEqual(true, labels.Contains("ix/tag:api", StringComparer.OrdinalIgnoreCase), "api tag label");
-        AssertEqual(false, labels.Any(label => label.Contains("unknown-tag", StringComparison.OrdinalIgnoreCase)), "unsupported tag skipped");
+        AssertEqual(true, labels.Contains("ix/tag:unknown-tag", StringComparer.OrdinalIgnoreCase), "dynamic tag label");
         AssertEqual(true, labels.Contains("ix/match:linked-issue", StringComparer.OrdinalIgnoreCase), "high confidence match label");
         AssertEqual(false, labels.Contains("ix/match:needs-review", StringComparer.OrdinalIgnoreCase), "no review label for high confidence");
         AssertEqual(true, labels.Contains("ix/decision:merge-candidate", StringComparer.OrdinalIgnoreCase), "decision label");
         AssertEqual(true, labels.Contains("ix/duplicate:clustered", StringComparer.OrdinalIgnoreCase), "duplicate label");
+    }
+
+    private static void TestProjectSyncBuildLabelsNormalizesDynamicCategoryAndTags() {
+        var entry = new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+            Number: 88,
+            Url: "https://github.com/EvotecIT/IntelligenceX/pull/88",
+            Kind: "pull_request",
+            TriageScore: 79.4,
+            DuplicateCluster: null,
+            CanonicalItem: null,
+            Category: "ML Ops",
+            Tags: new[] { "Release Candidate", "Docs" },
+            MatchedIssueUrl: null,
+            MatchedIssueConfidence: null,
+            VisionFit: null,
+            VisionConfidence: null
+        );
+
+        var labels = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildLabelsForEntry(entry);
+        AssertEqual(true, labels.Contains("ix/category:ml-ops", StringComparer.OrdinalIgnoreCase), "dynamic category label");
+        AssertEqual(true, labels.Contains("ix/tag:release-candidate", StringComparer.OrdinalIgnoreCase), "dynamic tag label");
+        AssertEqual(true, labels.Contains("ix/tag:docs", StringComparer.OrdinalIgnoreCase), "known normalized alias tag label");
     }
 
     private static void TestProjectSyncBuildLabelsUsesNeedsReviewForLowConfidenceIssueMatch() {
