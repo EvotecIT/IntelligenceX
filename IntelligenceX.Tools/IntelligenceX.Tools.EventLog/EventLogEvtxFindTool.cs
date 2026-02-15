@@ -97,7 +97,9 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             var rootPath = root.Trim();
             string rootFull;
             try {
-                rootFull = NormalizePathForComparison(Path.GetFullPath(rootPath));
+                rootFull = Path.GetFullPath(rootPath);
+                rootFull = Path.TrimEndingDirectorySeparator(rootFull);
+                rootFull = NormalizePathForComparison(rootFull);
             } catch (Exception ex) when (
                 ex is ArgumentException or NotSupportedException or PathTooLongException) {
                 continue;
@@ -111,8 +113,6 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             if (HasReparsePoint(rootFull)) {
                 continue;
             }
-
-            rootFull = Path.TrimEndingDirectorySeparator(rootFull);
 
             var queue = new Queue<(string Dir, int Depth)>();
             queue.Enqueue((rootFull, 0));
@@ -156,7 +156,7 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                             continue;
                         }
 
-                        var fileFull = NormalizePathForComparison(info.FullName);
+                        var fileFull = NormalizePathForComparison(Path.GetFullPath(info.FullName));
                         if (!IsUnderRoot(fileFull, rootFull, comparison)) {
                             continue;
                         }
@@ -326,7 +326,8 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             return false;
         }
 
-        rootFullPath = Path.TrimEndingDirectorySeparator(rootFullPath);
+        candidateFullPath = NormalizePathForComparison(Path.TrimEndingDirectorySeparator(candidateFullPath));
+        rootFullPath = NormalizePathForComparison(Path.TrimEndingDirectorySeparator(rootFullPath));
         if (string.Equals(candidateFullPath, rootFullPath, comparison)) {
             return true;
         }
