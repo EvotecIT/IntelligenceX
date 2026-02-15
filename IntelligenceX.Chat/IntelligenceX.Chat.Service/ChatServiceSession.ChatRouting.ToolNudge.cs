@@ -176,7 +176,8 @@ internal sealed partial class ChatServiceSession {
             // Quote is the only meaningful content on its line (explicit instruction snippet).
             var suffixLeft = closeIndexExclusive;
             if (suffixLeft >= assistantDraft.Length) {
-                return true;
+                // Only accept quote-only lines when preceded by an explicit label line (for example "To proceed:").
+                return PreviousNonEmptyLineEndsWithColon(assistantDraft, lineStart);
             }
 
             var suffixRight = lineEnd - 1;
@@ -190,7 +191,12 @@ internal sealed partial class ChatServiceSession {
                 suffixRight--;
             }
 
-            return suffixLeft > suffixRight;
+            if (suffixLeft > suffixRight) {
+                // Avoid treating incidental quoted log/error lines as CTAs unless the assistant explicitly introduced them.
+                return PreviousNonEmptyLineEndsWithColon(assistantDraft, lineStart);
+            }
+
+            return false;
         }
 
         // "-", "*", "•"
@@ -215,6 +221,46 @@ internal sealed partial class ChatServiceSession {
             }
             if (digitCount > 0) {
                 return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool PreviousNonEmptyLineEndsWithColon(string text, int currentLineStart) {
+        if (string.IsNullOrEmpty(text) || currentLineStart <= 0) {
+            return false;
+        }
+
+        // Walk backwards over line breaks and empty lines until we find the previous non-empty line.
+        var i = currentLineStart - 1;
+        while (i >= 0 && (text[i] == '\n' || text[i] == '\r')) {
+            i--;
+        }
+
+        while (i >= 0) {
+            var lineEnd = i;
+            var lineStart = i;
+            while (lineStart >= 0 && text[lineStart] != '\n' && text[lineStart] != '\r') {
+                lineStart--;
+            }
+            var start = lineStart + 1;
+
+            while (start <= lineEnd && char.IsWhiteSpace(text[start])) {
+                start++;
+            }
+            while (lineEnd >= start && char.IsWhiteSpace(text[lineEnd])) {
+                lineEnd--;
+            }
+
+            if (start <= lineEnd) {
+                return text[lineEnd] == ':';
+            }
+
+            // Empty line; move to previous.
+            i = lineStart - 1;
+            while (i >= 0 && (text[i] == '\n' || text[i] == '\r')) {
+                i--;
             }
         }
 
