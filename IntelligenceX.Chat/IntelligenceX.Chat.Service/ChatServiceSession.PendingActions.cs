@@ -378,11 +378,13 @@ internal sealed partial class ChatServiceSession {
         var end = span.Length;
         while (start < end
             && (char.IsWhiteSpace(span[start])
+                || span[start] == '`'
                 || (char.IsPunctuation(span[start]) && !IsQuestionPunctuation(span[start]) && !IsQuoteWrapper(span[start])))) {
             start++;
         }
         while (end > start
             && (char.IsWhiteSpace(span[end - 1])
+                || span[end - 1] == '`'
                 || (char.IsPunctuation(span[end - 1]) && !IsQuestionPunctuation(span[end - 1]) && !IsQuoteWrapper(span[end - 1])))) {
             end--;
         }
