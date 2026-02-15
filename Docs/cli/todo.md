@@ -112,7 +112,7 @@ intelligencex todo project-init \
 
 Notes:
 - Creates a project (or initializes an existing one with `--project <n>`).
-- Ensures required custom fields such as `Vision Fit`, `Category`, `Tags`, `Matched Issue`, `Triage Score`, and `Duplicate Cluster`.
+- Ensures required custom fields such as `Vision Fit`, `Category`, `Tags`, `Matched Issue`, `Triage Score`, `Duplicate Cluster`, and `IX Suggested Decision`.
 - Ensures IX label taxonomy in the repo by default (`--no-ensure-labels` to skip).
 - Writes a reusable config file containing owner/project/field metadata.
 - Requires GitHub token scopes: `project` (and typically `read:project` for follow-up sync).
@@ -137,6 +137,10 @@ Useful options:
 - `--ensure-labels` / `--no-ensure-labels` for label taxonomy management.
 - `--project-item-scan-limit <n>` for larger projects.
 - `--dry-run` for a no-write sync preview.
+
+Behavior:
+- `IX Suggested Decision` is populated automatically (`accept`, `defer`, `reject`, `merge-candidate`) from combined triage + vision signals.
+- `Maintainer Decision` remains human-owned for final triage decisions.
 
 ## Bootstrap project + workflow (recommended first run)
 
