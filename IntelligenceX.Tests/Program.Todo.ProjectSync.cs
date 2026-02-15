@@ -21,6 +21,16 @@ internal static partial class Program {
         AssertEqual(true, names.Contains("Maintainer Decision", StringComparer.OrdinalIgnoreCase), "has Maintainer Decision");
     }
 
+    private static void TestProjectLabelCatalogDefaultsIncludeDecisionLabels() {
+        var labels = IntelligenceX.Cli.Todo.ProjectLabelCatalog.DefaultLabels
+            .Select(label => label.Name)
+            .ToList();
+        AssertEqual(true, labels.Contains("ix/decision:accept", StringComparer.OrdinalIgnoreCase), "decision accept label");
+        AssertEqual(true, labels.Contains("ix/decision:defer", StringComparer.OrdinalIgnoreCase), "decision defer label");
+        AssertEqual(true, labels.Contains("ix/decision:reject", StringComparer.OrdinalIgnoreCase), "decision reject label");
+        AssertEqual(true, labels.Contains("ix/decision:merge-candidate", StringComparer.OrdinalIgnoreCase), "decision merge-candidate label");
+    }
+
     private static void TestProjectSyncBuildEntriesMergesVisionAndCanonical() {
         const string triageJson = """
 {
@@ -216,7 +226,8 @@ internal static partial class Program {
             MatchedIssueUrl: "https://github.com/EvotecIT/IntelligenceX/issues/10",
             MatchedIssueConfidence: 0.95,
             VisionFit: "aligned",
-            VisionConfidence: 0.9
+            VisionConfidence: 0.9,
+            SuggestedDecision: "merge-candidate"
         );
 
         var labels = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildLabelsForEntry(entry);
@@ -226,6 +237,7 @@ internal static partial class Program {
         AssertEqual(false, labels.Any(label => label.Contains("unknown-tag", StringComparison.OrdinalIgnoreCase)), "unsupported tag skipped");
         AssertEqual(true, labels.Contains("ix/match:linked-issue", StringComparer.OrdinalIgnoreCase), "high confidence match label");
         AssertEqual(false, labels.Contains("ix/match:needs-review", StringComparer.OrdinalIgnoreCase), "no review label for high confidence");
+        AssertEqual(true, labels.Contains("ix/decision:merge-candidate", StringComparer.OrdinalIgnoreCase), "decision label");
         AssertEqual(true, labels.Contains("ix/duplicate:clustered", StringComparer.OrdinalIgnoreCase), "duplicate label");
     }
 
@@ -242,12 +254,14 @@ internal static partial class Program {
             MatchedIssueUrl: "https://github.com/EvotecIT/IntelligenceX/issues/99",
             MatchedIssueConfidence: 0.62,
             VisionFit: null,
-            VisionConfidence: null
+            VisionConfidence: null,
+            SuggestedDecision: "defer"
         );
 
         var labels = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildLabelsForEntry(entry);
         AssertEqual(true, labels.Contains("ix/match:needs-review", StringComparer.OrdinalIgnoreCase), "low confidence match review label");
         AssertEqual(false, labels.Contains("ix/match:linked-issue", StringComparer.OrdinalIgnoreCase), "low confidence should not be linked-issue");
+        AssertEqual(true, labels.Contains("ix/decision:defer", StringComparer.OrdinalIgnoreCase), "decision defer label");
     }
 
     private static void TestProjectSyncBuildIssueMatchSuggestionCommentFiltersByConfidence() {

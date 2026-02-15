@@ -839,6 +839,11 @@ internal static class ProjectSyncRunner {
             }
         }
 
+        var decisionLabel = MapSuggestedDecisionLabel(entry.SuggestedDecision);
+        if (!string.IsNullOrWhiteSpace(decisionLabel) && entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase)) {
+            labels.Add(decisionLabel);
+        }
+
         if (!string.IsNullOrWhiteSpace(entry.DuplicateCluster)) {
             labels.Add("ix/duplicate:clustered");
         }
@@ -998,6 +1003,16 @@ internal static class ProjectSyncRunner {
             "aligned" => "ix/vision:aligned",
             "needs-human-review" => "ix/vision:needs-review",
             "likely-out-of-scope" => "ix/vision:out-of-scope",
+            _ => null
+        };
+    }
+
+    private static string? MapSuggestedDecisionLabel(string? suggestedDecision) {
+        return suggestedDecision?.ToLowerInvariant() switch {
+            "accept" => "ix/decision:accept",
+            "defer" => "ix/decision:defer",
+            "reject" => "ix/decision:reject",
+            "merge-candidate" => "ix/decision:merge-candidate",
             _ => null
         };
     }

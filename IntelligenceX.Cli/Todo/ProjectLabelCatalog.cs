@@ -50,6 +50,10 @@ internal static class ProjectLabelCatalog {
 
         new ProjectLabelDefinition("ix/match:linked-issue", "0366d6", "PR has a high-confidence related issue."),
         new ProjectLabelDefinition("ix/match:needs-review", "fbca04", "PR has a low-confidence issue match that needs maintainer review."),
+        new ProjectLabelDefinition("ix/decision:accept", "0e8a16", "IX suggested decision is accept."),
+        new ProjectLabelDefinition("ix/decision:defer", "fbca04", "IX suggested decision is defer."),
+        new ProjectLabelDefinition("ix/decision:reject", "d73a4a", "IX suggested decision is reject."),
+        new ProjectLabelDefinition("ix/decision:merge-candidate", "1d76db", "IX suggested decision is merge-candidate."),
         new ProjectLabelDefinition("ix/duplicate:clustered", "f9d0c4", "Item is part of a duplicate cluster.")
     };
 
