@@ -450,9 +450,12 @@ internal static partial class Program {
         failed += Run("Todo vision check explicit policy prefix parsing", TestVisionCheckParseSignalsSupportsExplicitPolicyPrefixes);
         failed += Run("Todo project fields defaults", TestProjectFieldCatalogDefaultsIncludeVisionAndDecisionFields);
         failed += Run("Todo project sync merges vision and canonical", TestProjectSyncBuildEntriesMergesVisionAndCanonical);
+        failed += Run("Todo project sync labels include tags and high-confidence match", TestProjectSyncBuildLabelsIncludesTagsAndHighConfidenceIssueMatch);
+        failed += Run("Todo project sync labels mark low-confidence match for review", TestProjectSyncBuildLabelsUsesNeedsReviewForLowConfidenceIssueMatch);
         failed += Run("Todo project bootstrap renders project target", TestProjectBootstrapRenderWorkflowTemplateInjectsProjectTarget);
         failed += Run("Todo project bootstrap clamps max items", TestProjectBootstrapRenderWorkflowTemplateClampsMaxItems);
         failed += Run("Todo project bootstrap renders vision template", TestProjectBootstrapRenderVisionTemplateInjectsContext);
+        failed += Run("Todo project bootstrap workflow enables label apply", TestProjectBootstrapWorkflowTemplateEnablesApplyLabels);
         failed += Run("Analyze run PowerShell script captures engine errors", TestAnalyzeRunPowerShellScriptCapturesEngineErrors);
         failed += Run("Analyze run PowerShell strict args include fail switch", TestAnalyzeRunPowerShellStrictArgsIncludeFailSwitch);
         failed += Run("Analyze run disabled writes empty findings", TestAnalyzeRunDisabledWritesEmptyFindings);
