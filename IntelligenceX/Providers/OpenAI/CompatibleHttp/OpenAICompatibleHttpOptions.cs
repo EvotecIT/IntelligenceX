@@ -69,11 +69,7 @@ public sealed class OpenAICompatibleHttpOptions {
                 }
             }
 
-            if (isLoopback) {
-                if (!AllowInsecureHttp && AllowInsecureHttpNonLoopback) {
-                    // Non-loopback flag implies acknowledgement, but keep the message consistent for loopback.
-                }
-            } else if (!AllowInsecureHttpNonLoopback) {
+            if (!isLoopback && !AllowInsecureHttpNonLoopback) {
                 throw new ArgumentException(
                     "Insecure http BaseUrl for non-loopback host requires AllowInsecureHttpNonLoopback=true.",
                     nameof(BaseUrl));

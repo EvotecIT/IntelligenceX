@@ -101,7 +101,7 @@ internal sealed partial class ChatServiceSession {
         };
         var instructions = LoadInstructions(_options);
         _instructions = instructions;
-        if (!string.IsNullOrWhiteSpace(instructions)) {
+        if (clientOptions.TransportKind == OpenAITransportKind.Native && !string.IsNullOrWhiteSpace(instructions)) {
             clientOptions.NativeOptions.Instructions = instructions!;
         }
 

@@ -101,7 +101,7 @@ internal sealed partial class ChatServiceSession {
 
         var options = new ChatOptions {
             Model = request.Options?.Model ?? _options.Model,
-            Instructions = _instructions,
+            Instructions = string.IsNullOrWhiteSpace(_instructions) ? null : _instructions,
             ParallelToolCalls = parallelTools,
             Tools = toolDefs.Count == 0 ? null : toolDefs,
             ToolChoice = toolDefs.Count == 0 ? null : ToolChoice.Auto
