@@ -79,10 +79,14 @@ project={{ProjectNumber}}
 
         AssertContainsText(rendered, "intelligencex:triage-project-sync-summary", "workflow summary marker present");
         AssertContainsText(rendered, "intelligencex:triage-control-dashboard", "workflow dashboard marker present");
+        AssertContainsText(rendered, "IX_PROJECT_VIEW_APPLY_ISSUE", "workflow dashboard includes project-view issue variable");
+        AssertContainsText(rendered, "artifacts/triage/ix-project-config.json", "workflow dashboard reads project config when present");
+        AssertContainsText(rendered, "intelligencex:triage-bootstrap-links", "workflow dashboard links bootstrap marker when present");
         AssertContainsText(rendered, "issues/$ISSUE/comments", "workflow reads control issue comments");
         AssertContainsText(rendered, "--method PATCH", "workflow updates existing summary comment");
         AssertContainsText(rendered, "--method POST", "workflow creates summary comment when missing");
         AssertContainsText(rendered, "Latest Summaries", "workflow dashboard includes latest summaries section");
+        AssertContainsText(rendered, "Maintainer Quick Links", "workflow dashboard includes quick links section");
     }
 
     private static void TestTriageIndexWorkflowTemplateUpsertsControlIssueSummaryComment() {
@@ -91,10 +95,14 @@ project={{ProjectNumber}}
 
         AssertContainsText(rendered, "intelligencex:triage-index-summary", "index workflow summary marker present");
         AssertContainsText(rendered, "intelligencex:triage-control-dashboard", "index workflow dashboard marker present");
+        AssertContainsText(rendered, "IX_PROJECT_VIEW_APPLY_ISSUE", "index workflow dashboard includes project-view issue variable");
+        AssertContainsText(rendered, "artifacts/triage/ix-project-config.json", "index workflow dashboard reads project config when present");
+        AssertContainsText(rendered, "intelligencex:triage-bootstrap-links", "index workflow dashboard links bootstrap marker when present");
         AssertContainsText(rendered, "issues/$ISSUE/comments", "index workflow reads control issue comments");
         AssertContainsText(rendered, "--method PATCH", "index workflow updates existing summary comment");
         AssertContainsText(rendered, "--method POST", "index workflow creates summary comment when missing");
         AssertContainsText(rendered, "Latest Summaries", "index workflow dashboard includes latest summaries section");
+        AssertContainsText(rendered, "Maintainer Quick Links", "index workflow dashboard includes quick links section");
     }
 
     private static void TestProjectBootstrapBuildControlIssueBodyIncludesProjectContext() {

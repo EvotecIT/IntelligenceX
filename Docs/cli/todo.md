@@ -234,6 +234,7 @@ when repository variable `IX_TRIAGE_CONTROL_ISSUE` is set.
 For `triage-index-scheduled.yml`, IX upserts a single marker comment (latest only) with the triage index summary.
 For `triage-project-sync.yml`, IX upserts a single marker comment (latest only) that includes both triage and vision markdown summaries.
 Both workflows also upsert a shared `intelligencex:triage-control-dashboard` comment linking to the latest summary comments.
+The dashboard comment also includes quick links for maintainers (control issue, vision file, project board when config is available, project-view apply issue variable, and bootstrap links comment).
 `todo project-bootstrap --create-control-issue` can set this variable for you automatically.
 
 ## Options
