@@ -26,8 +26,11 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private static readonly string[] ProjectionFormattingArgumentNames = { "columns", "sort_by", "sort_direction" };
     private static readonly Regex TopTokenRegex = new(@"\btop\b", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private const string ProjectionColumnsArgumentName = "columns";
+    private const string ProjectionSortByArgumentName = "sort_by";
+    private const string ProjectionSortDirectionArgumentName = "sort_direction";
     private const string ProjectionTopArgumentName = "top";
-    private const string ProjectionFallbackRecoveredStatusMessage = "Recovered by resetting projection arguments to defaults.";
+    private const string ProjectionFallbackRecoveredStatusMessage = "Recovered from projection argument failure.";
 
     private static async Task<TurnInfo> ChatWithToolSchemaRecoveryAsync(IntelligenceXClient client, ChatInput input, ChatOptions options,
         CancellationToken cancellationToken) {
@@ -237,6 +240,15 @@ internal sealed partial class ChatServiceSession {
             return arguments;
         }
 
+        if (TryBuildSelectiveProjectionFallbackArguments(arguments, output, out var selectiveFallback, out var selectiveRemoved, out var projectionMetadataObserved)) {
+            removedArguments = selectiveRemoved;
+            return selectiveFallback;
+        }
+
+        if (projectionMetadataObserved) {
+            return arguments;
+        }
+
         var hasProjectionFormattingArguments = false;
         foreach (var kv in arguments) {
             var key = (kv.Key ?? string.Empty).Trim();
@@ -273,6 +285,211 @@ internal sealed partial class ChatServiceSession {
         removedArguments = removed.Count == 0 ? Array.Empty<string>() : removed.ToArray();
         return clone;
     }
+
+    private static bool TryBuildSelectiveProjectionFallbackArguments(
+        JsonObject arguments,
+        ToolOutputDto output,
+        out JsonObject fallbackArguments,
+        out string[] removedArguments,
+        out bool projectionMetadataObserved) {
+        fallbackArguments = arguments;
+        removedArguments = Array.Empty<string>();
+        projectionMetadataObserved = TryReadProjectionAvailableColumns(output, out var availableColumns);
+        if (!projectionMetadataObserved || availableColumns.Count == 0) {
+            return false;
+        }
+
+        var removeColumns = false;
+        JsonArray? columnsReplacement = null;
+        if (TryGetArgumentValue(arguments, ProjectionColumnsArgumentName, out var rawColumns)) {
+            if (rawColumns?.AsArray() is JsonArray columnsArray) {
+                var requestedColumns = ToolArgs.ReadDistinctStringArray(columnsArray);
+                if (requestedColumns.Count > 0) {
+                    var keptColumns = requestedColumns
+                        .Where(availableColumns.Contains)
+                        .ToArray();
+                    if (keptColumns.Length < requestedColumns.Count) {
+                        if (keptColumns.Length == 0) {
+                            removeColumns = true;
+                        } else {
+                            columnsReplacement = new JsonArray().AddRange(keptColumns);
+                        }
+                    }
+                }
+            } else if (BuildToolFailureSearchText(output).Contains("columns", StringComparison.OrdinalIgnoreCase)) {
+                // When columns is malformed/non-array, remove it as a safe recovery step.
+                removeColumns = true;
+            }
+        }
+
+        var removeSortBy = false;
+        if (TryGetArgumentString(arguments, ProjectionSortByArgumentName, out var sortByValue)
+            && sortByValue.Length > 0
+            && !availableColumns.Contains(sortByValue)) {
+            removeSortBy = true;
+        }
+
+        var removeSortDirection = removeSortBy && HasArgument(arguments, ProjectionSortDirectionArgumentName);
+        if (!removeSortDirection
+            && HasArgument(arguments, ProjectionSortDirectionArgumentName)
+            && IsSortDirectionValidationFailure(output)) {
+            removeSortDirection = true;
+        }
+
+        if (!removeColumns && columnsReplacement is null && !removeSortBy && !removeSortDirection) {
+            return false;
+        }
+
+        var clone = new JsonObject(StringComparer.Ordinal);
+        var removed = new List<string>(3);
+        var seenRemoved = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in arguments) {
+            var key = (kv.Key ?? string.Empty).Trim();
+            if (key.Length == 0) {
+                continue;
+            }
+
+            if (IsProjectionColumnsArgumentName(key)) {
+                if (removeColumns) {
+                    AddRemovedArgument(removed, seenRemoved, ProjectionColumnsArgumentName);
+                    continue;
+                }
+                if (columnsReplacement is not null) {
+                    clone.Add(key, columnsReplacement);
+                    AddRemovedArgument(removed, seenRemoved, ProjectionColumnsArgumentName);
+                    continue;
+                }
+            }
+
+            if (IsProjectionSortByArgumentName(key) && removeSortBy) {
+                AddRemovedArgument(removed, seenRemoved, ProjectionSortByArgumentName);
+                continue;
+            }
+
+            if (IsProjectionSortDirectionArgumentName(key) && removeSortDirection) {
+                AddRemovedArgument(removed, seenRemoved, ProjectionSortDirectionArgumentName);
+                continue;
+            }
+
+            clone.Add(key, kv.Value);
+        }
+
+        removedArguments = removed.Count == 0 ? Array.Empty<string>() : removed.ToArray();
+        fallbackArguments = clone;
+        return removedArguments.Length > 0;
+    }
+
+    private static void AddRemovedArgument(List<string> target, HashSet<string> seen, string argumentName) {
+        if (target is null || seen is null || string.IsNullOrWhiteSpace(argumentName)) {
+            return;
+        }
+
+        var normalized = argumentName.Trim();
+        if (seen.Add(normalized)) {
+            target.Add(normalized);
+        }
+    }
+
+    private static bool TryReadProjectionAvailableColumns(ToolOutputDto output, out HashSet<string> availableColumns) {
+        availableColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var observed = TryAppendAvailableProjectionColumns(output.MetaJson, availableColumns);
+        observed |= TryAppendAvailableProjectionColumns(output.Output, availableColumns);
+        return observed;
+    }
+
+    private static bool TryAppendAvailableProjectionColumns(string? rawJson, HashSet<string> destination) {
+        if (destination is null || string.IsNullOrWhiteSpace(rawJson)) {
+            return false;
+        }
+
+        JsonObject? obj;
+        try {
+            obj = JsonLite.Parse(rawJson)?.AsObject();
+        } catch {
+            return false;
+        }
+
+        if (obj is null) {
+            return false;
+        }
+
+        var before = destination.Count;
+        AppendAvailableColumns(obj, destination);
+        if (obj.GetObject("meta") is JsonObject metaObj) {
+            AppendAvailableColumns(metaObj, destination);
+        }
+        return destination.Count > before;
+    }
+
+    private static void AppendAvailableColumns(JsonObject obj, HashSet<string> destination) {
+        if (obj.GetArray("available_columns") is not JsonArray availableColumnsArray || availableColumnsArray.Count == 0) {
+            return;
+        }
+
+        for (var i = 0; i < availableColumnsArray.Count; i++) {
+            var value = availableColumnsArray[i].AsString();
+            if (string.IsNullOrWhiteSpace(value)) {
+                continue;
+            }
+
+            destination.Add(value.Trim());
+        }
+    }
+
+    private static bool TryGetArgumentValue(JsonObject arguments, string argumentName, out JsonValue? value) {
+        value = null;
+        if (arguments is null || string.IsNullOrWhiteSpace(argumentName)) {
+            return false;
+        }
+
+        foreach (var kv in arguments) {
+            if (string.Equals((kv.Key ?? string.Empty).Trim(), argumentName, StringComparison.OrdinalIgnoreCase)) {
+                value = kv.Value;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryGetArgumentString(JsonObject arguments, string argumentName, out string value) {
+        value = string.Empty;
+        if (!TryGetArgumentValue(arguments, argumentName, out var rawValue)) {
+            return false;
+        }
+
+        value = (rawValue?.AsString() ?? string.Empty).Trim();
+        return true;
+    }
+
+    private static bool HasArgument(JsonObject arguments, string argumentName) {
+        return TryGetArgumentValue(arguments, argumentName, out _);
+    }
+
+    private static bool IsSortDirectionValidationFailure(ToolOutputDto output) {
+        var text = BuildToolFailureSearchText(output);
+        if (text.Length == 0) {
+            return false;
+        }
+
+        if (!text.Contains("sort_direction", StringComparison.OrdinalIgnoreCase)
+            && !text.Contains("sort direction", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        return text.Contains("asc", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("desc", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("must be one of", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsProjectionColumnsArgumentName(string argumentName) =>
+        string.Equals(argumentName, ProjectionColumnsArgumentName, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsProjectionSortByArgumentName(string argumentName) =>
+        string.Equals(argumentName, ProjectionSortByArgumentName, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsProjectionSortDirectionArgumentName(string argumentName) =>
+        string.Equals(argumentName, ProjectionSortDirectionArgumentName, StringComparison.OrdinalIgnoreCase);
 
     private static bool IsProjectionFormattingArgumentName(string argumentName) {
         for (var i = 0; i < ProjectionFormattingArgumentNames.Length; i++) {
@@ -335,7 +552,7 @@ internal sealed partial class ChatServiceSession {
         }
         envelope.Add("meta", meta);
 
-        const string fallbackHint = "Projection arguments were reset to defaults after a view-argument failure.";
+        const string fallbackHint = "Projection arguments were adjusted after a view-argument failure.";
         if (envelope.GetArray("hints") is JsonArray rootHints) {
             AddDistinctJsonString(rootHints, fallbackHint);
         } else {
