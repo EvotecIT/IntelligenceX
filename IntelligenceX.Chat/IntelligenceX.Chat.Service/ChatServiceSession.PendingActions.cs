@@ -16,6 +16,7 @@ internal sealed partial class ChatServiceSession {
     private static readonly char[] PendingActionConfirmationDisqualifierPunctuation = new[] { ':', ';', '\uFF1A', '\uFF1B' }; // ： ；
     private static readonly char[] PendingActionConfirmationStructuredDisqualifierChars =
         new[] { '\\', '{', '}', '[', ']', '<', '>', '=' };
+    private readonly record struct FallbackChoiceCandidate(string Title, bool IsNumbered, string ActionId);
 
     private static bool LooksLikeStructuredPendingActionConfirmationInput(string userText) {
         // Confirmation is safety-sensitive. If the user message looks like a command/payload rather than
@@ -863,7 +864,7 @@ internal sealed partial class ChatServiceSession {
 
         var lines = SplitLines(text);
         var inFence = false;
-        var candidateChoices = new List<(string Title, bool IsNumbered)>();
+        var candidateChoices = new List<FallbackChoiceCandidate>();
         var candidateStartLine = -1;
         for (var i = 0; i < lines.Count; i++) {
             var trimmedLine = (lines[i] ?? string.Empty).Trim();
@@ -876,16 +877,16 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            if (TryExtractFallbackChoiceTitle(trimmedLine, out var title, out var isNumbered)) {
+            if (TryExtractFallbackChoiceTitle(trimmedLine, out var title, out var isNumbered, out var actionId)) {
                 if (candidateStartLine < 0) {
                     candidateStartLine = i;
                 }
-                candidateChoices.Add((title, isNumbered));
+                candidateChoices.Add(new FallbackChoiceCandidate(title, isNumbered, actionId));
                 continue;
             }
 
             if (ShouldBuildFallbackChoiceActions(candidateChoices, lines, candidateStartLine)) {
-                return BuildFallbackChoicePendingActions(candidateChoices.Select(static c => c.Title).ToArray());
+                return BuildFallbackChoicePendingActions(candidateChoices);
             }
 
             candidateChoices.Clear();
@@ -893,14 +894,14 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (ShouldBuildFallbackChoiceActions(candidateChoices, lines, candidateStartLine)) {
-            return BuildFallbackChoicePendingActions(candidateChoices.Select(static c => c.Title).ToArray());
+            return BuildFallbackChoicePendingActions(candidateChoices);
         }
 
         return new List<PendingAction>();
     }
 
     private static bool ShouldBuildFallbackChoiceActions(
-        IReadOnlyList<(string Title, bool IsNumbered)> choices,
+        IReadOnlyList<FallbackChoiceCandidate> choices,
         IReadOnlyList<string> lines,
         int firstChoiceLine) {
         if (!LooksLikeFallbackChoicePromptContext(lines, firstChoiceLine)) {
@@ -921,9 +922,10 @@ internal sealed partial class ChatServiceSession {
         return choices.Count == 1 && choices[0].IsNumbered;
     }
 
-    private static bool TryExtractFallbackChoiceTitle(string trimmedLine, out string title, out bool isNumbered) {
+    private static bool TryExtractFallbackChoiceTitle(string trimmedLine, out string title, out bool isNumbered, out string actionId) {
         title = string.Empty;
         isNumbered = false;
+        actionId = string.Empty;
         if (string.IsNullOrWhiteSpace(trimmedLine)) {
             return false;
         }
@@ -963,6 +965,15 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (TryExtractTrailingFallbackActionId(value, out var inlineActionId, out var valueWithoutInlineActionId)) {
+            actionId = inlineActionId;
+            value = valueWithoutInlineActionId;
+        }
+
+        if (value.Length == 0) {
+            return false;
+        }
+
         if (value.Length > MaxFallbackChoiceActionTitleChars) {
             return false;
         }
@@ -996,6 +1007,120 @@ internal sealed partial class ChatServiceSession {
         return title.Length > 0;
     }
 
+    private static bool TryExtractTrailingFallbackActionId(string value, out string actionId, out string cleanedTitle) {
+        actionId = string.Empty;
+        cleanedTitle = (value ?? string.Empty).Trim();
+        if (cleanedTitle.Length == 0) {
+            return false;
+        }
+
+        var actIndex = cleanedTitle.LastIndexOf("/act", StringComparison.OrdinalIgnoreCase);
+        if (actIndex < 0) {
+            return false;
+        }
+
+        // Prefer the common "Title (... /act id ...)" form and strip only the trailing parenthetical block.
+        var openParen = cleanedTitle.LastIndexOf('(', actIndex);
+        var closeParen = cleanedTitle.IndexOf(')', actIndex);
+        if (openParen >= 0 && closeParen > actIndex) {
+            var trailingAfterClose = cleanedTitle[(closeParen + 1)..].Trim();
+            if (trailingAfterClose.Length == 0 || AllCharsAllowedInTrailingFallbackActionSuffix(trailingAfterClose)) {
+                var inner = cleanedTitle.Substring(openParen + 1, closeParen - openParen - 1).Trim();
+                if (TryExtractFallbackActionIdFromSegment(inner, out actionId)) {
+                    cleanedTitle = cleanedTitle[..openParen].Trim();
+                    return cleanedTitle.Length > 0;
+                }
+            }
+        }
+
+        // Fallback: inline trailing "/act id" with optional punctuation.
+        if (actIndex > 0 && !char.IsWhiteSpace(cleanedTitle[actIndex - 1]) && cleanedTitle[actIndex - 1] is not '(' and not '[' and not '{') {
+            return false;
+        }
+
+        var segment = cleanedTitle[actIndex..].Trim();
+        if (!TryExtractFallbackActionIdFromSegment(segment, out actionId)) {
+            return false;
+        }
+
+        cleanedTitle = cleanedTitle[..actIndex].TrimEnd();
+        cleanedTitle = cleanedTitle.TrimEnd('-', '–', '—', '(', '[', '{').TrimEnd();
+        return cleanedTitle.Length > 0;
+    }
+
+    private static bool TryExtractFallbackActionIdFromSegment(string segment, out string actionId) {
+        actionId = string.Empty;
+        var text = (segment ?? string.Empty).Trim();
+        if (!text.StartsWith("/act", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (text.Length > 4 && !char.IsWhiteSpace(text[4])) {
+            return false;
+        }
+
+        var rest = text[4..].Trim();
+        if (rest.Length == 0) {
+            return false;
+        }
+
+        var token = ReadFirstToken(rest);
+        if (token.Length == 0) {
+            return false;
+        }
+
+        var normalizedId = NormalizeFallbackActionIdToken(token);
+        if (normalizedId.Length == 0) {
+            return false;
+        }
+
+        var trailing = rest[token.Length..].Trim();
+        if (trailing.Length > 0 && !AllCharsAllowedInTrailingFallbackActionSuffix(trailing)) {
+            return false;
+        }
+
+        actionId = normalizedId;
+        return true;
+    }
+
+    private static string NormalizeFallbackActionIdToken(string token) {
+        var value = (token ?? string.Empty).Trim();
+        if (value.Length == 0) {
+            return string.Empty;
+        }
+
+        value = value.TrimStart('(', '[', '{').TrimEnd(')', ']', '}', ',', '.', ';', ':');
+        if (value.Length == 0) {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder(Math.Min(value.Length, 64));
+        for (var i = 0; i < value.Length && sb.Length < 64; i++) {
+            var ch = value[i];
+            if (char.IsLetterOrDigit(ch) || ch is '_' or '-' or '.') {
+                sb.Append(ch);
+            }
+        }
+
+        return sb.ToString().Trim();
+    }
+
+    private static bool AllCharsAllowedInTrailingFallbackActionSuffix(string text) {
+        for (var i = 0; i < text.Length; i++) {
+            var ch = text[i];
+            if (char.IsWhiteSpace(ch)) {
+                continue;
+            }
+            if (ch is ')' or ']' or '}' or ',' or '.' or ';' or ':' or '!') {
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
     private static bool LooksLikeFallbackChoicePromptContext(IReadOnlyList<string> lines, int firstChoiceLine) {
         if (lines is null || lines.Count == 0 || firstChoiceLine < 0 || firstChoiceLine >= lines.Count) {
             return false;
@@ -1016,20 +1141,31 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
-    private static List<PendingAction> BuildFallbackChoicePendingActions(IReadOnlyList<string> titles) {
+    private static List<PendingAction> BuildFallbackChoicePendingActions(IReadOnlyList<FallbackChoiceCandidate> choices) {
         var actions = new List<PendingAction>();
-        if (titles is null || titles.Count == 0) {
+        if (choices is null || choices.Count == 0) {
             return actions;
         }
 
-        for (var i = 0; i < titles.Count && actions.Count < 6; i++) {
-            var title = (titles[i] ?? string.Empty).Trim();
+        var seenActionIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 0; i < choices.Count && actions.Count < 6; i++) {
+            var title = (choices[i].Title ?? string.Empty).Trim();
             if (title.Length == 0) {
                 continue;
             }
 
+            var actionId = (choices[i].ActionId ?? string.Empty).Trim();
+            if (actionId.Length == 0) {
+                actionId = $"choice_{actions.Count + 1:D3}";
+            }
+
+            if (!seenActionIds.Add(actionId)) {
+                continue;
+            }
+
             actions.Add(new PendingAction(
-                Id: $"choice_{actions.Count + 1:D3}",
+                Id: actionId,
                 Title: title,
                 Request: title));
         }
