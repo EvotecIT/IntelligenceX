@@ -593,6 +593,13 @@ internal sealed class ServiceOptions {
                 options.ProfileName = value;
                 continue;
             }
+            if (arg is "--save-profile") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return;
+                }
+                options.SaveProfileName = value;
+                continue;
+            }
         }
     }
 
@@ -612,11 +619,27 @@ internal sealed class ServiceOptions {
         using var store = new SqliteServiceProfileStore(dbPath);
         var profile = store.GetAsync(name, CancellationToken.None).GetAwaiter().GetResult();
         if (profile == null) {
+            if (ShouldBootstrapMissingProfile(options, name)) {
+                return true;
+            }
             error = $"Profile not found: {name}";
             return false;
         }
         options.ApplyProfile(profile);
         return true;
+    }
+
+    private static bool ShouldBootstrapMissingProfile(ServiceOptions options, string profileName) {
+        if (options == null || string.IsNullOrWhiteSpace(profileName) || options.NoStateDb) {
+            return false;
+        }
+
+        var saveName = (options.SaveProfileName ?? string.Empty).Trim();
+        if (saveName.Length == 0) {
+            return false;
+        }
+
+        return string.Equals(saveName, profileName, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool TrySaveProfile(ServiceOptions options, out string? error) {
