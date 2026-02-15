@@ -256,6 +256,30 @@ public sealed class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersWhenQuotedCallToActionIsIndentedOnItsOwnLineWithoutContinuationSubset() {
+        var userRequest = "run now";
+        var assistantDraft = "To proceed:\n  'run now'";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerWhenQuotedTextHasTrailingContentOnSameLineWithoutContinuationSubset() {
+        var userRequest = "run now";
+        var assistantDraft = "To proceed:\n  'run now' trailing text";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
     public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForColonLabelQuotedTextWithoutContinuationSubset() {
         var userRequest = "access denied";
         var assistantDraft = "Status: 'access denied'";
