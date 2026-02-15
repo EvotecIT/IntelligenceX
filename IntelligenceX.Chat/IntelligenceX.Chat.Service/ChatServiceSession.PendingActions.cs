@@ -281,6 +281,12 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        // Never treat multi-line inputs as confirmations. This prevents smuggling commands or extra context
+        // while still looking like a short acknowledgement.
+        if (raw.Contains('\n', StringComparison.Ordinal) || raw.Contains('\r', StringComparison.Ordinal)) {
+            return false;
+        }
+
         // Avoid treating follow-up questions as confirmations ("why?", "dalej?", "¿por qué?", "لماذا؟").
         if (raw.IndexOfAny(ImplicitConfirmationQuestionPunctuation) >= 0) {
             return false;
