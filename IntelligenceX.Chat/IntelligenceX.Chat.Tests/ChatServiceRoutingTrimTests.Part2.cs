@@ -143,15 +143,14 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Theory]
     [InlineData("ok")]
-    [InlineData("ok:")]
     [InlineData("ok.")]
     [InlineData("ok,")]
     [InlineData("`ok`")]
     [InlineData(" ok! ")]
     [InlineData("ok！")]
     [InlineData("ok。")]
+    [InlineData("ＯＫ")]
     [InlineData("do   it")]
-    [InlineData("ＧＯ")]
     public void ExpandContinuationUserRequest_AutoConfirmsSinglePendingActionForCommonAcknowledgements(string input) {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
@@ -173,6 +172,31 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var root = doc.RootElement;
         Assert.True(root.TryGetProperty("ix_action_selection", out var selection));
         Assert.Equal("act_001", selection.GetProperty("id").GetString());
+    }
+
+    [Theory]
+    [InlineData("ok:")]
+    [InlineData("ok;")]
+    [InlineData("tak:")]
+    [InlineData("sure:")]
+    public void ExpandContinuationUserRequest_DoesNotAutoConfirmOnPrefixStyleAcknowledgements(string input) {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Pick one:
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
     }
 
     [Fact]

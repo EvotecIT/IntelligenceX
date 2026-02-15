@@ -43,7 +43,6 @@ internal sealed partial class ChatServiceSession {
             "yes",
             "yep",
             "yup",
-            "go",
             "do it",
             "run it",
             "tak",
@@ -372,21 +371,22 @@ internal sealed partial class ChatServiceSession {
             .Trim()
             .Normalize(NormalizationForm.FormKC);
 
-        // Trim leading/trailing punctuation broadly (including CJK/fullwidth punctuation) so "ok!" and "ok！" match.
-        // Example punctuation this is expected to handle: '！', '。', '，'.
+        // Trim leading/trailing *decoration* punctuation only (including common CJK/fullwidth punctuation) so "ok!"
+        // and "ok！" match. Avoid trimming arbitrary punctuation (like ':' or ';') because it can turn incomplete
+        // prefixes ("ok:" / "go:") into allowlisted confirmations.
         var span = normalized.AsSpan();
         var start = 0;
         var end = span.Length;
         while (start < end
             && (char.IsWhiteSpace(span[start])
                 || span[start] == '`'
-                || (char.IsPunctuation(span[start]) && !IsQuestionPunctuation(span[start]) && !IsQuoteWrapper(span[start])))) {
+                || IsDecorationPunctuation(span[start]))) {
             start++;
         }
         while (end > start
             && (char.IsWhiteSpace(span[end - 1])
                 || span[end - 1] == '`'
-                || (char.IsPunctuation(span[end - 1]) && !IsQuestionPunctuation(span[end - 1]) && !IsQuoteWrapper(span[end - 1])))) {
+                || IsDecorationPunctuation(span[end - 1]))) {
             end--;
         }
         normalized = (start == 0 && end == span.Length) ? normalized : span.Slice(start, end - start).ToString();
@@ -405,6 +405,20 @@ internal sealed partial class ChatServiceSession {
 
     private static bool IsQuestionPunctuation(char ch) {
         return ch is '?' or '？' or '¿' or '؟';
+    }
+
+    private static bool IsDecorationPunctuation(char ch) {
+        // Conservative set of punctuation that is commonly used as "decoration" around short acknowledgements.
+        // Intentionally excludes ":" and ";" so prefixes like "ok:" remain non-confirming.
+        return ch is '.'
+            or '!'
+            or ','
+            or '\u2026' // …
+            or '\u3002' // 。
+            or '\uFF01' // ！
+            or '\uFF0C' // ，
+            or '\uFF0E' // ．
+            or '\uFF61'; // ｡
     }
 
     private static bool IsQuoteWrapper(char ch) {
