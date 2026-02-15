@@ -31,4 +31,10 @@
                       Condition="!Exists('$(PSEventViewerRoot)$(IxToolsEventViewerProjectMarker)')" />
   </ItemGroup>
 
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>IntelligenceX.Tools.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>
