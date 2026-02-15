@@ -15,6 +15,8 @@ jobs:
   website-build:
     runs-on: [self-hosted, linux]
     timeout-minutes: 20
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.cache/ms-playwright
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,6 +36,12 @@ jobs:
       - name: Build PowerForge.Web.Cli
         run: dotnet build PSPublishModule/PowerForge.Web.Cli/PowerForge.Web.Cli.csproj -c Release
 
+      - name: Initialize Playwright cache directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${PLAYWRIGHT_BROWSERS_PATH}"
+
       - name: Build website
         working-directory: Website
         run: dotnet ../PSPublishModule/PowerForge.Web.Cli/bin/Release/net10.0/PowerForge.Web.Cli.dll pipeline --config pipeline.json --mode ci
@@ -46,3 +54,10 @@ jobs:
           test -f Website/_site/404.html
           grep -Eqi "<link[^>]+rel=[^>]*stylesheet" Website/_site/404.html
 
+      - name: Cleanup Playwright cache
+        if: always()
+        shell: bash
+        run: |
+          if [ -n "${PLAYWRIGHT_BROWSERS_PATH:-}" ] && [ -d "${PLAYWRIGHT_BROWSERS_PATH}" ]; then
+            rm -rf "${PLAYWRIGHT_BROWSERS_PATH}"
+          fi
