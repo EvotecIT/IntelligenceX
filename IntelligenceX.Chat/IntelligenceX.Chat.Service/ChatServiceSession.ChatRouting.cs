@@ -137,6 +137,10 @@ internal sealed partial class ChatServiceSession {
                 if (_options.Redact) {
                     text = RedactText(text);
                 }
+
+                // Capture pending actions proposed by the assistant so a follow-up like "1" or "/act <id>" can be resolved
+                // without depending on English confirmation phrases.
+                RememberPendingActions(threadId, text);
                 return new ChatResultMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,

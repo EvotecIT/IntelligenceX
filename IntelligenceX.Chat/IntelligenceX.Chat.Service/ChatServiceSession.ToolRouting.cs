@@ -158,6 +158,10 @@ internal sealed partial class ChatServiceSession {
         }
 
         var raw = userRequest ?? string.Empty;
+        if (TryResolvePendingActionSelection(normalizedThreadId, raw, out var resolved)) {
+            return resolved;
+        }
+
         var normalized = raw.Trim();
         if (normalized.Length == 0 || !LooksLikeContinuationFollowUp(normalized)) {
             return raw;
@@ -267,10 +271,11 @@ internal sealed partial class ChatServiceSession {
 
     private void TrimWeightedRoutingContextsNoLock() {
         // Weighted-tool-subset context and user-intent context share the same key space (threadId),
-        // so trim both when either grows beyond its cap.
+        // so trim all when either grows beyond its cap.
         var weightedRemoveCount = _lastWeightedToolNamesByThreadId.Count - MaxTrackedWeightedRoutingContexts;
         var intentRemoveCount = _lastUserIntentByThreadId.Count - MaxTrackedUserIntentContexts;
-        var removeCount = Math.Max(weightedRemoveCount, intentRemoveCount);
+        var pendingRemoveCount = _pendingActionsByThreadId.Count - MaxTrackedPendingActionContexts;
+        var removeCount = Math.Max(weightedRemoveCount, Math.Max(intentRemoveCount, pendingRemoveCount));
         if (removeCount <= 0) {
             return;
         }
@@ -291,10 +296,18 @@ internal sealed partial class ChatServiceSession {
                 removedInvalid = true;
             }
         }
+        foreach (var threadId in _pendingActionsByThreadId.Keys.ToArray()) {
+            if (!_pendingActionsSeenUtcTicks.TryGetValue(threadId, out var ticks) || ticks <= 0) {
+                _pendingActionsByThreadId.Remove(threadId);
+                _pendingActionsSeenUtcTicks.Remove(threadId);
+                removedInvalid = true;
+            }
+        }
         if (removedInvalid) {
             weightedRemoveCount = _lastWeightedToolNamesByThreadId.Count - MaxTrackedWeightedRoutingContexts;
             intentRemoveCount = _lastUserIntentByThreadId.Count - MaxTrackedUserIntentContexts;
-            removeCount = Math.Max(weightedRemoveCount, intentRemoveCount);
+            pendingRemoveCount = _pendingActionsByThreadId.Count - MaxTrackedPendingActionContexts;
+            removeCount = Math.Max(weightedRemoveCount, Math.Max(intentRemoveCount, pendingRemoveCount));
             if (removeCount <= 0) {
                 return;
             }
@@ -302,6 +315,9 @@ internal sealed partial class ChatServiceSession {
 
         var seenThreadIds = new HashSet<string>(_lastWeightedToolNamesByThreadId.Keys, StringComparer.Ordinal);
         foreach (var threadId in _lastUserIntentByThreadId.Keys) {
+            seenThreadIds.Add(threadId);
+        }
+        foreach (var threadId in _pendingActionsByThreadId.Keys) {
             seenThreadIds.Add(threadId);
         }
 
@@ -313,6 +329,9 @@ internal sealed partial class ChatServiceSession {
                 }
                 if (_lastUserIntentSeenUtcTicks.TryGetValue(threadId, out var intentTicks) && intentTicks > ticks) {
                     ticks = intentTicks;
+                }
+                if (_pendingActionsSeenUtcTicks.TryGetValue(threadId, out var actionTicks) && actionTicks > ticks) {
+                    ticks = actionTicks;
                 }
                 return (ThreadId: threadId, Ticks: ticks);
             })
@@ -327,6 +346,8 @@ internal sealed partial class ChatServiceSession {
             _lastWeightedToolSubsetSeenUtcTicks.Remove(threadId);
             _lastUserIntentByThreadId.Remove(threadId);
             _lastUserIntentSeenUtcTicks.Remove(threadId);
+            _pendingActionsByThreadId.Remove(threadId);
+            _pendingActionsSeenUtcTicks.Remove(threadId);
         }
     }
 

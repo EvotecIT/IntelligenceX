@@ -1,0 +1,300 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+
+namespace IntelligenceX.Chat.Service;
+
+internal sealed partial class ChatServiceSession {
+    private const string ActionMarker = "ix:action:v1";
+    private const string ActionSelectionMarker = "ix:action-selection:v1";
+
+    private readonly record struct PendingAction(string Id, string Title, string Request);
+
+    private void RememberPendingActions(string threadId, string assistantText) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return;
+        }
+
+        var actions = ExtractPendingActions(assistantText);
+        lock (_toolRoutingContextLock) {
+            if (actions.Count == 0) {
+                _pendingActionsByThreadId.Remove(normalizedThreadId);
+                _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
+                return;
+            }
+
+            _pendingActionsByThreadId[normalizedThreadId] = actions.ToArray();
+            _pendingActionsSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
+            TrimWeightedRoutingContextsNoLock();
+        }
+    }
+
+    private bool TryResolvePendingActionSelection(string threadId, string userRequest, out string resolvedRequest) {
+        resolvedRequest = userRequest ?? string.Empty;
+
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return false;
+        }
+
+        var normalized = (userRequest ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        PendingAction[]? actions;
+        long ticks;
+        lock (_toolRoutingContextLock) {
+            if (!_pendingActionsByThreadId.TryGetValue(normalizedThreadId, out actions) || actions is null || actions.Length == 0) {
+                return false;
+            }
+            ticks = _pendingActionsSeenUtcTicks.TryGetValue(normalizedThreadId, out var seen) ? seen : 0;
+        }
+
+        if (ticks > 0) {
+            if (ticks < DateTime.MinValue.Ticks || ticks > DateTime.MaxValue.Ticks) {
+                return false;
+            }
+            var age = DateTime.UtcNow - new DateTime(ticks, DateTimeKind.Utc);
+            if (age > PendingActionContextMaxAge) {
+                return false;
+            }
+        }
+
+        var selected = TryMatchPendingAction(normalized, actions, out var match)
+            ? match
+            : (PendingAction?)null;
+        if (selected is null) {
+            return false;
+        }
+
+        // Consume pending actions to avoid stale "1" selections hitting old choices later.
+        lock (_toolRoutingContextLock) {
+            _pendingActionsByThreadId.Remove(normalizedThreadId);
+            _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
+            TrimWeightedRoutingContextsNoLock();
+        }
+
+        var request = string.IsNullOrWhiteSpace(selected.Value.Request) ? selected.Value.Title : selected.Value.Request;
+        if (string.IsNullOrWhiteSpace(request)) {
+            return false;
+        }
+
+        resolvedRequest = $$"""
+            [Action selection]
+            {{ActionSelectionMarker}}
+            id: {{selected.Value.Id}}
+            title: {{selected.Value.Title}}
+            request: {{request.Trim()}}
+            """;
+        return true;
+    }
+
+    private static bool TryMatchPendingAction(string userText, IReadOnlyList<PendingAction> actions, out PendingAction match) {
+        match = default;
+
+        var normalized = (userText ?? string.Empty).Trim();
+        if (normalized.Length == 0 || actions.Count == 0) {
+            return false;
+        }
+
+        // /act <id>
+        if (normalized.StartsWith("/act", StringComparison.OrdinalIgnoreCase)) {
+            var rest = normalized[4..].Trim();
+            if (rest.Length == 0) {
+                return false;
+            }
+            var id = ReadFirstToken(rest);
+            if (id.Length == 0) {
+                return false;
+            }
+
+            for (var i = 0; i < actions.Count; i++) {
+                if (string.Equals(actions[i].Id, id, StringComparison.OrdinalIgnoreCase)) {
+                    match = actions[i];
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // "1" / "2" selects by ordinal.
+        if (TryParseLeadingInt(normalized, out var idx) && idx > 0 && idx <= actions.Count) {
+            match = actions[idx - 1];
+            return true;
+        }
+
+        // Exact id match.
+        for (var i = 0; i < actions.Count; i++) {
+            if (string.Equals(actions[i].Id, normalized, StringComparison.OrdinalIgnoreCase)) {
+                match = actions[i];
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string ReadFirstToken(string text) {
+        var value = (text ?? string.Empty).Trim();
+        if (value.Length == 0) {
+            return string.Empty;
+        }
+        var end = 0;
+        while (end < value.Length && !char.IsWhiteSpace(value[end])) {
+            end++;
+        }
+        return end <= 0 ? string.Empty : value.Substring(0, end).Trim();
+    }
+
+    private static bool TryParseLeadingInt(string text, out int value) {
+        value = 0;
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        var i = 0;
+        while (i < normalized.Length && char.IsDigit(normalized[i])) {
+            i++;
+        }
+        if (i == 0) {
+            return false;
+        }
+
+        var digits = normalized.Substring(0, i);
+        return int.TryParse(digits, out value);
+    }
+
+    private static List<PendingAction> ExtractPendingActions(string assistantText) {
+        var text = assistantText ?? string.Empty;
+        if (text.Length == 0) {
+            return new List<PendingAction>();
+        }
+
+        // Cheap precheck to avoid parsing when the marker isn't present.
+        if (text.IndexOf(ActionMarker, StringComparison.OrdinalIgnoreCase) < 0) {
+            return new List<PendingAction>();
+        }
+
+        var actions = new List<PendingAction>();
+        var lines = SplitLines(text);
+        for (var i = 0; i < lines.Count; i++) {
+            var line = lines[i];
+            if (line.IndexOf(ActionMarker, StringComparison.OrdinalIgnoreCase) < 0) {
+                continue;
+            }
+
+            // Parse key/value lines following the marker.
+            string? id = null;
+            string? title = null;
+            var request = new StringBuilder();
+
+            for (var j = i + 1; j < lines.Count; j++) {
+                var current = lines[j];
+                if (string.IsNullOrWhiteSpace(current)) {
+                    break;
+                }
+                if (current.StartsWith("ix:", StringComparison.OrdinalIgnoreCase)) {
+                    break;
+                }
+
+                if (TryReadField(current, "id", out var field)) {
+                    id = field;
+                    continue;
+                }
+                if (TryReadField(current, "title", out field)) {
+                    title = field;
+                    continue;
+                }
+                if (TryReadField(current, "request", out field)) {
+                    if (!string.IsNullOrWhiteSpace(field)) {
+                        if (request.Length > 0) {
+                            request.Append(' ');
+                        }
+                        request.Append(field.Trim());
+                    }
+                    continue;
+                }
+            }
+
+            id = (id ?? string.Empty).Trim();
+            title = (title ?? string.Empty).Trim();
+            var req = request.ToString().Trim();
+
+            if (id.Length == 0) {
+                continue;
+            }
+            if (id.Length > 64) {
+                id = id.Substring(0, 64);
+            }
+            if (title.Length > 200) {
+                title = title.Substring(0, 200);
+            }
+            if (req.Length > 600) {
+                req = req.Substring(0, 600);
+            }
+
+            actions.Add(new PendingAction(Id: id, Title: title, Request: req));
+            if (actions.Count >= 6) {
+                break;
+            }
+        }
+
+        // De-dupe ids.
+        if (actions.Count > 1) {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            actions = actions.Where(a => a.Id.Length > 0 && seen.Add(a.Id)).ToList();
+        }
+
+        return actions;
+    }
+
+    private static bool TryReadField(string line, string name, out string value) {
+        value = string.Empty;
+        if (string.IsNullOrWhiteSpace(line)) {
+            return false;
+        }
+
+        var trimmed = line.Trim();
+        if (!trimmed.StartsWith(name, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+        var idx = trimmed.IndexOf(':', StringComparison.Ordinal);
+        if (idx < 0) {
+            return false;
+        }
+
+        value = trimmed[(idx + 1)..].Trim();
+        return true;
+    }
+
+    private static List<string> SplitLines(string text) {
+        var lines = new List<string>();
+        if (string.IsNullOrEmpty(text)) {
+            return lines;
+        }
+
+        var sb = new StringBuilder();
+        for (var i = 0; i < text.Length; i++) {
+            var ch = text[i];
+            if (ch == '\r') {
+                continue;
+            }
+            if (ch == '\n') {
+                lines.Add(sb.ToString());
+                sb.Clear();
+                continue;
+            }
+
+            sb.Append(ch);
+        }
+
+        lines.Add(sb.ToString());
+        return lines;
+    }
+}
+

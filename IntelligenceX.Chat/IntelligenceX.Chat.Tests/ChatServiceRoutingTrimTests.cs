@@ -38,6 +38,9 @@ public sealed class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo RememberUserIntentMethod =
         typeof(ChatServiceSession).GetMethod("RememberUserIntent", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("RememberUserIntent not found.");
+    private static readonly MethodInfo RememberPendingActionsMethod =
+        typeof(ChatServiceSession).GetMethod("RememberPendingActions", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("RememberPendingActions not found.");
     private static readonly MethodInfo ExpandContinuationUserRequestMethod =
         typeof(ChatServiceSession).GetMethod("ExpandContinuationUserRequest", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("ExpandContinuationUserRequest not found.");
@@ -558,6 +561,55 @@ public sealed class ChatServiceRoutingTrimTests {
         Assert.Contains("forest-wide replication", expanded, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Follow-up:", expanded, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("run now", expanded, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_ResolvesActCommandToPendingActionRequest() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Pick one:
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: Run forest probe
+            request: Run the forest-wide replication and LDAP diagnostics now.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act act_001" });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Contains("ix:action-selection:v1", expanded, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("forest-wide replication", expanded, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_ResolvesOrdinalSelectionToSecondPendingAction() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+
+            [Action]
+            ix:action:v1
+            id: act_002
+            title: Second
+            request: Do second thing.
+            reply: /act act_002
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-002", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-002", "2" });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Contains("act_002", expanded, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("second thing", expanded, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
