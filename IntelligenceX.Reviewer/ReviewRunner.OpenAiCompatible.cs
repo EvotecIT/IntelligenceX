@@ -134,15 +134,12 @@ internal sealed partial class ReviewRunner {
         CancellationToken cancellationToken) {
         var current = endpoint;
         HttpMethod? redirectMethodOverride = null;
-        var redirectDropsContent = false;
         for (var redirect = 0; redirect <= OpenAiCompatibleMaxRedirects; redirect++) {
             using var request = createRequest(current);
             if (redirectMethodOverride is not null) {
                 request.Method = redirectMethodOverride;
             }
-            if (redirectDropsContent) {
-                request.Content = null;
-            } else if (createContent is not null && request.Method != HttpMethod.Get && request.Method != HttpMethod.Head) {
+            if (createContent is not null && request.Method != HttpMethod.Get && request.Method != HttpMethod.Head) {
                 request.Content = createContent();
             }
             if (redirect > 0) {
@@ -188,11 +185,9 @@ internal sealed partial class ReviewRunner {
                 Console.Error.WriteLine(
                     $"OpenAI-compatible redirect {(int)response.StatusCode}: {current} -> {next}");
             }
-
             // RFC 9110: 303 See Other should switch to GET and drop the request body.
             // For API gateways that use 303 for POST endpoints, this matches standard redirect semantics.
-            redirectDropsContent = response.StatusCode == HttpStatusCode.SeeOther;
-            if (redirectDropsContent) {
+            if (response.StatusCode == HttpStatusCode.SeeOther) {
                 redirectMethodOverride = HttpMethod.Get;
             }
 
@@ -524,5 +519,7 @@ internal sealed partial class ReviewRunner {
                normalized.Contains("authorization", StringComparison.Ordinal);
     }
 }
+
+
 
 
