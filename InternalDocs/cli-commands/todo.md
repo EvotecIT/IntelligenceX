@@ -118,6 +118,26 @@ Options:
 - `--ensure-fields` / `--no-ensure-fields`
 - `--dry-run`
 
+## Project Bootstrap (Project + Workflow in one command)
+
+Recommended first-run command:
+
+```bash
+intelligencex todo project-bootstrap --repo EvotecIT/IntelligenceX --owner EvotecIT
+```
+
+Default outputs:
+- `artifacts/triage/ix-project-config.json`
+- `.github/workflows/ix-triage-project-sync.yml`
+
+Options:
+- `--project <n>` use existing project instead of creating
+- `--workflow-out <path>`
+- `--config-out <path>`
+- `--max-items <n>` default sync size for schedule runs
+- `--skip-project-init` regenerate workflow from existing config only
+- `--force-workflow-write` overwrite existing workflow file
+
 ## Workflow Template
 
 Template path:

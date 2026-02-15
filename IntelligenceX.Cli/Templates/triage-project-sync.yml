@@ -7,14 +7,16 @@ on:
     inputs:
       owner:
         description: "Project owner login (user or organization)"
-        required: true
+        required: false
+        default: "{{Owner}}"
       project_number:
         description: "Project number"
-        required: true
+        required: false
+        default: "{{ProjectNumber}}"
       max_items:
         description: "Max entries to sync"
         required: false
-        default: "500"
+        default: "{{MaxItems}}"
 
 permissions:
   contents: read
@@ -64,13 +66,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.IX_PROJECT_TOKEN != '' && secrets.IX_PROJECT_TOKEN || github.token }}
         run: |
+          OWNER="${{ github.event.inputs.owner }}"
+          if [ -z "$OWNER" ]; then OWNER="{{Owner}}"; fi
+
+          PROJECT_NUMBER="${{ github.event.inputs.project_number }}"
+          if [ -z "$PROJECT_NUMBER" ]; then PROJECT_NUMBER="{{ProjectNumber}}"; fi
+
           MAX_ITEMS="${{ github.event.inputs.max_items }}"
-          if [ -z "$MAX_ITEMS" ]; then MAX_ITEMS="500"; fi
+          if [ -z "$MAX_ITEMS" ]; then MAX_ITEMS="{{MaxItems}}"; fi
 
           dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- \
             todo project-sync \
-            --owner "${{ github.event.inputs.owner }}" \
-            --project "${{ github.event.inputs.project_number }}" \
+            --owner "$OWNER" \
+            --project "$PROJECT_NUMBER" \
             --triage artifacts/triage/ix-triage-index.json \
             --vision artifacts/triage/ix-vision-check.json \
             --max-items "$MAX_ITEMS"

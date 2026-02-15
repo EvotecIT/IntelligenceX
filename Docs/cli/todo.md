@@ -129,6 +129,28 @@ Useful options:
 - `--project-item-scan-limit <n>` for larger projects.
 - `--dry-run` for a no-write sync preview.
 
+## Bootstrap project + workflow (recommended first run)
+
+Create/initialize the GitHub Project and generate a ready workflow in one command:
+
+```bash
+intelligencex todo project-bootstrap \
+  --repo EvotecIT/IntelligenceX \
+  --owner EvotecIT
+```
+
+Default outputs:
+- `artifacts/triage/ix-project-config.json`
+- `.github/workflows/ix-triage-project-sync.yml`
+
+Useful options:
+- `--project <n>` to bootstrap against an existing project.
+- `--workflow-out <path>` to choose a different workflow file name.
+- `--config-out <path>` to control where project metadata is written.
+- `--max-items <n>` to set default sync volume for scheduled runs.
+- `--skip-project-init` to only regenerate workflow from existing config.
+- `--force-workflow-write` to overwrite an existing workflow file.
+
 ## GitHub Actions template
 
 A reusable scheduled workflow template is available at:

@@ -47,6 +47,7 @@
     <EmbeddedResource Include="Templates\\review-intelligencex.yml" LogicalName="review-intelligencex.yml" />
     <EmbeddedResource Include="Templates\\review-intelligencex.managed.yml" LogicalName="review-intelligencex.managed.yml" />
     <EmbeddedResource Include="Templates\\review-intelligencex.managed.explicit.yml" LogicalName="review-intelligencex.managed.explicit.yml" />
+    <EmbeddedResource Include="Templates\\triage-project-sync.yml" LogicalName="triage-project-sync.yml" />
   </ItemGroup>
 
   <ItemGroup>
