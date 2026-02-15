@@ -115,7 +115,7 @@ public sealed class ChatServiceRetryPolicyTests {
     }
 
     [Fact]
-    public void TryBuildProjectionArgsFallbackCall_StripsProjectionArgumentsAndKeepsToolArguments() {
+    public void TryBuildProjectionArgsFallbackCall_StripsProjectionFormattingArgumentsAndPreservesTopByDefault() {
         var call = new ToolCall(
             callId: "call-6",
             name: "eventlog_top_events",
@@ -146,7 +146,233 @@ public sealed class ChatServiceRetryPolicyTests {
         Assert.False(fallbackCall.Arguments.TryGetValue("columns", out _));
         Assert.False(fallbackCall.Arguments.TryGetValue("sort_by", out _));
         Assert.False(fallbackCall.Arguments.TryGetValue("sort_direction", out _));
+        Assert.Equal(5, fallbackCall.Arguments.GetInt64("top"));
+    }
+
+    [Fact]
+    public void TryBuildProjectionArgsFallbackCall_DropsTopAsLastResortForProjectionEnvelopeFailures() {
+        var call = new ToolCall(
+            callId: "call-7",
+            name: "eventlog_top_events",
+            input: null,
+            arguments: new JsonObject()
+                .Add("log_name", "System")
+                .Add("top", 5),
+            raw: new JsonObject());
+        var output = new ToolOutputDto {
+            CallId = call.CallId,
+            Output = "{\"ok\":false,\"error_code\":\"invalid_argument\",\"error\":\"Failed to build table view response envelope.\"}",
+            Ok = false,
+            ErrorCode = "invalid_argument",
+            Error = "Failed to build table view response envelope."
+        };
+
+        var args = new object?[] { call, output, null, null };
+        var built = TryBuildProjectionArgsFallbackCallMethod.Invoke(null, args);
+        var fallbackCall = Assert.IsType<ToolCall>(args[2]);
+
+        Assert.True(Assert.IsType<bool>(built));
+        Assert.NotNull(fallbackCall.Arguments);
+        Assert.False(fallbackCall.Arguments!.TryGetValue("top", out _));
+    }
+
+    [Fact]
+    public void TryBuildProjectionArgsFallbackCall_DropsTopOnExplicitTopValidationFailure() {
+        var call = new ToolCall(
+            callId: "call-8",
+            name: "eventlog_top_events",
+            input: null,
+            arguments: new JsonObject()
+                .Add("log_name", "System")
+                .Add("top", 5000),
+            raw: new JsonObject());
+        var output = new ToolOutputDto {
+            CallId = call.CallId,
+            Output = "{\"ok\":false,\"error_code\":\"invalid_argument\",\"error\":\"top must be between 1 and 100 for table view response envelope.\"}",
+            Ok = false,
+            ErrorCode = "invalid_argument",
+            Error = "top must be between 1 and 100 for table view response envelope."
+        };
+
+        var args = new object?[] { call, output, null, null };
+        var built = TryBuildProjectionArgsFallbackCallMethod.Invoke(null, args);
+        var fallbackCall = Assert.IsType<ToolCall>(args[2]);
+
+        Assert.True(Assert.IsType<bool>(built));
+        Assert.NotNull(fallbackCall.Arguments);
+        Assert.Equal("System", fallbackCall.Arguments!.GetString("log_name"));
         Assert.False(fallbackCall.Arguments.TryGetValue("top", out _));
+    }
+
+    [Fact]
+    public void TryBuildProjectionArgsFallbackCall_DoesNotDropTopOnIncidentalTopText() {
+        var call = new ToolCall(
+            callId: "call-8b",
+            name: "eventlog_top_events",
+            input: null,
+            arguments: new JsonObject()
+                .Add("log_name", "System")
+                .Add("top", 5),
+            raw: new JsonObject());
+        var output = new ToolOutputDto {
+            CallId = call.CallId,
+            Output = "{\"ok\":false,\"error_code\":\"invalid_argument\",\"error\":\"Failed to query top events; invalid filter expression.\"}",
+            Ok = false,
+            ErrorCode = "invalid_argument",
+            Error = "Failed to query top events; invalid filter expression."
+        };
+
+        var args = new object?[] { call, output, null, null };
+        var built = TryBuildProjectionArgsFallbackCallMethod.Invoke(null, args);
+        var fallbackCall = Assert.IsType<ToolCall>(args[2]);
+
+        Assert.False(Assert.IsType<bool>(built));
+        Assert.NotNull(fallbackCall.Arguments);
+        Assert.Equal(5, fallbackCall.Arguments!.GetInt64("top"));
+    }
+
+    /// <summary>
+    /// Ensures projection fallback keeps valid sort/top intent while pruning only unsupported columns.
+    /// </summary>
+    [Fact]
+    public void TryBuildProjectionArgsFallbackCall_SelectivelyPrunesUnsupportedColumnsUsingMetadata() {
+        var call = new ToolCall(
+            callId: "call-9",
+            name: "eventlog_top_events",
+            input: null,
+            arguments: new JsonObject()
+                .Add("log_name", "System")
+                .Add("columns", new JsonArray().Add("event_id").Add("unknown_column"))
+                .Add("sort_by", "event_id")
+                .Add("sort_direction", "desc")
+                .Add("top", 5),
+            raw: new JsonObject());
+        var output = new ToolOutputDto {
+            CallId = call.CallId,
+            Output = """
+                     {
+                       "ok": false,
+                       "error_code": "invalid_argument",
+                       "error": "columns contains unsupported value 'unknown_column'.",
+                       "meta": {
+                         "available_columns": ["event_id", "level"]
+                       }
+                     }
+                     """,
+            Ok = false,
+            ErrorCode = "invalid_argument",
+            Error = "columns contains unsupported value 'unknown_column'."
+        };
+
+        var args = new object?[] { call, output, null, null };
+        var built = TryBuildProjectionArgsFallbackCallMethod.Invoke(null, args);
+        var fallbackCall = Assert.IsType<ToolCall>(args[2]);
+
+        Assert.True(Assert.IsType<bool>(built));
+        Assert.NotNull(fallbackCall.Arguments);
+        Assert.Equal("System", fallbackCall.Arguments!.GetString("log_name"));
+        var columns = fallbackCall.Arguments.GetArray("columns");
+        Assert.NotNull(columns);
+        Assert.Single(columns!);
+        Assert.Equal("event_id", columns[0].AsString());
+        Assert.Equal("event_id", fallbackCall.Arguments.GetString("sort_by"));
+        Assert.Equal("desc", fallbackCall.Arguments.GetString("sort_direction"));
+        Assert.Equal(5, fallbackCall.Arguments.GetInt64("top"));
+    }
+
+    /// <summary>
+    /// Ensures selective projection pruning still works when available columns are surfaced under failure.meta in camelCase.
+    /// </summary>
+    [Fact]
+    public void TryBuildProjectionArgsFallbackCall_SelectivelyPrunesUsingFailureMetaCamelCaseColumns() {
+        var call = new ToolCall(
+            callId: "call-9b",
+            name: "eventlog_top_events",
+            input: null,
+            arguments: new JsonObject()
+                .Add("log_name", "System")
+                .Add("columns", new JsonArray().Add("event_id").Add("unknown_column"))
+                .Add("sort_by", "event_id")
+                .Add("sort_direction", "desc")
+                .Add("top", 5),
+            raw: new JsonObject());
+        var output = new ToolOutputDto {
+            CallId = call.CallId,
+            Output = """
+                     {
+                       "ok": false,
+                       "error_code": "invalid_argument",
+                       "error": "columns contains unsupported value 'unknown_column'.",
+                       "failure": {
+                         "meta": {
+                           "availableColumns": ["event_id", "level"]
+                         }
+                       }
+                     }
+                     """,
+            Ok = false,
+            ErrorCode = "invalid_argument",
+            Error = "columns contains unsupported value 'unknown_column'."
+        };
+
+        var args = new object?[] { call, output, null, null };
+        var built = TryBuildProjectionArgsFallbackCallMethod.Invoke(null, args);
+        var fallbackCall = Assert.IsType<ToolCall>(args[2]);
+
+        Assert.True(Assert.IsType<bool>(built));
+        Assert.NotNull(fallbackCall.Arguments);
+        var columns = fallbackCall.Arguments!.GetArray("columns");
+        Assert.NotNull(columns);
+        Assert.Single(columns!);
+        Assert.Equal("event_id", columns[0].AsString());
+        Assert.Equal("event_id", fallbackCall.Arguments.GetString("sort_by"));
+        Assert.Equal("desc", fallbackCall.Arguments.GetString("sort_direction"));
+        Assert.Equal(5, fallbackCall.Arguments.GetInt64("top"));
+    }
+
+    /// <summary>
+    /// Ensures we still apply conservative projection reset when metadata does not identify a specific bad argument.
+    /// </summary>
+    [Fact]
+    public void TryBuildProjectionArgsFallbackCall_FallsBackConservativelyWhenMetadataShowsNoSpecificInvalidProjectionArgs() {
+        var call = new ToolCall(
+            callId: "call-10",
+            name: "eventlog_top_events",
+            input: null,
+            arguments: new JsonObject()
+                .Add("log_name", "System")
+                .Add("columns", new JsonArray().Add("event_id"))
+                .Add("sort_by", "event_id")
+                .Add("sort_direction", "desc")
+                .Add("top", 5),
+            raw: new JsonObject());
+        var output = new ToolOutputDto {
+            CallId = call.CallId,
+            Output = """
+                     {
+                       "ok": false,
+                       "error_code": "invalid_argument",
+                       "error": "Failed to build table view response envelope.",
+                       "meta": {
+                         "available_columns": ["event_id", "level"]
+                       }
+                     }
+                     """,
+            Ok = false,
+            ErrorCode = "invalid_argument",
+            Error = "Failed to build table view response envelope."
+        };
+
+        var args = new object?[] { call, output, null, null };
+        var built = TryBuildProjectionArgsFallbackCallMethod.Invoke(null, args);
+        var fallbackCall = Assert.IsType<ToolCall>(args[2]);
+
+        Assert.True(Assert.IsType<bool>(built));
+        Assert.NotNull(fallbackCall.Arguments);
+        Assert.False(fallbackCall.Arguments!.TryGetValue("columns", out _));
+        Assert.False(fallbackCall.Arguments.TryGetValue("sort_by", out _));
+        Assert.False(fallbackCall.Arguments.TryGetValue("sort_direction", out _));
+        Assert.Equal(5, fallbackCall.Arguments.GetInt64("top"));
     }
 
     private static object InvokeResolveRetryProfile(string toolName) {

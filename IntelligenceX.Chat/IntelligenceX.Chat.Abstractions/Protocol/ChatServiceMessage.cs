@@ -198,7 +198,7 @@ public sealed record ChatStatusMessage : ChatServiceMessage {
     /// </summary>
     public required string ThreadId { get; init; }
     /// <summary>
-    /// Status identifier (e.g. thinking, tool_running, tool_completed).
+    /// Status identifier (e.g. thinking, tool_running, tool_recovered, tool_completed).
     /// </summary>
     public required string Status { get; init; }
     /// <summary>

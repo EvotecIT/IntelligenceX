@@ -62,4 +62,88 @@ public sealed class ActionModelProtocolTests {
         Assert.Contains("We can try a recovery step.", cleaned);
         Assert.Contains("Done.", cleaned);
     }
+
+    /// <summary>
+    /// Ensures fenced code boundary lines are preserved even when a malformed action marker was seen.
+    /// </summary>
+    [Fact]
+    public void TryStripAndExtractPendingActions_KeepsFenceBoundariesWhenNoActionsExtracted() {
+        const string text = """
+                            Keep this code snippet:
+
+                            ```json
+                            { "status": "ok" }
+                            ```
+
+                            [Action]
+                            ix:action:v1
+                            id: act_invalid
+                            title: Invalid action
+                            request: Missing reply on purpose
+
+                            Done.
+                            """;
+
+        var normalized = ActionModelProtocol.TryStripAndExtractPendingActions(text, out var actions, out var cleaned);
+
+        Assert.True(normalized);
+        Assert.Empty(actions);
+        Assert.Contains("```json", cleaned);
+        Assert.Contains("{ \"status\": \"ok\" }", cleaned);
+        Assert.Contains("```", cleaned);
+        Assert.DoesNotContain("ix:action:v1", cleaned);
+        Assert.DoesNotContain("[Action]", cleaned);
+        Assert.Contains("Done.", cleaned);
+    }
+
+    /// <summary>
+    /// Ensures action markers inside fenced code blocks are treated as content and not parsed as executable actions.
+    /// </summary>
+    [Fact]
+    public void TryStripAndExtractPendingActions_IgnoresProtocolInsideCodeFence() {
+        const string text = """
+                            Keep this snippet as-is:
+
+                            ```text
+                            [Action]
+                            ix:action:v1
+                            id: act_001
+                            title: Demo action
+                            request: Demo request
+                            reply: /act act_001
+                            ```
+                            """;
+
+        var normalized = ActionModelProtocol.TryStripAndExtractPendingActions(text, out var actions, out var cleaned);
+
+        Assert.False(normalized);
+        Assert.Empty(actions);
+        Assert.Contains("```text", cleaned);
+        Assert.Contains("ix:action:v1", cleaned);
+        Assert.Contains("[Action]", cleaned);
+    }
+
+    /// <summary>
+    /// Ensures overly large assistant payloads short-circuit parsing to keep extraction bounded.
+    /// </summary>
+    [Fact]
+    public void TryStripAndExtractPendingActions_SkipsParsingWhenInputExceedsBound() {
+        var oversized = new string('a', 70000);
+        var text = oversized + """
+
+                               [Action]
+                               ix:action:v1
+                               id: act_oversized
+                               title: Oversized parse
+                               request: Retry with defaults
+                               reply: /act act_oversized
+                               """;
+
+        var normalized = ActionModelProtocol.TryStripAndExtractPendingActions(text, out var actions, out var cleaned);
+
+        Assert.False(normalized);
+        Assert.Empty(actions);
+        Assert.Equal(text.Trim(), cleaned);
+        Assert.Contains("ix:action:v1", cleaned);
+    }
 }

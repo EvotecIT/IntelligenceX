@@ -24,8 +24,6 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
-    private static readonly string[] ProjectionViewArgumentNames = { "columns", "sort_by", "sort_direction", "top" };
-
     private static async Task<TurnInfo> ChatWithToolSchemaRecoveryAsync(IntelligenceXClient client, ChatInput input, ChatOptions options,
         CancellationToken cancellationToken) {
         try {
@@ -74,6 +72,7 @@ internal sealed partial class ChatServiceSession {
                 var sw = Stopwatch.StartNew();
                 var output = await ExecuteToolAsync(call, toolTimeoutSeconds, cancellationToken).ConfigureAwait(false);
                 sw.Stop();
+                await TryWriteToolRecoveredStatusAsync(writer, requestId, threadId, call, output).ConfigureAwait(false);
                 await TryWriteStatusAsync(writer, requestId, threadId, status: "tool_completed", toolName: call.Name, toolCallId: call.CallId,
                         durationMs: sw.ElapsedMilliseconds)
                     .ConfigureAwait(false);
@@ -97,10 +96,27 @@ internal sealed partial class ChatServiceSession {
         var sw = Stopwatch.StartNew();
         var output = await ExecuteToolAsync(call, toolTimeoutSeconds, cancellationToken).ConfigureAwait(false);
         sw.Stop();
+        await TryWriteToolRecoveredStatusAsync(writer, requestId, threadId, call, output).ConfigureAwait(false);
         await TryWriteStatusAsync(writer, requestId, threadId, status: "tool_completed", toolName: call.Name, toolCallId: call.CallId,
                 durationMs: sw.ElapsedMilliseconds)
             .ConfigureAwait(false);
         return output;
+    }
+
+    private async Task TryWriteToolRecoveredStatusAsync(StreamWriter writer, string requestId, string threadId, ToolCall call, ToolOutputDto output) {
+        if (!WasProjectionFallbackApplied(output)) {
+            return;
+        }
+
+        await TryWriteStatusAsync(
+                writer,
+                requestId,
+                threadId,
+                status: "tool_recovered",
+                toolName: call.Name,
+                toolCallId: call.CallId,
+                message: ProjectionFallbackRecoveredStatusMessage)
+            .ConfigureAwait(false);
     }
 
     private async Task<ToolOutputDto> ExecuteToolAsync(ToolCall call, int toolTimeoutSeconds, CancellationToken cancellationToken) {
@@ -150,225 +166,6 @@ internal sealed partial class ChatServiceSession {
         }
 
         return lastFailure ?? await ExecuteToolAttemptAsync(tool, call, toolTimeoutSeconds, cancellationToken).ConfigureAwait(false);
-    }
-
-    private static bool TryBuildProjectionArgsFallbackCall(ToolCall call, ToolOutputDto output, out ToolCall fallbackCall,
-        out ProjectionFallbackInfo fallbackInfo) {
-        fallbackCall = call;
-        fallbackInfo = default;
-
-        if (!IsProjectionViewArgumentFailure(output)) {
-            return false;
-        }
-
-        var fallbackArguments = CloneWithoutProjectionViewArguments(call.Arguments, out var removedArguments);
-        if (removedArguments.Length == 0) {
-            return false;
-        }
-
-        var fallbackInput = fallbackArguments is null ? null : JsonLite.Serialize(fallbackArguments);
-        fallbackCall = new ToolCall(call.CallId, call.Name, fallbackInput, fallbackArguments, call.Raw);
-        fallbackInfo = new ProjectionFallbackInfo(
-            RemovedArguments: removedArguments,
-            OriginalErrorCode: (output.ErrorCode ?? string.Empty).Trim(),
-            OriginalError: CompactProjectionFallbackReason(output.Error));
-        return true;
-    }
-
-    private static bool IsProjectionViewArgumentFailure(ToolOutputDto output) {
-        if (output.Ok is true) {
-            return false;
-        }
-
-        var text = BuildToolFailureSearchText(output);
-        if (text.Length == 0) {
-            return false;
-        }
-
-        var hasProjectionSignal = text.Contains("columns", StringComparison.OrdinalIgnoreCase)
-                                  || text.Contains("sort_by", StringComparison.OrdinalIgnoreCase)
-                                  || text.Contains("sort direction", StringComparison.OrdinalIgnoreCase)
-                                  || text.Contains("sort_direction", StringComparison.OrdinalIgnoreCase)
-                                  || text.Contains("tabular view", StringComparison.OrdinalIgnoreCase)
-                                  || text.Contains("projection", StringComparison.OrdinalIgnoreCase)
-                                  || text.Contains("table view response envelope", StringComparison.OrdinalIgnoreCase);
-        if (!hasProjectionSignal) {
-            return false;
-        }
-
-        if (string.Equals(output.ErrorCode, "invalid_argument", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(output.ErrorCode, "tool_error", StringComparison.OrdinalIgnoreCase)) {
-            return true;
-        }
-
-        return text.Contains("unsupported value", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("must be one of", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("invalid", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static JsonObject? CloneWithoutProjectionViewArguments(JsonObject? arguments, out string[] removedArguments) {
-        removedArguments = Array.Empty<string>();
-        if (arguments is null || arguments.Count == 0) {
-            return arguments;
-        }
-
-        var clone = new JsonObject(StringComparer.Ordinal);
-        var removed = new List<string>(ProjectionViewArgumentNames.Length);
-        var seenRemoved = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var kv in arguments) {
-            var key = (kv.Key ?? string.Empty).Trim();
-            if (key.Length == 0) {
-                continue;
-            }
-
-            if (IsProjectionViewArgumentName(key)) {
-                if (seenRemoved.Add(key)) {
-                    removed.Add(key);
-                }
-                continue;
-            }
-
-            clone.Add(key, kv.Value);
-        }
-
-        removedArguments = removed.Count == 0 ? Array.Empty<string>() : removed.ToArray();
-        return clone;
-    }
-
-    private static bool IsProjectionViewArgumentName(string argumentName) {
-        for (var i = 0; i < ProjectionViewArgumentNames.Length; i++) {
-            if (string.Equals(argumentName, ProjectionViewArgumentNames[i], StringComparison.OrdinalIgnoreCase)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static ToolOutputDto AttachProjectionFallbackMetadata(ToolOutputDto output, ProjectionFallbackInfo info) {
-        if (string.IsNullOrWhiteSpace(output.Output)) {
-            return output;
-        }
-
-        JsonObject? envelope = null;
-        try {
-            envelope = JsonLite.Parse(output.Output)?.AsObject();
-        } catch {
-            envelope = null;
-        }
-
-        if (envelope is null) {
-            return output;
-        }
-
-        var meta = envelope.GetObject("meta") ?? new JsonObject(StringComparer.Ordinal);
-        meta.Add("projection_fallback_applied", true);
-
-        var removed = new JsonArray();
-        for (var i = 0; i < info.RemovedArguments.Length; i++) {
-            if (!string.IsNullOrWhiteSpace(info.RemovedArguments[i])) {
-                removed.Add(info.RemovedArguments[i].Trim());
-            }
-        }
-        meta.Add("projection_fallback_removed_args", removed);
-        if (!string.IsNullOrWhiteSpace(info.OriginalErrorCode)) {
-            meta.Add("projection_fallback_reason_code", info.OriginalErrorCode);
-        }
-        if (!string.IsNullOrWhiteSpace(info.OriginalError)) {
-            meta.Add("projection_fallback_reason", info.OriginalError);
-        }
-        envelope.Add("meta", meta);
-
-        const string fallbackHint = "Projection arguments were reset to defaults after a view-argument failure.";
-        if (envelope.GetArray("hints") is JsonArray rootHints) {
-            AddDistinctJsonString(rootHints, fallbackHint);
-        } else {
-            envelope.Add("hints", new JsonArray().Add(fallbackHint));
-        }
-
-        if (envelope.GetObject("failure") is JsonObject failure) {
-            if (failure.GetArray("hints") is JsonArray failureHints) {
-                AddDistinctJsonString(failureHints, fallbackHint);
-            } else {
-                failure.Add("hints", new JsonArray().Add(fallbackHint));
-            }
-            envelope.Add("failure", failure);
-        }
-
-        return BuildToolOutputDto(output.CallId, JsonLite.Serialize(envelope));
-    }
-
-    private static void AddDistinctJsonString(JsonArray target, string value) {
-        if (target is null || string.IsNullOrWhiteSpace(value)) {
-            return;
-        }
-
-        var normalized = value.Trim();
-        for (var i = 0; i < target.Count; i++) {
-            var existing = target[i]?.AsString();
-            if (string.Equals(existing, normalized, StringComparison.OrdinalIgnoreCase)) {
-                return;
-            }
-        }
-
-        target.Add(normalized);
-    }
-
-    private static string CompactProjectionFallbackReason(string? errorText) {
-        var compact = CompactFailureText(errorText);
-        const int maxReasonLength = 320;
-        if (compact.Length <= maxReasonLength) {
-            return compact;
-        }
-        return compact[..maxReasonLength].TrimEnd();
-    }
-
-    private static bool WasProjectionFallbackApplied(ToolOutputDto output) {
-        if (output is null) {
-            return false;
-        }
-
-        return TryReadProjectionFallbackApplied(output.MetaJson, out var appliedFromMeta) && appliedFromMeta
-               || TryReadProjectionFallbackApplied(output.Output, out var appliedFromOutput) && appliedFromOutput;
-    }
-
-    private static bool TryReadProjectionFallbackApplied(string? rawJson, out bool applied) {
-        applied = false;
-        if (string.IsNullOrWhiteSpace(rawJson)) {
-            return false;
-        }
-
-        JsonObject? obj;
-        try {
-            obj = JsonLite.Parse(rawJson)?.AsObject();
-        } catch {
-            return false;
-        }
-
-        if (obj is null) {
-            return false;
-        }
-
-        if (TryReadProjectionFallbackFlag(obj, out applied)) {
-            return true;
-        }
-
-        if (obj.GetObject("meta") is JsonObject meta && TryReadProjectionFallbackFlag(meta, out applied)) {
-            return true;
-        }
-
-        return false;
-    }
-
-    private static bool TryReadProjectionFallbackFlag(JsonObject obj, out bool applied) {
-        applied = false;
-        if (!obj.TryGetValue("projection_fallback_applied", out var raw)
-            || raw is null
-            || raw.Kind != IntelligenceX.Json.JsonValueKind.Boolean) {
-            return false;
-        }
-
-        applied = raw.AsBoolean();
-        return true;
     }
 
     private async Task<ToolOutputDto> ExecuteToolAttemptAsync(ITool tool, ToolCall call, int toolTimeoutSeconds, CancellationToken cancellationToken) {
@@ -677,7 +474,5 @@ internal sealed partial class ChatServiceSession {
 
         return new ToolRetryProfile(MaxAttempts: 1, DelayBaseMs: 0, RetryOnTimeout: false, RetryOnTransport: false);
     }
-
-    private readonly record struct ProjectionFallbackInfo(string[] RemovedArguments, string OriginalErrorCode, string OriginalError);
 
 }

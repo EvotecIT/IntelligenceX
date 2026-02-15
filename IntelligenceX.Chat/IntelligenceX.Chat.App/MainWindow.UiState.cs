@@ -540,6 +540,7 @@ public sealed partial class MainWindow : Window {
                 status.DurationMs is not null
                     ? toolLabel + " done (" + FormatDuration(status.DurationMs.Value) + ")"
                     : toolLabel + " done",
+            "tool_recovered" when toolLabel.Length > 0 => toolLabel + " recovered with safe defaults",
             _ => string.IsNullOrWhiteSpace(status.Status)
                 ? "Working..."
                 : char.ToUpperInvariant(status.Status[0]) + status.Status[1..]
