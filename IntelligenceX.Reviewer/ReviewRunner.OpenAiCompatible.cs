@@ -133,6 +133,7 @@ internal sealed partial class ReviewRunner {
         bool readBodyOnError,
         CancellationToken cancellationToken) {
         var current = endpoint;
+        Uri? redirectedFrom = null;
         // RFC 9110: after a 303 See Other we must switch to GET and keep it for the remainder of the redirect chain.
         HttpMethod? redirectMethodOverride = null;
         for (var redirect = 0; redirect <= OpenAiCompatibleMaxRedirects; redirect++) {
@@ -147,11 +148,17 @@ internal sealed partial class ReviewRunner {
             if (createContent is not null && request.Method != HttpMethod.Get && request.Method != HttpMethod.Head) {
                 request.Content = createContent();
             }
-            if (redirect > 0 && _settings.OpenAICompatibleDropAuthorizationOnRedirect) {
-                request.Headers.Remove("Authorization");
-                if (_settings.Diagnostics) {
-                    Console.Error.WriteLine("OpenAI-compatible redirect: dropped Authorization header.");
+            if (_settings.OpenAICompatibleDropAuthorizationOnRedirect && redirectedFrom is not null) {
+                var sameAuthority = string.Equals(redirectedFrom.Scheme, current.Scheme, StringComparison.OrdinalIgnoreCase) &&
+                                   string.Equals(redirectedFrom.Host, current.Host, StringComparison.OrdinalIgnoreCase) &&
+                                   redirectedFrom.Port == current.Port;
+                if (!sameAuthority) {
+                    request.Headers.Remove("Authorization");
+                    if (_settings.Diagnostics) {
+                        Console.Error.WriteLine("OpenAI-compatible redirect: dropped Authorization header.");
+                    }
                 }
+                redirectedFrom = null;
             }
 
             using var response = await OpenAiCompatibleHttp.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
@@ -193,6 +200,7 @@ internal sealed partial class ReviewRunner {
                 redirectMethodOverride = HttpMethod.Get;
             }
 
+            redirectedFrom = current;
             current = next;
         }
 

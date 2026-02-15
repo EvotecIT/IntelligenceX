@@ -136,23 +136,22 @@ internal static partial class Program {
 
     private static void TestReviewOpenAiCompatibleDropsAuthorizationOnRedirectWhenEnabled() {
         var requestAuth = new List<string>();
-        using var server = new OpenAiCompatibleTestServer((method, path, body, headers) => {
+        using var serverB = new OpenAiCompatibleTestServer((method, path, _, headers) => {
+            requestAuth.Add(headers.TryGetValue("Authorization", out var auth) ? auth : string.Empty);
+            if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/chat/completions2", StringComparison.OrdinalIgnoreCase)) {
+                return (200, "OK", "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}", null);
+            }
+            return (404, "Not Found", "{}", null);
+        });
+        using var serverA = new OpenAiCompatibleTestServer((method, path, _, headers) => {
             requestAuth.Add(headers.TryGetValue("Authorization", out var auth) ? auth : string.Empty);
             if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
                 path.Equals("/v1/chat/completions", StringComparison.OrdinalIgnoreCase)) {
+                var location = new Uri(serverB.BaseUri, "/v1/chat/completions2").ToString();
                 return (302, "Found", "{}", new Dictionary<string, string> {
-                    ["Location"] = "/v1/chat/completions2"
+                    ["Location"] = location
                 });
-            }
-            if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
-                path.Equals("/v1/chat/completions2", StringComparison.OrdinalIgnoreCase)) {
-                return (302, "Found", "{}", new Dictionary<string, string> {
-                    ["Location"] = "/v1/chat/completions3"
-                });
-            }
-            if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
-                path.Equals("/v1/chat/completions3", StringComparison.OrdinalIgnoreCase)) {
-                return (200, "OK", "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}", null);
             }
             return (404, "Not Found", "{}", null);
         });
@@ -162,7 +161,7 @@ internal static partial class Program {
             ProviderHealthChecks = false,
             Preflight = false,
             Model = "test-model",
-            OpenAICompatibleBaseUrl = server.BaseUri.ToString(),
+            OpenAICompatibleBaseUrl = serverA.BaseUri.ToString(),
             OpenAICompatibleApiKey = "test",
             OpenAICompatibleTimeoutSeconds = 10,
             OpenAICompatibleDropAuthorizationOnRedirect = true,
@@ -179,10 +178,9 @@ internal static partial class Program {
             .GetResult();
         AssertContainsText(output, "ok", "openai-compatible output (drop auth on redirect)");
 
-        AssertEqual(3, requestAuth.Count, "openai-compatible request count (drop auth redirect chain)");
+        AssertEqual(2, requestAuth.Count, "openai-compatible request count (drop auth authority redirect)");
         AssertContainsText(requestAuth[0], "Bearer test", "openai-compatible sends Authorization on first request (drop auth)");
-        AssertEqual(string.Empty, requestAuth[1], "openai-compatible drops Authorization on redirect (2) when enabled");
-        AssertEqual(string.Empty, requestAuth[2], "openai-compatible drops Authorization on redirect (3) when enabled");
+        AssertEqual(string.Empty, requestAuth[1], "openai-compatible drops Authorization on redirect to different port when enabled");
     }
 
 }
