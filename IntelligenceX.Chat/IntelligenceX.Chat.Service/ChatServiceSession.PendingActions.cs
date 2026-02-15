@@ -233,7 +233,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         // If there's only one pending action, treat a compact acknowledgement-like follow-up as confirmation.
-        // This is language-agnostic and avoids hardcoding English phrases ("go", "run now", etc.).
+        // This is intentionally high-precision (allowlist-based) to avoid accidental execution from ambiguous short messages.
         if (actions.Count == 1 && LooksLikeImplicitPendingActionConfirmation(normalized)) {
             match = actions[0];
             return true;
@@ -263,6 +263,11 @@ internal sealed partial class ChatServiceSession {
         }
 
         normalized = normalized.Trim(' ', '\t', '\r', '\n', '.', '!', '"', '\'', '`');
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        normalized = CollapseWhitespace(normalized).Trim();
         if (normalized.Length == 0) {
             return false;
         }

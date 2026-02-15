@@ -97,8 +97,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("/act act_001", secondExpanded);
     }
 
-    [Fact]
-    public void ExpandContinuationUserRequest_DoesNotResolveNonDigitShortFollowUpToOrdinal() {
+    [Theory]
+    [InlineData("ok")]
+    [InlineData(" ok! ")]
+    [InlineData("do   it")]
+    public void ExpandContinuationUserRequest_AutoConfirmsSinglePendingActionForCommonAcknowledgements(string input) {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
             Pick one:
@@ -112,7 +115,6 @@ public sealed partial class ChatServiceRoutingTrimTests {
             """;
 
         RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
-        var input = "ok";
         var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
         var expanded = Assert.IsType<string>(result);
 
