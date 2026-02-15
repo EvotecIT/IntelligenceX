@@ -125,6 +125,7 @@ internal sealed partial class ChatServiceSession {
         PendingAction[]? actions;
         long ticks;
         string[]? callToActionTokens;
+        var usedSnapshot = false;
         lock (_toolRoutingContextLock) {
             _pendingActionsByThreadId.TryGetValue(normalizedThreadId, out actions);
             ticks = _pendingActionsSeenUtcTicks.TryGetValue(normalizedThreadId, out var seen) ? seen : 0;
@@ -133,9 +134,17 @@ internal sealed partial class ChatServiceSession {
 
         if (actions is null || actions.Length == 0) {
             if (!TryLoadPendingActionsSnapshot(normalizedThreadId, out var persistedTicks, out var persistedActions, out var persistedCallToActionTokens)) {
+                TracePendingActionDecision(
+                    userText: normalized,
+                    isExplicitAct: isExplicitAct,
+                    actionsCount: 0,
+                    usedSnapshot: false,
+                    outcome: "skip",
+                    reason: "no_pending_action_context");
                 return false;
             }
 
+            usedSnapshot = true;
             actions = persistedActions;
             ticks = persistedTicks;
             callToActionTokens = persistedCallToActionTokens;
@@ -161,6 +170,13 @@ internal sealed partial class ChatServiceSession {
                     TrimWeightedRoutingContextsNoLock();
                 }
                 RemovePendingActionsSnapshot(normalizedThreadId);
+                TracePendingActionDecision(
+                    userText: normalized,
+                    isExplicitAct: isExplicitAct,
+                    actionsCount: actions?.Length ?? 0,
+                    usedSnapshot: usedSnapshot,
+                    outcome: "skip",
+                    reason: "pending_action_ticks_invalid");
                 return false;
             }
 
@@ -173,6 +189,13 @@ internal sealed partial class ChatServiceSession {
                     TrimWeightedRoutingContextsNoLock();
                 }
                 RemovePendingActionsSnapshot(normalizedThreadId);
+                TracePendingActionDecision(
+                    userText: normalized,
+                    isExplicitAct: isExplicitAct,
+                    actionsCount: actions?.Length ?? 0,
+                    usedSnapshot: usedSnapshot,
+                    outcome: "skip",
+                    reason: "pending_action_context_in_future");
                 return false;
             }
 
@@ -185,14 +208,33 @@ internal sealed partial class ChatServiceSession {
                     TrimWeightedRoutingContextsNoLock();
                 }
                 RemovePendingActionsSnapshot(normalizedThreadId);
+                TracePendingActionDecision(
+                    userText: normalized,
+                    isExplicitAct: isExplicitAct,
+                    actionsCount: actions?.Length ?? 0,
+                    usedSnapshot: usedSnapshot,
+                    outcome: "skip",
+                    reason: "pending_action_context_expired");
                 return false;
             }
         }
 
-        var selected = TryMatchPendingAction(normalized, actions, callToActionTokens ?? Array.Empty<string>(), out var match)
+        var selected = TryMatchPendingActionWithReason(
+                normalized,
+                actions,
+                callToActionTokens ?? Array.Empty<string>(),
+                out var match,
+                out var matchReason)
             ? match
             : (PendingAction?)null;
         if (selected is null) {
+            TracePendingActionDecision(
+                userText: normalized,
+                isExplicitAct: isExplicitAct,
+                actionsCount: actions?.Length ?? 0,
+                usedSnapshot: usedSnapshot,
+                outcome: "skip",
+                reason: matchReason);
             return false;
         }
 
@@ -207,6 +249,14 @@ internal sealed partial class ChatServiceSession {
 
         var request = string.IsNullOrWhiteSpace(selected.Value.Request) ? selected.Value.Title : selected.Value.Request;
         if (string.IsNullOrWhiteSpace(request)) {
+            TracePendingActionDecision(
+                userText: normalized,
+                isExplicitAct: isExplicitAct,
+                actionsCount: actions?.Length ?? 0,
+                usedSnapshot: usedSnapshot,
+                outcome: "skip",
+                reason: "matched_action_missing_request",
+                selectedActionId: selected.Value.Id);
             return false;
         }
 
@@ -218,18 +268,37 @@ internal sealed partial class ChatServiceSession {
                 request = CollapseWhitespace(request).Trim()
             }
         });
+        TracePendingActionDecision(
+            userText: normalized,
+            isExplicitAct: isExplicitAct,
+            actionsCount: actions?.Length ?? 0,
+            usedSnapshot: usedSnapshot,
+            outcome: "match",
+            reason: matchReason,
+            selectedActionId: selected.Value.Id);
         return true;
     }
 
     private static bool TryMatchPendingAction(string userText, IReadOnlyList<PendingAction> actions, IReadOnlyList<string> callToActionTokens, out PendingAction match) {
+        return TryMatchPendingActionWithReason(userText, actions, callToActionTokens, out match, out _);
+    }
+
+    private static bool TryMatchPendingActionWithReason(string userText, IReadOnlyList<PendingAction> actions, IReadOnlyList<string> callToActionTokens, out PendingAction match, out string reason) {
         match = default;
+        reason = "no_match";
 
         // Be careful with normalization: explicit selections like `/act <id>` should treat `<id>` as an opaque token.
         // Applying FormKC to the whole input can change codepoints and prevent matching an otherwise valid ID copied
         // from the assistant output.
         var trimmed = (userText ?? string.Empty).Trim();
 
-        if (trimmed.Length == 0 || actions.Count == 0) {
+        if (trimmed.Length == 0) {
+            reason = "empty_follow_up";
+            return false;
+        }
+
+        if (actions.Count == 0) {
+            reason = "no_actions_available";
             return false;
         }
 
@@ -237,29 +306,35 @@ internal sealed partial class ChatServiceSession {
         if (trimmed.StartsWith("/act", StringComparison.OrdinalIgnoreCase)) {
             // Require `/act` as a standalone token; avoid accidentally treating `/actuator` etc. as an action selection.
             if (trimmed.Length > 4 && !char.IsWhiteSpace(trimmed[4])) {
+                reason = "invalid_act_command_token";
                 return false;
             }
 
             var rest = trimmed[4..].Trim();
             if (rest.Length == 0) {
+                reason = "act_id_missing";
                 return false;
             }
             var id = ReadFirstToken(rest);
             if (id.Length == 0) {
+                reason = "act_id_missing";
                 return false;
             }
             var trailing = rest[id.Length..].Trim();
             if (trailing.Length != 0) {
+                reason = "act_command_has_trailing_tokens";
                 return false;
             }
 
             for (var i = 0; i < actions.Count; i++) {
                 if (string.Equals(actions[i].Id, id, StringComparison.OrdinalIgnoreCase)) {
                     match = actions[i];
+                    reason = "explicit_act_id";
                     return true;
                 }
             }
 
+            reason = "act_id_not_found";
             return false;
         }
 
@@ -274,12 +349,14 @@ internal sealed partial class ChatServiceSession {
         // "1" / "2" selects by ordinal.
         if (TryParseOrdinalSelection(normalized, out var idx) && idx > 0 && idx <= actions.Count) {
             match = actions[idx - 1];
+            reason = "ordinal_selection";
             return true;
         }
 
         if (trimmed.IndexOfAny(PendingActionConfirmationQuestionPunctuation) >= 0
             || trimmed.IndexOfAny(PendingActionConfirmationDisqualifierPunctuation) >= 0
             || LooksLikeStructuredPendingActionConfirmationInput(trimmed)) {
+            reason = "follow_up_disqualified_shape";
             return false;
         }
 
@@ -291,25 +368,35 @@ internal sealed partial class ChatServiceSession {
             && callToActionTokens is { Count: > 0 }
             && UserMatchesPendingActionCallToActionTokens(trimmed, callToActionTokens)) {
             match = actions[0];
+            reason = "cta_echo_selection";
             return true;
         }
 
-        if (TryMatchPendingActionByIntentOverlap(trimmed, actions, out var overlapMatch)) {
+        if (TryMatchPendingActionByIntentOverlapWithReason(trimmed, actions, out var overlapMatch, out var overlapReason)) {
             match = overlapMatch;
+            reason = overlapReason;
             return true;
         }
 
+        reason = overlapReason;
         return false;
     }
 
     private static bool TryMatchPendingActionByIntentOverlap(string userText, IReadOnlyList<PendingAction> actions, out PendingAction match) {
+        return TryMatchPendingActionByIntentOverlapWithReason(userText, actions, out match, out _);
+    }
+
+    private static bool TryMatchPendingActionByIntentOverlapWithReason(string userText, IReadOnlyList<PendingAction> actions, out PendingAction match, out string reason) {
         match = default;
+        reason = "intent_overlap_no_match";
         if (actions is null || actions.Count == 0) {
+            reason = "intent_overlap_no_actions";
             return false;
         }
 
         var userTokens = ExtractPendingActionIntentTokens(userText, maxTokens: 12);
         if (userTokens.Count == 0) {
+            reason = "intent_overlap_no_user_tokens";
             return false;
         }
 
@@ -369,15 +456,18 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (bestIndex < 0 || tieOnBest) {
+            reason = tieOnBest ? "intent_overlap_ambiguous" : "intent_overlap_no_hits";
             return false;
         }
 
         if (actions.Count > 1) {
             if (bestHits < 2) {
+                reason = "intent_overlap_multi_too_weak";
                 return false;
             }
 
             match = actions[bestIndex];
+            reason = "intent_overlap_multi";
             return true;
         }
 
@@ -386,11 +476,31 @@ internal sealed partial class ChatServiceSession {
                 hitCount: bestHits,
                 lastHitIndex: bestLastHitIndex,
                 longestMatchedTokenLength: bestLongestMatchedTokenLength)) {
+            reason = "intent_overlap_single_too_weak";
             return false;
         }
 
         match = actions[bestIndex];
+        reason = "intent_overlap_single";
         return true;
+    }
+
+    private static void TracePendingActionDecision(
+        string userText,
+        bool isExplicitAct,
+        int actionsCount,
+        bool usedSnapshot,
+        string outcome,
+        string reason,
+        string? selectedActionId = null) {
+        var normalized = (userText ?? string.Empty).Trim();
+        var tokenCount = CountLetterDigitTokens(normalized, maxTokens: 16);
+        var selected = string.IsNullOrWhiteSpace(selectedActionId) ? "-" : selectedActionId.Trim();
+        var source = actionsCount <= 0 ? "none" : (usedSnapshot ? "snapshot" : "memory");
+        var kind = isExplicitAct ? "explicit_act" : "follow_up";
+
+        Console.Error.WriteLine(
+            $"[pending-action] outcome={outcome} reason={reason} kind={kind} source={source} actions={Math.Max(0, actionsCount)} tokens={tokenCount} selected={selected}");
     }
 
     private static bool SingleActionIntentOverlapIsStrongEnough(int userTokenCount, int hitCount, int lastHitIndex, int longestMatchedTokenLength) {

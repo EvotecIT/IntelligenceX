@@ -138,14 +138,31 @@ internal sealed partial class ChatServiceSession {
             var extracted = ToolCallParser.Extract(turn);
             if (extracted.Count == 0) {
                 var text = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
-                if (!executionNudgeUsed
-                    && ShouldAttemptToolExecutionNudge(
+                var shouldAttemptExecutionNudge = false;
+                var executionNudgeReason = executionNudgeUsed
+                    ? "execution_nudge_already_used"
+                    : "execution_nudge_not_evaluated";
+                if (!executionNudgeUsed) {
+                    shouldAttemptExecutionNudge = EvaluateToolExecutionNudgeDecision(
                         userRequest: routedUserRequest,
                         assistantDraft: text,
                         toolsAvailable: toolDefs.Count > 0,
                         priorToolCalls: toolCalls.Count,
                         assistantDraftToolCalls: extracted.Count,
-                        usedContinuationSubset: usedContinuationSubset)) {
+                        usedContinuationSubset: usedContinuationSubset,
+                        out executionNudgeReason);
+                }
+
+                if (shouldAttemptExecutionNudge) {
+                    TraceToolExecutionNudgeDecision(
+                        userRequest: routedUserRequest,
+                        usedContinuationSubset: usedContinuationSubset,
+                        toolsAvailable: toolDefs.Count > 0,
+                        priorToolCalls: toolCalls.Count,
+                        assistantDraftToolCalls: extracted.Count,
+                        executionNudgeAlreadyUsed: executionNudgeUsed,
+                        shouldAttemptNudge: shouldAttemptExecutionNudge,
+                        reason: executionNudgeReason);
                     executionNudgeUsed = true;
                     var nudgePrompt = BuildToolExecutionNudgePrompt(routedUserRequest, text);
                     await TryWriteStatusAsync(
@@ -163,6 +180,16 @@ internal sealed partial class ChatServiceSession {
                         .ConfigureAwait(false);
                     continue;
                 }
+
+                TraceToolExecutionNudgeDecision(
+                    userRequest: routedUserRequest,
+                    usedContinuationSubset: usedContinuationSubset,
+                    toolsAvailable: toolDefs.Count > 0,
+                    priorToolCalls: toolCalls.Count,
+                    assistantDraftToolCalls: extracted.Count,
+                    executionNudgeAlreadyUsed: executionNudgeUsed,
+                    shouldAttemptNudge: false,
+                    reason: executionNudgeReason);
 
                 if (!toolReceiptCorrectionUsed
                     && ShouldAttemptToolReceiptCorrection(
@@ -260,6 +287,32 @@ internal sealed partial class ChatServiceSession {
         }
 
         throw new InvalidOperationException($"Tool runner exceeded max rounds ({maxRounds}).");
+    }
+
+    private static void TraceToolExecutionNudgeDecision(
+        string userRequest,
+        bool usedContinuationSubset,
+        bool toolsAvailable,
+        int priorToolCalls,
+        int assistantDraftToolCalls,
+        bool executionNudgeAlreadyUsed,
+        bool shouldAttemptNudge,
+        string reason) {
+        var normalized = (userRequest ?? string.Empty).Trim();
+        var isFollowUp = LooksLikeContinuationFollowUp(normalized);
+        var isActionPayload = LooksLikeActionSelectionPayload(normalized);
+        if (!isFollowUp && !isActionPayload) {
+            return;
+        }
+
+        var tokenCount = CountLetterDigitTokens(normalized, maxTokens: 16);
+        var kind = isActionPayload ? "action_payload" : "follow_up";
+        var routing = usedContinuationSubset ? "subset" : "full";
+        var outcome = shouldAttemptNudge ? "retry" : "skip";
+        var nudgeState = executionNudgeAlreadyUsed ? "used" : "unused";
+
+        Console.Error.WriteLine(
+            $"[tool-nudge] outcome={outcome} reason={reason} kind={kind} routing={routing} nudge={nudgeState} tools={toolsAvailable} prior_calls={Math.Max(0, priorToolCalls)} draft_calls={Math.Max(0, assistantDraftToolCalls)} tokens={tokenCount}");
     }
 
     private static IReadOnlyList<ToolErrorMetricDto> BuildToolErrorMetrics(
