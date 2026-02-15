@@ -664,7 +664,7 @@ internal static partial class SetupRunner {
             extras.Add("exports analyzer configs for IDE support");
         }
         if (includeTriageBootstrap) {
-            extras.Add("bootstraps IX triage project automation (VISION.md + project sync workflow)");
+            extras.Add("bootstraps IX triage project automation (VISION.md + project sync workflow + control issue variable)");
         }
 
         if (extras.Count == 0) {

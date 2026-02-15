@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,6 +12,8 @@ internal static partial class SetupRunner {
     private const string DefaultTriageProjectConfigPath = "artifacts/triage/ix-project-config.json";
     private const string DefaultTriageWorkflowPath = ".github/workflows/ix-triage-project-sync.yml";
     private const string DefaultVisionPath = "VISION.md";
+    private const string DefaultControlIssueTitle = "IX Triage Control";
+    private const string TriageControlIssueVariableName = "IX_TRIAGE_CONTROL_ISSUE";
     private static readonly SemaphoreSlim ProjectInitLock = new(1, 1);
 
     private static async Task<List<FilePlan>> PlanTriageBootstrapFilesAsync(
@@ -76,7 +79,72 @@ internal static partial class SetupRunner {
             PlanWrite(DefaultVisionPath, existingVision?.Content, visionContent, options.Force)
         };
 
+        if (!options.DryRun) {
+            await EnsureControlIssueConfiguredAsync(
+                github,
+                owner,
+                repo,
+                repoFullName,
+                projectOwner,
+                projectNumber).ConfigureAwait(false);
+        }
+
         return plans;
+    }
+
+    internal static bool ShouldProvisionTriageControlIssue(string? variableValue) {
+        return !TryParsePositiveInt(variableValue, out _);
+    }
+
+    private static bool TryParsePositiveInt(string? value, out int number) {
+        number = 0;
+        if (string.IsNullOrWhiteSpace(value)) {
+            return false;
+        }
+
+        return int.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out number) &&
+               number > 0;
+    }
+
+    private static async Task EnsureControlIssueConfiguredAsync(
+        GitHubApi github,
+        string owner,
+        string repo,
+        string repoFullName,
+        string projectOwner,
+        int projectNumber) {
+        string? existingControlIssue = null;
+        try {
+            existingControlIssue = await github.TryGetRepositoryVariableAsync(
+                owner,
+                repo,
+                TriageControlIssueVariableName).ConfigureAwait(false);
+        } catch (Exception ex) {
+            Console.Error.WriteLine(
+                $"Warning: triage bootstrap could not read {TriageControlIssueVariableName}. " +
+                $"Configure it manually if needed. ({ex.Message})");
+            return;
+        }
+
+        if (!ShouldProvisionTriageControlIssue(existingControlIssue)) {
+            return;
+        }
+
+        try {
+            var body = ProjectBootstrapRunner.BuildControlIssueBody(repoFullName, projectOwner, projectNumber);
+            var issueNumber = await github.CreateIssueAsync(owner, repo, DefaultControlIssueTitle, body).ConfigureAwait(false);
+            await github.UpsertRepositoryVariableAsync(
+                owner,
+                repo,
+                TriageControlIssueVariableName,
+                issueNumber.ToString(CultureInfo.InvariantCulture)).ConfigureAwait(false);
+
+            Console.WriteLine($"Configured {TriageControlIssueVariableName} to #{issueNumber}.");
+        } catch (Exception ex) {
+            Console.Error.WriteLine(
+                $"Warning: triage bootstrap could not auto-configure {TriageControlIssueVariableName}. " +
+                $"Run `intelligencex todo project-bootstrap --repo {repoFullName} --create-control-issue` after setup. ({ex.Message})");
+        }
     }
 
     private static async Task<string> CreateTriageProjectConfigAsync(string repoFullName, string gitHubToken) {

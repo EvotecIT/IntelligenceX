@@ -80,6 +80,7 @@ internal static partial class Program {
         failed += Run("Setup args include analysis export path", TestSetupArgsIncludeAnalysisExportPath);
         failed += Run("Setup args disable analysis omits gate and packs", TestSetupArgsDisableAnalysisOmitsGateAndPacks);
         failed += Run("Setup args include triage bootstrap", TestSetupArgsIncludeTriageBootstrap);
+        failed += Run("Setup triage control issue provision decision", TestSetupTriageControlIssueProvisionDecision);
         failed += Run("Setup args include OpenAI account routing", TestSetupArgsIncludeOpenAiAccountRouting);
         failed += Run("Setup args include OpenAI account routing with primary only",
             TestSetupArgsIncludeOpenAiAccountRoutingWithPrimaryOnly);

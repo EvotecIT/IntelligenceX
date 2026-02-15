@@ -36,6 +36,19 @@ internal static partial class Program {
         }, args, "setup args triage bootstrap");
     }
 
+    private static void TestSetupTriageControlIssueProvisionDecision() {
+        AssertEqual(true, SetupRunner.ShouldProvisionTriageControlIssue(null),
+            "triage control issue should be provisioned when variable missing");
+        AssertEqual(true, SetupRunner.ShouldProvisionTriageControlIssue(string.Empty),
+            "triage control issue should be provisioned when variable empty");
+        AssertEqual(true, SetupRunner.ShouldProvisionTriageControlIssue("abc"),
+            "triage control issue should be provisioned when variable non-numeric");
+        AssertEqual(true, SetupRunner.ShouldProvisionTriageControlIssue("0"),
+            "triage control issue should be provisioned when variable non-positive");
+        AssertEqual(false, SetupRunner.ShouldProvisionTriageControlIssue("42"),
+            "triage control issue should not be provisioned when variable valid");
+    }
+
     private static void TestSetupArgsIncludeAnalysisRunStrictOption() {
         var plan = new SetupPlan("owner/repo") {
             AnalysisEnabled = true,
