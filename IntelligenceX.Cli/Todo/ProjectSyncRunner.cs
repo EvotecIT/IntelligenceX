@@ -11,6 +11,7 @@ namespace IntelligenceX.Cli.Todo;
 
 internal static class ProjectSyncRunner {
     private const double HighConfidenceIssueMatchLabelThreshold = 0.80;
+    private const double HighConfidencePullRequestMatchLabelThreshold = 0.80;
     private const double DefaultIssueCommentMinConfidence = 0.55;
     private const double RejectVisionConfidenceThreshold = 0.70;
     private const double AcceptVisionConfidenceThreshold = 0.68;
@@ -51,7 +52,10 @@ internal static class ProjectSyncRunner {
         string? VisionFit,
         double? VisionConfidence,
         IReadOnlyList<RelatedIssueCandidate>? RelatedIssues = null,
-        string? SuggestedDecision = null
+        string? SuggestedDecision = null,
+        string? MatchedPullRequestUrl = null,
+        double? MatchedPullRequestConfidence = null,
+        IReadOnlyList<string>? ExistingLabels = null
     );
 
     private sealed class Options {
@@ -201,7 +205,12 @@ internal static class ProjectSyncRunner {
                     if (options.DryRun) {
                         labeled++;
                     } else {
-                        if (await RepositoryLabelManager.AddLabelsAsync(options.Repo, entry.Kind, entry.Number, labels).ConfigureAwait(false)) {
+                        if (await RepositoryLabelManager.SyncManagedLabelsAsync(
+                                options.Repo,
+                                entry.Kind,
+                                entry.Number,
+                                labels,
+                                entry.ExistingLabels).ConfigureAwait(false)) {
                             labeled++;
                         }
                     }
@@ -377,7 +386,7 @@ internal static class ProjectSyncRunner {
         Console.WriteLine("  --project-item-scan-limit <n>  Existing project item scan limit (100-10000, default: 5000)");
         Console.WriteLine("  --ensure-fields          Ensure IX fields exist before sync (default)");
         Console.WriteLine("  --no-ensure-fields       Skip field creation");
-        Console.WriteLine("  --apply-labels           Apply IX labels to PRs/issues from synced signals");
+        Console.WriteLine("  --apply-labels           Sync IX labels on PRs/issues (add missing + remove stale managed IX labels)");
         Console.WriteLine("  --ensure-labels          Ensure IX labels exist before applying labels (default)");
         Console.WriteLine("  --no-ensure-labels       Skip label ensure step");
         Console.WriteLine("  --apply-link-comments    Upsert marker comments on PRs (related issues) and issues (related PRs)");
@@ -477,6 +486,7 @@ internal static class ProjectSyncRunner {
                 var duplicateClusterId = ReadNullableString(item, "duplicateClusterId");
                 var category = ReadNullableString(item, "category");
                 var tags = ReadStringArray(item, "tags");
+                var existingLabels = ReadStringArray(item, "labels");
                 var matchedIssueUrl = ReadNullableString(item, "matchedIssueUrl");
                 var matchedIssueConfidence = ReadNullableDouble(item, "matchedIssueConfidence");
                 var relatedIssues = ParseRelatedIssueCandidates(item);
@@ -506,7 +516,8 @@ internal static class ProjectSyncRunner {
                     VisionFit: null,
                     VisionConfidence: null,
                     RelatedIssues: relatedIssues,
-                    SuggestedDecision: null
+                    SuggestedDecision: null,
+                    ExistingLabels: existingLabels
                 );
             }
         }
@@ -545,7 +556,8 @@ internal static class ProjectSyncRunner {
                         VisionFit: classification,
                         VisionConfidence: confidence,
                         RelatedIssues: Array.Empty<RelatedIssueCandidate>(),
-                        SuggestedDecision: null
+                        SuggestedDecision: null,
+                        ExistingLabels: Array.Empty<string>()
                     );
                 }
             }
@@ -559,6 +571,22 @@ internal static class ProjectSyncRunner {
                 decisionSignals);
             if (!string.IsNullOrWhiteSpace(suggestion)) {
                 entriesByUrl[pair.Key] = pair.Value with { SuggestedDecision = suggestion };
+            }
+        }
+
+        var issueMatchByUrl = BuildIssueToPullRequestMatchByUrl(entriesByUrl.Values);
+        var issueMatchByNumber = BuildIssueToPullRequestMatchByNumber(entriesByUrl.Values);
+        foreach (var pair in entriesByUrl.ToList()) {
+            if (!pair.Value.Kind.Equals("issue", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (issueMatchByUrl.TryGetValue(pair.Key, out var byUrlMatch) ||
+                (pair.Value.Number > 0 && issueMatchByNumber.TryGetValue(pair.Value.Number, out byUrlMatch))) {
+                entriesByUrl[pair.Key] = pair.Value with {
+                    MatchedPullRequestUrl = byUrlMatch.Url,
+                    MatchedPullRequestConfidence = byUrlMatch.Confidence
+                };
             }
         }
 
@@ -656,6 +684,74 @@ internal static class ProjectSyncRunner {
             }
         }
         return urls;
+    }
+
+    private static IReadOnlyDictionary<string, RelatedPullRequestCandidate> BuildIssueToPullRequestMatchByUrl(
+        IEnumerable<ProjectSyncEntry> entries) {
+        var map = new Dictionary<string, RelatedPullRequestCandidate>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries) {
+            if (!entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase) || entry.Number <= 0) {
+                continue;
+            }
+
+            foreach (var candidate in entry.RelatedIssues ?? Array.Empty<RelatedIssueCandidate>()) {
+                if (string.IsNullOrWhiteSpace(candidate.Url) || candidate.Number <= 0) {
+                    continue;
+                }
+
+                if (map.TryGetValue(candidate.Url, out var existing) &&
+                    ComparePullRequestMatch(existing, entry.Number, candidate.Confidence) >= 0) {
+                    continue;
+                }
+
+                map[candidate.Url] = new RelatedPullRequestCandidate(
+                    entry.Number,
+                    entry.Url,
+                    candidate.Confidence,
+                    candidate.Reason
+                );
+            }
+        }
+
+        return map;
+    }
+
+    private static IReadOnlyDictionary<int, RelatedPullRequestCandidate> BuildIssueToPullRequestMatchByNumber(
+        IEnumerable<ProjectSyncEntry> entries) {
+        var map = new Dictionary<int, RelatedPullRequestCandidate>();
+        foreach (var entry in entries) {
+            if (!entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase) || entry.Number <= 0) {
+                continue;
+            }
+
+            foreach (var candidate in entry.RelatedIssues ?? Array.Empty<RelatedIssueCandidate>()) {
+                if (candidate.Number <= 0) {
+                    continue;
+                }
+
+                if (map.TryGetValue(candidate.Number, out var existing) &&
+                    ComparePullRequestMatch(existing, entry.Number, candidate.Confidence) >= 0) {
+                    continue;
+                }
+
+                map[candidate.Number] = new RelatedPullRequestCandidate(
+                    entry.Number,
+                    entry.Url,
+                    candidate.Confidence,
+                    candidate.Reason
+                );
+            }
+        }
+
+        return map;
+    }
+
+    private static int ComparePullRequestMatch(RelatedPullRequestCandidate existing, int number, double confidence) {
+        var confidenceCompare = existing.Confidence.CompareTo(confidence);
+        if (confidenceCompare != 0) {
+            return confidenceCompare;
+        }
+        return number.CompareTo(existing.Number);
     }
 
     private static PullRequestDecisionSignals? ParsePullRequestSignals(JsonElement item) {
@@ -817,6 +913,8 @@ internal static class ProjectSyncRunner {
 
     internal static IReadOnlyList<string> BuildLabelsForEntry(ProjectSyncEntry entry) {
         var labels = new List<string>();
+        var isPullRequest = entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase);
+        var isIssue = entry.Kind.Equals("issue", StringComparison.OrdinalIgnoreCase);
 
         if (ProjectLabelCatalog.TryMapCategoryLabel(entry.Category ?? string.Empty, out var categoryLabel)) {
             labels.Add(categoryLabel);
@@ -829,21 +927,42 @@ internal static class ProjectSyncRunner {
         }
 
         var visionLabel = MapVisionLabel(entry.VisionFit);
-        if (!string.IsNullOrWhiteSpace(visionLabel) && entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase)) {
+        if (!string.IsNullOrWhiteSpace(visionLabel) && isPullRequest) {
             labels.Add(visionLabel);
         }
 
-        if (!string.IsNullOrWhiteSpace(entry.MatchedIssueUrl) && entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase)) {
-            if (entry.MatchedIssueConfidence.HasValue &&
-                entry.MatchedIssueConfidence.Value >= HighConfidenceIssueMatchLabelThreshold) {
+        var relatedTopCandidate = (entry.RelatedIssues ?? Array.Empty<RelatedIssueCandidate>())
+            .Where(candidate => candidate.Number > 0 && !string.IsNullOrWhiteSpace(candidate.Url))
+            .OrderByDescending(candidate => candidate.Confidence)
+            .ThenBy(candidate => candidate.Number)
+            .FirstOrDefault();
+
+        var effectiveMatchedIssueUrl = !string.IsNullOrWhiteSpace(entry.MatchedIssueUrl)
+            ? entry.MatchedIssueUrl
+            : relatedTopCandidate?.Url;
+        var effectiveMatchedIssueConfidence = entry.MatchedIssueConfidence ??
+                                              relatedTopCandidate?.Confidence;
+
+        if (!string.IsNullOrWhiteSpace(effectiveMatchedIssueUrl) && isPullRequest) {
+            if (effectiveMatchedIssueConfidence.HasValue &&
+                effectiveMatchedIssueConfidence.Value >= HighConfidenceIssueMatchLabelThreshold) {
                 labels.Add("ix/match:linked-issue");
             } else {
                 labels.Add("ix/match:needs-review");
             }
         }
 
+        if (!string.IsNullOrWhiteSpace(entry.MatchedPullRequestUrl) && isIssue) {
+            if (entry.MatchedPullRequestConfidence.HasValue &&
+                entry.MatchedPullRequestConfidence.Value >= HighConfidencePullRequestMatchLabelThreshold) {
+                labels.Add("ix/match:linked-pr");
+            } else {
+                labels.Add("ix/match:needs-review-pr");
+            }
+        }
+
         var decisionLabel = MapSuggestedDecisionLabel(entry.SuggestedDecision);
-        if (!string.IsNullOrWhiteSpace(decisionLabel) && entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase)) {
+        if (!string.IsNullOrWhiteSpace(decisionLabel) && isPullRequest) {
             labels.Add(decisionLabel);
         }
 

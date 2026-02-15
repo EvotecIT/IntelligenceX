@@ -29,6 +29,8 @@ internal static partial class Program {
         AssertEqual(true, labels.Contains("ix/decision:defer", StringComparer.OrdinalIgnoreCase), "decision defer label");
         AssertEqual(true, labels.Contains("ix/decision:reject", StringComparer.OrdinalIgnoreCase), "decision reject label");
         AssertEqual(true, labels.Contains("ix/decision:merge-candidate", StringComparer.OrdinalIgnoreCase), "decision merge-candidate label");
+        AssertEqual(true, labels.Contains("ix/match:linked-pr", StringComparer.OrdinalIgnoreCase), "issue linked-pr label");
+        AssertEqual(true, labels.Contains("ix/match:needs-review-pr", StringComparer.OrdinalIgnoreCase), "issue needs-review-pr label");
     }
 
     private static void TestProjectLabelCatalogBuildEnsureCatalogIncludesDynamicCategoryAndTags() {
@@ -297,6 +299,100 @@ internal static partial class Program {
         AssertEqual(true, labels.Contains("ix/match:needs-review", StringComparer.OrdinalIgnoreCase), "low confidence match review label");
         AssertEqual(false, labels.Contains("ix/match:linked-issue", StringComparer.OrdinalIgnoreCase), "low confidence should not be linked-issue");
         AssertEqual(true, labels.Contains("ix/decision:defer", StringComparer.OrdinalIgnoreCase), "decision defer label");
+    }
+
+    private static void TestProjectSyncBuildLabelsUsesRelatedIssueFallbackWhenMatchedIssueMissing() {
+        var entry = new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+            Number: 79,
+            Url: "https://github.com/EvotecIT/IntelligenceX/pull/79",
+            Kind: "pull_request",
+            TriageScore: 73.0,
+            DuplicateCluster: null,
+            CanonicalItem: null,
+            Category: "feature",
+            Tags: Array.Empty<string>(),
+            MatchedIssueUrl: null,
+            MatchedIssueConfidence: null,
+            VisionFit: null,
+            VisionConfidence: null,
+            RelatedIssues: new[] {
+                new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedIssueCandidate(20, "https://github.com/EvotecIT/IntelligenceX/issues/20", 0.87, "explicit issue reference")
+            }
+        );
+
+        var labels = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildLabelsForEntry(entry);
+        AssertEqual(true, labels.Contains("ix/match:linked-issue", StringComparer.OrdinalIgnoreCase), "fallback related issue adds linked-issue label");
+    }
+
+    private static void TestProjectSyncBuildLabelsUsesIssuePullRequestMatchSignals() {
+        var highConfidenceIssue = new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+            Number: 120,
+            Url: "https://github.com/EvotecIT/IntelligenceX/issues/120",
+            Kind: "issue",
+            TriageScore: null,
+            DuplicateCluster: null,
+            CanonicalItem: null,
+            Category: "bug",
+            Tags: Array.Empty<string>(),
+            MatchedIssueUrl: null,
+            MatchedIssueConfidence: null,
+            VisionFit: null,
+            VisionConfidence: null,
+            MatchedPullRequestUrl: "https://github.com/EvotecIT/IntelligenceX/pull/77",
+            MatchedPullRequestConfidence: 0.89
+        );
+        var lowConfidenceIssue = highConfidenceIssue with {
+            Number = 121,
+            Url = "https://github.com/EvotecIT/IntelligenceX/issues/121",
+            MatchedPullRequestConfidence = 0.61
+        };
+
+        var highLabels = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildLabelsForEntry(highConfidenceIssue);
+        var lowLabels = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildLabelsForEntry(lowConfidenceIssue);
+
+        AssertEqual(true, highLabels.Contains("ix/match:linked-pr", StringComparer.OrdinalIgnoreCase), "high confidence issue gets linked-pr label");
+        AssertEqual(false, highLabels.Contains("ix/match:needs-review-pr", StringComparer.OrdinalIgnoreCase), "high confidence issue does not get needs-review-pr label");
+        AssertEqual(true, lowLabels.Contains("ix/match:needs-review-pr", StringComparer.OrdinalIgnoreCase), "low confidence issue gets needs-review-pr label");
+        AssertEqual(false, lowLabels.Contains("ix/match:linked-pr", StringComparer.OrdinalIgnoreCase), "low confidence issue does not get linked-pr label");
+    }
+
+    private static void TestProjectSyncBuildEntriesDerivesIssuePullRequestMatches() {
+        const string triageJson = """
+{
+  "items": [
+    {
+      "id": "pr#77",
+      "kind": "pull_request",
+      "number": 77,
+      "url": "https://github.com/EvotecIT/IntelligenceX/pull/77",
+      "relatedIssues": [
+        {
+          "number": 120,
+          "url": "https://github.com/EvotecIT/IntelligenceX/issues/120",
+          "confidence": 0.89,
+          "reason": "explicit issue reference in PR title/body"
+        }
+      ]
+    },
+    {
+      "id": "issue#120",
+      "kind": "issue",
+      "number": 120,
+      "url": "https://github.com/EvotecIT/IntelligenceX/issues/120"
+    }
+  ]
+}
+""";
+
+        using var triageDoc = System.Text.Json.JsonDocument.Parse(triageJson);
+        var entries = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildEntriesFromDocuments(
+            triageDoc.RootElement,
+            null,
+            100);
+
+        var issue = entries.Single(item => item.Kind.Equals("issue", StringComparison.OrdinalIgnoreCase));
+        AssertEqual("https://github.com/EvotecIT/IntelligenceX/pull/77", issue.MatchedPullRequestUrl, "issue matched pull request url derived");
+        AssertEqual(true, issue.MatchedPullRequestConfidence.HasValue && issue.MatchedPullRequestConfidence.Value >= 0.89, "issue matched pull request confidence derived");
     }
 
     private static void TestProjectSyncBuildIssueMatchSuggestionCommentFiltersByConfidence() {

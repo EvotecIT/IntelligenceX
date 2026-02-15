@@ -81,6 +81,8 @@ internal static class ProjectLabelCatalog {
 
         new ProjectLabelDefinition("ix/match:linked-issue", "0366d6", "PR has a high-confidence related issue."),
         new ProjectLabelDefinition("ix/match:needs-review", "fbca04", "PR has a low-confidence issue match that needs maintainer review."),
+        new ProjectLabelDefinition("ix/match:linked-pr", "0366d6", "Issue has a high-confidence related pull request."),
+        new ProjectLabelDefinition("ix/match:needs-review-pr", "fbca04", "Issue has a low-confidence related pull request that needs maintainer review."),
         new ProjectLabelDefinition("ix/decision:accept", "0e8a16", "IX suggested decision is accept."),
         new ProjectLabelDefinition("ix/decision:defer", "fbca04", "IX suggested decision is defer."),
         new ProjectLabelDefinition("ix/decision:reject", "d73a4a", "IX suggested decision is reject."),

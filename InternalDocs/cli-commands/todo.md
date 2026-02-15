@@ -133,8 +133,9 @@ Options:
 - `--max-items <n>` (default `500`)
 - `--project-item-scan-limit <n>` (default `5000`)
 - `--ensure-fields` / `--no-ensure-fields`
-- `--apply-labels`
+- `--apply-labels` (managed IX label sync; stale `ix/*` labels in managed families are removed)
 - `--ensure-labels` / `--no-ensure-labels`
+- `--apply-link-comments`
 - `--dry-run`
 
 ## Project Bootstrap (Project + Workflow in one command)
