@@ -121,7 +121,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_RehydratesPendingActionsAfterRestart() {
-        var storePath = Path.Combine(Path.GetTempPath(), $"ix-pending-actions-{Guid.NewGuid():N}.json");
+        var storeFile = $"pending-actions-test-{Guid.NewGuid():N}.json";
+        var storePath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "IntelligenceX.Chat",
+            storeFile);
         try {
             var threadId = "thread-001";
             var assistantDraft = """
@@ -135,7 +139,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 reply: /act act_001
                 """;
 
-            var opts = new ServiceOptions { PendingActionsStorePath = storePath };
+            Directory.CreateDirectory(Path.GetDirectoryName(storePath)!);
+            var opts = new ServiceOptions { PendingActionsStorePath = storeFile };
             var session1 = new ChatServiceSession(opts, Stream.Null);
             RememberPendingActionsMethod.Invoke(session1, new object?[] { threadId, assistantDraft });
 
@@ -158,11 +163,16 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotThrowOnCorruptPendingActionsStore() {
-        var storePath = Path.Combine(Path.GetTempPath(), $"ix-pending-actions-{Guid.NewGuid():N}.json");
+        var storeFile = $"pending-actions-test-{Guid.NewGuid():N}.json";
+        var storePath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "IntelligenceX.Chat",
+            storeFile);
         try {
+            Directory.CreateDirectory(Path.GetDirectoryName(storePath)!);
             File.WriteAllText(storePath, "{ this is not valid json");
 
-            var opts = new ServiceOptions { PendingActionsStorePath = storePath };
+            var opts = new ServiceOptions { PendingActionsStorePath = storeFile };
             var session = new ChatServiceSession(opts, Stream.Null);
             var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act act_001" });
             var expanded = Assert.IsType<string>(result);
@@ -177,7 +187,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_PrunesPendingActionsWithInvalidTicks() {
-        var storePath = Path.Combine(Path.GetTempPath(), $"ix-pending-actions-{Guid.NewGuid():N}.json");
+        var storeFile = $"pending-actions-test-{Guid.NewGuid():N}.json";
+        var storePath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "IntelligenceX.Chat",
+            storeFile);
         try {
             var threadId = "thread-001";
             var invalidTicks = DateTime.MaxValue.Ticks + 1;
@@ -194,9 +208,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
                   }
                 }
                 """;
+            Directory.CreateDirectory(Path.GetDirectoryName(storePath)!);
             File.WriteAllText(storePath, json);
 
-            var opts = new ServiceOptions { PendingActionsStorePath = storePath };
+            var opts = new ServiceOptions { PendingActionsStorePath = storeFile };
             var session = new ChatServiceSession(opts, Stream.Null);
             var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { threadId, "/act act_001" });
             var expanded = Assert.IsType<string>(result);
