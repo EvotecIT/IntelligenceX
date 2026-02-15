@@ -56,9 +56,24 @@ public sealed class SandboxPolicy {
         // Defensive copy: callers may provide a mutable list implementation.
         string[]? roots = null;
         if (WritableRoots is not null && WritableRoots.Count > 0) {
-            roots = new string[WritableRoots.Count];
+            // Filter out null/whitespace entries rather than propagating malformed values.
+            var count = 0;
             for (var i = 0; i < WritableRoots.Count; i++) {
-                roots[i] = WritableRoots[i];
+                if (!string.IsNullOrWhiteSpace(WritableRoots[i])) {
+                    count++;
+                }
+            }
+
+            if (count > 0) {
+                roots = new string[count];
+                var j = 0;
+                for (var i = 0; i < WritableRoots.Count; i++) {
+                    var root = WritableRoots[i];
+                    if (string.IsNullOrWhiteSpace(root)) {
+                        continue;
+                    }
+                    roots[j++] = root.Trim();
+                }
             }
         }
 

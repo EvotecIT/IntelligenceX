@@ -90,7 +90,9 @@ public sealed class ChatOptionsCloneTests {
 
     [Fact]
     public void Clone_ShouldDefensivelyCopySandboxPolicyWritableRoots() {
-        var roots = new List<string> { "C:\\Temp" };
+        var roots = new List<string> { " C:\\Temp " };
+        roots.Add(null!);
+        roots.Add("   ");
         var policy = new SandboxPolicy("test-sandbox", networkAccess: true, writableRoots: roots);
 
         var options = new ChatOptions {
@@ -105,9 +107,11 @@ public sealed class ChatOptionsCloneTests {
 
         Assert.NotNull(clone.SandboxPolicy!.WritableRoots);
 
+        Assert.Equal(new[] { "C:\\Temp" }, clone.SandboxPolicy!.WritableRoots!.ToArray());
+
         // Mutating the original list should not affect the clone.
         roots.Add("C:\\Other");
-        Assert.Single(clone.SandboxPolicy!.WritableRoots!);
+        Assert.Equal(new[] { "C:\\Temp" }, clone.SandboxPolicy!.WritableRoots!.ToArray());
     }
 
     private static object? MakeSampleValue(Type propertyType, string propertyName) {
