@@ -139,6 +139,9 @@ internal static partial class Program {
         AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("ollama", out var ollama), "provider ollama alias");
         AssertEqual(ReviewProvider.OpenAICompatible, ollama, "provider ollama value");
 
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("openrouter", out var openrouter), "provider openrouter alias");
+        AssertEqual(ReviewProvider.OpenAICompatible, openrouter, "provider openrouter value");
+
         AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias(null, out _), "provider null alias unsupported");
         AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias("", out _), "provider empty alias unsupported");
         AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias("   ", out _), "provider whitespace alias unsupported");

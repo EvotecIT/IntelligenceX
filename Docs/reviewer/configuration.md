@@ -65,6 +65,8 @@ This provider uses `POST /v1/chat/completions` and requires:
 Security note: `baseUrl` must use `https://` for non-loopback hosts by default. Plain `http://` is allowed only for loopback
 (for example `http://localhost:11434`). To override this, set `review.openaiCompatible.allowInsecureHttp: true`.
 
+Compatibility note: by default, Authorization is kept on same-host redirects. To force-drop it on redirects, set `review.openaiCompatible.dropAuthorizationOnRedirect: true` (or `OPENAI_COMPATIBLE_DROP_AUTHORIZATION_ON_REDIRECT=1`).
+
 ```json
 {
   "review": {
@@ -74,6 +76,7 @@ Security note: `baseUrl` must use `https://` for non-loopback hosts by default. 
       "baseUrl": "http://localhost:11434",
       "apiKeyEnv": "OPENAI_COMPATIBLE_API_KEY",
       "allowInsecureHttp": false,
+      "dropAuthorizationOnRedirect": false,
       "timeoutSeconds": 60
     }
   }
