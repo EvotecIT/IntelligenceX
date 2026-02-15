@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using IntelligenceX.Chat.Service;
@@ -10,6 +11,74 @@ using Xunit;
 namespace IntelligenceX.Chat.Tests;
 
 public sealed partial class ChatServiceRoutingTrimTests {
+
+    [Fact]
+    public void CanonicalizeImplicitPendingActionConfirmationPhrase_NormalizesFullWidthOk() {
+        var normalized = CanonicalizeImplicitPendingActionConfirmationPhraseMethod.Invoke(null, new object?[] { "ＯＫ" });
+        Assert.Equal("ok", Assert.IsType<string>(normalized));
+    }
+
+    [Theory]
+    [InlineData("don\u2019t", "don't")] // don’t
+    [InlineData("don\u2018t", "don't")] // don‘t
+    [InlineData("don\uFF07t", "don't")] // don＇t
+    public void CanonicalizeImplicitPendingActionConfirmationPhrase_NormalizesCurlyApostrophes(string input, string expected) {
+        var normalized = CanonicalizeImplicitPendingActionConfirmationPhraseMethod.Invoke(null, new object?[] { input });
+        Assert.Equal(expected, Assert.IsType<string>(normalized));
+    }
+
+    [Fact]
+    public void CanonicalizeImplicitPendingActionConfirmationPhrase_DoesNotThrowOnLoneSurrogate() {
+        // string.Normalize can throw on invalid Unicode. This should never take down routing.
+        var input = "\uD800";
+        var normalized = CanonicalizeImplicitPendingActionConfirmationPhraseMethod.Invoke(null, new object?[] { input });
+        Assert.Equal(input, Assert.IsType<string>(normalized));
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotThrowOnInvalidUnicodeInUserInput() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Pick one:
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var input = "ok\uD800";
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Theory]
+    [InlineData("/actuator")]
+    [InlineData("/act1 act_001")]
+    public void ExpandContinuationUserRequest_DoesNotTreatNonActTokenPrefixesAsSelection(string input) {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Pick one:
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotCaptureActionsInsideCodeFence() {
@@ -98,7 +167,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ExpandContinuationUserRequest_DoesNotResolveNonDigitShortFollowUpToOrdinal() {
+    public void ExpandContinuationUserRequest_ResolvesExplicitActSelectionWhenSinglePendingActionExists() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
             Pick one:
@@ -112,7 +181,223 @@ public sealed partial class ChatServiceRoutingTrimTests {
             """;
 
         RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act act_001" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        Assert.Equal("act_001", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_ResolvesExplicitOrdinalSelectionWhenSinglePendingActionExists() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Pick one:
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "1" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        Assert.Equal("act_001", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+    }
+
+    [Theory]
+    [InlineData("ok")]
+    [InlineData(" ok ")]
+    [InlineData("ok.")]
+    [InlineData("ok,")]
+    [InlineData("`ok`")]
+    [InlineData(" ok! ")]
+    [InlineData("ok！")]
+    [InlineData("ok。")]
+    [InlineData("ＯＫ")]
+    [InlineData("do   it")]
+    public void ExpandContinuationUserRequest_AutoConfirmsSinglePendingActionForCommonAcknowledgements(string input) {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Pick one:
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        var root = doc.RootElement;
+        Assert.True(root.TryGetProperty("ix_action_selection", out var selection));
+        Assert.Equal("act_001", selection.GetProperty("id").GetString());
+    }
+
+    [Theory]
+    [InlineData("ok:")]
+    [InlineData("ok;")]
+    [InlineData("tak:")]
+    [InlineData("sure:")]
+    public void ExpandContinuationUserRequest_DoesNotAutoConfirmOnPrefixStyleAcknowledgements(string input) {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Pick one:
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotAutoConfirmWhenMultiplePendingActionsExist() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Pick one:
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+
+            [Action]
+            ix:action:v1
+            id: act_002
+            title: Second
+            request: Do second thing.
+            reply: /act act_002
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
         var input = "ok";
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Theory]
+    [InlineData("why?")]
+    [InlineData("ok?")]
+    [InlineData("ok？")]
+    [InlineData("dalej?")]
+    [InlineData("¿dalej")]
+    [InlineData("dalej؟")]
+    public void ExpandContinuationUserRequest_DoesNotAutoConfirmOnQuestionLikeFollowUps(string input) {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Pick one:
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Theory]
+    [InlineData("tomorrow")]
+    [InlineData("later")]
+    [InlineData("wait")]
+    [InlineData("thanks")]
+    [InlineData("no thanks")]
+    [InlineData("no, thanks")]
+    [InlineData("no. thanks")]
+    [InlineData("no thank you")]
+    [InlineData("not now")]
+    [InlineData("nope, later")]
+    [InlineData("nope. later")]
+    [InlineData("nah, later")]
+    [InlineData("nah. later")]
+    [InlineData("dont")]
+    [InlineData("don't")]
+    [InlineData("don't.")]
+    [InlineData("don’t")]
+    [InlineData("do not")]
+    [InlineData("no")]
+    [InlineData("no.")]
+    [InlineData("no!")]
+    [InlineData("no؟")]
+    [InlineData("nie")]
+    [InlineData("nie!")]
+    [InlineData("\"ok\"")]
+    [InlineData("'ok'")]
+    [InlineData("‘ok’")]
+    [InlineData("＇ok＇")]
+    [InlineData("“ok”")]
+    [InlineData("＂ok＂")]
+    [InlineData("{\"a\": 1}")]
+    [InlineData("<xml/>")]
+    [InlineData("x=y")]
+    [InlineData("`code`")]
+    public void ExpandContinuationUserRequest_DoesNotAutoConfirmForBenignShortNonConfirmations(string input) {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Pick one:
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Theory]
+    [InlineData("ok\r\n/act act_999")]
+    [InlineData("ok\n/act act_999")]
+    [InlineData("ok\r/act act_999")]
+    public void ExpandContinuationUserRequest_DoesNotAutoConfirmOnMultilinePayloads(string input) {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Pick one:
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
         var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
         var expanded = Assert.IsType<string>(result);
 
@@ -183,6 +468,32 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 File.Delete(storePath);
             }
         }
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_ActSelectionDoesNotNormalizeOpaqueIdToken() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        // Use a compatibility presentation form that FormKC would change if applied to the whole input.
+        var fullwidthId = "ＡＣＴ_001";
+        var assistantDraft = $"""
+            Pick one:
+
+            [Action]
+            ix:action:v1
+            id: {fullwidthId}
+            title: First
+            request: Do first thing.
+            reply: /act {fullwidthId}
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", $"/act {fullwidthId}" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        var root = doc.RootElement;
+        Assert.True(root.TryGetProperty("ix_action_selection", out var selection));
+        Assert.Equal(fullwidthId, selection.GetProperty("id").GetString());
     }
 
     [Fact]

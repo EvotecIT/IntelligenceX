@@ -171,14 +171,23 @@ internal sealed partial class ChatServiceSession {
     private static bool TryMatchPendingAction(string userText, IReadOnlyList<PendingAction> actions, out PendingAction match) {
         match = default;
 
-        var normalized = (userText ?? string.Empty).Trim();
-        if (normalized.Length == 0 || actions.Count == 0) {
+        // Be careful with normalization: explicit selections like `/act <id>` should treat `<id>` as an opaque token.
+        // Applying FormKC to the whole input can change codepoints and prevent matching an otherwise valid ID copied
+        // from the assistant output.
+        var trimmed = (userText ?? string.Empty).Trim();
+
+        if (trimmed.Length == 0 || actions.Count == 0) {
             return false;
         }
 
         // /act <id>
-        if (normalized.StartsWith("/act", StringComparison.OrdinalIgnoreCase)) {
-            var rest = normalized[4..].Trim();
+        if (trimmed.StartsWith("/act", StringComparison.OrdinalIgnoreCase)) {
+            // Require `/act` as a standalone token; avoid accidentally treating `/actuator` etc. as an action selection.
+            if (trimmed.Length > 4 && !char.IsWhiteSpace(trimmed[4])) {
+                return false;
+            }
+
+            var rest = trimmed[4..].Trim();
             if (rest.Length == 0) {
                 return false;
             }
@@ -201,9 +210,26 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        // Normalize for ordinal + implicit confirm only.
+        string normalized;
+        try {
+            normalized = trimmed.Normalize(NormalizationForm.FormKC);
+        } catch (ArgumentException) {
+            normalized = trimmed;
+        }
+
         // "1" / "2" selects by ordinal.
         if (TryParseOrdinalSelection(normalized, out var idx) && idx > 0 && idx <= actions.Count) {
             match = actions[idx - 1];
+            return true;
+        }
+
+        // If there's only one pending action, treat a compact acknowledgement-like follow-up as confirmation.
+        // This is intentionally high-precision (allowlist-based) to avoid accidental execution from ambiguous short messages.
+        if (actions.Count == 1
+            && !string.IsNullOrWhiteSpace(actions[0].Id)
+            && LooksLikeImplicitPendingActionConfirmation(trimmed)) {
+            match = actions[0];
             return true;
         }
 
