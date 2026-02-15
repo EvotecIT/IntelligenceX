@@ -195,6 +195,68 @@ internal static partial class SetupRunner {
             return result.Value.GetProperty("html_url").GetString();
         }
 
+        public async Task<int> CreateIssueAsync(string owner, string repo, string title, string body) {
+            var payload = new {
+                title,
+                body
+            };
+            var result = await PostJsonAsync($"/repos/{owner}/{repo}/issues", payload, allowConflict: false)
+                .ConfigureAwait(false);
+            if (result is null ||
+                !result.Value.TryGetProperty("number", out var numberProp) ||
+                numberProp.ValueKind != JsonValueKind.Number ||
+                !numberProp.TryGetInt32(out var number) ||
+                number <= 0) {
+                throw new InvalidOperationException("GitHub issue create response did not include a valid issue number.");
+            }
+
+            return number;
+        }
+
+        public async Task<string?> TryGetRepositoryVariableAsync(string owner, string repo, string name) {
+            if (string.IsNullOrWhiteSpace(name)) {
+                throw new ArgumentException("Variable name is required.", nameof(name));
+            }
+
+            var escapedName = Uri.EscapeDataString(name);
+            using var response = await _http.GetAsync($"/repos/{owner}/{repo}/actions/variables/{escapedName}").ConfigureAwait(false);
+            var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound) {
+                return null;
+            }
+            if (!response.IsSuccessStatusCode) {
+                throw new InvalidOperationException(FormatGitHubFailure(response, content));
+            }
+
+            using var doc = JsonDocument.Parse(content);
+            if (doc.RootElement.TryGetProperty("value", out var valueProp) &&
+                valueProp.ValueKind == JsonValueKind.String) {
+                return valueProp.GetString();
+            }
+
+            throw new InvalidOperationException($"Repository variable '{name}' response did not include a value.");
+        }
+
+        public async Task UpsertRepositoryVariableAsync(string owner, string repo, string name, string value) {
+            if (string.IsNullOrWhiteSpace(name)) {
+                throw new ArgumentException("Variable name is required.", nameof(name));
+            }
+
+            var payload = new {
+                name,
+                value
+            };
+            var escapedName = Uri.EscapeDataString(name);
+            var existing = await TryGetRepositoryVariableAsync(owner, repo, name).ConfigureAwait(false);
+            if (existing is null) {
+                await PostJsonAsync($"/repos/{owner}/{repo}/actions/variables", payload, allowConflict: false)
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            await PatchJsonAsync($"/repos/{owner}/{repo}/actions/variables/{escapedName}", payload).ConfigureAwait(false);
+        }
+
         public async Task SetSecretAsync(string owner, string repo, string name, string value) {
             var publicKeyJson = await GetJsonAsync($"/repos/{owner}/{repo}/actions/secrets/public-key").ConfigureAwait(false);
             var key = publicKeyJson.GetProperty("key").GetString();
@@ -285,6 +347,18 @@ internal static partial class SetupRunner {
             var json = JsonSerializer.Serialize(payload, JsonOptions);
             using var content = new StringContent(json, Encoding.UTF8, "application/json");
             using var response = await _http.PutAsync(url, content).ConfigureAwait(false);
+            var responseText = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) {
+                throw new InvalidOperationException(FormatGitHubFailure(response, responseText));
+            }
+        }
+
+        private async Task PatchJsonAsync(string url, object payload) {
+            var json = JsonSerializer.Serialize(payload, JsonOptions);
+            using var request = new HttpRequestMessage(HttpMethod.Patch, url) {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+            using var response = await _http.SendAsync(request).ConfigureAwait(false);
             var responseText = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) {
                 throw new InvalidOperationException(FormatGitHubFailure(response, responseText));
