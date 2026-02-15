@@ -583,7 +583,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var raw = (userText ?? string.Empty).Trim();
-        if (raw.Length == 0 || raw.Length > 200) {
+        if (raw.Length == 0 || raw.Length > 96) {
             return false;
         }
 
@@ -599,7 +599,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var request = NormalizeCompactText(raw);
-        if (request.Length == 0 || request.Length > 120) {
+        if (request.Length == 0 || request.Length > 96) {
             return false;
         }
 
