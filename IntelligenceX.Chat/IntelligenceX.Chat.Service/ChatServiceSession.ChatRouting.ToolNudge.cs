@@ -1,17 +1,28 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.Json;
 
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
 
     private const int MaxQuotedPhraseSpan = 140;
+    // Security/perf: hard-cap the amount of untrusted input we will consider for action-selection detection.
+    // This keeps any attempted parsing bounded even under adversarial input.
+    private const int MaxActionSelectionPayloadChars = 4096;
     private const string ExecutionCorrectionMarker = "ix:execution-correction:v1";
+    private static readonly JsonDocumentOptions ActionSelectionJsonOptions = new() {
+        MaxDepth = 16,
+        CommentHandling = JsonCommentHandling.Disallow,
+        AllowTrailingCommas = false
+    };
 
     private static bool ShouldAttemptToolExecutionNudge(string userRequest, string assistantDraft, bool toolsAvailable, int priorToolCalls,
-        bool usedContinuationSubset) {
-        if (!toolsAvailable || priorToolCalls > 0) {
+        int assistantDraftToolCalls, bool usedContinuationSubset) {
+        // Keep the eligibility checks inside this method (not only at the call site) so future callers can't
+        // accidentally force a retry when tools can't run or when tool execution is already happening.
+        if (!toolsAvailable || priorToolCalls > 0 || assistantDraftToolCalls > 0) {
             return false;
         }
 
@@ -28,6 +39,12 @@ internal sealed partial class ChatServiceSession {
         // Guard against accidental feedback loops where the assistant echoes the correction prompt itself.
         if (draft.Contains(ExecutionCorrectionMarker, StringComparison.OrdinalIgnoreCase)) {
             return false;
+        }
+
+        // If the user selected an explicit pending action (/act or ordinal selection), we should strongly prefer
+        // tool execution over a "talky" draft. This is language-agnostic and works after app restarts.
+        if (LooksLikeActionSelectionPayload(request)) {
+            return true;
         }
 
         // If the assistant explicitly told the user to "say/type/etc." a quoted phrase, accept echoing that phrase even when
@@ -74,6 +91,51 @@ internal sealed partial class ChatServiceSession {
         // Avoid overriding already-good short completions (for example "You're welcome.").
         // Only retry tool execution when the assistant draft still appears tied to the user's follow-up.
         return echoedCallToAction || AssistantDraftReferencesUserRequest(request, draft);
+    }
+
+    private static bool LooksLikeActionSelectionPayload(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0 || normalized.Length > MaxActionSelectionPayloadChars) {
+            return false;
+        }
+
+        if (normalized[0] != '{') {
+            return false;
+        }
+
+        // Cheap pre-check to avoid parsing arbitrary small JSON blobs on every request.
+        // We intentionally keep this case-sensitive: System.Text.Json property matching is case-sensitive by default.
+        if (normalized.IndexOf("\"ix_action_selection\"", StringComparison.Ordinal) < 0 || normalized.IndexOf("\"id\"", StringComparison.Ordinal) < 0) {
+            return false;
+        }
+
+        try {
+            using var doc = JsonDocument.Parse(normalized, ActionSelectionJsonOptions);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) {
+                return false;
+            }
+
+            if (!doc.RootElement.TryGetProperty("ix_action_selection", out var selection) || selection.ValueKind != JsonValueKind.Object) {
+                return false;
+            }
+
+            if (!selection.TryGetProperty("id", out var id)) {
+                return false;
+            }
+
+            if (id.ValueKind == JsonValueKind.String) {
+                var value = (id.GetString() ?? string.Empty).Trim();
+                return value.Length > 0;
+            }
+
+            if (id.ValueKind == JsonValueKind.Number) {
+                return id.TryGetInt64(out var numericId) && numericId > 0;
+            }
+
+            return false;
+        } catch (JsonException) {
+            return false;
+        }
     }
 
     private static bool UserMatchesAssistantCallToAction(string userRequest, string assistantDraft, bool onlyBulletContext = false) {

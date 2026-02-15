@@ -119,6 +119,7 @@ internal sealed partial class ChatServiceSession {
                         assistantDraft: text,
                         toolsAvailable: toolDefs.Count > 0,
                         priorToolCalls: toolCalls.Count,
+                        assistantDraftToolCalls: extracted.Count,
                         usedContinuationSubset: usedContinuationSubset)) {
                     executionNudgeUsed = true;
                     var nudgePrompt = BuildToolExecutionNudgePrompt(routedUserRequest, text);

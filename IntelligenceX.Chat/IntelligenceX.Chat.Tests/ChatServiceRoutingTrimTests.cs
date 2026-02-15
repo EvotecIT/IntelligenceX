@@ -174,7 +174,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { userRequest, assistantDraft, true, 0, true });
+            new object?[] { userRequest, assistantDraft, true, 0, 0, true });
 
         Assert.True(Assert.IsType<bool>(result));
     }
@@ -192,7 +192,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { userRequest, assistantDraft, true, 0, true });
+            new object?[] { userRequest, assistantDraft, true, 0, 0, true });
 
         Assert.False(Assert.IsType<bool>(result));
     }
@@ -206,7 +206,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { userRequest, assistantDraft, true, 0, false });
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
 
         Assert.True(Assert.IsType<bool>(result));
     }
@@ -226,7 +226,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { userRequest, assistantDraft, true, 0, false });
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
 
         Assert.True(Assert.IsType<bool>(result));
     }
@@ -241,7 +241,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { userRequest, assistantDraft, true, 0, false });
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
 
         Assert.True(Assert.IsType<bool>(result));
     }
@@ -253,7 +253,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { userRequest, assistantDraft, true, 0, false });
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
 
         Assert.True(Assert.IsType<bool>(result));
     }
@@ -265,7 +265,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { userRequest, assistantDraft, true, 0, false });
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
 
         Assert.True(Assert.IsType<bool>(result));
     }
@@ -277,7 +277,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { userRequest, assistantDraft, true, 0, false });
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
 
         Assert.False(Assert.IsType<bool>(result));
     }
@@ -289,7 +289,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { userRequest, assistantDraft, true, 0, false });
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
 
         Assert.False(Assert.IsType<bool>(result));
     }
@@ -301,7 +301,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { userRequest, assistantDraft, true, 0, false });
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
 
         Assert.False(Assert.IsType<bool>(result));
     }
@@ -313,7 +313,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { userRequest, assistantDraft, true, 0, false });
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
 
         Assert.True(Assert.IsType<bool>(result));
     }
@@ -330,7 +330,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { userRequest, assistantDraft, true, 0, false });
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
 
         Assert.False(Assert.IsType<bool>(result));
     }
@@ -345,7 +345,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { userRequest, assistantDraft, true, 0, false });
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
 
         Assert.False(Assert.IsType<bool>(result));
     }
@@ -357,7 +357,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { userRequest, assistantDraft, true, 0, false });
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
 
         Assert.False(Assert.IsType<bool>(result));
     }
@@ -369,7 +369,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { userRequest, assistantDraft, true, 0, false });
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
 
         Assert.False(Assert.IsType<bool>(result));
     }
@@ -380,7 +380,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { "run now", assistantDraft, true, 0, false });
+            new object?[] { "run now", assistantDraft, true, 0, 0, false });
 
         Assert.True(Assert.IsType<bool>(result));
     }
@@ -391,7 +391,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { "run now", assistantDraft, true, 0, false });
+            new object?[] { "run now", assistantDraft, true, 0, 0, false });
 
         Assert.False(Assert.IsType<bool>(result));
     }
@@ -402,12 +402,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var resultCta = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { "run now", assistantDraft, true, 0, false });
+            new object?[] { "run now", assistantDraft, true, 0, 0, false });
         Assert.True(Assert.IsType<bool>(resultCta));
 
         var resultNonCta = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { "access denied", assistantDraft, true, 0, false });
+            new object?[] { "access denied", assistantDraft, true, 0, 0, false });
         Assert.False(Assert.IsType<bool>(resultNonCta));
     }
 
@@ -418,7 +418,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { userRequest, assistantDraft, true, 0, true });
+            new object?[] { userRequest, assistantDraft, true, 0, 0, true });
 
         Assert.False(Assert.IsType<bool>(result));
     }
@@ -430,7 +430,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { userRequest, assistantDraft, true, 0, true });
+            new object?[] { userRequest, assistantDraft, true, 0, 0, true });
 
         Assert.False(Assert.IsType<bool>(result));
     }
@@ -442,7 +442,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,
-            new object?[] { userRequest, assistantDraft, true, 0, true });
+            new object?[] { userRequest, assistantDraft, true, 0, 0, true });
 
         Assert.False(Assert.IsType<bool>(result));
     }
