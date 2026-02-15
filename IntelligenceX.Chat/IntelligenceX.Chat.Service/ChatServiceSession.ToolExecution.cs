@@ -25,7 +25,9 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private static readonly string[] ProjectionFormattingArgumentNames = { "columns", "sort_by", "sort_direction" };
-    private static readonly Regex TopTokenRegex = new(@"\btop\b", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex TopValidationRegex = new(
+        @"\btop\b\s*(?:must|should|has to|needs to|is|was|value|argument|parameter)|\b(?:must|should|has to|needs to|invalid|unsupported|required)\b.{0,32}\btop\b|\btop\b.{0,32}\b(?:invalid|unsupported|required|between)\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline);
     private const string ProjectionColumnsArgumentName = "columns";
     private const string ProjectionSortByArgumentName = "sort_by";
     private const string ProjectionSortDirectionArgumentName = "sort_direction";
@@ -519,17 +521,11 @@ internal sealed partial class ChatServiceSession {
 
     private static bool HasProjectionTopFallbackSignal(ToolOutputDto output) {
         var text = BuildToolFailureSearchText(output);
-        if (text.Length == 0 || !TopTokenRegex.IsMatch(text)) {
+        if (text.Length == 0) {
             return false;
         }
 
-        return text.Contains("must be", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("must contain", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("unsupported", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("invalid", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("between", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("table view response envelope", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("projection argument", StringComparison.OrdinalIgnoreCase);
+        return TopValidationRegex.IsMatch(text);
     }
 
     private static bool ShouldDropTopForProjectionEnvelopeFallback(JsonObject arguments, ToolOutputDto output) {

@@ -204,6 +204,33 @@ public sealed class ChatServiceRetryPolicyTests {
         Assert.False(fallbackCall.Arguments.TryGetValue("top", out _));
     }
 
+    [Fact]
+    public void TryBuildProjectionArgsFallbackCall_DoesNotDropTopOnIncidentalTopText() {
+        var call = new ToolCall(
+            callId: "call-8b",
+            name: "eventlog_top_events",
+            input: null,
+            arguments: new JsonObject()
+                .Add("log_name", "System")
+                .Add("top", 5),
+            raw: new JsonObject());
+        var output = new ToolOutputDto {
+            CallId = call.CallId,
+            Output = "{\"ok\":false,\"error_code\":\"invalid_argument\",\"error\":\"Failed to query top events because filter expression is invalid.\"}",
+            Ok = false,
+            ErrorCode = "invalid_argument",
+            Error = "Failed to query top events because filter expression is invalid."
+        };
+
+        var args = new object?[] { call, output, null, null };
+        var built = TryBuildProjectionArgsFallbackCallMethod.Invoke(null, args);
+        var fallbackCall = Assert.IsType<ToolCall>(args[2]);
+
+        Assert.False(Assert.IsType<bool>(built));
+        Assert.NotNull(fallbackCall.Arguments);
+        Assert.Equal(5, fallbackCall.Arguments!.GetInt64("top"));
+    }
+
     /// <summary>
     /// Ensures projection fallback keeps valid sort/top intent while pruning only unsupported columns.
     /// </summary>
