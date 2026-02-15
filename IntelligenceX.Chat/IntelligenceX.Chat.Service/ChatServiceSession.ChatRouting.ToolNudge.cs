@@ -52,10 +52,10 @@ internal sealed partial class ChatServiceSession {
                                   || draft.Contains('{', StringComparison.Ordinal)
                                   || draft.Contains('[', StringComparison.Ordinal);
         if (hasStructuredOutput) {
-            // Multi-line drafts are usually results/explanations where retrying tool execution could be disruptive.
-            // However, when the user is echoing an explicit quoted CTA the assistant requested, treat that as a strong
-            // intent signal and allow a retry even if the draft contained structured formatting.
-            return echoedCallToAction;
+            // Multi-line drafts are usually results/explanations; avoid retrying tools based on incidental quoted text
+            // inside structured output (for example JSON like `"run now",`). Only allow the nudge when the CTA quote
+            // is formatted as an explicit option/bullet on its own line.
+            return echoedCallToAction && UserMatchesAssistantCallToAction(request, draft, onlyBulletContext: true);
         }
 
         var hasNumericSignal = false;
@@ -75,7 +75,7 @@ internal sealed partial class ChatServiceSession {
         return echoedCallToAction || AssistantDraftReferencesUserRequest(request, draft);
     }
 
-    private static bool UserMatchesAssistantCallToAction(string userRequest, string assistantDraft) {
+    private static bool UserMatchesAssistantCallToAction(string userRequest, string assistantDraft, bool onlyBulletContext = false) {
         var request = NormalizeCompactText(userRequest);
         if (request.Length == 0 || request.Length > 120) {
             return false;
@@ -88,7 +88,7 @@ internal sealed partial class ChatServiceSession {
 
         for (var i = 0; i < phrases.Count; i++) {
             var phrase = phrases[i];
-            if (!LooksLikeCallToActionContext(assistantDraft, phrase)) {
+            if (!LooksLikeCallToActionContext(assistantDraft, phrase, onlyBulletContext)) {
                 continue;
             }
 
@@ -113,7 +113,7 @@ internal sealed partial class ChatServiceSession {
 
     // Keep this language-agnostic: treat a quote as a "say/type this exact phrase" CTA only when local punctuation
     // makes it look like an instruction snippet, not an incidental quoted error message.
-    private static bool LooksLikeCallToActionContext(string assistantDraft, QuotedPhrase phrase) {
+    private static bool LooksLikeCallToActionContext(string assistantDraft, QuotedPhrase phrase, bool onlyBulletContext) {
         if (string.IsNullOrEmpty(assistantDraft)) {
             return false;
         }
@@ -124,30 +124,32 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        // Most common CTA pattern: "... \"run now\", I'll execute ..."
-        var after = closeIndex + 1;
-        if (after < assistantDraft.Length) {
-            // Allow tiny whitespace, then comma.
-            var scan = after;
-            var consumedSpace = 0;
-            while (scan < assistantDraft.Length && consumedSpace < 3 && char.IsWhiteSpace(assistantDraft[scan])) {
-                scan++;
-                consumedSpace++;
+        if (!onlyBulletContext) {
+            // Most common CTA pattern: "... \"run now\", I'll execute ..."
+            var after = closeIndex + 1;
+            if (after < assistantDraft.Length) {
+                // Allow tiny whitespace, then comma.
+                var scan = after;
+                var consumedSpace = 0;
+                while (scan < assistantDraft.Length && consumedSpace < 3 && char.IsWhiteSpace(assistantDraft[scan])) {
+                    scan++;
+                    consumedSpace++;
+                }
+                if (scan < assistantDraft.Length && assistantDraft[scan] == ',') {
+                    return true;
+                }
             }
-            if (scan < assistantDraft.Length && assistantDraft[scan] == ',') {
+
+            // Another common CTA pattern: "To proceed: \"run now\""
+            var before = openIndex - 1;
+            var consumedBeforeSpace = 0;
+            while (before >= 0 && consumedBeforeSpace < 3 && char.IsWhiteSpace(assistantDraft[before])) {
+                before--;
+                consumedBeforeSpace++;
+            }
+            if (before >= 0 && assistantDraft[before] == ':') {
                 return true;
             }
-        }
-
-        // Another common CTA pattern: "To proceed: \"run now\""
-        var before = openIndex - 1;
-        var consumedBeforeSpace = 0;
-        while (before >= 0 && consumedBeforeSpace < 3 && char.IsWhiteSpace(assistantDraft[before])) {
-            before--;
-            consumedBeforeSpace++;
-        }
-        if (before >= 0 && assistantDraft[before] == ':') {
-            return true;
         }
 
         // Bullet-like CTA: "- \"run now\"" or "1. \"run now\"" on its own line.

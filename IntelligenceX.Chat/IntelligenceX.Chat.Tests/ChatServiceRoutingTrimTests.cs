@@ -239,6 +239,23 @@ public sealed class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForQuotedJsonValueWithoutContinuationSubset() {
+        var userRequest = "run now";
+        var assistantDraft = """
+            {
+              "note": "run now",
+              "status": "ok"
+            }
+            """;
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
     public void ShouldAttemptToolExecutionNudge_DoesNotTriggerWithoutContinuationSubsetWhenDraftDoesNotContainEchoableCallToAction() {
         var userRequest = "run now";
         var assistantDraft = "I can help, but I need a DC FQDN first.";
