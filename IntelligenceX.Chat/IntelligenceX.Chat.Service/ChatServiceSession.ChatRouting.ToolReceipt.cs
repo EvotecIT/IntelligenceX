@@ -254,11 +254,27 @@ internal sealed partial class ChatServiceSession {
             return string.Empty;
         }
 
-        var trimmed = text.Trim();
-        if (maxChars <= 0 || trimmed.Length <= maxChars) {
-            return trimmed;
+        // Use Span-based trimming to avoid allocating a large intermediate string (this can be hit on correction
+        // paths when the assistant draft is big).
+        var span = text.AsSpan();
+        var start = 0;
+        var end = span.Length;
+        while (start < end && char.IsWhiteSpace(span[start])) {
+            start++;
+        }
+        while (end > start && char.IsWhiteSpace(span[end - 1])) {
+            end--;
         }
 
-        return trimmed.Substring(0, maxChars) + "\n(truncated)";
+        span = span.Slice(start, end - start);
+        if (span.Length == 0) {
+            return string.Empty;
+        }
+
+        if (maxChars <= 0 || span.Length <= maxChars) {
+            return span.ToString();
+        }
+
+        return span.Slice(0, maxChars).ToString() + "\n(truncated)";
     }
 }
