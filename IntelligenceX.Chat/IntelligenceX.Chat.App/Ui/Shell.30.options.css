@@ -69,8 +69,9 @@ body.options-open .options-panel {
 
 .options-tabs {
   display: flex;
-  gap: 4px;
-  padding: 8px 12px 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px 6px;
   border-bottom: 1px solid var(--ix-border-subtle);
   background: rgba(0, 0, 0, 0.1);
   flex-shrink: 0;
@@ -81,9 +82,9 @@ body.options-open .options-panel {
   background: transparent;
   color: var(--ix-text-muted);
   font-family: inherit;
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 600;
-  padding: 7px 12px;
+  padding: 7px 11px;
   border-radius: 8px 8px 0 0;
   cursor: pointer;
   border-bottom: 2px solid transparent;
@@ -253,6 +254,10 @@ body.options-open .options-panel {
   scrollbar-color: var(--ix-scrollbar-thumb) transparent;
 }
 
+.ix-select-menu.ix-select-menu-up {
+  box-shadow: 0 -8px 22px rgba(0, 0, 0, 0.45);
+}
+
 .ix-select.open .ix-select-menu {
   display: block;
 }
@@ -348,6 +353,12 @@ body.options-open .options-panel {
   color: var(--ix-text-muted);
 }
 
+.options-note-strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ix-text-secondary);
+}
+
 .options-policy-list-wrap {
   margin-top: 8px;
   border: 1px solid rgba(58, 96, 144, 0.45);
@@ -409,6 +420,11 @@ body.options-open .options-panel {
 
 .options-btn:hover {
   background: rgba(76, 195, 255, 0.32);
+}
+
+.options-btn-active {
+  border-color: rgba(76, 195, 255, 0.85);
+  background: rgba(76, 195, 255, 0.34);
 }
 
 .options-btn-ghost {
@@ -791,6 +807,10 @@ body.options-open .options-panel {
 }
 
 @media (max-width: 680px) {
+  .options-panel {
+    width: min(100vw, 560px);
+  }
+
   .chat-sidebar {
     width: 160px;
     min-width: 160px;

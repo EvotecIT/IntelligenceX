@@ -671,6 +671,13 @@
     setRuntimeAdvancedOpen(!isRuntimeAdvancedOpen());
   });
 
+  byId("btnUseOpenAiRuntime").addEventListener("click", function() {
+    var transport = byId("optLocalTransport");
+    transport.value = "native";
+    syncCustomSelect(transport);
+    applyLocalProviderSettings(true);
+  });
+
   byId("btnConnectLmStudio").addEventListener("click", function() {
     var transport = byId("optLocalTransport");
     var baseUrl = byId("optLocalBaseUrl");
