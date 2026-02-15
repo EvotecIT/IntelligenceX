@@ -206,7 +206,12 @@ internal sealed partial class ChatServiceSession {
         }
 
         // Normalize for ordinal + implicit confirm only.
-        var normalized = trimmed.Normalize(NormalizationForm.FormKC);
+        string normalized;
+        try {
+            normalized = trimmed.Normalize(NormalizationForm.FormKC);
+        } catch (ArgumentException) {
+            normalized = trimmed;
+        }
 
         // "1" / "2" selects by ordinal.
         if (TryParseOrdinalSelection(normalized, out var idx) && idx > 0 && idx <= actions.Count) {

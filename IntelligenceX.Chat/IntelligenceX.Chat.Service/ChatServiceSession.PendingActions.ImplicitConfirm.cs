@@ -187,9 +187,19 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static string CanonicalizeImplicitPendingActionConfirmationPhrase(string text) {
-        var normalized = (text ?? string.Empty)
-            .Trim()
-            .Normalize(NormalizationForm.FormKC);
+        var value = (text ?? string.Empty).Trim();
+        if (value.Length == 0) {
+            return string.Empty;
+        }
+
+        // Normalize can throw on invalid Unicode (e.g., lone surrogates). This function runs on raw user input,
+        // so it must be exception-safe.
+        string normalized;
+        try {
+            normalized = value.Normalize(NormalizationForm.FormKC);
+        } catch (ArgumentException) {
+            normalized = value;
+        }
 
         // Trim leading/trailing *decoration* punctuation only (including common CJK/fullwidth punctuation) so "ok!"
         // and "ok！" match. Avoid trimming arbitrary punctuation (like ':' or ';') because it can turn incomplete

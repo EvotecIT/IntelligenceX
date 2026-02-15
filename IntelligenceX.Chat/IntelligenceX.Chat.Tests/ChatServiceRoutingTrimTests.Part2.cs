@@ -45,6 +45,36 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void CanonicalizeImplicitPendingActionConfirmationPhrase_DoesNotThrowOnLoneSurrogate() {
+        // string.Normalize can throw on invalid Unicode. This should never take down routing.
+        var input = "\uD800";
+        var normalized = CanonicalizeImplicitPendingActionConfirmationPhraseMethod.Invoke(null, new object?[] { input });
+        Assert.Equal(input, Assert.IsType<string>(normalized));
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotThrowOnInvalidUnicodeInUserInput() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Pick one:
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var input = "ok\uD800";
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_DoesNotCaptureActionsInsideCodeFence() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
