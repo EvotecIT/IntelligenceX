@@ -107,6 +107,12 @@ public sealed partial class MainWindow : Window {
                 case "options_refresh":
                     await PublishOptionsStateAsync().ConfigureAwait(true);
                     break;
+                case "refresh_models":
+                    {
+                        var forceRefresh = TryGetBoolean(root, "forceRefresh");
+                        await RefreshModelsFromUiAsync(forceRefresh ?? true).ConfigureAwait(true);
+                        break;
+                    }
                 case "debug_copy_startup_log":
                     CopyStartupLogToClipboard();
                     break;
@@ -264,6 +270,15 @@ public sealed partial class MainWindow : Window {
                         if (!string.IsNullOrWhiteSpace(profileName)) {
                             await SwitchProfileAsync(profileName).ConfigureAwait(true);
                         }
+                        break;
+                    }
+                case "apply_local_provider":
+                    {
+                        var transport = TryGetString(root, "transport");
+                        var baseUrl = TryGetString(root, "baseUrl");
+                        var model = TryGetString(root, "model");
+                        var forceRefresh = TryGetBoolean(root, "forceRefresh");
+                        await ApplyLocalProviderAsync(transport, baseUrl, model, forceRefresh ?? true).ConfigureAwait(true);
                         break;
                     }
                 case "restart_onboarding":

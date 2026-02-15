@@ -161,6 +161,9 @@ internal sealed class ChatAppState {
     public string? UserName { get; set; }
     public string? AssistantPersona { get; set; }
     public string ThemePreset { get; set; } = "default";
+    public string LocalProviderTransport { get; set; } = "native";
+    public string? LocalProviderBaseUrl { get; set; }
+    public string LocalProviderModel { get; set; } = "gpt-5.3-codex";
     public string TimestampMode { get; set; } = "seconds";
     public int? AutonomyMaxToolRounds { get; set; }
     public bool? AutonomyParallelTools { get; set; }
