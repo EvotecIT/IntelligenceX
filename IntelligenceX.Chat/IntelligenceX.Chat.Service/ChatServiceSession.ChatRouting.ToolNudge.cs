@@ -449,7 +449,7 @@ internal sealed partial class ChatServiceSession {
 
         // Trim light punctuation wrappers so "run now?" and "\"run now\"" normalize.
         normalized = normalized.Trim().Trim(
-            '"', '\'', '.', '!', '?', ':', ';', ',', '(', ')', '[', ']', '{', '}',
+            '"', '\'', '.', '!', '?', ',', '(', ')', 
             '\u201C', '\u201D', // “ ”
             '\u2018', '\u2019', // ‘ ’
             '\uFF02', '\uFF07'  // ＂ ＇
