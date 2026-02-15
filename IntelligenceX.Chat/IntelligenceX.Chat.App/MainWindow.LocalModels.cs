@@ -190,7 +190,7 @@ public sealed partial class MainWindow : Window {
         await PersistAppStateAsync().ConfigureAwait(false);
 
         _pendingServiceLaunchProfileOptions = new ServiceLaunchProfileOptions {
-            LoadProfileName = _appProfileName,
+            LoadProfileName = profileSaved ? _appProfileName : null,
             SaveProfileName = _appProfileName,
             Model = _localProviderModel,
             OpenAITransport = _localProviderTransport,
