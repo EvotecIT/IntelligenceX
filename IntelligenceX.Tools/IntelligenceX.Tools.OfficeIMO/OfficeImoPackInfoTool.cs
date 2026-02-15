@@ -49,7 +49,7 @@ public sealed class OfficeImoPackInfoTool : OfficeImoToolBase, ITool {
             capabilities: new[] {
                 ToolPackGuidance.Capability(
                     id: "office_ingestion",
-                    summary: "Extract text/markdown/tables from Word/Excel/PowerPoint/Markdown files into AI-friendly chunks.",
+                    summary: "Extract text/markdown/tables from Word/Excel/PowerPoint/Markdown/PDF files into AI-friendly chunks.",
                     primaryTools: new[] { "officeimo_read" }),
                 ToolPackGuidance.Capability(
                     id: "bounded_access",

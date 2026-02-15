@@ -22,16 +22,17 @@ public sealed class OfficeImoReadTool : OfficeImoToolBase, ITool {
         ".docx", ".docm",
         ".xlsx", ".xlsm",
         ".pptx", ".pptm",
-        ".md", ".markdown"
+        ".md", ".markdown",
+        ".pdf"
     };
 
     private static readonly ToolDefinition DefinitionValue = new(
         "officeimo_read",
-        "Read a Word/Excel/PowerPoint/Markdown file (or a folder containing those) and return normalized chunks for reasoning.",
+        "Read a Word/Excel/PowerPoint/Markdown/PDF file (or a folder containing those) and return normalized chunks for reasoning.",
         ToolSchema.Object(
                 ("path", ToolSchema.String("Path to a file or folder (absolute or relative).")),
                 ("recurse", ToolSchema.Boolean("If path is a folder, recurse into subfolders (default: false).")),
-                ("extensions", ToolSchema.Array(ToolSchema.String(), "Optional allowlist of extensions to ingest (default: Office formats only, e.g. ['.docx','.xlsx','.pptx','.md']).")),
+                ("extensions", ToolSchema.Array(ToolSchema.String(), "Optional allowlist of extensions to ingest (default: Office formats only, e.g. ['.docx','.xlsx','.pptx','.md','.pdf']).")),
                 ("max_files", ToolSchema.Integer("Max files to ingest when a folder is provided (capped by pack options).")),
                 ("max_total_bytes", ToolSchema.Integer("Max total bytes across all ingested files when a folder is provided (capped by pack options).")),
                 ("max_input_bytes", ToolSchema.Integer("Max bytes per single file (capped by pack options).")),

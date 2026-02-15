@@ -15,6 +15,7 @@
 - Excel: `.xlsx`
 - PowerPoint: `.pptx`
 - Markdown: `.md`
+- PDF: `.pdf`
 
 ## Safety model
 
@@ -33,7 +34,7 @@
 
 - `path` (required): file or folder path.
 - `recurse`: recurse into subfolders when `path` is a folder.
-- `extensions`: optional extension allowlist. When omitted, defaults to Office-focused formats (`.docx`, `.docm`, `.xlsx`, `.xlsm`, `.pptx`, `.pptm`, `.md`, `.markdown`).
+- `extensions`: optional extension allowlist. When omitted, defaults to Office-focused formats (`.docx`, `.docm`, `.xlsx`, `.xlsm`, `.pptx`, `.pptm`, `.md`, `.markdown`, `.pdf`).
 - `max_files`, `max_total_bytes`, `max_input_bytes`: folder and file caps.
 - `max_chunks`: overall output chunk cap across all files.
 - `max_chars`: per-chunk character cap.
