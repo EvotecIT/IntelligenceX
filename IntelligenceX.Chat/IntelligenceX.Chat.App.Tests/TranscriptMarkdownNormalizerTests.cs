@@ -23,6 +23,18 @@ public sealed class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
+    /// Ensures glued bold/word boundaries are normalized into readable spacing.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_SplitsGluedBoldWordBoundaries() {
+        var text = "Status **Healthy**next and check **Now**please.";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal("Status **Healthy** next and check **Now** please.", normalized);
+    }
+
+    /// <summary>
     /// Ensures collapsed inline bullets are split into proper markdown list lines.
     /// </summary>
     [Fact]

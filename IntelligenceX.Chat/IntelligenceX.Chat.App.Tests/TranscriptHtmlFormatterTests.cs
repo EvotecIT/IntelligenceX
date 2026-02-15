@@ -112,4 +112,42 @@ public sealed class TranscriptHtmlFormatterTests {
         Assert.DoesNotContain("**Servers checked:**", html);
         Assert.DoesNotContain("**Replication edges:**", html);
     }
+
+    /// <summary>
+    /// Ensures pending action markdown summary lines render as actionable chips instead of raw /act text lines.
+    /// </summary>
+    [Fact]
+    public void Format_RendersPendingActionsAsActionChips() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 15, 20, 36, 14, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", """
+                          You can run one of these follow-up actions:
+                          1. Run failed logon report (4625) on ADO Security (`/act act_failed4625`)
+                          2. Pull account lockout events (4740) (`/act act_lockout4740`)
+                          """, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("ix-action-cta", html);
+        Assert.Contains("class='ix-action-btn'", html);
+        Assert.Contains("data-act-cmd='/act act_failed4625'", html);
+        Assert.Contains("data-act-cmd='/act act_lockout4740'", html);
+        Assert.DoesNotContain("You can run one of these follow-up actions:", html);
+        Assert.DoesNotContain("`/act act_failed4625`", html);
+    }
+
+    /// <summary>
+    /// Ensures inline backtick spans always end up as code tags in transcript HTML.
+    /// </summary>
+    [Fact]
+    public void Format_AlwaysRendersInlineBackticksAsCodeTags() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 15, 23, 18, 6, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", "Use `/act act_ad0_sys3210_msg` to run it.", now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("<code>/act act_ad0_sys3210_msg</code>", html);
+        Assert.DoesNotContain("`/act act_ad0_sys3210_msg`", html);
+    }
 }
