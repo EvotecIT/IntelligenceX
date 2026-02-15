@@ -56,16 +56,17 @@ internal sealed partial class ChatServiceSession {
         StringComparer.Ordinal);
 
     private static bool LooksLikeImplicitPendingActionConfirmation(string userText) {
-        // The caller is responsible for trimming/primary normalization; keep this predicate stable and avoid
-        // re-trimming which can subtly change the decision boundary for wrapper/punctuation cases.
+        // Keep this predicate stable: the caller provides primary normalization, but we still trim whitespace here to
+        // avoid false negatives (e.g., "ok ") while keeping other wrapper/punctuation behavior unchanged.
         var raw = userText ?? string.Empty;
-        if (raw.Length == 0 || raw.Length > 32) {
-            return false;
-        }
-
         // Never treat multi-line inputs as confirmations. This prevents smuggling commands or extra context
         // while still looking like a short acknowledgement.
         if (raw.Contains('\n', StringComparison.Ordinal) || raw.Contains('\r', StringComparison.Ordinal)) {
+            return false;
+        }
+
+        raw = raw.Trim();
+        if (raw.Length == 0 || raw.Length > 32) {
             return false;
         }
 
