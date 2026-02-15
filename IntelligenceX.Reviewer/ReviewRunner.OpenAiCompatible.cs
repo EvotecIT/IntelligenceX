@@ -16,7 +16,7 @@ internal sealed partial class ReviewRunner {
     private sealed record OpenAiCompatibleRawResponse(HttpStatusCode StatusCode, string Body);
 
     private async Task RunOpenAiCompatiblePreflightAsync(TimeSpan timeout, CancellationToken cancellationToken) {
-        var endpoint = ResolveOpenAiCompatibleModelsEndpoint(_settings.OpenAICompatibleBaseUrl, _settings.OpenAICompatibleAllowInsecureHttp);
+        var endpoint = ResolveOpenAiCompatiblePreflightEndpoint(_settings.OpenAICompatibleBaseUrl, _settings.OpenAICompatibleAllowInsecureHttp);
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(timeout);
@@ -37,7 +37,7 @@ internal sealed partial class ReviewRunner {
         } catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested) {
             throw new TimeoutException(
                 $"Connectivity preflight timed out after {timeout.TotalSeconds:0.#}s for {endpoint.Host}. " +
-                "If your gateway blocks /v1/models (or requires auth), set review.preflight=false or enable review.providerHealthChecks=true.",
+                "If your gateway blocks connectivity probes (or requires auth), set review.preflight=false or enable review.providerHealthChecks=true.",
                 ex);
         } catch (HttpRequestException ex) {
             // In some environments HttpClient may throw HttpRequestException with StatusCode; treat that as "reachable".
@@ -321,18 +321,10 @@ internal sealed partial class ReviewRunner {
         return endpoint;
     }
 
-    private static Uri ResolveOpenAiCompatibleModelsEndpoint(string? baseUrl, bool allowInsecureHttp) {
+    private static Uri ResolveOpenAiCompatiblePreflightEndpoint(string? baseUrl, bool allowInsecureHttp) {
         var baseUri = ResolveOpenAiCompatibleBaseUri(baseUrl, allowInsecureHttp);
-        var normalized = baseUri.ToString().TrimEnd('/');
-        if (normalized.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)) {
-            normalized += "/models";
-        } else {
-            normalized += "/v1/models";
-        }
-        if (!Uri.TryCreate(normalized, UriKind.Absolute, out var endpoint)) {
-            throw new InvalidOperationException($"OpenAI-compatible models endpoint is invalid: '{normalized}'.");
-        }
-        return endpoint;
+        // Probe authority only; avoid provider-specific endpoints (some gateways block /v1/models, etc.).
+        return new Uri(baseUri, "/");
     }
 
     private string ResolveOpenAiCompatibleApiKey() {

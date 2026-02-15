@@ -271,7 +271,7 @@ internal static partial class Program {
     private static void TestReviewOpenAiCompatiblePreflightTreats405AsReachable() {
         using var server = new OpenAiCompatibleTestServer((method, path, _, _) => {
             if (method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
-                path.Equals("/v1/models", StringComparison.OrdinalIgnoreCase)) {
+                path.Equals("/", StringComparison.OrdinalIgnoreCase)) {
                 return (405, "Method Not Allowed", "{\"error\":\"nope\"}", null);
             }
             if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
@@ -306,13 +306,13 @@ internal static partial class Program {
     private static void TestReviewOpenAiCompatibleFollowsRedirects() {
         using var server = new OpenAiCompatibleTestServer((method, path, body, _) => {
             if (method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
-                path.Equals("/v1/models", StringComparison.OrdinalIgnoreCase)) {
+                path.Equals("/", StringComparison.OrdinalIgnoreCase)) {
                 return (302, "Found", "{}", new Dictionary<string, string> {
-                    ["Location"] = "/v1/models-redirected"
+                    ["Location"] = "/preflight-redirected"
                 });
             }
             if (method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
-                path.Equals("/v1/models-redirected", StringComparison.OrdinalIgnoreCase)) {
+                path.Equals("/preflight-redirected", StringComparison.OrdinalIgnoreCase)) {
                 return (405, "Method Not Allowed", "{\"error\":\"nope\"}", null);
             }
 
