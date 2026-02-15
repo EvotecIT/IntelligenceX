@@ -34,6 +34,48 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(input, expanded);
     }
 
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotThrowOnInvalidUnicodeInAssistantContextForCtaExtraction() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = "If you say \"run now\uD800\", I'll execute it.\n\n" + """
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var input = "run now";
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotThrowOnInvalidUnicodeInUserInputWhenCtaTokensExist() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            If you say "run now", I'll execute it.
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var input = "run now\uD800";
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
     [Theory]
     [InlineData("/actuator")]
     [InlineData("/act1 act_001")]

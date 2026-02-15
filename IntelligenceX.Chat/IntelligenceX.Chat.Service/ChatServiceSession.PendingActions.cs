@@ -532,10 +532,6 @@ internal sealed partial class ChatServiceSession {
             if (string.Equals(request, token, StringComparison.OrdinalIgnoreCase)) {
                 return true;
             }
-
-            if (ContainsPhraseWithBoundaries(request, token)) {
-                return true;
-            }
         }
 
         return false;
