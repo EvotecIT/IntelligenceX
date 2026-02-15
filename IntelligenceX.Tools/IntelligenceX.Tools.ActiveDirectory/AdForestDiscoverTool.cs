@@ -28,6 +28,9 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
     private const int MaxTrustTimeoutMs = 30_000;
     private const int DefaultMaxTrusts = 2000;
     private const int MaxTrustsCap = 20_000;
+    private const int DefaultRootDseTimeoutMs = 5000;
+    private const int DefaultLdapTimeoutMs = 10_000;
+    private const int DefaultDcSourceTimeoutMs = 5000;
 
     private static readonly IReadOnlyDictionary<string, DirectoryDiscoveryFallback> DiscoveryFallbackModes =
         new Dictionary<string, DirectoryDiscoveryFallback>(StringComparer.OrdinalIgnoreCase) {
@@ -75,7 +78,7 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
     public override ToolDefinition Definition => DefinitionValue;
 
     /// <inheritdoc />
-    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+    protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
         var explicitForest = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
@@ -92,12 +95,17 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
         // Force explicitness: the caller must choose the fallback policy (even if they provide forest_name).
         var discoveryFallbackRaw = ToolArgs.GetOptionalTrimmed(arguments, "discovery_fallback");
         if (string.IsNullOrWhiteSpace(discoveryFallbackRaw)) {
-            return Task.FromResult(Error("invalid_argument", "discovery_fallback is required (use: none/current_domain/current_forest)."));
+            return Error("invalid_argument", "discovery_fallback is required (use: none/current_domain/current_forest).");
         }
-        var discoveryFallback = ToolEnumBinders.ParseOrDefault(
-            value: discoveryFallbackRaw,
-            map: DiscoveryFallbackModes,
-            defaultValue: DirectoryDiscoveryFallback.None);
+
+        var discoveryFallbackNormalized = discoveryFallbackRaw.Trim();
+        if (!DiscoveryFallbackModes.TryGetValue(discoveryFallbackNormalized, out var discoveryFallback)) {
+            return Error(
+                errorCode: "invalid_argument",
+                error: "discovery_fallback must be one of: none, current_domain, current_forest.",
+                hints: new[] { $"Received: '{discoveryFallbackNormalized}'." },
+                isTransient: false);
+        }
 
         var maxDomains = ToolArgs.GetCappedInt32(arguments, "max_domains", DefaultMaxDomains, 1, MaxDomainsCap);
         var maxDcsTotal = ToolArgs.GetCappedInt32(arguments, "max_domain_controllers_total", DefaultMaxDomainControllersTotal, 1, MaxDomainControllersTotalCap);
@@ -115,7 +123,10 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
         rootDseStep.Start();
         try {
             // Best-effort context: explicit domain_controller is honored, otherwise RootDseReader selects a candidate.
-            rootDseInfo = DomainInfoService.Query(explicitDomainController, cancellationToken);
+            rootDseInfo = await RunWithTimeoutAsync(
+                () => DomainInfoService.Query(explicitDomainController, cancellationToken),
+                timeoutMs: DefaultRootDseTimeoutMs,
+                cancellationToken);
             rootDseStep.Succeed(new {
                 domain_controller = rootDseInfo.DomainController,
                 dns_domain_name = rootDseInfo.DnsDomainName,
@@ -135,14 +146,14 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
             string.IsNullOrWhiteSpace(effectiveDomain) &&
             discoveryFallback == DirectoryDiscoveryFallback.None &&
             includeDomains.Count == 0) {
-            return Task.FromResult(Error(
+            return Error(
                 errorCode: "invalid_argument",
                 error: "Forest/domain scope is missing. Provide forest_name, domain_name, include_domains, or set discovery_fallback to current_forest/current_domain.",
                 hints: new[] {
                     "For a true forest-wide discovery, provide forest_name or set discovery_fallback=current_forest.",
                     "If you only know a DC, provide domain_controller to derive forest/domain via RootDSE."
                 },
-                isTransient: false));
+                isTransient: false);
         }
 
         // Domains: resolve with DirectoryTargetResolver semantics for filtering consistency, but we still record sources attempted.
@@ -193,28 +204,29 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
                     ldapStep.Succeed(new { enabled = false, reason = "discovery_fallback_none" });
                 } else {
                     try {
-                        var ldapDomains = DomainHelper.EnumerateForestDomainNamesViaLdap(effectiveForest, cancellationToken).ToList();
+                        var ldapDomains = await RunWithTimeoutAsync(
+                            () => DomainHelper.EnumerateForestDomainNamesViaLdap(effectiveForest, cancellationToken).ToList(),
+                            timeoutMs: DefaultLdapTimeoutMs,
+                            cancellationToken);
                         domains.AddRange(ldapDomains);
                         ldapStep.Succeed(new { enabled = true, count = ldapDomains.Count, sample = ldapDomains.Take(5).ToArray() });
                     } catch (Exception ex) {
                         ldapStep.Fail(ex);
                     }
                 }
-
-                // Apply forest/domain resolver semantics for excludes (only in forest mode).
-                if (excludeDomains.Count > 0) {
-                    var excludeSet = BuildSet(excludeDomains);
-                    if (excludeSet.Count > 0) {
-                        domains = domains.Where(d => !excludeSet.Contains(NormalizeHostOrName(d))).ToList();
-                    }
-                }
             }
+
+            // Apply include/exclude filters consistently across discovery modes.
+            var includeDomainSet = BuildSet(includeDomains);
+            var excludeDomainSet = BuildSet(excludeDomains);
 
             // Force a stable, normalized representation.
             domains = domains
                 .Select(NormalizeHostOrName)
                 .Where(static x => !string.IsNullOrWhiteSpace(x))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(d => includeDomainSet.Count == 0 || includeDomainSet.Contains(d))
+                .Where(d => excludeDomainSet.Count == 0 || !excludeDomainSet.Contains(d))
                 .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
                 .Take(maxDomains)
                 .ToList();
@@ -234,6 +246,7 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
         // Domain controllers: enumerate per domain with a "what + how" receipt.
         var dcByDomain = new List<object>();
         var allDcs = new List<string>();
+        var allDcsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var dcStep = new DiscoveryStep("domain_controllers");
         receipt.Add(dcStep);
@@ -242,6 +255,15 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
         try {
             var includedDcSet = BuildSet(includeDomainControllers);
             var excludedDcSet = BuildSet(excludeDomainControllers);
+            bool AcceptDc(string dc) {
+                if (excludedDcSet.Count > 0 && excludedDcSet.Contains(dc)) {
+                    return false;
+                }
+                if (includedDcSet.Count > 0 && !includedDcSet.Contains(dc)) {
+                    return false;
+                }
+                return true;
+            }
 
             foreach (var domain in domains) {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -249,33 +271,45 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
                 var perDomainReceipt = new List<object>();
                 var perDomain = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-                CollectDcSource(
+                await CollectDcSourceAsync(
                     perDomainReceipt,
                     sourceName: "active_directory",
                     () => DomainHelper.EnumerateDomainControllers(domain, cancellationToken: cancellationToken),
                     perDomain,
+                    accept: AcceptDc,
+                    maxCapture: maxDcsPerDomain,
+                    timeoutMs: DefaultDcSourceTimeoutMs,
                     cancellationToken);
 
                 if (discoveryFallback != DirectoryDiscoveryFallback.None) {
-                    CollectDcSource(
+                    await CollectDcSourceAsync(
                         perDomainReceipt,
                         sourceName: "dns_srv",
                         () => DomainHelper.EnumerateDomainControllersViaDnsSrv(domain),
                         perDomain,
+                        accept: AcceptDc,
+                        maxCapture: maxDcsPerDomain,
+                        timeoutMs: DefaultDcSourceTimeoutMs,
                         cancellationToken);
 
-                    CollectDcSource(
+                    await CollectDcSourceAsync(
                         perDomainReceipt,
                         sourceName: "dsgetdcname",
                         () => DomainHelper.EnumerateDomainControllersViaDsGetDcName(domain),
                         perDomain,
+                        accept: AcceptDc,
+                        maxCapture: maxDcsPerDomain,
+                        timeoutMs: DefaultDcSourceTimeoutMs,
                         cancellationToken);
 
-                    CollectDcSource(
+                    await CollectDcSourceAsync(
                         perDomainReceipt,
                         sourceName: "ldap_sites",
                         () => DomainHelper.EnumerateDomainControllersViaLdap(domain, cancellationToken),
                         perDomain,
+                        accept: AcceptDc,
+                        maxCapture: maxDcsPerDomain,
+                        timeoutMs: DefaultLdapTimeoutMs,
                         cancellationToken);
                 }
 
@@ -293,10 +327,10 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
                 }
 
                 if (includedDcSet.Count > 0) {
-                    perDomainList = perDomainList.Where(dc => includedDcSet.Contains(NormalizeHostOrName(dc))).ToList();
+                    perDomainList = perDomainList.Where(dc => includedDcSet.Contains(dc)).ToList();
                 }
                 if (excludedDcSet.Count > 0) {
-                    perDomainList = perDomainList.Where(dc => !excludedDcSet.Contains(NormalizeHostOrName(dc))).ToList();
+                    perDomainList = perDomainList.Where(dc => !excludedDcSet.Contains(dc)).ToList();
                 }
 
                 if (perDomainList.Count > maxDcsPerDomain) {
@@ -304,7 +338,7 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
                 }
 
                 foreach (var dc in perDomainList) {
-                    if (!allDcs.Contains(dc, StringComparer.OrdinalIgnoreCase)) {
+                    if (allDcsSet.Add(dc)) {
                         allDcs.Add(dc);
                     }
                 }
@@ -419,33 +453,29 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
             $"Forest: `{effectiveForest ?? string.Empty}`; Domains: `{domains.Count}`; DCs: `{allDcs.Count}`; Trusts: `{trusts.Count}`.",
             "Receipt includes discovery steps and per-domain DC source attempts.");
 
-        return Task.FromResult(ToolResponse.OkModel(model, summaryMarkdown: summary));
+        return ToolResponse.OkModel(model, summaryMarkdown: summary);
     }
 
-    private static void CollectDcSource(
+    private static async Task CollectDcSourceAsync(
         List<object> perDomainReceipt,
         string sourceName,
         Func<IEnumerable<string>> enumerate,
         HashSet<string> target,
+        Func<string, bool> accept,
+        int maxCapture,
+        int timeoutMs,
         CancellationToken cancellationToken) {
         var step = new DiscoveryStep($"domain_controllers:{sourceName}");
         perDomainReceipt.Add(step);
         step.Start();
 
         try {
-            var raw = new List<string>();
-            foreach (var dc in enumerate()) {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (string.IsNullOrWhiteSpace(dc)) {
-                    continue;
-                }
-                raw.Add(NormalizeHostOrName(dc));
-            }
-
+            var raw = await RunWithTimeoutAsync(
+                () => EnumerateNormalizedDistinct(enumerate, accept, maxCapture, cancellationToken),
+                timeoutMs,
+                cancellationToken);
             foreach (var dc in raw) {
-                if (!string.IsNullOrWhiteSpace(dc)) {
-                    target.Add(dc);
-                }
+                target.Add(dc);
             }
 
             step.Succeed(new {
@@ -455,6 +485,66 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
         } catch (Exception ex) {
             step.Fail(ex);
         }
+    }
+
+    private static List<string> EnumerateNormalizedDistinct(
+        Func<IEnumerable<string>> enumerate,
+        Func<string, bool> accept,
+        int maxCapture,
+        CancellationToken cancellationToken) {
+        if (enumerate is null) {
+            throw new ArgumentNullException(nameof(enumerate));
+        }
+        if (accept is null) {
+            throw new ArgumentNullException(nameof(accept));
+        }
+        if (maxCapture < 1) {
+            return new List<string>();
+        }
+
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var dc in enumerate()) {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(dc)) {
+                continue;
+            }
+            var normalized = NormalizeHostOrName(dc);
+            if (string.IsNullOrWhiteSpace(normalized)) {
+                continue;
+            }
+            if (!accept(normalized)) {
+                continue;
+            }
+            set.Add(normalized);
+            if (set.Count >= maxCapture) {
+                break;
+            }
+        }
+
+        return set
+            .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static async Task<T> RunWithTimeoutAsync<T>(
+        Func<T> func,
+        int timeoutMs,
+        CancellationToken cancellationToken) {
+        if (func is null) {
+            throw new ArgumentNullException(nameof(func));
+        }
+        if (timeoutMs <= 0) {
+            return func();
+        }
+
+        var work = Task.Run(func);
+        var completed = await Task.WhenAny(work, Task.Delay(timeoutMs, cancellationToken));
+        if (completed != work) {
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new TimeoutException($"Operation exceeded timeout ({timeoutMs}ms).");
+        }
+
+        return await work;
     }
 
     private static HashSet<string> BuildSet(IEnumerable<string>? items) {
