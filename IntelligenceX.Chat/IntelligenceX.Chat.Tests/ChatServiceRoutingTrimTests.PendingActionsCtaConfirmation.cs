@@ -438,6 +438,53 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("Run failed logon report (4625) on ADO Security", selection.GetProperty("request").GetString());
     }
 
+    [Theory]
+    [InlineData("`/act act_001`")]
+    [InlineData("\"/act act_001\"")]
+    [InlineData("(/act act_001)")]
+    [InlineData("/act act_001.")]
+    [InlineData("/act act_001!")]
+    [InlineData("/act act_001?")]
+    public void ExpandContinuationUserRequest_ResolvesExplicitActWhenCommandUsesSafeWrappersOrPunctuation(string input) {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: Failed logons (4625)
+            request: Run failed logons report.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        Assert.Equal("act_001", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+    }
+
+    [Theory]
+    [InlineData("/act act_001 please")]
+    [InlineData("/act act_001 and summarize")]
+    public void ExpandContinuationUserRequest_DoesNotResolveExplicitActWhenCommandHasTrailingText(string input) {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: Failed logons (4625)
+            request: Run failed logons report.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
     [Fact]
     public void RememberPendingActions_NoMarkerOrFallbackChoices_DoesNotClearExistingActionContext() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);

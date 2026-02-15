@@ -131,7 +131,7 @@ internal sealed partial class ChatServiceSession {
 
         // Only apply selection rewriting for explicit /act <id>, or when the message looks like a short follow-up.
         // This prevents rewriting normal user messages that happen to start with digits (e.g., "2 servers are down").
-        var isExplicitAct = normalized.StartsWith("/act", StringComparison.OrdinalIgnoreCase);
+        var isExplicitAct = TryParseExplicitActSelection(normalized, out _, out _);
         if (!isExplicitAct && !LooksLikeContinuationFollowUp(normalized)) {
             return false;
         }
@@ -316,30 +316,11 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        // /act <id>
-        if (trimmed.StartsWith("/act", StringComparison.OrdinalIgnoreCase)) {
-            // Require `/act` as a standalone token; avoid accidentally treating `/actuator` etc. as an action selection.
-            if (trimmed.Length > 4 && !char.IsWhiteSpace(trimmed[4])) {
-                reason = "invalid_act_command_token";
-                return false;
-            }
-
-            var rest = trimmed[4..].Trim();
-            if (rest.Length == 0) {
-                reason = "act_id_missing";
-                return false;
-            }
-            var id = ReadFirstToken(rest);
+        if (TryParseExplicitActSelection(trimmed, out var id, out var explicitActReason)) {
             if (id.Length == 0) {
-                reason = "act_id_missing";
+                reason = explicitActReason;
                 return false;
             }
-            var trailing = rest[id.Length..].Trim();
-            if (trailing.Length != 0) {
-                reason = "act_command_has_trailing_tokens";
-                return false;
-            }
-
             for (var i = 0; i < actions.Count; i++) {
                 if (string.Equals(actions[i].Id, id, StringComparison.OrdinalIgnoreCase)) {
                     match = actions[i];
@@ -674,6 +655,153 @@ internal sealed partial class ChatServiceSession {
             end++;
         }
         return end <= 0 ? string.Empty : value.Substring(0, end).Trim();
+    }
+
+    private static bool TryParseExplicitActSelection(string userText, out string actionId, out string reason) {
+        actionId = string.Empty;
+        reason = "not_explicit_act";
+        var trimmed = (userText ?? string.Empty).Trim();
+        if (trimmed.Length == 0) {
+            return false;
+        }
+
+        var candidate = TrimExplicitActCommandWrappers(trimmed);
+        if (!candidate.StartsWith("/act", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        // Require `/act` as a standalone token; avoid accidentally treating `/actuator` etc. as an action selection.
+        if (candidate.Length > 4 && !char.IsWhiteSpace(candidate[4])) {
+            reason = "invalid_act_command_token";
+            return true;
+        }
+
+        var rest = candidate[4..].Trim();
+        if (rest.Length == 0) {
+            reason = "act_id_missing";
+            return true;
+        }
+
+        var token = ReadFirstToken(rest);
+        if (token.Length == 0) {
+            reason = "act_id_missing";
+            return true;
+        }
+
+        var normalizedId = NormalizeExplicitActSelectionIdToken(token);
+        if (normalizedId.Length == 0) {
+            reason = "act_id_invalid";
+            return true;
+        }
+
+        var trailing = rest[token.Length..].Trim();
+        if (trailing.Length > 0 && !AllCharsAllowedInExplicitActTrailingSuffix(trailing)) {
+            reason = "act_command_has_trailing_tokens";
+            return true;
+        }
+
+        actionId = normalizedId;
+        reason = "explicit_act_id";
+        return true;
+    }
+
+    private static string TrimExplicitActCommandWrappers(string text) {
+        var value = (text ?? string.Empty).Trim();
+        if (value.Length < 2) {
+            return value;
+        }
+
+        for (var depth = 0; depth < 2; depth++) {
+            if (value.Length < 2) {
+                break;
+            }
+
+            if (!TryGetExplicitActWrapperEnd(value[0], out var expectedClose) || value[^1] != expectedClose) {
+                break;
+            }
+
+            value = value.Substring(1, value.Length - 2).Trim();
+        }
+
+        return value;
+    }
+
+    private static bool TryGetExplicitActWrapperEnd(char open, out char close) {
+        close = '\0';
+        switch (open) {
+            case '"':
+                close = '"';
+                return true;
+            case '\'':
+                close = '\'';
+                return true;
+            case '`':
+                close = '`';
+                return true;
+            case '(':
+                close = ')';
+                return true;
+            case '[':
+                close = ']';
+                return true;
+            case '\u201C': // left double smart quote
+                close = '\u201D'; // right double smart quote
+                return true;
+            case '\u2018': // left single smart quote
+                close = '\u2019'; // right single smart quote
+                return true;
+            case '\uFF02': // fullwidth double quote
+                close = '\uFF02';
+                return true;
+            case '\uFF07': // fullwidth apostrophe
+                close = '\uFF07';
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static string NormalizeExplicitActSelectionIdToken(string token) {
+        var value = (token ?? string.Empty).Trim();
+        if (value.Length == 0) {
+            return string.Empty;
+        }
+
+        value = value.TrimStart('(', '[', '"', '\'', '`', '\u201C', '\u2018', '\uFF02', '\uFF07');
+        value = value.TrimEnd(')', ']', '"', '\'', '`', '.', ',', ';', ':', '!', '?', '\u201D', '\u2019', '\uFF02', '\uFF07');
+        if (value.Length == 0 || value.Length > 64) {
+            return string.Empty;
+        }
+
+        for (var i = 0; i < value.Length; i++) {
+            var ch = value[i];
+            if (char.IsLetterOrDigit(ch) || ch is '_' or '-' or '.') {
+                continue;
+            }
+
+            return string.Empty;
+        }
+
+        return value;
+    }
+
+    private static bool AllCharsAllowedInExplicitActTrailingSuffix(string text) {
+        for (var i = 0; i < text.Length; i++) {
+            var ch = text[i];
+            if (char.IsWhiteSpace(ch)) {
+                continue;
+            }
+            if (ch is ')' or ']' or '"' or '\'' or '`' or ',' or '.' or ';' or ':' or '!' or '?') {
+                continue;
+            }
+            if (ch is '\u201D' or '\u2019' or '\uFF02' or '\uFF07') {
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
     }
 
     private static bool TryParseOrdinalSelection(string text, out int value) {
