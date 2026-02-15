@@ -1,17 +1,14 @@
 using System;
-using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using IntelligenceX.Chat.Service;
-using IntelligenceX.Tools;
-using IntelligenceX.Tools.Common;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
 
 public sealed partial class ChatServiceRoutingTrimTests {
-[Fact]
+
+    [Fact]
     public void ExpandContinuationUserRequest_RehydratesPendingActionsAfterRestart() {
         var storeFile = $"pending-actions-test-{Guid.NewGuid():N}.json";
         var storePath = Path.Combine(
@@ -45,7 +42,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
             var root = doc.RootElement;
             Assert.True(root.TryGetProperty("ix_action_selection", out var selection));
             Assert.Equal("act_001", selection.GetProperty("id").GetString());
-            Assert.Contains("forest-wide replication", selection.GetProperty("request").GetString(), StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(
+                "forest-wide replication",
+                selection.GetProperty("request").GetString(),
+                StringComparison.OrdinalIgnoreCase);
         } finally {
             if (File.Exists(storePath)) {
                 File.Delete(storePath);
@@ -135,7 +135,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
             var expanded = Assert.IsType<string>(expandedObj);
 
             using var doc = JsonDocument.Parse(expanded);
-            Assert.Equal("act_001", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+            Assert.Equal(
+                "act_001",
+                doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
         } finally {
             if (File.Exists(storePath)) {
                 File.Delete(storePath);

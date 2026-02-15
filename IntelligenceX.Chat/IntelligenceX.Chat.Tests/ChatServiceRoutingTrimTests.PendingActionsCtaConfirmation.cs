@@ -1,18 +1,15 @@
 using System;
-using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Text.Json;
 using IntelligenceX.Chat.Service;
-using IntelligenceX.Tools;
-using IntelligenceX.Tools.Common;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
 
 public sealed partial class ChatServiceRoutingTrimTests {
-[Theory]
+
+    [Theory]
     [InlineData("run now")]
     [InlineData(" run now ")]
     [InlineData("run now.")]
@@ -44,10 +41,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("act_001", selection.GetProperty("id").GetString());
     }
 
-
     [Fact]
     public void ExtractPendingActionCallToActionTokens_RecognizesCommaAfterQuoteCtaPattern() {
-        var draft = "If you say \"run now\", I\'ll execute it.";
+        var draft = "If you say \"run now\", I'll execute it.";
         var method = typeof(ChatServiceSession).GetMethod(
             "ExtractPendingActionCallToActionTokens",
             BindingFlags.NonPublic | BindingFlags.Static);
@@ -57,7 +53,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var tokens = Assert.IsType<string[]>(tokensObj);
 
         Assert.Contains(tokens, static t => string.Equals(t, "run now", StringComparison.OrdinalIgnoreCase));
-    }    [Fact]
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenAssistantUsesCurlyQuotesForCta() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
@@ -148,6 +146,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Equal(input, expanded);
     }
+
     [Theory]
     [InlineData("{run now}")]
     [InlineData("{\"run now\"}")]

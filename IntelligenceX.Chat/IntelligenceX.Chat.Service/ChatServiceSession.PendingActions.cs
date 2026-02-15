@@ -507,7 +507,7 @@ internal sealed partial class ChatServiceSession {
         return true;
     }
 
-    
+
     private static string NormalizeCompactCallToActionToken(string text) {
         // Assistant CTAs often appear in prose with trailing ':' / ';' (including fullwidth variants) that users
         // should not have to repeat, and that we explicitly disqualify for confirmation.
