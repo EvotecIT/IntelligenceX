@@ -13,7 +13,9 @@ internal static partial class SetupRunner {
     private const string DefaultTriageWorkflowPath = ".github/workflows/ix-triage-project-sync.yml";
     private const string DefaultVisionPath = "VISION.md";
     private const string DefaultControlIssueTitle = "IX Triage Control";
+    private const string DefaultProjectViewApplyIssueTitle = "IX Project View Apply Plan";
     private const string TriageControlIssueVariableName = "IX_TRIAGE_CONTROL_ISSUE";
+    private const string ProjectViewApplyIssueVariableName = "IX_PROJECT_VIEW_APPLY_ISSUE";
     private static readonly SemaphoreSlim ProjectInitLock = new(1, 1);
 
     private static async Task<List<FilePlan>> PlanTriageBootstrapFilesAsync(
@@ -87,6 +89,14 @@ internal static partial class SetupRunner {
                 repoFullName,
                 projectOwner,
                 projectNumber).ConfigureAwait(false);
+
+            await EnsureProjectViewApplyIssueConfiguredAsync(
+                github,
+                owner,
+                repo,
+                repoFullName,
+                projectOwner,
+                projectNumber).ConfigureAwait(false);
         }
 
         return plans;
@@ -94,6 +104,14 @@ internal static partial class SetupRunner {
 
     internal static bool ShouldProvisionTriageControlIssue(string? variableValue) {
         return !TryParsePositiveInt(variableValue, out _);
+    }
+
+    internal static bool ShouldProvisionProjectViewApplyIssue(string? issueVariableValue, int missingViews, bool directCreateSupported) {
+        if (missingViews <= 0 || directCreateSupported) {
+            return false;
+        }
+
+        return !TryParsePositiveInt(issueVariableValue, out _);
     }
 
     private static bool TryParsePositiveInt(string? value, out int number) {
@@ -144,6 +162,71 @@ internal static partial class SetupRunner {
             Console.Error.WriteLine(
                 $"Warning: triage bootstrap could not auto-configure {TriageControlIssueVariableName}. " +
                 $"Run `intelligencex todo project-bootstrap --repo {repoFullName} --create-control-issue` after setup. ({ex.Message})");
+        }
+    }
+
+    private static async Task EnsureProjectViewApplyIssueConfiguredAsync(
+        GitHubApi github,
+        string owner,
+        string repo,
+        string repoFullName,
+        string projectOwner,
+        int projectNumber) {
+        string? existingViewIssue = null;
+        try {
+            existingViewIssue = await github.TryGetRepositoryVariableAsync(
+                owner,
+                repo,
+                ProjectViewApplyIssueVariableName).ConfigureAwait(false);
+        } catch (Exception ex) {
+            Console.Error.WriteLine(
+                $"Warning: triage bootstrap could not read {ProjectViewApplyIssueVariableName}. " +
+                $"View-apply issue auto-provision may be skipped. ({ex.Message})");
+            return;
+        }
+
+        if (TryParsePositiveInt(existingViewIssue, out _)) {
+            return;
+        }
+
+        try {
+            var client = new ProjectV2Client();
+            var project = await client.TryGetProjectAsync(projectOwner, projectNumber).ConfigureAwait(false);
+            if (project is null) {
+                Console.Error.WriteLine(
+                    $"Warning: triage bootstrap could not resolve project {projectOwner}#{projectNumber} for view apply planning.");
+                return;
+            }
+
+            var views = await client.GetProjectViewsByNameAsync(projectOwner, projectNumber).ConfigureAwait(false);
+            var directCreateSupported = await client.SupportsProjectViewCreationAsync().ConfigureAwait(false);
+            var missingViews = ProjectViewCatalog.FindMissingDefaultViews(views).Count;
+            if (!ShouldProvisionProjectViewApplyIssue(existingViewIssue, missingViews, directCreateSupported)) {
+                return;
+            }
+
+            var markdown = ProjectViewApplyRunner.BuildApplyMarkdown(
+                repoFullName,
+                projectOwner,
+                projectNumber,
+                project.Url,
+                views,
+                directCreateSupported,
+                DateTimeOffset.UtcNow);
+
+            var issueNumber = await github.CreateIssueAsync(owner, repo, DefaultProjectViewApplyIssueTitle, markdown)
+                .ConfigureAwait(false);
+            await github.UpsertRepositoryVariableAsync(
+                owner,
+                repo,
+                ProjectViewApplyIssueVariableName,
+                issueNumber.ToString(CultureInfo.InvariantCulture)).ConfigureAwait(false);
+
+            Console.WriteLine($"Configured {ProjectViewApplyIssueVariableName} to #{issueNumber}.");
+        } catch (Exception ex) {
+            Console.Error.WriteLine(
+                $"Warning: triage bootstrap could not auto-configure {ProjectViewApplyIssueVariableName}. " +
+                $"Run `intelligencex todo project-view-apply --repo {repoFullName} --create-issue` after setup. ({ex.Message})");
         }
     }
 

@@ -55,7 +55,7 @@ internal static partial class SetupRunner {
         Console.WriteLine("  --cleanup-allowed-edits <comma-list>");
         Console.WriteLine("  --cleanup-post-edit-comment <true|false>");
         Console.WriteLine("  --with-config (also write .intelligencex/reviewer.json)");
-        Console.WriteLine("  --triage-bootstrap (also bootstrap IX triage project schema + workflow + VISION.md + control issue variable)");
+        Console.WriteLine("  --triage-bootstrap (also bootstrap IX triage project schema + workflow + VISION.md + assistive issue variables)");
         Console.WriteLine("  --upgrade (update managed sections instead of skipping)");
         Console.WriteLine("  --update-secret (refresh INTELLIGENCEX_AUTH_B64 only)");
         Console.WriteLine("  --skip-secret (skip secret update during setup)");
