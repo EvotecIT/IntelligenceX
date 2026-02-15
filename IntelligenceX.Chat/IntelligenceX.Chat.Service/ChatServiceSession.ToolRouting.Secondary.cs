@@ -79,7 +79,10 @@ internal sealed partial class ChatServiceSession {
             var turn = await client.ChatAsync(ChatInput.FromText(plannerPrompt), plannerOptions, cancellationToken).ConfigureAwait(false);
             var plannerText = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
             return ParsePlannerSelectedDefinitions(plannerText, definitions, limit);
-        } catch {
+        } catch (OperationCanceledException) {
+            throw;
+        } catch (Exception ex) {
+            Trace.TraceWarning($"Tool planner selection failed: {ex.GetType().Name}: {ex.Message}");
             return Array.Empty<ToolDefinition>();
         } finally {
             try {

@@ -44,7 +44,7 @@ internal sealed partial class ChatServiceSession {
 
             _pendingActionsByThreadId[normalizedThreadId] = actions.ToArray();
             _pendingActionsSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
-            TrimWeightedRoutingContexts();
+            TrimWeightedRoutingContextsNoLock();
         }
     }
 
@@ -82,7 +82,7 @@ internal sealed partial class ChatServiceSession {
                 lock (_toolRoutingContextLock) {
                     _pendingActionsByThreadId.Remove(normalizedThreadId);
                     _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
-                    TrimWeightedRoutingContexts();
+                    TrimWeightedRoutingContextsNoLock();
                 }
                 return false;
             }
@@ -91,7 +91,7 @@ internal sealed partial class ChatServiceSession {
                 lock (_toolRoutingContextLock) {
                     _pendingActionsByThreadId.Remove(normalizedThreadId);
                     _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
-                    TrimWeightedRoutingContexts();
+                    TrimWeightedRoutingContextsNoLock();
                 }
                 return false;
             }
@@ -108,7 +108,7 @@ internal sealed partial class ChatServiceSession {
         lock (_toolRoutingContextLock) {
             _pendingActionsByThreadId.Remove(normalizedThreadId);
             _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
-            TrimWeightedRoutingContexts();
+            TrimWeightedRoutingContextsNoLock();
         }
 
         var request = string.IsNullOrWhiteSpace(selected.Value.Request) ? selected.Value.Title : selected.Value.Request;

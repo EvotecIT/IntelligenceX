@@ -82,7 +82,7 @@ internal sealed partial class ChatServiceSession {
             }
 
             _lastWeightedToolSubsetSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
-            TrimWeightedRoutingContexts();
+            TrimWeightedRoutingContextsNoLock();
         }
 
         var preferred = new HashSet<string>(previousNames!, StringComparer.OrdinalIgnoreCase);
@@ -125,7 +125,7 @@ internal sealed partial class ChatServiceSession {
 
             _lastWeightedToolNamesByThreadId[normalizedThreadId] = names.Count == 0 ? Array.Empty<string>() : names.ToArray();
             _lastWeightedToolSubsetSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
-            TrimWeightedRoutingContexts();
+            TrimWeightedRoutingContextsNoLock();
         }
     }
 
@@ -147,7 +147,7 @@ internal sealed partial class ChatServiceSession {
         lock (_toolRoutingContextLock) {
             _lastUserIntentByThreadId[normalizedThreadId] = normalized;
             _lastUserIntentSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
-            TrimWeightedRoutingContexts();
+            TrimWeightedRoutingContextsNoLock();
         }
     }
 
@@ -190,7 +190,7 @@ internal sealed partial class ChatServiceSession {
 
         lock (_toolRoutingContextLock) {
             _lastUserIntentSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
-            TrimWeightedRoutingContexts();
+            TrimWeightedRoutingContextsNoLock();
         }
 
         var expanded = $"{intent!.Trim()}\nFollow-up: {normalized}";
@@ -269,18 +269,9 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
-    private void TrimWeightedRoutingContexts() {
-        if (Monitor.IsEntered(_toolRoutingContextLock)) {
-            TrimWeightedRoutingContextsNoLock();
-            return;
-        }
-
-        lock (_toolRoutingContextLock) {
-            TrimWeightedRoutingContextsNoLock();
-        }
-    }
-
     private void TrimWeightedRoutingContextsNoLock() {
+        Debug.Assert(Monitor.IsEntered(_toolRoutingContextLock));
+
         // Weighted-tool-subset context and user-intent context share the same key space (threadId),
         // so trim all when either grows beyond its cap.
         var weightedRemoveCount = _lastWeightedToolNamesByThreadId.Count - MaxTrackedWeightedRoutingContexts;
@@ -460,7 +451,7 @@ internal sealed partial class ChatServiceSession {
 
     internal void TrimWeightedRoutingContextsForTesting() {
         lock (_toolRoutingContextLock) {
-            TrimWeightedRoutingContexts();
+            TrimWeightedRoutingContextsNoLock();
         }
     }
 
