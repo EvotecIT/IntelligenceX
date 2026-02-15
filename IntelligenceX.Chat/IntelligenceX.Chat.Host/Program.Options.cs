@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.CompatibleHttp;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Auth;
 using IntelligenceX.OpenAI.Chat;
@@ -298,41 +299,20 @@ internal static partial class Program {
 
         private static bool TryValidateCompatibleHttpBaseUrl(ReplOptions options, out string? error) {
             error = null;
-            var value = (options.OpenAIBaseUrl ?? string.Empty).Trim();
-            if (value.Length == 0) {
-                error = "--openai-base-url is required when --openai-transport compatible-http is selected.";
+            try {
+                var compatible = new OpenAICompatibleHttpOptions {
+                    BaseUrl = options.OpenAIBaseUrl,
+                    AllowInsecureHttp = options.OpenAIAllowInsecureHttp,
+                    AllowInsecureHttpNonLoopback = options.OpenAIAllowInsecureHttpNonLoopback,
+                    Streaming = options.OpenAIStreaming,
+                    ApiKey = options.OpenAIApiKey
+                };
+                compatible.Validate();
+                return true;
+            } catch (Exception ex) {
+                error = ex.Message;
                 return false;
             }
-
-            if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri is null) {
-                error = "--openai-base-url must be an absolute URL.";
-                return false;
-            }
-
-            if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) {
-                error = "--openai-base-url must use http or https.";
-                return false;
-            }
-
-            if (string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)) {
-                if (!options.OpenAIAllowInsecureHttp && !options.OpenAIAllowInsecureHttpNonLoopback) {
-                    error = "Insecure http base URLs are disabled by default. Use --openai-allow-insecure-http for loopback, or --openai-allow-insecure-http-non-loopback for non-loopback.";
-                    return false;
-                }
-
-                var host = uri.DnsSafeHost ?? string.Empty;
-                var isLoopback = uri.IsLoopback
-                    || string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(host, "127.0.0.1", StringComparison.Ordinal)
-                    || string.Equals(host, "::1", StringComparison.Ordinal);
-
-                if (!isLoopback && !options.OpenAIAllowInsecureHttpNonLoopback) {
-                    error = "Insecure http base URLs for non-loopback hosts require --openai-allow-insecure-http-non-loopback.";
-                    return false;
-                }
-            }
-
-            return true;
         }
     }
 }

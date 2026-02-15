@@ -34,7 +34,10 @@ public sealed class OpenAICompatibleHttpOptions {
     /// </summary>
     public bool AllowInsecureHttpNonLoopback { get; set; }
 
-    internal void Validate() {
+    /// <summary>
+    /// Validates the configuration and throws on invalid values.
+    /// </summary>
+    public void Validate() {
         var baseUrl = BaseUrl;
         if (string.IsNullOrWhiteSpace(baseUrl)) {
             throw new ArgumentException("BaseUrl is required for CompatibleHttp transport.", nameof(BaseUrl));

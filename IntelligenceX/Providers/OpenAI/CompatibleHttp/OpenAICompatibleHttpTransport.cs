@@ -97,7 +97,7 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
     }
 
     public async Task<ModelListResult> ListModelsAsync(CancellationToken cancellationToken) {
-        var request = new HttpRequestMessage(HttpMethod.Get, _modelsUrl);
+        using var request = new HttpRequestMessage(HttpMethod.Get, _modelsUrl);
         AddAuthHeader(request);
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -249,11 +249,8 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
 
     private async Task<ChatCompletionResponse> SendChatCompletionsAsync(JsonObject body, CancellationToken cancellationToken) {
         var json = JsonLite.Serialize(JsonValue.From(body));
-        var content = new StringContent(json, Encoding.UTF8);
-        content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-        var request = new HttpRequestMessage(HttpMethod.Post, _chatCompletionsUrl) {
-            Content = content
-        };
+        using var request = new HttpRequestMessage(HttpMethod.Post, _chatCompletionsUrl);
+        request.Content = new StringContent(json, Encoding.UTF8, "application/json");
         AddAuthHeader(request);
 
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
@@ -280,6 +277,13 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
 
     private async Task<ChatCompletionResponse> ReadChatCompletionsStreamAsync(HttpResponseMessage response, CancellationToken cancellationToken) {
         using var stream = await ReadAsStreamAsync(response.Content, cancellationToken).ConfigureAwait(false);
+        using var cancelRegistration = cancellationToken.Register(() => {
+            try {
+                stream.Dispose();
+            } catch {
+                // Ignore.
+            }
+        });
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 16 * 1024, leaveOpen: false);
 
         var content = new StringBuilder();
@@ -288,7 +292,12 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
 
         while (true) {
             cancellationToken.ThrowIfCancellationRequested();
-            var line = await reader.ReadLineAsync().ConfigureAwait(false);
+            string? line;
+            try {
+                line = await reader.ReadLineAsync().ConfigureAwait(false);
+            } catch (Exception) when (cancellationToken.IsCancellationRequested) {
+                throw new OperationCanceledException(cancellationToken);
+            }
             if (line is null) {
                 break;
             }
