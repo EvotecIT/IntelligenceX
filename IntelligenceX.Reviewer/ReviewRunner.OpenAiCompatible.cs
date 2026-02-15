@@ -191,9 +191,9 @@ internal sealed partial class ReviewRunner {
 
             // RFC 9110: 303 See Other should switch to GET and drop the request body.
             // For API gateways that use 303 for POST endpoints, this matches standard redirect semantics.
-            if (response.StatusCode == HttpStatusCode.SeeOther) {
+            redirectDropsContent = response.StatusCode == HttpStatusCode.SeeOther;
+            if (redirectDropsContent) {
                 redirectMethodOverride = HttpMethod.Get;
-                redirectDropsContent = true;
             }
 
             current = next;
@@ -519,3 +519,5 @@ internal sealed partial class ReviewRunner {
                normalized.Contains("authorization", StringComparison.Ordinal);
     }
 }
+
+

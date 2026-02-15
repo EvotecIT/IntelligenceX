@@ -288,7 +288,7 @@ internal static class AnalyzeGateBaseline {
         // Normalize so delta gating finds matches deterministically while avoiding path traversal above the root.
         var normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
 
-        var hasDotRelativePrefix = normalized.StartsWith(".", StringComparison.Ordinal);
+        var hasDotRelativePrefix = normalized.StartsWith("./", StringComparison.Ordinal);
         var hasLeadingSlash = normalized.StartsWith("/", StringComparison.Ordinal);
 
         while (normalized.StartsWith("./", StringComparison.Ordinal)) {
@@ -455,7 +455,7 @@ internal static class AnalyzeGateBaseline {
 
     private static string NormalizePathForBaselineKey(string? path) {
         var normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
-        var hasDotRelativePrefix = normalized.StartsWith(".", StringComparison.Ordinal);
+        var hasDotRelativePrefix = normalized.StartsWith("./", StringComparison.Ordinal);
         while (normalized.StartsWith("./", StringComparison.Ordinal)) {
             normalized = normalized.Substring(2);
         }
@@ -541,3 +541,4 @@ internal static class AnalyzeGateBaseline {
         int WindowLines,
         string Fingerprint);
 }
+
