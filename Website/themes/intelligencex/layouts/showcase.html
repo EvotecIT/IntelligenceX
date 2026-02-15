@@ -27,7 +27,7 @@
     </div>
 
     <div class="showcase-gallery">
-      {{ for item in data.showcase }}
+      {{ for item in data.showcase.cards }}
       <div class="showcase-card">
         <div class="showcase-image">
           <img src="{{ item.screenshot }}" alt="{{ item.title }}" loading="lazy" />

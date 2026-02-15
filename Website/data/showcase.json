@@ -1,38 +1,40 @@
-[
-  {
-    "title": "Inline PR Comments",
-    "summary": "The reviewer posts structured inline comments directly on changed lines, with severity levels and actionable suggestions.",
-    "tags": ["Reviewer", "GitHub Actions"],
-    "screenshot": "/assets/screenshots/showcase-pr-inline.svg"
-  },
-  {
-    "title": "CLI Setup Wizard",
-    "summary": "Interactive wizard guides you through authentication, repo selection, and workflow generation in under a minute.",
-    "tags": ["CLI", "Onboarding"],
-    "screenshot": "/assets/screenshots/showcase-cli-wizard.svg"
-  },
-  {
-    "title": "Desktop Chat App",
-    "summary": "IX Chat lives in your system tray, providing instant access to AI conversations with tool calling support.",
-    "tags": ["Chat", "Windows"],
-    "screenshot": "/assets/screenshots/showcase-chat-desktop.svg"
-  },
-  {
-    "title": "Email Tool Pack",
-    "summary": "AI assistants can compose, search, and manage emails through the Email tool pack with Exchange and Graph API support.",
-    "tags": ["Tools", "Email"],
-    "screenshot": "/assets/screenshots/showcase-tool-email.svg"
-  },
-  {
-    "title": "Web Setup UI",
-    "summary": "Local web interface for configuring reviewers, managing authentication, and monitoring usage across repositories.",
-    "tags": ["CLI", "Web UI"],
-    "screenshot": "/assets/screenshots/showcase-web-setup.svg"
-  },
-  {
-    "title": "Active Directory Tools",
-    "summary": "Query and manage Active Directory users, groups, and computers through AI-powered natural language commands.",
-    "tags": ["Tools", "Active Directory"],
-    "screenshot": "/assets/screenshots/showcase-tool-ad.svg"
-  }
-]
+{
+  "cards": [
+    {
+      "title": "Inline PR Comments",
+      "summary": "The reviewer posts structured inline comments directly on changed lines, with severity levels and actionable suggestions.",
+      "tags": ["Reviewer", "GitHub Actions"],
+      "screenshot": "/assets/screenshots/showcase-pr-inline.svg"
+    },
+    {
+      "title": "CLI Setup Wizard",
+      "summary": "Interactive wizard guides you through authentication, repo selection, and workflow generation in under a minute.",
+      "tags": ["CLI", "Onboarding"],
+      "screenshot": "/assets/screenshots/showcase-cli-wizard.svg"
+    },
+    {
+      "title": "Desktop Chat App",
+      "summary": "IX Chat lives in your system tray, providing instant access to AI conversations with tool calling support.",
+      "tags": ["Chat", "Windows"],
+      "screenshot": "/assets/screenshots/showcase-chat-desktop.svg"
+    },
+    {
+      "title": "Email Tool Pack",
+      "summary": "AI assistants can compose, search, and manage emails through the Email tool pack with Exchange and Graph API support.",
+      "tags": ["Tools", "Email"],
+      "screenshot": "/assets/screenshots/showcase-tool-email.svg"
+    },
+    {
+      "title": "Web Setup UI",
+      "summary": "Local web interface for configuring reviewers, managing authentication, and monitoring usage across repositories.",
+      "tags": ["CLI", "Web UI"],
+      "screenshot": "/assets/screenshots/showcase-web-setup.svg"
+    },
+    {
+      "title": "Active Directory Tools",
+      "summary": "Query and manage Active Directory users, groups, and computers through AI-powered natural language commands.",
+      "tags": ["Tools", "Active Directory"],
+      "screenshot": "/assets/screenshots/showcase-tool-ad.svg"
+    }
+  ]
+}
