@@ -171,6 +171,32 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(input, expanded);
     }
 
+    [Theory]
+    [InlineData("tomorrow")]
+    [InlineData("later")]
+    [InlineData("wait")]
+    [InlineData("thanks")]
+    [InlineData("no")]
+    public void ExpandContinuationUserRequest_DoesNotAutoConfirmForBenignShortNonConfirmations(string input) {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Pick one:
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
     [Fact]
     public void ExpandContinuationUserRequest_RehydratesPendingActionsAfterRestart() {
         var storeFile = $"pending-actions-test-{Guid.NewGuid():N}.json";
