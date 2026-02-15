@@ -1,0 +1,81 @@
+name: Triage Project Sync
+
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+    inputs:
+      owner:
+        description: "Project owner login (user or organization)"
+        required: true
+      project_number:
+        description: "Project number"
+        required: true
+      max_items:
+        description: "Max entries to sync"
+        required: false
+        default: "500"
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build triage index
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- \
+            todo build-triage-index \
+            --repo "${{ github.repository }}" \
+            --max-prs 1000 \
+            --max-issues 1000 \
+            --out artifacts/triage/ix-triage-index.json \
+            --summary artifacts/triage/ix-triage-index.md
+
+      - name: Run vision check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- \
+            todo vision-check \
+            --repo "${{ github.repository }}" \
+            --vision VISION.md \
+            --no-refresh-index \
+            --index artifacts/triage/ix-triage-index.json \
+            --out artifacts/triage/ix-vision-check.json \
+            --summary artifacts/triage/ix-vision-check.md
+
+      - name: Sync into GitHub Project
+        env:
+          GH_TOKEN: ${{ secrets.IX_PROJECT_TOKEN != '' && secrets.IX_PROJECT_TOKEN || github.token }}
+        run: |
+          MAX_ITEMS="${{ github.event.inputs.max_items }}"
+          if [ -z "$MAX_ITEMS" ]; then MAX_ITEMS="500"; fi
+
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- \
+            todo project-sync \
+            --owner "${{ github.event.inputs.owner }}" \
+            --project "${{ github.event.inputs.project_number }}" \
+            --triage artifacts/triage/ix-triage-index.json \
+            --vision artifacts/triage/ix-vision-check.json \
+            --max-items "$MAX_ITEMS"
+
+      - name: Upload triage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ix-triage-project-sync
+          path: artifacts/triage

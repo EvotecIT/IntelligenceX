@@ -91,11 +91,50 @@ Notes:
 - Classification is assistive (`aligned`, `needs-human-review`, `likely-out-of-scope`), not an automatic reject gate.
 - Uses `VISION.md` section heuristics (`In Scope`, `Out of Scope`, `Goals`, `Non-Goals`) plus token overlap.
 
+## Initialize GitHub Project (assistive control plane)
+
+Create or initialize a GitHub Project with IX triage/vision fields.
+
+```bash
+intelligencex todo project-init \
+  --repo EvotecIT/IntelligenceX \
+  --owner EvotecIT \
+  --title "IX Triage Control" \
+  --description "IntelligenceX triage and vision control plane" \
+  --out artifacts/triage/ix-project-config.json
+```
+
+Notes:
+- Creates a project (or initializes an existing one with `--project <n>`).
+- Ensures required custom fields such as `Vision Fit`, `Triage Score`, and `Duplicate Cluster`.
+- Writes a reusable config file containing owner/project/field metadata.
+- Requires GitHub token scopes: `project` (and typically `read:project` for follow-up sync).
+
+## Sync triage + vision into GitHub Project
+
+Push triage and vision outputs into project item fields so maintainers can triage in GitHub only.
+
+```bash
+intelligencex todo project-sync \
+  --owner EvotecIT \
+  --project 123 \
+  --triage artifacts/triage/ix-triage-index.json \
+  --vision artifacts/triage/ix-vision-check.json \
+  --max-items 500
+```
+
+Useful options:
+- `--config <path>` to resolve owner/project from `project-init` output.
+- `--ensure-fields` / `--no-ensure-fields`.
+- `--project-item-scan-limit <n>` for larger projects.
+- `--dry-run` for a no-write sync preview.
+
 ## GitHub Actions template
 
 A reusable scheduled workflow template is available at:
 
 - `IntelligenceX.Cli/Templates/triage-index-scheduled.yml`
+- `IntelligenceX.Cli/Templates/triage-project-sync.yml`
 
 It runs `build-triage-index`, uploads artifacts, and can optionally post the markdown summary to a control issue
 when repository variable `IX_TRIAGE_CONTROL_ISSUE` is set.

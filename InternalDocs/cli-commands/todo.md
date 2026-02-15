@@ -78,10 +78,51 @@ Output classes:
 - `needs-human-review`
 - `likely-out-of-scope`
 
+## Project Init (GitHub-native)
+
+Create or initialize a GitHub Project for triage/vision workflows:
+
+```bash
+intelligencex todo project-init --repo EvotecIT/IntelligenceX --owner EvotecIT
+```
+
+Options:
+- `--project <n>` initialize fields on existing project instead of creating
+- `--title <text>` and `--description <text>` when creating
+- `--public` / `--private`
+- `--link-repo` / `--no-link-repo`
+- `--out <path>` (default `artifacts/triage/ix-project-config.json`)
+
+Expected fields:
+- `Vision Fit` (single-select)
+- `Vision Confidence` (number)
+- `Triage Score` (number)
+- `Duplicate Cluster` (text)
+- `Canonical Item` (text)
+- `Triage Kind` (single-select)
+- `Maintainer Decision` (single-select)
+
+## Project Sync
+
+Sync triage and vision artifacts into project items:
+
+```bash
+intelligencex todo project-sync --owner EvotecIT --project 123
+```
+
+Options:
+- `--config <path>` resolve owner/project from `project-init` output
+- `--triage <path>` and `--vision <path>`
+- `--max-items <n>` (default `500`)
+- `--project-item-scan-limit <n>` (default `5000`)
+- `--ensure-fields` / `--no-ensure-fields`
+- `--dry-run`
+
 ## Workflow Template
 
 Template path:
 - `IntelligenceX.Cli/Templates/triage-index-scheduled.yml`
+- `IntelligenceX.Cli/Templates/triage-project-sync.yml`
 
 Behavior:
 - Scheduled + manual runs.
