@@ -10,13 +10,14 @@ namespace IntelligenceX.Cli.Todo;
 
 internal static class IssueSuggestionCommentManager {
     internal const string CommentMarker = "<!-- intelligencex:pr-issue-suggestions -->";
+    internal const string IssueBacklinkCommentMarker = "<!-- intelligencex:issue-pr-suggestions -->";
 
-    public static async Task<bool> UpsertAsync(string repo, int pullRequestNumber, string commentBody) {
-        if (string.IsNullOrWhiteSpace(repo) || pullRequestNumber <= 0 || string.IsNullOrWhiteSpace(commentBody)) {
+    public static async Task<bool> UpsertAsync(string repo, int issueNumber, string commentBody, string marker = CommentMarker) {
+        if (string.IsNullOrWhiteSpace(repo) || issueNumber <= 0 || string.IsNullOrWhiteSpace(commentBody) || string.IsNullOrWhiteSpace(marker)) {
             return false;
         }
 
-        var existingCommentId = await TryFindManagedCommentIdAsync(repo, pullRequestNumber).ConfigureAwait(false);
+        var existingCommentId = await TryFindManagedCommentIdAsync(repo, issueNumber, marker).ConfigureAwait(false);
         if (existingCommentId.HasValue) {
             var (updateCode, _, updateErr) = await GhCli.RunAsync(
                 "api",
@@ -30,14 +31,14 @@ internal static class IssueSuggestionCommentManager {
             }
 
             Console.Error.WriteLine(
-                $"Warning: failed to update PR suggestion comment for {repo}#{pullRequestNumber}: {(string.IsNullOrWhiteSpace(updateErr) ? "unknown error" : updateErr.Trim())}");
+                $"Warning: failed to update managed suggestion comment for {repo}#{issueNumber}: {(string.IsNullOrWhiteSpace(updateErr) ? "unknown error" : updateErr.Trim())}");
             return false;
         }
 
         var (createCode, _, createErr) = await GhCli.RunAsync(
             "api",
             "--method", "POST",
-            $"repos/{repo}/issues/{pullRequestNumber.ToString(CultureInfo.InvariantCulture)}/comments",
+            $"repos/{repo}/issues/{issueNumber.ToString(CultureInfo.InvariantCulture)}/comments",
             "-f", $"body={commentBody}"
         ).ConfigureAwait(false);
         if (createCode == 0) {
@@ -45,18 +46,18 @@ internal static class IssueSuggestionCommentManager {
         }
 
         Console.Error.WriteLine(
-            $"Warning: failed to create PR suggestion comment for {repo}#{pullRequestNumber}: {(string.IsNullOrWhiteSpace(createErr) ? "unknown error" : createErr.Trim())}");
+            $"Warning: failed to create managed suggestion comment for {repo}#{issueNumber}: {(string.IsNullOrWhiteSpace(createErr) ? "unknown error" : createErr.Trim())}");
         return false;
     }
 
-    private static async Task<long?> TryFindManagedCommentIdAsync(string repo, int pullRequestNumber) {
+    private static async Task<long?> TryFindManagedCommentIdAsync(string repo, int issueNumber, string marker) {
         var (code, stdout, stderr) = await GhCli.RunAsync(
             "api",
-            $"repos/{repo}/issues/{pullRequestNumber.ToString(CultureInfo.InvariantCulture)}/comments?per_page=100"
+            $"repos/{repo}/issues/{issueNumber.ToString(CultureInfo.InvariantCulture)}/comments?per_page=100"
         ).ConfigureAwait(false);
         if (code != 0) {
             Console.Error.WriteLine(
-                $"Warning: failed to list PR comments for {repo}#{pullRequestNumber}: {(string.IsNullOrWhiteSpace(stderr) ? "unknown error" : stderr.Trim())}");
+                $"Warning: failed to list issue comments for {repo}#{issueNumber}: {(string.IsNullOrWhiteSpace(stderr) ? "unknown error" : stderr.Trim())}");
             return null;
         }
 
@@ -72,7 +73,7 @@ internal static class IssueSuggestionCommentManager {
                     continue;
                 }
                 var body = bodyProp.GetString() ?? string.Empty;
-                if (body.IndexOf(CommentMarker, StringComparison.OrdinalIgnoreCase) < 0) {
+                if (body.IndexOf(marker, StringComparison.OrdinalIgnoreCase) < 0) {
                     continue;
                 }
 
@@ -92,7 +93,7 @@ internal static class IssueSuggestionCommentManager {
 
             return matches.Max();
         } catch (Exception ex) {
-            Console.Error.WriteLine($"Warning: failed to parse PR comments JSON for {repo}#{pullRequestNumber}: {ex.Message}");
+            Console.Error.WriteLine($"Warning: failed to parse issue comments JSON for {repo}#{issueNumber}: {ex.Message}");
             return null;
         }
     }
