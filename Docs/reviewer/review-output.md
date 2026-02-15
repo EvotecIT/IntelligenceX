@@ -4,6 +4,27 @@ The IntelligenceX reviewer posts a structured Markdown comment on each PR. The s
 
 The reviewer uses H2 headings (`## ...`) for each required section to keep the output easy to scan and tooling-friendly.
 
+## Output Contract Map
+
+```mermaid
+flowchart TD
+  classDef required fill:#FDE68A,stroke:#B45309,color:#451A03,stroke-width:2px;
+  classDef optional fill:#DDD6FE,stroke:#5B21B6,color:#2E1065,stroke-width:2px;
+  classDef inline fill:#A7F3D0,stroke:#047857,color:#052E2B,stroke-width:2px;
+
+  A["Reviewer markdown comment"] --> B["Todo List"]
+  A --> C["Critical Issues"]
+  A --> D["Other Issues"]
+  A --> E["Next Steps"]
+  A --> F["Other Reviews (triage context)"]
+  C --> G["Inline comments for actionable findings"]
+  B --> G
+
+  class B,C,D required;
+  class E,F optional;
+  class G inline;
+```
+
 ## Merge blockers vs suggestions
 
 Merge blockers:

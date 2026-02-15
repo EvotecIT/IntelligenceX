@@ -97,15 +97,37 @@ code { font-family: var(--pf-font-mono); font-size: 0.875em; }
 
 /* Mermaid diagrams (rendered from ```mermaid code fences). */
 .mermaid-diagram {
-  background: var(--pf-code-bg);
+  background:
+    radial-gradient(160% 120% at 0% 0%, var(--pf-glow-primary), transparent 55%),
+    radial-gradient(140% 140% at 100% 0%, var(--pf-glow-secondary), transparent 60%),
+    var(--pf-code-bg);
   border: 1px solid var(--pf-code-border);
   border-radius: var(--pf-radius-sm);
-  padding: 1rem;
+  padding: 1rem 1.1rem;
   margin-bottom: 1.5rem;
   overflow-x: auto;
 }
 .mermaid-diagram .mermaid {
-  min-width: 280px;
+  min-width: 320px;
+}
+.mermaid-diagram .mermaid svg {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  height: auto;
+}
+.mermaid-diagram .mermaid text,
+.mermaid-diagram .mermaid tspan {
+  font-family: var(--pf-font-body) !important;
+}
+[data-theme="light"] .mermaid-diagram {
+  background:
+    radial-gradient(160% 120% at 0% 0%, rgba(8, 145, 178, 0.08), transparent 55%),
+    radial-gradient(140% 140% at 100% 0%, rgba(124, 58, 237, 0.08), transparent 60%),
+    var(--pf-code-bg);
+}
+.mermaid-diagram-failed {
+  border-color: rgba(239, 68, 68, 0.55);
 }
 
 /* ===== Buttons ===== */

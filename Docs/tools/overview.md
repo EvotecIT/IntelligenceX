@@ -17,6 +17,26 @@ IntelligenceX.Chat classifies packs with a runtime `sourceKind`:
 | `open_source` | Pack is loaded from external open-source plugin assemblies. |
 | `closed_source` | Pack exists but may come from private/internal assemblies not present in OSS checkouts. |
 
+## Tool Pack Loading Flow
+
+```mermaid
+flowchart LR
+  classDef host fill:#BAE6FD,stroke:#0369A1,color:#082F49,stroke-width:2px;
+  classDef pack fill:#DDD6FE,stroke:#5B21B6,color:#2E1065,stroke-width:2px;
+  classDef runtime fill:#A7F3D0,stroke:#047857,color:#052E2B,stroke-width:2px;
+
+  A["IX Chat host startup"] --> B["ToolPackBootstrap"]
+  B --> C["Discover assemblies"]
+  C --> D["Register descriptors and tools"]
+  D --> E["Normalize sourceKind and tier"]
+  E --> F["Expose tool registry to model runtime"]
+  F --> G["Tool call -> local execution -> result"]
+
+  class A,B host;
+  class C,D,E pack;
+  class F,G runtime;
+```
+
 ## Pack Inventory (Current Runtime Truth)
 
 The table below reflects the actual bootstrap in `IntelligenceX.Chat.Tooling/ToolPackBootstrap.cs`.

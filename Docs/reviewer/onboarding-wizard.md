@@ -24,6 +24,12 @@ intelligencex setup autodetect --json
 
 ```mermaid
 flowchart TD
+  classDef start fill:#38BDF8,stroke:#0369A1,color:#082F49,stroke-width:2px;
+  classDef decision fill:#FDE68A,stroke:#B45309,color:#451A03,stroke-width:2px;
+  classDef path fill:#A7F3D0,stroke:#047857,color:#052E2B,stroke-width:2px;
+  classDef converge fill:#C7D2FE,stroke:#4338CA,color:#1E1B4B,stroke-width:2px;
+  classDef finish fill:#E9D5FF,stroke:#7C3AED,color:#2E1065,stroke-width:2px;
+
   A["Run wizard"] --> B["Doctor auto-detect"]
   B --> C{"Choose path"}
   C --> D["new-setup"]
@@ -36,6 +42,12 @@ flowchart TD
   G --> H
   H --> I["Path-specific configure and auth requirements"]
   I --> J["Plan apply verify"]
+
+  class A,B start;
+  class C decision;
+  class D,E,F,G path;
+  class H converge;
+  class I,J finish;
 ```
 
 Path requirements and Bot parity flow are documented in [Web Onboarding Flow](/docs/reviewer/web-onboarding/).

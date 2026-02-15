@@ -17,6 +17,12 @@ CLI, Web, and Bot all use the same path contract in `SetupOnboardingContract`.
 
 ```mermaid
 flowchart TD
+  classDef trigger fill:#38BDF8,stroke:#0369A1,color:#082F49,stroke-width:2px;
+  classDef path fill:#A7F3D0,stroke:#047857,color:#052E2B,stroke-width:2px;
+  classDef auth fill:#FDE68A,stroke:#B45309,color:#451A03,stroke-width:2px;
+  classDef apply fill:#E9D5FF,stroke:#7C3AED,color:#2E1065,stroke-width:2px;
+  classDef decision fill:#FBCFE8,stroke:#BE185D,color:#500724,stroke-width:2px;
+
   A["Start intelligencex setup web"] --> B["Run doctor auto-detect"]
   B --> C{"Choose path"}
 
@@ -47,6 +53,13 @@ flowchart TD
   G4 --> D5
   G4 --> E4
   G4 --> F4
+
+  class A,B trigger;
+  class C decision;
+  class D,E,F,G path;
+  class D1,D2,D4,E1,E2,E3,F1,F2,G1,G2 auth;
+  class D3,E4,F3,G3,G4 apply;
+  class D5,F4 apply;
 ```
 
 ## Bot Contract-Check Flow
@@ -55,11 +68,22 @@ flowchart TD
 
 ```mermaid
 flowchart LR
+  classDef bot fill:#BAE6FD,stroke:#0369A1,color:#082F49,stroke-width:2px;
+  classDef verify fill:#FDE68A,stroke:#B45309,color:#451A03,stroke-width:2px;
+  classDef ok fill:#A7F3D0,stroke:#047857,color:#052E2B,stroke-width:2px;
+  classDef stop fill:#FECACA,stroke:#B91C1C,color:#450A0A,stroke-width:2px;
+  classDef decision fill:#DDD6FE,stroke:#5B21B6,color:#2E1065,stroke-width:2px;
+
   A["reviewer_setup_pack_info"] --> B["setup autodetect --json"]
   B --> C["reviewer_setup_contract_verify"]
   C --> D{"Metadata matches"}
   D -->|yes| E["Run setup update-secret or cleanup command"]
   D -->|no| F["Stop and request contract/tool update"]
+
+  class A,B,C bot;
+  class D decision;
+  class E ok;
+  class F stop;
 ```
 
 ## Steps

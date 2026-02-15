@@ -17,6 +17,30 @@ Related docs:
 - [Configuration](/docs/reviewer/configuration/)
 - [Security and Trust](/docs/reviewer/security-trust/)
 
+## Runtime Flow
+
+```mermaid
+flowchart LR
+  classDef trigger fill:#BAE6FD,stroke:#0369A1,color:#082F49,stroke-width:2px;
+  classDef engine fill:#DDD6FE,stroke:#5B21B6,color:#2E1065,stroke-width:2px;
+  classDef provider fill:#FDE68A,stroke:#B45309,color:#451A03,stroke-width:2px;
+  classDef output fill:#A7F3D0,stroke:#047857,color:#052E2B,stroke-width:2px;
+
+  A["Pull request event"] --> B["GitHub Actions job"]
+  B --> C["IntelligenceX review pipeline"]
+  C --> D["Context builder<br/>diff selection, chunking, redaction"]
+  D --> E["Provider call<br/>OpenAI or Copilot"]
+  E --> F["Findings parser and formatter"]
+  F --> G["PR summary comment"]
+  F --> H["Inline comments (if enabled)"]
+  C --> I["Thread triage and optional auto-resolve"]
+
+  class A,B trigger;
+  class C,D,F,I engine;
+  class E provider;
+  class G,H output;
+```
+
 ## Trust model (short version)
 - BYO GitHub App is supported for branded bot identity.
 - Secrets are stored in GitHub Actions (you control access).
