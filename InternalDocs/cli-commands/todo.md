@@ -213,7 +213,8 @@ Template path:
 Behavior:
 - Scheduled + manual runs.
 - Generates triage index artifacts.
-- Optional control-issue comment when repo variable `IX_TRIAGE_CONTROL_ISSUE` is configured.
+- Optional control-issue summary comment upsert when repo variable `IX_TRIAGE_CONTROL_ISSUE` is configured.
+- `triage-index-scheduled.yml` upserts a single marker comment with the latest triage index summary on the control issue.
 - `triage-project-sync.yml` upserts a single marker comment with the latest combined triage + vision markdown summary on the control issue.
 - `todo project-bootstrap --create-control-issue` can configure the control issue variable automatically.
 

@@ -229,8 +229,9 @@ A reusable scheduled workflow template is available at:
 - `IntelligenceX.Cli/Templates/triage-index-scheduled.yml`
 - `IntelligenceX.Cli/Templates/triage-project-sync.yml`
 
-It runs `build-triage-index`, uploads artifacts, and can optionally post the markdown summary to a control issue
+It runs `build-triage-index`, uploads artifacts, and can optionally upsert a control-issue summary comment
 when repository variable `IX_TRIAGE_CONTROL_ISSUE` is set.
+For `triage-index-scheduled.yml`, IX upserts a single marker comment (latest only) with the triage index summary.
 For `triage-project-sync.yml`, IX upserts a single marker comment (latest only) that includes both triage and vision markdown summaries.
 `todo project-bootstrap --create-control-issue` can set this variable for you automatically.
 

@@ -67,7 +67,42 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          MARKER="<!-- intelligencex:triage-index-summary -->"
           ISSUE="${{ vars.IX_TRIAGE_CONTROL_ISSUE }}"
-          if [ -f artifacts/triage/ix-triage-index.md ]; then
-            gh issue comment "$ISSUE" --repo "${{ github.repository }}" --body-file artifacts/triage/ix-triage-index.md
+          SUMMARY_FILE="artifacts/triage/ix-triage-index-control-summary.md"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          GENERATED_AT="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+
+          {
+            echo "$MARKER"
+            echo "# IX Triage Index Sweep"
+            echo
+            echo "- Generated: $GENERATED_AT"
+            echo "- Repo: \`${{ github.repository }}\`"
+            echo "- Workflow run: $RUN_URL"
+            echo
+            if [ -f artifacts/triage/ix-triage-index.md ]; then
+              cat artifacts/triage/ix-triage-index.md
+            else
+              echo "_No triage summary file found at artifacts/triage/ix-triage-index.md._"
+            fi
+          } > "$SUMMARY_FILE"
+
+          if [ -f "$SUMMARY_FILE" ]; then
+            EXISTING_ID="$(gh api --paginate \
+              "repos/${{ github.repository }}/issues/$ISSUE/comments" \
+              --jq '.[] | select(.body | contains("<!-- intelligencex:triage-index-summary -->")) | .id' \
+              | tail -n 1)"
+
+            if [ -n "$EXISTING_ID" ]; then
+              gh api \
+                --method PATCH \
+                "repos/${{ github.repository }}/issues/comments/$EXISTING_ID" \
+                -F "body=@$SUMMARY_FILE" > /dev/null
+            else
+              gh api \
+                --method POST \
+                "repos/${{ github.repository }}/issues/$ISSUE/comments" \
+                -F "body=@$SUMMARY_FILE" > /dev/null
+            fi
           fi
