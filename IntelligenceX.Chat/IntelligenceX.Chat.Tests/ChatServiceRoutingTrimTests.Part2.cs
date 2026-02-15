@@ -158,6 +158,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Theory]
     [InlineData("why?")]
     [InlineData("dalej?")]
+    [InlineData("¿dalej")]
+    [InlineData("dalej؟")]
     public void ExpandContinuationUserRequest_DoesNotAutoConfirmOnQuestionLikeFollowUps(string input) {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
@@ -185,6 +187,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("thanks")]
     [InlineData("no")]
     [InlineData("{\"a\": 1}")]
+    [InlineData("<xml/>")]
+    [InlineData("x=y")]
+    [InlineData("`code`")]
     public void ExpandContinuationUserRequest_DoesNotAutoConfirmForBenignShortNonConfirmations(string input) {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """

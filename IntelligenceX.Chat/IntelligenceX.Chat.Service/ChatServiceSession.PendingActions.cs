@@ -10,6 +10,8 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private const string ActionMarker = "ix:action:v1";
     private const int MaxActionParsingChars = 64 * 1024;
+    private static readonly char[] ImplicitConfirmationQuestionPunctuation = new[] { '?', '？', '¿', '؟' };
+    private static readonly char[] ImplicitConfirmationStructuredChars = new[] { '{', '}', '[', ']', '"', '\'', '<', '>', '`', '=' };
     private static readonly HashSet<string> ImplicitSingleActionConfirmPhrases = new(
         new[] {
             // Keep this intentionally small and "high precision": when we have a single pending action, we only treat
@@ -254,8 +256,8 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        // Avoid treating follow-up questions as confirmations ("why?", "dalej?", "为什么？").
-        if (raw.Contains('?', StringComparison.Ordinal) || raw.Contains('？', StringComparison.Ordinal)) {
+        // Avoid treating follow-up questions as confirmations ("why?", "dalej?", "¿por qué?", "لماذا؟").
+        if (raw.IndexOfAny(ImplicitConfirmationQuestionPunctuation) >= 0) {
             return false;
         }
 
@@ -268,7 +270,7 @@ internal sealed partial class ChatServiceSession {
 
         // Reject structured payload fragments. This avoids surprising rewrites when users paste JSON-like snippets.
         // (Most of the time, those should be treated as new context, not as a confirmation.)
-        if (raw.IndexOfAny(new[] { '{', '}', '[', ']', '"', '\'' }) >= 0) {
+        if (raw.IndexOfAny(ImplicitConfirmationStructuredChars) >= 0) {
             return false;
         }
 
@@ -287,6 +289,7 @@ internal sealed partial class ChatServiceSession {
             .Normalize(NormalizationForm.FormKC);
 
         // Trim leading/trailing punctuation broadly (including CJK/fullwidth punctuation) so "ok!" and "ok！" match.
+        // Example punctuation this is expected to handle: '！', '。', '，'.
         var span = normalized.AsSpan();
         var start = 0;
         var end = span.Length;
