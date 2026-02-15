@@ -55,8 +55,10 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
     protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         await ScanConcurrency.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
-            // Directory enumeration is synchronous; offload to avoid blocking the tool runner thread.
-            return await Task.Run(() => InvokeCore(arguments, cancellationToken), cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            // Filesystem enumeration is synchronous; keep it bounded (budgets) and concurrency-limited (semaphore)
+            // rather than consuming extra threadpool threads via Task.Run.
+            return InvokeCore(arguments, cancellationToken);
         } finally {
             ScanConcurrency.Release();
         }

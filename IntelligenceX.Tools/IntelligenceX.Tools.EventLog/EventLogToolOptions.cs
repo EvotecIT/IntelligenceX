@@ -7,6 +7,12 @@ namespace IntelligenceX.Tools.EventLog;
 /// Safety and output limits for event log tools.
 /// </summary>
 public sealed class EventLogToolOptions {
+    // Hard upper bounds: even if the host misconfigures options, keep filesystem scanning conservative.
+    // These are intentionally higher than defaults but low enough to avoid "scan the whole disk" incidents.
+    private const int EvtxFindMaxDepthUpper = 32;
+    private const int EvtxFindMaxDirsScannedUpper = 50_000;
+    private const int EvtxFindMaxFilesScannedUpper = 200_000;
+
     /// <summary>
     /// Allowed root directories for any file-based log operations (for example: EVTX parsing).
     /// When empty, file-based operations are denied.
@@ -53,11 +59,20 @@ public sealed class EventLogToolOptions {
         if (EvtxFindMaxDepth < 0) {
             throw new ArgumentOutOfRangeException(nameof(EvtxFindMaxDepth), "EvtxFindMaxDepth cannot be negative.");
         }
+        if (EvtxFindMaxDepth > EvtxFindMaxDepthUpper) {
+            throw new ArgumentOutOfRangeException(nameof(EvtxFindMaxDepth), $"EvtxFindMaxDepth must be <= {EvtxFindMaxDepthUpper}.");
+        }
         if (EvtxFindMaxDirsScanned <= 0) {
             throw new ArgumentOutOfRangeException(nameof(EvtxFindMaxDirsScanned), "EvtxFindMaxDirsScanned must be positive.");
         }
+        if (EvtxFindMaxDirsScanned > EvtxFindMaxDirsScannedUpper) {
+            throw new ArgumentOutOfRangeException(nameof(EvtxFindMaxDirsScanned), $"EvtxFindMaxDirsScanned must be <= {EvtxFindMaxDirsScannedUpper}.");
+        }
         if (EvtxFindMaxFilesScanned <= 0) {
             throw new ArgumentOutOfRangeException(nameof(EvtxFindMaxFilesScanned), "EvtxFindMaxFilesScanned must be positive.");
+        }
+        if (EvtxFindMaxFilesScanned > EvtxFindMaxFilesScannedUpper) {
+            throw new ArgumentOutOfRangeException(nameof(EvtxFindMaxFilesScanned), $"EvtxFindMaxFilesScanned must be <= {EvtxFindMaxFilesScannedUpper}.");
         }
     }
 }
