@@ -11,6 +11,14 @@ namespace IntelligenceX.Cli.Todo;
 
 internal static class ProjectSyncRunner {
     private const double HighConfidenceIssueMatchLabelThreshold = 0.80;
+    private const double DefaultIssueCommentMinConfidence = 0.55;
+
+    internal sealed record RelatedIssueCandidate(
+        int Number,
+        string Url,
+        double Confidence,
+        string Reason
+    );
 
     internal sealed record ProjectSyncEntry(
         int Number,
@@ -24,7 +32,8 @@ internal static class ProjectSyncRunner {
         string? MatchedIssueUrl,
         double? MatchedIssueConfidence,
         string? VisionFit,
-        double? VisionConfidence
+        double? VisionConfidence,
+        IReadOnlyList<RelatedIssueCandidate>? RelatedIssues = null
     );
 
     private sealed class Options {
@@ -39,6 +48,9 @@ internal static class ProjectSyncRunner {
         public bool EnsureFields { get; set; } = true;
         public bool ApplyLabels { get; set; }
         public bool EnsureLabels { get; set; } = true;
+        public bool ApplyLinkComments { get; set; }
+        public double LinkCommentMinConfidence { get; set; } = DefaultIssueCommentMinConfidence;
+        public int LinkCommentMaxIssues { get; set; } = 3;
         public bool DryRun { get; set; }
         public bool ShowHelp { get; set; }
     }
@@ -126,6 +138,7 @@ internal static class ProjectSyncRunner {
         var updatedFieldValues = 0;
         var skippedMissing = 0;
         var labeled = 0;
+        var commentUpserts = 0;
 
         foreach (var entry in entries) {
             processed++;
@@ -172,6 +185,22 @@ internal static class ProjectSyncRunner {
                     }
                 }
             }
+
+            if (options.ApplyLinkComments && entry.Number > 0 &&
+                entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase)) {
+                var comment = BuildIssueMatchSuggestionComment(
+                    entry,
+                    options.LinkCommentMinConfidence,
+                    options.LinkCommentMaxIssues);
+                if (!string.IsNullOrWhiteSpace(comment)) {
+                    if (options.DryRun) {
+                        commentUpserts++;
+                    } else if (await IssueSuggestionCommentManager.UpsertAsync(options.Repo, entry.Number, comment)
+                                   .ConfigureAwait(false)) {
+                        commentUpserts++;
+                    }
+                }
+            }
         }
 
         Console.WriteLine($"Project sync target: {owner}#{projectNumber} ({project.Url})");
@@ -180,6 +209,9 @@ internal static class ProjectSyncRunner {
         Console.WriteLine($"Field values updated: {(options.DryRun ? 0 : updatedFieldValues)}");
         if (options.ApplyLabels) {
             Console.WriteLine($"Items labeled: {labeled}");
+        }
+        if (options.ApplyLinkComments) {
+            Console.WriteLine($"PR suggestion comments upserted: {commentUpserts}");
         }
         Console.WriteLine($"Skipped unresolved items: {skippedMissing}");
         Console.WriteLine(options.DryRun ? "Dry run complete (no project updates were written)." : "Project sync complete.");
@@ -254,6 +286,21 @@ internal static class ProjectSyncRunner {
                 case "--no-ensure-labels":
                     options.EnsureLabels = false;
                     break;
+                case "--apply-link-comments":
+                    options.ApplyLinkComments = true;
+                    break;
+                case "--link-comment-min-confidence":
+                    if (i + 1 < args.Length &&
+                        double.TryParse(args[++i], NumberStyles.Float, CultureInfo.InvariantCulture, out var minConfidence)) {
+                        options.LinkCommentMinConfidence = Math.Clamp(minConfidence, 0.0, 1.0);
+                    }
+                    break;
+                case "--link-comment-max-issues":
+                    if (i + 1 < args.Length &&
+                        int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out var maxIssues)) {
+                        options.LinkCommentMaxIssues = Math.Max(1, Math.Min(maxIssues, 10));
+                    }
+                    break;
                 case "--dry-run":
                     options.DryRun = true;
                     break;
@@ -288,6 +335,9 @@ internal static class ProjectSyncRunner {
         Console.WriteLine("  --apply-labels           Apply IX labels to PRs/issues from synced signals");
         Console.WriteLine("  --ensure-labels          Ensure IX labels exist before applying labels (default)");
         Console.WriteLine("  --no-ensure-labels       Skip label ensure step");
+        Console.WriteLine("  --apply-link-comments    Upsert one marker comment on PRs with related issue suggestions");
+        Console.WriteLine("  --link-comment-min-confidence <0-1>  Min confidence for suggestion comments (default: 0.55)");
+        Console.WriteLine("  --link-comment-max-issues <n>  Max related issues to include per PR comment (1-10, default: 3)");
         Console.WriteLine("  --dry-run                Compute sync plan without writing project changes");
         Console.WriteLine();
         Console.WriteLine("Required token scopes for sync: `read:project` and `project`.");
@@ -382,6 +432,7 @@ internal static class ProjectSyncRunner {
                 var tags = ReadStringArray(item, "tags");
                 var matchedIssueUrl = ReadNullableString(item, "matchedIssueUrl");
                 var matchedIssueConfidence = ReadNullableDouble(item, "matchedIssueConfidence");
+                var relatedIssues = ParseRelatedIssueCandidates(item);
 
                 string? canonicalUrl = null;
                 if (!string.IsNullOrWhiteSpace(duplicateClusterId) &&
@@ -402,7 +453,8 @@ internal static class ProjectSyncRunner {
                     MatchedIssueUrl: matchedIssueUrl,
                     MatchedIssueConfidence: matchedIssueConfidence,
                     VisionFit: null,
-                    VisionConfidence: null
+                    VisionConfidence: null,
+                    RelatedIssues: relatedIssues
                 );
             }
         }
@@ -439,7 +491,8 @@ internal static class ProjectSyncRunner {
                         MatchedIssueUrl: null,
                         MatchedIssueConfidence: null,
                         VisionFit: classification,
-                        VisionConfidence: confidence
+                        VisionConfidence: confidence,
+                        RelatedIssues: Array.Empty<RelatedIssueCandidate>()
                     );
                 }
             }
@@ -606,6 +659,39 @@ internal static class ProjectSyncRunner {
             .ToList();
     }
 
+    internal static string? BuildIssueMatchSuggestionComment(ProjectSyncEntry entry, double minConfidence, int maxIssues) {
+        if (!entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase) || entry.Number <= 0) {
+            return null;
+        }
+
+        var threshold = Math.Clamp(minConfidence, 0.0, 1.0);
+        var limit = Math.Max(1, Math.Min(maxIssues, 10));
+        var related = (entry.RelatedIssues ?? Array.Empty<RelatedIssueCandidate>())
+            .Where(candidate => candidate.Confidence >= threshold && !string.IsNullOrWhiteSpace(candidate.Url))
+            .OrderByDescending(candidate => candidate.Confidence)
+            .ThenBy(candidate => candidate.Number)
+            .Take(limit)
+            .ToList();
+        if (related.Count == 0) {
+            return null;
+        }
+
+        var lines = new List<string> {
+            IssueSuggestionCommentManager.CommentMarker,
+            "### IntelligenceX Related Issue Suggestions",
+            string.Empty,
+            $"Automated match candidates (confidence >= {threshold.ToString("0.00", CultureInfo.InvariantCulture)}). Please verify before linking/closing.",
+            string.Empty
+        };
+
+        foreach (var candidate in related) {
+            var reason = NormalizeCommentReason(candidate.Reason);
+            lines.Add($"- #{candidate.Number} ({candidate.Url}) - confidence {candidate.Confidence.ToString("0.00", CultureInfo.InvariantCulture)} - {reason}");
+        }
+
+        return string.Join(Environment.NewLine, lines).TrimEnd() + Environment.NewLine;
+    }
+
     private static string? MapVisionLabel(string? visionFit) {
         return visionFit?.ToLowerInvariant() switch {
             "aligned" => "ix/vision:aligned",
@@ -624,6 +710,50 @@ internal static class ProjectSyncRunner {
             }
         }
         return false;
+    }
+
+    private static IReadOnlyList<RelatedIssueCandidate> ParseRelatedIssueCandidates(JsonElement item) {
+        if (!TryGetProperty(item, "relatedIssues", out var relatedProp) || relatedProp.ValueKind != JsonValueKind.Array) {
+            return Array.Empty<RelatedIssueCandidate>();
+        }
+
+        var results = new List<RelatedIssueCandidate>();
+        foreach (var related in relatedProp.EnumerateArray()) {
+            var number = ReadInt(related, "number");
+            var url = ReadString(related, "url");
+            var confidence = ReadNullableDouble(related, "confidence");
+            var reason = ReadNullableString(related, "reason") ?? string.Empty;
+            if (number <= 0 || string.IsNullOrWhiteSpace(url) || !confidence.HasValue) {
+                continue;
+            }
+
+            results.Add(new RelatedIssueCandidate(
+                Number: number,
+                Url: url,
+                Confidence: Math.Round(Math.Clamp(confidence.Value, 0.0, 1.0), 4, MidpointRounding.AwayFromZero),
+                Reason: reason
+            ));
+        }
+
+        return results
+            .OrderByDescending(candidate => candidate.Confidence)
+            .ThenBy(candidate => candidate.Number)
+            .Take(10)
+            .ToList();
+    }
+
+    private static string NormalizeCommentReason(string reason) {
+        if (string.IsNullOrWhiteSpace(reason)) {
+            return "token similarity";
+        }
+
+        var compact = string.Join(" ", reason
+            .Split(new[] { '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries))
+            .Trim();
+        if (compact.Length <= 140) {
+            return compact;
+        }
+        return compact[..137] + "...";
     }
 
     private static bool TryGetProperty(JsonElement obj, string name, out JsonElement value) {
