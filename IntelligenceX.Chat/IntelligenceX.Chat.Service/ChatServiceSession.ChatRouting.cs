@@ -108,6 +108,7 @@ internal sealed partial class ChatServiceSession {
         await TryWriteStatusAsync(writer, request.RequestId, threadId, status: "thinking").ConfigureAwait(false);
         TurnInfo turn = await ChatWithToolSchemaRecoveryAsync(client, ChatInput.FromText(request.Text), options, turnToken).ConfigureAwait(false);
         var executionNudgeUsed = false;
+        var toolReceiptCorrectionUsed = false;
 
         for (var round = 0; round < Math.Max(1, maxRounds); round++) {
             var extracted = ToolCallParser.Extract(turn);
@@ -132,6 +133,28 @@ internal sealed partial class ChatServiceSession {
                         .ConfigureAwait(false);
                     options.NewThread = false;
                     turn = await ChatWithToolSchemaRecoveryAsync(client, ChatInput.FromText(nudgePrompt), options, turnToken).ConfigureAwait(false);
+                    continue;
+                }
+
+                if (!toolReceiptCorrectionUsed
+                    && ShouldAttemptToolReceiptCorrection(
+                        userRequest: routedUserRequest,
+                        assistantDraft: text,
+                        tools: toolDefs,
+                        priorToolCalls: toolCalls.Count,
+                        priorToolOutputs: toolOutputs.Count,
+                        assistantDraftToolCalls: extracted.Count)) {
+                    toolReceiptCorrectionUsed = true;
+                    var correctionPrompt = BuildToolReceiptCorrectionPrompt(routedUserRequest, text);
+                    await TryWriteStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            status: "thinking",
+                            message: "Re-planning to correct an inconsistent tool receipt in this turn.")
+                        .ConfigureAwait(false);
+                    options.NewThread = false;
+                    turn = await ChatWithToolSchemaRecoveryAsync(client, ChatInput.FromText(correctionPrompt), options, turnToken).ConfigureAwait(false);
                     continue;
                 }
 
