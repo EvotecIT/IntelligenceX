@@ -74,11 +74,17 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
         var maxEventsCap = Options.MaxResults <= 0
             ? MaxViewTop
             : Math.Min(Options.MaxResults, MaxViewTop);
+        if (maxEventsCap < 1) {
+            maxEventsCap = DefaultMaxEvents;
+        }
         var maxEvents = ToolArgs.GetPositiveCappedInt32OrDefault(
             arguments: arguments,
             key: "max_events",
             defaultValue: DefaultMaxEvents,
             maxInclusive: maxEventsCap);
+        if (maxEvents < 1) {
+            maxEvents = 1;
+        }
 
         // Default off: formatting messages can be slow/fragile for remote sessions and is not always needed for triage.
         var includeMessage = arguments?.GetBoolean("include_message") ?? false;
