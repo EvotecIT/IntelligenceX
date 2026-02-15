@@ -133,12 +133,16 @@ internal sealed partial class ReviewRunner {
         bool readBodyOnError,
         CancellationToken cancellationToken) {
         var current = endpoint;
+        // RFC 9110: after a 303 See Other we must switch to GET and keep it for the remainder of the redirect chain.
         HttpMethod? redirectMethodOverride = null;
         for (var redirect = 0; redirect <= OpenAiCompatibleMaxRedirects; redirect++) {
             using var request = createRequest(current);
             if (redirectMethodOverride is not null) {
                 request.Method = redirectMethodOverride;
-                redirectMethodOverride = null;
+                if (request.Method == HttpMethod.Get || request.Method == HttpMethod.Head) {
+                    // Ensure we never replay a request body after 303.
+                    request.Content = null;
+                }
             }
             if (createContent is not null && request.Method != HttpMethod.Get && request.Method != HttpMethod.Head) {
                 request.Content = createContent();
@@ -186,8 +190,6 @@ internal sealed partial class ReviewRunner {
                 Console.Error.WriteLine(
                     $"OpenAI-compatible redirect {(int)response.StatusCode}: {current} -> {next}");
             }
-            // RFC 9110: 303 See Other should switch to GET and drop the request body.
-            // For API gateways that use 303 for POST endpoints, this matches standard redirect semantics.
             if (response.StatusCode == HttpStatusCode.SeeOther) {
                 redirectMethodOverride = HttpMethod.Get;
             }

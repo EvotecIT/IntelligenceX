@@ -399,7 +399,7 @@ internal static partial class Program {
     }
 
 
-    private static void TestReviewOpenAiCompatibleRedirect303DoesNotForceLaterRedirectsToGet() {
+    private static void TestReviewOpenAiCompatibleRedirect303KeepsGetForRedirectChain() {
         using var server = new OpenAiCompatibleTestServer((method, path, body, _) => {
             if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
                 path.Equals("/v1/chat/completions", StringComparison.OrdinalIgnoreCase)) {
@@ -413,12 +413,17 @@ internal static partial class Program {
                     ["Location"] = "/v1/chat/completions-final"
                 });
             }
-            if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+            if (method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
                 path.Equals("/v1/chat/completions-final", StringComparison.OrdinalIgnoreCase)) {
-                if (string.IsNullOrWhiteSpace(body)) {
-                    return (400, "Bad Request", "{\"error\":\"expected POST body\"}", null);
+                // After a 303, the entire redirect chain must stay GET and never replay the original POST body.
+                if (!string.IsNullOrEmpty(body)) {
+                    return (400, "Bad Request", "{\"error\":\"expected empty body\"}", null);
                 }
                 return (200, "OK", "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}", null);
+            }
+            if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/chat/completions-final", StringComparison.OrdinalIgnoreCase)) {
+                return (400, "Bad Request", "{\"error\":\"unexpected POST after 303\"}", null);
             }
             return (400, "Bad Request", "{\"error\":\"unexpected request\"}", null);
         });
@@ -442,7 +447,7 @@ internal static partial class Program {
         var result = runner.RunAsync("hi", onPartial: null, updateInterval: null, CancellationToken.None)
             .GetAwaiter()
             .GetResult();
-        AssertEqual("ok", result, "openai-compatible 303 only affects immediate redirect hop");
+        AssertEqual("ok", result, "openai-compatible 303 keeps GET for entire redirect chain");
     }
     private static void TestReviewConfigLoaderReadsOpenAiAccountRotationCamelCase() {
         var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
