@@ -20,7 +20,7 @@ on:
 
 permissions:
   contents: read
-  issues: read
+  issues: write
   pull-requests: read
   repository-projects: write
 
@@ -88,3 +88,40 @@ jobs:
         with:
           name: ix-triage-project-sync
           path: artifacts/triage
+
+      - name: Comment summary on control issue (optional)
+        if: ${{ vars.IX_TRIAGE_CONTROL_ISSUE != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ISSUE="${{ vars.IX_TRIAGE_CONTROL_ISSUE }}"
+          SUMMARY_FILE="artifacts/triage/ix-triage-project-sync-summary.md"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          GENERATED_AT="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+
+          {
+            echo "# IX Triage Project Sync"
+            echo
+            echo "- Generated: $GENERATED_AT"
+            echo "- Repo: \`${{ github.repository }}\`"
+            echo "- Workflow run: $RUN_URL"
+            echo
+
+            if [ -f artifacts/triage/ix-triage-index.md ]; then
+              echo "## Triage Index"
+              echo
+              cat artifacts/triage/ix-triage-index.md
+              echo
+            fi
+
+            if [ -f artifacts/triage/ix-vision-check.md ]; then
+              echo "## Vision Check"
+              echo
+              cat artifacts/triage/ix-vision-check.md
+              echo
+            fi
+          } > "$SUMMARY_FILE"
+
+          if [ -f "$SUMMARY_FILE" ]; then
+            gh issue comment "$ISSUE" --repo "${{ github.repository }}" --body-file "$SUMMARY_FILE"
+          fi
