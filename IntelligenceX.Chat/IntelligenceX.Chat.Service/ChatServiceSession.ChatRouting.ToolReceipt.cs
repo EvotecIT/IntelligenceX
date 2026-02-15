@@ -135,32 +135,34 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool LooksLikeToolResultContext(string text, int toolNameIndex, int toolNameLength) {
-        var left = Math.Max(0, toolNameIndex - 80);
-        var rightExclusive = Math.Min(text.Length, toolNameIndex + toolNameLength + 120);
-        var windowLength = rightExclusive - left;
-        if (windowLength <= 0) {
+        var afterToolName = toolNameIndex + toolNameLength;
+        if (afterToolName < 0 || afterToolName > text.Length) {
             return false;
         }
 
-        // Minimal claim cues (avoid broad language heuristics).
-        if (text.IndexOf("returned", left, windowLength, StringComparison.OrdinalIgnoreCase) >= 0) {
-            return true;
+        // Prefer high-precision binding signals close to the tool name to avoid false positives in normal prose.
+        // Example of intended triggers:
+        // - "ad_search returned 2 users"
+        // - "eventlog_live_query: { ... }"
+        // - "I ran ad_search and got ..."
+        var afterWindowEnd = Math.Min(text.Length, afterToolName + 96);
+        var afterWindowLength = afterWindowEnd - afterToolName;
+        if (afterWindowLength > 0) {
+            if (text.IndexOf("returned", afterToolName, afterWindowLength, StringComparison.OrdinalIgnoreCase) >= 0) {
+                return true;
+            }
+
+            if (text.IndexOf("output", afterToolName, afterWindowLength, StringComparison.OrdinalIgnoreCase) >= 0) {
+                return true;
+            }
         }
 
-        if (text.IndexOf("output", left, windowLength, StringComparison.OrdinalIgnoreCase) >= 0) {
-            return true;
-        }
-
-        if (text.IndexOf("I ran", left, windowLength, StringComparison.OrdinalIgnoreCase) >= 0
-            || text.IndexOf("we ran", left, windowLength, StringComparison.OrdinalIgnoreCase) >= 0
-            || text.IndexOf("I called", left, windowLength, StringComparison.OrdinalIgnoreCase) >= 0
-            || text.IndexOf("we called", left, windowLength, StringComparison.OrdinalIgnoreCase) >= 0) {
+        if (LooksLikeToolCallClaimPrefix(text, toolNameIndex)) {
             return true;
         }
 
         // "tool_name: { ... }" or "tool_name: [ ... ]" is a strong result binding signal.
-        var after = toolNameIndex + toolNameLength;
-        var scan = after;
+        var scan = afterToolName;
         var consumedWhitespace = 0;
         while (scan < text.Length && consumedWhitespace < 3 && char.IsWhiteSpace(text[scan])) {
             scan++;
@@ -183,6 +185,47 @@ internal sealed partial class ChatServiceSession {
         }
 
         return false;
+    }
+
+    private static bool LooksLikeToolCallClaimPrefix(string text, int toolNameIndex) {
+        // Look for "I ran <tool>" / "we called <tool>" style claims immediately preceding the tool name.
+        // This is intentionally tight: it avoids triggering on generic prose that happens to mention a tool name
+        // near words like "output" or "returned".
+        var left = Math.Max(0, toolNameIndex - 64);
+        var prefix = text.AsSpan(left, toolNameIndex - left);
+        if (prefix.Length == 0) {
+            return false;
+        }
+
+        return EndsWithClaimPrefix(prefix, "i ran")
+               || EndsWithClaimPrefix(prefix, "we ran")
+               || EndsWithClaimPrefix(prefix, "i called")
+               || EndsWithClaimPrefix(prefix, "we called");
+    }
+
+    private static bool EndsWithClaimPrefix(ReadOnlySpan<char> prefix, string phrase) {
+        // Accept punctuation/whitespace between the phrase and the tool name.
+        var normalized = prefix.TrimEnd();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        // Scan backwards over separators.
+        var end = normalized.Length;
+        while (end > 0) {
+            var ch = normalized[end - 1];
+            if (char.IsWhiteSpace(ch) || char.IsPunctuation(ch)) {
+                end--;
+                continue;
+            }
+            break;
+        }
+        if (end <= 0) {
+            return false;
+        }
+
+        normalized = normalized.Slice(0, end);
+        return normalized.EndsWith(phrase.AsSpan(), StringComparison.OrdinalIgnoreCase);
     }
 
     private static string BuildToolReceiptCorrectionPrompt(string userRequest, string assistantDraft) {
