@@ -13,7 +13,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             null,
             new object?[] { userRequest, assistantDraft, true, 0, false });
 
-        Assert.True(Assert.IsType<bool>(result));
+        var value = Assert.IsType<bool>(result);
+        Assert.True(value);
     }
 
     [Fact]
@@ -25,7 +26,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             null,
             new object?[] { userRequest, assistantDraft, true, 0, false });
 
-        Assert.True(Assert.IsType<bool>(result));
+        var value = Assert.IsType<bool>(result);
+        Assert.True(value);
     }
 
     [Fact]
@@ -37,7 +39,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             null,
             new object?[] { userRequest, assistantDraft, true, 0, false });
 
-        Assert.False((bool)result!);
+        var value = Assert.IsType<bool>(result);
+        Assert.False(value);
     }
 
 }
