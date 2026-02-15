@@ -188,8 +188,12 @@ public class EventLogEvtxFindToolTests {
         // "C:\allowed\root2" must not be treated as under "C:\allowed\root".
         Assert.False(EventLogEvtxFindTool.IsUnderRoot(@"C:\allowed\root2\file.evtx", root, cmp));
 
+        // After canonicalization, ".." traversal must not allow escaping the root.
+        Assert.False(EventLogEvtxFindTool.IsUnderRoot(Path.GetFullPath(@"C:\allowed\root\..\root2\file.evtx"), root, cmp));
+
         // Normalize Windows extended-length prefixes so containment checks don't vary by representation.
         if (OperatingSystem.IsWindows()) {
+            Assert.True(EventLogEvtxFindTool.IsUnderRoot(@"C:/allowed/root/file.evtx", root, cmp));
             Assert.True(EventLogEvtxFindTool.IsUnderRoot(@"\\?\C:\allowed\root\file.evtx", root, cmp));
             Assert.True(EventLogEvtxFindTool.IsUnderRoot(@"C:\allowed\root\file.evtx", @"\\?\C:\allowed\root\", cmp));
             Assert.False(EventLogEvtxFindTool.IsUnderRoot(@"\\?\C:\allowed\root2\file.evtx", @"C:\allowed\root\", cmp));

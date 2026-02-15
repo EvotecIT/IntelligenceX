@@ -332,12 +332,35 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
 
         candidateFullPath = NormalizePathForComparison(Path.TrimEndingDirectorySeparator(candidateFullPath));
         rootFullPath = NormalizePathForComparison(Path.TrimEndingDirectorySeparator(rootFullPath));
-        if (string.Equals(candidateFullPath, rootFullPath, comparison)) {
-            return true;
-        }
 
-        var prefix = rootFullPath + Path.DirectorySeparatorChar;
-        return candidateFullPath.StartsWith(prefix, comparison);
+        // Prefer relative-path based boundary checks over raw prefix checks.
+        // This avoids "root vs root2" prefix bugs and handles separator differences more robustly.
+        try {
+            var rel = Path.GetRelativePath(rootFullPath, candidateFullPath);
+            if (string.Equals(rel, ".", comparison)) {
+                return true;
+            }
+
+            // If the relative path escapes the root, it will start with ".." or resolve to an absolute path.
+            if (string.Equals(rel, "..", comparison)) {
+                return false;
+            }
+
+            var parentPrefix1 = ".." + Path.DirectorySeparatorChar;
+            var parentPrefix2 = ".." + Path.AltDirectorySeparatorChar;
+            if (rel.StartsWith(parentPrefix1, comparison) || rel.StartsWith(parentPrefix2, comparison)) {
+                return false;
+            }
+
+            if (Path.IsPathRooted(rel)) {
+                return false;
+            }
+
+            return true;
+        } catch (Exception ex) when (
+            ex is ArgumentException or NotSupportedException or PathTooLongException) {
+            return false;
+        }
     }
 
     private static string NormalizePathForComparison(string path) {
