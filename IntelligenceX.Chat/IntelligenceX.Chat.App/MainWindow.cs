@@ -727,7 +727,7 @@ public sealed partial class MainWindow : Window {
         _appState.ThemePreset = _themePreset;
         _localProviderTransport = NormalizeLocalProviderTransport(_appState.LocalProviderTransport);
         _localProviderBaseUrl = NormalizeLocalProviderBaseUrl(_appState.LocalProviderBaseUrl, _localProviderTransport);
-        _localProviderModel = NormalizeLocalProviderModel(_appState.LocalProviderModel);
+        _localProviderModel = NormalizeLocalProviderModel(_appState.LocalProviderModel, _localProviderTransport);
         _appState.LocalProviderTransport = _localProviderTransport;
         _appState.LocalProviderBaseUrl = _localProviderBaseUrl;
         _appState.LocalProviderModel = _localProviderModel;

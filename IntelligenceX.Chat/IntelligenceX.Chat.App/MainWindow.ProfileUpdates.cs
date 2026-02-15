@@ -376,9 +376,17 @@ public sealed partial class MainWindow : Window {
         return normalized;
     }
 
-    private static string NormalizeLocalProviderModel(string? value) {
+    private static string NormalizeLocalProviderModel(string? value, string transport) {
         var normalized = (value ?? string.Empty).Trim();
-        return normalized.Length == 0 ? DefaultLocalModel : normalized;
+        if (normalized.Length > 0) {
+            return normalized;
+        }
+
+        if (string.Equals(transport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)) {
+            return string.Empty;
+        }
+
+        return DefaultLocalModel;
     }
 
     private static bool? ParseAutonomyParallelMode(string? raw) {
