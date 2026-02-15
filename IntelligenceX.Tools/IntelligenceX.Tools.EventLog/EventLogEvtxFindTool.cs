@@ -89,7 +89,7 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
         var scannedDirs = 0;
         var scannedFiles = 0;
         var hitScanBudget = false;
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var comparison = StringComparison.OrdinalIgnoreCase;
 
         foreach (var root in Options.AllowedRoots.Where(static x => !string.IsNullOrWhiteSpace(x))) {
             cancellationToken.ThrowIfCancellationRequested();
@@ -147,7 +147,7 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
 
                     scannedFiles++;
 
-                    if (!IsMatch(file, queryTokens, logToken)) {
+                    if (!IsMatch(file, queryTokens, logToken, comparison)) {
                         continue;
                     }
 
@@ -339,18 +339,18 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
         return path;
     }
 
-    private static bool IsMatch(string path, IReadOnlyList<string> queryTokens, string? logHint) {
-        var haystack = path ?? string.Empty;
+    private static bool IsMatch(string path, IReadOnlyList<string> queryTokens, string? logHint, StringComparison comparison) {
+        var haystack = path;
         if (queryTokens.Count > 0) {
             for (var i = 0; i < queryTokens.Count; i++) {
-                if (haystack.IndexOf(queryTokens[i], StringComparison.OrdinalIgnoreCase) < 0) {
+                if (haystack.IndexOf(queryTokens[i], comparison) < 0) {
                     return false;
                 }
             }
         }
 
         if (!string.IsNullOrWhiteSpace(logHint)) {
-            if (haystack.IndexOf(logHint!, StringComparison.OrdinalIgnoreCase) < 0) {
+            if (haystack.IndexOf(logHint!, comparison) < 0) {
                 return false;
             }
         }
