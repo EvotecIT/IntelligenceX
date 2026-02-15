@@ -443,11 +443,42 @@
     return normalized.indexOf("127.0.0.1:1234") >= 0 || normalized.indexOf("localhost:1234") >= 0;
   }
 
+  function looksCloudHostedModelName(value) {
+    var normalized = normalizeModelText(value).toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+
+    return normalized.indexOf("gpt-") === 0
+      || normalized === "gpt5"
+      || normalized.indexOf("chatgpt") === 0
+      || normalized.indexOf("o1") === 0
+      || normalized.indexOf("o3") === 0
+      || normalized.indexOf("o4") === 0;
+  }
+
+  function countCloudHostedModelNames(models) {
+    if (!Array.isArray(models) || models.length === 0) {
+      return 0;
+    }
+
+    var count = 0;
+    for (var i = 0; i < models.length; i++) {
+      var item = models[i] || {};
+      var modelName = normalizeModelText(item.model || item.Model || item.id || item.Id);
+      if (looksCloudHostedModelName(modelName)) {
+        count++;
+      }
+    }
+    return count;
+  }
+
   function renderLocalModelOptions() {
     var local = state.options.localModel || {};
     var transport = normalizeLocalTransport(local.transport);
     var isCompatible = transport === "compatible-http";
     var baseUrl = String(local.baseUrl || "");
+    var modelsEndpoint = normalizeModelText(local.modelsEndpoint || "");
     var model = normalizeModelText(local.model || "");
     var models = Array.isArray(local.models) ? local.models : [];
     var favorites = toStringArray(local.favoriteModels);
@@ -455,6 +486,7 @@
     var warning = normalizeModelText(local.warning || "");
     var isStale = local.isStale === true;
     var profileSaved = local.profileSaved === true;
+    var profileApplyMode = normalizeProfileApplyMode(state.options.profileApplyMode || "session");
     var runtimeDetection = local.runtimeDetection || {};
     var runtimeDetectionHasRun = runtimeDetection.hasRun === true;
     var lmStudioAvailable = runtimeDetection.lmStudioAvailable === true;
@@ -653,18 +685,32 @@
           parts.push(String(models.length) + " local models cached");
         }
       } else {
+        if (modelsEndpoint) {
+          parts.push("model source: " + modelsEndpoint);
+        }
         if (runtimeDetectedName) {
-          parts.push("detected runtime: " + runtimeDetectedName);
+          parts.push("runtime probe: " + runtimeDetectedName + " reachable");
         } else if (runtimeDetectionHasRun && runtimeDetectionWarning) {
           parts.push(runtimeDetectionWarning);
         }
         if (models.length > 0) {
-          parts.push(String(models.length) + " models discovered");
+          parts.push(String(models.length) + " models returned");
+          var cloudHostedCount = countCloudHostedModelNames(models);
+          if (cloudHostedCount > 0 && cloudHostedCount >= Math.ceil(models.length * 0.6)) {
+            parts.push("catalog looks cloud-hosted; load a local model in LM Studio to see local IDs");
+          }
         } else {
           parts.push("No discovered models yet");
+          if (lmStudioConnected) {
+            parts.push("Load a model in LM Studio, then click Refresh Models");
+          }
         }
       }
-      parts.push(profileSaved ? "service profile saved" : "service profile not saved yet");
+      if (profileApplyMode === "session" || !profileSaved) {
+        parts.push("scope: current session only");
+      } else {
+        parts.push("scope: saved as default profile");
+      }
       if (isStale) {
         parts.push("showing cached results");
       }

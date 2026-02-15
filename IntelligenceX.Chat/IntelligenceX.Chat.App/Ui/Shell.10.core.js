@@ -78,6 +78,7 @@
       localModel: {
         transport: "native",
         baseUrl: "",
+        modelsEndpoint: "",
         model: "gpt-5.3-codex",
         models: [],
         favoriteModels: [],

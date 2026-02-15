@@ -249,6 +249,9 @@ public sealed partial class MainWindow : Window {
             localModel = new {
                 transport = _localProviderTransport,
                 baseUrl = _localProviderBaseUrl ?? string.Empty,
+                modelsEndpoint = string.Equals(_localProviderTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
+                    ? BuildModelsProbeUrl(_localProviderBaseUrl ?? string.Empty)
+                    : string.Empty,
                 model = _localProviderModel,
                 models = _availableModels,
                 favoriteModels = _favoriteModels,
