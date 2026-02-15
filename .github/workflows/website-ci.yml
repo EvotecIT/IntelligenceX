@@ -1,0 +1,48 @@
+name: Website Build (PR)
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: website-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  website-build:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Checkout PSPublishModule
+        uses: actions/checkout@v4
+        with:
+          repository: EvotecIT/PSPublishModule
+          ref: main
+          path: PSPublishModule
+
+      - name: Build PowerForge.Web.Cli
+        run: dotnet build PSPublishModule/PowerForge.Web.Cli/PowerForge.Web.Cli.csproj -c Release
+
+      - name: Build website
+        working-directory: Website
+        run: dotnet ../PSPublishModule/PowerForge.Web.Cli/bin/Release/net10.0/PowerForge.Web.Cli.dll pipeline --config pipeline.json --mode ci
+
+      - name: Verify website output
+        run: |
+          test -f Website/_site/.nojekyll
+          test -f Website/_site/index.html
+          test -f Website/_site/docs/index.html
+          test -f Website/_site/404.html
+          grep -Eqi "<link[^>]+rel=[^>]*stylesheet" Website/_site/404.html
+
