@@ -112,9 +112,6 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                 continue;
             }
 
-            rootFull = Path.TrimEndingDirectorySeparator(rootFull);
-            var rootPrefix = rootFull + Path.DirectorySeparatorChar;
-
             var queue = new Queue<(string Dir, int Depth)>();
             queue.Enqueue((rootFull, 0));
 
@@ -158,9 +155,6 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                         }
 
                         var fileFull = NormalizePathForComparison(info.FullName);
-                        if (!fileFull.StartsWith(rootPrefix, comparison)) {
-                            continue;
-                        }
 
                         var candidate = new EvtxFindFile(
                             Path: fileFull,
@@ -203,10 +197,6 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                         subFull = NormalizePathForComparison(Path.GetFullPath(subDir));
                     } catch (Exception ex) when (
                         ex is ArgumentException or NotSupportedException or PathTooLongException) {
-                        continue;
-                    }
-
-                    if (!subFull.StartsWith(rootPrefix, comparison)) {
                         continue;
                     }
 
