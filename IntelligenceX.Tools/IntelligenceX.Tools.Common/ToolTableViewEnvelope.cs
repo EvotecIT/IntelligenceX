@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using IntelligenceX.Json;
+using IntelligenceX.Tools;
 
 namespace IntelligenceX.Tools.Common;
 
@@ -70,7 +71,21 @@ public static class ToolTableViewEnvelope {
         int? scanned = null,
         Action<JsonObject>? metaMutate = null) {
         if (!ToolTableView.TryParse(arguments, columnKeys, maxTop: maxTop, out var view, out var viewError)) {
-            response = ToolResponse.Error("invalid_argument", viewError ?? "Invalid tabular view arguments.");
+            var error = string.IsNullOrWhiteSpace(viewError) ? "Invalid tabular view arguments." : viewError!;
+            var hints = new List<string> {
+                "Use only listed columns for projection.",
+                "Use sort_direction as 'asc' or 'desc'.",
+                "If projection keeps failing, retry without columns/sort_by/sort_direction/top."
+            };
+            var meta = new JsonObject()
+                .Add("available_columns", new JsonArray().AddRange(columnKeys))
+                .Add("projection_arguments", new JsonArray().Add("columns").Add("sort_by").Add("sort_direction").Add("top"));
+            response = ToolOutputEnvelope.Error(
+                errorCode: "invalid_argument",
+                error: error,
+                hints: hints,
+                isTransient: false,
+                meta: meta);
             return false;
         }
 

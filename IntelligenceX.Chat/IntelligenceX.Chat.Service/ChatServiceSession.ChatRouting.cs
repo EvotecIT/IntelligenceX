@@ -26,7 +26,13 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
 
-    private sealed record ChatTurnRunResult(ChatResultMessage Result, TurnUsage? Usage, int ToolCallsCount, int ToolRounds);
+    private sealed record ChatTurnRunResult(
+        ChatResultMessage Result,
+        TurnUsage? Usage,
+        int ToolCallsCount,
+        int ToolRounds,
+        int ProjectionFallbackCount,
+        IReadOnlyList<ToolErrorMetricDto> ToolErrors);
 
     private static ChatOptions CopyChatOptions(ChatOptions options, bool? newThreadOverride = null) {
         if (options is null) {
@@ -45,6 +51,7 @@ internal sealed partial class ChatServiceSession {
         var toolCalls = new List<ToolCallDto>();
         var toolOutputs = new List<ToolOutputDto>();
         var toolRounds = 0;
+        var projectionFallbackCount = 0;
 
         IReadOnlyList<ToolDefinition> toolDefs = _registry.GetDefinitions();
         if (request.Options?.DisabledTools is { Length: > 0 } disabledTools && toolDefs.Count > 0) {
@@ -204,7 +211,9 @@ internal sealed partial class ChatServiceSession {
                     Result: result,
                     Usage: turn.Usage,
                     ToolCallsCount: toolCalls.Count,
-                    ToolRounds: toolRounds);
+                    ToolRounds: toolRounds,
+                    ProjectionFallbackCount: projectionFallbackCount,
+                    ToolErrors: BuildToolErrorMetrics(toolCalls, toolOutputs));
             }
 
             toolRounds++;
@@ -223,6 +232,10 @@ internal sealed partial class ChatServiceSession {
                 .ConfigureAwait(false);
             UpdateToolRoutingStats(extracted, executed);
             foreach (var output in executed) {
+                if (WasProjectionFallbackApplied(output)) {
+                    projectionFallbackCount++;
+                }
+
                 toolOutputs.Add(new ToolOutputDto {
                     CallId = output.CallId,
                     Output = output.Output,
@@ -247,6 +260,76 @@ internal sealed partial class ChatServiceSession {
         }
 
         throw new InvalidOperationException($"Tool runner exceeded max rounds ({maxRounds}).");
+    }
+
+    private static IReadOnlyList<ToolErrorMetricDto> BuildToolErrorMetrics(
+        IReadOnlyList<ToolCallDto> calls,
+        IReadOnlyList<ToolOutputDto> outputs) {
+        if (calls.Count == 0 || outputs.Count == 0) {
+            return Array.Empty<ToolErrorMetricDto>();
+        }
+
+        var nameByCallId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < calls.Count; i++) {
+            var call = calls[i];
+            var callId = (call.CallId ?? string.Empty).Trim();
+            var toolName = (call.Name ?? string.Empty).Trim();
+            if (callId.Length == 0 || toolName.Length == 0) {
+                continue;
+            }
+
+            nameByCallId[callId] = toolName;
+        }
+
+        if (nameByCallId.Count == 0) {
+            return Array.Empty<ToolErrorMetricDto>();
+        }
+
+        var counts = new Dictionary<(string ToolName, string ErrorCode), int>();
+        for (var i = 0; i < outputs.Count; i++) {
+            var output = outputs[i];
+            var callId = (output.CallId ?? string.Empty).Trim();
+            if (callId.Length == 0 || !nameByCallId.TryGetValue(callId, out var toolName)) {
+                continue;
+            }
+
+            var errorCode = NormalizeToolErrorCode(output);
+            if (errorCode.Length == 0) {
+                continue;
+            }
+
+            var key = (toolName, errorCode);
+            counts.TryGetValue(key, out var count);
+            counts[key] = count + 1;
+        }
+
+        if (counts.Count == 0) {
+            return Array.Empty<ToolErrorMetricDto>();
+        }
+
+        return counts
+            .Select(pair => new ToolErrorMetricDto {
+                ToolName = pair.Key.ToolName,
+                ErrorCode = pair.Key.ErrorCode,
+                Count = pair.Value
+            })
+            .OrderByDescending(metric => metric.Count)
+            .ThenBy(metric => metric.ToolName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(metric => metric.ErrorCode, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string NormalizeToolErrorCode(ToolOutputDto output) {
+        var errorCode = (output.ErrorCode ?? string.Empty).Trim();
+        if (errorCode.Length > 0) {
+            return errorCode;
+        }
+
+        if (output.Ok is false || !string.IsNullOrWhiteSpace(output.Error)) {
+            return "tool_error";
+        }
+
+        return string.Empty;
     }
 
     private static IReadOnlyList<ToolDefinition> SanitizeToolDefinitions(IReadOnlyList<ToolDefinition> definitions) {
@@ -589,7 +672,104 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
+        var schemaArguments = ExtractToolSchemaPropertyNames(definition, maxCount: 12, out var hasTableViewProjection);
+        for (var i = 0; i < schemaArguments.Length; i++) {
+            sb.Append(' ').Append(schemaArguments[i]);
+        }
+
+        var requiredArguments = ExtractToolSchemaRequiredNames(definition, maxCount: 8);
+        if (requiredArguments.Length > 0) {
+            sb.Append(" required");
+            for (var i = 0; i < requiredArguments.Length; i++) {
+                sb.Append(' ').Append(requiredArguments[i]);
+            }
+        }
+
+        if (hasTableViewProjection) {
+            sb.Append(" table view projection columns sort_by sort_direction top");
+        }
+
         return sb.ToString();
+    }
+
+    private static string[] ExtractToolSchemaPropertyNames(ToolDefinition definition, int maxCount, out bool hasTableViewProjection) {
+        hasTableViewProjection = false;
+        if (definition?.Parameters is null || maxCount <= 0) {
+            return Array.Empty<string>();
+        }
+
+        var properties = definition.Parameters.GetObject("properties");
+        if (properties is null || properties.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        hasTableViewProjection = HasTableViewProjectionArguments(properties);
+
+        var names = new List<string>(Math.Min(maxCount, properties.Count));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in properties) {
+            var name = NormalizeToolSchemaToken(kv.Key);
+            if (name.Length == 0 || !seen.Add(name)) {
+                continue;
+            }
+
+            names.Add(name);
+            if (names.Count >= maxCount) {
+                break;
+            }
+        }
+
+        return names.Count == 0 ? Array.Empty<string>() : names.ToArray();
+    }
+
+    private static string[] ExtractToolSchemaRequiredNames(ToolDefinition definition, int maxCount) {
+        if (definition?.Parameters is null || maxCount <= 0) {
+            return Array.Empty<string>();
+        }
+
+        var required = definition.Parameters.GetArray("required");
+        if (required is null || required.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var names = new List<string>(Math.Min(maxCount, required.Count));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < required.Count && names.Count < maxCount; i++) {
+            var value = NormalizeToolSchemaToken(required[i]?.AsString());
+            if (value.Length == 0 || !seen.Add(value)) {
+                continue;
+            }
+
+            names.Add(value);
+        }
+
+        return names.Count == 0 ? Array.Empty<string>() : names.ToArray();
+    }
+
+    private static bool HasTableViewProjectionArguments(JsonObject properties) {
+        return properties.TryGetValue("columns", out _)
+               || properties.TryGetValue("sort_by", out _)
+               || properties.TryGetValue("sort_direction", out _)
+               || properties.TryGetValue("top", out _);
+    }
+
+    private static string NormalizeToolSchemaToken(string? token) {
+        var value = (token ?? string.Empty).Trim();
+        if (value.Length == 0) {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder(value.Length);
+        for (var i = 0; i < value.Length; i++) {
+            var c = value[i];
+            if (char.IsLetterOrDigit(c) || c is '_' or '-') {
+                sb.Append(c);
+            } else if (char.IsWhiteSpace(c)) {
+                sb.Append('_');
+            }
+        }
+
+        return sb.ToString().Trim('_');
     }
 
 }

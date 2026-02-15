@@ -444,6 +444,8 @@ internal sealed partial class ChatServiceSession {
             TokenUsageDto? usageDto = null;
             var toolCallsCount = 0;
             var toolRounds = 0;
+            var projectionFallbackCount = 0;
+            IReadOnlyList<ToolErrorMetricDto>? toolErrors = null;
             var outcome = "ok";
             string? outcomeCode = null;
             var threadIdForDelta = run.ThreadId ?? string.Empty;
@@ -461,6 +463,8 @@ internal sealed partial class ChatServiceSession {
                 usageDto = MapUsage(result.Usage);
                 toolCallsCount = result.ToolCallsCount;
                 toolRounds = result.ToolRounds;
+                projectionFallbackCount = result.ProjectionFallbackCount;
+                toolErrors = result.ToolErrors;
                 await WriteAsync(writer, result.Result, CancellationToken.None).ConfigureAwait(false);
 
                 await TryRecordRecentModelAsync(usedModel, CancellationToken.None).ConfigureAwait(false);
@@ -518,6 +522,8 @@ internal sealed partial class ChatServiceSession {
                         Usage = usageDto,
                         ToolCallsCount = toolCallsCount,
                         ToolRounds = toolRounds,
+                        ProjectionFallbackCount = projectionFallbackCount,
+                        ToolErrors = toolErrors is { Count: > 0 } ? toolErrors : null,
                         Outcome = outcome,
                         ErrorCode = outcomeCode
                     }, CancellationToken.None).ConfigureAwait(false);

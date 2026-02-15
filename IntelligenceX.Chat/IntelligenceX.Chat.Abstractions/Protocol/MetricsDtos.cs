@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace IntelligenceX.Chat.Abstractions.Protocol;
 
@@ -44,6 +45,14 @@ public sealed record ChatMetricsMessage : ChatServiceMessage {
     /// Number of tool-call rounds executed in the turn.
     /// </summary>
     public int ToolRounds { get; init; }
+    /// <summary>
+    /// Number of tool calls where view-projection arguments were auto-reset and retried.
+    /// </summary>
+    public int ProjectionFallbackCount { get; init; }
+    /// <summary>
+    /// Optional per-tool error-code counts for this turn.
+    /// </summary>
+    public IReadOnlyList<ToolErrorMetricDto>? ToolErrors { get; init; }
 
     /// <summary>
     /// Outcome identifier (ok, canceled, error).
@@ -79,4 +88,22 @@ public sealed record TokenUsageDto {
     /// Reasoning tokens when the provider exposes them.
     /// </summary>
     public long? ReasoningTokens { get; init; }
+}
+
+/// <summary>
+/// Per-tool error taxonomy entry for a single turn.
+/// </summary>
+public sealed record ToolErrorMetricDto {
+    /// <summary>
+    /// Tool name.
+    /// </summary>
+    public required string ToolName { get; init; }
+    /// <summary>
+    /// Stable error code observed for the tool output.
+    /// </summary>
+    public required string ErrorCode { get; init; }
+    /// <summary>
+    /// Number of occurrences for this tool/error-code pair in the turn.
+    /// </summary>
+    public int Count { get; init; }
 }

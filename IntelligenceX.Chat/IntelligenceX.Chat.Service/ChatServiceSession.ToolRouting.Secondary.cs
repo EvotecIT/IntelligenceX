@@ -201,9 +201,20 @@ internal sealed partial class ChatServiceSession {
             if (description.Length > 220) {
                 description = description[..220].TrimEnd();
             }
+            var schemaArguments = ExtractToolSchemaPropertyNames(definition, maxCount: 8, out var hasTableViewProjection);
+            var requiredArguments = ExtractToolSchemaRequiredNames(definition, maxCount: 4);
             sb.Append(i + 1).Append(". ").Append(name);
             if (description.Length > 0) {
                 sb.Append(" :: ").Append(description);
+            }
+            if (requiredArguments.Length > 0) {
+                sb.Append(" | required: ").Append(string.Join(", ", requiredArguments));
+            }
+            if (schemaArguments.Length > 0) {
+                sb.Append(" | args: ").Append(string.Join(", ", schemaArguments));
+            }
+            if (hasTableViewProjection) {
+                sb.Append(" | traits: table_view_projection");
             }
             sb.AppendLine();
         }
@@ -459,4 +470,3 @@ internal sealed partial class ChatServiceSession {
         bool RetryOnTransport);
 
 }
-
