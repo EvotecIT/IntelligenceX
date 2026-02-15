@@ -19,6 +19,7 @@ intelligencex todo build-triage-index --repo EvotecIT/IntelligenceX
 intelligencex todo vision-check --repo EvotecIT/IntelligenceX --vision VISION.md
 intelligencex todo project-init --repo EvotecIT/IntelligenceX --owner EvotecIT
 intelligencex todo project-sync --owner EvotecIT --project 123
+intelligencex todo project-bootstrap --repo EvotecIT/IntelligenceX --owner EvotecIT
 intelligencex analyze run --config .intelligencex/reviewer.json --out artifacts
 intelligencex analyze export-config --out artifacts/analysis-config
 intelligencex analyze validate-catalog

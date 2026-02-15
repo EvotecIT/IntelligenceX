@@ -68,6 +68,7 @@ internal static partial class Program {
         Console.WriteLine("  todo vision-check        Compare PR backlog against VISION.md and flag likely out-of-scope work");
         Console.WriteLine("  todo project-init        Create or initialize a GitHub Project with IX triage/vision fields");
         Console.WriteLine("  todo project-sync        Sync triage/vision artifacts into GitHub Project items and fields");
+        Console.WriteLine("  todo project-bootstrap   Bootstrap project + workflow + VISION.md for GitHub-native maintainer triage");
         Console.WriteLine();
         Console.WriteLine("Release commands:");
         Console.WriteLine("  release notes    Generate release notes from git tags/commits");
