@@ -11,6 +11,9 @@ public enum OpenAITransportKind {
     /// <summary>
     /// App-server JSON-RPC transport.
     /// </summary>
-    AppServer
+    AppServer,
+    /// <summary>
+    /// OpenAI-compatible HTTP transport (for example local providers such as Ollama/LM Studio).
+    /// </summary>
+    CompatibleHttp
 }
-
