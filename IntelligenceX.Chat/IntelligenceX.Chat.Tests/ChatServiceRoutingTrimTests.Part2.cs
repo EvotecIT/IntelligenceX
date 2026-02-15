@@ -116,6 +116,58 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
         var expanded = Assert.IsType<string>(result);
 
+        Assert.Contains("ix_action_selection", expanded, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotAutoConfirmWhenMultiplePendingActionsExist() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Pick one:
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+
+            [Action]
+            ix:action:v1
+            id: act_002
+            title: Second
+            request: Do second thing.
+            reply: /act act_002
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var input = "ok";
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Theory]
+    [InlineData("why?")]
+    [InlineData("dalej?")]
+    public void ExpandContinuationUserRequest_DoesNotAutoConfirmOnQuestionLikeFollowUps(string input) {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Pick one:
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
         Assert.Equal(input, expanded);
     }
 

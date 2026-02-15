@@ -207,7 +207,34 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
+        // If there's only one pending action, treat a compact acknowledgement-like follow-up as confirmation.
+        // This is language-agnostic and avoids hardcoding English phrases ("go", "run now", etc.).
+        if (actions.Count == 1 && LooksLikeImplicitPendingActionConfirmation(normalized)) {
+            match = actions[0];
+            return true;
+        }
+
         return false;
+    }
+
+    private static bool LooksLikeImplicitPendingActionConfirmation(string userText) {
+        var normalized = (userText ?? string.Empty).Trim();
+        if (normalized.Length == 0 || normalized.Length > 28) {
+            return false;
+        }
+
+        // Avoid treating follow-up questions as confirmations ("why?", "dalej?").
+        if (normalized.Contains('?', StringComparison.Ordinal)) {
+            return false;
+        }
+
+        // Avoid accidentally consuming explicit commands or paths.
+        if (normalized.StartsWith("/", StringComparison.Ordinal) || normalized.Contains('\\', StringComparison.Ordinal)) {
+            return false;
+        }
+
+        var tokenCount = CountLetterDigitTokens(normalized, maxTokens: 8);
+        return tokenCount is >= 1 and <= 3;
     }
 
     private static string ReadFirstToken(string text) {
