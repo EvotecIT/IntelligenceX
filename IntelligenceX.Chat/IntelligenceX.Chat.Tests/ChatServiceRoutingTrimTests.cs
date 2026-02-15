@@ -632,6 +632,33 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExpandContinuationUserRequest_DoesNotResolveOrdinalWhenMessageIsNotASelection() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+
+            [Action]
+            ix:action:v1
+            id: act_002
+            title: Second
+            request: Do second thing.
+            reply: /act act_002
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-002", assistantDraft });
+        var input = "2 servers are down";
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-002", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_DoesNotTreatIdentityAsIdField() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """

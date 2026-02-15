@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 
 namespace IntelligenceX.Chat.Service;
 
@@ -60,6 +61,13 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        // Only apply selection rewriting for explicit /act <id>, or when the message looks like a short follow-up.
+        // This prevents rewriting normal user messages that happen to start with digits (e.g., "2 servers are down").
+        var isExplicitAct = normalized.StartsWith("/act", StringComparison.OrdinalIgnoreCase);
+        if (!isExplicitAct && !LooksLikeContinuationFollowUp(normalized)) {
+            return false;
+        }
+
         PendingAction[]? actions;
         long ticks;
         lock (_toolRoutingContextLock) {
@@ -108,9 +116,14 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        // Return the selected request directly so we don't introduce special markers/headers that could
-        // be abused as a privileged instruction surface downstream.
-        resolvedRequest = request.Trim();
+        // Hand off the selection as structured data (so downstream stages treat it as data, not a privileged block).
+        resolvedRequest = JsonSerializer.Serialize(new {
+            ix_action_selection = new {
+                id = selected.Value.Id.Trim(),
+                title = selected.Value.Title.Trim(),
+                request = CollapseWhitespace(request).Trim()
+            }
+        });
         return true;
     }
 
@@ -132,6 +145,10 @@ internal sealed partial class ChatServiceSession {
             if (id.Length == 0) {
                 return false;
             }
+            var trailing = rest[id.Length..].Trim();
+            if (trailing.Length != 0) {
+                return false;
+            }
 
             for (var i = 0; i < actions.Count; i++) {
                 if (string.Equals(actions[i].Id, id, StringComparison.OrdinalIgnoreCase)) {
@@ -144,17 +161,9 @@ internal sealed partial class ChatServiceSession {
         }
 
         // "1" / "2" selects by ordinal.
-        if (TryParseLeadingInt(normalized, out var idx) && idx > 0 && idx <= actions.Count) {
+        if (TryParseOrdinalSelection(normalized, out var idx) && idx > 0 && idx <= actions.Count) {
             match = actions[idx - 1];
             return true;
-        }
-
-        // Exact id match.
-        for (var i = 0; i < actions.Count; i++) {
-            if (string.Equals(actions[i].Id, normalized, StringComparison.OrdinalIgnoreCase)) {
-                match = actions[i];
-                return true;
-            }
         }
 
         return false;
@@ -172,7 +181,7 @@ internal sealed partial class ChatServiceSession {
         return end <= 0 ? string.Empty : value.Substring(0, end).Trim();
     }
 
-    private static bool TryParseLeadingInt(string text, out int value) {
+    private static bool TryParseOrdinalSelection(string text, out int value) {
         value = 0;
         var normalized = (text ?? string.Empty).Trim();
         if (normalized.Length == 0) {
@@ -188,7 +197,17 @@ internal sealed partial class ChatServiceSession {
         }
 
         var digits = normalized.Substring(0, i);
-        return int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out value);
+        if (!int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out value)) {
+            return false;
+        }
+
+        var rest = normalized[i..].Trim();
+        if (rest.Length == 0) {
+            return true;
+        }
+
+        // Allow simple punctuation variants like "2." or "2)".
+        return rest is "." or ")" or "]" or ":";
     }
 
     private static List<PendingAction> ExtractPendingActions(string assistantText) {
@@ -310,11 +329,15 @@ internal sealed partial class ChatServiceSession {
         if (normalizedReply.StartsWith("/act", StringComparison.OrdinalIgnoreCase)) {
             var rest = normalizedReply[4..].Trim();
             var token = ReadFirstToken(rest);
-            return token.Length > 0 && string.Equals(token, normalizedId, StringComparison.OrdinalIgnoreCase);
+            if (token.Length == 0 || !string.Equals(token, normalizedId, StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+
+            var trailing = rest[token.Length..].Trim();
+            return trailing.Length == 0;
         }
 
-        // Fallback: accept replies that include the id token (useful if the prompt format evolves).
-        return normalizedReply.IndexOf(normalizedId, StringComparison.OrdinalIgnoreCase) >= 0;
+        return false;
     }
 
     private static bool TryReadField(string line, string name, out string value) {
