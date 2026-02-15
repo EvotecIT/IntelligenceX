@@ -582,7 +582,23 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var request = NormalizeCompactText(userText);
+        var raw = (userText ?? string.Empty).Trim();
+        if (raw.Length == 0 || raw.Length > 200) {
+            return false;
+        }
+
+        // Guardrails must run on raw input (pre-normalization) to avoid normalization widening matches.
+        if (raw.IndexOfAny(PendingActionConfirmationQuestionPunctuation) >= 0) {
+            return false;
+        }
+        if (raw.IndexOfAny(PendingActionConfirmationDisqualifierPunctuation) >= 0) {
+            return false;
+        }
+        if (LooksLikeStructuredPendingActionConfirmationInput(raw)) {
+            return false;
+        }
+
+        var request = NormalizeCompactText(raw);
         if (request.Length == 0 || request.Length > 120) {
             return false;
         }
