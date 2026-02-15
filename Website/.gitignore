@@ -1,5 +1,6 @@
 _site/
 _temp/
+data/xrefmap.json
 
 # PowerForge audit artifacts (keep baselines committed, ignore generated outputs)
 .powerforge/audit-summary*

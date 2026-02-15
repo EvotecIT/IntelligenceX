@@ -1,0 +1,22 @@
+<!-- FAQ Preview -->
+<section class="faq">
+    <div class="section-header">
+        <span class="section-label">FAQ</span>
+        <h2>Frequently Asked Questions</h2>
+    </div>
+
+    <div class="faq-list">
+        <div class="pf-faq">
+            {{ for section in data.faq }}
+            <div class="pf-faq-section">
+                {{ for item in section.items }}
+                <div class="pf-faq-item" id="faq-{{ item.id }}">
+                    <h3>{{ item.question }}</h3>
+                    <p>{{ item.answer }}</p>
+                </div>
+                {{ end }}
+            </div>
+            {{ end }}
+        </div>
+    </div>
+</section>

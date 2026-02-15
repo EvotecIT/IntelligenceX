@@ -1,0 +1,18 @@
+<!-- How It Works -->
+<section class="how-it-works">
+    <div class="section-header">
+        <span class="section-label">How It Works</span>
+        <h2>Three Steps to AI Reviews</h2>
+        <p>From zero to automated code reviews in under a minute.</p>
+    </div>
+
+    <div class="steps-grid">
+        {{ for item in data.how_it_works }}
+        <div class="step-card">
+            <div class="step-number">{{ item.step }}</div>
+            <h3>{{ item.title }}</h3>
+            <p>{{ item.description }}</p>
+        </div>
+        {{ end }}
+    </div>
+</section>

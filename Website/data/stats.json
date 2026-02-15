@@ -1,0 +1,7 @@
+[
+  { "value": "6", "label": "Product Areas", "icon": "package" },
+  { "value": "8", "label": "Tool Packs", "icon": "wrench" },
+  { "value": "5", "label": "Target Frameworks", "icon": "layers" },
+  { "value": "3", "label": "AI Providers", "icon": "cpu" },
+  { "value": "MIT", "label": "License", "icon": "shield" }
+]

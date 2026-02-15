@@ -1,0 +1,19 @@
+<!-- Code Examples -->
+<section class="code-examples">
+    <div class="section-header">
+        <span class="section-label">See It In Action</span>
+        <h2>Multiple Ways to Use IntelligenceX</h2>
+        <p>From GitHub Actions to C# and PowerShell.</p>
+    </div>
+
+    <div class="code-tabs">
+        {{ for item in data.code_examples.tabs }}
+        <button class="code-tab{{ if for.first }} active{{ end }}" data-tab="{{ item.id }}">{{ item.label }}</button>
+        {{ end }}
+    </div>
+    {{ for item in data.code_examples.tabs }}
+    <div class="code-panel{{ if for.first }} active{{ end }}" data-panel="{{ item.id }}">
+<pre><code class="language-{{ item.language }}">{{ item.code }}</code></pre>
+    </div>
+    {{ end }}
+</section>

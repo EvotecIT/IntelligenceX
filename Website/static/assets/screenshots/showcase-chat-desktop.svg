@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 740" fill="none">
+  <!-- Background -->
+  <rect width="1200" height="740" rx="12" fill="#0A0E1A"/>
+  <!-- Title bar -->
+  <rect width="1200" height="40" rx="12" fill="#141824"/>
+  <rect y="28" width="1200" height="12" fill="#141824"/>
+  <!-- Traffic lights -->
+  <circle cx="20" cy="20" r="6" fill="#FF5F57"/>
+  <circle cx="40" cy="20" r="6" fill="#FEBC2E"/>
+  <circle cx="60" cy="20" r="6" fill="#28C840"/>
+  <!-- Title -->
+  <text x="600" y="24" text-anchor="middle" fill="#8892B0" font-family="monospace" font-size="13">IX Chat - Desktop</text>
+
+  <!-- Sidebar -->
+  <rect x="0" y="40" width="260" height="700" fill="#141824"/>
+  <rect x="0" y="40" width="260" height="40" fill="#1E2435"/>
+  <text x="20" y="65" fill="#E2E8F0" font-family="monospace" font-size="12" font-weight="bold">Conversations</text>
+  <rect x="200" y="50" width="44" height="22" rx="4" fill="#00D9FF" opacity="0.15"/>
+  <text x="222" y="65" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="10">New</text>
+
+  <!-- Conversation list -->
+  <rect x="8" y="88" width="244" height="40" rx="6" fill="#00D9FF" opacity="0.08" stroke="#00D9FF" stroke-width="1" stroke-opacity="0.3"/>
+  <text x="20" y="106" fill="#E2E8F0" font-family="monospace" font-size="11">AD user offboarding</text>
+  <text x="20" y="120" fill="#8892B0" font-family="monospace" font-size="9">2 min ago - 4 tool calls</text>
+
+  <rect x="8" y="136" width="244" height="40" rx="6" fill="transparent"/>
+  <text x="20" y="154" fill="#8892B0" font-family="monospace" font-size="11">Exchange mailbox audit</text>
+  <text x="20" y="168" fill="#8892B0" font-family="monospace" font-size="9">1 hour ago - 2 tool calls</text>
+
+  <rect x="8" y="184" width="244" height="40" rx="6" fill="transparent"/>
+  <text x="20" y="202" fill="#8892B0" font-family="monospace" font-size="11">Server health report</text>
+  <text x="20" y="216" fill="#8892B0" font-family="monospace" font-size="9">Yesterday - 6 tool calls</text>
+
+  <rect x="8" y="232" width="244" height="40" rx="6" fill="transparent"/>
+  <text x="20" y="250" fill="#8892B0" font-family="monospace" font-size="11">New hire provisioning</text>
+  <text x="20" y="264" fill="#8892B0" font-family="monospace" font-size="9">2 days ago - 8 tool calls</text>
+
+  <!-- Main chat area -->
+  <!-- User message -->
+  <rect x="580" y="56" width="596" height="48" rx="8" fill="#1E2435"/>
+  <text x="596" y="76" fill="#E2E8F0" font-family="monospace" font-size="12">Offboard user j.smith - disable account, remove groups,</text>
+  <text x="596" y="94" fill="#E2E8F0" font-family="monospace" font-size="12">forward email, and notify their manager</text>
+
+  <!-- Bot response with tool calls -->
+  <circle cx="284" cy="130" r="14" fill="#00D9FF" opacity="0.2"/>
+  <text x="284" y="134" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="11" font-weight="bold">IX</text>
+  <rect x="304" y="116" width="872" height="44" rx="8" fill="#1E2435" stroke="#334155" stroke-width="1"/>
+  <text x="320" y="136" fill="#E2E8F0" font-family="monospace" font-size="12">I'll process the offboarding for j.smith. Let me execute the steps:</text>
+  <text x="320" y="152" fill="#8892B0" font-family="monospace" font-size="11">Running 4 tools sequentially...</text>
+
+  <!-- Tool call 1 - completed -->
+  <rect x="304" y="170" width="872" height="64" rx="6" fill="#0A0E1A" stroke="#334155" stroke-width="1"/>
+  <rect x="304" y="170" width="4" height="64" rx="2" fill="#10B981"/>
+  <text x="320" y="190" fill="#10B981" font-family="monospace" font-size="11">&#x2713; Tool: Disable-ADAccount</text>
+  <text x="600" y="190" fill="#8892B0" font-family="monospace" font-size="10">completed in 1.2s</text>
+  <rect x="320" y="198" width="840" height="28" rx="4" fill="#141824"/>
+  <text x="332" y="216" fill="#8892B0" font-family="monospace" font-size="10">Disabled account j.smith | Moved to OU=Disabled,DC=corp,DC=local | Set description: "Offboarded 2026-02-15"</text>
+
+  <!-- Tool call 2 - completed -->
+  <rect x="304" y="244" width="872" height="78" rx="6" fill="#0A0E1A" stroke="#334155" stroke-width="1"/>
+  <rect x="304" y="244" width="4" height="78" rx="2" fill="#10B981"/>
+  <text x="320" y="264" fill="#10B981" font-family="monospace" font-size="11">&#x2713; Tool: Remove-ADGroupMembership</text>
+  <text x="600" y="264" fill="#8892B0" font-family="monospace" font-size="10">completed in 0.8s</text>
+  <rect x="320" y="272" width="840" height="42" rx="4" fill="#141824"/>
+  <text x="332" y="290" fill="#8892B0" font-family="monospace" font-size="10">Removed from 6 groups: Marketing-Team, VPN-Users, SharePoint-Marketing,</text>
+  <text x="332" y="306" fill="#8892B0" font-family="monospace" font-size="10">Office365-E3, Teams-AllUsers, Printers-Floor2</text>
+
+  <!-- Tool call 3 - completed -->
+  <rect x="304" y="332" width="872" height="64" rx="6" fill="#0A0E1A" stroke="#334155" stroke-width="1"/>
+  <rect x="304" y="332" width="4" height="64" rx="2" fill="#10B981"/>
+  <text x="320" y="352" fill="#10B981" font-family="monospace" font-size="11">&#x2713; Tool: Set-MailboxForwarding</text>
+  <text x="600" y="352" fill="#8892B0" font-family="monospace" font-size="10">completed in 2.1s</text>
+  <rect x="320" y="360" width="840" height="28" rx="4" fill="#141824"/>
+  <text x="332" y="378" fill="#8892B0" font-family="monospace" font-size="10">Forwarding j.smith@corp.com &#x2192; m.jones@corp.com (manager) | Auto-reply enabled</text>
+
+  <!-- Tool call 4 - completed -->
+  <rect x="304" y="406" width="872" height="64" rx="6" fill="#0A0E1A" stroke="#334155" stroke-width="1"/>
+  <rect x="304" y="406" width="4" height="64" rx="2" fill="#10B981"/>
+  <text x="320" y="426" fill="#10B981" font-family="monospace" font-size="11">&#x2713; Tool: Send-Email</text>
+  <text x="600" y="426" fill="#8892B0" font-family="monospace" font-size="10">completed in 0.5s</text>
+  <rect x="320" y="434" width="840" height="28" rx="4" fill="#141824"/>
+  <text x="332" y="452" fill="#8892B0" font-family="monospace" font-size="10">Sent notification to m.jones@corp.com: "Offboarding complete for j.smith"</text>
+
+  <!-- Summary -->
+  <circle cx="284" cy="500" r="14" fill="#00D9FF" opacity="0.2"/>
+  <text x="284" y="504" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="11" font-weight="bold">IX</text>
+  <rect x="304" y="484" width="872" height="120" rx="8" fill="#1E2435" stroke="#334155" stroke-width="1"/>
+  <text x="320" y="506" fill="#E2E8F0" font-family="monospace" font-size="12" font-weight="bold">Offboarding complete for j.smith:</text>
+  <text x="320" y="528" fill="#10B981" font-family="monospace" font-size="11">&#x2713; Account disabled and moved to Disabled OU</text>
+  <text x="320" y="546" fill="#10B981" font-family="monospace" font-size="11">&#x2713; Removed from 6 security/distribution groups</text>
+  <text x="320" y="564" fill="#10B981" font-family="monospace" font-size="11">&#x2713; Email forwarded to manager (m.jones@corp.com)</text>
+  <text x="320" y="582" fill="#10B981" font-family="monospace" font-size="11">&#x2713; Manager notified via email</text>
+  <text x="320" y="598" fill="#8892B0" font-family="monospace" font-size="10">4 tools executed | Total time: 4.6s</text>
+
+  <!-- Approval request -->
+  <rect x="304" y="614" width="872" height="48" rx="8" fill="#1E2435" stroke="#FEBC2E" stroke-width="1" stroke-opacity="0.5"/>
+  <text x="320" y="636" fill="#FEBC2E" font-family="monospace" font-size="11">&#x26A0; Action log saved to audit trail. Would you like to generate a formal offboarding report?</text>
+  <rect x="320" y="644" width="60" height="12" rx="3" fill="#00D9FF" opacity="0.15"/>
+  <text x="350" y="653" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="8">Yes</text>
+  <rect x="388" y="644" width="60" height="12" rx="3" fill="#334155"/>
+  <text x="418" y="653" text-anchor="middle" fill="#8892B0" font-family="monospace" font-size="8">No</text>
+
+  <!-- Input area -->
+  <rect x="268" y="680" width="912" height="44" rx="8" fill="#1E2435" stroke="#334155" stroke-width="1"/>
+  <text x="284" y="706" fill="#8892B0" font-family="monospace" font-size="12">Type a message...</text>
+  <rect x="1108" y="692" width="56" height="24" rx="4" fill="#00D9FF" opacity="0.15"/>
+  <text x="1136" y="708" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="10">Send</text>
+</svg>

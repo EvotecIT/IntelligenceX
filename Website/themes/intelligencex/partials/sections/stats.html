@@ -1,0 +1,11 @@
+<!-- Stats Section -->
+<section class="stats">
+    <div class="stats-grid">
+        {{ for item in data.stats }}
+        <div class="stat-item">
+            <span class="stat-value">{{ item.value }}</span>
+            <span class="stat-label">{{ item.label }}</span>
+        </div>
+        {{ end }}
+    </div>
+</section>

@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 740" fill="none">
+  <!-- Background -->
+  <rect width="1200" height="740" rx="12" fill="#0A0E1A"/>
+  <!-- Title bar -->
+  <rect width="1200" height="40" rx="12" fill="#141824"/>
+  <rect y="28" width="1200" height="12" fill="#141824"/>
+  <!-- Traffic lights -->
+  <circle cx="20" cy="20" r="6" fill="#FF5F57"/>
+  <circle cx="40" cy="20" r="6" fill="#FEBC2E"/>
+  <circle cx="60" cy="20" r="6" fill="#28C840"/>
+  <!-- Title -->
+  <text x="600" y="24" text-anchor="middle" fill="#8892B0" font-family="monospace" font-size="13">IX Chat - Active Directory Tool</text>
+
+  <!-- User request -->
+  <rect x="440" y="56" width="740" height="30" rx="8" fill="#1E2435"/>
+  <text x="456" y="76" fill="#E2E8F0" font-family="monospace" font-size="12">Show me all users in the Engineering OU with their group memberships</text>
+
+  <!-- Bot thinking -->
+  <circle cx="36" cy="114" r="14" fill="#00D9FF" opacity="0.2"/>
+  <text x="36" y="118" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="11" font-weight="bold">IX</text>
+  <rect x="56" y="100" width="1120" height="48" rx="8" fill="#1E2435" stroke="#334155" stroke-width="1"/>
+  <text x="72" y="120" fill="#E2E8F0" font-family="monospace" font-size="12">Querying Active Directory for users in OU=Engineering,DC=corp,DC=local</text>
+  <text x="72" y="140" fill="#8892B0" font-family="monospace" font-size="11">Tool: Search-ADUser | Filter: OU=Engineering | Properties: MemberOf, Title, Department, LastLogon</text>
+
+  <!-- Results header -->
+  <circle cx="36" cy="178" r="14" fill="#00D9FF" opacity="0.2"/>
+  <text x="36" y="182" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="11" font-weight="bold">IX</text>
+  <rect x="56" y="162" width="1120" height="30" rx="8" fill="#1E2435" stroke="#334155" stroke-width="1"/>
+  <text x="72" y="182" fill="#E2E8F0" font-family="monospace" font-size="12">Found </text>
+  <text x="118" y="182" fill="#00D9FF" font-family="monospace" font-size="12" font-weight="bold">8 users</text>
+  <text x="180" y="182" fill="#E2E8F0" font-family="monospace" font-size="12"> in Engineering OU:</text>
+
+  <!-- Results table -->
+  <rect x="56" y="200" width="1120" height="440" rx="8" fill="#1E2435" stroke="#334155" stroke-width="1"/>
+
+  <!-- Table header -->
+  <rect x="56" y="200" width="1120" height="32" rx="8" fill="#141824"/>
+  <rect x="56" y="220" width="1120" height="12" fill="#141824"/>
+  <text x="72" y="220" fill="#00D9FF" font-family="monospace" font-size="11" font-weight="bold">Name</text>
+  <text x="240" y="220" fill="#00D9FF" font-family="monospace" font-size="11" font-weight="bold">Username</text>
+  <text x="380" y="220" fill="#00D9FF" font-family="monospace" font-size="11" font-weight="bold">Title</text>
+  <text x="580" y="220" fill="#00D9FF" font-family="monospace" font-size="11" font-weight="bold">Groups</text>
+  <text x="920" y="220" fill="#00D9FF" font-family="monospace" font-size="11" font-weight="bold">Last Logon</text>
+  <text x="1080" y="220" fill="#00D9FF" font-family="monospace" font-size="11" font-weight="bold">Status</text>
+
+  <!-- Row 1 -->
+  <rect x="56" y="236" width="1120" height="44" fill="transparent"/>
+  <text x="72" y="258" fill="#E2E8F0" font-family="monospace" font-size="11">Alice Chen</text>
+  <text x="240" y="258" fill="#E2E8F0" font-family="monospace" font-size="11">a.chen</text>
+  <text x="380" y="258" fill="#E2E8F0" font-family="monospace" font-size="11">Sr. Developer</text>
+  <text x="580" y="258" fill="#8892B0" font-family="monospace" font-size="10">Eng-Team, VPN-Users,</text>
+  <text x="580" y="272" fill="#8892B0" font-family="monospace" font-size="10">GitHub-Write, O365-E5</text>
+  <text x="920" y="258" fill="#E2E8F0" font-family="monospace" font-size="11">2026-02-15</text>
+  <rect x="1080" y="248" width="56" height="18" rx="4" fill="#10B981" opacity="0.15"/>
+  <text x="1108" y="260" text-anchor="middle" fill="#10B981" font-family="monospace" font-size="9">Active</text>
+  <rect x="56" y="280" width="1120" height="1" fill="#334155" opacity="0.4"/>
+
+  <!-- Row 2 -->
+  <text x="72" y="302" fill="#E2E8F0" font-family="monospace" font-size="11">Bob Martinez</text>
+  <text x="240" y="302" fill="#E2E8F0" font-family="monospace" font-size="11">b.martinez</text>
+  <text x="380" y="302" fill="#E2E8F0" font-family="monospace" font-size="11">Tech Lead</text>
+  <text x="580" y="302" fill="#8892B0" font-family="monospace" font-size="10">Eng-Team, Eng-Leads,</text>
+  <text x="580" y="316" fill="#8892B0" font-family="monospace" font-size="10">VPN-Users, GitHub-Admin</text>
+  <text x="920" y="302" fill="#E2E8F0" font-family="monospace" font-size="11">2026-02-15</text>
+  <rect x="1080" y="292" width="56" height="18" rx="4" fill="#10B981" opacity="0.15"/>
+  <text x="1108" y="304" text-anchor="middle" fill="#10B981" font-family="monospace" font-size="9">Active</text>
+  <rect x="56" y="324" width="1120" height="1" fill="#334155" opacity="0.4"/>
+
+  <!-- Row 3 -->
+  <text x="72" y="346" fill="#E2E8F0" font-family="monospace" font-size="11">Carol Johnson</text>
+  <text x="240" y="346" fill="#E2E8F0" font-family="monospace" font-size="11">c.johnson</text>
+  <text x="380" y="346" fill="#E2E8F0" font-family="monospace" font-size="11">Developer</text>
+  <text x="580" y="346" fill="#8892B0" font-family="monospace" font-size="10">Eng-Team, VPN-Users,</text>
+  <text x="580" y="360" fill="#8892B0" font-family="monospace" font-size="10">GitHub-Write</text>
+  <text x="920" y="346" fill="#E2E8F0" font-family="monospace" font-size="11">2026-02-14</text>
+  <rect x="1080" y="336" width="56" height="18" rx="4" fill="#10B981" opacity="0.15"/>
+  <text x="1108" y="348" text-anchor="middle" fill="#10B981" font-family="monospace" font-size="9">Active</text>
+  <rect x="56" y="368" width="1120" height="1" fill="#334155" opacity="0.4"/>
+
+  <!-- Row 4 -->
+  <text x="72" y="390" fill="#E2E8F0" font-family="monospace" font-size="11">Dave Kim</text>
+  <text x="240" y="390" fill="#E2E8F0" font-family="monospace" font-size="11">d.kim</text>
+  <text x="380" y="390" fill="#E2E8F0" font-family="monospace" font-size="11">DevOps Engineer</text>
+  <text x="580" y="390" fill="#8892B0" font-family="monospace" font-size="10">Eng-Team, DevOps,</text>
+  <text x="580" y="404" fill="#8892B0" font-family="monospace" font-size="10">VPN-Users, Azure-Admin</text>
+  <text x="920" y="390" fill="#E2E8F0" font-family="monospace" font-size="11">2026-02-15</text>
+  <rect x="1080" y="380" width="56" height="18" rx="4" fill="#10B981" opacity="0.15"/>
+  <text x="1108" y="392" text-anchor="middle" fill="#10B981" font-family="monospace" font-size="9">Active</text>
+  <rect x="56" y="412" width="1120" height="1" fill="#334155" opacity="0.4"/>
+
+  <!-- Row 5 -->
+  <text x="72" y="434" fill="#E2E8F0" font-family="monospace" font-size="11">Emma Wilson</text>
+  <text x="240" y="434" fill="#E2E8F0" font-family="monospace" font-size="11">e.wilson</text>
+  <text x="380" y="434" fill="#E2E8F0" font-family="monospace" font-size="11">QA Engineer</text>
+  <text x="580" y="434" fill="#8892B0" font-family="monospace" font-size="10">Eng-Team, QA-Team,</text>
+  <text x="580" y="448" fill="#8892B0" font-family="monospace" font-size="10">VPN-Users</text>
+  <text x="920" y="434" fill="#E2E8F0" font-family="monospace" font-size="11">2026-02-13</text>
+  <rect x="1080" y="424" width="56" height="18" rx="4" fill="#10B981" opacity="0.15"/>
+  <text x="1108" y="436" text-anchor="middle" fill="#10B981" font-family="monospace" font-size="9">Active</text>
+  <rect x="56" y="456" width="1120" height="1" fill="#334155" opacity="0.4"/>
+
+  <!-- Row 6 -->
+  <text x="72" y="478" fill="#8892B0" font-family="monospace" font-size="11">Frank Lee</text>
+  <text x="240" y="478" fill="#8892B0" font-family="monospace" font-size="11">f.lee</text>
+  <text x="380" y="478" fill="#8892B0" font-family="monospace" font-size="11">Intern</text>
+  <text x="580" y="478" fill="#8892B0" font-family="monospace" font-size="10">Eng-Interns,</text>
+  <text x="580" y="492" fill="#8892B0" font-family="monospace" font-size="10">GitHub-Read</text>
+  <text x="920" y="478" fill="#FEBC2E" font-family="monospace" font-size="11">2026-01-28</text>
+  <rect x="1080" y="468" width="56" height="18" rx="4" fill="#FEBC2E" opacity="0.15"/>
+  <text x="1108" y="480" text-anchor="middle" fill="#FEBC2E" font-family="monospace" font-size="9">Stale</text>
+  <rect x="56" y="500" width="1120" height="1" fill="#334155" opacity="0.4"/>
+
+  <!-- Scrollbar indicator -->
+  <text x="72" y="524" fill="#8892B0" font-family="monospace" font-size="10">... and 2 more users (scroll to view)</text>
+
+  <!-- Summary bar -->
+  <rect x="56" y="536" width="1120" height="36" rx="6" fill="#0A0E1A"/>
+  <text x="72" y="558" fill="#8892B0" font-family="monospace" font-size="10">Total: 8 users | Active: 7 | Stale (14+ days): 1 | Unique groups: 12</text>
+
+  <!-- Export options -->
+  <rect x="56" y="580" width="1120" height="36" rx="6" fill="#1E2435"/>
+  <text x="72" y="602" fill="#8892B0" font-family="monospace" font-size="11">Export:</text>
+  <rect x="120" y="588" width="60" height="22" rx="4" fill="#00D9FF" opacity="0.12"/>
+  <text x="150" y="603" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="10">CSV</text>
+  <rect x="190" y="588" width="60" height="22" rx="4" fill="#334155"/>
+  <text x="220" y="603" text-anchor="middle" fill="#8892B0" font-family="monospace" font-size="10">JSON</text>
+  <rect x="260" y="588" width="80" height="22" rx="4" fill="#334155"/>
+  <text x="300" y="603" text-anchor="middle" fill="#8892B0" font-family="monospace" font-size="10">Clipboard</text>
+
+  <!-- Follow-up suggestions -->
+  <circle cx="36" cy="650" r="14" fill="#00D9FF" opacity="0.2"/>
+  <text x="36" y="654" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="11" font-weight="bold">IX</text>
+  <rect x="56" y="636" width="1120" height="50" rx="8" fill="#1E2435" stroke="#334155" stroke-width="1"/>
+  <text x="72" y="656" fill="#E2E8F0" font-family="monospace" font-size="11">I noticed f.lee hasn't logged in for 18 days. Would you like me to:</text>
+  <rect x="72" y="664" width="180" height="18" rx="4" fill="#00D9FF" opacity="0.12"/>
+  <text x="162" y="677" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="9">Check account status</text>
+  <rect x="260" y="664" width="160" height="18" rx="4" fill="#334155"/>
+  <text x="340" y="677" text-anchor="middle" fill="#8892B0" font-family="monospace" font-size="9">Notify their manager</text>
+  <rect x="428" y="664" width="120" height="18" rx="4" fill="#334155"/>
+  <text x="488" y="677" text-anchor="middle" fill="#8892B0" font-family="monospace" font-size="9">Ignore for now</text>
+
+  <!-- Input area -->
+  <rect x="20" y="700" width="1160" height="30" rx="6" fill="#1E2435" stroke="#334155" stroke-width="1"/>
+  <text x="36" y="720" fill="#8892B0" font-family="monospace" font-size="11">Ask a follow-up question...</text>
+</svg>

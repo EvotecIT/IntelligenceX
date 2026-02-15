@@ -8,6 +8,20 @@
     "featured": true
   },
   {
+    "title": "IX Chat",
+    "description": "Windows desktop tray app for AI conversations. WinUI 3 interface with system tray integration, multi-provider support, and real-time tool calling.",
+    "icon": "chat",
+    "link": "/docs/chat/overview/",
+    "tag": "Desktop App"
+  },
+  {
+    "title": "IX Tools",
+    "description": "Eight specialized tool packs for AI assistants. Email, Active Directory, file operations, database queries, and more. Register once, use across all providers.",
+    "icon": "tools",
+    "link": "/docs/tools/overview/",
+    "tag": "Tool Packs"
+  },
+  {
     "title": "CLI Tools",
     "description": "Path-first onboarding in CLI and local Web UI. Built-in auto-detect preflight (doctor), multi-repo setup, auth refresh, cleanup, and maintenance flows.",
     "icon": "cli",

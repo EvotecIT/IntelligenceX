@@ -1,0 +1,33 @@
+<!-- Showcase Preview -->
+<section class="showcase-preview">
+    <div class="section-header">
+        <span class="section-label">Showcase</span>
+        <h2>See What You Can Build</h2>
+        <p>Real-world examples of IntelligenceX in action.</p>
+    </div>
+
+    <div class="showcase-grid">
+        {{ for item in data.showcase }}
+        {{ if for.index < 3 }}
+        <div class="showcase-card">
+            <div class="showcase-image">
+                <img src="{{ item.screenshot }}" alt="{{ item.title }}" loading="lazy" />
+            </div>
+            <div class="showcase-card-body">
+                <h3>{{ item.title }}</h3>
+                <p>{{ item.summary }}</p>
+                <div class="showcase-tags">
+                    {{ for tag in item.tags }}
+                    <span class="showcase-tag">{{ tag }}</span>
+                    {{ end }}
+                </div>
+            </div>
+        </div>
+        {{ end }}
+        {{ end }}
+    </div>
+
+    <div style="text-align: center; margin-top: 2rem;">
+        <a href="/showcase/" class="btn btn-secondary">View Full Showcase &rarr;</a>
+    </div>
+</section>

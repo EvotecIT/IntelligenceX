@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 740" fill="none">
+  <!-- Background -->
+  <rect width="1200" height="740" rx="12" fill="#0A0E1A"/>
+  <!-- Title bar -->
+  <rect width="1200" height="40" rx="12" fill="#141824"/>
+  <rect y="28" width="1200" height="12" fill="#141824"/>
+  <!-- Traffic lights -->
+  <circle cx="20" cy="20" r="6" fill="#FF5F57"/>
+  <circle cx="40" cy="20" r="6" fill="#FEBC2E"/>
+  <circle cx="60" cy="20" r="6" fill="#28C840"/>
+  <!-- Title -->
+  <text x="600" y="24" text-anchor="middle" fill="#8892B0" font-family="monospace" font-size="13">Terminal - ix setup</text>
+
+  <!-- ASCII banner -->
+  <text x="36" y="72" fill="#00D9FF" font-family="monospace" font-size="11"> _____ _   _ _______ ______ _      _      _____ _____ ______ _   _  _____ ________   __</text>
+  <text x="36" y="86" fill="#00D9FF" font-family="monospace" font-size="11">|_   _| \ | |__   __|  ____| |    | |    |_   _/ ____|  ____| \ | |/ ____|  ____\ \ / /</text>
+  <text x="36" y="100" fill="#00D9FF" font-family="monospace" font-size="11">  | | |  \| |  | |  | |__  | |    | |      | || |  __| |__  |  \| | |    | |__   \ V /</text>
+  <text x="36" y="114" fill="#00D9FF" font-family="monospace" font-size="11">  | | | . ` |  | |  |  __| | |    | |      | || | |_ |  __| | . ` | |    |  __|   &gt; &lt;</text>
+  <text x="36" y="128" fill="#00D9FF" font-family="monospace" font-size="11"> _| |_| |\  |  | |  | |____| |____| |____ _| || |__| | |___| |\  | |____| |____ / . \</text>
+  <text x="36" y="142" fill="#00D9FF" font-family="monospace" font-size="11">|_____|_| \_|  |_|  |______|______|______|_____\_____|______|_| \_|\_____|______/_/ \_\</text>
+
+  <!-- Progress indicator -->
+  <rect x="36" y="162" width="1128" height="30" rx="4" fill="#1E2435"/>
+  <rect x="36" y="162" width="790" height="30" rx="4" fill="#00D9FF" opacity="0.1"/>
+  <text x="50" y="182" fill="#00D9FF" font-family="monospace" font-size="11">Step 4 of 5</text>
+  <text x="1100" y="182" text-anchor="end" fill="#8892B0" font-family="monospace" font-size="11">80%</text>
+  <!-- Progress dots -->
+  <circle cx="540" cy="177" r="5" fill="#10B981"/>
+  <circle cx="560" cy="177" r="5" fill="#10B981"/>
+  <circle cx="580" cy="177" r="5" fill="#10B981"/>
+  <circle cx="600" cy="177" r="5" fill="#00D9FF"/>
+  <circle cx="620" cy="177" r="5" fill="#334155"/>
+
+  <!-- Step 1 - completed -->
+  <text x="36" y="216" fill="#10B981" font-family="monospace" font-size="12">&#x2713; Step 1: AI Provider</text>
+  <text x="240" y="216" fill="#8892B0" font-family="monospace" font-size="11">Azure OpenAI (gpt-4o)</text>
+
+  <!-- Step 2 - completed -->
+  <text x="36" y="244" fill="#10B981" font-family="monospace" font-size="12">&#x2713; Step 2: Authentication</text>
+  <text x="260" y="244" fill="#8892B0" font-family="monospace" font-size="11">Azure AD / OIDC</text>
+
+  <!-- Step 3 - completed -->
+  <text x="36" y="272" fill="#10B981" font-family="monospace" font-size="12">&#x2713; Step 3: Tool Packs</text>
+  <text x="230" y="272" fill="#8892B0" font-family="monospace" font-size="11">ActiveDirectory, Exchange, Email (3 selected)</text>
+
+  <!-- Step 4 - active -->
+  <rect x="20" y="292" width="1160" height="280" rx="8" fill="#1E2435" stroke="#00D9FF" stroke-width="1" stroke-opacity="0.3"/>
+  <text x="36" y="318" fill="#00D9FF" font-family="monospace" font-size="13" font-weight="bold">&#x25B6; Step 4: Configure Tool Settings</text>
+
+  <text x="52" y="348" fill="#E2E8F0" font-family="monospace" font-size="12">? Active Directory domain controller:</text>
+  <text x="345" y="348" fill="#00D9FF" font-family="monospace" font-size="12">dc01.corp.local</text>
+  <text x="52" y="370" fill="#10B981" font-family="monospace" font-size="11">  &#x2713; Connection verified</text>
+
+  <text x="52" y="398" fill="#E2E8F0" font-family="monospace" font-size="12">? Default search base:</text>
+  <text x="228" y="398" fill="#00D9FF" font-family="monospace" font-size="12">DC=corp,DC=local</text>
+
+  <text x="52" y="426" fill="#E2E8F0" font-family="monospace" font-size="12">? Exchange server:</text>
+  <text x="200" y="426" fill="#00D9FF" font-family="monospace" font-size="12">exchange.corp.local</text>
+  <text x="52" y="448" fill="#10B981" font-family="monospace" font-size="11">  &#x2713; Connection verified</text>
+
+  <text x="52" y="476" fill="#E2E8F0" font-family="monospace" font-size="12">? SMTP relay for outbound email:</text>
+  <text x="310" y="476" fill="#00D9FF" font-family="monospace" font-size="12">smtp.corp.local:587</text>
+  <text x="52" y="498" fill="#10B981" font-family="monospace" font-size="11">  &#x2713; SMTP connection verified (TLS)</text>
+
+  <text x="52" y="528" fill="#E2E8F0" font-family="monospace" font-size="12">? Require approval for email sending?</text>
+  <text x="52" y="550" fill="#00D9FF" font-family="monospace" font-size="12">&#x25B6; Yes - require human confirmation</text>
+  <text x="52" y="568" fill="#8892B0" font-family="monospace" font-size="12">  No - auto-send (not recommended)</text>
+
+  <!-- Step 5 - pending -->
+  <text x="36" y="600" fill="#8892B0" font-family="monospace" font-size="12">&#x25CB; Step 5: Review &amp; Confirm</text>
+
+  <!-- Bottom info -->
+  <rect x="20" y="624" width="1160" height="48" rx="6" fill="#1E2435"/>
+  <text x="36" y="648" fill="#8892B0" font-family="monospace" font-size="11">Config will be saved to:</text>
+  <text x="228" y="648" fill="#00D9FF" font-family="monospace" font-size="11">C:\ProgramData\IntelligenceX\config.json</text>
+  <text x="36" y="664" fill="#8892B0" font-family="monospace" font-size="11">Secrets stored in:</text>
+  <text x="196" y="664" fill="#00D9FF" font-family="monospace" font-size="11">Windows Credential Manager</text>
+
+  <text x="36" y="700" fill="#8892B0" font-family="monospace" font-size="11">Use arrow keys to navigate, Enter to confirm, Ctrl+C to cancel</text>
+  <text x="36" y="720" fill="#00D9FF" font-family="monospace" font-size="12">$</text>
+  <rect x="48" y="708" width="8" height="16" fill="#00D9FF" opacity="0.6"/>
+</svg>

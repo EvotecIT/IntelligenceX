@@ -1,0 +1,65 @@
+[
+  {
+    "title": "GitHub Actions Reviewer",
+    "description": "AI-powered PR reviews using ChatGPT or GitHub Copilot. Inline comments, summaries, or hybrid mode. Configurable presets from minimal to picky.",
+    "icon": "review",
+    "link": "/docs/reviewer/overview/",
+    "tag": "Star Feature",
+    "badge": "Most Popular",
+    "featured": true,
+    "install": "intelligencex setup wizard",
+    "screenshot": "/assets/screenshots/product-reviewer.svg"
+  },
+  {
+    "title": "IX Chat",
+    "description": "Windows desktop tray app for AI conversations. WinUI 3 interface with system tray integration, multi-provider support, and tool calling.",
+    "icon": "chat",
+    "link": "/docs/chat/overview/",
+    "tag": "Desktop App",
+    "badge": "New",
+    "featured": false,
+    "install": "intelligencex chat",
+    "screenshot": "/assets/screenshots/product-chat.svg"
+  },
+  {
+    "title": "IX Tools",
+    "description": "Eight specialized tool packs for AI assistants. Email, Active Directory, file operations, and more. Register once, use across all providers.",
+    "icon": "tools",
+    "link": "/docs/tools/overview/",
+    "tag": "Tool Packs",
+    "badge": "New",
+    "featured": false,
+    "install": "dotnet add package IntelligenceX.Tools.Email",
+    "screenshot": "/assets/screenshots/product-tools.svg"
+  },
+  {
+    "title": "CLI Tools",
+    "description": "One-command onboarding wizard, local web UI, multi-repo setup, auth management, and usage tracking.",
+    "icon": "cli",
+    "link": "/docs/cli/overview/",
+    "tag": "Setup",
+    "featured": false,
+    "install": "dotnet tool install IntelligenceX.CLI -g",
+    "screenshot": "/assets/screenshots/product-cli.svg"
+  },
+  {
+    "title": ".NET Library",
+    "description": "Codex app-server client, Easy.ChatAsync one-liner, JSON-RPC support for building your own AI tools.",
+    "icon": "library",
+    "link": "/docs/library/overview/",
+    "tag": "Developers",
+    "featured": false,
+    "install": "dotnet add package IntelligenceX",
+    "screenshot": "/assets/screenshots/product-library.svg"
+  },
+  {
+    "title": "PowerShell Module",
+    "description": "Binary cmdlets for scripting and automation. Connect, send messages, run diagnostics, and integrate with your workflows.",
+    "icon": "powershell",
+    "link": "/docs/powershell/overview/",
+    "tag": "Automation",
+    "featured": false,
+    "install": "Install-Module IntelligenceX",
+    "screenshot": "/assets/screenshots/product-powershell.svg"
+  }
+]
