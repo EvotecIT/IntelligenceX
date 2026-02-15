@@ -382,6 +382,45 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExpandContinuationUserRequest_ResolvesSingleNumberedFallbackChoiceWithInlineActIdInParentheses() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Pulling failed logons from ADO now would be the next step, but I need your go-ahead in this flow:
+            You can reply with /act act_failed4625 (or just 1) and I'll execute it immediately.
+            You can run one of these follow-up actions:
+            1. Run failed logon report (4625) on ADO Security (/act act_failed4625)
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "go ahead and run it" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        var selection = doc.RootElement.GetProperty("ix_action_selection");
+        Assert.Equal("act_failed4625", selection.GetProperty("id").GetString());
+        Assert.Equal("Run failed logon report (4625) on ADO Security", selection.GetProperty("request").GetString());
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_ResolvesExplicitActForFallbackChoiceWithInlineActIdInParentheses() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Pulling failed logons from ADO now would be the next step, but I need your go-ahead in this flow:
+            You can run one of these follow-up actions:
+            1. Run failed logon report (4625) on ADO Security (/act act_failed4625)
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act act_failed4625" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        var selection = doc.RootElement.GetProperty("ix_action_selection");
+        Assert.Equal("act_failed4625", selection.GetProperty("id").GetString());
+        Assert.Equal("Run failed logon report (4625) on ADO Security", selection.GetProperty("request").GetString());
+    }
+
+    [Fact]
     public void RememberPendingActions_NoMarkerOrFallbackChoices_DoesNotClearExistingActionContext() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var actionDraft = """
