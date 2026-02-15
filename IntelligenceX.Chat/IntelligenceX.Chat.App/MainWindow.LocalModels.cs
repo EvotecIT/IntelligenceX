@@ -95,8 +95,15 @@ public sealed partial class MainWindow : Window {
             _modelListIsStale = modelList.IsStale;
             _modelListWarning = string.IsNullOrWhiteSpace(modelList.Warning) ? null : modelList.Warning.Trim();
 
-            if (string.IsNullOrWhiteSpace(_localProviderModel) && _availableModels.Length > 0) {
+            var normalizedCurrentModel = (_localProviderModel ?? string.Empty).Trim();
+            var shouldAutoSelectModel = _availableModels.Length > 0
+                                        && (normalizedCurrentModel.Length == 0
+                                            || (string.Equals(_localProviderTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
+                                                && !ContainsModel(_availableModels, normalizedCurrentModel)));
+            if (shouldAutoSelectModel) {
                 _localProviderModel = _availableModels[0].Model;
+                _appState.LocalProviderModel = _localProviderModel;
+                await PersistAppStateAsync().ConfigureAwait(false);
             }
         } catch (Exception ex) {
             _modelListIsStale = true;
@@ -120,7 +127,7 @@ public sealed partial class MainWindow : Window {
         var rawTransport = (transportValue ?? string.Empty).Trim();
         var normalizedTransport = NormalizeLocalProviderTransport(rawTransport);
         var normalizedBaseUrl = NormalizeLocalProviderBaseUrl(baseUrlValue, normalizedTransport, rawTransport);
-        var normalizedModel = NormalizeLocalProviderModel(modelValue);
+        var normalizedModel = NormalizeLocalProviderModel(modelValue, normalizedTransport);
 
         var changed = !string.Equals(_localProviderTransport, normalizedTransport, StringComparison.OrdinalIgnoreCase)
                       || !string.Equals(_localProviderBaseUrl ?? string.Empty, normalizedBaseUrl ?? string.Empty, StringComparison.OrdinalIgnoreCase)
@@ -264,6 +271,20 @@ public sealed partial class MainWindow : Window {
 
         for (var i = 0; i < names.Length; i++) {
             if (string.Equals(names[i], profileName, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ContainsModel(ModelInfoDto[] models, string modelName) {
+        if (models is null || models.Length == 0 || string.IsNullOrWhiteSpace(modelName)) {
+            return false;
+        }
+
+        for (var i = 0; i < models.Length; i++) {
+            if (string.Equals(models[i].Model, modelName, StringComparison.OrdinalIgnoreCase)) {
                 return true;
             }
         }
