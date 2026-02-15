@@ -43,17 +43,26 @@ internal sealed partial class ChatServiceSession {
         }
 
         try {
+            if (!File.Exists(path)) {
+                return;
+            }
+            var attrs = File.GetAttributes(path);
+            if ((attrs & FileAttributes.Directory) != 0) {
+                return;
+            }
+
             var currentSid = WindowsIdentity.GetCurrent().User;
             if (currentSid is null) {
                 return;
             }
 
-            var security = new FileSecurity();
+            var fileInfo = new FileInfo(path);
+            var security = fileInfo.GetAccessControl();
             security.SetOwner(currentSid);
-            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
-            security.AddAccessRule(new FileSystemAccessRule(currentSid, FileSystemRights.FullControl, AccessControlType.Allow));
-
-            new FileInfo(path).SetAccessControl(security);
+            // Keep inherited rules to avoid breaking access; LocalAppData already provides per-user isolation.
+            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: true);
+            security.SetAccessRule(new FileSystemAccessRule(currentSid, FileSystemRights.FullControl, AccessControlType.Allow));
+            fileInfo.SetAccessControl(security);
         } catch (Exception ex) {
             Trace.TraceWarning($"Pending action store ACL hardening failed: {ex.GetType().Name}: {ex.Message}");
         }
