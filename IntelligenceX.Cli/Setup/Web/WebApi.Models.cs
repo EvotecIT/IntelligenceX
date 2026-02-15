@@ -87,6 +87,7 @@ internal sealed partial class WebApi {
         public string? GitHubToken { get; set; }
         public string? GitHubClientId { get; set; }
         public bool WithConfig { get; set; }
+        public bool TriageBootstrap { get; set; }
         public string? AuthB64 { get; set; }
         public string? AuthB64Path { get; set; }
         public string? Provider { get; set; }

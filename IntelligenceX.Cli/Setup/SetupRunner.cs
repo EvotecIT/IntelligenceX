@@ -37,6 +37,10 @@ internal static partial class SetupRunner {
                 Console.Error.WriteLine("Choose only one of --manual-secret or --update-secret.");
                 return 1;
             }
+            if (options.TriageBootstrap && (options.Cleanup || options.UpdateSecret)) {
+                Console.Error.WriteLine("--triage-bootstrap is only supported for setup operation.");
+                return 1;
+            }
             if (!string.IsNullOrWhiteSpace(options.ConfigJson) && !string.IsNullOrWhiteSpace(options.ConfigPath)) {
                 Console.Error.WriteLine("Choose only one of --config-json or --config-path.");
                 return 1;
@@ -131,9 +135,12 @@ internal static partial class SetupRunner {
             var exportPlans = await PlanAnalysisExportFilesAsync(
                 github, options, owner, repo, defaultBranch, configPlan, existingConfig?.Content ?? seedConfigContent)
                 .ConfigureAwait(false);
+            var triagePlans = options.TriageBootstrap
+                ? await PlanTriageBootstrapFilesAsync(github, options, owner, repo, defaultBranch, state.GitHub.Token).ConfigureAwait(false)
+                : new List<FilePlan>();
 
             if (options.DryRun) {
-                PrintDryRun(state, workflowPlan, configPlan, exportPlans);
+                PrintDryRun(state, workflowPlan, configPlan, exportPlans, triagePlans);
                 return 0;
             }
 
@@ -155,7 +162,8 @@ internal static partial class SetupRunner {
                 }
             }
 
-            var hasFileChanges = workflowPlan.IsWrite || configPlan.IsWrite || exportPlans.Any(plan => plan.IsWrite);
+            var hasFileChanges = workflowPlan.IsWrite || configPlan.IsWrite || exportPlans.Any(plan => plan.IsWrite) ||
+                                 triagePlans.Any(plan => plan.IsWrite);
             if (!hasFileChanges) {
                 Console.WriteLine("No files changed. Skipping PR creation.");
                 return 0;
@@ -181,6 +189,13 @@ internal static partial class SetupRunner {
                 changed |= await github.CreateOrUpdateFileAsync(owner, repo, exportPlan.Path, exportPlan.Content,
                     "Export analyzer configs for IDE support", branchName, overwrite: true).ConfigureAwait(false);
             }
+            foreach (var triagePlan in triagePlans) {
+                if (!triagePlan.IsWrite || triagePlan.Content is null) {
+                    continue;
+                }
+                changed |= await github.CreateOrUpdateFileAsync(owner, repo, triagePlan.Path, triagePlan.Content,
+                    DescribeTriageBootstrapCommitMessage(triagePlan.Path), branchName, overwrite: true).ConfigureAwait(false);
+            }
             if (legacyConfigLooksLikeReviewer && legacyConfig is not null && configPlan.IsWrite) {
                 // Migrate legacy reviewer config location to the correct file name.
                 changed |= await github.DeleteFileAsync(owner, repo, ".intelligencex/config.json",
@@ -193,9 +208,10 @@ internal static partial class SetupRunner {
             }
 
             var prTitle = "Add IntelligenceX review automation";
-            var prBody = options.WithConfig
-                ? BuildSetupPrBody(includeAnalysisExport: exportPlans.Any(plan => plan.IsWrite))
-                : "This adds the IntelligenceX review workflow.";
+            var prBody = BuildSetupPrBody(
+                includeConfig: options.WithConfig,
+                includeAnalysisExport: exportPlans.Any(plan => plan.IsWrite),
+                includeTriageBootstrap: triagePlans.Any(plan => plan.IsWrite));
             var prUrl = await github.CreatePullRequestAsync(owner, repo, prTitle, branchName, defaultBranch, prBody)
                 .ConfigureAwait(false);
 
@@ -594,7 +610,12 @@ internal static partial class SetupRunner {
         }
     }
 
-    private static void PrintDryRun(SetupState state, FilePlan workflowPlan, FilePlan configPlan, IReadOnlyList<FilePlan> exportPlans) {
+    private static void PrintDryRun(
+        SetupState state,
+        FilePlan workflowPlan,
+        FilePlan configPlan,
+        IReadOnlyList<FilePlan> exportPlans,
+        IReadOnlyList<FilePlan> triagePlans) {
         Console.WriteLine("Dry run summary:");
         Console.WriteLine($"- Repo: {state.GitHub.RepositoryFullName}");
         Console.WriteLine($"- Secret: INTELLIGENCEX_AUTH_B64 ({DescribeSecretAction(state.Options)})");
@@ -602,6 +623,9 @@ internal static partial class SetupRunner {
         Console.WriteLine($"- File: {configPlan.Path} ({DescribePlan(configPlan)})");
         foreach (var exportPlan in exportPlans) {
             Console.WriteLine($"- File: {exportPlan.Path} ({DescribePlan(exportPlan)})");
+        }
+        foreach (var triagePlan in triagePlans) {
+            Console.WriteLine($"- File: {triagePlan.Path} ({DescribePlan(triagePlan)})");
         }
         Console.WriteLine("- PR: would be created on a new branch for file changes");
         Console.WriteLine();
@@ -621,13 +645,45 @@ internal static partial class SetupRunner {
             Console.WriteLine($"--- {exportPlan.Path} ---");
             Console.WriteLine(exportPlan.Content);
         }
+        foreach (var triagePlan in triagePlans) {
+            if (triagePlan.Content is null) {
+                continue;
+            }
+            Console.WriteLine($"--- {triagePlan.Path} ---");
+            Console.WriteLine(triagePlan.Content);
+        }
     }
 
-    private static string BuildSetupPrBody(bool includeAnalysisExport) {
-        if (!includeAnalysisExport) {
-            return "This adds the IntelligenceX review workflow and config.";
+    private static string BuildSetupPrBody(bool includeConfig, bool includeAnalysisExport, bool includeTriageBootstrap) {
+        var baseText = includeConfig
+            ? "This adds the IntelligenceX review workflow and config"
+            : "This adds the IntelligenceX review workflow";
+
+        var extras = new List<string>();
+        if (includeAnalysisExport) {
+            extras.Add("exports analyzer configs for IDE support");
         }
-        return "This adds the IntelligenceX review workflow and config, and exports analyzer configs for IDE support.";
+        if (includeTriageBootstrap) {
+            extras.Add("bootstraps IX triage project automation (VISION.md + project sync workflow)");
+        }
+
+        if (extras.Count == 0) {
+            return baseText + ".";
+        }
+        if (extras.Count == 1) {
+            return baseText + ", and " + extras[0] + ".";
+        }
+
+        return baseText + ", " + extras[0] + ", and " + extras[1] + ".";
+    }
+
+    private static string DescribeTriageBootstrapCommitMessage(string path) {
+        return path.Replace('\\', '/').ToLowerInvariant() switch {
+            "artifacts/triage/ix-project-config.json" => "Bootstrap IX triage project configuration",
+            ".github/workflows/ix-triage-project-sync.yml" => "Add IX triage project sync workflow",
+            "vision.md" => "Add IX vision document scaffold",
+            _ => "Bootstrap IX triage project automation"
+        };
     }
 
     private static string DescribePlan(FilePlan plan) {

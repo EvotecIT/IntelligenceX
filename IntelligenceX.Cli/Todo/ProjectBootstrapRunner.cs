@@ -137,6 +137,14 @@ internal static class ProjectBootstrapRunner {
         return result;
     }
 
+    internal static string LoadWorkflowTemplate() {
+        return ReadEmbeddedResource(WorkflowTemplateResourceName);
+    }
+
+    internal static string LoadVisionTemplate() {
+        return ReadEmbeddedResource(VisionTemplateResourceName);
+    }
+
     private static string[] BuildProjectInitArgs(Options options) {
         var result = new List<string> {
             "--repo", options.Repo,
@@ -323,17 +331,35 @@ internal static class ProjectBootstrapRunner {
     }
 
     private static bool TryReadProjectTarget(string configPath, out string owner, out int projectNumber, out string error) {
-        owner = string.Empty;
-        projectNumber = 0;
-        error = string.Empty;
-
         if (!File.Exists(configPath)) {
+            owner = string.Empty;
+            projectNumber = 0;
             error = $"Project config file not found: {configPath}";
             return false;
         }
 
         try {
-            using var doc = JsonDocument.Parse(File.ReadAllText(configPath));
+            return TryReadProjectTargetFromConfigJson(File.ReadAllText(configPath), out owner, out projectNumber, out error);
+        } catch (Exception ex) {
+            owner = string.Empty;
+            projectNumber = 0;
+            error = $"Failed to parse project config at {configPath}: {ex.Message}";
+            return false;
+        }
+    }
+
+    internal static bool TryReadProjectTargetFromConfigJson(string json, out string owner, out int projectNumber, out string error) {
+        owner = string.Empty;
+        projectNumber = 0;
+        error = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(json)) {
+            error = "Project config JSON is empty.";
+            return false;
+        }
+
+        try {
+            using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
             if (TryGetProperty(root, "owner", out var ownerProp) && ownerProp.ValueKind == JsonValueKind.String) {
@@ -348,9 +374,14 @@ internal static class ProjectBootstrapRunner {
                 projectNumber = numberValue;
             }
 
+            if (string.IsNullOrWhiteSpace(owner) || projectNumber <= 0) {
+                error = "Project config JSON is missing owner/project number.";
+                return false;
+            }
+
             return true;
         } catch (Exception ex) {
-            error = $"Failed to parse project config at {configPath}: {ex.Message}";
+            error = $"Failed to parse project config JSON: {ex.Message}";
             return false;
         }
     }

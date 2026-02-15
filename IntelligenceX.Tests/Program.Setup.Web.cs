@@ -189,6 +189,16 @@ internal static partial class Program {
             "web setup args analysis run strict omitted for config override");
     }
 
+    private static void TestWebSetupBuildSetupArgsPropagatesTriageBootstrap() {
+        var enabled = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupArgsForTriageBootstrapTests(triageBootstrap: true);
+        AssertEqual(true, Array.IndexOf(enabled, "--triage-bootstrap") >= 0,
+            "web setup args triage bootstrap enabled");
+
+        var disabled = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupArgsForTriageBootstrapTests(triageBootstrap: false);
+        AssertEqual(false, Array.IndexOf(disabled, "--triage-bootstrap") >= 0,
+            "web setup args triage bootstrap disabled");
+    }
+
     private static void TestWebSetupResolveWithConfigFromArgs() {
         AssertEqual(true, IntelligenceX.Cli.Setup.Web.WebApi.ResolveWithConfigFromArgsForTests(
             "--repo", "owner/repo", "--with-config"), "web setup resolve with-config flag");

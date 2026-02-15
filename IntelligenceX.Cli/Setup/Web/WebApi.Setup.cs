@@ -59,6 +59,15 @@ internal sealed partial class WebApi {
         return BuildSetupArgsForRepo(request, routeDryRun: false, "owner/repo");
     }
 
+    internal static string[] BuildSetupArgsForTriageBootstrapTests(bool triageBootstrap) {
+        var request = new SetupRequest {
+            Repo = "owner/repo",
+            GitHubToken = "token",
+            TriageBootstrap = triageBootstrap
+        };
+        return BuildSetupArgsForRepo(request, routeDryRun: false, "owner/repo");
+    }
+
     internal static bool ResolveWithConfigFromArgsForTests(params string[] args) {
         return ResolveWithConfigFromArgs(args);
     }

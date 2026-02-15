@@ -14,6 +14,7 @@ internal sealed class SetupPlan {
     public string? GitHubClientId { get; init; }
     public string? GitHubToken { get; init; }
     public bool WithConfig { get; init; }
+    public bool TriageBootstrap { get; init; }
     public string? ConfigPath { get; init; }
     public string? ConfigJson { get; init; }
     public string? AuthB64 { get; init; }

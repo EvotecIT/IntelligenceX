@@ -20,6 +20,7 @@ internal sealed partial class WebApi {
             GitHubToken = request.GitHubToken,
             GitHubClientId = request.GitHubClientId,
             WithConfig = withConfig,
+            TriageBootstrap = request.TriageBootstrap,
             AuthB64 = request.AuthB64,
             AuthB64Path = request.AuthB64Path,
             ConfigJson = request.ConfigJson,
