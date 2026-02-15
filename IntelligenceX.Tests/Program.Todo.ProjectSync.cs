@@ -85,5 +85,52 @@ internal static partial class Program {
         AssertEqual("cluster-1", issue.DuplicateCluster, "duplicate cluster preserved");
         AssertEqual("https://github.com/EvotecIT/IntelligenceX/pull/10", issue.CanonicalItem, "issue canonical resolved");
     }
+
+    private static void TestProjectSyncBuildLabelsIncludesTagsAndHighConfidenceIssueMatch() {
+        var entry = new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+            Number: 42,
+            Url: "https://github.com/EvotecIT/IntelligenceX/pull/42",
+            Kind: "pull_request",
+            TriageScore: 88.5,
+            DuplicateCluster: "cluster-9",
+            CanonicalItem: "https://github.com/EvotecIT/IntelligenceX/pull/42",
+            Category: "security",
+            Tags: new[] { "security", "api", "unknown-tag" },
+            MatchedIssueUrl: "https://github.com/EvotecIT/IntelligenceX/issues/10",
+            MatchedIssueConfidence: 0.95,
+            VisionFit: "aligned",
+            VisionConfidence: 0.9
+        );
+
+        var labels = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildLabelsForEntry(entry);
+        AssertEqual(true, labels.Contains("ix/category:security", StringComparer.OrdinalIgnoreCase), "category label");
+        AssertEqual(true, labels.Contains("ix/tag:security", StringComparer.OrdinalIgnoreCase), "security tag label");
+        AssertEqual(true, labels.Contains("ix/tag:api", StringComparer.OrdinalIgnoreCase), "api tag label");
+        AssertEqual(false, labels.Any(label => label.Contains("unknown-tag", StringComparison.OrdinalIgnoreCase)), "unsupported tag skipped");
+        AssertEqual(true, labels.Contains("ix/match:linked-issue", StringComparer.OrdinalIgnoreCase), "high confidence match label");
+        AssertEqual(false, labels.Contains("ix/match:needs-review", StringComparer.OrdinalIgnoreCase), "no review label for high confidence");
+        AssertEqual(true, labels.Contains("ix/duplicate:clustered", StringComparer.OrdinalIgnoreCase), "duplicate label");
+    }
+
+    private static void TestProjectSyncBuildLabelsUsesNeedsReviewForLowConfidenceIssueMatch() {
+        var entry = new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+            Number: 77,
+            Url: "https://github.com/EvotecIT/IntelligenceX/pull/77",
+            Kind: "pull_request",
+            TriageScore: 60.0,
+            DuplicateCluster: null,
+            CanonicalItem: null,
+            Category: "feature",
+            Tags: Array.Empty<string>(),
+            MatchedIssueUrl: "https://github.com/EvotecIT/IntelligenceX/issues/99",
+            MatchedIssueConfidence: 0.62,
+            VisionFit: null,
+            VisionConfidence: null
+        );
+
+        var labels = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildLabelsForEntry(entry);
+        AssertEqual(true, labels.Contains("ix/match:needs-review", StringComparer.OrdinalIgnoreCase), "low confidence match review label");
+        AssertEqual(false, labels.Contains("ix/match:linked-issue", StringComparer.OrdinalIgnoreCase), "low confidence should not be linked-issue");
+    }
 #endif
 }

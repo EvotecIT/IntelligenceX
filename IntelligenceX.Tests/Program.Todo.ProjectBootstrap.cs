@@ -55,5 +55,17 @@ project={{ProjectNumber}}
         AssertEqual(false, rendered.Contains("{{Owner}}", StringComparison.Ordinal), "owner placeholder removed");
         AssertEqual(false, rendered.Contains("{{ProjectNumber}}", StringComparison.Ordinal), "project placeholder removed");
     }
+
+    private static void TestProjectBootstrapWorkflowTemplateEnablesApplyLabels() {
+        var template = IntelligenceX.Cli.Todo.ProjectBootstrapRunner.LoadWorkflowTemplate();
+        var rendered = IntelligenceX.Cli.Todo.ProjectBootstrapRunner.RenderWorkflowTemplate(
+            template,
+            "EvotecIT",
+            654,
+            300);
+
+        AssertContainsText(rendered, "todo project-sync", "workflow contains project sync step");
+        AssertContainsText(rendered, "--apply-labels", "workflow enables label application");
+    }
 #endif
 }

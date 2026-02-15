@@ -10,6 +10,8 @@ using IntelligenceX.Cli.GitHub;
 namespace IntelligenceX.Cli.Todo;
 
 internal static class ProjectSyncRunner {
+    private const double HighConfidenceIssueMatchLabelThreshold = 0.80;
+
     internal sealed record ProjectSyncEntry(
         int Number,
         string Url,
@@ -567,11 +569,17 @@ internal static class ProjectSyncRunner {
         return updated;
     }
 
-    private static IReadOnlyList<string> BuildLabelsForEntry(ProjectSyncEntry entry) {
+    internal static IReadOnlyList<string> BuildLabelsForEntry(ProjectSyncEntry entry) {
         var labels = new List<string>();
 
         if (!string.IsNullOrWhiteSpace(entry.Category)) {
             labels.Add($"ix/category:{entry.Category}");
+        }
+
+        foreach (var tag in entry.Tags) {
+            if (ProjectLabelCatalog.TryMapTagLabel(tag, out var tagLabel)) {
+                labels.Add(tagLabel);
+            }
         }
 
         var visionLabel = MapVisionLabel(entry.VisionFit);
@@ -580,7 +588,12 @@ internal static class ProjectSyncRunner {
         }
 
         if (!string.IsNullOrWhiteSpace(entry.MatchedIssueUrl) && entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase)) {
-            labels.Add("ix/match:linked-issue");
+            if (entry.MatchedIssueConfidence.HasValue &&
+                entry.MatchedIssueConfidence.Value >= HighConfidenceIssueMatchLabelThreshold) {
+                labels.Add("ix/match:linked-issue");
+            } else {
+                labels.Add("ix/match:needs-review");
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(entry.DuplicateCluster)) {
