@@ -152,12 +152,36 @@ jobs:
               "repos/${{ github.repository }}/issues/$ISSUE/comments" \
               --jq '.[] | select(.body | contains("<!-- intelligencex:triage-index-summary -->")) | .id' \
               | tail -n 1)"
+            BOOTSTRAP_LINKS_COMMENT_ID="$(gh api --paginate \
+              "repos/${{ github.repository }}/issues/$ISSUE/comments" \
+              --jq '.[] | select(.body | contains("<!-- intelligencex:triage-bootstrap-links -->")) | .id' \
+              | tail -n 1)"
 
+            CONTROL_ISSUE_LINK="${{ github.server_url }}/${{ github.repository }}/issues/$ISSUE"
+            VISION_URL="${{ github.server_url }}/${{ github.repository }}/blob/${{ github.event.repository.default_branch }}/VISION.md"
             PROJECT_SYNC_LINK="${{ github.server_url }}/${{ github.repository }}/issues/$ISSUE#issuecomment-$SUMMARY_COMMENT_ID"
             if [ -n "$TRIAGE_INDEX_COMMENT_ID" ]; then
               TRIAGE_INDEX_LINK="${{ github.server_url }}/${{ github.repository }}/issues/$ISSUE#issuecomment-$TRIAGE_INDEX_COMMENT_ID"
             else
               TRIAGE_INDEX_LINK=""
+            fi
+            if [ -n "$BOOTSTRAP_LINKS_COMMENT_ID" ]; then
+              BOOTSTRAP_LINKS_LINK="${{ github.server_url }}/${{ github.repository }}/issues/$ISSUE#issuecomment-$BOOTSTRAP_LINKS_COMMENT_ID"
+            else
+              BOOTSTRAP_LINKS_LINK=""
+            fi
+
+            PROJECT_VIEW_APPLY_ISSUE="${{ vars.IX_PROJECT_VIEW_APPLY_ISSUE }}"
+            if [ -n "$PROJECT_VIEW_APPLY_ISSUE" ]; then
+              PROJECT_VIEW_APPLY_LINK="${{ github.server_url }}/${{ github.repository }}/issues/$PROJECT_VIEW_APPLY_ISSUE"
+            else
+              PROJECT_VIEW_APPLY_LINK=""
+            fi
+
+            PROJECT_URL=""
+            PROJECT_CONFIG_PATH="artifacts/triage/ix-project-config.json"
+            if [ -f "$PROJECT_CONFIG_PATH" ] && command -v jq >/dev/null 2>&1; then
+              PROJECT_URL="$(jq -r '.project.url // empty' "$PROJECT_CONFIG_PATH" 2>/dev/null || true)"
             fi
 
             {
@@ -176,6 +200,26 @@ jobs:
                 echo "- Triage Index Sweep: _not available yet_"
               fi
               echo "- Triage Project Sync: $PROJECT_SYNC_LINK"
+              echo
+              echo "## Maintainer Quick Links"
+              echo
+              echo "- Control issue: $CONTROL_ISSUE_LINK"
+              echo "- Vision doc: $VISION_URL"
+              if [ -n "$PROJECT_URL" ]; then
+                echo "- Project board: $PROJECT_URL"
+              else
+                echo "- Project board: _not available (missing artifacts/triage/ix-project-config.json or jq)_"
+              fi
+              if [ -n "$PROJECT_VIEW_APPLY_LINK" ]; then
+                echo "- Project view apply issue: $PROJECT_VIEW_APPLY_LINK"
+              else
+                echo "- Project view apply issue: _not configured (IX_PROJECT_VIEW_APPLY_ISSUE)_"
+              fi
+              if [ -n "$BOOTSTRAP_LINKS_LINK" ]; then
+                echo "- Bootstrap links comment: $BOOTSTRAP_LINKS_LINK"
+              else
+                echo "- Bootstrap links comment: _not available yet_"
+              fi
             } > "$DASHBOARD_FILE"
 
             DASHBOARD_EXISTING_ID="$(gh api --paginate \
