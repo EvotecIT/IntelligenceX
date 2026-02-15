@@ -91,6 +91,25 @@ If `reviewer_source: release` fails:
 - Check proxy/network policy on runner
 - Fall back to `reviewer_source: build`
 
+### Self-Hosted Runner "No space left on device"
+
+If jobs fail during **Set up job** with `No space left on device`, the failure is runner infrastructure, not PR code.
+
+Recommended setup:
+
+1. Enable scheduled housekeeping workflow: `.github/workflows/runner-housekeeping.yml`
+2. Keep at least ~20 GiB free on the self-hosted runner
+3. Use emergency hosted-runner fallback by setting repository variable:
+   - `IX_FORCE_GITHUB_HOSTED=true`
+   - This routes key Linux jobs to `ubuntu-latest` until self-hosted capacity is restored
+
+The following workflows honor `IX_FORCE_GITHUB_HOSTED`:
+
+- `.github/workflows/review-intelligencex.yml`
+- `.github/workflows/test-dotnet.yml`
+- `.github/workflows/analysis-catalog-guardrail.yml`
+- `.github/workflows/claude-code-review.yml`
+
 ## CLI Issues
 
 ### Wizard Cannot Create PR

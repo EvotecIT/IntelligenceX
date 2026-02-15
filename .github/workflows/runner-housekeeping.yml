@@ -1,0 +1,85 @@
+name: Self-Hosted Runner Housekeeping
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      min_free_gb:
+        description: 'Minimum free disk (GiB) required after cleanup'
+        required: false
+        default: '20'
+
+jobs:
+  cleanup-linux-runner:
+    name: Cleanup Linux Runner Disk
+    if: ${{ github.event.repository.private }}
+    runs-on: [self-hosted, ubuntu]
+    timeout-minutes: 15
+    steps:
+      - name: Show disk usage before cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Runner name: ${RUNNER_NAME:-unknown}"
+          echo "RUNNER_TEMP: ${RUNNER_TEMP:-unset}"
+          df -h
+
+      - name: Cleanup runner working sets
+        shell: bash
+        env:
+          INPUT_MIN_FREE_GB: ${{ inputs.min_free_gb }}
+        run: |
+          set -euo pipefail
+
+          min_free_gb="${INPUT_MIN_FREE_GB:-20}"
+          if ! [[ "$min_free_gb" =~ ^[0-9]+$ ]]; then
+            echo "::error::min_free_gb must be an integer. Received: '$min_free_gb'"
+            exit 1
+          fi
+
+          if [[ -z "${RUNNER_TEMP:-}" || ! -d "${RUNNER_TEMP:-}" ]]; then
+            echo "::error::RUNNER_TEMP is missing; unable to locate runner root."
+            exit 1
+          fi
+
+          runner_root="$(cd "${RUNNER_TEMP}/../.." && pwd)"
+          work_root="${runner_root}/_work"
+          diag_root="${runner_root}/_diag"
+
+          echo "Runner root detected as: ${runner_root}"
+
+          if [[ -d "$diag_root" ]]; then
+            find "$diag_root" -type f -mtime +14 -print -delete || true
+          fi
+
+          if [[ -d "${work_root}/_temp" ]]; then
+            find "${work_root}/_temp" -mindepth 1 -print -exec rm -rf {} + || true
+          fi
+
+          if [[ -d "${work_root}/_actions" ]]; then
+            find "${work_root}/_actions" -mindepth 1 -maxdepth 1 -mtime +7 -print -exec rm -rf {} + || true
+          fi
+
+          if [[ -d "${work_root}/_tool" ]]; then
+            find "${work_root}/_tool" -mindepth 1 -maxdepth 1 -mtime +30 -print -exec rm -rf {} + || true
+          fi
+
+          if command -v dotnet >/dev/null 2>&1; then
+            dotnet nuget locals all --clear || true
+          fi
+
+          if command -v docker >/dev/null 2>&1; then
+            docker system prune -af --volumes || true
+          fi
+
+          free_gb="$(df -Pk "$runner_root" | awk 'NR==2 { printf "%d", $4 / 1024 / 1024 }')"
+          echo "Free disk after cleanup: ${free_gb} GiB"
+          if (( free_gb < min_free_gb )); then
+            echo "::error::Free disk after cleanup is ${free_gb} GiB (required: ${min_free_gb} GiB)."
+            exit 1
+          fi
+
+      - name: Show disk usage after cleanup
+        shell: bash
+        run: df -h
