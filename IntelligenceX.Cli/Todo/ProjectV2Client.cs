@@ -424,6 +424,36 @@ query($owner: String!, $number: Int!, $cursor: String) {
         return views;
     }
 
+    public async Task<bool> SupportsProjectViewCreationAsync() {
+        var query = """
+query {
+  __type(name: "Mutation") {
+    fields {
+      name
+    }
+  }
+}
+""";
+
+        var root = await QueryGraphQlAsync(query).ConfigureAwait(false);
+        if (!TryGetProperty(root, "data", out var data) ||
+            !TryGetProperty(data, "__type", out var mutationType) ||
+            mutationType.ValueKind != JsonValueKind.Object ||
+            !TryGetProperty(mutationType, "fields", out var fields) ||
+            fields.ValueKind != JsonValueKind.Array) {
+            return false;
+        }
+
+        foreach (var field in fields.EnumerateArray()) {
+            var name = ReadString(field, "name");
+            if (name.Equals("createProjectV2View", StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public async Task<IReadOnlyDictionary<string, ProjectItem>> GetProjectItemsByUrlAsync(string owner, int number, int maxItems) {
         var items = new Dictionary<string, ProjectItem>(StringComparer.OrdinalIgnoreCase);
         if (maxItems <= 0) {
