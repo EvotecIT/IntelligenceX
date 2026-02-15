@@ -287,6 +287,7 @@ internal sealed partial class ChatServiceSession {
 
         // Avoid accidentally consuming explicit commands or paths.
         if (raw.StartsWith("/", StringComparison.Ordinal)
+            || raw.StartsWith("-", StringComparison.Ordinal)
             || raw.Contains('\\', StringComparison.Ordinal)
             || raw.Contains("://", StringComparison.Ordinal)
             || LooksLikeWindowsDrivePath(raw)) {
@@ -374,10 +375,14 @@ internal sealed partial class ChatServiceSession {
         var span = normalized.AsSpan();
         var start = 0;
         var end = span.Length;
-        while (start < end && (char.IsWhiteSpace(span[start]) || (char.IsPunctuation(span[start]) && !IsQuestionPunctuation(span[start])))) {
+        while (start < end
+            && (char.IsWhiteSpace(span[start])
+                || (char.IsPunctuation(span[start]) && !IsQuestionPunctuation(span[start]) && !IsQuoteWrapper(span[start])))) {
             start++;
         }
-        while (end > start && (char.IsWhiteSpace(span[end - 1]) || (char.IsPunctuation(span[end - 1]) && !IsQuestionPunctuation(span[end - 1])))) {
+        while (end > start
+            && (char.IsWhiteSpace(span[end - 1])
+                || (char.IsPunctuation(span[end - 1]) && !IsQuestionPunctuation(span[end - 1]) && !IsQuoteWrapper(span[end - 1])))) {
             end--;
         }
         normalized = (start == 0 && end == span.Length) ? normalized : span.Slice(start, end - start).ToString();
@@ -395,6 +400,11 @@ internal sealed partial class ChatServiceSession {
 
     private static bool IsQuestionPunctuation(char ch) {
         return ch is '?' or '？' or '¿' or '؟';
+    }
+
+    private static bool IsQuoteWrapper(char ch) {
+        // Common wrapper characters in chat/code that should not be stripped into confirmations.
+        return ch is '"' or '\'';
     }
 
     private static string ReadFirstToken(string text) {
