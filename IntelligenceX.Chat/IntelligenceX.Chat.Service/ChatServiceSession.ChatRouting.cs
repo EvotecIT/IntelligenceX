@@ -134,6 +134,10 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
+                // Capture pending actions from the raw assistant text so confirmation routing doesn't depend on
+                // whether redaction changes ids/fields in the displayed output.
+                RememberPendingActions(threadId, text);
+
                 if (_options.Redact) {
                     text = RedactText(text);
                 }
@@ -147,10 +151,6 @@ internal sealed partial class ChatServiceSession {
                         ? null
                         : new ToolRunDto { Calls = toolCalls.ToArray(), Outputs = toolOutputs.ToArray() }
                 };
-
-                // Capture pending actions proposed by the assistant so a follow-up like "1" or "/act <id>" can be resolved
-                // without depending on English confirmation phrases. We capture from the same finalized text we return.
-                RememberPendingActions(threadId, result.Text);
                 return result;
             }
 
