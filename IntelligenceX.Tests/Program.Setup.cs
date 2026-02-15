@@ -89,11 +89,15 @@ internal static partial class Program {
             controlIssueNumber: 11,
             viewApplyIssueNumber: 22,
             missingViews: 3,
-            directCreateSupported: false);
+            directCreateSupported: false,
+            labelsCreatedCount: 4,
+            labelsTotalCount: 24,
+            labelsEnsureFailed: false);
 
         AssertContainsText(comment, "intelligencex:triage-bootstrap-links", "bootstrap links marker");
         AssertContainsText(comment, "https://github.com/owner/repo/issues/11", "control issue link present");
         AssertContainsText(comment, "https://github.com/owner/repo/issues/22", "view apply issue link present");
+        AssertContainsText(comment, "IX labels: ensured (24 tracked, 4 created this run).", "labels ensured summary present");
         AssertContainsText(comment, "Maintainer Entry Point", "maintainer entry point section present");
     }
 
@@ -105,10 +109,31 @@ internal static partial class Program {
             controlIssueNumber: 11,
             viewApplyIssueNumber: null,
             missingViews: 2,
-            directCreateSupported: false);
+            directCreateSupported: false,
+            labelsCreatedCount: 0,
+            labelsTotalCount: 24,
+            labelsEnsureFailed: false);
 
         AssertContainsText(comment, "auto-provision failed", "missing view issue fallback text present");
         AssertContainsText(comment, "project-view-apply --create-issue", "manual recovery command hint present");
+    }
+
+    private static void TestSetupTriageBootstrapLinksCommentHandlesLabelEnsureFailure() {
+        var comment = SetupRunner.BuildTriageBootstrapLinksComment(
+            repoFullName: "owner/repo",
+            projectOwner: "owner",
+            projectNumber: 123,
+            controlIssueNumber: 11,
+            viewApplyIssueNumber: null,
+            missingViews: 0,
+            directCreateSupported: true,
+            labelsCreatedCount: 0,
+            labelsTotalCount: 24,
+            labelsEnsureFailed: true);
+
+        AssertContainsText(comment, "IX labels: ensure failed", "label failure summary present");
+        AssertContainsText(comment, "project-init --repo owner/repo --owner owner --project 123 --ensure-labels --no-link-repo --no-ensure-default-views",
+            "label recovery command hint present");
     }
 
     private static void TestSetupArgsIncludeAnalysisRunStrictOption() {
