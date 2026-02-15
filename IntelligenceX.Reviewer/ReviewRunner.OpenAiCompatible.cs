@@ -135,9 +135,9 @@ internal sealed partial class ReviewRunner {
         var current = endpoint;
         HttpMethod? redirectMethodOverride = null;
         for (var redirect = 0; redirect <= OpenAiCompatibleMaxRedirects; redirect++) {
-            using var request = createRequest(current);
-            if (redirectMethodOverride is not null) {
+            using var request = createRequest(current);            if (redirectMethodOverride is not null) {
                 request.Method = redirectMethodOverride;
+                redirectMethodOverride = null;
             }
             if (createContent is not null && request.Method != HttpMethod.Get && request.Method != HttpMethod.Head) {
                 request.Content = createContent();
@@ -519,6 +519,7 @@ internal sealed partial class ReviewRunner {
                normalized.Contains("authorization", StringComparison.Ordinal);
     }
 }
+
 
 
 

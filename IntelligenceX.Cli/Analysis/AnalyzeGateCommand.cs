@@ -376,7 +376,7 @@ internal static partial class AnalyzeGateCommand {
                         missingBaseline++;
                         continue;
                     }
-                    if (baseline.WindowLines != current.WindowLines) {
+                    if (baseline.WindowLines > 0 && current.WindowLines > 0 && baseline.WindowLines != current.WindowLines) {
                         windowMismatch++;
                         Console.WriteLine(
                             $"Static analysis duplication file delta gate: unavailable (baseline window mismatch for {current.RuleId} scope={current.Scope} file={current.Path}: baseline={baseline.WindowLines} current={current.WindowLines}).");
@@ -493,3 +493,4 @@ internal static partial class AnalyzeGateCommand {
         return Task.FromResult(ExitGateFailed);
     }
 }
+
