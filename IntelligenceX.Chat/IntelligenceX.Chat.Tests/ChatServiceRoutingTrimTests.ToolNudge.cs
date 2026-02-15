@@ -183,4 +183,19 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("no_tool_calls_after_watchdog_retry", text, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void ShouldSkipWeightedRouting_TrueForActionSelectionPayload() {
+        var request = "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Run\",\"request\":\"Run it.\"}}";
+        var result = ShouldSkipWeightedRoutingMethod.Invoke(null, new object?[] { request });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldSkipWeightedRouting_FalseForRegularRequestText() {
+        var result = ShouldSkipWeightedRoutingMethod.Invoke(null, new object?[] { "failed logons please" });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
 }

@@ -23,6 +23,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo CountLetterDigitTokensMethod =
         typeof(ChatServiceSession).GetMethod("CountLetterDigitTokens", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("CountLetterDigitTokens not found.");
+    private static readonly MethodInfo ShouldSkipWeightedRoutingMethod =
+        typeof(ChatServiceSession).GetMethod("ShouldSkipWeightedRouting", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ShouldSkipWeightedRouting not found.");
     private static readonly MethodInfo ShouldAttemptToolExecutionNudgeMethod =
         typeof(ChatServiceSession).GetMethod("ShouldAttemptToolExecutionNudge", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldAttemptToolExecutionNudge not found.");

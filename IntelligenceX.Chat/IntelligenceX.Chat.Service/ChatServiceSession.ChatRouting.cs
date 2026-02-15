@@ -81,23 +81,30 @@ internal sealed partial class ChatServiceSession {
         var userIntent = ExtractIntentUserText(request.Text);
         RememberUserIntent(threadId, userIntent);
         var routedUserRequest = ExpandContinuationUserRequest(threadId, userRequest);
+        var executionContractApplies = ShouldEnforceExecuteOrExplainContract(routedUserRequest);
         var usedContinuationSubset = false;
         if (weightedToolRouting && toolDefs.Count > 0) {
-            if (!TryGetContinuationToolSubset(threadId, userRequest, toolDefs, out var continuationSubset)) {
-                var routed = await SelectWeightedToolSubsetAsync(
-                        client,
-                        threadId,
-                        toolDefs,
-                        routedUserRequest,
-                        maxCandidateTools,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                toolDefs = routed.Definitions;
-                routingInsights = routed.Insights;
+            if (!executionContractApplies) {
+                if (!TryGetContinuationToolSubset(threadId, userRequest, toolDefs, out var continuationSubset)) {
+                    var routed = await SelectWeightedToolSubsetAsync(
+                            client,
+                            threadId,
+                            toolDefs,
+                            routedUserRequest,
+                            maxCandidateTools,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    toolDefs = routed.Definitions;
+                    routingInsights = routed.Insights;
+                } else {
+                    toolDefs = continuationSubset;
+                    routingInsights = BuildContinuationRoutingInsights(toolDefs);
+                    usedContinuationSubset = true;
+                }
             } else {
-                toolDefs = continuationSubset;
-                routingInsights = BuildContinuationRoutingInsights(toolDefs);
-                usedContinuationSubset = true;
+                // Explicit action-selection turns should preserve the full tool set to maximize
+                // first-pass execution reliability.
+                routingInsights = new List<ToolRoutingInsight>();
             }
             RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
         }
@@ -134,7 +141,6 @@ internal sealed partial class ChatServiceSession {
         var executionNudgeUsed = false;
         var toolReceiptCorrectionUsed = false;
         var noToolExecutionWatchdogUsed = false;
-        var executionContractApplies = ShouldEnforceExecuteOrExplainContract(routedUserRequest);
 
         for (var round = 0; round < Math.Max(1, maxRounds); round++) {
             var extracted = ToolCallParser.Extract(turn);
