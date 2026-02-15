@@ -8,7 +8,6 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private const string ActionMarker = "ix:action:v1";
-    private const string ActionSelectionMarker = "ix:action-selection:v1";
     private const int MaxActionParsingChars = 64 * 1024;
 
     private readonly record struct PendingAction(string Id, string Title, string Request);
@@ -109,13 +108,9 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        resolvedRequest = $$"""
-            [Action selection]
-            {{ActionSelectionMarker}}
-            id: {{selected.Value.Id}}
-            title: {{selected.Value.Title}}
-            request: {{request.Trim()}}
-            """;
+        // Return the selected request directly so we don't introduce special markers/headers that could
+        // be abused as a privileged instruction surface downstream.
+        resolvedRequest = request.Trim();
         return true;
     }
 
@@ -218,7 +213,9 @@ internal sealed partial class ChatServiceSession {
             // Parse key/value lines following the marker.
             string? id = null;
             string? title = null;
+            string? reply = null;
             var request = new StringBuilder();
+            var sawRequest = false;
 
             for (var j = i + 1; j < lines.Count; j++) {
                 var current = lines[j];
@@ -238,6 +235,7 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
                 if (TryReadField(current, "request", out field)) {
+                    sawRequest = true;
                     if (!string.IsNullOrWhiteSpace(field)) {
                         if (request.Length > 0) {
                             request.Append(' ');
@@ -246,13 +244,34 @@ internal sealed partial class ChatServiceSession {
                     }
                     continue;
                 }
+                if (TryReadField(current, "reply", out field)) {
+                    reply = field;
+                    continue;
+                }
+
+                // Support multi-line request values by treating any additional non-empty lines as
+                // request continuation once we've seen the request field.
+                if (sawRequest) {
+                    var part = current.Trim();
+                    if (part.Length > 0) {
+                        if (request.Length > 0) {
+                            request.Append(' ');
+                        }
+                        request.Append(part);
+                    }
+                }
             }
 
             id = (id ?? string.Empty).Trim();
             title = (title ?? string.Empty).Trim();
             var req = request.ToString().Trim();
+            reply = (reply ?? string.Empty).Trim();
 
             if (id.Length == 0) {
+                continue;
+            }
+            if (!LooksLikeValidActionReply(reply, id)) {
+                // Avoid caching truncated/partial action blocks that can't be reliably selected later.
                 continue;
             }
             if (id.Length > 64) {
@@ -278,6 +297,24 @@ internal sealed partial class ChatServiceSession {
         }
 
         return actions;
+    }
+
+    private static bool LooksLikeValidActionReply(string reply, string id) {
+        var normalizedReply = (reply ?? string.Empty).Trim();
+        var normalizedId = (id ?? string.Empty).Trim();
+        if (normalizedReply.Length == 0 || normalizedId.Length == 0) {
+            return false;
+        }
+
+        // Prefer explicit /act <id> to avoid false matches and to ensure action blocks are "complete".
+        if (normalizedReply.StartsWith("/act", StringComparison.OrdinalIgnoreCase)) {
+            var rest = normalizedReply[4..].Trim();
+            var token = ReadFirstToken(rest);
+            return token.Length > 0 && string.Equals(token, normalizedId, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Fallback: accept replies that include the id token (useful if the prompt format evolves).
+        return normalizedReply.IndexOf(normalizedId, StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static bool TryReadField(string line, string name, out string value) {

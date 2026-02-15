@@ -138,10 +138,7 @@ internal sealed partial class ChatServiceSession {
                     text = RedactText(text);
                 }
 
-                // Capture pending actions proposed by the assistant so a follow-up like "1" or "/act <id>" can be resolved
-                // without depending on English confirmation phrases.
-                RememberPendingActions(threadId, text);
-                return new ChatResultMessage {
+                var result = new ChatResultMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,
                     ThreadId = threadId,
@@ -150,6 +147,11 @@ internal sealed partial class ChatServiceSession {
                         ? null
                         : new ToolRunDto { Calls = toolCalls.ToArray(), Outputs = toolOutputs.ToArray() }
                 };
+
+                // Capture pending actions proposed by the assistant so a follow-up like "1" or "/act <id>" can be resolved
+                // without depending on English confirmation phrases. We capture from the same finalized text we return.
+                RememberPendingActions(threadId, result.Text);
+                return result;
             }
 
             foreach (var call in extracted) {

@@ -581,8 +581,28 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act act_001" });
         var expanded = Assert.IsType<string>(result);
 
-        Assert.Contains("ix:action-selection:v1", expanded, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("forest-wide replication", expanded, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_ResolvesMultiLinePendingActionRequest() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: Run forest probe
+            request: Run the forest-wide replication and LDAP diagnostics now.
+            Also capture the top 5 errors from System log.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act act_001" });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Contains("forest-wide replication", expanded, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("top 5 errors", expanded, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -608,7 +628,6 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-002", "2" });
         var expanded = Assert.IsType<string>(result);
 
-        Assert.Contains("act_002", expanded, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("second thing", expanded, StringComparison.OrdinalIgnoreCase);
     }
 
