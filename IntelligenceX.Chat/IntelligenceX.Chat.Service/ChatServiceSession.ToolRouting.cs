@@ -82,7 +82,7 @@ internal sealed partial class ChatServiceSession {
             }
 
             _lastWeightedToolSubsetSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
-            TrimWeightedRoutingContextsNoLock();
+            TrimWeightedRoutingContexts();
         }
 
         var preferred = new HashSet<string>(previousNames!, StringComparer.OrdinalIgnoreCase);
@@ -125,7 +125,7 @@ internal sealed partial class ChatServiceSession {
 
             _lastWeightedToolNamesByThreadId[normalizedThreadId] = names.Count == 0 ? Array.Empty<string>() : names.ToArray();
             _lastWeightedToolSubsetSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
-            TrimWeightedRoutingContextsNoLock();
+            TrimWeightedRoutingContexts();
         }
     }
 
@@ -147,7 +147,7 @@ internal sealed partial class ChatServiceSession {
         lock (_toolRoutingContextLock) {
             _lastUserIntentByThreadId[normalizedThreadId] = normalized;
             _lastUserIntentSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
-            TrimWeightedRoutingContextsNoLock();
+            TrimWeightedRoutingContexts();
         }
     }
 
@@ -190,7 +190,7 @@ internal sealed partial class ChatServiceSession {
 
         lock (_toolRoutingContextLock) {
             _lastUserIntentSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
-            TrimWeightedRoutingContextsNoLock();
+            TrimWeightedRoutingContexts();
         }
 
         var expanded = $"{intent!.Trim()}\nFollow-up: {normalized}";
@@ -266,6 +266,17 @@ internal sealed partial class ChatServiceSession {
                 }
             }
             TrimToolRoutingStatsNoLock();
+        }
+    }
+
+    private void TrimWeightedRoutingContexts() {
+        if (Monitor.IsEntered(_toolRoutingContextLock)) {
+            TrimWeightedRoutingContextsNoLock();
+            return;
+        }
+
+        lock (_toolRoutingContextLock) {
+            TrimWeightedRoutingContextsNoLock();
         }
     }
 
@@ -449,7 +460,7 @@ internal sealed partial class ChatServiceSession {
 
     internal void TrimWeightedRoutingContextsForTesting() {
         lock (_toolRoutingContextLock) {
-            TrimWeightedRoutingContextsNoLock();
+            TrimWeightedRoutingContexts();
         }
     }
 

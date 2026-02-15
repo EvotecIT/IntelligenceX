@@ -11,6 +11,67 @@ namespace IntelligenceX.Chat.Tests;
 public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
+    public void ExpandContinuationUserRequest_DoesNotCaptureActionsInsideCodeFence() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            ```text
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: Run forest probe
+            request: Run the forest-wide replication and LDAP diagnostics now.
+            reply: /act act_001
+            ```
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act act_001" });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal("/act act_001", expanded);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_ReturnsOriginalTextWhenNotAFollowUp() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var input = "  Please check the replication health for this domain today.  ";
+
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_PreservesWhitespaceWhenNoIntentCached() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var input = "  run now  ";
+
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_RespectsMaxAge() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        RememberUserIntentMethod.Invoke(session, new object?[] { "thread-001", "Please run forest-wide replication." });
+
+        var gate = ToolRoutingContextLockField.GetValue(session)!;
+        lock (gate) {
+            var ticks = (Dictionary<string, long>)LastUserIntentSeenUtcTicksField.GetValue(session)!;
+            ticks["thread-001"] = DateTime.UtcNow.AddHours(-1).Ticks;
+        }
+
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "run now" });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.DoesNotContain("Follow-up:", expanded, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("run now", expanded);
+    }
+
+    [Fact]
     public void TrimWeightedRoutingContextsForTesting_PrefersMostRecentTicksAcrossContexts() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
 
@@ -123,4 +184,3 @@ public sealed partial class ChatServiceRoutingTrimTests {
         };
     }
 }
-

@@ -44,7 +44,7 @@ internal sealed partial class ChatServiceSession {
 
             _pendingActionsByThreadId[normalizedThreadId] = actions.ToArray();
             _pendingActionsSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
-            TrimWeightedRoutingContextsNoLock();
+            TrimWeightedRoutingContexts();
         }
     }
 
@@ -82,7 +82,7 @@ internal sealed partial class ChatServiceSession {
                 lock (_toolRoutingContextLock) {
                     _pendingActionsByThreadId.Remove(normalizedThreadId);
                     _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
-                    TrimWeightedRoutingContextsNoLock();
+                    TrimWeightedRoutingContexts();
                 }
                 return false;
             }
@@ -91,7 +91,7 @@ internal sealed partial class ChatServiceSession {
                 lock (_toolRoutingContextLock) {
                     _pendingActionsByThreadId.Remove(normalizedThreadId);
                     _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
-                    TrimWeightedRoutingContextsNoLock();
+                    TrimWeightedRoutingContexts();
                 }
                 return false;
             }
@@ -108,7 +108,7 @@ internal sealed partial class ChatServiceSession {
         lock (_toolRoutingContextLock) {
             _pendingActionsByThreadId.Remove(normalizedThreadId);
             _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
-            TrimWeightedRoutingContextsNoLock();
+            TrimWeightedRoutingContexts();
         }
 
         var request = string.IsNullOrWhiteSpace(selected.Value.Request) ? selected.Value.Title : selected.Value.Request;
@@ -223,9 +223,30 @@ internal sealed partial class ChatServiceSession {
 
         var actions = new List<PendingAction>();
         var lines = SplitLines(text);
+        var inFence = false;
         for (var i = 0; i < lines.Count; i++) {
             var line = lines[i];
-            if (line.IndexOf(ActionMarker, StringComparison.OrdinalIgnoreCase) < 0) {
+            var trimmedLine = (line ?? string.Empty).Trim();
+            if (trimmedLine.StartsWith("```", StringComparison.Ordinal)) {
+                inFence = !inFence;
+                continue;
+            }
+
+            if (inFence) {
+                continue;
+            }
+
+            if (!string.Equals(trimmedLine, ActionMarker, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            // Only accept action blocks in the documented envelope ("[Action]" preceding the marker line),
+            // to avoid caching echoed/quoted content.
+            var k = i - 1;
+            while (k >= 0 && string.IsNullOrWhiteSpace(lines[k])) {
+                k--;
+            }
+            if (k < 0 || !string.Equals((lines[k] ?? string.Empty).Trim(), "[Action]", StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
 
