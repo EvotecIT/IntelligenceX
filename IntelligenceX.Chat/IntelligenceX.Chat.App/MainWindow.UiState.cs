@@ -255,7 +255,15 @@ public sealed partial class MainWindow : Window {
                 recentModels = _recentModels,
                 isStale = _modelListIsStale,
                 warning = _modelListWarning,
-                profileSaved = Array.Exists(_serviceProfileNames, name => string.Equals(name, _appProfileName, StringComparison.OrdinalIgnoreCase))
+                profileSaved = Array.Exists(_serviceProfileNames, name => string.Equals(name, _appProfileName, StringComparison.OrdinalIgnoreCase)),
+                runtimeDetection = new {
+                    hasRun = _localRuntimeDetectionRan,
+                    lmStudioAvailable = _localRuntimeLmStudioAvailable,
+                    ollamaAvailable = _localRuntimeOllamaAvailable,
+                    detectedName = _localRuntimeDetectedName ?? string.Empty,
+                    detectedBaseUrl = _localRuntimeDetectedBaseUrl ?? string.Empty,
+                    warning = _localRuntimeDetectionWarning ?? string.Empty
+                }
             },
             packs,
             tools,

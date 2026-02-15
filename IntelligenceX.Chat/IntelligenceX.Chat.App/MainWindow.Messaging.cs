@@ -105,8 +105,15 @@ public sealed partial class MainWindow : Window {
                     await PublishOptionsStateAsync().ConfigureAwait(true);
                     break;
                 case "options_refresh":
+                    await RefreshLocalRuntimeDetectionAsync(publishOptions: false).ConfigureAwait(true);
                     await PublishOptionsStateAsync().ConfigureAwait(true);
                     break;
+                case "auto_detect_local_runtime":
+                    {
+                        var forceRefresh = TryGetBoolean(root, "forceRefresh");
+                        await AutoDetectAndApplyLocalRuntimeAsync(forceRefresh ?? true).ConfigureAwait(true);
+                        break;
+                    }
                 case "refresh_models":
                     {
                         var forceRefresh = TryGetBoolean(root, "forceRefresh");
@@ -278,8 +285,9 @@ public sealed partial class MainWindow : Window {
                         var baseUrl = TryGetString(root, "baseUrl");
                         var model = TryGetString(root, "model");
                         var apiKey = TryGetString(root, "apiKey");
+                        var clearApiKey = TryGetBoolean(root, "clearApiKey");
                         var forceRefresh = TryGetBoolean(root, "forceRefresh");
-                        await ApplyLocalProviderAsync(transport, baseUrl, model, apiKey, forceRefresh ?? true).ConfigureAwait(true);
+                        await ApplyLocalProviderAsync(transport, baseUrl, model, apiKey, clearApiKey ?? false, forceRefresh ?? true).ConfigureAwait(true);
                         break;
                     }
                 case "restart_onboarding":

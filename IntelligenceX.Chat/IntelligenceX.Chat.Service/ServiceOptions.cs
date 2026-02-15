@@ -167,6 +167,10 @@ internal sealed class ServiceOptions {
                 options.OpenAIApiKey = value;
                 continue;
             }
+            if (arg is "--openai-clear-api-key") {
+                options.OpenAIApiKey = null;
+                continue;
+            }
             if (arg is "--openai-stream") {
                 options.OpenAIStreaming = true;
                 continue;
@@ -395,6 +399,7 @@ internal sealed class ServiceOptions {
         Console.WriteLine("  --openai-transport <KIND>  Underlying provider transport: native|appserver|compatible-http (default: native).");
         Console.WriteLine("  --openai-base-url <URL> Base URL for compatible-http (example: http://127.0.0.1:11434 or http://127.0.0.1:11434/v1).");
         Console.WriteLine("  --openai-api-key <KEY>  Optional Bearer token for compatible-http.");
+        Console.WriteLine("  --openai-clear-api-key Clear any saved compatible-http API key when profile overrides are saved.");
         Console.WriteLine("  --openai-stream         Request streaming responses (default: on).");
         Console.WriteLine("  --openai-no-stream      Disable streaming responses.");
         Console.WriteLine("  --openai-allow-insecure-http  Allow http:// base URLs for loopback hosts (default: off).");

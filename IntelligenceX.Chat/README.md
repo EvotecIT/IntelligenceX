@@ -41,10 +41,10 @@ Markdown renderer dependency resolution is automatic:
 Inside the app:
 
 1. Open **Options -> Profile -> Model Runtime**.
-2. Click **Use Ollama Runtime** or **Use LM Studio Runtime**.
+2. Click **Auto Detect Runtime** (recommended) or pick LM Studio/Ollama if shown.
 3. Wait for model discovery to populate.
 4. If your provider needs auth, enter **API key (optional)**.
-5. Optionally choose a model and click **Apply Runtime**.
+5. Optionally choose a discovered model (or switch to manual model input), then click **Apply Runtime**.
 
 Reference: `Docs/apps/chat-local-providers.md`
 

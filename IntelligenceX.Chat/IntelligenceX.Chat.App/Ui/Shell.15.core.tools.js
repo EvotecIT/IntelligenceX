@@ -423,11 +423,32 @@
     var warning = normalizeModelText(local.warning || "");
     var isStale = local.isStale === true;
     var profileSaved = local.profileSaved === true;
+    var runtimeDetection = local.runtimeDetection || {};
+    var runtimeDetectionHasRun = runtimeDetection.hasRun === true;
+    var lmStudioAvailable = runtimeDetection.lmStudioAvailable === true;
+    var ollamaAvailable = runtimeDetection.ollamaAvailable === true;
+    var runtimeDetectedName = normalizeModelText(runtimeDetection.detectedName || "");
+    var runtimeDetectionWarning = normalizeModelText(runtimeDetection.warning || "");
 
     var transportSelect = byId("optLocalTransport");
     if (transportSelect) {
       transportSelect.value = transport;
       syncCustomSelect(transportSelect);
+    }
+
+    var btnAutoDetect = byId("btnAutoDetectLocalRuntime");
+    if (btnAutoDetect) {
+      btnAutoDetect.hidden = transport !== "compatible-http";
+    }
+
+    var btnPresetLmStudio = byId("btnLocalPresetLmStudio");
+    if (btnPresetLmStudio) {
+      btnPresetLmStudio.hidden = runtimeDetectionHasRun && !lmStudioAvailable;
+    }
+
+    var btnPresetOllama = byId("btnLocalPresetOllama");
+    if (btnPresetOllama) {
+      btnPresetOllama.hidden = runtimeDetectionHasRun && !ollamaAvailable;
     }
 
     var baseUrlRow = byId("optLocalBaseUrlRow");
@@ -444,6 +465,11 @@
     var apiKeyRow = byId("optLocalApiKeyRow");
     if (apiKeyRow) {
       apiKeyRow.hidden = transport !== "compatible-http";
+    }
+
+    var apiKeyHint = byId("optLocalApiKeyHint");
+    if (apiKeyHint) {
+      apiKeyHint.hidden = transport !== "compatible-http";
     }
 
     var apiKeyInput = byId("optLocalApiKey");
@@ -498,7 +524,11 @@
           continue;
         }
         var displayName = normalizeModelText(item.displayName || item.DisplayName);
-        pushModelOption(modelName, displayName ? (displayName + " ->") : "");
+        if (displayName && displayName.toLowerCase() !== modelName.toLowerCase()) {
+          pushModelOption(modelName, displayName + ":");
+        } else {
+          pushModelOption(modelName, "");
+        }
       }
 
       modelSelect.value = model;
@@ -508,9 +538,28 @@
       syncCustomSelect(modelSelect);
     }
 
+    var modelInputRow = byId("optLocalModelInputRow");
+    var modelSelectRow = byId("optLocalModelSelectRow");
+    var hasSelectableModels = recents.length > 0 || favorites.length > 0 || models.length > 0;
+    var usingManualInput = !modelSelect || !hasSelectableModels || modelSelect.value === "";
+    if (modelSelectRow) {
+      modelSelectRow.hidden = !hasSelectableModels;
+    }
+    if (modelInputRow) {
+      modelInputRow.hidden = hasSelectableModels && !usingManualInput;
+    }
+    if (modelInput) {
+      modelInput.disabled = hasSelectableModels && !usingManualInput;
+    }
+
     var stateNote = byId("optLocalModelsState");
     if (stateNote) {
       var parts = [];
+      if (transport === "compatible-http" && runtimeDetectedName) {
+        parts.push("detected runtime: " + runtimeDetectedName);
+      } else if (transport === "compatible-http" && runtimeDetectionHasRun && runtimeDetectionWarning) {
+        parts.push(runtimeDetectionWarning);
+      }
       if (models.length > 0) {
         parts.push(String(models.length) + " models discovered");
       } else {

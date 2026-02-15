@@ -345,6 +345,7 @@ public sealed partial class MainWindow : Window {
                     OpenAITransport = pending.OpenAITransport,
                     OpenAIBaseUrl = pending.OpenAIBaseUrl,
                     OpenAIApiKey = pending.OpenAIApiKey,
+                    ClearOpenAIApiKey = pending.ClearOpenAIApiKey,
                     OpenAIStreaming = pending.OpenAIStreaming,
                     OpenAIAllowInsecureHttp = pending.OpenAIAllowInsecureHttp
                 });

@@ -14,6 +14,7 @@ internal static class ServiceLaunchArguments {
         public string? OpenAITransport { get; init; }
         public string? OpenAIBaseUrl { get; init; }
         public string? OpenAIApiKey { get; init; }
+        public bool ClearOpenAIApiKey { get; init; }
         public bool? OpenAIStreaming { get; init; }
         public bool? OpenAIAllowInsecureHttp { get; init; }
     }
@@ -58,7 +59,11 @@ internal static class ServiceLaunchArguments {
         }
 
         AddKeyValueArg(args, "--openai-base-url", profileOptions.OpenAIBaseUrl);
-        AddKeyValueArg(args, "--openai-api-key", profileOptions.OpenAIApiKey);
+        if (profileOptions.ClearOpenAIApiKey) {
+            args.Add("--openai-clear-api-key");
+        } else {
+            AddKeyValueArg(args, "--openai-api-key", profileOptions.OpenAIApiKey);
+        }
 
         if (profileOptions.OpenAIStreaming.HasValue) {
             args.Add(profileOptions.OpenAIStreaming.Value ? "--openai-stream" : "--openai-no-stream");

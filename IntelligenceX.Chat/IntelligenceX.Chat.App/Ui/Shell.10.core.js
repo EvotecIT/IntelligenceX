@@ -84,7 +84,15 @@
         recentModels: [],
         isStale: false,
         warning: "",
-        profileSaved: false
+        profileSaved: false,
+        runtimeDetection: {
+          hasRun: false,
+          lmStudioAvailable: false,
+          ollamaAvailable: false,
+          detectedName: "",
+          detectedBaseUrl: "",
+          warning: ""
+        }
       },
       debugToolsEnabled: false,
       toolFilter: "",
