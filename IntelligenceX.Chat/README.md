@@ -36,6 +36,17 @@ Markdown renderer dependency resolution is automatic:
 
 `Run-ChatApp.ps1` launches only the app. The local runtime service is auto-started and auto-restarted by the app.
 
+### WinUI Local Model Quick Setup
+
+Inside the app:
+
+1. Open **Options -> Profile -> Model Runtime**.
+2. Click **Use Ollama Runtime** or **Use LM Studio Runtime**.
+3. Wait for model discovery to populate.
+4. Optionally choose a model and click **Apply Runtime**.
+
+Reference: `Docs/apps/chat-local-providers.md`
+
 Service-only mode (advanced):
 
 ```powershell
