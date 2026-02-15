@@ -369,9 +369,16 @@ internal static partial class Program {
                     }
                 }
 
-                var result = await session!.AskAsync(line, cancellationToken).ConfigureAwait(false);
-                WriteTurnResult(result, options);
-                Console.WriteLine();
+                try {
+                    var result = await session!.AskAsync(line, cancellationToken).ConfigureAwait(false);
+                    WriteTurnResult(result, options);
+                    Console.WriteLine();
+                } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+                    throw;
+                } catch (Exception ex) {
+                    WriteTurnFailure(ex);
+                    Console.WriteLine();
+                }
             }
         } finally {
             if (client is not null) {
@@ -407,6 +414,30 @@ internal static partial class Program {
             var text = options.Redact ? RedactText(result.Text) : result.Text;
             Console.WriteLine(text);
         }
+    }
+
+    private static void WriteTurnFailure(Exception ex) {
+        var message = (ex.Message ?? "Turn failed.").Trim();
+        if (message.Length == 0) {
+            message = "Turn failed.";
+        }
+
+        Console.WriteLine("Turn failed: " + message);
+        if (LooksLikeContextWindowFailure(ex)) {
+            Console.WriteLine("Hint: local model context window is too small for current instructions + tool catalog.");
+            Console.WriteLine("Try a larger-context model, or reduce enabled tool packs.");
+        }
+    }
+
+    private static bool LooksLikeContextWindowFailure(Exception ex) {
+        var text = (ex.ToString() ?? string.Empty).ToLowerInvariant();
+        if (text.Contains("cannot truncate prompt with n_keep")
+            || text.Contains("n_ctx")) {
+            return true;
+        }
+
+        return text.Contains("context length")
+               || text.Contains("maximum context length");
     }
 
     private static string Truncate(string value, int maxChars) {
