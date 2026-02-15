@@ -277,18 +277,264 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
+        if (trimmed.IndexOfAny(PendingActionConfirmationQuestionPunctuation) >= 0
+            || trimmed.IndexOfAny(PendingActionConfirmationDisqualifierPunctuation) >= 0
+            || LooksLikeStructuredPendingActionConfirmationInput(trimmed)) {
+            return false;
+        }
+
         // If there's only one pending action, allow the user to echo an assistant-provided call-to-action phrase.
         // This is language-agnostic, avoids locale-specific phrase lists in the host, and scopes matching to the
         // assistant-provided CTA tokens (not arbitrary substrings in the assistant message).
         if (actions.Count == 1
             && !string.IsNullOrWhiteSpace(actions[0].Id)
             && callToActionTokens is { Count: > 0 }
-            && trimmed.IndexOfAny(PendingActionConfirmationQuestionPunctuation) < 0
-            && trimmed.IndexOfAny(PendingActionConfirmationDisqualifierPunctuation) < 0
-            && !LooksLikeStructuredPendingActionConfirmationInput(trimmed)
             && UserMatchesPendingActionCallToActionTokens(trimmed, callToActionTokens)) {
             match = actions[0];
             return true;
+        }
+
+        if (TryMatchPendingActionByIntentOverlap(trimmed, actions, out var overlapMatch)) {
+            match = overlapMatch;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryMatchPendingActionByIntentOverlap(string userText, IReadOnlyList<PendingAction> actions, out PendingAction match) {
+        match = default;
+        if (actions is null || actions.Count == 0) {
+            return false;
+        }
+
+        var userTokens = ExtractPendingActionIntentTokens(userText, maxTokens: 12);
+        if (userTokens.Count == 0) {
+            return false;
+        }
+
+        var bestIndex = -1;
+        var bestHits = 0;
+        var bestCoverage = 0d;
+        var bestLastHitIndex = -1;
+        var bestLongestMatchedTokenLength = 0;
+        var tieOnBest = false;
+
+        for (var i = 0; i < actions.Count; i++) {
+            var action = actions[i];
+            if (string.IsNullOrWhiteSpace(action.Id)) {
+                continue;
+            }
+
+            var actionTokens = ExtractPendingActionIntentTokens(BuildPendingActionIntentText(action), maxTokens: 24);
+            if (actionTokens.Count == 0) {
+                continue;
+            }
+
+            var hits = 0;
+            var lastHitIndex = -1;
+            var longestMatchedTokenLength = 0;
+            for (var userIndex = 0; userIndex < userTokens.Count; userIndex++) {
+                var userToken = userTokens[userIndex];
+                if (!TokenOverlapsPendingActionIntent(userToken, actionTokens)) {
+                    continue;
+                }
+
+                hits++;
+                lastHitIndex = userIndex;
+                if (userToken.Length > longestMatchedTokenLength) {
+                    longestMatchedTokenLength = userToken.Length;
+                }
+            }
+
+            if (hits == 0) {
+                continue;
+            }
+
+            var coverage = hits / (double)userTokens.Count;
+
+            if (hits > bestHits || (hits == bestHits && coverage > bestCoverage)) {
+                bestIndex = i;
+                bestHits = hits;
+                bestCoverage = coverage;
+                bestLastHitIndex = lastHitIndex;
+                bestLongestMatchedTokenLength = longestMatchedTokenLength;
+                tieOnBest = false;
+                continue;
+            }
+
+            if (hits == bestHits && Math.Abs(coverage - bestCoverage) <= 0.0001d) {
+                tieOnBest = true;
+            }
+        }
+
+        if (bestIndex < 0 || tieOnBest) {
+            return false;
+        }
+
+        if (actions.Count > 1) {
+            if (bestHits < 2) {
+                return false;
+            }
+
+            match = actions[bestIndex];
+            return true;
+        }
+
+        if (!SingleActionIntentOverlapIsStrongEnough(
+                userTokenCount: userTokens.Count,
+                hitCount: bestHits,
+                lastHitIndex: bestLastHitIndex,
+                longestMatchedTokenLength: bestLongestMatchedTokenLength)) {
+            return false;
+        }
+
+        match = actions[bestIndex];
+        return true;
+    }
+
+    private static bool SingleActionIntentOverlapIsStrongEnough(int userTokenCount, int hitCount, int lastHitIndex, int longestMatchedTokenLength) {
+        if (hitCount <= 0 || userTokenCount <= 0 || lastHitIndex < 0) {
+            return false;
+        }
+
+        if (hitCount >= 2) {
+            return true;
+        }
+
+        if (hitCount != 1) {
+            return false;
+        }
+
+        if (userTokenCount == 1) {
+            return true;
+        }
+
+        if (userTokenCount == 2) {
+            // Require the matched token as trailing intent for short two-token follow-ups ("please run").
+            // Also require at least 3 letters/digits so punctuation-only tails never confirm.
+            return lastHitIndex == 1 && longestMatchedTokenLength >= 3;
+        }
+
+        // For longer follow-ups with a single overlap hit, keep it conservative:
+        // - match must be in the trailing slot (for example "... run")
+        // - overlap must still cover at least one-third of meaningful tokens
+        return lastHitIndex == userTokenCount - 1
+               && hitCount * 3 >= userTokenCount;
+    }
+
+    private static string BuildPendingActionIntentText(PendingAction action) {
+        var title = (action.Title ?? string.Empty).Trim();
+        var request = (action.Request ?? string.Empty).Trim();
+        if (title.Length == 0) {
+            return request;
+        }
+        if (request.Length == 0) {
+            return title;
+        }
+
+        return title + " " + request;
+    }
+
+    private static List<string> ExtractPendingActionIntentTokens(string text, int maxTokens) {
+        var normalized = NormalizeCompactText(text);
+        if (normalized.Length == 0 || maxTokens <= 0) {
+            return new List<string>();
+        }
+
+        var tokens = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var token = new StringBuilder();
+
+        for (var i = 0; i <= normalized.Length; i++) {
+            var ch = i < normalized.Length ? normalized[i] : '\0';
+            var isTokenChar = i < normalized.Length && char.IsLetterOrDigit(ch);
+            if (isTokenChar) {
+                token.Append(char.ToLowerInvariant(ch));
+                continue;
+            }
+
+            if (token.Length == 0) {
+                continue;
+            }
+
+            var value = token.ToString();
+            token.Clear();
+
+            if (!LooksLikePendingActionIntentToken(value)) {
+                continue;
+            }
+
+            if (!seen.Add(value)) {
+                continue;
+            }
+
+            tokens.Add(value);
+            if (tokens.Count >= maxTokens) {
+                break;
+            }
+        }
+
+        return tokens;
+    }
+
+    private static bool LooksLikePendingActionIntentToken(string token) {
+        var value = (token ?? string.Empty).Trim();
+        if (value.Length == 0) {
+            return false;
+        }
+
+        var hasDigit = false;
+        var hasLetter = false;
+        for (var i = 0; i < value.Length; i++) {
+            var ch = value[i];
+            if (!char.IsLetterOrDigit(ch)) {
+                return false;
+            }
+            if (char.IsDigit(ch)) {
+                hasDigit = true;
+            }
+            if (char.IsLetter(ch)) {
+                hasLetter = true;
+            }
+        }
+
+        if (hasDigit) {
+            return true;
+        }
+
+        if (!hasLetter) {
+            return false;
+        }
+
+        return value.Length >= 3;
+    }
+
+    private static bool TokenOverlapsPendingActionIntent(string token, IReadOnlyList<string> actionTokens) {
+        var value = (token ?? string.Empty).Trim();
+        if (value.Length == 0 || actionTokens.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < actionTokens.Count; i++) {
+            var actionToken = (actionTokens[i] ?? string.Empty).Trim();
+            if (actionToken.Length == 0) {
+                continue;
+            }
+
+            if (string.Equals(value, actionToken, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+
+            var minSharedLength = Math.Min(value.Length, actionToken.Length);
+            if (minSharedLength < 5) {
+                continue;
+            }
+
+            if (value.StartsWith(actionToken, StringComparison.OrdinalIgnoreCase)
+                || actionToken.StartsWith(value, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
         }
 
         return false;
