@@ -245,7 +245,9 @@ internal sealed partial class ChatServiceSession {
 
         // If there's only one pending action, treat a compact acknowledgement-like follow-up as confirmation.
         // This is intentionally high-precision (allowlist-based) to avoid accidental execution from ambiguous short messages.
-        if (actions.Count == 1 && LooksLikeImplicitPendingActionConfirmation(normalized)) {
+        if (actions.Count == 1
+            && !string.IsNullOrWhiteSpace(actions[0].Id)
+            && LooksLikeImplicitPendingActionConfirmation(normalized)) {
             match = actions[0];
             return true;
         }
