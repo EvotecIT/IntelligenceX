@@ -122,7 +122,6 @@ internal sealed partial class ChatServiceSession {
         if (normalized.Length == 0) {
             return false;
         }
-        normalized = normalized.Normalize(NormalizationForm.FormKC);
 
         // Only apply selection rewriting for explicit /act <id>, or when the message looks like a short follow-up.
         // This prevents rewriting normal user messages that happen to start with digits (e.g., "2 servers are down").
@@ -367,7 +366,8 @@ internal sealed partial class ChatServiceSession {
 
     private static string CanonicalizeImplicitPendingActionConfirmationPhrase(string text) {
         var normalized = (text ?? string.Empty)
-            .Trim();
+            .Trim()
+            .Normalize(NormalizationForm.FormKC);
 
         // Trim leading/trailing punctuation broadly (including CJK/fullwidth punctuation) so "ok!" and "ok！" match.
         // Example punctuation this is expected to handle: '！', '。', '，'.
