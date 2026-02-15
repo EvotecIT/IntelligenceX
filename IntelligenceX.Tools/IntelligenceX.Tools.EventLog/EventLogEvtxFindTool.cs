@@ -97,8 +97,9 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             var rootPath = root.Trim();
             string rootFull;
             try {
-                rootFull = Path.GetFullPath(rootPath);
-            } catch {
+                rootFull = NormalizePathForComparison(Path.GetFullPath(rootPath));
+            } catch (Exception ex) when (
+                ex is ArgumentException or NotSupportedException or PathTooLongException) {
                 continue;
             }
 
@@ -111,9 +112,8 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                 continue;
             }
 
-            var rootPrefix = rootFull.EndsWith(Path.DirectorySeparatorChar)
-                ? rootFull
-                : rootFull + Path.DirectorySeparatorChar;
+            rootFull = Path.TrimEndingDirectorySeparator(rootFull);
+            var rootPrefix = rootFull + Path.DirectorySeparatorChar;
 
             var queue = new Queue<(string Dir, int Depth)>();
             queue.Enqueue((rootFull, 0));
@@ -156,13 +156,14 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                         if ((info.Attributes & FileAttributes.ReparsePoint) != 0) {
                             continue;
                         }
-                        if (!info.FullName.StartsWith(rootPrefix, comparison) &&
-                            !string.Equals(info.FullName, rootFull, comparison)) {
+
+                        var fileFull = NormalizePathForComparison(info.FullName);
+                        if (!fileFull.StartsWith(rootPrefix, comparison)) {
                             continue;
                         }
 
                         var candidate = new EvtxFindFile(
-                            Path: info.FullName,
+                            Path: fileFull,
                             FileName: info.Name,
                             SizeBytes: info.Length,
                             LastWriteTimeUtc: info.LastWriteTimeUtc);
@@ -199,13 +200,13 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
 
                     string subFull;
                     try {
-                        subFull = Path.GetFullPath(subDir);
-                    } catch {
+                        subFull = NormalizePathForComparison(Path.GetFullPath(subDir));
+                    } catch (Exception ex) when (
+                        ex is ArgumentException or NotSupportedException or PathTooLongException) {
                         continue;
                     }
 
-                    if (!subFull.StartsWith(rootPrefix, comparison) &&
-                        !string.Equals(subFull, rootFull, comparison)) {
+                    if (!subFull.StartsWith(rootPrefix, comparison)) {
                         continue;
                     }
 
@@ -318,6 +319,24 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             // Treat as unsafe: skip traversal if we can't reliably read attributes.
             return true;
         }
+    }
+
+    private static string NormalizePathForComparison(string path) {
+        if (string.IsNullOrWhiteSpace(path)) {
+            return string.Empty;
+        }
+
+        // Normalize Windows extended-length prefixes so containment checks don't vary by representation.
+        if (OperatingSystem.IsWindows()) {
+            if (path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase)) {
+                return @"\\" + path.Substring(@"\\?\UNC\".Length);
+            }
+            if (path.StartsWith(@"\\?\", StringComparison.OrdinalIgnoreCase)) {
+                return path.Substring(@"\\?\".Length);
+            }
+        }
+
+        return path;
     }
 
     private static bool IsMatch(string path, IReadOnlyList<string> queryTokens, string? logHint) {
