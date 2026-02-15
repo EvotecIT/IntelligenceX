@@ -145,7 +145,7 @@
           </div>
           <div class="options-label">Model Runtime</div>
           <div class="options-note">Configure runtime provider + model and persist it to the active service profile.</div>
-          <div class="options-row">
+          <div class="options-row" id="optLocalTransportRow">
             <label class="options-label-inline" for="optLocalTransport">Provider transport</label>
             <select id="optLocalTransport" class="options-select">
               <option value="native">OpenAI Native</option>
@@ -160,20 +160,23 @@
             <label class="options-label-inline" for="optLocalApiKey">API key (optional)</label>
             <input id="optLocalApiKey" type="password" class="options-input options-input-sm" placeholder="Leave blank to keep existing key" autocomplete="off" />
           </div>
-          <div class="options-row">
+          <div class="options-note" id="optLocalApiKeyHint">Use Clear Saved API Key to remove the currently stored key.</div>
+          <div class="options-row" id="optLocalModelInputRow">
             <label class="options-label-inline" for="optLocalModelInput">Model</label>
             <input id="optLocalModelInput" class="options-input options-input-sm" placeholder="e.g. gpt-5.3-codex or llama3.2" />
           </div>
-          <div class="options-row">
+          <div class="options-row" id="optLocalModelSelectRow">
             <label class="options-label-inline" for="optLocalModelSelect">Discovered models</label>
             <select id="optLocalModelSelect" class="options-select"></select>
           </div>
           <div class="options-note" id="optLocalModelsState"></div>
-          <div class="options-note">Preset buttons apply runtime settings immediately and refresh model discovery.</div>
+          <div class="options-note">Auto-detect picks an available local runtime and refreshes models.</div>
           <div class="options-actions options-actions-wrap">
+            <button id="btnAutoDetectLocalRuntime" class="options-btn options-btn-sm">Auto Detect Runtime</button>
             <button id="btnLocalPresetOllama" class="options-btn options-btn-sm options-btn-ghost">Use Ollama Runtime</button>
             <button id="btnLocalPresetLmStudio" class="options-btn options-btn-sm options-btn-ghost">Use LM Studio Runtime</button>
             <button id="btnRefreshModels" class="options-btn options-btn-sm options-btn-ghost">Refresh Models</button>
+            <button id="btnClearLocalApiKey" class="options-btn options-btn-sm options-btn-ghost">Clear Saved API Key</button>
             <button id="btnApplyLocalProvider" class="options-btn options-btn-sm">Apply Runtime</button>
           </div>
           <div class="options-actions">

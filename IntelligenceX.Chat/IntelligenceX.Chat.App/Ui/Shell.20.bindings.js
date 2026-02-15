@@ -555,18 +555,23 @@
     return String(value || "").toLowerCase() === "compatible-http" ? "compatible-http" : "native";
   }
 
-  function applyLocalProviderSettings(forceRefresh) {
+  function applyLocalProviderSettings(forceRefresh, clearApiKey) {
     var transport = normalizeLocalTransportValue(byId("optLocalTransport").value || "native");
     var baseUrl = (byId("optLocalBaseUrl").value || "").trim();
     var model = (byId("optLocalModelInput").value || "").trim();
+    var shouldClearApiKey = clearApiKey === true;
     var apiKey = transport === "compatible-http"
       ? (byId("optLocalApiKey").value || "").trim()
       : "";
+    if (shouldClearApiKey) {
+      apiKey = "";
+    }
     post("apply_local_provider", {
       transport: transport,
       baseUrl: baseUrl,
       model: model,
       apiKey: apiKey,
+      clearApiKey: shouldClearApiKey,
       forceRefresh: forceRefresh !== false
     });
   }
@@ -602,7 +607,9 @@
     var baseRow = byId("optLocalBaseUrlRow");
     var baseInput = byId("optLocalBaseUrl");
     var apiKeyRow = byId("optLocalApiKeyRow");
+    var apiKeyHint = byId("optLocalApiKeyHint");
     var apiKeyInput = byId("optLocalApiKey");
+    var autoDetectButton = byId("btnAutoDetectLocalRuntime");
     if (baseRow) {
       baseRow.hidden = next !== "compatible-http";
     }
@@ -610,10 +617,22 @@
       baseInput.disabled = next !== "compatible-http";
       if (next !== "compatible-http") {
         baseInput.value = "";
+      } else if (!(baseInput.value || "").trim()) {
+        var runtimeDetection = (((state.options || {}).localModel || {}).runtimeDetection || {});
+        var lmStudioAvailable = runtimeDetection.lmStudioAvailable === true;
+        var ollamaAvailable = runtimeDetection.ollamaAvailable === true;
+        if (lmStudioAvailable && !ollamaAvailable) {
+          baseInput.value = "http://127.0.0.1:1234/v1";
+        } else if (ollamaAvailable && !lmStudioAvailable) {
+          baseInput.value = "http://127.0.0.1:11434";
+        }
       }
     }
     if (apiKeyRow) {
       apiKeyRow.hidden = next !== "compatible-http";
+    }
+    if (apiKeyHint) {
+      apiKeyHint.hidden = next !== "compatible-http";
     }
     if (apiKeyInput) {
       apiKeyInput.disabled = next !== "compatible-http";
@@ -621,14 +640,35 @@
         apiKeyInput.value = "";
       }
     }
+    if (autoDetectButton) {
+      autoDetectButton.hidden = next !== "compatible-http";
+    }
   });
 
   byId("optLocalModelSelect").addEventListener("change", function(e) {
     var selected = (e.target.value || "").trim();
+    var modelInput = byId("optLocalModelInput");
+    var modelInputRow = byId("optLocalModelInputRow");
     if (!selected) {
+      if (modelInput) {
+        modelInput.disabled = false;
+      }
+      if (modelInputRow) {
+        modelInputRow.hidden = false;
+      }
       return;
     }
-    byId("optLocalModelInput").value = selected;
+    if (modelInput) {
+      modelInput.value = selected;
+      modelInput.disabled = true;
+    }
+    if (modelInputRow) {
+      modelInputRow.hidden = true;
+    }
+  });
+
+  byId("btnAutoDetectLocalRuntime").addEventListener("click", function() {
+    post("auto_detect_local_runtime", { forceRefresh: true });
   });
 
   byId("btnLocalPresetOllama").addEventListener("click", function() {
@@ -640,6 +680,7 @@
     byId("optLocalBaseUrlRow").hidden = false;
     baseUrl.disabled = false;
     byId("optLocalApiKeyRow").hidden = false;
+    byId("optLocalApiKeyHint").hidden = false;
     byId("optLocalApiKey").disabled = false;
     applyLocalProviderSettings(true);
   });
@@ -653,6 +694,7 @@
     byId("optLocalBaseUrlRow").hidden = false;
     baseUrl.disabled = false;
     byId("optLocalApiKeyRow").hidden = false;
+    byId("optLocalApiKeyHint").hidden = false;
     byId("optLocalApiKey").disabled = false;
     applyLocalProviderSettings(true);
   });
@@ -667,6 +709,14 @@
 
   byId("btnApplyLocalProvider").addEventListener("click", function() {
     applyLocalProviderSettings(true);
+  });
+
+  byId("btnClearLocalApiKey").addEventListener("click", function() {
+    if (normalizeLocalTransportValue(byId("optLocalTransport").value || "native") !== "compatible-http") {
+      return;
+    }
+    byId("optLocalApiKey").value = "";
+    applyLocalProviderSettings(true, true);
   });
 
   var btnNewConversation = byId("btnNewConversation");

@@ -86,6 +86,27 @@ public sealed class ServiceLaunchArgumentsTests {
     }
 
     /// <summary>
+    /// Ensures explicit API-key clearing emits a dedicated clear flag.
+    /// </summary>
+    [Fact]
+    public void Build_IncludesClearApiKeyFlag_WhenRequested() {
+        var args = ServiceLaunchArguments.Build(
+            "intelligencex.chat",
+            detachedServiceMode: true,
+            parentProcessId: 12345,
+            new ServiceLaunchArguments.ProfileOptions {
+                LoadProfileName = "default",
+                SaveProfileName = "default",
+                OpenAITransport = "compatible-http",
+                OpenAIBaseUrl = "http://127.0.0.1:1234/v1",
+                ClearOpenAIApiKey = true
+            });
+
+        Assert.DoesNotContain("--openai-api-key", args);
+        Assert.Contains("--openai-clear-api-key", args);
+    }
+
+    /// <summary>
     /// Ensures unknown transport values are rejected.
     /// </summary>
     [Fact]

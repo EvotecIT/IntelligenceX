@@ -153,6 +153,12 @@ public sealed partial class MainWindow : Window {
     private string _localProviderTransport = TransportNative;
     private string? _localProviderBaseUrl;
     private string _localProviderModel = DefaultLocalModel;
+    private bool _localRuntimeDetectionRan;
+    private bool _localRuntimeLmStudioAvailable;
+    private bool _localRuntimeOllamaAvailable;
+    private string? _localRuntimeDetectedName;
+    private string? _localRuntimeDetectedBaseUrl;
+    private string? _localRuntimeDetectionWarning;
     private ModelInfoDto[] _availableModels = Array.Empty<ModelInfoDto>();
     private string[] _favoriteModels = Array.Empty<string>();
     private string[] _recentModels = Array.Empty<string>();
@@ -246,6 +252,7 @@ public sealed partial class MainWindow : Window {
         public string? OpenAITransport { get; init; }
         public string? OpenAIBaseUrl { get; init; }
         public string? OpenAIApiKey { get; init; }
+        public bool ClearOpenAIApiKey { get; init; }
         public bool? OpenAIStreaming { get; init; }
         public bool? OpenAIAllowInsecureHttp { get; init; }
     }
@@ -731,6 +738,12 @@ public sealed partial class MainWindow : Window {
         _appState.LocalProviderTransport = _localProviderTransport;
         _appState.LocalProviderBaseUrl = _localProviderBaseUrl;
         _appState.LocalProviderModel = _localProviderModel;
+        _localRuntimeDetectionRan = false;
+        _localRuntimeLmStudioAvailable = false;
+        _localRuntimeOllamaAvailable = false;
+        _localRuntimeDetectedName = null;
+        _localRuntimeDetectedBaseUrl = null;
+        _localRuntimeDetectionWarning = null;
         _availableModels = Array.Empty<ModelInfoDto>();
         _favoriteModels = Array.Empty<string>();
         _recentModels = Array.Empty<string>();

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Net;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -27,6 +28,13 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
+    private sealed record LocalRuntimeDetectionSnapshot(
+        bool LmStudioAvailable,
+        bool OllamaAvailable,
+        string? DetectedName,
+        string? DetectedBaseUrl,
+        string? Warning);
+
     private async Task RefreshModelsFromUiAsync(bool forceRefresh) {
         if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
             return;
@@ -49,6 +57,32 @@ public sealed partial class MainWindow : Window {
         await RefreshModelsAsync(client, forceModelRefresh, publishOptions: false, appendWarnings).ConfigureAwait(false);
         await PublishOptionsStateAsync().ConfigureAwait(false);
         return profileApplied;
+    }
+
+    private async Task RefreshLocalRuntimeDetectionAsync(bool publishOptions) {
+        var snapshot = await ProbeLocalRuntimeAvailabilityAsync().ConfigureAwait(false);
+        ApplyLocalRuntimeDetectionSnapshot(snapshot);
+        if (publishOptions) {
+            await PublishOptionsStateAsync().ConfigureAwait(false);
+        }
+    }
+
+    private async Task AutoDetectAndApplyLocalRuntimeAsync(bool forceModelRefresh) {
+        var snapshot = await ProbeLocalRuntimeAvailabilityAsync().ConfigureAwait(false);
+        ApplyLocalRuntimeDetectionSnapshot(snapshot);
+        if (string.IsNullOrWhiteSpace(snapshot.DetectedBaseUrl)) {
+            await SetStatusAsync("No local runtime detected. Start LM Studio or Ollama, then try again.").ConfigureAwait(false);
+            await PublishOptionsStateAsync().ConfigureAwait(false);
+            return;
+        }
+
+        await ApplyLocalProviderAsync(
+            TransportCompatibleHttp,
+            snapshot.DetectedBaseUrl,
+            string.Empty,
+            apiKeyValue: null,
+            clearApiKey: false,
+            forceModelRefresh: forceModelRefresh).ConfigureAwait(false);
     }
 
     private async Task RefreshServiceProfilesAsync(ChatServiceClient client, bool publishOptions, bool appendWarnings) {
@@ -118,7 +152,7 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private async Task ApplyLocalProviderAsync(string? transportValue, string? baseUrlValue, string? modelValue, string? apiKeyValue, bool forceModelRefresh) {
+    private async Task ApplyLocalProviderAsync(string? transportValue, string? baseUrlValue, string? modelValue, string? apiKeyValue, bool clearApiKey, bool forceModelRefresh) {
         if (_isSending) {
             await SetStatusAsync("Finish the active response before changing local runtime settings.").ConfigureAwait(false);
             return;
@@ -128,8 +162,9 @@ public sealed partial class MainWindow : Window {
         var normalizedTransport = NormalizeLocalProviderTransport(rawTransport);
         var normalizedBaseUrl = NormalizeLocalProviderBaseUrl(baseUrlValue, normalizedTransport, rawTransport);
         var normalizedModel = NormalizeLocalProviderModel(modelValue, normalizedTransport);
+        var clearApiKeyRequested = clearApiKey && string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase);
         var normalizedApiKey = NormalizeLocalProviderApiKey(apiKeyValue, normalizedTransport);
-        var hasApiKeyUpdate = normalizedApiKey is not null;
+        var hasApiKeyUpdate = clearApiKeyRequested || normalizedApiKey is not null;
 
         var changed = !string.Equals(_localProviderTransport, normalizedTransport, StringComparison.OrdinalIgnoreCase)
                       || !string.Equals(_localProviderBaseUrl ?? string.Empty, normalizedBaseUrl ?? string.Empty, StringComparison.OrdinalIgnoreCase)
@@ -161,11 +196,13 @@ public sealed partial class MainWindow : Window {
             OpenAITransport = _localProviderTransport,
             OpenAIBaseUrl = _localProviderBaseUrl,
             OpenAIApiKey = normalizedApiKey,
+            ClearOpenAIApiKey = clearApiKeyRequested,
             OpenAIStreaming = true,
             OpenAIAllowInsecureHttp = ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl)
         };
 
         await RestartSidecarAsync().ConfigureAwait(false);
+        await RefreshLocalRuntimeDetectionAsync(publishOptions: false).ConfigureAwait(false);
         await SyncConnectedServiceProfileAndModelsAsync(
             forceModelRefresh: true,
             setProfileNewThread: false,
@@ -310,5 +347,90 @@ public sealed partial class MainWindow : Window {
         }
 
         return string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<LocalRuntimeDetectionSnapshot> ProbeLocalRuntimeAvailabilityAsync() {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        var lmStudio = await ProbeModelsEndpointAsync(DefaultLmStudioBaseUrl, cts.Token).ConfigureAwait(false);
+        var ollama = await ProbeModelsEndpointAsync(DefaultOllamaBaseUrl, cts.Token).ConfigureAwait(false);
+
+        if (lmStudio) {
+            return new LocalRuntimeDetectionSnapshot(
+                LmStudioAvailable: true,
+                OllamaAvailable: ollama,
+                DetectedName: "LM Studio",
+                DetectedBaseUrl: DefaultLmStudioBaseUrl,
+                Warning: null);
+        }
+
+        if (ollama) {
+            return new LocalRuntimeDetectionSnapshot(
+                LmStudioAvailable: false,
+                OllamaAvailable: true,
+                DetectedName: "Ollama",
+                DetectedBaseUrl: DefaultOllamaBaseUrl,
+                Warning: null);
+        }
+
+        return new LocalRuntimeDetectionSnapshot(
+            LmStudioAvailable: false,
+            OllamaAvailable: false,
+            DetectedName: null,
+            DetectedBaseUrl: null,
+            Warning: "No local runtime detected on localhost ports 1234 or 11434.");
+    }
+
+    private void ApplyLocalRuntimeDetectionSnapshot(LocalRuntimeDetectionSnapshot snapshot) {
+        _localRuntimeDetectionRan = true;
+        _localRuntimeLmStudioAvailable = snapshot.LmStudioAvailable;
+        _localRuntimeOllamaAvailable = snapshot.OllamaAvailable;
+        _localRuntimeDetectedName = snapshot.DetectedName;
+        _localRuntimeDetectedBaseUrl = snapshot.DetectedBaseUrl;
+        _localRuntimeDetectionWarning = snapshot.Warning;
+    }
+
+    private static async Task<bool> ProbeModelsEndpointAsync(string baseUrl, CancellationToken cancellationToken) {
+        var probeUrl = BuildModelsProbeUrl(baseUrl);
+        using var handler = new HttpClientHandler {
+            UseProxy = false
+        };
+        using var client = new HttpClient(handler) {
+            Timeout = TimeSpan.FromSeconds(2)
+        };
+
+        try {
+            using var request = new HttpRequestMessage(HttpMethod.Get, probeUrl);
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            return response.IsSuccessStatusCode;
+        } catch {
+            return false;
+        }
+    }
+
+    private static string BuildModelsProbeUrl(string baseUrl) {
+        var normalized = (baseUrl ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return "http://127.0.0.1:11434/v1/models";
+        }
+
+        if (!Uri.TryCreate(normalized, UriKind.Absolute, out var uri)) {
+            return normalized;
+        }
+
+        var path = uri.AbsolutePath ?? string.Empty;
+        if (!path.EndsWith("/", StringComparison.Ordinal)) {
+            path += "/";
+        }
+
+        if (!path.Contains("/v1/", StringComparison.OrdinalIgnoreCase)) {
+            path += "v1/";
+        }
+
+        var builder = new UriBuilder(uri) {
+            Path = path + "models",
+            Query = string.Empty
+        };
+
+        return builder.Uri.ToString();
     }
 }
