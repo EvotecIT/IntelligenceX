@@ -78,6 +78,11 @@ Output classes:
 - `needs-human-review`
 - `likely-out-of-scope`
 
+Explicit policy prefixes supported in `VISION.md` bullets:
+- `aligned: ...`
+- `likely-out-of-scope: ...`
+- `needs-human-review: ...`
+
 ## Project Init (GitHub-native)
 
 Create or initialize a GitHub Project for triage/vision workflows:
