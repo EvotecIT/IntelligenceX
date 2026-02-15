@@ -43,8 +43,10 @@ p { margin: 0 0 1rem; color: var(--pf-muted); }
 .nav-icon { color: var(--pf-muted); display: flex; align-items: center; }
 .nav-icon:hover { color: var(--pf-accent); }
 .ix-header svg, .ix-actions svg, .nav-icon svg, .nav-cta svg { width: 22px; height: 22px; flex-shrink: 0; }
-.nav-cta { display: inline-flex; align-items: center; padding: 0.5rem 1rem; font-size: 0.875rem; font-weight: 600; background: var(--pf-btn-primary-bg); color: var(--pf-btn-primary-text); border-radius: var(--pf-radius-sm); transition: all 0.2s; }
-.nav-cta:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: var(--pf-shadow-button); color: var(--pf-btn-primary-text); }
+.nav-cta { display: inline-flex; align-items: center; padding: 0.5rem 1rem; font-size: 0.875rem; font-weight: 700; background: var(--pf-btn-primary-bg); color: #062A38; border-radius: var(--pf-radius-sm); transition: all 0.2s; }
+.nav-cta:hover { opacity: 0.92; transform: translateY(-1px); box-shadow: var(--pf-shadow-button); color: #062A38; }
+[data-theme="light"] .nav-cta { background: #0E7490; color: #F8FAFC; }
+[data-theme="light"] .nav-cta:hover { background: #0C677F; color: #F8FAFC; }
 .ix-nav-toggle { display: none; background: none; border: none; color: var(--pf-muted); cursor: pointer; padding: 0.25rem; }
 
 /* ===== Footer ===== */
@@ -54,7 +56,7 @@ p { margin: 0 0 1rem; color: var(--pf-muted); }
 .ix-footer-brand { }
 .ix-footer-logo { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--pf-ink-strong, #fff); }
 .ix-footer-tagline { font-size: 0.875rem; color: var(--pf-muted); margin: 0; line-height: 1.5; }
-.ix-footer-col h4 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--pf-ink); margin-bottom: 0.75rem; }
+.ix-footer-heading { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--pf-ink); margin: 0 0 0.75rem; font-weight: 600; }
 .ix-footer-col ul { list-style: none; padding: 0; margin: 0; }
 .ix-footer-col li { margin-bottom: 0.375rem; }
 .ix-footer-col a { font-size: 0.875rem; color: var(--pf-muted); }

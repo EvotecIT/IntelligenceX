@@ -4,6 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{{ page.title }}</title>
+  {{ if description_meta_html == "" }}
+  <meta name="description" content="IntelligenceX platform overview, product capabilities, and getting started resources." />
+  {{ end }}
   {{ description_meta_html }}
   {{ canonical_html }}
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />

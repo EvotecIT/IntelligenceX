@@ -13,7 +13,7 @@
       </div>
       {{ if navigation.menus && navigation.menus.size > 1 }}
       <div class="ix-footer-col">
-        <h4>Documentation</h4>
+        <p class="ix-footer-heading">Documentation</p>
         <ul>
           {{ for link in navigation.menus[1].items }}
           <li><a href="{{ link.url }}">{{ link.title }}</a></li>
@@ -23,7 +23,7 @@
       {{ end }}
       {{ if navigation.menus && navigation.menus.size > 2 }}
       <div class="ix-footer-col">
-        <h4>Resources</h4>
+        <p class="ix-footer-heading">Resources</p>
         <ul>
           {{ for link in navigation.menus[2].items }}
           <li><a href="{{ link.url }}">{{ link.title }}</a></li>
@@ -33,7 +33,7 @@
       {{ end }}
       {{ if navigation.menus && navigation.menus.size > 3 }}
       <div class="ix-footer-col">
-        <h4>Company</h4>
+        <p class="ix-footer-heading">Company</p>
         <ul>
           {{ for link in navigation.menus[3].items }}
           <li><a href="{{ link.url }}">{{ link.title }}</a></li>
