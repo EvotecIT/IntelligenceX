@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
+using IntelligenceX.OpenAI.CompatibleHttp;
 using IntelligenceX.OpenAI.Native;
 using IntelligenceX.OpenAI.Transport;
 using IntelligenceX.Rpc;
@@ -101,11 +102,18 @@ public sealed class IntelligenceXClient : IDisposable
         options.Validate();
 
         IOpenAITransport transport;
-        if (options.TransportKind == OpenAITransportKind.AppServer) {
-            var client = await AppServerClient.StartAsync(options.AppServerOptions, cancellationToken).ConfigureAwait(false);
-            transport = new AppServerTransport(client);
-        } else {
-            transport = new OpenAINativeTransport(options.NativeOptions);
+        switch (options.TransportKind) {
+            case OpenAITransportKind.AppServer: {
+                    var client = await AppServerClient.StartAsync(options.AppServerOptions, cancellationToken).ConfigureAwait(false);
+                    transport = new AppServerTransport(client);
+                    break;
+                }
+            case OpenAITransportKind.CompatibleHttp:
+                transport = new OpenAICompatibleHttpTransport(options.CompatibleHttpOptions);
+                break;
+            default:
+                transport = new OpenAINativeTransport(options.NativeOptions);
+                break;
         }
         var wrapper = new IntelligenceXClient(transport, options.DefaultModel, options.DefaultWorkingDirectory, options.DefaultApprovalPolicy, options.DefaultSandboxPolicy);
         if (options.AutoInitialize) {

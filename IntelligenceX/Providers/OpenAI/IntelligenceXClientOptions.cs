@@ -1,5 +1,6 @@
 using IntelligenceX.Configuration;
 using IntelligenceX.OpenAI.AppServer;
+using IntelligenceX.OpenAI.CompatibleHttp;
 using IntelligenceX.OpenAI.Native;
 
 namespace IntelligenceX.OpenAI;
@@ -24,6 +25,10 @@ public sealed class IntelligenceXClientOptions {
     /// Options for the native ChatGPT transport.
     /// </summary>
     public OpenAINativeOptions NativeOptions { get; } = new();
+    /// <summary>
+    /// Options for OpenAI-compatible HTTP transports (for example local providers such as Ollama/LM Studio).
+    /// </summary>
+    public OpenAICompatibleHttpOptions CompatibleHttpOptions { get; } = new();
     /// <summary>
     /// Selected transport for API calls.
     /// </summary>
@@ -66,13 +71,22 @@ public sealed class IntelligenceXClientOptions {
         if (NativeOptions is null) {
             throw new ArgumentNullException(nameof(NativeOptions));
         }
+        if (CompatibleHttpOptions is null) {
+            throw new ArgumentNullException(nameof(CompatibleHttpOptions));
+        }
         if (string.IsNullOrWhiteSpace(DefaultModel)) {
             throw new ArgumentException("DefaultModel cannot be null or whitespace.", nameof(DefaultModel));
         }
-        if (TransportKind == OpenAITransportKind.AppServer) {
-            AppServerOptions.Validate();
-        } else {
-            NativeOptions.Validate();
+        switch (TransportKind) {
+            case OpenAITransportKind.AppServer:
+                AppServerOptions.Validate();
+                break;
+            case OpenAITransportKind.CompatibleHttp:
+                CompatibleHttpOptions.Validate();
+                break;
+            default:
+                NativeOptions.Validate();
+                break;
         }
     }
 

@@ -35,11 +35,13 @@ public sealed class OpenAICompatibleHttpOptions {
     public bool AllowInsecureHttpNonLoopback { get; set; }
 
     internal void Validate() {
-        if (string.IsNullOrWhiteSpace(BaseUrl)) {
+        var baseUrl = BaseUrl;
+        if (string.IsNullOrWhiteSpace(baseUrl)) {
             throw new ArgumentException("BaseUrl is required for CompatibleHttp transport.", nameof(BaseUrl));
         }
 
-        if (!Uri.TryCreate(BaseUrl.Trim(), UriKind.Absolute, out var uri) || uri is null) {
+        baseUrl = baseUrl!.Trim();
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) || uri is null) {
             throw new ArgumentException("BaseUrl must be an absolute URI.", nameof(BaseUrl));
         }
 
@@ -79,4 +81,3 @@ public sealed class OpenAICompatibleHttpOptions {
         }
     }
 }
-

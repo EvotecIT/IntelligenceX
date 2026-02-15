@@ -267,6 +267,14 @@ public sealed class EasySession : IDisposable
             }
         }
 
+        if (options.TransportKind == OpenAITransportKind.CompatibleHttp) {
+            clientOptions.CompatibleHttpOptions.BaseUrl = options.CompatibleHttpOptions.BaseUrl;
+            clientOptions.CompatibleHttpOptions.ApiKey = options.CompatibleHttpOptions.ApiKey;
+            clientOptions.CompatibleHttpOptions.Streaming = options.CompatibleHttpOptions.Streaming;
+            clientOptions.CompatibleHttpOptions.AllowInsecureHttp = options.CompatibleHttpOptions.AllowInsecureHttp;
+            clientOptions.CompatibleHttpOptions.AllowInsecureHttpNonLoopback = options.CompatibleHttpOptions.AllowInsecureHttpNonLoopback;
+        }
+
         return clientOptions;
     }
 

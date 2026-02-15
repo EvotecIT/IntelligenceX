@@ -15,6 +15,7 @@ using IntelligenceX.OpenAI.ToolCalling;
 using IntelligenceX.OpenAI.Transport;
 using IntelligenceX.Telemetry;
 using IntelligenceX.Tools;
+using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI.CompatibleHttp;
 
@@ -63,11 +64,13 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
 
     public async Task<HealthCheckResult> HealthCheckAsync(string? method, TimeSpan? timeout, CancellationToken cancellationToken) {
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        using var cts = timeout.HasValue ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken) : null;
-        if (cts is not null) {
+        CancellationTokenSource? cts = null;
+        var token = cancellationToken;
+        if (timeout.HasValue) {
+            cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             cts.CancelAfter(timeout.Value);
+            token = cts.Token;
         }
-        var token = cts?.Token ?? cancellationToken;
 
         try {
             // Prefer a cheap call that most OpenAI-compatible servers implement.
@@ -75,6 +78,8 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
             return new HealthCheckResult(true, "compatible-http/models", null, sw.Elapsed);
         } catch (Exception ex) {
             return new HealthCheckResult(false, "compatible-http/models", ex, sw.Elapsed);
+        } finally {
+            cts?.Dispose();
         }
     }
 
@@ -99,7 +104,7 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
         RpcCallStarted?.Invoke(this, new RpcCallStartedEventArgs("models.list", JsonValue.From(new JsonObject().Add("url", _modelsUrl.ToString()))));
         try {
             using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
-            var payload = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            var payload = await ReadAsStringAsync(response.Content, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) {
                 throw new InvalidOperationException($"Model list request failed ({(int)response.StatusCode}): {payload}");
             }
@@ -198,6 +203,16 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
             state.Model = model!;
         }
 
+        if (string.IsNullOrWhiteSpace(state.Model)) {
+            throw new InvalidOperationException("No model configured for CompatibleHttp transport. Set ChatOptions.Model or set a default model when creating the thread.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.Instructions)) {
+            lock (_threadsLock) {
+                state.SetInstructions(options.Instructions!);
+            }
+        }
+
         var newMessages = BuildMessagesFromInput(input);
         if (newMessages.Count == 0) {
             throw new InvalidOperationException("Chat input produced no messages.");
@@ -210,7 +225,7 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
             requestMessages.AddRange(newMessages);
         }
 
-        var body = BuildChatCompletionsRequest(state.Model, requestMessages, options);
+        var body = BuildChatCompletionsRequest(state.Model, requestMessages, options, streaming: _options.Streaming);
         var rpcParams = JsonValue.From(body);
         RpcCallStarted?.Invoke(this, new RpcCallStartedEventArgs("chat.completions.create", rpcParams));
 
@@ -243,7 +258,7 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
 
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode) {
-            var errorPayload = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            var errorPayload = await ReadAsStringAsync(response.Content, cancellationToken).ConfigureAwait(false);
             throw new InvalidOperationException($"Chat request failed ({(int)response.StatusCode}): {errorPayload}");
         }
 
@@ -254,7 +269,7 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
         }
 
         // Fallback: provider ignored stream and returned a normal JSON payload.
-        var payload = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        var payload = await ReadAsStringAsync(response.Content, cancellationToken).ConfigureAwait(false);
         var value = JsonLite.Parse(payload);
         var obj = value?.AsObject();
         if (obj is null) {
@@ -264,14 +279,14 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
     }
 
     private async Task<ChatCompletionResponse> ReadChatCompletionsStreamAsync(HttpResponseMessage response, CancellationToken cancellationToken) {
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var stream = await ReadAsStreamAsync(response.Content, cancellationToken).ConfigureAwait(false);
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 16 * 1024, leaveOpen: false);
 
         var content = new StringBuilder();
         var toolCalls = new Dictionary<int, ToolCallBuilder>();
         JsonObject? finalUsage = null;
 
-        while (!reader.EndOfStream) {
+        while (true) {
             cancellationToken.ThrowIfCancellationRequested();
             var line = await reader.ReadLineAsync().ConfigureAwait(false);
             if (line is null) {
@@ -317,7 +332,7 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
             var deltaContent = delta.GetString("content");
             if (!string.IsNullOrEmpty(deltaContent)) {
                 content.Append(deltaContent);
-                DeltaReceived?.Invoke(this, deltaContent);
+                DeltaReceived?.Invoke(this, deltaContent!);
             }
 
             var deltaToolCalls = delta.GetArray("tool_calls");
@@ -408,11 +423,23 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
                 var id = tool.GetString("id");
                 if (!string.IsNullOrWhiteSpace(id)) {
                     outputObj.Add("id", id!.Trim());
+                    outputObj.Add("tool_call_id", id!.Trim());
+                    outputObj.Add("call_id", id!.Trim());
                 }
 
                 var function = tool.GetObject("function");
                 if (function is not null) {
                     outputObj.Add("function", function);
+
+                    // Also include OpenAI-style fields at the root so ToolCall.FromJson can parse arguments reliably.
+                    var name = function.GetString("name");
+                    if (!string.IsNullOrWhiteSpace(name)) {
+                        outputObj.Add("name", name!.Trim());
+                    }
+                    var args = function.GetString("arguments");
+                    if (args is not null) {
+                        outputObj.Add("arguments", args);
+                    }
                 }
 
                 rawOutputs.Add(outputObj);
@@ -499,6 +526,16 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
         var messages = new List<JsonObject>();
         var userText = new StringBuilder();
 
+        void FlushUserText() {
+            if (userText.Length == 0) {
+                return;
+            }
+            messages.Add(new JsonObject()
+                .Add("role", "user")
+                .Add("content", userText.ToString()));
+            userText.Clear();
+        }
+
         for (var i = 0; i < items.Count; i++) {
             var item = items[i].AsObject();
             if (item is null) {
@@ -520,6 +557,7 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
                         break;
                     }
                 case "custom_tool_call_output": {
+                        FlushUserText();
                         var callId = item.GetString("call_id");
                         if (string.IsNullOrWhiteSpace(callId)) {
                             throw new InvalidOperationException("Tool output item is missing call_id.");
@@ -539,19 +577,22 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
             }
         }
 
-        if (userText.Length > 0) {
-            messages.Insert(0, new JsonObject()
-                .Add("role", "user")
-                .Add("content", userText.ToString()));
-        }
+        FlushUserText();
 
         return messages;
     }
 
-    private static JsonObject BuildChatCompletionsRequest(string model, IReadOnlyList<JsonObject> messages, ChatOptions options) {
+    private JsonObject BuildChatCompletionsRequest(string model, IReadOnlyList<JsonObject> messages, ChatOptions options, bool streaming) {
+        var messageArray = new JsonArray();
+        for (var i = 0; i < messages.Count; i++) {
+            messageArray.Add(JsonValue.From(messages[i]));
+        }
+
         var body = new JsonObject()
             .Add("model", model)
-            .Add("messages", new JsonArray(messages.Select(JsonValue.From).ToArray()));
+            .Add("messages", messageArray);
+
+        body.Add("stream", streaming);
 
         if (options.Temperature.HasValue) {
             body.Add("temperature", options.Temperature.Value);
@@ -598,7 +639,7 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
         return body;
     }
 
-    private JsonValue BuildToolChoice(ToolChoice toolChoice) {
+    private static JsonValue BuildToolChoice(ToolChoice toolChoice) {
         if (toolChoice is null) {
             return JsonValue.Null;
         }
@@ -634,12 +675,46 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
             throw new ArgumentException("BaseUrl must be an absolute URI.", nameof(baseUrl));
         }
 
-        // Ensure trailing slash so relative URI composition is stable.
+        // Normalize so common local-provider forms work:
+        // - http://localhost:11434          -> http://localhost:11434/v1/
+        // - http://localhost:1234/v1       -> http://localhost:1234/v1/
+        // - https://example.com/openai/v1  -> https://example.com/openai/v1/
         var builder = new UriBuilder(uri);
-        if (!builder.Path.EndsWith("/", StringComparison.Ordinal)) {
-            builder.Path += "/";
+        var path = builder.Path ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(path) || path == "/") {
+            builder.Path = "/v1/";
+            return builder.Uri;
+        }
+
+        path = path.TrimEnd('/');
+        if (path.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)) {
+            builder.Path = path + "/";
+            return builder.Uri;
+        }
+
+        var finalPath = builder.Path ?? string.Empty;
+        if (!finalPath.EndsWith("/", StringComparison.Ordinal)) {
+            builder.Path = finalPath + "/";
         }
         return builder.Uri;
+    }
+
+    private static Task<string> ReadAsStringAsync(HttpContent content, CancellationToken cancellationToken) {
+#if NETSTANDARD2_0 || NET472
+        cancellationToken.ThrowIfCancellationRequested();
+        return content.ReadAsStringAsync();
+#else
+        return content.ReadAsStringAsync(cancellationToken);
+#endif
+    }
+
+    private static Task<Stream> ReadAsStreamAsync(HttpContent content, CancellationToken cancellationToken) {
+#if NETSTANDARD2_0 || NET472
+        cancellationToken.ThrowIfCancellationRequested();
+        return content.ReadAsStreamAsync();
+#else
+        return content.ReadAsStreamAsync(cancellationToken);
+#endif
     }
 
     public void Dispose() {
@@ -653,6 +728,29 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
 
         public string Model { get; set; }
         public List<JsonObject> Messages { get; } = new();
+        public string? Instructions { get; private set; }
+
+        public void SetInstructions(string instructions) {
+            if (string.IsNullOrWhiteSpace(instructions)) {
+                return;
+            }
+
+            var normalized = instructions.Trim();
+            if (string.Equals(Instructions, normalized, StringComparison.Ordinal)) {
+                return;
+            }
+
+            Instructions = normalized;
+            var sys = new JsonObject()
+                .Add("role", "system")
+                .Add("content", normalized);
+
+            if (Messages.Count > 0 && string.Equals(Messages[0].GetString("role"), "system", StringComparison.OrdinalIgnoreCase)) {
+                Messages[0] = sys;
+            } else {
+                Messages.Insert(0, sys);
+            }
+        }
     }
 
     private sealed class ToolCallBuilder {
@@ -661,6 +759,13 @@ internal sealed class OpenAICompatibleHttpTransport : IOpenAITransport {
         public StringBuilder Arguments { get; } = new();
     }
 
-    private sealed record ChatCompletionResponse(TurnInfo Turn, JsonObject AssistantMessageForHistory);
-}
+    private sealed class ChatCompletionResponse {
+        public ChatCompletionResponse(TurnInfo turn, JsonObject assistantMessageForHistory) {
+            Turn = turn;
+            AssistantMessageForHistory = assistantMessageForHistory;
+        }
 
+        public TurnInfo Turn { get; }
+        public JsonObject AssistantMessageForHistory { get; }
+    }
+}
