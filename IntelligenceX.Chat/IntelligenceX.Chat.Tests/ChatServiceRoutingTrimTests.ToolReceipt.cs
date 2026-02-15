@@ -52,6 +52,34 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptToolReceiptCorrection_DoesNotTriggerForToolNameColonNumber() {
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        var tools = new[] { new ToolDefinition("eventlog_live_query", "Event log", schema) };
+        var assistantDraft = "eventlog_live_query: 80";
+
+        var result = ShouldAttemptToolReceiptCorrectionMethod.Invoke(
+            null,
+            new object?[] { "Show me recent errors", assistantDraft, tools, 0, 0, 0 });
+
+        var value = Assert.IsType<bool>(result);
+        Assert.False(value);
+    }
+
+    [Fact]
+    public void ShouldAttemptToolReceiptCorrection_DoesNotTriggerForToolNameColonNumber_WithWhitespace() {
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        var tools = new[] { new ToolDefinition("eventlog_live_query", "Event log", schema) };
+        var assistantDraft = "eventlog_live_query   : 80";
+
+        var result = ShouldAttemptToolReceiptCorrectionMethod.Invoke(
+            null,
+            new object?[] { "Show me recent errors", assistantDraft, tools, 0, 0, 0 });
+
+        var value = Assert.IsType<bool>(result);
+        Assert.False(value);
+    }
+
+    [Fact]
     public void ShouldAttemptToolReceiptCorrection_TriggersForExitCodeReceiptFragmentsEvenWithoutToolNames() {
         var assistantDraft = "Process exited with code 0.";
 
