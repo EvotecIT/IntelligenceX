@@ -184,17 +184,17 @@ internal sealed partial class ChatServiceSession {
         // "1." / "1)" / "1:" (accept common markers without requiring '.')
         var marker = assistantDraft[right];
         if (marker == '.' || marker == ')' || marker == ':') {
-            if (left < right && char.IsDigit(assistantDraft[left])) {
-                var allDigits = true;
-                for (var i = left; i < right; i++) {
-                    if (!char.IsDigit(assistantDraft[i])) {
-                        allDigits = false;
-                        break;
-                    }
+            // Multi-digit markers ("12)") are common; accept any non-empty run of digits before the marker.
+            var digitCount = 0;
+            for (var i = left; i < right; i++) {
+                if (!char.IsDigit(assistantDraft[i])) {
+                    digitCount = 0;
+                    break;
                 }
-                if (allDigits) {
-                    return true;
-                }
+                digitCount++;
+            }
+            if (digitCount > 0) {
+                return true;
             }
         }
 
