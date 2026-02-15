@@ -38,6 +38,12 @@ internal static class ProjectFieldCatalog {
             "pull_request",
             "issue"
         }),
+        new ProjectFieldDefinition("IX Suggested Decision", "SINGLE_SELECT", new[] {
+            "accept",
+            "defer",
+            "reject",
+            "merge-candidate"
+        }),
         new ProjectFieldDefinition("Maintainer Decision", "SINGLE_SELECT", new[] {
             "accept",
             "defer",

@@ -17,6 +17,7 @@ internal static partial class Program {
         AssertEqual(true, names.Contains("Matched Issue Confidence", StringComparer.OrdinalIgnoreCase), "has Matched Issue Confidence");
         AssertEqual(true, names.Contains("Related Issues", StringComparer.OrdinalIgnoreCase), "has Related Issues");
         AssertEqual(true, names.Contains("Triage Score", StringComparer.OrdinalIgnoreCase), "has Triage Score");
+        AssertEqual(true, names.Contains("IX Suggested Decision", StringComparer.OrdinalIgnoreCase), "has IX Suggested Decision");
         AssertEqual(true, names.Contains("Maintainer Decision", StringComparer.OrdinalIgnoreCase), "has Maintainer Decision");
     }
 
@@ -96,11 +97,110 @@ internal static partial class Program {
         AssertEqual(true, pr.MatchedIssueConfidence.HasValue && pr.MatchedIssueConfidence.Value > 0.9, "matched issue confidence merged");
         AssertEqual(true, (pr.RelatedIssues?.Count ?? 0) == 2, "related issues merged");
         AssertEqual(11, pr.RelatedIssues![0].Number, "related issue ordering");
+        AssertEqual("reject", pr.SuggestedDecision, "vision reject suggestion");
 
         var issue = entries.First(item => item.Url.EndsWith("/issues/11", StringComparison.OrdinalIgnoreCase));
         AssertEqual("issue", issue.Kind, "issue kind preserved");
         AssertEqual("cluster-1", issue.DuplicateCluster, "duplicate cluster preserved");
         AssertEqual("https://github.com/EvotecIT/IntelligenceX/pull/10", issue.CanonicalItem, "issue canonical resolved");
+        AssertEqual(true, string.IsNullOrWhiteSpace(issue.SuggestedDecision), "issues do not get automated decision");
+    }
+
+    private static void TestProjectSyncBuildEntriesSuggestsMergeCandidateForBestReadyPr() {
+        const string triageJson = """
+{
+  "items": [
+    {
+      "id": "pr#21",
+      "kind": "pull_request",
+      "number": 21,
+      "url": "https://github.com/EvotecIT/IntelligenceX/pull/21",
+      "score": 92.3,
+      "signals": {
+        "pullRequest": {
+          "IsDraft": false,
+          "Mergeable": "MERGEABLE",
+          "ReviewDecision": "APPROVED",
+          "StatusCheckState": "SUCCESS"
+        }
+      }
+    }
+  ],
+  "bestPullRequests": [
+    {
+      "url": "https://github.com/EvotecIT/IntelligenceX/pull/21"
+    }
+  ]
+}
+""";
+
+        const string visionJson = """
+{
+  "assessments": [
+    {
+      "url": "https://github.com/EvotecIT/IntelligenceX/pull/21",
+      "classification": "aligned",
+      "confidence": 0.84
+    }
+  ]
+}
+""";
+
+        using var triageDoc = System.Text.Json.JsonDocument.Parse(triageJson);
+        using var visionDoc = System.Text.Json.JsonDocument.Parse(visionJson);
+        var entries = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildEntriesFromDocuments(
+            triageDoc.RootElement,
+            visionDoc.RootElement,
+            100);
+
+        var pr = entries.Single(item => item.Url.EndsWith("/pull/21", StringComparison.OrdinalIgnoreCase));
+        AssertEqual("merge-candidate", pr.SuggestedDecision, "best ready PR suggestion");
+    }
+
+    private static void TestProjectSyncBuildEntriesSuggestsDeferForBlockedPr() {
+        const string triageJson = """
+{
+  "items": [
+    {
+      "id": "pr#33",
+      "kind": "pull_request",
+      "number": 33,
+      "url": "https://github.com/EvotecIT/IntelligenceX/pull/33",
+      "score": 88.1,
+      "signals": {
+        "pullRequest": {
+          "isDraft": false,
+          "mergeable": "MERGEABLE",
+          "reviewDecision": "CHANGES_REQUESTED",
+          "statusCheckState": "SUCCESS"
+        }
+      }
+    }
+  ]
+}
+""";
+
+        const string visionJson = """
+{
+  "assessments": [
+    {
+      "url": "https://github.com/EvotecIT/IntelligenceX/pull/33",
+      "classification": "aligned",
+      "confidence": 0.91
+    }
+  ]
+}
+""";
+
+        using var triageDoc = System.Text.Json.JsonDocument.Parse(triageJson);
+        using var visionDoc = System.Text.Json.JsonDocument.Parse(visionJson);
+        var entries = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildEntriesFromDocuments(
+            triageDoc.RootElement,
+            visionDoc.RootElement,
+            100);
+
+        var pr = entries.Single(item => item.Url.EndsWith("/pull/33", StringComparison.OrdinalIgnoreCase));
+        AssertEqual("defer", pr.SuggestedDecision, "blocked PR suggestion");
     }
 
     private static void TestProjectSyncBuildLabelsIncludesTagsAndHighConfidenceIssueMatch() {

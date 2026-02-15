@@ -12,12 +12,22 @@ namespace IntelligenceX.Cli.Todo;
 internal static class ProjectSyncRunner {
     private const double HighConfidenceIssueMatchLabelThreshold = 0.80;
     private const double DefaultIssueCommentMinConfidence = 0.55;
+    private const double RejectVisionConfidenceThreshold = 0.70;
+    private const double AcceptVisionConfidenceThreshold = 0.68;
+    private const double MergeCandidateScoreThreshold = 82.0;
 
     internal sealed record RelatedIssueCandidate(
         int Number,
         string Url,
         double Confidence,
         string Reason
+    );
+
+    internal sealed record PullRequestDecisionSignals(
+        bool? IsDraft,
+        string? Mergeable,
+        string? ReviewDecision,
+        string? StatusCheckState
     );
 
     internal sealed record ProjectSyncEntry(
@@ -33,7 +43,8 @@ internal static class ProjectSyncRunner {
         double? MatchedIssueConfidence,
         string? VisionFit,
         double? VisionConfidence,
-        IReadOnlyList<RelatedIssueCandidate>? RelatedIssues = null
+        IReadOnlyList<RelatedIssueCandidate>? RelatedIssues = null,
+        string? SuggestedDecision = null
     );
 
     private sealed class Options {
@@ -396,6 +407,8 @@ internal static class ProjectSyncRunner {
         var entriesByUrl = new Dictionary<string, ProjectSyncEntry>(StringComparer.OrdinalIgnoreCase);
         var idToUrl = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var clusterToCanonicalId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var decisionSignalsByUrl = new Dictionary<string, PullRequestDecisionSignals>(StringComparer.OrdinalIgnoreCase);
+        var bestPullRequestUrls = ParseBestPullRequestUrls(triageRoot);
 
         if (TryGetProperty(triageRoot, "items", out var items) && items.ValueKind == JsonValueKind.Array) {
             foreach (var item in items.EnumerateArray()) {
@@ -433,6 +446,10 @@ internal static class ProjectSyncRunner {
                 var matchedIssueUrl = ReadNullableString(item, "matchedIssueUrl");
                 var matchedIssueConfidence = ReadNullableDouble(item, "matchedIssueConfidence");
                 var relatedIssues = ParseRelatedIssueCandidates(item);
+                var decisionSignals = ParsePullRequestSignals(item);
+                if (decisionSignals is not null) {
+                    decisionSignalsByUrl[url] = decisionSignals;
+                }
 
                 string? canonicalUrl = null;
                 if (!string.IsNullOrWhiteSpace(duplicateClusterId) &&
@@ -454,7 +471,8 @@ internal static class ProjectSyncRunner {
                     MatchedIssueConfidence: matchedIssueConfidence,
                     VisionFit: null,
                     VisionConfidence: null,
-                    RelatedIssues: relatedIssues
+                    RelatedIssues: relatedIssues,
+                    SuggestedDecision: null
                 );
             }
         }
@@ -492,9 +510,21 @@ internal static class ProjectSyncRunner {
                         MatchedIssueConfidence: null,
                         VisionFit: classification,
                         VisionConfidence: confidence,
-                        RelatedIssues: Array.Empty<RelatedIssueCandidate>()
+                        RelatedIssues: Array.Empty<RelatedIssueCandidate>(),
+                        SuggestedDecision: null
                     );
                 }
+            }
+        }
+
+        foreach (var pair in entriesByUrl.ToList()) {
+            decisionSignalsByUrl.TryGetValue(pair.Key, out var decisionSignals);
+            var suggestion = SuggestMaintainerDecision(
+                pair.Value,
+                bestPullRequestUrls.Contains(pair.Key),
+                decisionSignals);
+            if (!string.IsNullOrWhiteSpace(suggestion)) {
+                entriesByUrl[pair.Key] = pair.Value with { SuggestedDecision = suggestion };
             }
         }
 
@@ -513,6 +543,117 @@ internal static class ProjectSyncRunner {
             "aligned" => 2,
             _ => 3
         };
+    }
+
+    private static string? SuggestMaintainerDecision(
+        ProjectSyncEntry entry,
+        bool isBestPullRequest,
+        PullRequestDecisionSignals? prSignals) {
+        if (!entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase)) {
+            return null;
+        }
+
+        var visionFit = entry.VisionFit?.Trim().ToLowerInvariant();
+        var visionConfidence = entry.VisionConfidence ?? 0;
+        var triageScore = entry.TriageScore ?? 0;
+
+        if (visionFit == "likely-out-of-scope" && visionConfidence >= RejectVisionConfidenceThreshold) {
+            return "reject";
+        }
+
+        var blockedBySignals = prSignals is not null && IsBlockedByReviewOrChecks(prSignals);
+        if (blockedBySignals && visionFit != "likely-out-of-scope") {
+            return "defer";
+        }
+
+        if (prSignals is not null &&
+            IsStronglyReadyForMerge(prSignals) &&
+            visionFit != "likely-out-of-scope" &&
+            (isBestPullRequest || triageScore >= MergeCandidateScoreThreshold)) {
+            return "merge-candidate";
+        }
+
+        if (visionFit == "aligned" &&
+            visionConfidence >= AcceptVisionConfidenceThreshold &&
+            triageScore >= 60 &&
+            !blockedBySignals) {
+            return "accept";
+        }
+
+        return "defer";
+    }
+
+    private static bool IsStronglyReadyForMerge(PullRequestDecisionSignals signals) {
+        return signals.IsDraft == false &&
+               string.Equals(signals.Mergeable, "MERGEABLE", StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(signals.ReviewDecision, "APPROVED", StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(signals.StatusCheckState, "SUCCESS", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsBlockedByReviewOrChecks(PullRequestDecisionSignals signals) {
+        if (signals.IsDraft == true) {
+            return true;
+        }
+
+        if (string.Equals(signals.Mergeable, "CONFLICTING", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(signals.Mergeable, "UNKNOWN", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        if (string.Equals(signals.ReviewDecision, "CHANGES_REQUESTED", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        return string.Equals(signals.StatusCheckState, "FAILURE", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(signals.StatusCheckState, "ERROR", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(signals.StatusCheckState, "PENDING", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlySet<string> ParseBestPullRequestUrls(JsonElement triageRoot) {
+        var urls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!TryGetProperty(triageRoot, "bestPullRequests", out var best) || best.ValueKind != JsonValueKind.Array) {
+            return urls;
+        }
+
+        foreach (var candidate in best.EnumerateArray()) {
+            var url = ReadString(candidate, "url");
+            if (!string.IsNullOrWhiteSpace(url)) {
+                urls.Add(url);
+            }
+        }
+        return urls;
+    }
+
+    private static PullRequestDecisionSignals? ParsePullRequestSignals(JsonElement item) {
+        var kind = ReadString(item, "kind");
+        if (!kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase)) {
+            return null;
+        }
+
+        if (!TryGetPropertyCaseInsensitive(item, "signals", out var signalsObj) ||
+            signalsObj.ValueKind != JsonValueKind.Object ||
+            !TryGetPropertyCaseInsensitive(signalsObj, "pullRequest", out var prSignalsObj) ||
+            prSignalsObj.ValueKind != JsonValueKind.Object) {
+            return null;
+        }
+
+        var isDraft = ReadNullableBoolCaseInsensitive(prSignalsObj, "isDraft");
+        var mergeable = ReadNullableStringCaseInsensitive(prSignalsObj, "mergeable");
+        var reviewDecision = ReadNullableStringCaseInsensitive(prSignalsObj, "reviewDecision");
+        var statusCheckState = ReadNullableStringCaseInsensitive(prSignalsObj, "statusCheckState");
+        if (!isDraft.HasValue &&
+            string.IsNullOrWhiteSpace(mergeable) &&
+            string.IsNullOrWhiteSpace(reviewDecision) &&
+            string.IsNullOrWhiteSpace(statusCheckState)) {
+            return null;
+        }
+
+        return new PullRequestDecisionSignals(
+            isDraft,
+            mergeable,
+            reviewDecision,
+            statusCheckState
+        );
     }
 
     private static async Task<IReadOnlyDictionary<string, ProjectV2Client.ProjectField>> EnsureFieldsAsync(
@@ -616,6 +757,16 @@ internal static class ProjectSyncRunner {
         if (fields.TryGetValue("Vision Confidence", out var confidenceField) && entry.VisionConfidence.HasValue) {
             await client.SetNumberFieldAsync(projectId, itemId, confidenceField.Id, entry.VisionConfidence.Value).ConfigureAwait(false);
             updated++;
+        }
+
+        if (fields.TryGetValue("IX Suggested Decision", out var suggestedDecisionField) &&
+            !string.IsNullOrWhiteSpace(entry.SuggestedDecision)) {
+            if (TryResolveOptionId(suggestedDecisionField, entry.SuggestedDecision, out var optionId)) {
+                await client.SetSingleSelectFieldAsync(projectId, itemId, suggestedDecisionField.Id, optionId).ConfigureAwait(false);
+                updated++;
+            } else {
+                Console.Error.WriteLine($"Warning: option '{entry.SuggestedDecision}' not found in field '{suggestedDecisionField.Name}'.");
+            }
         }
 
         if (fields.TryGetValue("Triage Kind", out var kindField) && !string.IsNullOrWhiteSpace(entry.Kind)) {
@@ -788,11 +939,57 @@ internal static class ProjectSyncRunner {
         return obj.TryGetProperty(name, out value);
     }
 
+    private static bool TryGetPropertyCaseInsensitive(JsonElement obj, string name, out JsonElement value) {
+        value = default;
+        if (obj.ValueKind != JsonValueKind.Object) {
+            return false;
+        }
+
+        if (obj.TryGetProperty(name, out value)) {
+            return true;
+        }
+
+        foreach (var property in obj.EnumerateObject()) {
+            if (property.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static string ReadString(JsonElement obj, string name) {
         if (!TryGetProperty(obj, name, out var prop) || prop.ValueKind != JsonValueKind.String) {
             return string.Empty;
         }
         return prop.GetString() ?? string.Empty;
+    }
+
+    private static string? ReadNullableStringCaseInsensitive(JsonElement obj, string name) {
+        if (!TryGetPropertyCaseInsensitive(obj, name, out var prop)) {
+            return null;
+        }
+        if (prop.ValueKind == JsonValueKind.Null) {
+            return null;
+        }
+        if (prop.ValueKind != JsonValueKind.String) {
+            return null;
+        }
+        return prop.GetString();
+    }
+
+    private static bool? ReadNullableBoolCaseInsensitive(JsonElement obj, string name) {
+        if (!TryGetPropertyCaseInsensitive(obj, name, out var prop)) {
+            return null;
+        }
+        if (prop.ValueKind == JsonValueKind.Null) {
+            return null;
+        }
+        if (prop.ValueKind != JsonValueKind.True && prop.ValueKind != JsonValueKind.False) {
+            return null;
+        }
+        return prop.GetBoolean();
     }
 
     private static string? ReadNullableString(JsonElement obj, string name) {
