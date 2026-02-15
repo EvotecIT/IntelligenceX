@@ -243,6 +243,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("dont")]
     [InlineData("don't")]
     [InlineData("don't.")]
+    [InlineData("don’t")]
     [InlineData("do not")]
     [InlineData("no")]
     [InlineData("no.")]

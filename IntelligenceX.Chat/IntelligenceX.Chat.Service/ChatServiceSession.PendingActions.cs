@@ -11,6 +11,7 @@ internal sealed partial class ChatServiceSession {
     private const string ActionMarker = "ix:action:v1";
     private const int MaxActionParsingChars = 64 * 1024;
     private static readonly char[] ImplicitConfirmationQuestionPunctuation = new[] { '?', '？', '¿', '؟' };
+    private static readonly char[] ApostropheVariants = new[] { '\u2018', '\u2019', '\uFF07' };
     // A very small disqualifying set for "this is clearly structured payload" (JSON/XML).
     // Avoid overly broad disqualifiers like quotes/backticks which are common in plain chat.
     private static readonly char[] ImplicitConfirmationStructuredChars = new[] { '{', '}', '[', ']', '<', '>' };
@@ -398,6 +399,7 @@ internal sealed partial class ChatServiceSession {
             return string.Empty;
         }
 
+        normalized = NormalizeApostrophes(normalized);
         return normalized.ToLowerInvariant();
     }
 
@@ -408,6 +410,28 @@ internal sealed partial class ChatServiceSession {
     private static bool IsQuoteWrapper(char ch) {
         // Common wrapper characters in chat/code that should not be stripped into confirmations.
         return ch is '"' or '\'';
+    }
+
+    private static string NormalizeApostrophes(string value) {
+        if (string.IsNullOrEmpty(value)) {
+            return value;
+        }
+
+        var idx = value.IndexOfAny(ApostropheVariants);
+        if (idx < 0) {
+            return value;
+        }
+
+        var sb = new StringBuilder(value.Length);
+        for (var i = 0; i < value.Length; i++) {
+            var ch = value[i];
+            if (ch == '\u2018' || ch == '\u2019' || ch == '\uFF07') {
+                sb.Append('\'');
+            } else {
+                sb.Append(ch);
+            }
+        }
+        return sb.ToString();
     }
 
     private static string ReadFirstToken(string text) {
