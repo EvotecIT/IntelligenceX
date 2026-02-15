@@ -7,7 +7,7 @@
 - `officeimo_pack_info`
   - Returns capabilities, limits, and recommended flow.
 - `officeimo_read`
-  - Reads a single file or a folder and emits normalized chunks for model reasoning.
+  - Reads a single file or a folder and emits normalized chunks and/or source-level documents for reasoning/indexing.
 
 ## Supported formats
 
@@ -43,19 +43,27 @@
 - `include_word_footnotes`: include Word footnotes.
 - `include_ppt_notes`: include PowerPoint speaker notes.
 - `markdown_chunk_by_headings`: chunk markdown by headings when possible.
+- `output_mode`: payload shape selector:
+  - `chunks` (default): return flat `chunks`.
+  - `documents`: return per-source `documents` payload.
+  - `both`: return both flat `chunks` and `documents`.
+- `include_document_chunks`: when `output_mode` includes `documents`, controls whether each document includes its `chunks` array (default: `true`).
 
 ## Output shape
 
 `officeimo_read` returns a standard tool envelope with:
 
 - `files`: ingested file list
-- `chunks`: normalized chunk list (`id`, `kind`, `text`, optional `markdown`, `location`, `tables`, `warnings`)
+- `chunks`: normalized chunk list (`id`, `kind`, `text`, optional `markdown`, `location`, `tables`, `warnings`, `source_id`, `source_hash`, `chunk_hash`, `source_last_write_utc`, `source_length_bytes`, `token_estimate`)
+- `documents`: source-level list (`path`, `source_id`, `source_hash`, `parsed`, `chunks_produced`, `chunks_returned`, token totals, warnings, optional source chunks)
 - `warnings`: per-file warnings (skipped/unsupported/error)
 - `truncated`: indicates cap-based truncation
-- `meta`: includes `count`, `files`, and cap values
+- counters: `files_scanned`, `files_parsed`, `files_skipped`, `bytes_read`, `chunks_produced`, `chunks_returned`, `token_estimate_returned`
+- `meta`: includes `count`, caps, and output-shape counters
 - `summary_markdown`: compact preview of extracted chunks
 
-Use raw `chunks` fields for reasoning; treat `summary_markdown` as preview only.
+For incremental indexing, prefer `output_mode=documents` and upsert by `source_id`/`source_hash` + per-chunk `chunk_hash`.
+Use `summary_markdown` as preview only.
 
 ## Build modes (`OFFICEIMO_ENABLED` vs `OFFICEIMO_DISABLED`)
 

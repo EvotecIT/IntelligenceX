@@ -24,7 +24,7 @@ public sealed class OfficeImoToolPack : IToolPack {
         Name = "OfficeIMO",
         Tier = ToolCapabilityTier.ReadOnly,
         IsDangerous = false,
-        Description = "Read-only Office document ingestion (Word/Excel/PowerPoint/Markdown) backed by OfficeIMO.Reader."
+        Description = "Read-only Office document ingestion (Word/Excel/PowerPoint/Markdown/PDF) backed by OfficeIMO.Reader."
     };
 
     /// <inheritdoc />
@@ -32,4 +32,3 @@ public sealed class OfficeImoToolPack : IToolPack {
         registry.RegisterOfficeImoPack(_options);
     }
 }
-
