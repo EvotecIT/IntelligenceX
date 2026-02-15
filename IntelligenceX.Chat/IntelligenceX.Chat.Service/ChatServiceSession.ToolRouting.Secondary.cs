@@ -1,0 +1,451 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
+using JsonValueKind = System.Text.Json.JsonValueKind;
+using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Abstractions.Serialization;
+using IntelligenceX.Chat.Tooling;
+using IntelligenceX.Json;
+using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.AppServer.Models;
+using IntelligenceX.OpenAI.Auth;
+using IntelligenceX.OpenAI.Chat;
+using IntelligenceX.OpenAI.ToolCalling;
+using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
+
+namespace IntelligenceX.Chat.Service;
+
+internal sealed partial class ChatServiceSession {
+
+    private async Task<IReadOnlyList<ToolDefinition>> TrySelectToolsViaModelPlannerAsync(IntelligenceXClient client, string activeThreadId, string userRequest,
+        IReadOnlyList<ToolDefinition> definitions, int limit, CancellationToken cancellationToken) {
+        if (string.IsNullOrWhiteSpace(activeThreadId)
+            || string.IsNullOrWhiteSpace(userRequest)
+            || definitions.Count == 0
+            || limit <= 0) {
+            return Array.Empty<ToolDefinition>();
+        }
+
+        try {
+            var plannerPrompt = BuildModelPlannerPrompt(userRequest, definitions, limit);
+            if (plannerPrompt.Length == 0) {
+                return Array.Empty<ToolDefinition>();
+            }
+
+            var plannerOptions = new ChatOptions {
+                Model = _options.Model,
+                Tools = null,
+                ToolChoice = ToolChoice.None,
+                ParallelToolCalls = false,
+                Temperature = 0,
+                ReasoningEffort = ReasoningEffort.Minimal,
+                ReasoningSummary = ReasoningSummary.Off,
+                TextVerbosity = TextVerbosity.Low,
+                Instructions = """
+                    You are a semantic tool router.
+                    Select the most relevant tools for the user request from the provided catalog.
+                    Return strict JSON only with this shape:
+                    {"tool_names":["tool_a","tool_b"]}
+                    Rules:
+                    - Use only tool names present in the provided list.
+                    - Prefer precision over recall.
+                    - Return at most the requested max count.
+                    - Do not add commentary or markdown.
+                    """
+            };
+
+            _ = await client.StartNewThreadAsync(
+                    model: plannerOptions.Model,
+                    cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            var turn = await client.ChatAsync(ChatInput.FromText(plannerPrompt), plannerOptions, cancellationToken).ConfigureAwait(false);
+            var plannerText = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
+            return ParsePlannerSelectedDefinitions(plannerText, definitions, limit);
+        } catch {
+            return Array.Empty<ToolDefinition>();
+        } finally {
+            try {
+                await client.UseThreadAsync(activeThreadId, cancellationToken).ConfigureAwait(false);
+            } catch {
+                // Best-effort restore of active conversation thread.
+            }
+        }
+    }
+
+    private IReadOnlyList<ToolDefinition> EnsureMinimumToolSelection(string userRequest, IReadOnlyList<ToolDefinition> allDefinitions,
+        IReadOnlyList<ToolDefinition> initialSelected, int limit) {
+        if (allDefinitions.Count == 0 || limit <= 0) {
+            return Array.Empty<ToolDefinition>();
+        }
+
+        var selected = new List<ToolDefinition>(Math.Min(limit, allDefinitions.Count));
+        var selectedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < initialSelected.Count && selected.Count < limit; i++) {
+            var definition = initialSelected[i];
+            if (definition is null || string.IsNullOrWhiteSpace(definition.Name) || !selectedNames.Add(definition.Name)) {
+                continue;
+            }
+            selected.Add(definition);
+        }
+
+        var minSelection = Math.Min(allDefinitions.Count, Math.Max(8, Math.Min(limit, 12)));
+        if (selected.Count >= minSelection) {
+            return selected;
+        }
+
+        var rankedFallback = new List<(ToolDefinition Definition, double Score)>(allDefinitions.Count);
+        for (var i = 0; i < allDefinitions.Count; i++) {
+            var definition = allDefinitions[i];
+            if (definition is null || string.IsNullOrWhiteSpace(definition.Name) || selectedNames.Contains(definition.Name)) {
+                continue;
+            }
+
+            var score = 0d;
+            if (!string.IsNullOrWhiteSpace(userRequest)
+                && userRequest.IndexOf(definition.Name, StringComparison.OrdinalIgnoreCase) >= 0) {
+                score += 6d;
+            }
+
+            score += ReadToolRoutingAdjustment(definition.Name);
+            rankedFallback.Add((definition, score));
+        }
+
+        rankedFallback.Sort(static (left, right) => {
+            var scoreCompare = right.Score.CompareTo(left.Score);
+            if (scoreCompare != 0) {
+                return scoreCompare;
+            }
+            return StringComparer.OrdinalIgnoreCase.Compare(left.Definition.Name, right.Definition.Name);
+        });
+
+        for (var i = 0; i < rankedFallback.Count && selected.Count < minSelection; i++) {
+            var definition = rankedFallback[i].Definition;
+            if (selectedNames.Add(definition.Name)) {
+                selected.Add(definition);
+            }
+        }
+
+        return selected.Count == 0 ? allDefinitions : selected;
+    }
+
+    private static List<ToolRoutingInsight> BuildModelRoutingInsights(IReadOnlyList<ToolDefinition> selectedDefs, int plannedCount) {
+        var list = new List<ToolRoutingInsight>(Math.Min(12, selectedDefs.Count));
+        if (selectedDefs.Count == 0) {
+            return list;
+        }
+
+        for (var i = 0; i < selectedDefs.Count && i < 12; i++) {
+            var name = (selectedDefs[i].Name ?? string.Empty).Trim();
+            if (name.Length == 0) {
+                continue;
+            }
+
+            var fromPlanner = i < plannedCount;
+            var confidence = i < 3 ? "high" : i < 8 ? "medium" : "low";
+            var reason = fromPlanner
+                ? "semantic planner selection"
+                : "semantic planner backfill with routing history";
+            var score = Math.Max(0.2d, 1d - (i * 0.06d));
+            list.Add(new ToolRoutingInsight(
+                ToolName: name,
+                Confidence: confidence,
+                Score: Math.Round(score, 3),
+                Reason: reason));
+        }
+
+        return list;
+    }
+
+    private static string BuildModelPlannerPrompt(string userRequest, IReadOnlyList<ToolDefinition> definitions, int limit) {
+        if (definitions.Count == 0) {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder(capacity: Math.Min(64_000, 4000 + (definitions.Count * 120)));
+        sb.AppendLine("Select tools for the following user request.");
+        sb.AppendLine("User request:");
+        sb.AppendLine(userRequest.Trim());
+        sb.AppendLine();
+        sb.AppendLine($"Return at most {Math.Max(1, limit)} tool names.");
+        sb.AppendLine("Available tools:");
+
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            if (definition is null || string.IsNullOrWhiteSpace(definition.Name)) {
+                continue;
+            }
+
+            var name = definition.Name.Trim();
+            var description = (definition.Description ?? string.Empty).Trim();
+            if (description.Length > 220) {
+                description = description[..220].TrimEnd();
+            }
+            sb.Append(i + 1).Append(". ").Append(name);
+            if (description.Length > 0) {
+                sb.Append(" :: ").Append(description);
+            }
+            sb.AppendLine();
+        }
+
+        return sb.ToString();
+    }
+
+    private static IReadOnlyList<ToolDefinition> ParsePlannerSelectedDefinitions(string plannerText, IReadOnlyList<ToolDefinition> definitions, int limit) {
+        if (string.IsNullOrWhiteSpace(plannerText) || definitions.Count == 0 || limit <= 0) {
+            return Array.Empty<ToolDefinition>();
+        }
+
+        var byName = new Dictionary<string, ToolDefinition>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            if (definition is null || string.IsNullOrWhiteSpace(definition.Name)) {
+                continue;
+            }
+
+            var name = definition.Name.Trim();
+            if (!byName.ContainsKey(name)) {
+                byName.Add(name, definition);
+            }
+        }
+
+        var selected = new List<ToolDefinition>(Math.Min(limit, byName.Count));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var names = ExtractPlannerToolNames(plannerText);
+        for (var i = 0; i < names.Count && selected.Count < limit; i++) {
+            var requestedName = names[i];
+            if (string.IsNullOrWhiteSpace(requestedName)) {
+                continue;
+            }
+
+            var normalized = requestedName.Trim();
+            if (!byName.TryGetValue(normalized, out var definition) || !seen.Add(definition.Name)) {
+                continue;
+            }
+
+            selected.Add(definition);
+        }
+
+        return selected;
+    }
+
+    private static List<string> ExtractPlannerToolNames(string plannerText) {
+        var names = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var candidates = BuildPlannerJsonCandidates(plannerText);
+        for (var i = 0; i < candidates.Count; i++) {
+            if (!TryExtractPlannerNamesFromJson(candidates[i], names, seen)) {
+                continue;
+            }
+
+            if (names.Count > 0) {
+                return names;
+            }
+        }
+
+        // Fallback for non-JSON planner replies: collect tool-like identifiers.
+        var matches = Regex.Matches(plannerText, @"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        for (var i = 0; i < matches.Count; i++) {
+            var value = (matches[i].Value ?? string.Empty).Trim();
+            if (value.Length == 0 || !seen.Add(value)) {
+                continue;
+            }
+            names.Add(value);
+        }
+
+        return names;
+    }
+
+    private static List<string> BuildPlannerJsonCandidates(string plannerText) {
+        var list = new List<string>();
+        var normalized = (plannerText ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return list;
+        }
+
+        list.Add(normalized);
+
+        var fencedMatches = Regex.Matches(
+            normalized,
+            "```(?:json)?\\s*(?<json>[\\s\\S]*?)```",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        for (var i = 0; i < fencedMatches.Count; i++) {
+            var captured = fencedMatches[i].Groups["json"].Value.Trim();
+            if (captured.Length > 0) {
+                list.Add(captured);
+            }
+        }
+
+        AppendJsonEnvelopeCandidate(normalized, '{', '}', list);
+        AppendJsonEnvelopeCandidate(normalized, '[', ']', list);
+        return list;
+    }
+
+    private static void AppendJsonEnvelopeCandidate(string text, char startChar, char endChar, ICollection<string> target) {
+        var start = text.IndexOf(startChar);
+        var end = text.LastIndexOf(endChar);
+        if (start < 0 || end <= start) {
+            return;
+        }
+
+        var candidate = text.Substring(start, (end - start) + 1).Trim();
+        if (candidate.Length > 1) {
+            target.Add(candidate);
+        }
+    }
+
+    private static bool TryExtractPlannerNamesFromJson(string candidate, ICollection<string> names, ISet<string> seen) {
+        if (string.IsNullOrWhiteSpace(candidate)) {
+            return false;
+        }
+
+        JsonValue? parsed;
+        try {
+            parsed = JsonLite.Parse(candidate);
+        } catch {
+            return false;
+        }
+
+        if (parsed is null) {
+            return false;
+        }
+
+        var extracted = 0;
+        var rootObj = parsed.AsObject();
+        if (rootObj is not null) {
+            extracted += AppendPlannerNamesFromObject(rootObj, names, seen);
+        } else {
+            var rootArray = parsed.AsArray();
+            if (rootArray is not null) {
+                extracted += AppendPlannerNamesFromArray(rootArray, names, seen);
+            }
+        }
+
+        return extracted > 0;
+    }
+
+    private static int AppendPlannerNamesFromObject(JsonObject obj, ICollection<string> names, ISet<string> seen) {
+        var added = 0;
+        added += AppendPlannerNamesFromArray(obj.GetArray("tool_names"), names, seen);
+        added += AppendPlannerNamesFromArray(obj.GetArray("tools"), names, seen);
+        added += AppendPlannerNamesFromArray(obj.GetArray("selected"), names, seen);
+        added += AppendPlannerNamesFromArray(obj.GetArray("recommended"), names, seen);
+
+        var resultObj = obj.GetObject("result");
+        if (resultObj is not null) {
+            added += AppendPlannerNamesFromObject(resultObj, names, seen);
+        }
+
+        return added;
+    }
+
+    private static int AppendPlannerNamesFromArray(JsonArray? array, ICollection<string> names, ISet<string> seen) {
+        if (array is null || array.Count == 0) {
+            return 0;
+        }
+
+        var added = 0;
+        for (var i = 0; i < array.Count; i++) {
+            var item = array[i];
+            var asName = item.AsString();
+            if (TryAddPlannerName(asName, names, seen)) {
+                added++;
+                continue;
+            }
+
+            var asObj = item.AsObject();
+            if (asObj is null) {
+                continue;
+            }
+
+            if (TryAddPlannerName(asObj.GetString("name"), names, seen)) {
+                added++;
+            }
+            if (TryAddPlannerName(asObj.GetString("tool"), names, seen)) {
+                added++;
+            }
+            if (TryAddPlannerName(asObj.GetString("tool_name"), names, seen)) {
+                added++;
+            }
+        }
+
+        return added;
+    }
+
+    private static bool TryAddPlannerName(string? value, ICollection<string> names, ISet<string> seen) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0 || !seen.Add(normalized)) {
+            return false;
+        }
+
+        names.Add(normalized);
+        return true;
+    }
+
+    private static bool ShouldSkipWeightedRouting(string userRequest) {
+        return string.IsNullOrWhiteSpace(userRequest);
+    }
+
+    private static bool LooksLikeContinuationFollowUp(string userRequest) {
+        var normalized = (userRequest ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        if (normalized.Contains('\n', StringComparison.Ordinal) || normalized.Length > 96) {
+            return false;
+        }
+
+        var tokenCount = CountLetterDigitTokens(normalized, maxTokens: 16);
+        if (tokenCount == 0) {
+            return false;
+        }
+
+        if (tokenCount <= 6 && normalized.Length <= 64) {
+            return true;
+        }
+
+        return tokenCount <= 8
+               && normalized.Length <= 96
+               && normalized.Contains('?', StringComparison.Ordinal);
+    }
+
+    private sealed class ToolRoutingStats {
+        public int Invocations { get; set; }
+        public int Successes { get; set; }
+        public int Failures { get; set; }
+        public long LastUsedUtcTicks { get; set; }
+        public long LastSuccessUtcTicks { get; set; }
+    }
+
+    private readonly record struct ToolScore(
+        ToolDefinition Definition,
+        double Score,
+        bool DirectNameMatch,
+        int TokenHits,
+        double Adjustment);
+
+    private readonly record struct ToolRoutingInsight(
+        string ToolName,
+        string Confidence,
+        double Score,
+        string Reason);
+
+    private readonly record struct ToolRetryProfile(
+        int MaxAttempts,
+        int DelayBaseMs,
+        bool RetryOnTimeout,
+        bool RetryOnTransport);
+
+}
+

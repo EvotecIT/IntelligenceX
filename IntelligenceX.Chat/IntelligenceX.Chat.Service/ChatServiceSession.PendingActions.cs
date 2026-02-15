@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 
@@ -8,6 +9,7 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private const string ActionMarker = "ix:action:v1";
     private const string ActionSelectionMarker = "ix:action-selection:v1";
+    private const int MaxActionParsingChars = 64 * 1024;
 
     private readonly record struct PendingAction(string Id, string Title, string Request);
 
@@ -17,7 +19,22 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
-        var actions = ExtractPendingActions(assistantText);
+        var text = assistantText ?? string.Empty;
+        var markerIdx = text.IndexOf(ActionMarker, StringComparison.OrdinalIgnoreCase);
+        if (markerIdx < 0) {
+            // Don't clear existing pending actions on follow-up assistant messages that don't
+            // include any action markers.
+            return;
+        }
+
+        if (text.Length > MaxActionParsingChars) {
+            // Keep a window around the first marker to cap worst-case parsing work.
+            var start = Math.Max(0, markerIdx - 256);
+            var len = Math.Min(MaxActionParsingChars, text.Length - start);
+            text = text.Substring(start, len);
+        }
+
+        var actions = ExtractPendingActions(text);
         lock (_toolRoutingContextLock) {
             if (actions.Count == 0) {
                 _pendingActionsByThreadId.Remove(normalizedThreadId);
@@ -55,10 +72,20 @@ internal sealed partial class ChatServiceSession {
 
         if (ticks > 0) {
             if (ticks < DateTime.MinValue.Ticks || ticks > DateTime.MaxValue.Ticks) {
+                lock (_toolRoutingContextLock) {
+                    _pendingActionsByThreadId.Remove(normalizedThreadId);
+                    _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
+                    TrimWeightedRoutingContextsNoLock();
+                }
                 return false;
             }
             var age = DateTime.UtcNow - new DateTime(ticks, DateTimeKind.Utc);
             if (age > PendingActionContextMaxAge) {
+                lock (_toolRoutingContextLock) {
+                    _pendingActionsByThreadId.Remove(normalizedThreadId);
+                    _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
+                    TrimWeightedRoutingContextsNoLock();
+                }
                 return false;
             }
         }
@@ -166,7 +193,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var digits = normalized.Substring(0, i);
-        return int.TryParse(digits, out value);
+        return int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out value);
     }
 
     private static List<PendingAction> ExtractPendingActions(string assistantText) {
@@ -260,11 +287,13 @@ internal sealed partial class ChatServiceSession {
         }
 
         var trimmed = line.Trim();
-        if (!trimmed.StartsWith(name, StringComparison.OrdinalIgnoreCase)) {
-            return false;
-        }
         var idx = trimmed.IndexOf(':', StringComparison.Ordinal);
         if (idx < 0) {
+            return false;
+        }
+
+        var key = trimmed[..idx].Trim();
+        if (!string.Equals(key, name, StringComparison.OrdinalIgnoreCase)) {
             return false;
         }
 
@@ -297,4 +326,3 @@ internal sealed partial class ChatServiceSession {
         return lines;
     }
 }
-
