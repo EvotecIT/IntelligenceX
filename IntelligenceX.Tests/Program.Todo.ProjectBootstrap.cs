@@ -66,6 +66,7 @@ project={{ProjectNumber}}
 
         AssertContainsText(rendered, "todo project-sync", "workflow contains project sync step");
         AssertContainsText(rendered, "--apply-labels", "workflow enables label application");
+        AssertContainsText(rendered, "--apply-link-comments", "workflow enables PR issue suggestion comments");
     }
 #endif
 }

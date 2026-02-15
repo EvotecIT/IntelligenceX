@@ -82,7 +82,8 @@ jobs:
             --triage artifacts/triage/ix-triage-index.json \
             --vision artifacts/triage/ix-vision-check.json \
             --max-items "$MAX_ITEMS" \
-            --apply-labels
+            --apply-labels \
+            --apply-link-comments
 
       - name: Upload triage artifacts
         uses: actions/upload-artifact@v4
