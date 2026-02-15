@@ -23,15 +23,30 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo CountLetterDigitTokensMethod =
         typeof(ChatServiceSession).GetMethod("CountLetterDigitTokens", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("CountLetterDigitTokens not found.");
+    private static readonly MethodInfo ShouldSkipWeightedRoutingMethod =
+        typeof(ChatServiceSession).GetMethod("ShouldSkipWeightedRouting", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ShouldSkipWeightedRouting not found.");
     private static readonly MethodInfo ShouldAttemptToolExecutionNudgeMethod =
         typeof(ChatServiceSession).GetMethod("ShouldAttemptToolExecutionNudge", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldAttemptToolExecutionNudge not found.");
+    private static readonly MethodInfo ShouldEnforceExecuteOrExplainContractMethod =
+        typeof(ChatServiceSession).GetMethod("ShouldEnforceExecuteOrExplainContract", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ShouldEnforceExecuteOrExplainContract not found.");
+    private static readonly MethodInfo ShouldAttemptNoToolExecutionWatchdogMethod =
+        typeof(ChatServiceSession).GetMethod("ShouldAttemptNoToolExecutionWatchdog", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ShouldAttemptNoToolExecutionWatchdog not found.");
     private static readonly MethodInfo ShouldAttemptToolReceiptCorrectionMethod =
         typeof(ChatServiceSession).GetMethod("ShouldAttemptToolReceiptCorrection", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldAttemptToolReceiptCorrection not found.");
     private static readonly MethodInfo BuildToolExecutionNudgePromptMethod =
         typeof(ChatServiceSession).GetMethod("BuildToolExecutionNudgePrompt", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildToolExecutionNudgePrompt not found.");
+    private static readonly MethodInfo BuildNoToolExecutionWatchdogPromptMethod =
+        typeof(ChatServiceSession).GetMethod("BuildNoToolExecutionWatchdogPrompt", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildNoToolExecutionWatchdogPrompt not found.");
+    private static readonly MethodInfo BuildExecutionContractBlockerTextMethod =
+        typeof(ChatServiceSession).GetMethod("BuildExecutionContractBlockerText", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildExecutionContractBlockerText not found.");
     private static readonly MethodInfo BuildToolReceiptCorrectionPromptMethod =
         typeof(ChatServiceSession).GetMethod("BuildToolReceiptCorrectionPrompt", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildToolReceiptCorrectionPrompt not found.");

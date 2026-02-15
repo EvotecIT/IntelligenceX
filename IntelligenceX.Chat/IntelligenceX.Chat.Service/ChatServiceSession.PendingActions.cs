@@ -11,6 +11,7 @@ internal sealed partial class ChatServiceSession {
     private const string ActionMarker = "ix:action:v1";
     private const int MaxActionParsingChars = 64 * 1024;
     private const int MaxPendingActionAssistantContextChars = 4096;
+    private const int MaxFallbackChoiceActionTitleChars = 96;
     private static readonly char[] PendingActionConfirmationQuestionPunctuation = new[] { '?', '？', '¿', '؟' };
     private static readonly char[] PendingActionConfirmationDisqualifierPunctuation = new[] { ':', ';', '\uFF1A', '\uFF1B' }; // ： ；
     private static readonly char[] PendingActionConfirmationStructuredDisqualifierChars =
@@ -54,25 +55,37 @@ internal sealed partial class ChatServiceSession {
 
         var text = assistantText ?? string.Empty;
         var markerIdx = text.IndexOf(ActionMarker, StringComparison.OrdinalIgnoreCase);
+        bool fromFallbackChoices;
+        List<PendingAction> actions;
         if (markerIdx < 0) {
-            // Don't clear existing pending actions on follow-up assistant messages that don't
-            // include any action markers.
-            return;
-        }
+            // Fallback: allow compact assistant choice lists (for example bullet options) to be
+            // selected naturally on the next user turn, even when the model omitted ix:action blocks.
+            actions = ExtractFallbackChoicePendingActions(text);
+            if (actions.Count == 0) {
+                // Don't clear existing pending actions on follow-up assistant messages that don't
+                // include actionable markers/options.
+                return;
+            }
 
-        if (text.Length > MaxActionParsingChars) {
-            // Keep a window around the first marker to cap worst-case parsing work.
-            var start = Math.Max(0, markerIdx - 256);
-            var len = Math.Min(MaxActionParsingChars, text.Length - start);
-            text = text.Substring(start, len);
+            fromFallbackChoices = true;
+        } else {
+            if (text.Length > MaxActionParsingChars) {
+                // Keep a window around the first marker to cap worst-case parsing work.
+                var start = Math.Max(0, markerIdx - 256);
+                var len = Math.Min(MaxActionParsingChars, text.Length - start);
+                text = text.Substring(start, len);
+            }
+
+            actions = ExtractPendingActions(text);
+            fromFallbackChoices = false;
         }
 
         var assistantContext = text.Length <= MaxPendingActionAssistantContextChars
             ? text
             : text.Substring(0, MaxPendingActionAssistantContextChars);
-        var callToActionTokens = ExtractPendingActionCallToActionTokens(assistantContext);
-
-        var actions = ExtractPendingActions(text);
+        var callToActionTokens = fromFallbackChoices
+            ? Array.Empty<string>()
+            : ExtractPendingActionCallToActionTokens(assistantContext);
         PendingAction[]? snapshotActions = null;
         long snapshotTicks = 0;
         var shouldRemoveSnapshot = false;
@@ -840,6 +853,164 @@ internal sealed partial class ChatServiceSession {
         }
 
         return false;
+    }
+
+    private static List<PendingAction> ExtractFallbackChoicePendingActions(string assistantText) {
+        var text = assistantText ?? string.Empty;
+        if (text.Length == 0) {
+            return new List<PendingAction>();
+        }
+
+        var lines = SplitLines(text);
+        var inFence = false;
+        var candidateTitles = new List<string>();
+        var candidateStartLine = -1;
+        for (var i = 0; i < lines.Count; i++) {
+            var trimmedLine = (lines[i] ?? string.Empty).Trim();
+            if (trimmedLine.StartsWith("```", StringComparison.Ordinal)) {
+                inFence = !inFence;
+                continue;
+            }
+
+            if (inFence) {
+                continue;
+            }
+
+            if (TryExtractFallbackChoiceTitle(trimmedLine, out var title)) {
+                if (candidateStartLine < 0) {
+                    candidateStartLine = i;
+                }
+                candidateTitles.Add(title);
+                continue;
+            }
+
+            if (candidateTitles.Count >= 2 && LooksLikeFallbackChoicePromptContext(lines, candidateStartLine)) {
+                return BuildFallbackChoicePendingActions(candidateTitles);
+            }
+
+            candidateTitles.Clear();
+            candidateStartLine = -1;
+        }
+
+        if (candidateTitles.Count >= 2 && LooksLikeFallbackChoicePromptContext(lines, candidateStartLine)) {
+            return BuildFallbackChoicePendingActions(candidateTitles);
+        }
+
+        return new List<PendingAction>();
+    }
+
+    private static bool TryExtractFallbackChoiceTitle(string trimmedLine, out string title) {
+        title = string.Empty;
+        if (string.IsNullOrWhiteSpace(trimmedLine)) {
+            return false;
+        }
+
+        var value = trimmedLine.Trim();
+        if (value.Length == 0) {
+            return false;
+        }
+
+        var startsWithBullet = false;
+        if (value.StartsWith("- ", StringComparison.Ordinal)
+            || value.StartsWith("* ", StringComparison.Ordinal)
+            || value.StartsWith("• ", StringComparison.Ordinal)
+            || value.StartsWith("– ", StringComparison.Ordinal)
+            || value.StartsWith("— ", StringComparison.Ordinal)) {
+            value = value.Substring(2).Trim();
+            startsWithBullet = true;
+        } else {
+            var idx = 0;
+            while (idx < value.Length && char.IsDigit(value[idx])) {
+                idx++;
+            }
+
+            if (idx > 0 && idx < value.Length) {
+                var marker = value[idx];
+                if ((marker == '.' || marker == ')' || marker == ':' || marker == ']')
+                    && idx + 1 < value.Length
+                    && char.IsWhiteSpace(value[idx + 1])) {
+                    value = value[(idx + 2)..].Trim();
+                    startsWithBullet = true;
+                }
+            }
+        }
+
+        if (!startsWithBullet || value.Length == 0) {
+            return false;
+        }
+
+        if (value.Length > MaxFallbackChoiceActionTitleChars) {
+            return false;
+        }
+
+        if (value.IndexOf(':', StringComparison.Ordinal) >= 0
+            || value.IndexOf("http", StringComparison.OrdinalIgnoreCase) >= 0
+            || value.IndexOf('{', StringComparison.Ordinal) >= 0
+            || value.IndexOf('[', StringComparison.Ordinal) >= 0
+            || value.IndexOf('<', StringComparison.Ordinal) >= 0) {
+            return false;
+        }
+
+        var tokenCount = CountLetterDigitTokens(value, maxTokens: 12);
+        if (tokenCount == 0 || tokenCount > 10) {
+            return false;
+        }
+
+        var hasLetter = false;
+        for (var i = 0; i < value.Length; i++) {
+            if (char.IsLetter(value[i])) {
+                hasLetter = true;
+                break;
+            }
+        }
+
+        if (!hasLetter) {
+            return false;
+        }
+
+        title = CollapseWhitespace(value).Trim();
+        return title.Length > 0;
+    }
+
+    private static bool LooksLikeFallbackChoicePromptContext(IReadOnlyList<string> lines, int firstChoiceLine) {
+        if (lines is null || lines.Count == 0 || firstChoiceLine < 0 || firstChoiceLine >= lines.Count) {
+            return false;
+        }
+
+        for (var i = firstChoiceLine - 1; i >= 0 && firstChoiceLine - i <= 3; i--) {
+            var trimmed = (lines[i] ?? string.Empty).Trim();
+            if (trimmed.Length == 0) {
+                continue;
+            }
+
+            return trimmed.EndsWith(":", StringComparison.Ordinal)
+                   || trimmed.EndsWith("?", StringComparison.Ordinal)
+                   || trimmed.EndsWith("：", StringComparison.Ordinal)
+                   || trimmed.EndsWith("？", StringComparison.Ordinal);
+        }
+
+        return false;
+    }
+
+    private static List<PendingAction> BuildFallbackChoicePendingActions(IReadOnlyList<string> titles) {
+        var actions = new List<PendingAction>();
+        if (titles is null || titles.Count == 0) {
+            return actions;
+        }
+
+        for (var i = 0; i < titles.Count && actions.Count < 6; i++) {
+            var title = (titles[i] ?? string.Empty).Trim();
+            if (title.Length == 0) {
+                continue;
+            }
+
+            actions.Add(new PendingAction(
+                Id: $"choice_{actions.Count + 1:D3}",
+                Title: title,
+                Request: title));
+        }
+
+        return actions;
     }
 
     private static bool TryReadField(string line, string name, out string value) {

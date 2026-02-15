@@ -415,7 +415,17 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool ShouldSkipWeightedRouting(string userRequest) {
-        return string.IsNullOrWhiteSpace(userRequest);
+        var normalized = (userRequest ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return true;
+        }
+
+        // For explicit action selections, keep all tools available so execution can proceed immediately.
+        if (LooksLikeActionSelectionPayload(normalized)) {
+            return true;
+        }
+
+        return false;
     }
 
     private static bool LooksLikeContinuationFollowUp(string userRequest) {

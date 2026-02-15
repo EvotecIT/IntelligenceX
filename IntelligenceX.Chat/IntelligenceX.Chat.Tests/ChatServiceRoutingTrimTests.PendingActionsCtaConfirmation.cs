@@ -311,4 +311,83 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Equal("run it", expanded);
     }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_ResolvesFallbackBulletChoiceWithoutActionMarker() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Absolutely — want me to pull top 5 recent events, or go straight to a focused cut like:
+            - Failed logons (4625)
+            - Account lockouts (4740)
+            - Logon activity mix (4624/4625/4634/4647)
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "failed logons please" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        var selection = doc.RootElement.GetProperty("ix_action_selection");
+        Assert.Equal("choice_001", selection.GetProperty("id").GetString());
+        Assert.Equal("Failed logons (4625)", selection.GetProperty("request").GetString());
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotResolveFallbackBulletChoiceWithoutPromptContext() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Options
+            - Failed logons (4625)
+            - Account lockouts (4740)
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "failed logons please" });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal("failed logons please", expanded);
+    }
+
+    [Fact]
+    public void RememberPendingActions_NoMarkerOrFallbackChoices_DoesNotClearExistingActionContext() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var actionDraft = """
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: Failed logons (4625)
+            request: Run failed logons report.
+            reply: /act act_001
+            """;
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", actionDraft });
+
+        var plainAssistantMessage = """
+            Quick read
+            normal service state flips, no spicy errors in this 5-event window.
+            """;
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", plainAssistantMessage });
+
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act act_001" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        Assert.Equal("act_001", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public void RememberPendingActions_RehydratesReplayActionFromExecutionContractBlockerText() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var selectionPayload = "{\"ix_action_selection\":{\"id\":\"act_failed4625\",\"title\":\"Failed logons (4625)\",\"request\":\"Run failed logon report on ADO Security and summarize top events.\"}}";
+        var blockerText = Assert.IsType<string>(BuildExecutionContractBlockerTextMethod.Invoke(
+            null,
+            new object?[] { selectionPayload, "Ok, doing it now.", "no_tool_calls_after_watchdog_retry" }));
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", blockerText });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "go ahead and run it" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        var selection = doc.RootElement.GetProperty("ix_action_selection");
+        Assert.Equal("act_failed4625", selection.GetProperty("id").GetString());
+    }
 }
