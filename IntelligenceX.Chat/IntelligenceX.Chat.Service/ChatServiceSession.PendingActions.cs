@@ -11,7 +11,6 @@ internal sealed partial class ChatServiceSession {
     private const string ActionMarker = "ix:action:v1";
     private const int MaxActionParsingChars = 64 * 1024;
     private static readonly char[] ImplicitConfirmationQuestionPunctuation = new[] { '?', '？', '¿', '؟' };
-    private static readonly char[] ApostropheVariants = new[] { '\u2018', '\u2019', '\uFF07' };
     // A very small disqualifying set for "this is clearly structured payload" (JSON/XML).
     // Avoid overly broad disqualifiers like quotes/backticks which are common in plain chat.
     private static readonly char[] ImplicitConfirmationStructuredChars = new[] { '{', '}', '[', ']', '<', '>' };
@@ -459,7 +458,14 @@ internal sealed partial class ChatServiceSession {
             return value;
         }
 
-        var idx = value.IndexOfAny(ApostropheVariants);
+        // Avoid IndexOfAny with a shared char[] so the normalization set is unambiguous (and easy to audit).
+        var idx = value.IndexOf('\u2018');
+        if (idx < 0) {
+            idx = value.IndexOf('\u2019');
+        }
+        if (idx < 0) {
+            idx = value.IndexOf('\uFF07');
+        }
         if (idx < 0) {
             return value;
         }
