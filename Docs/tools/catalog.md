@@ -14,11 +14,11 @@ This catalog is generated from what the codebase currently registers in tool-pac
 | Event Log | `eventlog` | `builtin` | SensitiveRead | OSS + internal |
 | File System | `fs` | `builtin` | ReadOnly | OSS + internal |
 | Reviewer Setup | `reviewer_setup` | `builtin` | ReadOnly | OSS + internal |
-| Email | `email` | `builtin` | SensitiveRead | Optional (assembly-dependent) |
-| IX.PowerShell | `powershell` | `builtin` | DangerousWrite | Optional (disabled by default) |
+| Email | `email` | `builtin` | SensitiveRead | OSS + internal (dependency-gated at runtime) |
+| PowerShell | `powershell` | `builtin` | DangerousWrite | OSS + internal (opt-in by policy) |
 | System | `system` | `closed_source` | ReadOnly | Internal/private builds |
 | Active Directory | `ad` | `closed_source` | SensitiveRead | Internal/private builds |
-| IX.TestimoX | `testimox` | `closed_source` | SensitiveRead | Internal/private builds |
+| TestimoX | `testimox` | `closed_source` | SensitiveRead | Internal/private builds |
 
 ## Builtin / OSS-Oriented Packs
 
@@ -58,7 +58,7 @@ Representative tools:
 - `email_imap_get`
 - `email_smtp_send`
 
-### IX.PowerShell (`powershell`)
+### PowerShell (`powershell`)
 
 Representative tools:
 
@@ -91,7 +91,7 @@ Representative tools:
 - `system_service_list` (Windows)
 - `system_firewall_rules` (Windows)
 
-### IX.TestimoX (`testimox`)
+### TestimoX (`testimox`)
 
 Representative tools:
 
@@ -102,6 +102,7 @@ Representative tools:
 ## Notes
 
 - Tool availability depends on host/runtime composition and platform.
+- `builtin` packs are OSS-oriented by source model; "optional" indicates runtime policy/dependency gating, not closed-source licensing.
 - `sourceKind` classification comes from `ToolPackBootstrap` normalization rules.
 - Closed-source packs may be enabled by default in config but still absent in OSS environments.
 
