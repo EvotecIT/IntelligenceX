@@ -133,7 +133,7 @@ intelligencex todo project-sync \
 Useful options:
 - `--config <path>` to resolve owner/project from `project-init` output.
 - `--ensure-fields` / `--no-ensure-fields`.
-- `--apply-labels` to apply IX labels (`ix/category:*`, `ix/vision:*`, `ix/match:*`) on PRs/issues.
+- `--apply-labels` to apply IX labels (`ix/category:*`, `ix/vision:*`, `ix/match:*`, `ix/decision:*`) on PRs/issues.
 - `--ensure-labels` / `--no-ensure-labels` for label taxonomy management.
 - `--apply-link-comments` to upsert assistive link comments on PRs (related issues) and issues (related PRs).
 - `--project-item-scan-limit <n>` for larger projects.
