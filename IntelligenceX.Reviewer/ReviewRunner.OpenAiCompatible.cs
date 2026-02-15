@@ -147,8 +147,7 @@ internal sealed partial class ReviewRunner {
             if (createContent is not null && request.Method != HttpMethod.Get && request.Method != HttpMethod.Head) {
                 request.Content = createContent();
             }
-            if (redirect > 0) {
-                // Avoid replaying bearer tokens to redirected endpoints by default (even on same host).
+            if (redirect > 0 && _settings.OpenAICompatibleDropAuthorizationOnRedirect) {
                 request.Headers.Remove("Authorization");
                 if (_settings.Diagnostics) {
                     Console.Error.WriteLine("OpenAI-compatible redirect: dropped Authorization header.");

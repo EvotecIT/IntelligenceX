@@ -130,6 +130,11 @@ internal sealed partial class ReviewSettings {
     /// </summary>
     public bool OpenAICompatibleAllowInsecureHttp { get; set; }
     /// <summary>
+    /// When true, drop the Authorization header when following redirects for the OpenAI-compatible provider.
+    /// Defaults to false since cross-host redirects are blocked; keeping auth enables common reverse-proxy setups.
+    /// </summary>
+    public bool OpenAICompatibleDropAuthorizationOnRedirect { get; set; }
+    /// <summary>
     /// Optional ChatGPT account id to use when multiple OpenAI bundles are present in the auth store.
     /// </summary>
     public string? OpenAiAccountId { get; set; }

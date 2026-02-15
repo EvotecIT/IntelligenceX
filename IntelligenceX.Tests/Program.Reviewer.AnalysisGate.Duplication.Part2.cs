@@ -678,6 +678,16 @@ internal static partial class Program {
         AssertEqual("../src/test.cs", normalized, "normalize duplication path preserves leading dot-dot");
     }
 
+    private static void TestAnalyzeGateNormalizeDuplicationPathUnescapesUriEncoded() {
+        var normalized = IntelligenceX.Cli.Analysis.AnalyzeGateBaseline.NormalizeDuplicationPathForKey("%2Ftmp%2Ftest.cs");
+        AssertEqual("/tmp/test.cs", normalized, "normalize duplication path unescapes uri-encoded paths");
+    }
+
+    private static void TestAnalyzeGateNormalizeDuplicationPathUnescapesUriDoubleEncoded() {
+        var normalized = IntelligenceX.Cli.Analysis.AnalyzeGateBaseline.NormalizeDuplicationPathForKey("%252Ftmp%252Ftest.cs");
+        AssertEqual("/tmp/test.cs", normalized, "normalize duplication path unescapes double-encoded paths");
+    }
+
     private static void TestAnalyzeGateDuplicationFileBaselineMissingPathReturnsNotProvided() {
         var ok = IntelligenceX.Cli.Analysis.AnalyzeGateBaseline.TryLoadDuplicationFileBaselines(
             path: "",

@@ -287,6 +287,23 @@ internal static class AnalyzeGateBaseline {
         // Duplication metrics + baselines can include "./" prefixes, mixed separators, repeated slashes, or safe ../ segments.
         // Normalize so delta gating finds matches deterministically while avoiding path traversal above the root.
         var normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
+        if (normalized.Contains('%', StringComparison.Ordinal)) {
+            // Allow baseline/current matching when paths are URI-escaped (some analyzers encode file paths).
+            for (var i = 0; i < 2; i++) {
+                try {
+                    var unescaped = Uri.UnescapeDataString(normalized);
+                    if (string.Equals(unescaped, normalized, StringComparison.Ordinal)) {
+                        break;
+                    }
+                    normalized = unescaped.Replace('\\', '/');
+                } catch {
+                    break;
+                }
+                if (!normalized.Contains('%', StringComparison.Ordinal)) {
+                    break;
+                }
+            }
+        }
 
         var hasDotRelativePrefix = normalized.StartsWith("./", StringComparison.Ordinal);
         var hasLeadingSlash = normalized.StartsWith("/", StringComparison.Ordinal);

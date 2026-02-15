@@ -53,6 +53,13 @@ internal sealed partial class ReviewSettings {
             settings.OpenAICompatibleAllowInsecureHttp =
                 ParseBoolean(openAiCompatibleAllowInsecure, settings.OpenAICompatibleAllowInsecureHttp);
         }
+        var openAiCompatibleDropAuthOnRedirect = GetInput(
+            "openai_compatible_drop_authorization_on_redirect",
+            "OPENAI_COMPATIBLE_DROP_AUTHORIZATION_ON_REDIRECT");
+        if (!string.IsNullOrWhiteSpace(openAiCompatibleDropAuthOnRedirect)) {
+            settings.OpenAICompatibleDropAuthorizationOnRedirect =
+                ParseBoolean(openAiCompatibleDropAuthOnRedirect, settings.OpenAICompatibleDropAuthorizationOnRedirect);
+        }
     }
 }
 
