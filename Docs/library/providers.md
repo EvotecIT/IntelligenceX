@@ -30,6 +30,32 @@ var thread = await client.StartThreadAsync("gpt-5.3-codex");
 await client.StartTurnAsync(thread.Id, "Hello from app-server");
 ```
 
+## OpenAI-compatible HTTP (local providers)
+
+- Uses an OpenAI-compatible HTTP endpoint (OpenAI Chat Completions-style)
+- Useful for local/self-hosted model servers (Ollama, LM Studio, llama.cpp server, etc.)
+- Does not require ChatGPT OAuth
+
+```csharp
+using IntelligenceX.OpenAI;
+
+var options = new IntelligenceXClientOptions {
+    TransportKind = OpenAITransportKind.CompatibleHttp,
+    DefaultModel = "llama3.1"
+};
+options.CompatibleHttpOptions.BaseUrl = "http://127.0.0.1:11434";
+options.CompatibleHttpOptions.AllowInsecureHttp = true; // loopback http:// opt-in
+options.CompatibleHttpOptions.Streaming = true;
+
+await using var client = await IntelligenceXClient.ConnectAsync(options);
+var turn = await client.ChatAsync("Summarize the last PR");
+Console.WriteLine(EasyChatResult.FromTurn(turn).Text);
+```
+
+Notes:
+- `BaseUrl` may be either `http://host:port` or `http://host:port/v1`; it will be normalized to `/v1/`.
+- Image inputs are not supported for `CompatibleHttp` yet (text + tools only).
+
 ## Copilot
 
 - Optional provider for users with GitHub Copilot

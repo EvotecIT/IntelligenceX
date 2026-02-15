@@ -22,6 +22,14 @@ internal static partial class Program {
 
     private sealed class ReplOptions {
         public string Model { get; set; } = "gpt-5.3-codex";
+
+        public OpenAITransportKind OpenAITransport { get; set; } = OpenAITransportKind.Native;
+        public string? OpenAIBaseUrl { get; set; }
+        public string? OpenAIApiKey { get; set; }
+        public bool OpenAIStreaming { get; set; } = true;
+        public bool OpenAIAllowInsecureHttp { get; set; }
+        public bool OpenAIAllowInsecureHttpNonLoopback { get; set; }
+
         public bool ShowHelp { get; set; }
         public bool ForceLogin { get; set; }
         public bool ParallelToolCalls { get; set; }
@@ -63,6 +71,40 @@ internal static partial class Program {
                             return options;
                         }
                         options.Model = model;
+                        break;
+                    case "--openai-transport":
+                        if (!TryGetValue(args, ref i, out var kindValue, out error)) {
+                            return options;
+                        }
+                        if (!TryParseTransport(kindValue, out var kind)) {
+                            error = "--openai-transport must be one of: native, appserver, compatible-http.";
+                            return options;
+                        }
+                        options.OpenAITransport = kind;
+                        break;
+                    case "--openai-base-url":
+                        if (!TryGetValue(args, ref i, out var baseUrl, out error)) {
+                            return options;
+                        }
+                        options.OpenAIBaseUrl = baseUrl;
+                        break;
+                    case "--openai-api-key":
+                        if (!TryGetValue(args, ref i, out var apiKey, out error)) {
+                            return options;
+                        }
+                        options.OpenAIApiKey = apiKey;
+                        break;
+                    case "--openai-stream":
+                        options.OpenAIStreaming = true;
+                        break;
+                    case "--openai-no-stream":
+                        options.OpenAIStreaming = false;
+                        break;
+                    case "--openai-allow-insecure-http":
+                        options.OpenAIAllowInsecureHttp = true;
+                        break;
+                    case "--openai-allow-insecure-http-non-loopback":
+                        options.OpenAIAllowInsecureHttpNonLoopback = true;
                         break;
                     case "--allow-root":
                         if (!TryGetValue(args, ref i, out var root, out error)) {
@@ -201,6 +243,12 @@ internal static partial class Program {
                 }
             }
 
+            if (options.OpenAITransport == OpenAITransportKind.CompatibleHttp) {
+                if (!TryValidateCompatibleHttpBaseUrl(options, out error)) {
+                    return options;
+                }
+            }
+
             return options;
         }
 
@@ -217,6 +265,73 @@ internal static partial class Program {
                 error = $"Empty value for {args[i - 1]}.";
                 return false;
             }
+            return true;
+        }
+
+        private static bool TryParseTransport(string value, out OpenAITransportKind kind) {
+            kind = OpenAITransportKind.Native;
+            if (string.IsNullOrWhiteSpace(value)) {
+                return false;
+            }
+            switch (value.Trim().ToLowerInvariant()) {
+                case "native":
+                    kind = OpenAITransportKind.Native;
+                    return true;
+                case "appserver":
+                case "app-server":
+                case "codex":
+                    kind = OpenAITransportKind.AppServer;
+                    return true;
+                case "compatible-http":
+                case "compatiblehttp":
+                case "http":
+                case "local":
+                case "ollama":
+                case "lmstudio":
+                case "lm-studio":
+                    kind = OpenAITransportKind.CompatibleHttp;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryValidateCompatibleHttpBaseUrl(ReplOptions options, out string? error) {
+            error = null;
+            var value = (options.OpenAIBaseUrl ?? string.Empty).Trim();
+            if (value.Length == 0) {
+                error = "--openai-base-url is required when --openai-transport compatible-http is selected.";
+                return false;
+            }
+
+            if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri is null) {
+                error = "--openai-base-url must be an absolute URL.";
+                return false;
+            }
+
+            if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) {
+                error = "--openai-base-url must use http or https.";
+                return false;
+            }
+
+            if (string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)) {
+                if (!options.OpenAIAllowInsecureHttp && !options.OpenAIAllowInsecureHttpNonLoopback) {
+                    error = "Insecure http base URLs are disabled by default. Use --openai-allow-insecure-http for loopback, or --openai-allow-insecure-http-non-loopback for non-loopback.";
+                    return false;
+                }
+
+                var host = uri.DnsSafeHost ?? string.Empty;
+                var isLoopback = uri.IsLoopback
+                    || string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(host, "127.0.0.1", StringComparison.Ordinal)
+                    || string.Equals(host, "::1", StringComparison.Ordinal);
+
+                if (!isLoopback && !options.OpenAIAllowInsecureHttpNonLoopback) {
+                    error = "Insecure http base URLs for non-loopback hosts require --openai-allow-insecure-http-non-loopback.";
+                    return false;
+                }
+            }
+
             return true;
         }
     }

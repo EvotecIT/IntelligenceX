@@ -35,6 +35,7 @@ Standalone `EvotecIT/IntelligenceX.Tools` and `EvotecIT/IntelligenceX.Chat` rema
 - .NET library: `Docs/library/overview.md`
 - PowerShell module: `Docs/powershell/overview.md`
 - Tool packs: `Docs/library/tool-packs.md`
+- Chat with local providers (Ollama/LM Studio): `Docs/apps/chat-local-providers.md`
 
 ## Quick start (Reviewer)
 

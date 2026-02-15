@@ -26,6 +26,21 @@ Token or app permissions are insufficient.
 2. Install GitHub Copilot CLI (for example `brew install copilot-cli` or `winget install GitHub.Copilot`)
 3. Run `copilot` and use the `/login` slash command (first run), then retry the reviewer
 
+### Compatible HTTP (Local Providers)
+
+Common issues when using `compatible-http` (local/self-hosted OpenAI-style endpoints):
+
+- `http:// is not allowed by default`
+  - Use `--openai-allow-insecure-http` for loopback (`localhost`, `127.0.0.1`)
+  - Use `--openai-allow-insecure-http-non-loopback` only when you understand the risk
+- `404 Not Found` on chat completions
+  - Ensure your provider exposes `/v1/chat/completions`
+  - If your base URL is `http://127.0.0.1:11434` IntelligenceX will normalize to `/v1/` internally
+  - If your server is already mounted under `/v1`, you can also pass `http://127.0.0.1:11434/v1`
+- Tools not being called
+  - Your provider may ignore `tools` or not return `message.tool_calls`
+  - Chat still works, but tool execution won't trigger
+
 ## Rate Limits
 
 ### OpenAI 429

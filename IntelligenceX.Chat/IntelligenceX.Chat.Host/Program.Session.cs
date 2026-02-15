@@ -24,13 +24,15 @@ internal static partial class Program {
         private readonly IntelligenceXClient _client;
         private readonly ToolRegistry _registry;
         private readonly ReplOptions _options;
+        private readonly string? _instructions;
         private readonly Action<string>? _status;
         private string? _previousResponseId;
 
-        public ReplSession(IntelligenceXClient client, ToolRegistry registry, ReplOptions options, Action<string>? status) {
+        public ReplSession(IntelligenceXClient client, ToolRegistry registry, ReplOptions options, string? instructions, Action<string>? status) {
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _registry = registry ?? throw new ArgumentNullException(nameof(registry));
             _options = options ?? throw new ArgumentNullException(nameof(options));
+            _instructions = string.IsNullOrWhiteSpace(instructions) ? null : instructions;
             _status = status;
         }
 
@@ -49,6 +51,7 @@ internal static partial class Program {
             var toolDefs = _registry.GetDefinitions();
             var chatOptions = new ChatOptions {
                 Model = _options.Model,
+                Instructions = _instructions,
                 ParallelToolCalls = _options.ParallelToolCalls,
                 Tools = toolDefs.Count == 0 ? null : toolDefs,
                 ToolChoice = toolDefs.Count == 0 ? null : ToolChoice.Auto,

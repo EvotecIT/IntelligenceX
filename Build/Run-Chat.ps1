@@ -16,6 +16,13 @@
     [string] $TestimoXRoot,
     [string] $Model,
     [string] $InstructionsFile,
+    [string] $OpenAITransport,
+    [string] $OpenAIBaseUrl,
+    [string] $OpenAIApiKey,
+    [switch] $OpenAIStream,
+    [switch] $OpenAINoStream,
+    [switch] $OpenAIAllowInsecureHttp,
+    [switch] $OpenAIAllowInsecureHttpNonLoopback,
     [string[]] $ExtraArgs
 )
 
@@ -91,6 +98,27 @@ if (-not [string]::IsNullOrWhiteSpace($Model)) {
 }
 if (-not [string]::IsNullOrWhiteSpace($InstructionsFile)) {
     $runArgs += @('--instructions-file', $InstructionsFile)
+}
+if (-not [string]::IsNullOrWhiteSpace($OpenAITransport)) {
+    $runArgs += @('--openai-transport', $OpenAITransport)
+}
+if (-not [string]::IsNullOrWhiteSpace($OpenAIBaseUrl)) {
+    $runArgs += @('--openai-base-url', $OpenAIBaseUrl)
+}
+if (-not [string]::IsNullOrWhiteSpace($OpenAIApiKey)) {
+    $runArgs += @('--openai-api-key', $OpenAIApiKey)
+}
+if ($OpenAIStream) {
+    $runArgs += '--openai-stream'
+}
+if ($OpenAINoStream) {
+    $runArgs += '--openai-no-stream'
+}
+if ($OpenAIAllowInsecureHttp) {
+    $runArgs += '--openai-allow-insecure-http'
+}
+if ($OpenAIAllowInsecureHttpNonLoopback) {
+    $runArgs += '--openai-allow-insecure-http-non-loopback'
 }
 if ($ExtraArgs -and $ExtraArgs.Count -gt 0) {
     $runArgs += $ExtraArgs

@@ -83,12 +83,21 @@ internal static partial class Program {
 
     private static async Task RunAsync(ReplOptions options, IReadOnlyList<IToolPack> packs, CancellationToken cancellationToken) {
         var clientOptions = new IntelligenceXClientOptions {
-            TransportKind = OpenAITransportKind.Native
+            TransportKind = options.OpenAITransport
         };
         var instructions = LoadInstructions(options);
         var shaped = ApplyRuntimeShaping(instructions, options);
-        if (!string.IsNullOrWhiteSpace(shaped)) {
-            clientOptions.NativeOptions.Instructions = shaped!;
+        var runtimeInstructions = string.IsNullOrWhiteSpace(shaped) ? null : shaped;
+        if (clientOptions.TransportKind == OpenAITransportKind.Native && !string.IsNullOrWhiteSpace(runtimeInstructions)) {
+            clientOptions.NativeOptions.Instructions = runtimeInstructions!;
+        }
+
+        if (clientOptions.TransportKind == OpenAITransportKind.CompatibleHttp) {
+            clientOptions.CompatibleHttpOptions.BaseUrl = options.OpenAIBaseUrl;
+            clientOptions.CompatibleHttpOptions.ApiKey = options.OpenAIApiKey;
+            clientOptions.CompatibleHttpOptions.Streaming = options.OpenAIStreaming;
+            clientOptions.CompatibleHttpOptions.AllowInsecureHttp = options.OpenAIAllowInsecureHttp;
+            clientOptions.CompatibleHttpOptions.AllowInsecureHttpNonLoopback = options.OpenAIAllowInsecureHttpNonLoopback;
         }
         var authPath = ResolveAuthPath(options);
         if (!string.IsNullOrWhiteSpace(authPath)) {
@@ -97,21 +106,23 @@ internal static partial class Program {
 
         await using var client = await IntelligenceXClient.ConnectAsync(clientOptions).ConfigureAwait(false);
 
-        if (!options.ForceLogin && await TryUseCachedChatGptLoginAsync(client, cancellationToken).ConfigureAwait(false)) {
-            Console.WriteLine("ChatGPT login: using cached token.");
-            Console.WriteLine();
-        } else {
-            await client.LoginChatGptAndWaitAsync(
-                onUrl: url => {
-                    Console.WriteLine("ChatGPT login required. Open this URL in a browser:");
-                    Console.WriteLine(url);
-                    Console.WriteLine();
-                    Console.WriteLine("After login, you may be redirected to a localhost URL.");
-                    Console.WriteLine("If the app doesn't auto-complete the login, copy the final redirect URL (or the code) and paste it here.");
-                    Console.WriteLine();
-                },
-                onPrompt: prompt => PromptForAuthAsync(prompt, cancellationToken),
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (client.TransportKind == OpenAITransportKind.Native) {
+            if (!options.ForceLogin && await TryUseCachedChatGptLoginAsync(client, cancellationToken).ConfigureAwait(false)) {
+                Console.WriteLine("ChatGPT login: using cached token.");
+                Console.WriteLine();
+            } else {
+                await client.LoginChatGptAndWaitAsync(
+                    onUrl: url => {
+                        Console.WriteLine("ChatGPT login required. Open this URL in a browser:");
+                        Console.WriteLine(url);
+                        Console.WriteLine();
+                        Console.WriteLine("After login, you may be redirected to a localhost URL.");
+                        Console.WriteLine("If the app doesn't auto-complete the login, copy the final redirect URL (or the code) and paste it here.");
+                        Console.WriteLine();
+                    },
+                    onPrompt: prompt => PromptForAuthAsync(prompt, cancellationToken),
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+            }
         }
 
         var registry = new ToolRegistry();
@@ -121,7 +132,7 @@ internal static partial class Program {
         Console.WriteLine("Commands: /help, /tools, /roots, /exit");
         Console.WriteLine();
 
-        var session = new ReplSession(client, registry, options, status => {
+        var session = new ReplSession(client, registry, options, runtimeInstructions, status => {
             // Keep progress lines visually distinct from assistant output.
             if (!string.IsNullOrWhiteSpace(status)) {
                 Console.WriteLine($"> {status}");
@@ -315,6 +326,13 @@ internal static partial class Program {
         Console.WriteLine();
         Console.WriteLine("Options:");
         Console.WriteLine("  --model <NAME>          OpenAI model (default: gpt-5.3-codex)");
+        Console.WriteLine("  --openai-transport <KIND>  Provider transport: native|appserver|compatible-http (default: native).");
+        Console.WriteLine("  --openai-base-url <URL> Base URL for compatible-http (example: http://127.0.0.1:11434 or http://127.0.0.1:11434/v1).");
+        Console.WriteLine("  --openai-api-key <KEY>  Optional Bearer token for compatible-http.");
+        Console.WriteLine("  --openai-stream         Request streaming responses (default: on).");
+        Console.WriteLine("  --openai-no-stream      Disable streaming responses.");
+        Console.WriteLine("  --openai-allow-insecure-http  Allow http:// base URLs for loopback hosts (default: off).");
+        Console.WriteLine("  --openai-allow-insecure-http-non-loopback  Allow http:// base URLs for non-loopback hosts (dangerous).");
         Console.WriteLine("  --allow-root <PATH>     Allow filesystem/evtx operations under PATH (repeatable).");
         Console.WriteLine("  --auth-path <PATH>      Override auth store path (default: %USERPROFILE%\\.intelligencex\\auth.json).");
         Console.WriteLine("  --instructions-file <PATH>  Load system instructions from a file (default: bundled HostSystemPrompt.md).");

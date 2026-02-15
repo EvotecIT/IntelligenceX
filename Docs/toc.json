@@ -49,6 +49,7 @@
       { "title": "Examples", "href": "/docs/examples/" },
       { "title": "Troubleshooting", "href": "/docs/troubleshooting/" },
       { "title": "Screenshots (Planned)", "href": "/docs/screenshots/" },
+      { "title": "Chat: Local Providers", "href": "/docs/apps/chat-local-providers/" },
       { "title": "Windows Tray Chat (Planned)", "href": "/docs/apps/windows-tray-chat/" }
     ]
   }
