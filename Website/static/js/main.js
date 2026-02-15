@@ -54,6 +54,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function getMermaidConfig() {
     var isLight = getThemeName() === 'light';
+    var surfaceText = isLight ? '#0F172A' : '#D6E2F0';
+    var nodeText = isLight ? '#0F172A' : '#0B1220';
     return {
       startOnLoad: false,
       securityLevel: 'strict',
@@ -62,7 +64,11 @@ document.addEventListener('DOMContentLoaded', function () {
       themeVariables: {
         background: getCssVar('--pf-code-bg', isLight ? '#F1F5F9' : '#0B1220'),
         primaryColor: getCssVar('--pf-card-bg', isLight ? '#E2E8F0' : '#1E293B'),
-        primaryTextColor: getCssVar('--pf-ink-strong', isLight ? '#0F172A' : '#F8FAFC'),
+        textColor: surfaceText,
+        primaryTextColor: nodeText,
+        secondaryTextColor: nodeText,
+        tertiaryTextColor: nodeText,
+        clusterTextColor: surfaceText,
         primaryBorderColor: getCssVar('--pf-accent', isLight ? '#0891B2' : '#06B6D4'),
         lineColor: getCssVar('--pf-muted', isLight ? '#64748B' : '#94A3B8'),
         secondaryColor: getCssVar('--pf-bg-alt', isLight ? '#E2E8F0' : '#111827'),
