@@ -120,14 +120,16 @@ internal sealed partial class ChatServiceSession {
         }
 
         var openIndex = phrase.OpenIndex;
-        var closeIndex = phrase.CloseIndex;
-        if (openIndex < 0 || closeIndex <= openIndex || closeIndex >= assistantDraft.Length) {
+        var closeIndexExclusive = phrase.CloseIndexExclusive;
+        if (openIndex < 0 || closeIndexExclusive <= openIndex + 1 || closeIndexExclusive > assistantDraft.Length) {
             return false;
         }
 
+        var closeQuoteIndex = closeIndexExclusive - 1;
+
         if (!onlyBulletContext) {
             // Most common CTA pattern: "... \"run now\", I'll execute ..."
-            var after = closeIndex + 1;
+            var after = closeIndexExclusive;
             if (after < assistantDraft.Length) {
                 // Allow tiny whitespace, then comma.
                 var scan = after;
@@ -153,7 +155,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var lineEnd = assistantDraft.Length;
-        for (var i = closeIndex + 1; i < assistantDraft.Length; i++) {
+        for (var i = closeQuoteIndex + 1; i < assistantDraft.Length; i++) {
             var ch = assistantDraft[i];
             if (ch == '\n' || ch == '\r') {
                 lineEnd = i;
@@ -172,7 +174,7 @@ internal sealed partial class ChatServiceSession {
         }
         if (left > right) {
             // Quote is the only meaningful content on its line (explicit instruction snippet).
-            var suffixLeft = closeIndex + 1;
+            var suffixLeft = closeIndexExclusive;
             if (suffixLeft >= assistantDraft.Length) {
                 return true;
             }
@@ -219,7 +221,7 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
-    private readonly record struct QuotedPhrase(int OpenIndex, int CloseIndex, string Value);
+    private readonly record struct QuotedPhrase(int OpenIndex, int CloseIndexExclusive, string Value);
 
     private static List<QuotedPhrase> ExtractQuotedPhrases(string text) {
         var value = text ?? string.Empty;
@@ -275,7 +277,7 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            phrases.Add(new QuotedPhrase(openIndex, end, inner));
+            phrases.Add(new QuotedPhrase(openIndex, end + 1, inner));
             if (phrases.Count >= 6) {
                 break;
             }

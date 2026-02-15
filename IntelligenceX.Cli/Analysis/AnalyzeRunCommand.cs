@@ -579,10 +579,6 @@ if ($analysisPaths.Length -gt 0) {
                 @(Invoke-ScriptAnalyzer -Path $analysisPath -Severity $invokeSeverity -ErrorAction Continue -ErrorVariable +localErrors)
             }
 
-            foreach ($result in $localResults) {
-                [void]$results.Add($result)
-            }
-
             # Work around intermittent PSScriptAnalyzer engine crashes (NullReferenceException) by retrying once.
             $shouldRetry = $false
             foreach ($err in $localErrors) {
@@ -597,16 +593,26 @@ if ($analysisPaths.Length -gt 0) {
                 Import-Module PSScriptAnalyzer -Force -ErrorAction SilentlyContinue | Out-Null
 
                 $retryErrors = @()
-                if ($hasSettings) {
-                    [void]@(Invoke-ScriptAnalyzer -Path $analysisPath -Severity $invokeSeverity -Settings $SettingsPath -ErrorAction Continue -ErrorVariable +retryErrors)
+                $retryResults = if ($hasSettings) {
+                    @(Invoke-ScriptAnalyzer -Path $analysisPath -Severity $invokeSeverity -Settings $SettingsPath -ErrorAction Continue -ErrorVariable +retryErrors)
                 } else {
-                    [void]@(Invoke-ScriptAnalyzer -Path $analysisPath -Severity $invokeSeverity -ErrorAction Continue -ErrorVariable +retryErrors)
+                    @(Invoke-ScriptAnalyzer -Path $analysisPath -Severity $invokeSeverity -ErrorAction Continue -ErrorVariable +retryErrors)
                 }
 
                 if ($retryErrors.Count -eq 0) {
+                    foreach ($result in $retryResults) {
+                        [void]$results.Add($result)
+                    }
                     continue
                 }
 
+                foreach ($result in $localResults) {
+                    [void]$results.Add($result)
+                }
+
+                foreach ($err in $localErrors) {
+                    $invokeErrors += $err
+                }
                 foreach ($err in $retryErrors) {
                     $invokeErrors += $err
                 }
@@ -614,6 +620,9 @@ if ($analysisPaths.Length -gt 0) {
                 continue
             }
 
+            foreach ($result in $localResults) {
+                [void]$results.Add($result)
+            }
             foreach ($err in $localErrors) {
                 $invokeErrors += $err
             }
