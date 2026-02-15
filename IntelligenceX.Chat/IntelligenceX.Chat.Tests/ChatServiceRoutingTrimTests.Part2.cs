@@ -12,6 +12,12 @@ namespace IntelligenceX.Chat.Tests;
 public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
+    public void CanonicalizeImplicitPendingActionConfirmationPhrase_NormalizesFullWidthOk() {
+        var normalized = CanonicalizeImplicitPendingActionConfirmationPhraseMethod.Invoke(null, new object?[] { "ＯＫ" });
+        Assert.Equal("ok", Assert.IsType<string>(normalized));
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_DoesNotCaptureActionsInsideCodeFence() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
