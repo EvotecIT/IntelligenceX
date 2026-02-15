@@ -426,6 +426,50 @@ internal static partial class Program {
             Redact = profile.Redact;
         }
 
+        internal ReplOptions Clone() {
+            var clone = new ReplOptions {
+                Model = Model,
+                OpenAITransport = OpenAITransport,
+                OpenAIBaseUrl = OpenAIBaseUrl,
+                OpenAIApiKey = OpenAIApiKey,
+                OpenAIStreaming = OpenAIStreaming,
+                OpenAIAllowInsecureHttp = OpenAIAllowInsecureHttp,
+                OpenAIAllowInsecureHttpNonLoopback = OpenAIAllowInsecureHttpNonLoopback,
+                ReasoningEffort = ReasoningEffort,
+                ReasoningSummary = ReasoningSummary,
+                TextVerbosity = TextVerbosity,
+                Temperature = Temperature,
+                ProfileName = ProfileName,
+                StateDbPath = StateDbPath,
+                ShowHelp = ShowHelp,
+                ForceLogin = ForceLogin,
+                ParallelToolCalls = ParallelToolCalls,
+                MaxToolRounds = MaxToolRounds,
+                TurnTimeoutSeconds = TurnTimeoutSeconds,
+                ToolTimeoutSeconds = ToolTimeoutSeconds,
+                EchoToolOutputs = EchoToolOutputs,
+                MaxConsoleToolOutputChars = MaxConsoleToolOutputChars,
+                ShowToolIds = ShowToolIds,
+                LiveProgress = LiveProgress,
+                MaxTableRows = MaxTableRows,
+                MaxSample = MaxSample,
+                Redact = Redact,
+                AuthPath = AuthPath,
+                InstructionsFile = InstructionsFile,
+                AdDomainController = AdDomainController,
+                AdDefaultSearchBaseDn = AdDefaultSearchBaseDn,
+                AdMaxResults = AdMaxResults,
+                EnablePowerShellPack = EnablePowerShellPack,
+                EnableTestimoXPack = EnableTestimoXPack
+            };
+
+            if (AllowedRoots.Count > 0) {
+                clone.AllowedRoots.AddRange(AllowedRoots);
+            }
+
+            return clone;
+        }
+
         private static bool TryGetValue(string[] args, ref int i, out string value, out string? error) {
             error = null;
             value = string.Empty;

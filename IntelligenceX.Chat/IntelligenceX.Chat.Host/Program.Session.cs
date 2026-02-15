@@ -41,6 +41,48 @@ internal static partial class Program {
         }
 
         public async Task<ReplTurnResult> AskAsync(string text, CancellationToken cancellationToken) {
+            var withMetrics = await AskWithMetricsAsync(text, cancellationToken).ConfigureAwait(false);
+            return withMetrics.Result;
+        }
+
+        public async Task<ReplTurnMetricsResult> AskWithMetricsAsync(string text, CancellationToken cancellationToken) {
+            var startedAtUtc = DateTime.UtcNow;
+            var firstDeltaUtcTicks = 0L;
+
+            void OnDelta(object? _, string __) {
+                if (firstDeltaUtcTicks != 0) {
+                    return;
+                }
+                _ = Interlocked.CompareExchange(ref firstDeltaUtcTicks, DateTime.UtcNow.Ticks, 0);
+            }
+
+            _client.DeltaReceived += OnDelta;
+            try {
+                var result = await AskCoreAsync(text, cancellationToken).ConfigureAwait(false);
+                var completedAtUtc = DateTime.UtcNow;
+                DateTime? firstDeltaAtUtc = null;
+                long? ttftMs = null;
+                if (firstDeltaUtcTicks != 0) {
+                    firstDeltaAtUtc = new DateTime(firstDeltaUtcTicks, DateTimeKind.Utc);
+                    ttftMs = (long)Math.Max(0, TimeSpan.FromTicks(firstDeltaUtcTicks - startedAtUtc.Ticks).TotalMilliseconds);
+                }
+
+                var metrics = new ReplTurnMetrics(
+                    startedAtUtc,
+                    firstDeltaAtUtc,
+                    completedAtUtc,
+                    durationMs: (long)Math.Max(0, (completedAtUtc - startedAtUtc).TotalMilliseconds),
+                    ttftMs: ttftMs,
+                    usage: result.Usage,
+                    toolCallsCount: result.ToolCalls.Count,
+                    toolRounds: result.ToolRounds);
+                return new ReplTurnMetricsResult(result, metrics);
+            } finally {
+                _client.DeltaReceived -= OnDelta;
+            }
+        }
+
+        private async Task<ReplTurnResult> AskCoreAsync(string text, CancellationToken cancellationToken) {
             if (string.IsNullOrWhiteSpace(text)) {
                 return new ReplTurnResult(string.Empty, Array.Empty<ToolCall>(), Array.Empty<ToolOutput>());
             }
@@ -50,6 +92,7 @@ internal static partial class Program {
 
             var calls = new List<ToolCall>();
             var outputs = new List<ToolOutput>();
+            var toolRounds = 0;
 
             var input = ChatInput.FromText(text);
             var toolDefs = _registry.GetDefinitions();
@@ -77,9 +120,10 @@ internal static partial class Program {
                 if (extracted.Count == 0) {
                     var finalText = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
                     _previousResponseId = TryGetResponseId(turn) ?? _previousResponseId;
-                    return new ReplTurnResult(finalText, calls, outputs);
+                    return new ReplTurnResult(finalText, calls, outputs, turn.Usage, toolRounds);
                 }
 
+                toolRounds++;
                 calls.AddRange(extracted);
                 if (_options.LiveProgress) {
                     foreach (var call in extracted) {
@@ -172,15 +216,53 @@ internal static partial class Program {
     }
 
     private sealed class ReplTurnResult {
-        public ReplTurnResult(string text, IReadOnlyList<ToolCall> toolCalls, IReadOnlyList<ToolOutput> toolOutputs) {
+        public ReplTurnResult(string text, IReadOnlyList<ToolCall> toolCalls, IReadOnlyList<ToolOutput> toolOutputs,
+            TurnUsage? usage = null, int toolRounds = 0) {
             Text = text ?? string.Empty;
             ToolCalls = toolCalls ?? Array.Empty<ToolCall>();
             ToolOutputs = toolOutputs ?? Array.Empty<ToolOutput>();
+            Usage = usage;
+            ToolRounds = Math.Max(0, toolRounds);
         }
 
         public string Text { get; }
         public IReadOnlyList<ToolCall> ToolCalls { get; }
         public IReadOnlyList<ToolOutput> ToolOutputs { get; }
+        public TurnUsage? Usage { get; }
+        public int ToolRounds { get; }
+    }
+
+    private sealed class ReplTurnMetrics {
+        public ReplTurnMetrics(DateTime startedAtUtc, DateTime? firstDeltaAtUtc, DateTime completedAtUtc, long durationMs, long? ttftMs,
+            TurnUsage? usage, int toolCallsCount, int toolRounds) {
+            StartedAtUtc = startedAtUtc;
+            FirstDeltaAtUtc = firstDeltaAtUtc;
+            CompletedAtUtc = completedAtUtc;
+            DurationMs = Math.Max(0, durationMs);
+            TtftMs = ttftMs.HasValue ? Math.Max(0, ttftMs.Value) : null;
+            Usage = usage;
+            ToolCallsCount = Math.Max(0, toolCallsCount);
+            ToolRounds = Math.Max(0, toolRounds);
+        }
+
+        public DateTime StartedAtUtc { get; }
+        public DateTime? FirstDeltaAtUtc { get; }
+        public DateTime CompletedAtUtc { get; }
+        public long DurationMs { get; }
+        public long? TtftMs { get; }
+        public TurnUsage? Usage { get; }
+        public int ToolCallsCount { get; }
+        public int ToolRounds { get; }
+    }
+
+    private sealed class ReplTurnMetricsResult {
+        public ReplTurnMetricsResult(ReplTurnResult result, ReplTurnMetrics metrics) {
+            Result = result ?? throw new ArgumentNullException(nameof(result));
+            Metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
+        }
+
+        public ReplTurnResult Result { get; }
+        public ReplTurnMetrics Metrics { get; }
     }
 
 }
