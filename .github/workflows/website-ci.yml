@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   website-build:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux]
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -45,3 +45,4 @@ jobs:
           test -f Website/_site/docs/index.html
           test -f Website/_site/404.html
           grep -Eqi "<link[^>]+rel=[^>]*stylesheet" Website/_site/404.html
+
