@@ -18,18 +18,18 @@
     "tag": "Desktop App",
     "badge": "New",
     "featured": false,
-    "install": "dotnet run --project IntelligenceX.Chat.WinUI",
+    "install": "pwsh .\\Build\\Run-ChatApp.ps1 -Configuration Release",
     "screenshot": "/assets/screenshots/product-chat.svg"
   },
   {
     "title": "IX Tools",
-    "description": "Tool packs that power tool calling in IX Chat and the .NET library. Email, Active Directory, file operations, and more.",
+    "description": "Tool packs that power tool calling in IX Chat and custom .NET integrations. Enable packs in setup, then use them during conversations.",
     "icon": "tools",
     "link": "/docs/tools/overview/",
     "tag": "Tool Packs",
     "badge": "New",
     "featured": false,
-    "install": "dotnet add package IntelligenceX.Tools.Email",
+    "install": "intelligencex setup wizard",
     "screenshot": "/assets/screenshots/product-tools.svg"
   },
   {
@@ -39,7 +39,7 @@
     "link": "/docs/cli/overview/",
     "tag": "Setup",
     "featured": false,
-    "install": "intelligencex setup wizard",
+    "install": "dotnet tool install --global IntelligenceX.Cli",
     "screenshot": "/assets/screenshots/product-cli.svg"
   },
   {

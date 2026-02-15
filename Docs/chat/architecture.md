@@ -9,15 +9,11 @@ IX Chat uses a dual-process architecture to separate UI concerns from AI provide
 
 ## Process Model
 
-```
-+-------------------+        Named Pipe        +-------------------+
-|   UI Process      | <---------------------> |   Host Process     |
-|   (WinUI 3)       |                          |   (Console App)    |
-|                   |                          |                   |
-|   - Window mgmt   |                          |   - AI providers   |
-|   - Tray icon     |                          |   - Tool execution |
-|   - WebView2 chat |                          |   - Thread storage |
-+-------------------+                          +-------------------+
+```mermaid
+flowchart LR
+    UI["UI Process<br/>(WinUI 3)<br/><br/>- Window management<br/>- Tray icon<br/>- WebView2 chat"]
+    HOST["Host Process<br/>(Console App)<br/><br/>- AI providers<br/>- Tool execution<br/>- Thread storage"]
+    UI <-->|"Named pipe (JSON-RPC)"| HOST
 ```
 
 ## UI Process

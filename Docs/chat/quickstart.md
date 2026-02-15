@@ -23,16 +23,16 @@ git clone https://github.com/EvotecIT/IntelligenceX.git
 cd IntelligenceX
 
 # Run the console host
-dotnet run --project IntelligenceX.Chat.Host
+pwsh .\Build\Run-Chat.ps1 -AllowRoot C:\Support\GitHub
 ```
 
-## Running the WinUI App
+## Running the Tray App
 
 The WinUI app provides the desktop tray experience:
 
 ```powershell
-# Build and run the WinUI project
-dotnet run --project IntelligenceX.Chat.WinUI
+# Launch the desktop app
+pwsh .\Build\Run-ChatApp.ps1 -Configuration Release
 ```
 
 On first launch, IX Chat will:

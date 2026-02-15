@@ -1,61 +1,62 @@
 ---
 title: IX Tools Overview
-description: Specialized tool packs that give AI assistants real-world capabilities.
+description: Real IntelligenceX tool packs, source model, and how they are loaded in IX Chat and .NET.
 ---
 
 # IX Tools
 
-IX Tools is a collection of specialized tool packs that give AI assistants the ability to interact with real-world systems. Each pack is a standalone NuGet package that registers tools with the IntelligenceX tool registry.
+IX Tools are tool packs used by IntelligenceX hosts (especially IX Chat) to expose local capabilities to AI models.
 
-## Design Goals
+## Source Model
 
-- **One Pack, One Concern** -- Each tool pack handles a single domain (email, AD, files, etc.)
-- **Zero Config Defaults** -- Tools work out of the box with sensible defaults
-- **Provider Agnostic** -- Tools work with any AI provider that supports function calling
-- **Dependency Minimal** -- Packs only reference what they need; no heavy shared framework
+IntelligenceX.Chat classifies packs with a runtime `sourceKind`:
 
-## How Tool Packs Work
+| Source kind | Meaning |
+|---|---|
+| `builtin` | Pack is part of the standard bootstrap path. |
+| `open_source` | Pack is loaded from external open-source plugin assemblies. |
+| `closed_source` | Pack exists but may come from private/internal assemblies not present in OSS checkouts. |
 
-1. Install a tool pack NuGet package
-2. Register it with the IntelligenceX tool registry
-3. The AI provider sees the available tools and their schemas
-4. When the AI decides to use a tool, IntelligenceX executes it locally
-5. Results are returned to the AI for the next response
+## Pack Inventory (Current Runtime Truth)
+
+The table below reflects the actual bootstrap in `IntelligenceX.Chat.Tooling/ToolPackBootstrap.cs`.
+
+| Pack | Descriptor ID | Source kind | Default in IX Chat | Tier | Platform |
+|---|---|---|---|---|---|
+| Event Log | `eventlog` | `builtin` | Yes | SensitiveRead | Windows |
+| File System | `fs` | `builtin` | Yes | ReadOnly | Cross-platform |
+| Reviewer Setup | `reviewer_setup` | `builtin` | Yes | ReadOnly | Cross-platform |
+| Email | `email` | `builtin` | Yes (when assembly is available) | SensitiveRead | Cross-platform |
+| IX.PowerShell | `powershell` | `builtin` | No (opt-in) | DangerousWrite | Windows/PowerShell hosts |
+| System | `system` | `closed_source` | Yes (when available) | ReadOnly | Windows |
+| Active Directory | `ad` | `closed_source` | Yes (when available) | SensitiveRead | Windows (domain environments) |
+| IX.TestimoX | `testimox` | `closed_source` | Yes (when available) | SensitiveRead | Windows |
+
+## IX Chat vs .NET Integration
+
+### IX Chat
+
+- Tool packs are loaded by the host bootstrap.
+- Some packs are always available in OSS (`eventlog`, `fs`, `reviewer_setup`).
+- Some are optional/conditional (`email` if assembly is present, `powershell` if enabled).
+- Some are enabled by default but may not exist in OSS environments (`system`, `ad`, `testimox`).
+
+### .NET library (custom apps)
+
+You can build your own tool registry and register specific packs in code:
 
 ```csharp
-// Register a tool pack
 var tools = new ToolRegistry();
-tools.Register<EmailToolPack>();
 tools.Register<FileSystemToolPack>();
+tools.Register<EmailToolPack>();
 
-// Use with Easy.ChatAsync
-var result = await Easy.ChatAsync("Send a summary email to the team", tools: tools);
+var result = await Easy.ChatAsync("Summarize changed files", tools: tools);
 ```
 
-## Available Tool Packs
-
-| Pack | Package | Platform |
-|---|---|---|
-| Email | `IntelligenceX.Tools.Email` | Cross-platform |
-| Active Directory | `IntelligenceX.Tools.ActiveDirectory` | Windows |
-| File System | `IntelligenceX.Tools.FileSystem` | Cross-platform |
-| Web | `IntelligenceX.Tools.Web` | Cross-platform |
-| Database | `IntelligenceX.Tools.Database` | Cross-platform |
-| Azure | `IntelligenceX.Tools.Azure` | Cross-platform |
-| Office | `IntelligenceX.Tools.Office` | Cross-platform |
-| System | `IntelligenceX.Tools.System` | Windows |
-
-See the [Tool Catalog](/docs/tools/catalog/) for detailed descriptions and tool listings.
-
-## Repository Split
-
-Tool packs live in separate repositories to keep dependencies isolated:
-
-- **IntelligenceX** -- Core library, CLI, reviewer (this repo)
-- **IntelligenceX.Tools.*** -- Individual tool pack repos
+For package-based integration, use only packs you actually reference.
 
 ## Related
 
-- [Tool Catalog](/docs/tools/catalog/) -- All 8 packs with tool listings
-- [Tool Calling](/docs/library/tools/) -- How tool calling works in the .NET library
-- [IX Chat](/docs/chat/overview/) -- Desktop app with tool calling support
+- [Tool Catalog](/docs/tools/catalog/) - Pack-by-pack summary and representative tools
+- [IX Chat Architecture](/docs/chat/architecture/) - How packs are loaded by the host
+- [Tool Calling](/docs/library/tools/) - Using tool calling in the .NET library
