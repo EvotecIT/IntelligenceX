@@ -227,9 +227,36 @@ public sealed class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ShouldAttemptToolExecutionNudge_TriggersForColonPrefixedQuotedCallToActionWithoutContinuationSubset() {
+    public void ShouldAttemptToolExecutionNudge_TriggersWhenQuotedCallToActionIsOnItsOwnLineWithoutContinuationSubset() {
         var userRequest = "run now";
-        var assistantDraft = "To proceed: 'run now'";
+        var assistantDraft = """
+            To proceed:
+            'run now'
+            """;
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForColonLabelQuotedTextWithoutContinuationSubset() {
+        var userRequest = "access denied";
+        var assistantDraft = "Status: 'access denied'";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForCommaAfterQuoteCallToActionWithoutContinuationSubset() {
+        var userRequest = "run now";
+        var assistantDraft = "If you say \"run now\", I'll execute checks.";
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
             null,

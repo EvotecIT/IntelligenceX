@@ -139,17 +139,6 @@ internal sealed partial class ChatServiceSession {
                     return true;
                 }
             }
-
-            // Another common CTA pattern: "To proceed: \"run now\""
-            var before = openIndex - 1;
-            var consumedBeforeSpace = 0;
-            while (before >= 0 && consumedBeforeSpace < 3 && char.IsWhiteSpace(assistantDraft[before])) {
-                before--;
-                consumedBeforeSpace++;
-            }
-            if (before >= 0 && assistantDraft[before] == ':') {
-                return true;
-            }
         }
 
         // Bullet-like CTA: "- \"run now\"" or "1. \"run now\"" on its own line.
@@ -158,6 +147,15 @@ internal sealed partial class ChatServiceSession {
             var ch = assistantDraft[i];
             if (ch == '\n' || ch == '\r') {
                 lineStart = i + 1;
+                break;
+            }
+        }
+
+        var lineEnd = assistantDraft.Length;
+        for (var i = closeIndex + 1; i < assistantDraft.Length; i++) {
+            var ch = assistantDraft[i];
+            if (ch == '\n' || ch == '\r') {
+                lineEnd = i;
                 break;
             }
         }
@@ -172,7 +170,17 @@ internal sealed partial class ChatServiceSession {
             right--;
         }
         if (left > right) {
-            return false;
+            // Quote is the only meaningful content on its line (explicit instruction snippet).
+            var suffixLeft = closeIndex + 1;
+            var suffixRight = lineEnd - 1;
+            while (suffixLeft <= suffixRight && char.IsWhiteSpace(assistantDraft[suffixLeft])) {
+                suffixLeft++;
+            }
+            while (suffixRight >= suffixLeft && char.IsWhiteSpace(assistantDraft[suffixRight])) {
+                suffixRight--;
+            }
+
+            return suffixLeft > suffixRight;
         }
 
         // "-", "*", "•"
