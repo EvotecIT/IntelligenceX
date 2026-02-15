@@ -18,16 +18,24 @@ namespace IntelligenceX.Tools.OfficeIMO;
 /// Reads a supported Office document (or a folder of documents) and emits AI-friendly chunks (safe-by-default; requires AllowedRoots).
 /// </summary>
 public sealed class OfficeImoReadTool : OfficeImoToolBase, ITool {
+    private static readonly string[] DefaultOfficeExtensions = {
+        ".docx", ".docm",
+        ".xlsx", ".xlsm",
+        ".pptx", ".pptm",
+        ".md", ".markdown"
+    };
+
     private static readonly ToolDefinition DefinitionValue = new(
         "officeimo_read",
         "Read a Word/Excel/PowerPoint/Markdown file (or a folder containing those) and return normalized chunks for reasoning.",
         ToolSchema.Object(
                 ("path", ToolSchema.String("Path to a file or folder (absolute or relative).")),
                 ("recurse", ToolSchema.Boolean("If path is a folder, recurse into subfolders (default: false).")),
-                ("extensions", ToolSchema.Array(ToolSchema.String(), "Optional allowlist of extensions to ingest (e.g. ['.docx','.xlsx','.pptx','.md']).")),
+                ("extensions", ToolSchema.Array(ToolSchema.String(), "Optional allowlist of extensions to ingest (default: Office formats only, e.g. ['.docx','.xlsx','.pptx','.md']).")),
                 ("max_files", ToolSchema.Integer("Max files to ingest when a folder is provided (capped by pack options).")),
                 ("max_total_bytes", ToolSchema.Integer("Max total bytes across all ingested files when a folder is provided (capped by pack options).")),
                 ("max_input_bytes", ToolSchema.Integer("Max bytes per single file (capped by pack options).")),
+                ("max_chunks", ToolSchema.Integer("Max chunks returned overall (caps output payload size).")),
                 ("max_chars", ToolSchema.Integer("Max characters per chunk (caps output size).")),
                 ("max_table_rows", ToolSchema.Integer("Max rows per table (Excel).")),
                 ("excel_sheet_name", ToolSchema.String("Optional Excel sheet name to read.")),
@@ -64,6 +72,7 @@ public sealed class OfficeImoReadTool : OfficeImoToolBase, ITool {
         var maxFiles = ToolArgs.GetCappedInt32(arguments, "max_files", Options.MaxFiles, 1, Options.MaxFiles);
         var maxTotalBytes = ToolArgs.GetCappedInt64(arguments, "max_total_bytes", Options.MaxTotalBytes, 1, Options.MaxTotalBytes);
         var maxInputBytes = ToolArgs.GetCappedInt64(arguments, "max_input_bytes", Options.MaxInputBytes, 1, Options.MaxInputBytes);
+        var maxChunks = ToolArgs.GetCappedInt32(arguments, "max_chunks", defaultValue: 10_000, minInclusive: 1, maxInclusive: 100_000);
 
         // Output shaping caps (avoid accidental multi-megabyte chunks in tool payloads).
         var maxChars = ToolArgs.GetCappedInt32(arguments, "max_chars", defaultValue: 8000, minInclusive: 256, maxInclusive: 250_000);
@@ -118,7 +127,11 @@ public sealed class OfficeImoReadTool : OfficeImoToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(readWarning)) {
                     result.Warnings.Add(readWarning!);
                 }
-                result.Chunks.AddRange(chunks);
+                if (AddChunksWithCap(result.Chunks, chunks, maxChunks)) {
+                    result.Truncated = true;
+                    result.Warnings.Add($"Stopped after reaching max_chunks={maxChunks}.");
+                    break;
+                }
             }
         } else if (File.Exists(fullPath)) {
             // Single file.
@@ -127,7 +140,10 @@ public sealed class OfficeImoReadTool : OfficeImoToolBase, ITool {
             if (!string.IsNullOrWhiteSpace(readWarning)) {
                 result.Warnings.Add(readWarning!);
             }
-            result.Chunks.AddRange(chunks);
+            if (AddChunksWithCap(result.Chunks, chunks, maxChunks)) {
+                result.Truncated = true;
+                result.Warnings.Add($"Stopped after reaching max_chunks={maxChunks}.");
+            }
         } else {
             return Task.FromResult(ToolResponse.Error(
                 errorCode: "not_found",
@@ -142,6 +158,7 @@ public sealed class OfficeImoReadTool : OfficeImoToolBase, ITool {
             .Add("max_files", maxFiles)
             .Add("max_total_bytes", maxTotalBytes)
             .Add("max_input_bytes", maxInputBytes)
+            .Add("max_chunks", maxChunks)
             .Add("max_chars", maxChars)
             .Add("max_table_rows", maxTableRows);
 
@@ -187,25 +204,22 @@ public sealed class OfficeImoReadTool : OfficeImoToolBase, ITool {
         return sb.ToString().TrimEnd();
     }
 
-    private static HashSet<string>? NormalizeExtensions(List<string> extensions) {
-        if (extensions is null || extensions.Count == 0) {
-            return null;
-        }
-
+    private static HashSet<string> NormalizeExtensions(List<string> extensions) {
         var set = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
-        foreach (var e in extensions) {
+        IEnumerable<string> source = (extensions is null || extensions.Count == 0) ? DefaultOfficeExtensions : extensions;
+        foreach (var e in source) {
             if (string.IsNullOrWhiteSpace(e)) continue;
             var v = e.Trim();
             if (!v.StartsWith(".", StringComparison.Ordinal)) v = "." + v;
             set.Add(v);
         }
-        return set.Count == 0 ? null : set;
+        return set;
     }
 
     private static IEnumerable<string> EnumerateFolderFilesSafe(
         string folderPath,
         bool recurse,
-        HashSet<string>? allowedExt,
+        HashSet<string> allowedExt,
         int maxFiles,
         long maxTotalBytes,
         CancellationToken cancellationToken,
@@ -268,7 +282,7 @@ public sealed class OfficeImoReadTool : OfficeImoToolBase, ITool {
                     }
 
                     var ext = Path.GetExtension(entry) ?? string.Empty;
-                    if (allowedExt is not null && !allowedExt.Contains(ext)) {
+                    if (!allowedExt.Contains(ext)) {
                         continue;
                     }
 
@@ -294,6 +308,21 @@ public sealed class OfficeImoReadTool : OfficeImoToolBase, ITool {
         }
 
         return files;
+    }
+
+    private static bool AddChunksWithCap(List<OfficeImoChunk> destination, List<OfficeImoChunk> source, int maxChunks) {
+        if (destination.Count >= maxChunks) {
+            return true;
+        }
+
+        var remaining = maxChunks - destination.Count;
+        if (source.Count <= remaining) {
+            destination.AddRange(source);
+            return false;
+        }
+
+        destination.AddRange(source.GetRange(0, remaining));
+        return true;
     }
 
     private static List<OfficeImoChunk> ReadChunks(

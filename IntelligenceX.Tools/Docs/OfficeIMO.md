@@ -33,8 +33,9 @@
 
 - `path` (required): file or folder path.
 - `recurse`: recurse into subfolders when `path` is a folder.
-- `extensions`: optional extension allowlist.
+- `extensions`: optional extension allowlist. When omitted, defaults to Office-focused formats (`.docx`, `.docm`, `.xlsx`, `.xlsm`, `.pptx`, `.pptm`, `.md`, `.markdown`).
 - `max_files`, `max_total_bytes`, `max_input_bytes`: folder and file caps.
+- `max_chunks`: overall output chunk cap across all files.
 - `max_chars`: per-chunk character cap.
 - `max_table_rows`: Excel table row cap.
 - `excel_sheet_name`, `excel_a1_range`, `excel_headers_in_first_row`: Excel controls.
