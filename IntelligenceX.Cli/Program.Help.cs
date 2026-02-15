@@ -70,6 +70,7 @@ internal static partial class Program {
         Console.WriteLine("  todo project-sync        Sync triage/vision artifacts into GitHub Project items and fields");
         Console.WriteLine("  todo project-bootstrap   Bootstrap project + workflow + VISION.md for GitHub-native maintainer triage");
         Console.WriteLine("  todo project-view-checklist  Build maintainer checklist for missing/default GitHub Project views");
+        Console.WriteLine("  todo project-view-apply  Generate deterministic apply plan for missing GitHub Project views");
         Console.WriteLine();
         Console.WriteLine("Release commands:");
         Console.WriteLine("  release notes    Generate release notes from git tags/commits");

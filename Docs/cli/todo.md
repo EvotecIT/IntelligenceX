@@ -199,6 +199,27 @@ Useful options:
 - `--issue <n>` to upsert the checklist comment on an existing issue.
 - `--create-issue` and `--issue-title <text>` to create a dedicated checklist issue.
 
+## Build project view apply plan (maintainer assist)
+
+Generate a deterministic apply plan for missing default GitHub Project views and optionally post it to an issue.
+
+```bash
+intelligencex todo project-view-apply \
+  --config artifacts/triage/ix-project-config.json \
+  --create-issue \
+  --open-web
+```
+
+Useful options:
+- `--owner <login>` and `--project <n>` to target project directly.
+- `--repo <owner/name>` for issue posting context.
+- `--out <path>` to choose apply-plan markdown output path.
+- `--print` to emit apply-plan markdown to stdout.
+- `--issue <n>` to upsert the apply-plan comment on an existing issue.
+- `--create-issue` and `--issue-title <text>` to create a dedicated apply-plan issue.
+- `--open-web` to open the project UI after plan generation.
+- `--fail-if-missing` to exit with code `2` when recommended views are missing.
+
 ## GitHub Actions template
 
 A reusable scheduled workflow template is available at:

@@ -184,6 +184,25 @@ Options:
 - `--create-issue` create issue with checklist markdown body
 - `--issue-title <text>` custom issue title when creating
 
+## Project View Apply Plan (Maintainer Assist)
+
+Generate a deterministic apply plan for missing default views and optionally post it on an issue:
+
+```bash
+intelligencex todo project-view-apply --config artifacts/triage/ix-project-config.json --create-issue --open-web
+```
+
+Options:
+- `--owner <login>` and `--project <n>` target project directly
+- `--repo <owner/name>` repository context for issue posting
+- `--out <path>` output markdown path
+- `--print` print markdown to stdout
+- `--issue <n>` upsert comment on existing issue
+- `--create-issue` create issue with apply-plan markdown body
+- `--issue-title <text>` custom issue title when creating
+- `--open-web` open project web UI after generating plan
+- `--fail-if-missing` exit with code `2` when recommended views are missing
+
 ## Workflow Template
 
 Template path:
