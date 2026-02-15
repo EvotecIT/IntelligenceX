@@ -52,7 +52,10 @@ internal sealed partial class ChatServiceSession {
                                   || draft.Contains('{', StringComparison.Ordinal)
                                   || draft.Contains('[', StringComparison.Ordinal);
         if (hasStructuredOutput) {
-            return false;
+            // Multi-line drafts are usually results/explanations where retrying tool execution could be disruptive.
+            // However, when the user is echoing an explicit quoted CTA the assistant requested, treat that as a strong
+            // intent signal and allow a retry even if the draft contained structured formatting.
+            return echoedCallToAction;
         }
 
         var hasNumericSignal = false;
@@ -148,23 +151,50 @@ internal sealed partial class ChatServiceSession {
         }
 
         // Bullet-like CTA: "- \"run now\"" or "1. \"run now\"" on its own line.
-        var lineStart = assistantDraft.LastIndexOf('\n', openIndex);
-        lineStart = lineStart < 0 ? 0 : lineStart + 1;
-        var prefix = assistantDraft.Substring(lineStart, openIndex - lineStart).Trim();
-        if (prefix is "-" or "*" or "•") {
-            return true;
-        }
-        if (prefix.Length > 0) {
-            var allDigitsOrDot = true;
-            for (var i = 0; i < prefix.Length; i++) {
-                var ch = prefix[i];
-                if (!char.IsDigit(ch) && ch != '.') {
-                    allDigitsOrDot = false;
-                    break;
-                }
+        var lineStart = 0;
+        for (var i = openIndex - 1; i >= 0; i--) {
+            var ch = assistantDraft[i];
+            if (ch == '\n' || ch == '\r') {
+                lineStart = i + 1;
+                break;
             }
-            if (allDigitsOrDot && prefix.Contains('.', StringComparison.Ordinal)) {
+        }
+
+        // Scan trimmed prefix without allocating (no Substring/Trim).
+        var left = lineStart;
+        var right = openIndex - 1;
+        while (left <= right && char.IsWhiteSpace(assistantDraft[left])) {
+            left++;
+        }
+        while (right >= left && char.IsWhiteSpace(assistantDraft[right])) {
+            right--;
+        }
+        if (left > right) {
+            return false;
+        }
+
+        // "-", "*", "•"
+        if (right == left) {
+            var bullet = assistantDraft[left];
+            if (bullet == '-' || bullet == '*' || bullet == '•') {
                 return true;
+            }
+        }
+
+        // "1." / "1)" / "1:" (accept common markers without requiring '.')
+        var marker = assistantDraft[right];
+        if (marker == '.' || marker == ')' || marker == ':') {
+            if (left < right && char.IsDigit(assistantDraft[left])) {
+                var allDigits = true;
+                for (var i = left; i < right; i++) {
+                    if (!char.IsDigit(assistantDraft[i])) {
+                        allDigits = false;
+                        break;
+                    }
+                }
+                if (allDigits) {
+                    return true;
+                }
             }
         }
 

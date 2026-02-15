@@ -208,6 +208,36 @@ public sealed class ChatServiceRoutingTrimTests {
         Assert.True(Assert.IsType<bool>(result));
     }
 
+    [Theory]
+    [InlineData("- 'run now'")]
+    [InlineData("* 'run now'")]
+    [InlineData("1. 'run now'")]
+    [InlineData("1) 'run now'")]
+    [InlineData("1: 'run now'")]
+    [InlineData("  12) 'run now'")]
+    public void ShouldAttemptToolExecutionNudge_TriggersForBulletFormattedQuotedCallToActionWithoutContinuationSubset(string bulletLine) {
+        var userRequest = "run now";
+        var assistantDraft = $"Pick one:\n{bulletLine}\n";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForColonPrefixedQuotedCallToActionWithoutContinuationSubset() {
+        var userRequest = "run now";
+        var assistantDraft = "To proceed: 'run now'";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
     [Fact]
     public void ShouldAttemptToolExecutionNudge_DoesNotTriggerWithoutContinuationSubsetWhenDraftDoesNotContainEchoableCallToAction() {
         var userRequest = "run now";
