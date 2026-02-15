@@ -1,136 +1,112 @@
 ---
 title: Tool Catalog
-description: Complete listing of all IntelligenceX tool packs and the tools they expose.
+description: Real IntelligenceX tool packs and representative tools from current source.
 ---
 
 # Tool Catalog
 
-IntelligenceX ships 8 tool packs. Each pack is a standalone NuGet package.
+This catalog is generated from what the codebase currently registers in tool-pack extension methods.
 
-## Email
+## Runtime Availability Matrix
 
-**Package**: `IntelligenceX.Tools.Email`
-**Platform**: Cross-platform
+| Pack | Descriptor ID | Source kind | Tier | Typical availability |
+|---|---|---|---|---|
+| Event Log | `eventlog` | `builtin` | SensitiveRead | OSS + internal |
+| File System | `fs` | `builtin` | ReadOnly | OSS + internal |
+| Reviewer Setup | `reviewer_setup` | `builtin` | ReadOnly | OSS + internal |
+| Email | `email` | `builtin` | SensitiveRead | Optional (assembly-dependent) |
+| IX.PowerShell | `powershell` | `builtin` | DangerousWrite | Optional (disabled by default) |
+| System | `system` | `closed_source` | ReadOnly | Internal/private builds |
+| Active Directory | `ad` | `closed_source` | SensitiveRead | Internal/private builds |
+| IX.TestimoX | `testimox` | `closed_source` | SensitiveRead | Internal/private builds |
 
-Compose, search, and manage emails via Exchange Web Services and Microsoft Graph API.
+## Builtin / OSS-Oriented Packs
 
-| Tool | Description |
-|---|---|
-| `SendEmail` | Compose and send an email message |
-| `SearchEmail` | Search mailbox by subject, sender, date range |
-| `GetMailboxInfo` | Get mailbox statistics and folder counts |
+### Event Log (`eventlog`)
 
-## Active Directory
+Representative tools:
 
-**Package**: `IntelligenceX.Tools.ActiveDirectory`
-**Platform**: Windows
+- `eventlog_pack_info`
+- `eventlog_channels_list`
+- `eventlog_live_query`
+- `eventlog_evtx_find`
+- `eventlog_evtx_query`
+- `eventlog_evtx_report_user_logons`
 
-Query and manage AD users, groups, computers, and organizational units.
+### File System (`fs`)
 
-| Tool | Description |
-|---|---|
-| `GetADUser` | Look up user properties by name or SAM account |
-| `GetADGroup` | Get group membership and properties |
-| `GetADComputer` | Query computer objects and their attributes |
-| `SearchAD` | LDAP search with custom filters |
+Representative tools:
 
-## File System
+- `fs_pack_info`
+- `fs_list`
+- `fs_read`
+- `fs_search`
 
-**Package**: `IntelligenceX.Tools.FileSystem`
-**Platform**: Cross-platform
+### Reviewer Setup (`reviewer_setup`)
 
-Read, write, search, and manage files and directories with safety controls.
+Representative tools:
 
-| Tool | Description |
-|---|---|
-| `ReadFile` | Read file contents with encoding detection |
-| `WriteFile` | Write or append to files with backup |
-| `SearchFiles` | Glob-based file search with content matching |
-| `ListDirectory` | List directory contents with filtering |
+- `reviewer_setup_pack_info`
+- `reviewer_setup_contract_verify`
 
-## Web
+### Email (`email`)
 
-**Package**: `IntelligenceX.Tools.Web`
-**Platform**: Cross-platform
+Representative tools:
 
-HTTP requests, web scraping, and API interaction with configurable auth.
+- `email_pack_info`
+- `email_imap_search`
+- `email_imap_get`
+- `email_smtp_send`
 
-| Tool | Description |
-|---|---|
-| `HttpRequest` | Send HTTP requests with headers and body |
-| `FetchPage` | Fetch and extract text content from a URL |
-| `ParseHtml` | Parse HTML and extract elements via CSS selectors |
+### IX.PowerShell (`powershell`)
 
-## Database
+Representative tools:
 
-**Package**: `IntelligenceX.Tools.Database`
-**Platform**: Cross-platform
+- `powershell_pack_info`
+- `powershell_environment_discover`
+- `powershell_hosts`
+- `powershell_run`
 
-Execute queries and manage connections for SQL Server, PostgreSQL, and SQLite.
+## Closed-Source / Internal Packs
 
-| Tool | Description |
-|---|---|
-| `ExecuteQuery` | Run a SQL query and return results |
-| `GetSchema` | Get table schemas and column definitions |
-| `ListTables` | List all tables in a database |
+### Active Directory (`ad`)
 
-## Azure
+Representative tools:
 
-**Package**: `IntelligenceX.Tools.Azure`
-**Platform**: Cross-platform
+- `ad_pack_info`
+- `ad_environment_discover`
+- `ad_domain_info`
+- `ad_group_members`
+- `ad_users_expired`
+- `ad_search`
 
-Manage Azure resources, subscriptions, and services through AI-driven commands.
+### System (`system`)
 
-| Tool | Description |
-|---|---|
-| `GetAzureResource` | Get details of an Azure resource |
-| `ListSubscriptions` | List available Azure subscriptions |
-| `GetAzureStatus` | Check Azure service health status |
+Representative tools:
 
-## Office
+- `system_pack_info`
+- `system_info`
+- `system_process_list`
+- `system_network_adapters`
+- `system_service_list` (Windows)
+- `system_firewall_rules` (Windows)
 
-**Package**: `IntelligenceX.Tools.Office`
-**Platform**: Cross-platform
+### IX.TestimoX (`testimox`)
 
-Create and manipulate Word, Excel, and PowerPoint documents programmatically.
+Representative tools:
 
-| Tool | Description |
-|---|---|
-| `CreateDocument` | Create a Word document from template |
-| `ReadSpreadsheet` | Read Excel spreadsheet data |
-| `GenerateReport` | Generate formatted reports |
+- `testimox_pack_info`
+- `testimox_rules_list`
+- `testimox_rules_run`
 
-## System
+## Notes
 
-**Package**: `IntelligenceX.Tools.System`
-**Platform**: Windows
-
-System information, process management, and Windows service monitoring.
-
-| Tool | Description |
-|---|---|
-| `GetSystemInfo` | Get OS, CPU, memory, and disk information |
-| `GetProcess` | List and query running processes |
-| `GetService` | Query Windows service status |
-| `GetEventLog` | Search Windows Event Log entries |
-
-## Installing Tool Packs
-
-```bash
-# Install individual packs
-dotnet add package IntelligenceX.Tools.Email
-dotnet add package IntelligenceX.Tools.FileSystem
-
-# Or reference in your .csproj
-```
-
-```xml
-<PackageReference Include="IntelligenceX.Tools.Email" Version="*" />
-<PackageReference Include="IntelligenceX.Tools.FileSystem" Version="*" />
-```
+- Tool availability depends on host/runtime composition and platform.
+- `sourceKind` classification comes from `ToolPackBootstrap` normalization rules.
+- Closed-source packs may be enabled by default in config but still absent in OSS environments.
 
 ## Related
 
-- [IX Tools Overview](/docs/tools/overview/) -- Design goals and architecture
-- [Tool Calling](/docs/library/tools/) -- How to use tools in code
-- [IX Chat](/docs/chat/overview/) -- Desktop app with tool support
+- [IX Tools Overview](/docs/tools/overview/) - Source model and default bootstrap behavior
+- [IX Chat Architecture](/docs/chat/architecture/) - Host process + pack registration flow
+- [Tool Calling](/docs/library/tools/) - Using packs in custom .NET applications

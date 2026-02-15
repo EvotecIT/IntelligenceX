@@ -95,6 +95,19 @@ pre { background: var(--pf-code-bg); border: 1px solid var(--pf-code-border); bo
 pre code { background: none; border: none; padding: 0; font-family: var(--pf-font-mono); font-size: 0.85rem; line-height: 1.6; color: var(--pf-ink); }
 code { font-family: var(--pf-font-mono); font-size: 0.875em; }
 
+/* Mermaid diagrams (rendered from ```mermaid code fences). */
+.mermaid-diagram {
+  background: var(--pf-code-bg);
+  border: 1px solid var(--pf-code-border);
+  border-radius: var(--pf-radius-sm);
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+}
+.mermaid-diagram .mermaid {
+  min-width: 280px;
+}
+
 /* ===== Buttons ===== */
 .btn { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; font-size: 0.95rem; font-weight: 600; border-radius: var(--pf-radius-sm); transition: all 0.2s; cursor: pointer; border: none; text-decoration: none; line-height: 1.4; }
 .btn-primary { background: var(--pf-btn-primary-bg); color: var(--pf-btn-primary-text); }
