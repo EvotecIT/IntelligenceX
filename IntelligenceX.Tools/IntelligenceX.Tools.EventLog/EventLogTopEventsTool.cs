@@ -100,7 +100,7 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
 
         // Default off: formatting messages can be slow/fragile for remote sessions and is not always needed for triage.
         // Note: tool arguments are untrusted; treat invalid types as "not provided" rather than throwing.
-        var includeMessage = ToolArgs.GetBoolean(arguments, "include_message");
+        var includeMessage = ToolArgs.GetBoolean(arguments, "include_message", defaultValue: false);
 
         long? sessionTimeoutRaw = null;
         if (arguments is not null && arguments.TryGetValue("session_timeout_ms", out var sessionTimeoutValue)) {
