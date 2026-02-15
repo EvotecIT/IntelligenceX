@@ -1,4 +1,6 @@
 using System;
+using System.Reflection;
+using IntelligenceX.Chat.Service;
 using IntelligenceX.Tools.Common;
 using IntelligenceX.Tools;
 using Xunit;
@@ -70,6 +72,21 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var result = ShouldAttemptToolReceiptCorrectionMethod.Invoke(
             null,
             new object?[] { "Find Bob", assistantDraft, tools, 1, 0, 0 });
+
+        var value = Assert.IsType<bool>(result);
+        Assert.False(value);
+    }
+
+    [Fact]
+    public void ShouldAttemptToolReceiptCorrection_DoesNotTriggerWhenDraftExceedsMaxLength() {
+        var maxField = typeof(ChatServiceSession).GetField("ToolReceiptCorrectionMaxDraftChars", BindingFlags.NonPublic | BindingFlags.Static)
+                       ?? throw new InvalidOperationException("ToolReceiptCorrectionMaxDraftChars not found.");
+        var max = (int)maxField.GetRawConstantValue()!;
+        var assistantDraft = new string('A', max + 1);
+
+        var result = ShouldAttemptToolReceiptCorrectionMethod.Invoke(
+            null,
+            new object?[] { "Request", assistantDraft, Array.Empty<ToolDefinition>(), 0, 0, 0 });
 
         var value = Assert.IsType<bool>(result);
         Assert.False(value);

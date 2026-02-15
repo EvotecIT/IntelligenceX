@@ -17,7 +17,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var draft = (assistantDraft ?? string.Empty).Trim();
-        if (draft.Length == 0 || draft.Length > 3200) {
+        if (draft.Length == 0 || draft.Length > ToolReceiptCorrectionMaxDraftChars) {
             return false;
         }
 
