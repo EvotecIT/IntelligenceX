@@ -152,7 +152,7 @@ internal sealed partial class ChatServiceSession {
             var normalizedId = threadId.Trim();
             var normalizedCtas = (callToActionTokens ?? Array.Empty<string>())
                 .Where(static token => !string.IsNullOrWhiteSpace(token))
-                .Select(static token => NormalizeCompactText(token))
+                .Select(static token => NormalizeCompactCallToActionToken(token))
                 .Where(static token => token.Length > 0)
                 .Where(static token => LooksLikeCompactCallToActionToken(token))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -250,7 +250,7 @@ internal sealed partial class ChatServiceSession {
 
             callToActionTokens = (entry.CallToActionTokens ?? Array.Empty<string>())
                 .Where(static token => !string.IsNullOrWhiteSpace(token))
-                .Select(static token => NormalizeCompactText(token))
+                .Select(static token => NormalizeCompactCallToActionToken(token))
                 .Where(static token => token.Length > 0)
                 .Where(static token => LooksLikeCompactCallToActionToken(token))
                 .Distinct(StringComparer.OrdinalIgnoreCase)

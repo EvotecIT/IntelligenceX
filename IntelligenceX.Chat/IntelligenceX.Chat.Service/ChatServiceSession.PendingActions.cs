@@ -507,7 +507,19 @@ internal sealed partial class ChatServiceSession {
         return true;
     }
 
-    private static string[] ExtractPendingActionCallToActionTokens(string assistantContext) {
+    
+    private static string NormalizeCompactCallToActionToken(string text) {
+        // Assistant CTAs often appear in prose with trailing ':' / ';' (including fullwidth variants) that users
+        // should not have to repeat, and that we explicitly disqualify for confirmation.
+        var token = NormalizeCompactText(text);
+        if (token.Length == 0) {
+            return string.Empty;
+        }
+
+        token = token.TrimEnd(':', ';', '\uFF1A', '\uFF1B');
+        return token.Trim();
+    }
+private static string[] ExtractPendingActionCallToActionTokens(string assistantContext) {
         var draft = assistantContext ?? string.Empty;
         if (draft.Length == 0) {
             return Array.Empty<string>();
@@ -526,7 +538,7 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            var token = NormalizeCompactText(phrase.Value);
+            var token = NormalizeCompactCallToActionToken(phrase.Value);
             if (!LooksLikeCompactCallToActionToken(token)) {
                 continue;
             }
