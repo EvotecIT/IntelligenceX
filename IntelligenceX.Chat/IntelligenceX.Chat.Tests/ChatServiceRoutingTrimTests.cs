@@ -448,6 +448,18 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForActionSelectionJsonEvenWithoutContinuationSubset() {
+        var userRequest = "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Run forest probe\",\"request\":\"Run it.\"}}";
+        var assistantDraft = "Ok, doing it now.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
     public void ExtractPrimaryUserRequest_StripsCodeFencesAndInlineCode() {
         var input = """
             Please check this:
