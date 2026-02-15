@@ -228,6 +228,46 @@ internal static partial class Program {
         }, "openai-compatible rejects http non-loopback by default");
     }
 
+
+    private static void TestReviewOpenAiCompatibleApiKeyEnvWhitespaceFailsFast() {
+        var envName = "IX_OPENAI_COMPAT_KEY_TEST";
+        var previous = Environment.GetEnvironmentVariable(envName);
+        var previousCompat = Environment.GetEnvironmentVariable("OPENAI_COMPATIBLE_API_KEY");
+        try {
+            Environment.SetEnvironmentVariable(envName, "   ");
+            Environment.SetEnvironmentVariable("OPENAI_COMPATIBLE_API_KEY", null);
+
+            var settings = new ReviewSettings {
+                Provider = ReviewProvider.OpenAICompatible,
+                ProviderHealthChecks = false,
+                Preflight = false,
+                Model = "test-model",
+                OpenAICompatibleBaseUrl = "http://127.0.0.1:12345",
+                OpenAICompatibleApiKeyEnv = envName,
+                OpenAICompatibleApiKey = string.Empty,
+                OpenAICompatibleTimeoutSeconds = 10,
+                RetryCount = 1,
+                RetryDelaySeconds = 1,
+                RetryMaxDelaySeconds = 1,
+                FailOpen = false,
+                Diagnostics = false
+            };
+
+            try {
+                var runner = new ReviewRunner(settings);
+                runner.RunAsync("hi", onPartial: null, updateInterval: null, CancellationToken.None)
+                    .GetAwaiter()
+                    .GetResult();
+                AssertEqual(true, false, "openai-compatible should throw when apiKeyEnv resolves to whitespace");
+            } catch (InvalidOperationException ex) {
+                AssertContainsText(ex.Message, envName, "openai-compatible api key error mentions env var name");
+                AssertContainsText(ex.Message, "empty", "openai-compatible api key error indicates empty value");
+            }
+        } finally {
+            Environment.SetEnvironmentVariable(envName, previous);
+            Environment.SetEnvironmentVariable("OPENAI_COMPATIBLE_API_KEY", previousCompat);
+        }
+    }
     private static void TestReviewOpenAiCompatiblePreflightTreats405AsReachable() {
         using var server = new OpenAiCompatibleTestServer((method, path, _, _) => {
             if (method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&

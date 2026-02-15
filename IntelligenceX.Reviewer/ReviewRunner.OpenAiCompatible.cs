@@ -338,29 +338,34 @@ internal sealed partial class ReviewRunner {
     }
 
     private string ResolveOpenAiCompatibleApiKey() {
-        var envName = _settings.OpenAICompatibleApiKeyEnv?.Trim();
-        if (!string.IsNullOrWhiteSpace(envName)) {
-            var value = Environment.GetEnvironmentVariable(envName);
+        var configuredEnvName = (_settings.OpenAICompatibleApiKeyEnv ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(configuredEnvName)) {
+            var value = (Environment.GetEnvironmentVariable(configuredEnvName) ?? string.Empty).Trim();
             if (!string.IsNullOrWhiteSpace(value)) {
-                SecretsAudit.Record($"OpenAI-compatible API key from {envName}");
-                return value.Trim();
+                SecretsAudit.Record($"OpenAI-compatible API key from {configuredEnvName}");
+                return value;
             }
         }
 
-        var envValue = Environment.GetEnvironmentVariable("OPENAI_COMPATIBLE_API_KEY");
-        if (!string.IsNullOrWhiteSpace(envValue)) {
+        var compatValue = (Environment.GetEnvironmentVariable("OPENAI_COMPATIBLE_API_KEY") ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(compatValue)) {
             SecretsAudit.Record("OpenAI-compatible API key from OPENAI_COMPATIBLE_API_KEY");
-            return envValue.Trim();
+            return compatValue;
         }
 
-        var configValue = _settings.OpenAICompatibleApiKey;
+        var configValue = (_settings.OpenAICompatibleApiKey ?? string.Empty).Trim();
         if (!string.IsNullOrWhiteSpace(configValue)) {
             SecretsAudit.Record("OpenAI-compatible API key from config (openaiCompatible.apiKey)");
-            return configValue.Trim();
+            return configValue;
+        }
+
+        if (!string.IsNullOrWhiteSpace(configuredEnvName)) {
+            throw new InvalidOperationException(
+                $"OpenAI-compatible provider requires an API key. review.openaiCompatible.apiKeyEnv is set to \"{configuredEnvName}\", but {configuredEnvName} is empty. Set {configuredEnvName}, or set review.openaiCompatible.apiKey, or OPENAI_COMPATIBLE_API_KEY.");
         }
 
         throw new InvalidOperationException(
-            "OpenAI-compatible provider requires an API key. Set review.openaiCompatible.apiKeyEnv or OPENAI_COMPATIBLE_API_KEY.");
+            "OpenAI-compatible provider requires an API key. Set review.openaiCompatible.apiKeyEnv, review.openaiCompatible.apiKey, or OPENAI_COMPATIBLE_API_KEY.");
     }
 
     private static string ExtractOpenAiCompatibleOutput(string? responseText) {
