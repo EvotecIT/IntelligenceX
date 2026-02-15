@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ page.title }}</title>
+  {{ description_meta_html }}
+  {{ canonical_html }}
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  {{ assets.critical_css_html }}
+  {{ include "theme-tokens" }}
+  {{ extra_css_html }}
+  {{ assets.css_html }}
+</head>
+<body>
+  <div class="page">
+{{ include "header" }}
+<main>
+  <div class="showcase-page">
+    <div class="showcase-hero">
+      <span class="section-label">Showcase</span>
+      <h1>IntelligenceX in Action</h1>
+      <p>Explore real-world examples of what you can build with IntelligenceX.</p>
+    </div>
+
+    <div class="showcase-gallery">
+      {{ for item in data.showcase }}
+      <div class="showcase-card">
+        <div class="showcase-image">
+          <img src="{{ item.screenshot }}" alt="{{ item.title }}" loading="lazy" />
+        </div>
+        <div class="showcase-card-body">
+          <h3>{{ item.title }}</h3>
+          <p>{{ item.summary }}</p>
+          <div class="showcase-tags">
+            {{ for tag in item.tags }}
+            <span class="showcase-tag">{{ tag }}</span>
+            {{ end }}
+          </div>
+        </div>
+      </div>
+      {{ end }}
+    </div>
+
+    <div class="showcase-cta">
+      <h2>Ready to Get Started?</h2>
+      <p>Set up IntelligenceX and start building your own workflows.</p>
+      <div class="hero-buttons">
+        <a href="/docs/getting-started/" class="btn btn-primary">Get Started</a>
+        <a href="/docs/" class="btn btn-secondary">Read the Docs</a>
+      </div>
+    </div>
+  </div>
+</main>
+{{ include "footer" }}
+  </div>
+  {{ assets.js_html }}
+  {{ extra_scripts_html }}
+</body>
+</html>

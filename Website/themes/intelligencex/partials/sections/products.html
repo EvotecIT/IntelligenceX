@@ -1,0 +1,37 @@
+<!-- Products Section -->
+<section class="products">
+    <div class="section-header">
+        <span class="section-label">The Platform</span>
+        <h2>Six Product Areas</h2>
+        <p>Everything you need for AI-powered development workflows.</p>
+    </div>
+
+    <div class="products-grid">
+        {{ for item in data.products }}
+        <div class="product-card{{ if item.featured }} featured{{ end }}">
+            <div class="product-card-content">
+                <div class="product-card-header">
+                    <span class="product-tag">{{ item.tag }}</span>
+                    {{ if item.badge }}
+                    <span class="product-badge">{{ item.badge }}</span>
+                    {{ end }}
+                </div>
+                <h3>{{ item.title }}</h3>
+                <p>{{ item.description }}</p>
+                {{ if item.install }}
+                <div class="product-install">
+                    <span class="prompt">$</span>
+                    <code>{{ item.install }}</code>
+                </div>
+                {{ end }}
+                <a href="{{ item.link }}" class="feature-link">Learn more &rarr;</a>
+            </div>
+            {{ if item.screenshot }}
+            <div class="product-card-image">
+                <img src="{{ item.screenshot }}" alt="{{ item.title }}" loading="lazy" />
+            </div>
+            {{ end }}
+        </div>
+        {{ end }}
+    </div>
+</section>

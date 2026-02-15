@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" fill="none">
+  <!-- Background -->
+  <rect width="800" height="500" rx="12" fill="#0A0E1A"/>
+  <!-- Title bar -->
+  <rect width="800" height="40" rx="12" fill="#141824"/>
+  <rect y="28" width="800" height="12" fill="#141824"/>
+  <!-- Traffic lights -->
+  <circle cx="20" cy="20" r="6" fill="#FF5F57"/>
+  <circle cx="40" cy="20" r="6" fill="#FEBC2E"/>
+  <circle cx="60" cy="20" r="6" fill="#28C840"/>
+  <!-- Title -->
+  <text x="400" y="24" text-anchor="middle" fill="#8892B0" font-family="monospace" font-size="13">IX Chat</text>
+
+  <!-- System tray indicator -->
+  <rect x="720" y="10" width="60" height="20" rx="4" fill="#00D9FF" opacity="0.15"/>
+  <circle cx="734" cy="20" r="4" fill="#00D9FF"/>
+  <text x="744" y="24" fill="#00D9FF" font-family="monospace" font-size="9">Online</text>
+
+  <!-- Chat area -->
+  <!-- User message 1 -->
+  <rect x="300" y="60" width="480" height="44" rx="8" fill="#1E2435"/>
+  <text x="316" y="80" fill="#E2E8F0" font-family="monospace" font-size="12">Find all users in AD whose accounts expire</text>
+  <text x="316" y="96" fill="#E2E8F0" font-family="monospace" font-size="12">within the next 7 days</text>
+
+  <!-- Bot response 1 -->
+  <circle cx="36" cy="130" r="14" fill="#00D9FF" opacity="0.2"/>
+  <text x="36" y="134" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="11" font-weight="bold">IX</text>
+  <rect x="56" y="116" width="520" height="100" rx="8" fill="#1E2435" stroke="#334155" stroke-width="1"/>
+  <text x="72" y="138" fill="#E2E8F0" font-family="monospace" font-size="12">I'll query Active Directory for expiring accounts.</text>
+  <text x="72" y="158" fill="#8892B0" font-family="monospace" font-size="11">Running tool: </text>
+  <text x="168" y="158" fill="#00D9FF" font-family="monospace" font-size="11">Search-ADExpiring</text>
+  <rect x="72" y="168" width="488" height="36" rx="4" fill="#0A0E1A"/>
+  <text x="84" y="186" fill="#10B981" font-family="monospace" font-size="10">Found 3 accounts expiring before 2026-02-22</text>
+  <text x="84" y="200" fill="#8892B0" font-family="monospace" font-size="10">j.smith, m.jones, a.wilson</text>
+
+  <!-- User message 2 -->
+  <rect x="340" y="232" width="440" height="30" rx="8" fill="#1E2435"/>
+  <text x="356" y="252" fill="#E2E8F0" font-family="monospace" font-size="12">Extend them all by 30 days and notify managers</text>
+
+  <!-- Bot response 2 -->
+  <circle cx="36" cy="290" r="14" fill="#00D9FF" opacity="0.2"/>
+  <text x="36" y="294" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="11" font-weight="bold">IX</text>
+  <rect x="56" y="278" width="520" height="120" rx="8" fill="#1E2435" stroke="#334155" stroke-width="1"/>
+  <text x="72" y="298" fill="#E2E8F0" font-family="monospace" font-size="12">I'll extend each account and send notifications.</text>
+  <rect x="72" y="308" width="488" height="80" rx="4" fill="#0A0E1A"/>
+  <text x="84" y="326" fill="#10B981" font-family="monospace" font-size="10">j.smith  - Extended to 2026-03-17  - Notified mgr@co.com</text>
+  <text x="84" y="342" fill="#10B981" font-family="monospace" font-size="10">m.jones  - Extended to 2026-03-17  - Notified dir@co.com</text>
+  <text x="84" y="358" fill="#10B981" font-family="monospace" font-size="10">a.wilson - Extended to 2026-03-17  - Notified mgr@co.com</text>
+  <text x="84" y="378" fill="#8892B0" font-family="monospace" font-size="10">3 accounts extended, 3 notifications sent</text>
+
+  <!-- Input area -->
+  <rect x="20" y="420" width="760" height="60" rx="8" fill="#1E2435" stroke="#334155" stroke-width="1"/>
+  <text x="36" y="455" fill="#8892B0" font-family="monospace" font-size="12">Ask IX anything...</text>
+  <rect x="700" y="436" width="64" height="28" rx="6" fill="#00D9FF" opacity="0.15"/>
+  <text x="732" y="455" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="11">Send</text>
+</svg>

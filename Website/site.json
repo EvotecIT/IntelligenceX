@@ -63,6 +63,7 @@
     ],
     "RouteBundles": [
       { "Match": "/", "Bundles": ["global", "home"] },
+      { "Match": "/showcase/", "Bundles": ["global", "home"] },
       { "Match": "/docs/**", "Bundles": ["global", "docs"] },
       { "Match": "/**", "Bundles": ["global"] }
     ],
@@ -114,6 +115,7 @@
   "Navigation": {
     "Surfaces": [
       { "Name": "main", "Path": "/", "PrimaryMenu": "main" },
+      { "Name": "showcase", "Path": "/showcase/", "PrimaryMenu": "main" },
       { "Name": "docs", "Path": "/docs/", "Collection": "docs", "Layout": "docs", "PrimaryMenu": "main", "SidebarMenu": "docs" },
       { "Name": "apidocs", "Path": "/api/", "Layout": "apiDocs", "PrimaryMenu": "main", "SidebarMenu": "docs" },
       { "Name": "notFound", "Path": "/404/", "PrimaryMenu": "main" }
@@ -127,6 +129,7 @@
         "Items": [
           { "Title": "Home", "Url": "/" },
           { "Title": "Docs", "Url": "/docs/" },
+          { "Title": "Showcase", "Url": "/showcase/" },
           { "Title": "API Reference", "Url": "/api/" }
         ]
       },
@@ -134,6 +137,8 @@
         "Name": "footer-docs",
         "Items": [
           { "Title": "Reviewer", "Url": "/docs/reviewer/overview/" },
+          { "Title": "IX Chat", "Url": "/docs/chat/overview/" },
+          { "Title": "Tool Packs", "Url": "/docs/tools/overview/" },
           { "Title": "CLI Tools", "Url": "/docs/cli/overview/" },
           { "Title": ".NET Library", "Url": "/docs/library/overview/" },
           { "Title": "API Reference", "Url": "/api/" },
@@ -145,6 +150,7 @@
         "Items": [
           { "Title": "Getting Started", "Url": "/docs/getting-started/" },
           { "Title": "Security & Trust", "Url": "/docs/security/" },
+          { "Title": "Showcase", "Url": "/showcase/" },
           { "Title": "FAQ", "Url": "/faq/" },
           { "Title": "Changelog", "Url": "/changelog/" },
           { "Title": "GitHub Repository", "Url": "https://github.com/EvotecIT/IntelligenceX", "External": true },

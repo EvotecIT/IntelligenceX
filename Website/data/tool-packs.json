@@ -1,0 +1,58 @@
+[
+  {
+    "id": "email",
+    "name": "Email",
+    "description": "Compose, search, and manage emails via Exchange Web Services and Microsoft Graph API.",
+    "platform": "cross-platform",
+    "tools": ["SendEmail", "SearchEmail", "GetMailboxInfo"]
+  },
+  {
+    "id": "active-directory",
+    "name": "Active Directory",
+    "description": "Query and manage AD users, groups, computers, and organizational units.",
+    "platform": "windows",
+    "tools": ["GetADUser", "GetADGroup", "GetADComputer", "SearchAD"]
+  },
+  {
+    "id": "file-system",
+    "name": "File System",
+    "description": "Read, write, search, and manage files and directories with safety controls.",
+    "platform": "cross-platform",
+    "tools": ["ReadFile", "WriteFile", "SearchFiles", "ListDirectory"]
+  },
+  {
+    "id": "web",
+    "name": "Web",
+    "description": "HTTP requests, web scraping, and API interaction with configurable auth.",
+    "platform": "cross-platform",
+    "tools": ["HttpRequest", "FetchPage", "ParseHtml"]
+  },
+  {
+    "id": "database",
+    "name": "Database",
+    "description": "Execute queries and manage connections for SQL Server, PostgreSQL, and SQLite.",
+    "platform": "cross-platform",
+    "tools": ["ExecuteQuery", "GetSchema", "ListTables"]
+  },
+  {
+    "id": "azure",
+    "name": "Azure",
+    "description": "Manage Azure resources, subscriptions, and services through AI-driven commands.",
+    "platform": "cross-platform",
+    "tools": ["GetAzureResource", "ListSubscriptions", "GetAzureStatus"]
+  },
+  {
+    "id": "office",
+    "name": "Office",
+    "description": "Create and manipulate Word, Excel, and PowerPoint documents programmatically.",
+    "platform": "cross-platform",
+    "tools": ["CreateDocument", "ReadSpreadsheet", "GenerateReport"]
+  },
+  {
+    "id": "system",
+    "name": "System",
+    "description": "System information, process management, and Windows service monitoring.",
+    "platform": "windows",
+    "tools": ["GetSystemInfo", "GetProcess", "GetService", "GetEventLog"]
+  }
+]

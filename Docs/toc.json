@@ -17,6 +17,21 @@
     ]
   },
   {
+    "title": "IX Chat",
+    "items": [
+      { "title": "Overview", "href": "/docs/chat/overview/" },
+      { "title": "Quickstart", "href": "/docs/chat/quickstart/" },
+      { "title": "Architecture", "href": "/docs/chat/architecture/" }
+    ]
+  },
+  {
+    "title": "Tool Packs",
+    "items": [
+      { "title": "Overview", "href": "/docs/tools/overview/" },
+      { "title": "Tool Catalog", "href": "/docs/tools/catalog/" }
+    ]
+  },
+  {
     "title": "CLI Tools",
     "items": [
       { "title": "Install", "href": "/docs/cli/install/" },

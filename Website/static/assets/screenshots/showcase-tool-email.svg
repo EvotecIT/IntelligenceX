@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 740" fill="none">
+  <!-- Background -->
+  <rect width="1200" height="740" rx="12" fill="#0A0E1A"/>
+  <!-- Title bar -->
+  <rect width="1200" height="40" rx="12" fill="#141824"/>
+  <rect y="28" width="1200" height="12" fill="#141824"/>
+  <!-- Traffic lights -->
+  <circle cx="20" cy="20" r="6" fill="#FF5F57"/>
+  <circle cx="40" cy="20" r="6" fill="#FEBC2E"/>
+  <circle cx="60" cy="20" r="6" fill="#28C840"/>
+  <!-- Title -->
+  <text x="600" y="24" text-anchor="middle" fill="#8892B0" font-family="monospace" font-size="13">IX Chat - Email Tool</text>
+
+  <!-- User request -->
+  <rect x="500" y="56" width="680" height="48" rx="8" fill="#1E2435"/>
+  <text x="516" y="76" fill="#E2E8F0" font-family="monospace" font-size="12">Send a welcome email to new hire a.chen@corp.com with</text>
+  <text x="516" y="94" fill="#E2E8F0" font-family="monospace" font-size="12">onboarding instructions and first-day details</text>
+
+  <!-- Bot thinking -->
+  <circle cx="36" cy="130" r="14" fill="#00D9FF" opacity="0.2"/>
+  <text x="36" y="134" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="11" font-weight="bold">IX</text>
+  <rect x="56" y="118" width="1120" height="30" rx="8" fill="#1E2435" stroke="#334155" stroke-width="1"/>
+  <text x="72" y="138" fill="#E2E8F0" font-family="monospace" font-size="12">I'll compose and preview the welcome email for your approval.</text>
+
+  <!-- Email compose preview -->
+  <rect x="56" y="158" width="1120" height="410" rx="8" fill="#1E2435" stroke="#334155" stroke-width="1"/>
+
+  <!-- Email header -->
+  <rect x="56" y="158" width="1120" height="36" rx="8" fill="#141824"/>
+  <rect x="56" y="182" width="1120" height="12" fill="#141824"/>
+  <text x="72" y="180" fill="#00D9FF" font-family="monospace" font-size="12" font-weight="bold">Email Preview</text>
+  <rect x="1080" y="166" width="80" height="20" rx="4" fill="#334155"/>
+  <text x="1120" y="180" text-anchor="middle" fill="#8892B0" font-family="monospace" font-size="9">Draft</text>
+
+  <!-- Email fields -->
+  <text x="72" y="216" fill="#8892B0" font-family="monospace" font-size="11">From:</text>
+  <text x="130" y="216" fill="#E2E8F0" font-family="monospace" font-size="11">it-support@corp.com</text>
+  <rect x="72" y="224" width="1088" height="1" fill="#334155"/>
+
+  <text x="72" y="244" fill="#8892B0" font-family="monospace" font-size="11">To:</text>
+  <text x="130" y="244" fill="#00D9FF" font-family="monospace" font-size="11">a.chen@corp.com</text>
+  <rect x="72" y="252" width="1088" height="1" fill="#334155"/>
+
+  <text x="72" y="272" fill="#8892B0" font-family="monospace" font-size="11">Cc:</text>
+  <text x="130" y="272" fill="#E2E8F0" font-family="monospace" font-size="11">hr@corp.com, m.taylor@corp.com (manager)</text>
+  <rect x="72" y="280" width="1088" height="1" fill="#334155"/>
+
+  <text x="72" y="300" fill="#8892B0" font-family="monospace" font-size="11">Subject:</text>
+  <text x="140" y="300" fill="#E2E8F0" font-family="monospace" font-size="11" font-weight="bold">Welcome to the team, Alice! - Your Day 1 Guide</text>
+  <rect x="72" y="310" width="1088" height="1" fill="#334155"/>
+
+  <!-- Email body -->
+  <text x="72" y="336" fill="#E2E8F0" font-family="monospace" font-size="11">Hi Alice,</text>
+  <text x="72" y="358" fill="#E2E8F0" font-family="monospace" font-size="11">Welcome to Corp! We're excited to have you on the Engineering team.</text>
+  <text x="72" y="378" fill="#E2E8F0" font-family="monospace" font-size="11">Here's everything you need for your first day:</text>
+
+  <text x="72" y="404" fill="#00D9FF" font-family="monospace" font-size="11" font-weight="bold">Getting Started:</text>
+  <text x="88" y="422" fill="#E2E8F0" font-family="monospace" font-size="11">&#x2022; Your username: a.chen | Temporary password sent separately</text>
+  <text x="88" y="440" fill="#E2E8F0" font-family="monospace" font-size="11">&#x2022; WiFi: Corp-Secure (connect with your AD credentials)</text>
+  <text x="88" y="458" fill="#E2E8F0" font-family="monospace" font-size="11">&#x2022; VPN: Download from https://vpn.corp.com</text>
+
+  <text x="72" y="484" fill="#00D9FF" font-family="monospace" font-size="11" font-weight="bold">Day 1 Schedule:</text>
+  <text x="88" y="502" fill="#E2E8F0" font-family="monospace" font-size="11">&#x2022; 9:00 AM  - Badge pickup at Reception (Building A)</text>
+  <text x="88" y="520" fill="#E2E8F0" font-family="monospace" font-size="11">&#x2022; 10:00 AM - Team intro with M. Taylor (Room 3B-204)</text>
+  <text x="88" y="538" fill="#E2E8F0" font-family="monospace" font-size="11">&#x2022; 12:00 PM - Welcome lunch with the team</text>
+  <text x="88" y="556" fill="#E2E8F0" font-family="monospace" font-size="11">&#x2022; 2:00 PM  - IT setup and tooling walkthrough</text>
+
+  <!-- Approval section -->
+  <rect x="56" y="580" width="1120" height="80" rx="8" fill="#0A0E1A" stroke="#FEBC2E" stroke-width="1" stroke-opacity="0.4"/>
+  <text x="72" y="604" fill="#FEBC2E" font-family="monospace" font-size="12">&#x26A0; Approval Required</text>
+  <text x="72" y="624" fill="#8892B0" font-family="monospace" font-size="11">This email will be sent via smtp.corp.local:587 (TLS). Review the content above.</text>
+
+  <rect x="72" y="636" width="120" height="28" rx="4" fill="#10B981" opacity="0.15"/>
+  <text x="132" y="655" text-anchor="middle" fill="#10B981" font-family="monospace" font-size="11">Send Email</text>
+  <rect x="204" y="636" width="80" height="28" rx="4" fill="#334155"/>
+  <text x="244" y="655" text-anchor="middle" fill="#8892B0" font-family="monospace" font-size="11">Edit</text>
+  <rect x="296" y="636" width="80" height="28" rx="4" fill="#334155"/>
+  <text x="336" y="655" text-anchor="middle" fill="#8892B0" font-family="monospace" font-size="11">Cancel</text>
+
+  <!-- Input area -->
+  <rect x="20" y="680" width="1160" height="44" rx="8" fill="#1E2435" stroke="#334155" stroke-width="1"/>
+  <text x="36" y="706" fill="#8892B0" font-family="monospace" font-size="12">Add instructions or corrections...</text>
+</svg>

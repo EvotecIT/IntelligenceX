@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 740" fill="none">
+  <!-- Background -->
+  <rect width="1200" height="740" rx="12" fill="#0A0E1A"/>
+  <!-- Title bar -->
+  <rect width="1200" height="40" rx="12" fill="#141824"/>
+  <rect y="28" width="1200" height="12" fill="#141824"/>
+  <!-- Traffic lights -->
+  <circle cx="20" cy="20" r="6" fill="#FF5F57"/>
+  <circle cx="40" cy="20" r="6" fill="#FEBC2E"/>
+  <circle cx="60" cy="20" r="6" fill="#28C840"/>
+  <!-- Title -->
+  <text x="600" y="24" text-anchor="middle" fill="#8892B0" font-family="monospace" font-size="13">Pull Request #247 - Refactor authentication middleware</text>
+
+  <!-- PR metadata bar -->
+  <rect x="20" y="50" width="1160" height="36" rx="4" fill="#1E2435"/>
+  <rect x="32" y="58" width="60" height="20" rx="4" fill="#10B981" opacity="0.2"/>
+  <text x="62" y="72" text-anchor="middle" fill="#10B981" font-family="monospace" font-size="10">Open</text>
+  <text x="108" y="72" fill="#E2E8F0" font-family="monospace" font-size="11">dev/auth-refactor</text>
+  <text x="254" y="72" fill="#8892B0" font-family="monospace" font-size="11">&#x2190;</text>
+  <text x="270" y="72" fill="#E2E8F0" font-family="monospace" font-size="11">main</text>
+  <text x="900" y="72" fill="#8892B0" font-family="monospace" font-size="10">+187 -43 | 5 files changed</text>
+  <text x="1100" y="72" fill="#00D9FF" font-family="monospace" font-size="10">2 comments</text>
+
+  <!-- File header -->
+  <rect x="20" y="96" width="1160" height="30" rx="4" fill="#1E2435"/>
+  <text x="36" y="116" fill="#00D9FF" font-family="monospace" font-size="12">src/Middleware/AuthHandler.cs</text>
+  <text x="1080" y="116" fill="#8892B0" font-family="monospace" font-size="10">+24 -8</text>
+
+  <!-- Diff context - collapsed section -->
+  <rect x="20" y="126" width="1160" height="24" fill="#141824"/>
+  <text x="36" y="142" fill="#8892B0" font-family="monospace" font-size="10">@@ -42,16 +42,24 @@ public class AuthHandler : DelegatingHandler</text>
+
+  <!-- Line numbers + diff lines -->
+  <rect x="20" y="150" width="50" height="24" fill="#141824"/>
+  <text x="44" y="166" text-anchor="end" fill="#8892B0" font-family="monospace" font-size="11">42</text>
+  <text x="78" y="166" fill="#8892B0" font-family="monospace" font-size="12">    protected override async Task&lt;HttpResponseMessage&gt;</text>
+
+  <rect x="20" y="174" width="50" height="24" fill="#141824"/>
+  <text x="44" y="190" text-anchor="end" fill="#8892B0" font-family="monospace" font-size="11">43</text>
+  <text x="78" y="190" fill="#8892B0" font-family="monospace" font-size="12">        SendAsync(HttpRequestMessage request, CancellationToken ct)</text>
+
+  <rect x="20" y="198" width="50" height="24" fill="#141824"/>
+  <text x="44" y="214" text-anchor="end" fill="#8892B0" font-family="monospace" font-size="11">44</text>
+  <text x="78" y="214" fill="#8892B0" font-family="monospace" font-size="12">    {</text>
+
+  <!-- Removed lines -->
+  <rect x="20" y="222" width="1160" height="24" fill="rgba(239,68,68,0.08)"/>
+  <rect x="20" y="222" width="50" height="24" fill="rgba(239,68,68,0.12)"/>
+  <text x="44" y="238" text-anchor="end" fill="#EF4444" font-family="monospace" font-size="11">45</text>
+  <text x="78" y="238" fill="#EF4444" font-family="monospace" font-size="12">-       var token = request.Headers.Authorization?.Parameter;</text>
+
+  <rect x="20" y="246" width="1160" height="24" fill="rgba(239,68,68,0.08)"/>
+  <rect x="20" y="246" width="50" height="24" fill="rgba(239,68,68,0.12)"/>
+  <text x="44" y="262" text-anchor="end" fill="#EF4444" font-family="monospace" font-size="11">46</text>
+  <text x="78" y="262" fill="#EF4444" font-family="monospace" font-size="12">-       if (string.IsNullOrEmpty(token)) return Unauthorized();</text>
+
+  <!-- Added lines - highlighted -->
+  <rect x="20" y="270" width="1160" height="24" fill="rgba(16,185,129,0.08)"/>
+  <rect x="20" y="270" width="50" height="24" fill="rgba(16,185,129,0.12)"/>
+  <text x="44" y="286" text-anchor="end" fill="#10B981" font-family="monospace" font-size="11">45</text>
+  <text x="78" y="286" fill="#10B981" font-family="monospace" font-size="12">+       var tokenResult = await _tokenValidator.ExtractAsync(request);</text>
+
+  <!-- Highlighted line (the one being commented on) -->
+  <rect x="20" y="294" width="1160" height="24" fill="rgba(0,217,255,0.08)" stroke="#00D9FF" stroke-width="1" stroke-opacity="0.3"/>
+  <rect x="20" y="294" width="50" height="24" fill="rgba(16,185,129,0.12)"/>
+  <text x="44" y="310" text-anchor="end" fill="#10B981" font-family="monospace" font-size="11">46</text>
+  <text x="78" y="310" fill="#10B981" font-family="monospace" font-size="12">+       if (!tokenResult.IsValid)</text>
+
+  <rect x="20" y="318" width="1160" height="24" fill="rgba(16,185,129,0.08)"/>
+  <rect x="20" y="318" width="50" height="24" fill="rgba(16,185,129,0.12)"/>
+  <text x="44" y="334" text-anchor="end" fill="#10B981" font-family="monospace" font-size="11">47</text>
+  <text x="78" y="334" fill="#10B981" font-family="monospace" font-size="12">+       {</text>
+
+  <rect x="20" y="342" width="1160" height="24" fill="rgba(16,185,129,0.08)"/>
+  <rect x="20" y="342" width="50" height="24" fill="rgba(16,185,129,0.12)"/>
+  <text x="44" y="358" text-anchor="end" fill="#10B981" font-family="monospace" font-size="11">48</text>
+  <text x="78" y="358" fill="#10B981" font-family="monospace" font-size="12">+           _logger.LogWarning("Auth failed: {Reason}", tokenResult.Error);</text>
+
+  <rect x="20" y="366" width="1160" height="24" fill="rgba(16,185,129,0.08)"/>
+  <rect x="20" y="366" width="50" height="24" fill="rgba(16,185,129,0.12)"/>
+  <text x="44" y="382" text-anchor="end" fill="#10B981" font-family="monospace" font-size="11">49</text>
+  <text x="78" y="382" fill="#10B981" font-family="monospace" font-size="12">+           return CreateUnauthorizedResponse(tokenResult.Error);</text>
+
+  <rect x="20" y="390" width="1160" height="24" fill="rgba(16,185,129,0.08)"/>
+  <rect x="20" y="390" width="50" height="24" fill="rgba(16,185,129,0.12)"/>
+  <text x="44" y="406" text-anchor="end" fill="#10B981" font-family="monospace" font-size="11">50</text>
+  <text x="78" y="406" fill="#10B981" font-family="monospace" font-size="12">+       }</text>
+
+  <!-- Inline comment card -->
+  <rect x="80" y="424" width="1080" height="170" rx="8" fill="#1E2435" stroke="#334155" stroke-width="1"/>
+  <!-- Comment header -->
+  <rect x="80" y="424" width="1080" height="36" rx="8" fill="#141824"/>
+  <rect x="80" y="448" width="1080" height="12" fill="#141824"/>
+  <circle cx="104" cy="442" r="12" fill="#00D9FF" opacity="0.2"/>
+  <text x="104" y="446" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="10" font-weight="bold">IX</text>
+  <text x="124" y="446" fill="#E2E8F0" font-family="monospace" font-size="11" font-weight="bold">IntelligenceX Reviewer</text>
+  <text x="300" y="446" fill="#8892B0" font-family="monospace" font-size="10">commented 2 minutes ago</text>
+
+  <!-- Suggestion label -->
+  <rect x="96" y="468" width="80" height="18" rx="4" fill="#00D9FF" opacity="0.12"/>
+  <text x="136" y="480" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="9">suggestion</text>
+
+  <text x="96" y="504" fill="#E2E8F0" font-family="monospace" font-size="12">Consider adding a structured error response with a correlation ID for easier</text>
+  <text x="96" y="522" fill="#E2E8F0" font-family="monospace" font-size="12">debugging. The current approach loses context when the error propagates.</text>
+
+  <!-- Suggested code block -->
+  <rect x="96" y="534" width="1048" height="48" rx="4" fill="#0A0E1A"/>
+  <text x="112" y="554" fill="#10B981" font-family="monospace" font-size="11">+ return CreateUnauthorizedResponse(tokenResult.Error, correlationId: request.GetCorrelationId());</text>
+  <text x="112" y="572" fill="#8892B0" font-family="monospace" font-size="10">Suggested change</text>
+
+  <!-- Action buttons -->
+  <rect x="80" y="608" width="1080" height="44" rx="0" fill="#1E2435"/>
+  <rect x="80" y="640" width="1080" height="12" rx="8" fill="#1E2435"/>
+  <rect x="96" y="618" width="120" height="26" rx="4" fill="#00D9FF" opacity="0.15"/>
+  <text x="156" y="636" text-anchor="middle" fill="#00D9FF" font-family="monospace" font-size="10">Apply suggestion</text>
+  <rect x="228" y="618" width="80" height="26" rx="4" fill="#334155"/>
+  <text x="268" y="636" text-anchor="middle" fill="#8892B0" font-family="monospace" font-size="10">Reply</text>
+  <rect x="320" y="618" width="80" height="26" rx="4" fill="#334155"/>
+  <text x="360" y="636" text-anchor="middle" fill="#8892B0" font-family="monospace" font-size="10">Resolve</text>
+
+  <!-- More diff lines below -->
+  <rect x="20" y="664" width="50" height="24" fill="#141824"/>
+  <text x="44" y="680" text-anchor="end" fill="#8892B0" font-family="monospace" font-size="11">51</text>
+  <text x="78" y="680" fill="#8892B0" font-family="monospace" font-size="12">        var claims = tokenResult.Claims;</text>
+
+  <rect x="20" y="688" width="50" height="24" fill="#141824"/>
+  <text x="44" y="704" text-anchor="end" fill="#8892B0" font-family="monospace" font-size="11">52</text>
+  <text x="78" y="704" fill="#8892B0" font-family="monospace" font-size="12">        request.Properties["user"] = new ClaimsPrincipal(claims);</text>
+</svg>
