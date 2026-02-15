@@ -24,7 +24,10 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
-    private static readonly string[] ProjectionViewArgumentNames = { "columns", "sort_by", "sort_direction", "top" };
+    private static readonly string[] ProjectionFormattingArgumentNames = { "columns", "sort_by", "sort_direction" };
+    private static readonly Regex TopTokenRegex = new(@"\btop\b", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private const string ProjectionTopArgumentName = "top";
+    private const string ProjectionFallbackRecoveredStatusMessage = "Recovered by resetting projection arguments to defaults.";
 
     private static async Task<TurnInfo> ChatWithToolSchemaRecoveryAsync(IntelligenceXClient client, ChatInput input, ChatOptions options,
         CancellationToken cancellationToken) {
@@ -74,6 +77,7 @@ internal sealed partial class ChatServiceSession {
                 var sw = Stopwatch.StartNew();
                 var output = await ExecuteToolAsync(call, toolTimeoutSeconds, cancellationToken).ConfigureAwait(false);
                 sw.Stop();
+                await TryWriteToolRecoveredStatusAsync(writer, requestId, threadId, call, output).ConfigureAwait(false);
                 await TryWriteStatusAsync(writer, requestId, threadId, status: "tool_completed", toolName: call.Name, toolCallId: call.CallId,
                         durationMs: sw.ElapsedMilliseconds)
                     .ConfigureAwait(false);
@@ -97,10 +101,27 @@ internal sealed partial class ChatServiceSession {
         var sw = Stopwatch.StartNew();
         var output = await ExecuteToolAsync(call, toolTimeoutSeconds, cancellationToken).ConfigureAwait(false);
         sw.Stop();
+        await TryWriteToolRecoveredStatusAsync(writer, requestId, threadId, call, output).ConfigureAwait(false);
         await TryWriteStatusAsync(writer, requestId, threadId, status: "tool_completed", toolName: call.Name, toolCallId: call.CallId,
                 durationMs: sw.ElapsedMilliseconds)
             .ConfigureAwait(false);
         return output;
+    }
+
+    private async Task TryWriteToolRecoveredStatusAsync(StreamWriter writer, string requestId, string threadId, ToolCall call, ToolOutputDto output) {
+        if (!WasProjectionFallbackApplied(output)) {
+            return;
+        }
+
+        await TryWriteStatusAsync(
+                writer,
+                requestId,
+                threadId,
+                status: "tool_recovered",
+                toolName: call.Name,
+                toolCallId: call.CallId,
+                message: ProjectionFallbackRecoveredStatusMessage)
+            .ConfigureAwait(false);
     }
 
     private async Task<ToolOutputDto> ExecuteToolAsync(ToolCall call, int toolTimeoutSeconds, CancellationToken cancellationToken) {
@@ -161,7 +182,7 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var fallbackArguments = CloneWithoutProjectionViewArguments(call.Arguments, out var removedArguments);
+        var fallbackArguments = CloneWithoutProjectionViewArguments(call.Arguments, output, out var removedArguments);
         if (removedArguments.Length == 0) {
             return false;
         }
@@ -191,9 +212,13 @@ internal sealed partial class ChatServiceSession {
                                   || text.Contains("sort_direction", StringComparison.OrdinalIgnoreCase)
                                   || text.Contains("tabular view", StringComparison.OrdinalIgnoreCase)
                                   || text.Contains("projection", StringComparison.OrdinalIgnoreCase)
+                                  || text.Contains("projection argument", StringComparison.OrdinalIgnoreCase)
                                   || text.Contains("table view response envelope", StringComparison.OrdinalIgnoreCase);
         if (!hasProjectionSignal) {
-            return false;
+            hasProjectionSignal = HasProjectionTopFallbackSignal(output);
+            if (!hasProjectionSignal) {
+                return false;
+            }
         }
 
         if (string.Equals(output.ErrorCode, "invalid_argument", StringComparison.OrdinalIgnoreCase)
@@ -206,14 +231,28 @@ internal sealed partial class ChatServiceSession {
                || text.Contains("invalid", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static JsonObject? CloneWithoutProjectionViewArguments(JsonObject? arguments, out string[] removedArguments) {
+    private static JsonObject? CloneWithoutProjectionViewArguments(JsonObject? arguments, ToolOutputDto output, out string[] removedArguments) {
         removedArguments = Array.Empty<string>();
         if (arguments is null || arguments.Count == 0) {
             return arguments;
         }
 
+        var hasProjectionFormattingArguments = false;
+        foreach (var kv in arguments) {
+            var key = (kv.Key ?? string.Empty).Trim();
+            if (key.Length == 0) {
+                continue;
+            }
+
+            if (IsProjectionFormattingArgumentName(key)) {
+                hasProjectionFormattingArguments = true;
+                break;
+            }
+        }
+
+        var removeTopArgument = hasProjectionFormattingArguments || HasProjectionTopFallbackSignal(output);
         var clone = new JsonObject(StringComparer.Ordinal);
-        var removed = new List<string>(ProjectionViewArgumentNames.Length);
+        var removed = new List<string>(ProjectionFormattingArgumentNames.Length + 1);
         var seenRemoved = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var kv in arguments) {
             var key = (kv.Key ?? string.Empty).Trim();
@@ -221,7 +260,7 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            if (IsProjectionViewArgumentName(key)) {
+            if (IsProjectionFormattingArgumentName(key) || (removeTopArgument && IsProjectionTopArgumentName(key))) {
                 if (seenRemoved.Add(key)) {
                     removed.Add(key);
                 }
@@ -235,13 +274,31 @@ internal sealed partial class ChatServiceSession {
         return clone;
     }
 
-    private static bool IsProjectionViewArgumentName(string argumentName) {
-        for (var i = 0; i < ProjectionViewArgumentNames.Length; i++) {
-            if (string.Equals(argumentName, ProjectionViewArgumentNames[i], StringComparison.OrdinalIgnoreCase)) {
+    private static bool IsProjectionFormattingArgumentName(string argumentName) {
+        for (var i = 0; i < ProjectionFormattingArgumentNames.Length; i++) {
+            if (string.Equals(argumentName, ProjectionFormattingArgumentNames[i], StringComparison.OrdinalIgnoreCase)) {
                 return true;
             }
         }
         return false;
+    }
+
+    private static bool IsProjectionTopArgumentName(string argumentName) =>
+        string.Equals(argumentName, ProjectionTopArgumentName, StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasProjectionTopFallbackSignal(ToolOutputDto output) {
+        var text = BuildToolFailureSearchText(output);
+        if (text.Length == 0 || !TopTokenRegex.IsMatch(text)) {
+            return false;
+        }
+
+        return text.Contains("must be", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("must contain", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("unsupported", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("invalid", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("between", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("table view response envelope", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("projection argument", StringComparison.OrdinalIgnoreCase);
     }
 
     private static ToolOutputDto AttachProjectionFallbackMetadata(ToolOutputDto output, ProjectionFallbackInfo info) {

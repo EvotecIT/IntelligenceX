@@ -11,6 +11,7 @@ internal sealed record AssistantPendingAction(string Id, string Title, string Re
 internal static class ActionModelProtocol {
     private const string ActionHeader = "[Action]";
     private const string ActionMarker = "ix:action:v1";
+    private const int MaxActionParsingChars = 64 * 1024;
 
     public static bool TryStripAndExtractPendingActions(
         string? assistantText,
@@ -20,6 +21,9 @@ internal static class ActionModelProtocol {
         var input = (assistantText ?? string.Empty).Trim();
         cleanedText = input;
         if (input.Length == 0) {
+            return false;
+        }
+        if (input.Length > MaxActionParsingChars) {
             return false;
         }
 
@@ -32,9 +36,18 @@ internal static class ActionModelProtocol {
         var removed = new bool[lines.Length];
         var extracted = new List<AssistantPendingAction>();
         var markerSeen = false;
+        var inFence = false;
 
         for (var i = 0; i < lines.Length; i++) {
             var line = (lines[i] ?? string.Empty).Trim();
+            if (IsFenceBoundary(line)) {
+                inFence = !inFence;
+                continue;
+            }
+            if (inFence) {
+                continue;
+            }
+
             var isHeader = string.Equals(line, ActionHeader, StringComparison.OrdinalIgnoreCase);
             var isMarker = string.Equals(line, ActionMarker, StringComparison.OrdinalIgnoreCase);
             if (!isHeader && !isMarker) {
@@ -64,6 +77,10 @@ internal static class ActionModelProtocol {
             for (var j = markerIndex + 1; j < lines.Length; j++) {
                 var current = lines[j] ?? string.Empty;
                 var trimmedCurrent = current.Trim();
+                if (IsFenceBoundary(trimmedCurrent)) {
+                    endExclusive = j;
+                    break;
+                }
                 if (trimmedCurrent.Length == 0) {
                     endExclusive = j + 1;
                     break;
@@ -133,17 +150,26 @@ internal static class ActionModelProtocol {
         }
 
         var kept = new List<string>(lines.Length);
+        var inFenceForKeep = false;
         for (var i = 0; i < lines.Length; i++) {
             if (removed[i]) {
                 continue;
             }
 
-            var trimmed = (lines[i] ?? string.Empty).Trim();
-            if (string.Equals(trimmed, ActionHeader, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(trimmed, ActionMarker, StringComparison.OrdinalIgnoreCase)) {
+            var line = lines[i] ?? string.Empty;
+            var trimmed = line.Trim();
+            if (IsFenceBoundary(trimmed)) {
+                inFenceForKeep = !inFenceForKeep;
+                kept.Add(line);
                 continue;
             }
-            kept.Add(lines[i]);
+            if (!inFenceForKeep
+                && (string.Equals(trimmed, ActionHeader, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(trimmed, ActionMarker, StringComparison.OrdinalIgnoreCase))) {
+                continue;
+            }
+
+            kept.Add(line);
         }
 
         cleanedText = Regex.Replace(string.Join('\n', kept).Trim(), @"\n{3,}", "\n\n");
@@ -154,6 +180,9 @@ internal static class ActionModelProtocol {
             .ToArray();
         return true;
     }
+
+    private static bool IsFenceBoundary(string line) =>
+        !string.IsNullOrWhiteSpace(line) && line.StartsWith("```", StringComparison.Ordinal);
 
     public static string MergeVisibleTextWithPendingActions(string cleanedText, IReadOnlyList<AssistantPendingAction> actions) {
         var text = (cleanedText ?? string.Empty).Trim();

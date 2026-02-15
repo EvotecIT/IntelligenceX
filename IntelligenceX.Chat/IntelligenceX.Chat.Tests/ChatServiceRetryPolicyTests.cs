@@ -149,6 +149,61 @@ public sealed class ChatServiceRetryPolicyTests {
         Assert.False(fallbackCall.Arguments.TryGetValue("top", out _));
     }
 
+    [Fact]
+    public void TryBuildProjectionArgsFallbackCall_DoesNotDropTopWhenNoExplicitProjectionArgs() {
+        var call = new ToolCall(
+            callId: "call-7",
+            name: "eventlog_top_events",
+            input: null,
+            arguments: new JsonObject()
+                .Add("log_name", "System")
+                .Add("top", 5),
+            raw: new JsonObject());
+        var output = new ToolOutputDto {
+            CallId = call.CallId,
+            Output = "{\"ok\":false,\"error_code\":\"invalid_argument\",\"error\":\"Failed to build table view response envelope.\"}",
+            Ok = false,
+            ErrorCode = "invalid_argument",
+            Error = "Failed to build table view response envelope."
+        };
+
+        var args = new object?[] { call, output, null, null };
+        var built = TryBuildProjectionArgsFallbackCallMethod.Invoke(null, args);
+        var fallbackCall = Assert.IsType<ToolCall>(args[2]);
+
+        Assert.False(Assert.IsType<bool>(built));
+        Assert.NotNull(fallbackCall.Arguments);
+        Assert.True(fallbackCall.Arguments!.TryGetValue("top", out _));
+    }
+
+    [Fact]
+    public void TryBuildProjectionArgsFallbackCall_DropsTopOnExplicitTopValidationFailure() {
+        var call = new ToolCall(
+            callId: "call-8",
+            name: "eventlog_top_events",
+            input: null,
+            arguments: new JsonObject()
+                .Add("log_name", "System")
+                .Add("top", 5000),
+            raw: new JsonObject());
+        var output = new ToolOutputDto {
+            CallId = call.CallId,
+            Output = "{\"ok\":false,\"error_code\":\"invalid_argument\",\"error\":\"top must be between 1 and 100 for table view response envelope.\"}",
+            Ok = false,
+            ErrorCode = "invalid_argument",
+            Error = "top must be between 1 and 100 for table view response envelope."
+        };
+
+        var args = new object?[] { call, output, null, null };
+        var built = TryBuildProjectionArgsFallbackCallMethod.Invoke(null, args);
+        var fallbackCall = Assert.IsType<ToolCall>(args[2]);
+
+        Assert.True(Assert.IsType<bool>(built));
+        Assert.NotNull(fallbackCall.Arguments);
+        Assert.Equal("System", fallbackCall.Arguments!.GetString("log_name"));
+        Assert.False(fallbackCall.Arguments.TryGetValue("top", out _));
+    }
+
     private static object InvokeResolveRetryProfile(string toolName) {
         var profile = ResolveRetryProfileMethod.Invoke(null, new object?[] { toolName });
         return profile ?? throw new InvalidOperationException("ResolveRetryProfile returned null.");
