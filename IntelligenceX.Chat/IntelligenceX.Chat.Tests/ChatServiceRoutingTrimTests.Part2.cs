@@ -401,6 +401,32 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExpandContinuationUserRequest_ActSelectionDoesNotNormalizeOpaqueIdToken() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        // Use a compatibility presentation form that FormKC would change if applied to the whole input.
+        var fullwidthId = "ＡＣＴ_001";
+        var assistantDraft = $"""
+            Pick one:
+
+            [Action]
+            ix:action:v1
+            id: {fullwidthId}
+            title: First
+            request: Do first thing.
+            reply: /act {fullwidthId}
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", $"/act {fullwidthId}" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        var root = doc.RootElement;
+        Assert.True(root.TryGetProperty("ix_action_selection", out var selection));
+        Assert.Equal(fullwidthId, selection.GetProperty("id").GetString());
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_PrunesPendingActionsWithInvalidTicks() {
         var storeFile = $"pending-actions-test-{Guid.NewGuid():N}.json";
         var storePath = Path.Combine(

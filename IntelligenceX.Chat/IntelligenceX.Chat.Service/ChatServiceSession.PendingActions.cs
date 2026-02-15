@@ -220,19 +220,18 @@ internal sealed partial class ChatServiceSession {
     private static bool TryMatchPendingAction(string userText, IReadOnlyList<PendingAction> actions, out PendingAction match) {
         match = default;
 
-        // Normalize once for all pending-action matching (explicit selection + ordinal + implicit confirm).
-        // FormKC helps keep behavior stable across Unicode presentation forms (e.g., fullwidth punctuation).
-        var normalized = (userText ?? string.Empty)
-            .Trim()
-            .Normalize(NormalizationForm.FormKC);
+        // Be careful with normalization: explicit selections like `/act <id>` should treat `<id>` as an opaque token.
+        // Applying FormKC to the whole input can change codepoints and prevent matching an otherwise valid ID copied
+        // from the assistant output.
+        var trimmed = (userText ?? string.Empty).Trim();
 
-        if (normalized.Length == 0 || actions.Count == 0) {
+        if (trimmed.Length == 0 || actions.Count == 0) {
             return false;
         }
 
         // /act <id>
-        if (normalized.StartsWith("/act", StringComparison.OrdinalIgnoreCase)) {
-            var rest = normalized[4..].Trim();
+        if (trimmed.StartsWith("/act", StringComparison.OrdinalIgnoreCase)) {
+            var rest = trimmed[4..].Trim();
             if (rest.Length == 0) {
                 return false;
             }
@@ -254,6 +253,9 @@ internal sealed partial class ChatServiceSession {
 
             return false;
         }
+
+        // Normalize for ordinal + implicit confirm only.
+        var normalized = trimmed.Normalize(NormalizationForm.FormKC);
 
         // "1" / "2" selects by ordinal.
         if (TryParseOrdinalSelection(normalized, out var idx) && idx > 0 && idx <= actions.Count) {
