@@ -63,10 +63,18 @@ internal sealed partial class ChatServiceSession {
                     """
             };
 
-            _ = await client.StartNewThreadAsync(
+            var plannerThread = await client.StartNewThreadAsync(
                     model: plannerOptions.Model,
                     cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
+
+            // StartNewThreadAsync should set the current thread, but make the thread switch explicit to avoid
+            // accidental planner prompts polluting the active conversation thread if transport semantics change.
+            try {
+                await client.UseThreadAsync(plannerThread.Id, cancellationToken).ConfigureAwait(false);
+            } catch {
+                // Best effort; if we can't switch explicitly, rely on StartNewThreadAsync semantics.
+            }
 
             var turn = await client.ChatAsync(ChatInput.FromText(plannerPrompt), plannerOptions, cancellationToken).ConfigureAwait(false);
             var plannerText = EasyChatResult.FromTurn(turn).Text ?? string.Empty;

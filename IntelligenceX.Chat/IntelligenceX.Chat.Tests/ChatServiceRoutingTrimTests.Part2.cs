@@ -72,6 +72,31 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExpandContinuationUserRequest_ConsumesPendingActionsAfterSelection() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Pick one:
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: Run forest probe
+            request: Run the forest-wide replication and LDAP diagnostics now.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+
+        var first = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act act_001" });
+        var firstExpanded = Assert.IsType<string>(first);
+        Assert.Contains("ix_action_selection", firstExpanded, StringComparison.OrdinalIgnoreCase);
+
+        var second = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act act_001" });
+        var secondExpanded = Assert.IsType<string>(second);
+        Assert.Equal("/act act_001", secondExpanded);
+    }
+
+    [Fact]
     public void TrimWeightedRoutingContextsForTesting_PrefersMostRecentTicksAcrossContexts() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
 
