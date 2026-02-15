@@ -173,7 +173,14 @@ internal sealed partial class ChatServiceSession {
         if (left > right) {
             // Quote is the only meaningful content on its line (explicit instruction snippet).
             var suffixLeft = closeIndex + 1;
+            if (suffixLeft >= assistantDraft.Length) {
+                return true;
+            }
+
             var suffixRight = lineEnd - 1;
+            if (suffixRight >= assistantDraft.Length) {
+                suffixRight = assistantDraft.Length - 1;
+            }
             while (suffixLeft <= suffixRight && char.IsWhiteSpace(assistantDraft[suffixLeft])) {
                 suffixLeft++;
             }
