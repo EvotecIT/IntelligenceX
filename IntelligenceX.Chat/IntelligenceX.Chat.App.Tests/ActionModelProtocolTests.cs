@@ -64,6 +64,39 @@ public sealed class ActionModelProtocolTests {
     }
 
     /// <summary>
+    /// Ensures fenced code boundary lines are preserved even when a malformed action marker was seen.
+    /// </summary>
+    [Fact]
+    public void TryStripAndExtractPendingActions_KeepsFenceBoundariesWhenNoActionsExtracted() {
+        const string text = """
+                            Keep this code snippet:
+
+                            ```json
+                            { "status": "ok" }
+                            ```
+
+                            [Action]
+                            ix:action:v1
+                            id: act_invalid
+                            title: Invalid action
+                            request: Missing reply on purpose
+
+                            Done.
+                            """;
+
+        var normalized = ActionModelProtocol.TryStripAndExtractPendingActions(text, out var actions, out var cleaned);
+
+        Assert.True(normalized);
+        Assert.Empty(actions);
+        Assert.Contains("```json", cleaned);
+        Assert.Contains("{ \"status\": \"ok\" }", cleaned);
+        Assert.Contains("```", cleaned);
+        Assert.DoesNotContain("ix:action:v1", cleaned);
+        Assert.DoesNotContain("[Action]", cleaned);
+        Assert.Contains("Done.", cleaned);
+    }
+
+    /// <summary>
     /// Ensures action markers inside fenced code blocks are treated as content and not parsed as executable actions.
     /// </summary>
     [Fact]

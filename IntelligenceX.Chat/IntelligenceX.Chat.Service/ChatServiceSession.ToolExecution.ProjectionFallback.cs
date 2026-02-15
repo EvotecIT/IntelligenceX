@@ -369,6 +369,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (!text.Contains("top", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
         return TopValidationRegex.IsMatch(text);
     }
 
