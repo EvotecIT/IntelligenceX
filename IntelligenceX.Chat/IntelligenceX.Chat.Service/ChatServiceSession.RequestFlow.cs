@@ -447,6 +447,7 @@ internal sealed partial class ChatServiceSession {
             var outcome = "ok";
             string? outcomeCode = null;
             var threadIdForDelta = run.ThreadId ?? string.Empty;
+            var usedModel = request.Options?.Model ?? _options.Model;
             try {
                 deltaSubscription = client.SubscribeDelta(delta => {
                     // Best-effort TTFT tracking: latch the first delta timestamp once.
@@ -461,6 +462,8 @@ internal sealed partial class ChatServiceSession {
                 toolCallsCount = result.ToolCallsCount;
                 toolRounds = result.ToolRounds;
                 await WriteAsync(writer, result.Result, CancellationToken.None).ConfigureAwait(false);
+
+                await TryRecordRecentModelAsync(usedModel, CancellationToken.None).ConfigureAwait(false);
             } catch (OpenAIAuthenticationRequiredException) {
                 outcome = "error";
                 outcomeCode = "not_authenticated";

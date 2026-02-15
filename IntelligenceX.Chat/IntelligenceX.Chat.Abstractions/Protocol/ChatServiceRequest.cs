@@ -15,6 +15,8 @@ namespace IntelligenceX.Chat.Abstractions.Protocol;
 [JsonDerivedType(typeof(ListProfilesRequest), "list_profiles")]
 [JsonDerivedType(typeof(SetProfileRequest), "set_profile")]
 [JsonDerivedType(typeof(ListModelsRequest), "list_models")]
+[JsonDerivedType(typeof(ListModelFavoritesRequest), "list_model_favorites")]
+[JsonDerivedType(typeof(SetModelFavoriteRequest), "set_model_favorite")]
 [JsonDerivedType(typeof(InvokeToolRequest), "invoke_tool")]
 [JsonDerivedType(typeof(CancelChatRequest), "chat_cancel")]
 [JsonDerivedType(typeof(ChatRequest), "chat")]
@@ -116,6 +118,25 @@ public sealed record ListModelsRequest : ChatServiceRequest {
     /// When true, bypasses any server-side cache (best-effort).
     /// </summary>
     public bool ForceRefresh { get; init; }
+}
+
+/// <summary>
+/// Requests the list of favorite models for the active profile.
+/// </summary>
+public sealed record ListModelFavoritesRequest : ChatServiceRequest;
+
+/// <summary>
+/// Adds or removes a model from favorites for the active profile.
+/// </summary>
+public sealed record SetModelFavoriteRequest : ChatServiceRequest {
+    /// <summary>
+    /// Model name to update.
+    /// </summary>
+    public required string Model { get; init; }
+    /// <summary>
+    /// When true, adds to favorites; when false, removes from favorites.
+    /// </summary>
+    public bool IsFavorite { get; init; } = true;
 }
 
 /// <summary>

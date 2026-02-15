@@ -246,4 +246,25 @@ public sealed class ChatServiceClient : IAsyncDisposable {
     public Task<ModelListMessage> ListModelsAsync(bool forceRefresh = false, CancellationToken cancellationToken = default) {
         return RequestAsync<ModelListMessage>(new ListModelsRequest { RequestId = NewRequestId(), ForceRefresh = forceRefresh }, cancellationToken);
     }
+
+    /// <summary>
+    /// Requests the list of favorite models for the active profile.
+    /// </summary>
+    public Task<ModelFavoritesMessage> ListModelFavoritesAsync(CancellationToken cancellationToken = default) {
+        return RequestAsync<ModelFavoritesMessage>(new ListModelFavoritesRequest { RequestId = NewRequestId() }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Adds or removes a model from favorites for the active profile.
+    /// </summary>
+    public Task<AckMessage> SetModelFavoriteAsync(string model, bool isFavorite, CancellationToken cancellationToken = default) {
+        if (string.IsNullOrWhiteSpace(model)) {
+            throw new ArgumentException("Model cannot be empty.", nameof(model));
+        }
+        return RequestAsync<AckMessage>(new SetModelFavoriteRequest {
+            RequestId = NewRequestId(),
+            Model = model.Trim(),
+            IsFavorite = isFavorite
+        }, cancellationToken);
+    }
 }

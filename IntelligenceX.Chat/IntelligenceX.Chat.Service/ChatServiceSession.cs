@@ -48,6 +48,9 @@ internal sealed partial class ChatServiceSession {
     private readonly Dictionary<string, long> _pendingActionsSeenUtcTicks = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string[]> _pendingActionsCallToActionTokensByThreadId = new(StringComparer.Ordinal);
 
+    private readonly object _modelListCacheLock = new();
+    private ModelListCacheEntry? _modelListCache;
+
     private readonly JsonSerializerOptions _json;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private string? _instructions;
@@ -186,6 +189,14 @@ internal sealed partial class ChatServiceSession {
 
                     case ListModelsRequest listModels:
                         await HandleListModelsAsync(client, writer, listModels, cancellationToken).ConfigureAwait(false);
+                        break;
+
+                    case ListModelFavoritesRequest listFavorites:
+                        await HandleListModelFavoritesAsync(writer, listFavorites, cancellationToken).ConfigureAwait(false);
+                        break;
+
+                    case SetModelFavoriteRequest setFavorite:
+                        await HandleSetModelFavoriteAsync(writer, setFavorite, cancellationToken).ConfigureAwait(false);
                         break;
 
                     case InvokeToolRequest invokeTool:
