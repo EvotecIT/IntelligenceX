@@ -81,6 +81,36 @@ internal static partial class Program {
             "project view issue should be provisioned when variable is invalid");
     }
 
+    private static void TestSetupTriageBootstrapLinksCommentIncludesAssistiveIssueLinks() {
+        var comment = SetupRunner.BuildTriageBootstrapLinksComment(
+            repoFullName: "owner/repo",
+            projectOwner: "owner",
+            projectNumber: 123,
+            controlIssueNumber: 11,
+            viewApplyIssueNumber: 22,
+            missingViews: 3,
+            directCreateSupported: false);
+
+        AssertContainsText(comment, "intelligencex:triage-bootstrap-links", "bootstrap links marker");
+        AssertContainsText(comment, "https://github.com/owner/repo/issues/11", "control issue link present");
+        AssertContainsText(comment, "https://github.com/owner/repo/issues/22", "view apply issue link present");
+        AssertContainsText(comment, "Maintainer Entry Point", "maintainer entry point section present");
+    }
+
+    private static void TestSetupTriageBootstrapLinksCommentHandlesMissingViewIssue() {
+        var comment = SetupRunner.BuildTriageBootstrapLinksComment(
+            repoFullName: "owner/repo",
+            projectOwner: "owner",
+            projectNumber: 123,
+            controlIssueNumber: 11,
+            viewApplyIssueNumber: null,
+            missingViews: 2,
+            directCreateSupported: false);
+
+        AssertContainsText(comment, "auto-provision failed", "missing view issue fallback text present");
+        AssertContainsText(comment, "project-view-apply --create-issue", "manual recovery command hint present");
+    }
+
     private static void TestSetupArgsIncludeAnalysisRunStrictOption() {
         var plan = new SetupPlan("owner/repo") {
             AnalysisEnabled = true,
