@@ -667,6 +667,12 @@ internal static partial class Program {
     }
 
 
+
+    private static void TestAnalyzeGateNormalizeDuplicationPathPreservesLeadingSlash() {
+        var normalized = IntelligenceX.Cli.Analysis.AnalyzeGateBaseline.NormalizeDuplicationPathForKey("/tmp/test.cs");
+        AssertEqual("/tmp/test.cs", normalized, "normalize duplication path preserves leading slash");
+    }
+
     private static void TestAnalyzeGateDuplicationFileBaselineMissingPathReturnsNotProvided() {
         var ok = IntelligenceX.Cli.Analysis.AnalyzeGateBaseline.TryLoadDuplicationFileBaselines(
             path: "",

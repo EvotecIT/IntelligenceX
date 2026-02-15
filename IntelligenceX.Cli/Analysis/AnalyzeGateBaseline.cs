@@ -322,8 +322,8 @@ internal static class AnalyzeGateBaseline {
         if (hasDotRelativePrefix) {
             rebuilt = rebuilt.TrimStart('/');
         }
-        if (hasLeadingSlash && !rebuilt.StartsWith("/", StringComparison.Ordinal)) {
-            rebuilt = "/" + rebuilt;
+        if (hasLeadingSlash) {
+            rebuilt = "/" + rebuilt.TrimStart('/');
         }
         return rebuilt;
     }
@@ -547,4 +547,5 @@ internal static class AnalyzeGateBaseline {
         int WindowLines,
         string Fingerprint);
 }
+
 
