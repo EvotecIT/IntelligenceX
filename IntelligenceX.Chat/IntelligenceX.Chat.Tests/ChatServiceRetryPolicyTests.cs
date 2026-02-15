@@ -115,7 +115,7 @@ public sealed class ChatServiceRetryPolicyTests {
     }
 
     [Fact]
-    public void TryBuildProjectionArgsFallbackCall_StripsProjectionArgumentsAndKeepsToolArguments() {
+    public void TryBuildProjectionArgsFallbackCall_StripsProjectionFormattingArgumentsAndPreservesTopByDefault() {
         var call = new ToolCall(
             callId: "call-6",
             name: "eventlog_top_events",
@@ -146,7 +146,7 @@ public sealed class ChatServiceRetryPolicyTests {
         Assert.False(fallbackCall.Arguments.TryGetValue("columns", out _));
         Assert.False(fallbackCall.Arguments.TryGetValue("sort_by", out _));
         Assert.False(fallbackCall.Arguments.TryGetValue("sort_direction", out _));
-        Assert.False(fallbackCall.Arguments.TryGetValue("top", out _));
+        Assert.Equal(5, fallbackCall.Arguments.GetInt64("top"));
     }
 
     [Fact]
@@ -254,10 +254,60 @@ public sealed class ChatServiceRetryPolicyTests {
     }
 
     /// <summary>
-    /// Ensures we do not strip projection arguments when metadata says the user request is already valid.
+    /// Ensures selective projection pruning still works when available columns are surfaced under failure.meta in camelCase.
     /// </summary>
     [Fact]
-    public void TryBuildProjectionArgsFallbackCall_DoesNotFallbackWhenMetadataShowsNoInvalidProjectionArgs() {
+    public void TryBuildProjectionArgsFallbackCall_SelectivelyPrunesUsingFailureMetaCamelCaseColumns() {
+        var call = new ToolCall(
+            callId: "call-9b",
+            name: "eventlog_top_events",
+            input: null,
+            arguments: new JsonObject()
+                .Add("log_name", "System")
+                .Add("columns", new JsonArray().Add("event_id").Add("unknown_column"))
+                .Add("sort_by", "event_id")
+                .Add("sort_direction", "desc")
+                .Add("top", 5),
+            raw: new JsonObject());
+        var output = new ToolOutputDto {
+            CallId = call.CallId,
+            Output = """
+                     {
+                       "ok": false,
+                       "error_code": "invalid_argument",
+                       "error": "columns contains unsupported value 'unknown_column'.",
+                       "failure": {
+                         "meta": {
+                           "availableColumns": ["event_id", "level"]
+                         }
+                       }
+                     }
+                     """,
+            Ok = false,
+            ErrorCode = "invalid_argument",
+            Error = "columns contains unsupported value 'unknown_column'."
+        };
+
+        var args = new object?[] { call, output, null, null };
+        var built = TryBuildProjectionArgsFallbackCallMethod.Invoke(null, args);
+        var fallbackCall = Assert.IsType<ToolCall>(args[2]);
+
+        Assert.True(Assert.IsType<bool>(built));
+        Assert.NotNull(fallbackCall.Arguments);
+        var columns = fallbackCall.Arguments!.GetArray("columns");
+        Assert.NotNull(columns);
+        Assert.Single(columns!);
+        Assert.Equal("event_id", columns[0].AsString());
+        Assert.Equal("event_id", fallbackCall.Arguments.GetString("sort_by"));
+        Assert.Equal("desc", fallbackCall.Arguments.GetString("sort_direction"));
+        Assert.Equal(5, fallbackCall.Arguments.GetInt64("top"));
+    }
+
+    /// <summary>
+    /// Ensures we still apply conservative projection reset when metadata does not identify a specific bad argument.
+    /// </summary>
+    [Fact]
+    public void TryBuildProjectionArgsFallbackCall_FallsBackConservativelyWhenMetadataShowsNoSpecificInvalidProjectionArgs() {
         var call = new ToolCall(
             callId: "call-10",
             name: "eventlog_top_events",
@@ -290,11 +340,11 @@ public sealed class ChatServiceRetryPolicyTests {
         var built = TryBuildProjectionArgsFallbackCallMethod.Invoke(null, args);
         var fallbackCall = Assert.IsType<ToolCall>(args[2]);
 
-        Assert.False(Assert.IsType<bool>(built));
+        Assert.True(Assert.IsType<bool>(built));
         Assert.NotNull(fallbackCall.Arguments);
-        Assert.True(fallbackCall.Arguments!.TryGetValue("columns", out _));
-        Assert.Equal("event_id", fallbackCall.Arguments.GetString("sort_by"));
-        Assert.Equal("desc", fallbackCall.Arguments.GetString("sort_direction"));
+        Assert.False(fallbackCall.Arguments!.TryGetValue("columns", out _));
+        Assert.False(fallbackCall.Arguments.TryGetValue("sort_by", out _));
+        Assert.False(fallbackCall.Arguments.TryGetValue("sort_direction", out _));
         Assert.Equal(5, fallbackCall.Arguments.GetInt64("top"));
     }
 

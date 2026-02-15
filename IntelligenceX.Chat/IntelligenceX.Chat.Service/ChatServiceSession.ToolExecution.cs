@@ -240,29 +240,12 @@ internal sealed partial class ChatServiceSession {
             return arguments;
         }
 
-        if (TryBuildSelectiveProjectionFallbackArguments(arguments, output, out var selectiveFallback, out var selectiveRemoved, out var projectionMetadataObserved)) {
+        if (TryBuildSelectiveProjectionFallbackArguments(arguments, output, out var selectiveFallback, out var selectiveRemoved)) {
             removedArguments = selectiveRemoved;
             return selectiveFallback;
         }
 
-        if (projectionMetadataObserved) {
-            return arguments;
-        }
-
-        var hasProjectionFormattingArguments = false;
-        foreach (var kv in arguments) {
-            var key = (kv.Key ?? string.Empty).Trim();
-            if (key.Length == 0) {
-                continue;
-            }
-
-            if (IsProjectionFormattingArgumentName(key)) {
-                hasProjectionFormattingArguments = true;
-                break;
-            }
-        }
-
-        var removeTopArgument = hasProjectionFormattingArguments || HasProjectionTopFallbackSignal(output);
+        var removeTopArgument = HasProjectionTopFallbackSignal(output);
         var clone = new JsonObject(StringComparer.Ordinal);
         var removed = new List<string>(ProjectionFormattingArgumentNames.Length + 1);
         var seenRemoved = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -290,12 +273,10 @@ internal sealed partial class ChatServiceSession {
         JsonObject arguments,
         ToolOutputDto output,
         out JsonObject fallbackArguments,
-        out string[] removedArguments,
-        out bool projectionMetadataObserved) {
+        out string[] removedArguments) {
         fallbackArguments = arguments;
         removedArguments = Array.Empty<string>();
-        projectionMetadataObserved = TryReadProjectionAvailableColumns(output, out var availableColumns);
-        if (!projectionMetadataObserved || availableColumns.Count == 0) {
+        if (!TryReadProjectionAvailableColumns(output, out var availableColumns) || availableColumns.Count == 0) {
             return false;
         }
 
@@ -418,11 +399,23 @@ internal sealed partial class ChatServiceSession {
         if (obj.GetObject("meta") is JsonObject metaObj) {
             AppendAvailableColumns(metaObj, destination);
         }
+        if (obj.GetObject("failure") is JsonObject failureObj) {
+            AppendAvailableColumns(failureObj, destination);
+            if (failureObj.GetObject("meta") is JsonObject failureMetaObj) {
+                AppendAvailableColumns(failureMetaObj, destination);
+            }
+        }
         return destination.Count > before;
     }
 
     private static void AppendAvailableColumns(JsonObject obj, HashSet<string> destination) {
-        if (obj.GetArray("available_columns") is not JsonArray availableColumnsArray || availableColumnsArray.Count == 0) {
+        var availableColumnsArray = obj.GetArray("available_columns");
+        if ((availableColumnsArray is null || availableColumnsArray.Count == 0)
+            && obj.GetArray("availableColumns") is JsonArray camelCaseColumns) {
+            availableColumnsArray = camelCaseColumns;
+        }
+
+        if (availableColumnsArray is null || availableColumnsArray.Count == 0) {
             return;
         }
 
