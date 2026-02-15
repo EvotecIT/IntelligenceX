@@ -2,6 +2,10 @@
 
 Status: In progress
 
+## Ops Agent Backlog
+For the "smart colleague" chat agent roadmap (ADPlayground/TestimoX/ComputerX/EventViewerX + runtime parallelism),
+see [Docs/agent-superpowers-backlog.md](Docs/agent-superpowers-backlog.md).
+
 ## Reviewer E2E Launch Plan
 Status: In progress
 
