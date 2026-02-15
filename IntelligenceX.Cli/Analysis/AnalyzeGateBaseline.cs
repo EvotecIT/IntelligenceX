@@ -310,7 +310,15 @@ internal static class AnalyzeGateBaseline {
             }
             if (part.Equals("..", StringComparison.Ordinal)) {
                 if (stack.Count == 0) {
-                    return string.Empty;
+                    if (hasLeadingSlash) {
+                        return string.Empty;
+                    }
+                    stack.Add("..");
+                    continue;
+                }
+                if (stack[stack.Count - 1].Equals("..", StringComparison.Ordinal)) {
+                    stack.Add("..");
+                    continue;
                 }
                 stack.RemoveAt(stack.Count - 1);
                 continue;
