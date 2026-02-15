@@ -138,7 +138,7 @@ intelligencex todo project-sync \
 Useful options:
 - `--config <path>` to resolve owner/project from `project-init` output.
 - `--ensure-fields` / `--no-ensure-fields`.
-- `--apply-labels` to apply IX labels (`ix/category:*`, `ix/tag:*`, `ix/vision:*`, `ix/match:*`, `ix/decision:*`) on PRs/issues.
+- `--apply-labels` to sync IX labels (`ix/category:*`, `ix/tag:*`, `ix/vision:*`, `ix/match:*`, `ix/decision:*`) on PRs/issues.
 - `--ensure-labels` / `--no-ensure-labels` for label taxonomy management.
 - `--apply-link-comments` to upsert assistive link comments on PRs (related issues) and issues (related PRs).
 - `--project-item-scan-limit <n>` for larger projects.
@@ -148,6 +148,8 @@ Behavior:
 - `IX Suggested Decision` is populated automatically (`accept`, `defer`, `reject`, `merge-candidate`) from combined triage + vision signals.
 - `Maintainer Decision` remains human-owned for final triage decisions.
 - Unknown categories/tags are normalized into dynamic labels (for example `ML Ops` -> `ix/category:ml-ops`, `Release Candidate` -> `ix/tag:release-candidate`) and are auto-created when `--apply-labels --ensure-labels` is used.
+- `--apply-labels` performs managed IX label reconciliation: stale `ix/*` labels for managed families are removed while non-IX maintainer labels are preserved.
+- Issues also receive match taxonomy labels when PR->issue linking signals exist (`ix/match:linked-pr` or `ix/match:needs-review-pr`).
 
 ## Bootstrap project + workflow (recommended first run)
 

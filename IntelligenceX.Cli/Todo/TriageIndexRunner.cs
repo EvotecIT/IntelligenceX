@@ -31,6 +31,22 @@ internal static class TriageIndexRunner {
         @"(?i)\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?|ref(?:s|erences?)|related to)\s+https?://github\.com/(?<owner>[A-Za-z0-9_.-]+)/(?<repo>[A-Za-z0-9_.-]+)/issues/(?<num>\d+)\b",
         RegexOptions.Compiled
     );
+    private static readonly Regex DirectIssueRef = new(
+        @"(?i)\b(?:issue|bug|ticket|task)\s*#(?<num>\d+)\b",
+        RegexOptions.Compiled
+    );
+    private static readonly Regex DirectRepoIssueRef = new(
+        @"(?i)\b(?:issue|bug|ticket|task)\s+(?<owner>[A-Za-z0-9_.-]+)/(?<repo>[A-Za-z0-9_.-]+)#(?<num>\d+)\b",
+        RegexOptions.Compiled
+    );
+    private static readonly Regex DirectIssueUrlRef = new(
+        @"(?i)\b(?:issue|bug|ticket|task)\s+https?://github\.com/(?<owner>[A-Za-z0-9_.-]+)/(?<repo>[A-Za-z0-9_.-]+)/issues/(?<num>\d+)\b",
+        RegexOptions.Compiled
+    );
+    private static readonly Regex BareIssueUrlRef = new(
+        @"(?i)\bhttps?://github\.com/(?<owner>[A-Za-z0-9_.-]+)/(?<repo>[A-Za-z0-9_.-]+)/issues/(?<num>\d+)\b",
+        RegexOptions.Compiled
+    );
 
     internal sealed record PullRequestSignals(
         bool IsDraft,
@@ -133,6 +149,12 @@ internal static class TriageIndexRunner {
         string? MatchedIssueUrl,
         double? MatchedIssueConfidence,
         IReadOnlyList<RelatedIssueCandidate> RelatedIssues
+    );
+
+    private sealed record IssueReferenceHint(
+        int Number,
+        double Confidence,
+        string Reason
     );
 
     private sealed class Options {
@@ -678,16 +700,16 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
         var issueByNumber = issueItems.ToDictionary(item => item.Number);
         var matchesByNumber = new Dictionary<int, RelatedIssueCandidate>();
 
-        foreach (var issueNumber in ParseExplicitIssueReferences(prTitle, prBody, owner, name)) {
-            if (!issueByNumber.TryGetValue(issueNumber, out var issue)) {
+        foreach (var issueHint in ParseExplicitIssueReferences(prTitle, prBody, owner, name)) {
+            if (!issueByNumber.TryGetValue(issueHint.Number, out var issue)) {
                 continue;
             }
 
             matchesByNumber[issue.Number] = new RelatedIssueCandidate(
                 Number: issue.Number,
                 Url: issue.Url,
-                Confidence: 0.98,
-                Reason: "explicit issue reference in PR title/body"
+                Confidence: issueHint.Confidence,
+                Reason: issueHint.Reason
             );
         }
 
@@ -722,17 +744,28 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
             .ToList();
     }
 
-    private static IReadOnlyList<int> ParseExplicitIssueReferences(
+    private static IReadOnlyList<IssueReferenceHint> ParseExplicitIssueReferences(
         string prTitle,
         string prBody,
         string owner,
         string repoName) {
         var text = $"{prTitle}\n{prBody}";
-        var results = new HashSet<int>();
+        var results = new Dictionary<int, IssueReferenceHint>();
+
+        static void AddHint(
+            IDictionary<int, IssueReferenceHint> map,
+            int number,
+            double confidence,
+            string reason) {
+            if (!map.TryGetValue(number, out var existing) ||
+                confidence > existing.Confidence) {
+                map[number] = new IssueReferenceHint(number, confidence, reason);
+            }
+        }
 
         foreach (Match match in ExplicitIssueRef.Matches(text)) {
             if (TryReadIssueNumber(match, out var number)) {
-                results.Add(number);
+                AddHint(results, number, 0.98, "explicit issue reference in PR title/body");
             }
         }
 
@@ -744,7 +777,7 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
                 continue;
             }
             if (TryReadIssueNumber(match, out var number)) {
-                results.Add(number);
+                AddHint(results, number, 0.98, "explicit issue reference in PR title/body");
             }
         }
 
@@ -756,11 +789,56 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
                 continue;
             }
             if (TryReadIssueNumber(match, out var number)) {
-                results.Add(number);
+                AddHint(results, number, 0.98, "explicit issue reference in PR title/body");
             }
         }
 
-        return results.OrderBy(value => value).ToList();
+        foreach (Match match in DirectIssueRef.Matches(text)) {
+            if (TryReadIssueNumber(match, out var number)) {
+                AddHint(results, number, 0.92, "direct issue reference in PR title/body");
+            }
+        }
+
+        foreach (Match match in DirectRepoIssueRef.Matches(text)) {
+            var refOwner = match.Groups["owner"].Value;
+            var refRepo = match.Groups["repo"].Value;
+            if (!refOwner.Equals(owner, StringComparison.OrdinalIgnoreCase) ||
+                !refRepo.Equals(repoName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (TryReadIssueNumber(match, out var number)) {
+                AddHint(results, number, 0.92, "direct issue reference in PR title/body");
+            }
+        }
+
+        foreach (Match match in DirectIssueUrlRef.Matches(text)) {
+            var refOwner = match.Groups["owner"].Value;
+            var refRepo = match.Groups["repo"].Value;
+            if (!refOwner.Equals(owner, StringComparison.OrdinalIgnoreCase) ||
+                !refRepo.Equals(repoName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (TryReadIssueNumber(match, out var number)) {
+                AddHint(results, number, 0.92, "direct issue reference in PR title/body");
+            }
+        }
+
+        foreach (Match match in BareIssueUrlRef.Matches(text)) {
+            var refOwner = match.Groups["owner"].Value;
+            var refRepo = match.Groups["repo"].Value;
+            if (!refOwner.Equals(owner, StringComparison.OrdinalIgnoreCase) ||
+                !refRepo.Equals(repoName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (TryReadIssueNumber(match, out var number)) {
+                AddHint(results, number, 0.90, "issue URL reference in PR title/body");
+            }
+        }
+
+        return results.Values
+            .OrderByDescending(value => value.Confidence)
+            .ThenBy(value => value.Number)
+            .ToList();
     }
 
     private static bool TryReadIssueNumber(Match match, out int number) {

@@ -443,6 +443,7 @@ internal static partial class Program {
         failed += Run("Todo triage index duplicate clusters", TestTriageIndexDuplicateClustersGroupNearMatches);
         failed += Run("Todo triage index PR scoring", TestTriageIndexScoreRewardsMergeableApprovedPrs);
         failed += Run("Todo triage index PR-issue explicit match", TestTriageIndexMatchPullRequestToIssuesSupportsExplicitReference);
+        failed += Run("Todo triage index PR-issue direct match", TestTriageIndexMatchPullRequestToIssuesSupportsDirectIssueReference);
         failed += Run("Todo triage index category/tag inference", TestTriageIndexInferCategoryAndTagsDetectsSecurity);
         failed += Run("Todo vision check out-of-scope classification", TestVisionCheckClassifiesOutOfScopeWhenOutTokensDominate);
         failed += Run("Todo vision check aligned classification", TestVisionCheckClassifiesAlignedWhenInTokensMatch);
@@ -462,13 +463,18 @@ internal static partial class Program {
         failed += Run("Todo project sync labels include tags and high-confidence match", TestProjectSyncBuildLabelsIncludesTagsAndHighConfidenceIssueMatch);
         failed += Run("Todo project sync labels normalize dynamic category and tags", TestProjectSyncBuildLabelsNormalizesDynamicCategoryAndTags);
         failed += Run("Todo project sync labels mark low-confidence match for review", TestProjectSyncBuildLabelsUsesNeedsReviewForLowConfidenceIssueMatch);
+        failed += Run("Todo project sync labels use related-issue fallback", TestProjectSyncBuildLabelsUsesRelatedIssueFallbackWhenMatchedIssueMissing);
+        failed += Run("Todo project sync labels issue pull-request matches", TestProjectSyncBuildLabelsUsesIssuePullRequestMatchSignals);
         failed += Run("Todo project sync decision suggests merge-candidate", TestProjectSyncBuildEntriesSuggestsMergeCandidateForBestReadyPr);
         failed += Run("Todo project sync decision suggests defer for blocked PR", TestProjectSyncBuildEntriesSuggestsDeferForBlockedPr);
+        failed += Run("Todo project sync derives issue pull-request matches", TestProjectSyncBuildEntriesDerivesIssuePullRequestMatches);
         failed += Run("Todo project sync comment filters by confidence", TestProjectSyncBuildIssueMatchSuggestionCommentFiltersByConfidence);
         failed += Run("Todo project sync comment omitted for weak candidates", TestProjectSyncBuildIssueMatchSuggestionCommentReturnsNullWithoutQualifiedCandidates);
         failed += Run("Todo project sync issue backlink comments aggregate PRs", TestProjectSyncBuildIssueBacklinkSuggestionCommentsAggregatesPullRequests);
         failed += Run("Todo project sync issue backlink comment threshold and limit", TestProjectSyncBuildIssueBacklinkSuggestionCommentRespectsThresholdAndLimit);
         failed += Run("Todo project sync related issues field value", TestProjectSyncBuildRelatedIssuesFieldValueOrdersAndLimitsCandidates);
+        failed += Run("Todo repository label sync plan add/remove managed labels", TestRepositoryLabelManagerBuildManagedLabelSyncPlanAddsAndRemovesManagedOnly);
+        failed += Run("Todo repository label sync plan no-op when aligned", TestRepositoryLabelManagerBuildManagedLabelSyncPlanNoChangesWhenAligned);
         failed += Run("Todo project bootstrap renders project target", TestProjectBootstrapRenderWorkflowTemplateInjectsProjectTarget);
         failed += Run("Todo project bootstrap clamps max items", TestProjectBootstrapRenderWorkflowTemplateClampsMaxItems);
         failed += Run("Todo project bootstrap renders vision template", TestProjectBootstrapRenderVisionTemplateInjectsContext);

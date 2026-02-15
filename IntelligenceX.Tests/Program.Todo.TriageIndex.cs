@@ -141,6 +141,35 @@ internal static partial class Program {
         AssertEqual(true, matches[0].Confidence >= 0.95, "explicit confidence");
     }
 
+    private static void TestTriageIndexMatchPullRequestToIssuesSupportsDirectIssueReference() {
+        var now = DateTimeOffset.UtcNow;
+        var issue42 = new IntelligenceX.Cli.Todo.TriageIndexRunner.TriageIndexItem(
+            "issue#42",
+            "issue",
+            42,
+            "Parser crashes on null input",
+            "https://github.com/EvotecIT/IntelligenceX/issues/42",
+            now,
+            Array.Empty<string>(),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.NormalizeText("Parser crashes on null input"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Parser crashes on null input"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Parser crashes on null input with stack trace"),
+            null,
+            new IntelligenceX.Cli.Todo.TriageIndexRunner.IssueSignals(4, "dev1")
+        );
+
+        var matches = IntelligenceX.Cli.Todo.TriageIndexRunner.MatchPullRequestToIssues(
+            "EvotecIT/IntelligenceX",
+            "Parser null handling follow-up",
+            "Related issue #42; extending guardrails and tests.",
+            new[] { issue42 }
+        );
+
+        AssertEqual(1, matches.Count, "direct reference match count");
+        AssertEqual(42, matches[0].Number, "direct reference issue number");
+        AssertEqual(true, matches[0].Confidence >= 0.90, "direct reference confidence");
+    }
+
     private static void TestTriageIndexInferCategoryAndTagsDetectsSecurity() {
         var now = DateTimeOffset.UtcNow;
         var item = new IntelligenceX.Cli.Todo.TriageIndexRunner.TriageIndexItem(
