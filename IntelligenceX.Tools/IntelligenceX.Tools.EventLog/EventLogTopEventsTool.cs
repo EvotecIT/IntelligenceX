@@ -61,6 +61,13 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
         if (string.IsNullOrWhiteSpace(machineName)) {
             machineName = null;
         }
+        if (machineName is not null) {
+            foreach (var c in machineName) {
+                if (char.IsControl(c)) {
+                    return Task.FromResult(ToolResponse.Error("invalid_argument", "machine_name must not contain control characters."));
+                }
+            }
+        }
 
         // Defensive: options are validated on construction, but keep "top events" semantics stable
         // even if an upstream host misconfigures MaxResults to 0/negative.
@@ -86,7 +93,7 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
         }
 
         var maxMessageChars = includeMessage
-            ? Math.Min(Options.MaxMessageChars, 1200)
+            ? Math.Max(0, Math.Min(Options.MaxMessageChars, 1200))
             : 0;
 
         if (!LiveEventQueryExecutor.TryRead(
