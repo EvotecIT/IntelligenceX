@@ -42,6 +42,7 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
             engine: "EventViewerX",
             tools: ToolRegistryEventLogExtensions.GetRegisteredToolNames(Options),
             recommendedFlow: new[] {
+                "Use eventlog_top_events for quick triage (top N most recent events from a live channel, local or remote).",
                 "Use eventlog_evtx_query or eventlog_live_query for event evidence.",
                 "Use eventlog_evtx_stats/eventlog_live_stats for top-level aggregation.",
                 "For remote live logs, pass machine_name (and optional session_timeout_ms) to eventlog_live_query/eventlog_live_stats.",
@@ -49,6 +50,10 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                 "For AD identity correlation: call ad_environment_discover, then ad_search using eventlog report ad_correlation candidates."
             },
             flowSteps: new[] {
+                ToolPackGuidance.FlowStep(
+                    goal: "Quickly triage most recent events",
+                    suggestedTools: new[] { "eventlog_top_events" },
+                    notes: "Use for questions like: \"top 5 events from AD0 System\" before running heavier queries."),
                 ToolPackGuidance.FlowStep(
                     goal: "Collect raw event evidence",
                     suggestedTools: new[] { "eventlog_evtx_query", "eventlog_live_query" }),

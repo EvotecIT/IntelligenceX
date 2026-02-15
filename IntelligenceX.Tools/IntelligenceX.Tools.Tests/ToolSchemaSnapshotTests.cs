@@ -260,6 +260,12 @@ public class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "eventlog_top_events",
+            new[] { "log_name", "machine_name", "max_events", "include_message", "session_timeout_ms", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "log_name" }
+        };
+
+        yield return new object[] {
             "powershell_pack_info",
             Array.Empty<string>(),
             Array.Empty<string>()
