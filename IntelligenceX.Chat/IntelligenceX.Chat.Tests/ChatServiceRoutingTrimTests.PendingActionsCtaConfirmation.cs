@@ -87,6 +87,28 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("act_001", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
     }
 
+    [Fact]
+    public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenAssistantCtaIncludesTrailingColonInQuote() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            If you say "run now:", I'll execute it.
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "run now" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        Assert.Equal("act_001", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+    }
+
     [Theory]
     [InlineData("run now:")]
     [InlineData("run now;")]
