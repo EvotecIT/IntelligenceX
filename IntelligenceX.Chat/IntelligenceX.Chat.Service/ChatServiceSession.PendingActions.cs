@@ -919,7 +919,10 @@ internal sealed partial class ChatServiceSession {
         // Single-option fallback is intentionally conservative:
         // only allow it for explicitly numbered option lines (e.g., "1. ..."),
         // which usually represent an actionable "pick this" list.
-        return choices.Count == 1 && choices[0].IsNumbered;
+        // If a single bullet carries an explicit inline action id (/act <id>),
+        // it's also safe to route as an actionable follow-up.
+        return choices.Count == 1
+               && (choices[0].IsNumbered || !string.IsNullOrWhiteSpace(choices[0].ActionId));
     }
 
     private static bool TryExtractFallbackChoiceTitle(string trimmedLine, out string title, out bool isNumbered, out string actionId) {
