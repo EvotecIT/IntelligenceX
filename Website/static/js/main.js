@@ -37,12 +37,6 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   async function renderMermaidDiagrams() {
-    // Enable rendered Mermaid only on pages we explicitly modernized.
-    // This avoids CI rendered-warning regressions from older Mermaid snippets.
-    if (!window.location.pathname.startsWith('/docs/chat/architecture/')) {
-      return;
-    }
-
     var blocks = Array.from(document.querySelectorAll('pre code.language-mermaid'));
     if (!blocks.length) {
       return;

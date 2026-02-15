@@ -7,9 +7,6 @@
   {{ description_meta_html }}
   {{ canonical_html }}
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   {{ assets.critical_css_html }}
   {{ include "theme-tokens" }}
   {{ extra_css_html }}
@@ -26,11 +23,12 @@
       <p>Explore real-world examples of what you can build with IntelligenceX.</p>
     </div>
 
+    <h2 class="showcase-gallery-title">Featured Workflows</h2>
     <div class="showcase-gallery">
       {{ for item in data.showcase.cards }}
       <div class="showcase-card">
         <div class="showcase-image">
-          <img src="{{ item.screenshot }}" alt="{{ item.title }}" loading="lazy" decoding="async" />
+          <img src="{{ item.screenshot }}" alt="{{ item.title }}" width="1280" height="720" loading="lazy" decoding="async" />
         </div>
         <div class="showcase-card-body">
           <h3>{{ item.title }}</h3>

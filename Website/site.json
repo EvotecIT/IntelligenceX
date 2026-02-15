@@ -34,9 +34,7 @@
   ],
   "Head": {
     "Links": [
-      { "Rel": "icon", "Href": "/favicon.svg", "Type": "image/svg+xml" },
-      { "Rel": "preconnect", "Href": "https://fonts.googleapis.com" },
-      { "Rel": "preconnect", "Href": "https://fonts.gstatic.com", "Crossorigin": "anonymous" }
+      { "Rel": "icon", "Href": "/favicon.svg", "Type": "image/svg+xml" }
     ]
   },
   "Social": {
