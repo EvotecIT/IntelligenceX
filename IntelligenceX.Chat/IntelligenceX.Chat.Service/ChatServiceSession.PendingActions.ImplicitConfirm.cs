@@ -134,7 +134,10 @@ internal sealed partial class ChatServiceSession {
         if (LooksLikeDecoratedRejectLead(normalized, "no")
             || LooksLikeDecoratedRejectLead(normalized, "nope")
             || LooksLikeDecoratedRejectLead(normalized, "nah")
-            || LooksLikeDecoratedRejectLead(normalized, "nie")) {
+            || LooksLikeDecoratedRejectLead(normalized, "nie")
+            || LooksLikeDecoratedRejectLead(normalized, "dont")
+            || LooksLikeDecoratedRejectLead(normalized, "don't")
+            || LooksLikeDecoratedRejectLead(normalized, "do not")) {
             return true;
         }
 
@@ -264,4 +267,3 @@ internal sealed partial class ChatServiceSession {
     }
 
 }
-
