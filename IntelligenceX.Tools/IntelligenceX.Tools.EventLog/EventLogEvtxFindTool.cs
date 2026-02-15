@@ -127,6 +127,9 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                 continue;
             }
 
+            // Normalize once for containment comparisons (works across \\?\, \\?\UNC\, and separator representations).
+            var rootCmp = NormalizePathForComparison(rootFull);
+
             var queue = new Queue<(string Dir, int Depth)>();
             queue.Enqueue((rootFull, 0));
 
@@ -170,7 +173,7 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                         }
 
                         var fileFull = NormalizePathForComparison(Path.GetFullPath(info.FullName));
-                        if (!IsUnderRoot(fileFull, rootFull, comparison)) {
+                        if (!IsUnderRoot(fileFull, rootCmp, comparison)) {
                             continue;
                         }
 
@@ -212,13 +215,14 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
 
                     string subFull;
                     try {
-                        subFull = NormalizePathForComparison(Path.GetFullPath(subDir));
+                        subFull = Path.GetFullPath(subDir);
+                        subFull = Path.TrimEndingDirectorySeparator(subFull);
                     } catch (Exception ex) when (
                         ex is ArgumentException or NotSupportedException or PathTooLongException) {
                         continue;
                     }
 
-                    if (!IsUnderRoot(subFull, rootFull, comparison)) {
+                    if (!IsUnderRoot(subFull, rootCmp, comparison)) {
                         continue;
                     }
 
