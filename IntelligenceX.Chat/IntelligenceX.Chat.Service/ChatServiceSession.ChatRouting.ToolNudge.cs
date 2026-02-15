@@ -339,14 +339,18 @@ internal sealed partial class ChatServiceSession {
 
         var phrases = new List<QuotedPhrase>();
         for (var i = 0; i < value.Length; i++) {
-            var quote = value[i];
-            if (quote != '"' && quote != '\'') {
+            var openQuote = value[i];
+            if (!TryGetQuotePair(openQuote, out var closeQuote, out var apostropheLike)) {
                 continue;
             }
 
             // Treat apostrophes inside words as apostrophes, not as quoting. This avoids accidentally pairing "don't"
             // with a later single-quote and extracting a huge bogus "phrase".
-            if (quote == '\'' && i > 0 && i + 1 < value.Length && char.IsLetterOrDigit(value[i - 1]) && char.IsLetterOrDigit(value[i + 1])) {
+            if (apostropheLike
+                && i > 0
+                && i + 1 < value.Length
+                && char.IsLetterOrDigit(value[i - 1])
+                && char.IsLetterOrDigit(value[i + 1])) {
                 continue;
             }
 
@@ -358,7 +362,7 @@ internal sealed partial class ChatServiceSession {
                 if (ch == '\n' || ch == '\r') {
                     break;
                 }
-                if (ch == quote) {
+                if (ch == closeQuote) {
                     end = j;
                     break;
                 }
@@ -394,10 +398,48 @@ internal sealed partial class ChatServiceSession {
         return phrases;
     }
 
+    private static bool TryGetQuotePair(char openQuote, out char closeQuote, out bool apostropheLike) {
+        apostropheLike = false;
+        closeQuote = '\0';
+        switch (openQuote) {
+            case '"':
+                closeQuote = '"';
+                return true;
+            case '\'':
+                closeQuote = '\'';
+                apostropheLike = true;
+                return true;
+            case '\u201C': // “
+                closeQuote = '\u201D'; // ”
+                return true;
+            case '\u2018': // ‘
+                closeQuote = '\u2019'; // ’
+                apostropheLike = true;
+                return true;
+            case '\uFF02': // ＂
+                closeQuote = '\uFF02';
+                return true;
+            case '\uFF07': // ＇
+                closeQuote = '\uFF07';
+                apostropheLike = true;
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private static string NormalizeCompactText(string text) {
         var normalized = (text ?? string.Empty).Trim();
         if (normalized.Length == 0) {
             return string.Empty;
+        }
+
+        // Normalize can throw on invalid Unicode (e.g., lone surrogates). This function runs on raw user/assistant input,
+        // so it must be exception-safe.
+        try {
+            normalized = normalized.Normalize(NormalizationForm.FormKC);
+        } catch (ArgumentException) {
+            // Leave as-is.
         }
 
         // Strip inline-code wrappers (`run now`) without trying to parse markdown fully.
@@ -406,7 +448,12 @@ internal sealed partial class ChatServiceSession {
         }
 
         // Trim light punctuation wrappers so "run now?" and "\"run now\"" normalize.
-        normalized = normalized.Trim().Trim('"', '\'', '.', '!', '?', ':', ';', ',', '(', ')', '[', ']', '{', '}');
+        normalized = normalized.Trim().Trim(
+            '"', '\'', '.', '!', '?', ':', ';', ',', '(', ')', '[', ']', '{', '}',
+            '\u201C', '\u201D', // “ ”
+            '\u2018', '\u2019', // ‘ ’
+            '\uFF02', '\uFF07'  // ＂ ＇
+        );
         if (normalized.Length == 0) {
             return string.Empty;
         }

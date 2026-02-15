@@ -496,7 +496,7 @@ internal sealed partial class ChatServiceSession {
             }
 
             var token = NormalizeCompactText(phrase.Value);
-            if (token.Length == 0 || token.Length > 96) {
+            if (!LooksLikeCompactCallToActionToken(token)) {
                 continue;
             }
 
@@ -513,6 +513,27 @@ internal sealed partial class ChatServiceSession {
         return tokens.Count == 0 ? Array.Empty<string>() : tokens.ToArray();
     }
 
+    private static bool LooksLikeCompactCallToActionToken(string token) {
+        var value = (token ?? string.Empty).Trim();
+        if (value.Length == 0 || value.Length > 96) {
+            return false;
+        }
+
+        if (value.Contains('\n', StringComparison.Ordinal) || value.Contains('\r', StringComparison.Ordinal)) {
+            return false;
+        }
+
+        for (var i = 0; i < value.Length; i++) {
+            if (char.IsControl(value[i])) {
+                return false;
+            }
+        }
+
+        // Keep it lean: only short, phrase-like tokens.
+        var tokens = CountLetterDigitTokens(value, maxTokens: 12);
+        return tokens is > 0 and <= 8;
+    }
+
     private static bool UserMatchesPendingActionCallToActionTokens(string userText, IReadOnlyList<string> tokens) {
         if (tokens is null || tokens.Count == 0) {
             return false;
@@ -525,7 +546,7 @@ internal sealed partial class ChatServiceSession {
 
         for (var i = 0; i < tokens.Count; i++) {
             var token = (tokens[i] ?? string.Empty).Trim();
-            if (token.Length == 0) {
+            if (!LooksLikeCompactCallToActionToken(token)) {
                 continue;
             }
 
