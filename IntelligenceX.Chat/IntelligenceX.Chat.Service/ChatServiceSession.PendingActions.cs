@@ -223,7 +223,7 @@ internal sealed partial class ChatServiceSession {
         // This is intentionally high-precision (allowlist-based) to avoid accidental execution from ambiguous short messages.
         if (actions.Count == 1
             && !string.IsNullOrWhiteSpace(actions[0].Id)
-            && LooksLikeImplicitPendingActionConfirmation(normalized)) {
+            && LooksLikeImplicitPendingActionConfirmation(trimmed)) {
             match = actions[0];
             return true;
         }
