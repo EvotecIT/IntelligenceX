@@ -403,10 +403,6 @@ internal sealed partial class ChatServiceSession {
         return normalized.ToLowerInvariant();
     }
 
-    private static bool IsQuestionPunctuation(char ch) {
-        return ch is '?' or '？' or '¿' or '؟';
-    }
-
     private static bool IsDecorationPunctuation(char ch) {
         // Conservative set of punctuation that is commonly used as "decoration" around short acknowledgements.
         // Intentionally excludes ":" and ";" so prefixes like "ok:" remain non-confirming.
@@ -419,18 +415,6 @@ internal sealed partial class ChatServiceSession {
             or '\uFF0C' // ，
             or '\uFF0E' // ．
             or '\uFF61'; // ｡
-    }
-
-    private static bool IsQuoteWrapper(char ch) {
-        // Common wrapper characters in chat/code that should not be stripped into confirmations.
-        return ch is '"'
-            or '\''
-            or '\u2018' // ‘
-            or '\u2019' // ’
-            or '\uFF07' // ＇
-            or '\u201C' // “
-            or '\u201D' // ”
-            or '\uFF02'; // ＂
     }
 
     private static string NormalizeApostrophes(string value) {
