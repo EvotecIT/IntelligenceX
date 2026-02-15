@@ -31,7 +31,7 @@
   --ix-radius-sm: 7px;
   --ix-radius-md: 10px;
   --ix-radius-lg: 14px;
-  --ix-options-width: min(380px, 88vw);
+  --ix-options-width: min(560px, 94vw);
   --ix-scrollbar-thumb: rgba(76, 195, 255, 0.36);
   --ix-scrollbar-thumb-hover: rgba(76, 195, 255, 0.56);
   --ix-user-avatar-bg: #3b82f6;

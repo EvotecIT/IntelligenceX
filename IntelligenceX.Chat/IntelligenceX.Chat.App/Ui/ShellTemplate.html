@@ -97,6 +97,7 @@
     </header>
     <nav class="options-tabs" id="optionsTabs">
       <button class="options-tab active" data-tab="profile">Profile</button>
+      <button class="options-tab" data-tab="runtime">Runtime</button>
       <button class="options-tab" data-tab="display">Display</button>
       <button class="options-tab" data-tab="export">Export</button>
       <button class="options-tab" data-tab="tools">Tools</button>
@@ -143,14 +144,30 @@
             </select>
             <div id="optProfileScopeHint" class="options-note"></div>
           </div>
-          <div class="options-label">Model Runtime</div>
-          <div class="options-note" id="optLocalSimpleHint">ChatGPT native is default. Connect LM Studio for local models.</div>
+          <div class="options-actions">
+            <button id="btnSaveProfile" class="options-btn">Save As Default</button>
+            <button id="btnRestartOnboarding" class="options-btn options-btn-ghost">Restart Onboarding</button>
+          </div>
+        </section>
+      </div>
+
+      <div class="options-tab-content" data-tab="runtime">
+        <section class="options-group">
+          <div class="options-label">Runtime Mode</div>
+          <div id="optRuntimeSummary" class="options-note options-note-strong"></div>
+          <div class="options-note" id="optRuntimeAuthHint">ChatGPT sign-in and runtime provider are separate. You can stay signed in while using local models.</div>
           <div class="options-actions options-actions-wrap">
-            <button id="btnConnectLmStudio" class="options-btn options-btn-sm">Connect LM Studio</button>
+            <button id="btnUseOpenAiRuntime" class="options-btn options-btn-sm">Use ChatGPT Runtime</button>
+            <button id="btnConnectLmStudio" class="options-btn options-btn-sm options-btn-ghost">Use LM Studio Runtime</button>
             <button id="btnRefreshModels" class="options-btn options-btn-sm options-btn-ghost">Refresh Models</button>
             <button id="btnApplyLocalProvider" class="options-btn options-btn-sm options-btn-ghost">Apply Runtime</button>
             <button id="btnToggleLocalAdvancedRuntime" class="options-btn options-btn-sm options-btn-ghost">Show Advanced Runtime</button>
           </div>
+        </section>
+
+        <section class="options-group">
+          <div class="options-label">Local Model Selection</div>
+          <div class="options-note" id="optLocalSimpleHint">ChatGPT runtime is active. Switch to LM Studio to use local models.</div>
           <div id="optLocalAdvancedArea" hidden>
             <div class="options-row" id="optLocalTransportRow">
               <label class="options-label-inline" for="optLocalTransport">Provider transport</label>
@@ -161,7 +178,7 @@
             </div>
             <div class="options-row" id="optLocalBaseUrlRow">
               <label class="options-label-inline" for="optLocalBaseUrl">Base URL</label>
-              <input id="optLocalBaseUrl" class="options-input options-input-sm" placeholder="http://127.0.0.1:11434" />
+              <input id="optLocalBaseUrl" class="options-input options-input-sm" placeholder="http://127.0.0.1:1234/v1" />
             </div>
             <div class="options-row" id="optLocalApiKeyRow">
               <label class="options-label-inline" for="optLocalApiKey">API key (optional)</label>
@@ -185,10 +202,6 @@
             <select id="optLocalModelSelect" class="options-select"></select>
           </div>
           <div class="options-note" id="optLocalModelsState"></div>
-          <div class="options-actions">
-            <button id="btnSaveProfile" class="options-btn">Save As Default</button>
-            <button id="btnRestartOnboarding" class="options-btn options-btn-ghost">Restart Onboarding</button>
-          </div>
         </section>
       </div>
 

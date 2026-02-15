@@ -398,6 +398,7 @@
   }
 
   function switchOptionsTab(tabId) {
+    closeOpenCustomSelect();
     var tabs = optionsPanel.querySelectorAll(".options-tab");
     var contents = optionsPanel.querySelectorAll(".options-tab-content");
     for (var i = 0; i < tabs.length; i++) {

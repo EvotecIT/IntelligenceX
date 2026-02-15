@@ -191,11 +191,30 @@
     }
 
     var rect = button.getBoundingClientRect();
+    var viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    var edgePadding = 8;
+    var preferredMaxHeight = 260;
+    var availableBelow = Math.max(0, viewportHeight - rect.bottom - edgePadding);
+    var availableAbove = Math.max(0, rect.top - edgePadding);
+    var openUpwards = availableBelow < 150 && availableAbove > availableBelow;
+    var availableHeight = openUpwards ? availableAbove : availableBelow;
+    var maxHeight = Math.max(64, Math.min(preferredMaxHeight, availableHeight));
+    if (availableHeight < 64) {
+      maxHeight = Math.max(32, availableHeight);
+    }
+
     menu.style.position = "fixed";
     menu.style.left = rect.left + "px";
-    menu.style.top = (rect.bottom + 4) + "px";
+    if (openUpwards) {
+      menu.classList.add("ix-select-menu-up");
+      menu.style.top = Math.max(edgePadding, rect.top - maxHeight - 4) + "px";
+    } else {
+      menu.classList.remove("ix-select-menu-up");
+      menu.style.top = (rect.bottom + 4) + "px";
+    }
     menu.style.width = rect.width + "px";
     menu.style.right = "auto";
+    menu.style.maxHeight = Math.max(32, maxHeight) + "px";
   }
 
   function clearSelectMenuPosition(wrap) {
@@ -208,6 +227,8 @@
     menu.style.top = "";
     menu.style.width = "";
     menu.style.right = "";
+    menu.style.maxHeight = "";
+    menu.classList.remove("ix-select-menu-up");
   }
 
   function closeOpenCustomSelect() {

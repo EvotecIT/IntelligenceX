@@ -462,20 +462,57 @@
     var runtimeDetectedName = normalizeModelText(runtimeDetection.detectedName || "");
     var runtimeDetectionWarning = normalizeModelText(runtimeDetection.warning || "");
     var lmStudioConnected = isCompatible && isLmStudioBaseUrl(baseUrl);
+    var runtimeSummary = byId("optRuntimeSummary");
+    if (runtimeSummary) {
+      if (isCompatible) {
+        var endpoint = baseUrl ? baseUrl : "(base URL not set)";
+        runtimeSummary.textContent = "Current: Local runtime (Compatible HTTP) via " + endpoint + ".";
+      } else {
+        runtimeSummary.textContent = "Current: ChatGPT runtime (OpenAI native).";
+      }
+    }
+
+    var runtimeAuthHint = byId("optRuntimeAuthHint");
+    if (runtimeAuthHint) {
+      if (isCompatible) {
+        runtimeAuthHint.textContent = "You can stay signed in to ChatGPT while running local models.";
+      } else {
+        runtimeAuthHint.textContent = "ChatGPT sign-in and runtime provider are separate. You can switch to LM Studio any time.";
+      }
+    }
+
     var simpleHint = byId("optLocalSimpleHint");
     if (simpleHint) {
-      if (lmStudioConnected) {
+      if (!isCompatible) {
+        simpleHint.textContent = "ChatGPT runtime is active. Switch to LM Studio runtime to use local models.";
+      } else if (lmStudioConnected) {
         simpleHint.textContent = "LM Studio runtime is active for this profile.";
       } else if (runtimeDetectionHasRun && !lmStudioAvailable) {
-        simpleHint.textContent = "LM Studio not detected on http://127.0.0.1:1234/v1. Start LM Studio or open Advanced Runtime.";
+        simpleHint.textContent = "LM Studio not detected on http://127.0.0.1:1234/v1. Start LM Studio and reconnect, or configure Advanced Runtime.";
       } else {
-        simpleHint.textContent = "ChatGPT native is default. Connect LM Studio for local models.";
+        simpleHint.textContent = "Local runtime is active. Use LM Studio Runtime for the default LM Studio endpoint.";
       }
+    }
+
+    var useOpenAiRuntimeButton = byId("btnUseOpenAiRuntime");
+    if (useOpenAiRuntimeButton) {
+      useOpenAiRuntimeButton.textContent = isCompatible ? "Use ChatGPT Runtime" : "ChatGPT Runtime Active";
+      useOpenAiRuntimeButton.classList.toggle("options-btn-active", !isCompatible);
     }
 
     var connectLmStudioButton = byId("btnConnectLmStudio");
     if (connectLmStudioButton) {
-      connectLmStudioButton.textContent = lmStudioConnected ? "Reconnect LM Studio" : "Connect LM Studio";
+      connectLmStudioButton.textContent = lmStudioConnected ? "LM Studio Runtime Active" : "Use LM Studio Runtime";
+      connectLmStudioButton.classList.toggle("options-btn-active", lmStudioConnected);
+      connectLmStudioButton.title = runtimeDetectionHasRun && !lmStudioAvailable && !lmStudioConnected
+        ? "LM Studio was not detected. Start LM Studio and click Auto Detect Runtime in Advanced Runtime."
+        : "";
+    }
+
+    var refreshModelsButton = byId("btnRefreshModels");
+    if (refreshModelsButton) {
+      refreshModelsButton.disabled = !isCompatible;
+      refreshModelsButton.title = isCompatible ? "" : "Switch to local runtime to refresh local models.";
     }
 
     var advancedShouldBeOpen = isRuntimeAdvancedOpen();
@@ -611,16 +648,21 @@
     if (stateNote) {
       var parts = [];
       if (!isCompatible) {
-        parts.push("ChatGPT native runtime active");
-      } else if (runtimeDetectedName) {
-        parts.push("detected runtime: " + runtimeDetectedName);
-      } else if (runtimeDetectionHasRun && runtimeDetectionWarning) {
-        parts.push(runtimeDetectionWarning);
-      }
-      if (models.length > 0) {
-        parts.push(String(models.length) + " models discovered");
+        parts.push("ChatGPT runtime active");
+        if (models.length > 0) {
+          parts.push(String(models.length) + " local models cached");
+        }
       } else {
-        parts.push("No discovered models yet");
+        if (runtimeDetectedName) {
+          parts.push("detected runtime: " + runtimeDetectedName);
+        } else if (runtimeDetectionHasRun && runtimeDetectionWarning) {
+          parts.push(runtimeDetectionWarning);
+        }
+        if (models.length > 0) {
+          parts.push(String(models.length) + " models discovered");
+        } else {
+          parts.push("No discovered models yet");
+        }
       }
       parts.push(profileSaved ? "service profile saved" : "service profile not saved yet");
       if (isStale) {
