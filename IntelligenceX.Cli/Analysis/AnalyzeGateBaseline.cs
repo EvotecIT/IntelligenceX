@@ -390,7 +390,7 @@ internal static class AnalyzeGateBaseline {
         scope = "all";
 
         var tokens = (fingerprint ?? string.Empty).Split(':');
-        if (tokens.Length < 6) {
+        if (tokens.Length < 5) {
             return false;
         }
         var format = tokens[1].Trim();
@@ -407,15 +407,13 @@ internal static class AnalyzeGateBaseline {
             scope = "changed-files";
             effectiveLength -= 2;
         }
-
-        // Expected tail (after stripping optional scope): :<duplicated>:<significant>:<windowLines>
-        if (effectiveLength < 6) {
+        if (effectiveLength < 5) {
             return false;
         }
 
         if (isFileUri) {
-            // Shape: <ruleId>:file-uri:<escapedPath>:<duplicated>:<significant>:<windowLines>[:scope:changed-files]
-            if (effectiveLength != 6) {
+            // Shape: <ruleId>:file-uri:<escapedPath>:<duplicated>:<significant>[:<windowLines>][:scope:changed-files]
+            if (effectiveLength != 5 && effectiveLength != 6) {
                 return false;
             }
             if (!int.TryParse(tokens[3], out duplicatedLines) || duplicatedLines < 0) {
@@ -424,8 +422,10 @@ internal static class AnalyzeGateBaseline {
             if (!int.TryParse(tokens[4], out significantLines) || significantLines < 0) {
                 return false;
             }
-            if (!int.TryParse(tokens[5], out windowLines) || windowLines < 0) {
-                return false;
+            if (effectiveLength == 6) {
+                if (!int.TryParse(tokens[5], out windowLines) || windowLines < 0) {
+                    return false;
+                }
             }
             try {
                 path = Uri.UnescapeDataString(tokens[2]).Trim().Replace('\\', '/');
@@ -435,17 +435,23 @@ internal static class AnalyzeGateBaseline {
             return true;
         }
 
-        if (!int.TryParse(tokens[effectiveLength - 3], out duplicatedLines) || duplicatedLines < 0) {
-            return false;
-        }
-        if (!int.TryParse(tokens[effectiveLength - 2], out significantLines) || significantLines < 0) {
-            return false;
-        }
-        if (!int.TryParse(tokens[effectiveLength - 1], out windowLines) || windowLines < 0) {
-            return false;
+        // File paths may contain ":" (for example Windows drive letters).
+        // Parse the numeric tail and treat the rest as the path token(s).
+        var hasWindow = effectiveLength >= 6 &&
+                        int.TryParse(tokens[effectiveLength - 1], out windowLines) && windowLines >= 0 &&
+                        int.TryParse(tokens[effectiveLength - 2], out significantLines) && significantLines >= 0 &&
+                        int.TryParse(tokens[effectiveLength - 3], out duplicatedLines) && duplicatedLines >= 0;
+        if (!hasWindow) {
+            windowLines = 0;
+            if (!int.TryParse(tokens[effectiveLength - 1], out significantLines) || significantLines < 0) {
+                return false;
+            }
+            if (!int.TryParse(tokens[effectiveLength - 2], out duplicatedLines) || duplicatedLines < 0) {
+                return false;
+            }
         }
 
-        var pathTokenCount = effectiveLength - 5;
+        var pathTokenCount = effectiveLength - (hasWindow ? 5 : 4);
         if (pathTokenCount <= 0) {
             return false;
         }
