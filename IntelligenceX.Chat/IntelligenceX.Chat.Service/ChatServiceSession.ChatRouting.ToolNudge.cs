@@ -8,6 +8,8 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
 
     private const int MaxQuotedPhraseSpan = 140;
+    // Security/perf: hard-cap the amount of untrusted input we will consider for action-selection detection.
+    // This keeps any attempted parsing bounded even under adversarial input.
     private const int MaxActionSelectionPayloadChars = 4096;
     private const string ExecutionCorrectionMarker = "ix:execution-correction:v1";
     private static readonly JsonDocumentOptions ActionSelectionJsonOptions = new() {
@@ -101,6 +103,12 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        // Cheap pre-check to avoid parsing arbitrary small JSON blobs on every request.
+        // We intentionally keep this case-sensitive: System.Text.Json property matching is case-sensitive by default.
+        if (normalized.IndexOf("\"ix_action_selection\"", StringComparison.Ordinal) < 0 || normalized.IndexOf("\"id\"", StringComparison.Ordinal) < 0) {
+            return false;
+        }
+
         try {
             using var doc = JsonDocument.Parse(normalized, ActionSelectionJsonOptions);
             if (doc.RootElement.ValueKind != JsonValueKind.Object) {
@@ -126,10 +134,6 @@ internal sealed partial class ChatServiceSession {
 
             return false;
         } catch (JsonException) {
-            return false;
-        } catch (FormatException) {
-            return false;
-        } catch (ArgumentException) {
             return false;
         }
     }
