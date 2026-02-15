@@ -519,7 +519,7 @@ internal sealed partial class ChatServiceSession {
         token = token.TrimEnd(':', ';', '\uFF1A', '\uFF1B');
         return token.Trim();
     }
-private static string[] ExtractPendingActionCallToActionTokens(string assistantContext) {
+    private static string[] ExtractPendingActionCallToActionTokens(string assistantContext) {
         var draft = assistantContext ?? string.Empty;
         if (draft.Length == 0) {
             return Array.Empty<string>();
