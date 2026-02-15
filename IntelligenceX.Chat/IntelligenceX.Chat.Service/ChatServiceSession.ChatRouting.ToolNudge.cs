@@ -17,8 +17,10 @@ internal sealed partial class ChatServiceSession {
     };
 
     private static bool ShouldAttemptToolExecutionNudge(string userRequest, string assistantDraft, bool toolsAvailable, int priorToolCalls,
-        bool usedContinuationSubset) {
-        if (!toolsAvailable || priorToolCalls > 0) {
+        int assistantDraftToolCalls, bool usedContinuationSubset) {
+        // Keep the eligibility checks inside this method (not only at the call site) so future callers can't
+        // accidentally force a retry when tools can't run or when tool execution is already happening.
+        if (!toolsAvailable || priorToolCalls > 0 || assistantDraftToolCalls > 0) {
             return false;
         }
 
