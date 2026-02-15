@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Reflection;
 using System.Text.Json;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Tools;
@@ -43,7 +44,20 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("act_001", selection.GetProperty("id").GetString());
     }
 
+
     [Fact]
+    public void ExtractPendingActionCallToActionTokens_RecognizesCommaAfterQuoteCtaPattern() {
+        var draft = "If you say \"run now\", I\'ll execute it.";
+        var method = typeof(ChatServiceSession).GetMethod(
+            "ExtractPendingActionCallToActionTokens",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var tokensObj = method!.Invoke(null, new object?[] { draft });
+        var tokens = Assert.IsType<string[]>(tokensObj);
+
+        Assert.Contains(tokens, static t => string.Equals(t, "run now", StringComparison.OrdinalIgnoreCase));
+    }    [Fact]
     public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenAssistantUsesCurlyQuotesForCta() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
