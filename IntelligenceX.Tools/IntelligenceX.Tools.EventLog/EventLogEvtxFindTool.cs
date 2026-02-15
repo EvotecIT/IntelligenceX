@@ -89,17 +89,34 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
         var scannedDirs = 0;
         var scannedFiles = 0;
         var hitScanBudget = false;
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
         foreach (var root in Options.AllowedRoots.Where(static x => !string.IsNullOrWhiteSpace(x))) {
             cancellationToken.ThrowIfCancellationRequested();
 
             var rootPath = root.Trim();
-            if (!Directory.Exists(rootPath)) {
+            string rootFull;
+            try {
+                rootFull = Path.GetFullPath(rootPath);
+            } catch {
                 continue;
             }
 
+            if (!Directory.Exists(rootFull)) {
+                continue;
+            }
+
+            // Do not traverse reparse points (symlinks/junctions) to prevent escaping AllowedRoots.
+            if (HasReparsePoint(rootFull)) {
+                continue;
+            }
+
+            var rootPrefix = rootFull.EndsWith(Path.DirectorySeparatorChar)
+                ? rootFull
+                : rootFull + Path.DirectorySeparatorChar;
+
             var queue = new Queue<(string Dir, int Depth)>();
-            queue.Enqueue((rootPath, 0));
+            queue.Enqueue((rootFull, 0));
 
             while (queue.Count > 0) {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -136,6 +153,14 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
 
                     try {
                         var info = new FileInfo(file);
+                        if ((info.Attributes & FileAttributes.ReparsePoint) != 0) {
+                            continue;
+                        }
+                        if (!info.FullName.StartsWith(rootPrefix, comparison) &&
+                            !string.Equals(info.FullName, rootFull, comparison)) {
+                            continue;
+                        }
+
                         var candidate = new EvtxFindFile(
                             Path: info.FullName,
                             FileName: info.Name,
@@ -171,7 +196,25 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                         hitScanBudget = true;
                         break;
                     }
-                    queue.Enqueue((subDir, depth + 1));
+
+                    string subFull;
+                    try {
+                        subFull = Path.GetFullPath(subDir);
+                    } catch {
+                        continue;
+                    }
+
+                    if (!subFull.StartsWith(rootPrefix, comparison) &&
+                        !string.Equals(subFull, rootFull, comparison)) {
+                        continue;
+                    }
+
+                    // Do not traverse reparse points (symlinks/junctions) to prevent escaping AllowedRoots.
+                    if (HasReparsePoint(subFull)) {
+                        continue;
+                    }
+
+                    queue.Enqueue((subFull, depth + 1));
                 }
             }
 
@@ -265,6 +308,16 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             idx = ~idx;
         }
         best.Insert(idx, candidate);
+    }
+
+    private static bool HasReparsePoint(string path) {
+        try {
+            return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+        } catch (Exception ex) when (
+            ex is UnauthorizedAccessException or DirectoryNotFoundException or PathTooLongException or IOException) {
+            // Treat as unsafe: skip traversal if we can't reliably read attributes.
+            return true;
+        }
     }
 
     private static bool IsMatch(string path, IReadOnlyList<string> queryTokens, string? logHint) {

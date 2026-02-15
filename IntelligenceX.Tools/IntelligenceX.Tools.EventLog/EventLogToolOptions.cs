@@ -25,6 +25,7 @@ public sealed class EventLogToolOptions {
 
     /// <summary>
     /// Maximum directory traversal depth for EVTX discovery helper tools.
+    /// Set to 0 to scan only the allowed root directory (no recursion).
     /// </summary>
     public int EvtxFindMaxDepth { get; set; } = 6;
 
@@ -49,8 +50,8 @@ public sealed class EventLogToolOptions {
         if (MaxMessageChars <= 0) {
             throw new ArgumentOutOfRangeException(nameof(MaxMessageChars), "MaxMessageChars must be positive.");
         }
-        if (EvtxFindMaxDepth <= 0) {
-            throw new ArgumentOutOfRangeException(nameof(EvtxFindMaxDepth), "EvtxFindMaxDepth must be positive.");
+        if (EvtxFindMaxDepth < 0) {
+            throw new ArgumentOutOfRangeException(nameof(EvtxFindMaxDepth), "EvtxFindMaxDepth cannot be negative.");
         }
         if (EvtxFindMaxDirsScanned <= 0) {
             throw new ArgumentOutOfRangeException(nameof(EvtxFindMaxDirsScanned), "EvtxFindMaxDirsScanned must be positive.");
