@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Chat;
 
-namespace IntelligenceX.Chat.Service.Profiles;
+namespace IntelligenceX.Chat.Profiles;
 
 /// <summary>
 /// Serializable session profile (config preset) for the chat service.

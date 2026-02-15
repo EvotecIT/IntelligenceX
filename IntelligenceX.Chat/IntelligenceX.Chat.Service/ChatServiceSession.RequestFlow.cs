@@ -439,13 +439,31 @@ internal sealed partial class ChatServiceSession {
 
         run.Task = Task.Run(async () => {
             IDisposable? deltaSubscription = null;
+            var startedAtUtc = DateTime.UtcNow;
+            long firstDeltaUtcTicks = 0;
+            TokenUsageDto? usageDto = null;
+            var toolCallsCount = 0;
+            var toolRounds = 0;
+            var outcome = "ok";
+            string? outcomeCode = null;
+            var threadIdForDelta = run.ThreadId ?? string.Empty;
             try {
-                var threadIdForDelta = run.ThreadId ?? string.Empty;
-                deltaSubscription = client.SubscribeDelta(delta => { _ = TryWriteDeltaAsync(writer, request.RequestId, threadIdForDelta, delta); });
+                deltaSubscription = client.SubscribeDelta(delta => {
+                    // Best-effort TTFT tracking: latch the first delta timestamp once.
+                    if (firstDeltaUtcTicks == 0) {
+                        _ = Interlocked.CompareExchange(ref firstDeltaUtcTicks, DateTime.UtcNow.Ticks, 0);
+                    }
+                    _ = TryWriteDeltaAsync(writer, request.RequestId, threadIdForDelta, delta);
+                });
 
                 var result = await RunChatOnCurrentThreadAsync(client, writer, request, threadIdForDelta, run.Cts.Token).ConfigureAwait(false);
-                await WriteAsync(writer, result, CancellationToken.None).ConfigureAwait(false);
+                usageDto = MapUsage(result.Usage);
+                toolCallsCount = result.ToolCallsCount;
+                toolRounds = result.ToolRounds;
+                await WriteAsync(writer, result.Result, CancellationToken.None).ConfigureAwait(false);
             } catch (OpenAIAuthenticationRequiredException) {
+                outcome = "error";
+                outcomeCode = "not_authenticated";
                 await WriteAsync(writer, new ErrorMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,
@@ -453,6 +471,8 @@ internal sealed partial class ChatServiceSession {
                     Code = "not_authenticated"
                 }, CancellationToken.None).ConfigureAwait(false);
             } catch (OperationCanceledException) when (run.Cts.IsCancellationRequested && !cancellationToken.IsCancellationRequested) {
+                outcome = "canceled";
+                outcomeCode = "chat_canceled";
                 await WriteAsync(writer, new ErrorMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,
@@ -461,7 +481,11 @@ internal sealed partial class ChatServiceSession {
                 }, CancellationToken.None).ConfigureAwait(false);
             } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
                 // Session shutting down.
+                outcome = "canceled";
+                outcomeCode = "session_canceled";
             } catch (Exception ex) {
+                outcome = "error";
+                outcomeCode = "chat_failed";
                 await WriteAsync(writer, new ErrorMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,
@@ -469,6 +493,35 @@ internal sealed partial class ChatServiceSession {
                     Code = "chat_failed"
                 }, CancellationToken.None).ConfigureAwait(false);
             } finally {
+                var completedAtUtc = DateTime.UtcNow;
+                var durationMs = (long)Math.Max(0, (completedAtUtc - startedAtUtc).TotalMilliseconds);
+                DateTime? firstDeltaAtUtc = null;
+                long? ttftMs = null;
+                if (firstDeltaUtcTicks != 0) {
+                    firstDeltaAtUtc = new DateTime(firstDeltaUtcTicks, DateTimeKind.Utc);
+                    ttftMs = (long)Math.Max(0, TimeSpan.FromTicks(firstDeltaUtcTicks - startedAtUtc.Ticks).TotalMilliseconds);
+                }
+
+                try {
+                    await WriteAsync(writer, new ChatMetricsMessage {
+                        Kind = ChatServiceMessageKind.Event,
+                        RequestId = request.RequestId,
+                        ThreadId = threadIdForDelta,
+                        StartedAtUtc = startedAtUtc,
+                        FirstDeltaAtUtc = firstDeltaAtUtc,
+                        CompletedAtUtc = completedAtUtc,
+                        DurationMs = durationMs,
+                        TtftMs = ttftMs,
+                        Usage = usageDto,
+                        ToolCallsCount = toolCallsCount,
+                        ToolRounds = toolRounds,
+                        Outcome = outcome,
+                        ErrorCode = outcomeCode
+                    }, CancellationToken.None).ConfigureAwait(false);
+                } catch {
+                    // Best-effort; ignore pipe failures.
+                }
+
                 deltaSubscription?.Dispose();
                 run.MarkCompleted();
                 lock (_chatRunLock) {
@@ -480,6 +533,19 @@ internal sealed partial class ChatServiceSession {
         }, CancellationToken.None);
 
         return activeThreadId;
+    }
+
+    private static TokenUsageDto? MapUsage(TurnUsage? usage) {
+        if (usage is null) {
+            return null;
+        }
+        return new TokenUsageDto {
+            PromptTokens = usage.InputTokens,
+            CompletionTokens = usage.OutputTokens,
+            TotalTokens = usage.TotalTokens,
+            CachedPromptTokens = usage.CachedInputTokens,
+            ReasoningTokens = usage.ReasoningTokens
+        };
     }
 
     private async Task HandleCancelChatAsync(StreamWriter writer, CancelChatRequest request, CancellationToken cancellationToken) {

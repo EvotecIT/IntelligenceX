@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Profiles;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI;
@@ -34,11 +35,24 @@ internal static partial class Program {
         }
 
         Console.WriteLine("IntelligenceX Chat Host (REPL)");
+        Console.WriteLine($"Profile: {(string.IsNullOrWhiteSpace(options.ProfileName) ? "(none)" : options.ProfileName)}");
         Console.WriteLine($"Model: {options.Model}");
         Console.WriteLine($"Parallel tool calls: {options.ParallelToolCalls}");
         Console.WriteLine($"Max tool rounds: {options.MaxToolRounds}");
         Console.WriteLine($"Turn timeout: {(options.TurnTimeoutSeconds <= 0 ? "(none)" : $"{options.TurnTimeoutSeconds}s")}");
         Console.WriteLine($"Tool timeout: {(options.ToolTimeoutSeconds <= 0 ? "(none)" : $"{options.ToolTimeoutSeconds}s")}");
+        if (options.ReasoningEffort.HasValue) {
+            Console.WriteLine($"Reasoning effort: {options.ReasoningEffort.Value}");
+        }
+        if (options.ReasoningSummary.HasValue) {
+            Console.WriteLine($"Reasoning summary: {options.ReasoningSummary.Value}");
+        }
+        if (options.TextVerbosity.HasValue) {
+            Console.WriteLine($"Text verbosity: {options.TextVerbosity.Value}");
+        }
+        if (options.Temperature.HasValue) {
+            Console.WriteLine($"Temperature: {options.Temperature.Value}");
+        }
         Console.WriteLine($"Max table rows: {(options.MaxTableRows <= 0 ? "(none)" : options.MaxTableRows)}");
         Console.WriteLine($"Max sample items: {(options.MaxSample <= 0 ? "(none)" : options.MaxSample)}");
         Console.WriteLine($"Redaction: {(options.Redact ? "on" : "off")}");
@@ -50,14 +64,7 @@ internal static partial class Program {
             Console.WriteLine($"Auth store: {authPath}");
         }
 
-        var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
-            AllowedRoots = options.AllowedRoots.ToArray(),
-            AdDomainController = options.AdDomainController,
-            AdDefaultSearchBaseDn = options.AdDefaultSearchBaseDn,
-            AdMaxResults = options.AdMaxResults,
-            EnablePowerShellPack = options.EnablePowerShellPack,
-            EnableTestimoXPack = options.EnableTestimoXPack
-        });
+        var packs = BuildPacks(options);
         WritePolicyBanner(options, packs);
         Console.WriteLine();
 
@@ -82,116 +89,223 @@ internal static partial class Program {
     }
 
     private static async Task RunAsync(ReplOptions options, IReadOnlyList<IToolPack> packs, CancellationToken cancellationToken) {
-        var clientOptions = new IntelligenceXClientOptions {
-            TransportKind = options.OpenAITransport
-        };
-        var instructions = LoadInstructions(options);
-        var shaped = ApplyRuntimeShaping(instructions, options);
-        var runtimeInstructions = string.IsNullOrWhiteSpace(shaped) ? null : shaped;
-        if (clientOptions.TransportKind == OpenAITransportKind.Native && !string.IsNullOrWhiteSpace(runtimeInstructions)) {
-            clientOptions.NativeOptions.Instructions = runtimeInstructions!;
-        }
+        IntelligenceXClient? client = null;
+        ToolRegistry? registry = null;
+        ReplSession? session = null;
+        string? runtimeInstructions = null;
 
-        if (clientOptions.TransportKind == OpenAITransportKind.CompatibleHttp) {
-            clientOptions.CompatibleHttpOptions.BaseUrl = options.OpenAIBaseUrl;
-            clientOptions.CompatibleHttpOptions.ApiKey = options.OpenAIApiKey;
-            clientOptions.CompatibleHttpOptions.Streaming = options.OpenAIStreaming;
-            clientOptions.CompatibleHttpOptions.AllowInsecureHttp = options.OpenAIAllowInsecureHttp;
-            clientOptions.CompatibleHttpOptions.AllowInsecureHttpNonLoopback = options.OpenAIAllowInsecureHttpNonLoopback;
-        }
-        var authPath = ResolveAuthPath(options);
-        if (!string.IsNullOrWhiteSpace(authPath)) {
-            clientOptions.NativeOptions.AuthStore = new FileAuthBundleStore(authPath);
-        }
-
-        await using var client = await IntelligenceXClient.ConnectAsync(clientOptions).ConfigureAwait(false);
-
-        if (client.TransportKind == OpenAITransportKind.Native) {
-            if (!options.ForceLogin && await TryUseCachedChatGptLoginAsync(client, cancellationToken).ConfigureAwait(false)) {
-                Console.WriteLine("ChatGPT login: using cached token.");
-                Console.WriteLine();
-            } else {
-                await client.LoginChatGptAndWaitAsync(
-                    onUrl: url => {
-                        Console.WriteLine("ChatGPT login required. Open this URL in a browser:");
-                        Console.WriteLine(url);
-                        Console.WriteLine();
-                        Console.WriteLine("After login, you may be redirected to a localhost URL.");
-                        Console.WriteLine("If the app doesn't auto-complete the login, copy the final redirect URL (or the code) and paste it here.");
-                        Console.WriteLine();
-                    },
-                    onPrompt: prompt => PromptForAuthAsync(prompt, cancellationToken),
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
-            }
-        }
-
-        var registry = new ToolRegistry();
-        ToolPackBootstrap.RegisterAll(registry, packs);
-
-        Console.WriteLine($"Registered tools: {registry.GetDefinitions().Count}");
-        Console.WriteLine("Commands: /help, /tools, /roots, /exit");
-        Console.WriteLine();
-
-        var session = new ReplSession(client, registry, options, runtimeInstructions, status => {
+        Action<string> statusWriter = status => {
             // Keep progress lines visually distinct from assistant output.
             if (!string.IsNullOrWhiteSpace(status)) {
                 Console.WriteLine($"> {status}");
             }
-        });
-        while (true) {
-            cancellationToken.ThrowIfCancellationRequested();
+        };
 
-            Console.Write("ix> ");
-            var line = Console.ReadLine();
-            if (line is null) {
-                break;
+        async Task BuildRuntimeAsync() {
+            var nextPacks = BuildPacks(options);
+            var clientOptions = new IntelligenceXClientOptions {
+                TransportKind = options.OpenAITransport,
+                DefaultModel = options.Model
+            };
+
+            var instructions = LoadInstructions(options);
+            var shaped = ApplyRuntimeShaping(instructions, options);
+            runtimeInstructions = string.IsNullOrWhiteSpace(shaped) ? null : shaped;
+            if (clientOptions.TransportKind == OpenAITransportKind.Native && !string.IsNullOrWhiteSpace(runtimeInstructions)) {
+                clientOptions.NativeOptions.Instructions = runtimeInstructions!;
             }
 
-            line = line.Trim();
-            if (line.Length == 0) {
-                continue;
+            if (clientOptions.TransportKind == OpenAITransportKind.CompatibleHttp) {
+                clientOptions.CompatibleHttpOptions.BaseUrl = options.OpenAIBaseUrl;
+                clientOptions.CompatibleHttpOptions.ApiKey = options.OpenAIApiKey;
+                clientOptions.CompatibleHttpOptions.Streaming = options.OpenAIStreaming;
+                clientOptions.CompatibleHttpOptions.AllowInsecureHttp = options.OpenAIAllowInsecureHttp;
+                clientOptions.CompatibleHttpOptions.AllowInsecureHttpNonLoopback = options.OpenAIAllowInsecureHttpNonLoopback;
             }
 
-            if (line.StartsWith("/", StringComparison.Ordinal)) {
-                if (HandleCommand(line, registry, options)) {
-                    break;
-                }
-                continue;
+            var authPath = ResolveAuthPath(options);
+            if (!string.IsNullOrWhiteSpace(authPath)) {
+                clientOptions.NativeOptions.AuthStore = new FileAuthBundleStore(authPath);
             }
 
-            var result = await session.AskAsync(line, cancellationToken).ConfigureAwait(false);
-            WriteTurnResult(result, options);
-            Console.WriteLine();
-        }
-    }
+            var nextClient = await IntelligenceXClient.ConnectAsync(clientOptions).ConfigureAwait(false);
 
-    private static bool HandleCommand(string input, ToolRegistry registry, ReplOptions options) {
-        switch (input.Trim().ToLowerInvariant()) {
-            case "/exit":
-            case "/quit":
-                return true;
-            case "/help":
-                WriteHelp();
-                return false;
-            case "/tools":
-                foreach (var def in registry.GetDefinitions()) {
-                    var id = options.ShowToolIds ? $" ({def.Name})" : string.Empty;
-                    Console.WriteLine($"- {GetToolDisplayName(def.Name)}{id}: {def.Description}");
-                }
-                return false;
-            case "/roots":
-                if (options.AllowedRoots.Count == 0) {
-                    Console.WriteLine("(none)");
-                    Console.WriteLine("Tip: pass --allow-root <PATH> to enable file/evtx tools.");
-                } else {
-                    foreach (var root in options.AllowedRoots) {
-                        Console.WriteLine(root);
+            try {
+                if (nextClient.TransportKind == OpenAITransportKind.Native) {
+                    if (!options.ForceLogin && await TryUseCachedChatGptLoginAsync(nextClient, cancellationToken).ConfigureAwait(false)) {
+                        Console.WriteLine("ChatGPT login: using cached token.");
+                        Console.WriteLine();
+                    } else {
+                        await nextClient.LoginChatGptAndWaitAsync(
+                            onUrl: url => {
+                                Console.WriteLine("ChatGPT login required. Open this URL in a browser:");
+                                Console.WriteLine(url);
+                                Console.WriteLine();
+                                Console.WriteLine("After login, you may be redirected to a localhost URL.");
+                                Console.WriteLine("If the app doesn't auto-complete the login, copy the final redirect URL (or the code) and paste it here.");
+                                Console.WriteLine();
+                            },
+                            onPrompt: prompt => PromptForAuthAsync(prompt, cancellationToken),
+                            cancellationToken: cancellationToken).ConfigureAwait(false);
                     }
                 }
-                return false;
-            default:
-                Console.WriteLine("Unknown command. Try /help.");
-                return false;
+            } catch {
+                try {
+                    await nextClient.DisposeAsync().ConfigureAwait(false);
+                } catch {
+                    // Ignore.
+                }
+                throw;
+            }
+
+            var nextRegistry = new ToolRegistry();
+            ToolPackBootstrap.RegisterAll(nextRegistry, nextPacks);
+            var nextSession = new ReplSession(nextClient, nextRegistry, options, runtimeInstructions, statusWriter);
+
+            if (client is not null) {
+                try {
+                    await client.DisposeAsync().ConfigureAwait(false);
+                } catch {
+                    // Ignore.
+                }
+            }
+
+            packs = nextPacks;
+            client = nextClient;
+            registry = nextRegistry;
+            session = nextSession;
+
+            Console.WriteLine($"Registered tools: {registry.GetDefinitions().Count}");
+            Console.WriteLine("Commands: /help, /tools, /roots, /profiles, /profile <name>, /models, /model <name>, /exit");
+            Console.WriteLine();
+        }
+
+        try {
+            await BuildRuntimeAsync().ConfigureAwait(false);
+
+            while (true) {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                Console.Write("ix> ");
+                var line = Console.ReadLine();
+                if (line is null) {
+                    break;
+                }
+
+                line = line.Trim();
+                if (line.Length == 0) {
+                    continue;
+                }
+
+                if (line.StartsWith("/", StringComparison.Ordinal)) {
+                    var parts = line.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    var cmd = parts.Length == 0 ? string.Empty : parts[0].Trim().ToLowerInvariant();
+                    var arg = parts.Length > 1 ? parts[1].Trim() : null;
+
+                    switch (cmd) {
+                        case "/exit":
+                        case "/quit":
+                            return;
+                        case "/help":
+                            WriteHelp();
+                            continue;
+                        case "/tools":
+                            foreach (var def in registry!.GetDefinitions()) {
+                                var id = options.ShowToolIds ? $" ({def.Name})" : string.Empty;
+                                Console.WriteLine($"- {GetToolDisplayName(def.Name)}{id}: {def.Description}");
+                            }
+                            continue;
+                        case "/roots":
+                            if (options.AllowedRoots.Count == 0) {
+                                Console.WriteLine("(none)");
+                                Console.WriteLine("Tip: pass --allow-root <PATH> to enable file/evtx tools.");
+                            } else {
+                                foreach (var root in options.AllowedRoots) {
+                                    Console.WriteLine(root);
+                                }
+                            }
+                            continue;
+                        case "/profiles": {
+                                var dbPath = string.IsNullOrWhiteSpace(options.StateDbPath) ? ReplOptions.GetDefaultStateDbPath() : options.StateDbPath!.Trim();
+                                using var store = new SqliteServiceProfileStore(dbPath);
+                                var names = await store.ListNamesAsync(cancellationToken).ConfigureAwait(false);
+                                if (names.Count == 0) {
+                                    Console.WriteLine("(no profiles)");
+                                } else {
+                                    foreach (var name in names) {
+                                        var active = string.Equals(options.ProfileName, name, StringComparison.OrdinalIgnoreCase) ? " *" : string.Empty;
+                                        Console.WriteLine($"{name}{active}");
+                                    }
+                                }
+                                continue;
+                            }
+                        case "/profile": {
+                                if (string.IsNullOrWhiteSpace(arg)) {
+                                    Console.WriteLine(string.IsNullOrWhiteSpace(options.ProfileName) ? "(none)" : options.ProfileName);
+                                    continue;
+                                }
+
+                                var dbPath = string.IsNullOrWhiteSpace(options.StateDbPath) ? ReplOptions.GetDefaultStateDbPath() : options.StateDbPath!.Trim();
+                                using var store = new SqliteServiceProfileStore(dbPath);
+                                var profile = await store.GetAsync(arg, cancellationToken).ConfigureAwait(false);
+                                if (profile is null) {
+                                    Console.WriteLine($"Profile not found: {arg}");
+                                    continue;
+                                }
+
+                                options.ApplyProfile(profile);
+                                options.ProfileName = arg;
+
+                                Console.WriteLine($"Switched profile: {arg}");
+                                WritePolicyBanner(options, BuildPacks(options));
+                                Console.WriteLine();
+
+                                await BuildRuntimeAsync().ConfigureAwait(false);
+                                session!.ResetThread();
+                                continue;
+                            }
+                        case "/models": {
+                                var models = await client!.ListModelsAsync(cancellationToken).ConfigureAwait(false);
+                                if (models.Models.Count == 0) {
+                                    Console.WriteLine("(no models returned)");
+                                } else {
+                                    foreach (var m in models.Models) {
+                                        var title = string.IsNullOrWhiteSpace(m.DisplayName) ? m.Model : m.DisplayName;
+                                        var marker = m.IsDefault ? " (default)" : string.Empty;
+                                        Console.WriteLine($"- {title} [{m.Model}]{marker}");
+                                    }
+                                }
+                                continue;
+                            }
+                        case "/model": {
+                                if (string.IsNullOrWhiteSpace(arg)) {
+                                    Console.WriteLine(options.Model);
+                                    continue;
+                                }
+                                options.Model = arg;
+                                client!.ConfigureDefaults(model: options.Model);
+                                session!.ResetThread();
+                                Console.WriteLine($"Model set to: {options.Model} (new thread)");
+                                continue;
+                            }
+                        default:
+                            Console.WriteLine("Unknown command. Try /help.");
+                            continue;
+                    }
+                }
+
+                var result = await session!.AskAsync(line, cancellationToken).ConfigureAwait(false);
+                WriteTurnResult(result, options);
+                Console.WriteLine();
+            }
+        } finally {
+            if (client is not null) {
+                try {
+                    await client.DisposeAsync().ConfigureAwait(false);
+                } catch {
+                    // Ignore.
+                }
+            }
         }
     }
 
@@ -326,6 +440,10 @@ internal static partial class Program {
         Console.WriteLine();
         Console.WriteLine("Options:");
         Console.WriteLine("  --model <NAME>          OpenAI model (default: gpt-5.3-codex)");
+        Console.WriteLine("  --reasoning-effort <LEVEL>   Reasoning effort hint: minimal|low|medium|high|xhigh.");
+        Console.WriteLine("  --reasoning-summary <LEVEL>  Reasoning summary hint: auto|concise|detailed|off.");
+        Console.WriteLine("  --text-verbosity <LEVEL>     Text verbosity hint: low|medium|high.");
+        Console.WriteLine("  --temperature <N>       Sampling temperature (0-2).");
         Console.WriteLine("  --openai-transport <KIND>  Provider transport: native|appserver|compatible-http (default: native).");
         Console.WriteLine("  --openai-base-url <URL> Base URL for compatible-http (example: http://127.0.0.1:11434 or http://127.0.0.1:11434/v1).");
         Console.WriteLine("  --openai-api-key <KEY>  Optional Bearer token for compatible-http.");
@@ -333,6 +451,8 @@ internal static partial class Program {
         Console.WriteLine("  --openai-no-stream      Disable streaming responses.");
         Console.WriteLine("  --openai-allow-insecure-http  Allow http:// base URLs for loopback hosts (default: off).");
         Console.WriteLine("  --openai-allow-insecure-http-non-loopback  Allow http:// base URLs for non-loopback hosts (dangerous).");
+        Console.WriteLine("  --profile <NAME>        Load a saved profile (SQLite-backed) and apply it as defaults.");
+        Console.WriteLine("  --state-db <PATH>       Override the SQLite state DB path (defaults to LocalAppData).");
         Console.WriteLine("  --allow-root <PATH>     Allow filesystem/evtx operations under PATH (repeatable).");
         Console.WriteLine("  --auth-path <PATH>      Override auth store path (default: %USERPROFILE%\\.intelligencex\\auth.json).");
         Console.WriteLine("  --instructions-file <PATH>  Load system instructions from a file (default: bundled HostSystemPrompt.md).");
@@ -357,7 +477,7 @@ internal static partial class Program {
         Console.WriteLine("  -h, --help              Show help.");
         Console.WriteLine();
         Console.WriteLine("REPL commands:");
-        Console.WriteLine("  /help, /tools, /roots, /exit");
+        Console.WriteLine("  /help, /tools, /roots, /profiles, /profile <name>, /models, /model <name>, /exit");
     }
 
     private static string? LoadInstructions(ReplOptions options) {

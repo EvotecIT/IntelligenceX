@@ -8,7 +8,7 @@ using DBAClientX;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Chat;
 
-namespace IntelligenceX.Chat.Service.Profiles;
+namespace IntelligenceX.Chat.Profiles;
 
 /// <summary>
 /// SQLite-backed profile store (file-based).

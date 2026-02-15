@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace IntelligenceX.Chat.Service.Profiles;
+namespace IntelligenceX.Chat.Profiles;
 
 /// <summary>
 /// Storage for named <see cref="ServiceProfile"/> presets.
@@ -12,4 +12,3 @@ internal interface IServiceProfileStore {
     Task UpsertAsync(string name, ServiceProfile profile, CancellationToken cancellationToken);
     Task<IReadOnlyList<string>> ListNamesAsync(CancellationToken cancellationToken);
 }
-

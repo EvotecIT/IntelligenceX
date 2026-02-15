@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
-using IntelligenceX.Chat.Service.Profiles;
+using IntelligenceX.Chat.Profiles;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.CompatibleHttp;

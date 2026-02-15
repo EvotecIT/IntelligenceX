@@ -26,6 +26,8 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
 
+    private sealed record ChatTurnRunResult(ChatResultMessage Result, TurnUsage? Usage, int ToolCallsCount, int ToolRounds);
+
     private static ChatOptions CopyChatOptions(ChatOptions options, bool? newThreadOverride = null) {
         if (options is null) {
             throw new ArgumentNullException(nameof(options));
@@ -38,10 +40,11 @@ internal sealed partial class ChatServiceSession {
         return copy;
     }
 
-    private async Task<ChatResultMessage> RunChatOnCurrentThreadAsync(IntelligenceXClient client, StreamWriter writer, ChatRequest request, string threadId,
+    private async Task<ChatTurnRunResult> RunChatOnCurrentThreadAsync(IntelligenceXClient client, StreamWriter writer, ChatRequest request, string threadId,
         CancellationToken cancellationToken) {
         var toolCalls = new List<ToolCallDto>();
         var toolOutputs = new List<ToolOutputDto>();
+        var toolRounds = 0;
 
         IReadOnlyList<ToolDefinition> toolDefs = _registry.GetDefinitions();
         if (request.Options?.DisabledTools is { Length: > 0 } disabledTools && toolDefs.Count > 0) {
@@ -102,10 +105,6 @@ internal sealed partial class ChatServiceSession {
         var options = new ChatOptions {
             Model = request.Options?.Model ?? _options.Model,
             Instructions = string.IsNullOrWhiteSpace(_instructions) ? null : _instructions,
-            ReasoningEffort = _options.ReasoningEffort,
-            ReasoningSummary = _options.ReasoningSummary,
-            TextVerbosity = _options.TextVerbosity,
-            Temperature = _options.Temperature,
             ParallelToolCalls = parallelTools,
             Tools = toolDefs.Count == 0 ? null : toolDefs,
             ToolChoice = toolDefs.Count == 0 ? null : ToolChoice.Auto
@@ -201,8 +200,14 @@ internal sealed partial class ChatServiceSession {
                         ? null
                         : new ToolRunDto { Calls = toolCalls.ToArray(), Outputs = toolOutputs.ToArray() }
                 };
-                return result;
+                return new ChatTurnRunResult(
+                    Result: result,
+                    Usage: turn.Usage,
+                    ToolCallsCount: toolCalls.Count,
+                    ToolRounds: toolRounds);
             }
+
+            toolRounds++;
 
             foreach (var call in extracted) {
                 await TryWriteStatusAsync(writer, request.RequestId, threadId, status: "tool_call", toolName: call.Name, toolCallId: call.CallId)

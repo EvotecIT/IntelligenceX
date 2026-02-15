@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace IntelligenceX.Chat.Service.Profiles;
+namespace IntelligenceX.Chat.Profiles;
 
 internal sealed class InMemoryServiceProfileStore : IServiceProfileStore {
     private readonly Dictionary<string, ServiceProfile> _profiles = new(StringComparer.OrdinalIgnoreCase);

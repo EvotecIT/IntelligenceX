@@ -12,6 +12,9 @@ namespace IntelligenceX.Chat.Abstractions.Protocol;
 [JsonDerivedType(typeof(ChatGptLoginPromptResponseRequest), "chatgpt_login_prompt_response")]
 [JsonDerivedType(typeof(CancelChatGptLoginRequest), "chatgpt_login_cancel")]
 [JsonDerivedType(typeof(ListToolsRequest), "list_tools")]
+[JsonDerivedType(typeof(ListProfilesRequest), "list_profiles")]
+[JsonDerivedType(typeof(SetProfileRequest), "set_profile")]
+[JsonDerivedType(typeof(ListModelsRequest), "list_models")]
 [JsonDerivedType(typeof(InvokeToolRequest), "invoke_tool")]
 [JsonDerivedType(typeof(CancelChatRequest), "chat_cancel")]
 [JsonDerivedType(typeof(ChatRequest), "chat")]
@@ -85,6 +88,35 @@ public sealed record CancelChatGptLoginRequest : ChatServiceRequest {
 /// Requests the list of registered tool definitions.
 /// </summary>
 public sealed record ListToolsRequest : ChatServiceRequest;
+
+/// <summary>
+/// Requests the list of saved runtime profiles.
+/// </summary>
+public sealed record ListProfilesRequest : ChatServiceRequest;
+
+/// <summary>
+/// Switches the active runtime profile for this session.
+/// </summary>
+public sealed record SetProfileRequest : ChatServiceRequest {
+    /// <summary>
+    /// Profile name to load.
+    /// </summary>
+    public required string ProfileName { get; init; }
+    /// <summary>
+    /// When true, clears the active thread so history isn't mixed across profiles.
+    /// </summary>
+    public bool NewThread { get; init; } = true;
+}
+
+/// <summary>
+/// Requests the list of available models for the current provider/profile.
+/// </summary>
+public sealed record ListModelsRequest : ChatServiceRequest {
+    /// <summary>
+    /// When true, bypasses any server-side cache (best-effort).
+    /// </summary>
+    public bool ForceRefresh { get; init; }
+}
 
 /// <summary>
 /// Invokes a specific registered tool directly (outside model chat flow).

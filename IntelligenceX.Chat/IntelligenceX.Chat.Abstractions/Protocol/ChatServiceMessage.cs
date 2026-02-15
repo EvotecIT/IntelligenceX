@@ -17,9 +17,12 @@ namespace IntelligenceX.Chat.Abstractions.Protocol;
 [JsonDerivedType(typeof(ChatGptLoginPromptMessage), "chatgpt_login_prompt")]
 [JsonDerivedType(typeof(ChatGptLoginCompletedMessage), "chatgpt_login_completed")]
 [JsonDerivedType(typeof(ToolListMessage), "tool_list")]
+[JsonDerivedType(typeof(ProfileListMessage), "profile_list")]
+[JsonDerivedType(typeof(ModelListMessage), "model_list")]
 [JsonDerivedType(typeof(InvokeToolResultMessage), "invoke_tool_result")]
 [JsonDerivedType(typeof(ChatStatusMessage), "chat_status")]
 [JsonDerivedType(typeof(ChatDeltaMessage), "chat_delta")]
+[JsonDerivedType(typeof(ChatMetricsMessage), "chat_metrics")]
 [JsonDerivedType(typeof(ChatResultMessage), "chat_result")]
 public abstract record ChatServiceMessage {
     /// <summary>

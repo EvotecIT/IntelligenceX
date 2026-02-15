@@ -96,29 +96,13 @@ internal sealed partial class ChatServiceSession {
     }
 
     public async Task RunAsync(CancellationToken cancellationToken) {
-        var clientOptions = new IntelligenceXClientOptions {
-            TransportKind = _options.OpenAITransport,
-            DefaultModel = _options.Model
-        };
         var instructions = LoadInstructions(_options);
         _instructions = instructions;
-        if (clientOptions.TransportKind == OpenAITransportKind.Native && !string.IsNullOrWhiteSpace(instructions)) {
-            clientOptions.NativeOptions.Instructions = instructions!;
-        }
-
-        if (clientOptions.TransportKind == OpenAITransportKind.CompatibleHttp) {
-            clientOptions.CompatibleHttpOptions.BaseUrl = _options.OpenAIBaseUrl;
-            clientOptions.CompatibleHttpOptions.ApiKey = _options.OpenAIApiKey;
-            clientOptions.CompatibleHttpOptions.Streaming = _options.OpenAIStreaming;
-            clientOptions.CompatibleHttpOptions.AllowInsecureHttp = _options.OpenAIAllowInsecureHttp;
-            clientOptions.CompatibleHttpOptions.AllowInsecureHttpNonLoopback = _options.OpenAIAllowInsecureHttpNonLoopback;
-        }
-
-        await using var client = await IntelligenceXClient.ConnectAsync(clientOptions, cancellationToken).ConfigureAwait(false);
 
         using var reader = new StreamReader(_stream, leaveOpen: true);
         using var writer = new StreamWriter(_stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
         string? activeThreadId = null;
+        var client = await ConnectClientAsync(cancellationToken).ConfigureAwait(false);
 
         try {
             while (!cancellationToken.IsCancellationRequested) {
@@ -179,6 +163,31 @@ internal sealed partial class ChatServiceSession {
                         await HandleListToolsAsync(writer, request.RequestId, cancellationToken).ConfigureAwait(false);
                         break;
 
+                    case ListProfilesRequest listProfiles:
+                        await HandleListProfilesAsync(writer, listProfiles, cancellationToken).ConfigureAwait(false);
+                        break;
+
+                    case SetProfileRequest setProfile: {
+                            var setResult = await HandleSetProfileAsync(client, writer, setProfile, cancellationToken).ConfigureAwait(false);
+                            if (setResult.ReconnectClient) {
+                                await DisposeClientAsync(client).ConfigureAwait(false);
+                                client = await ConnectClientAsync(cancellationToken).ConfigureAwait(false);
+                            } else if (setResult.ModelChanged) {
+                                // Keep the internal thread model selection consistent with the active profile.
+                                client.ConfigureDefaults(model: _options.Model);
+                            }
+
+                            if (setProfile.NewThread) {
+                                activeThreadId = null;
+                            }
+
+                            break;
+                        }
+
+                    case ListModelsRequest listModels:
+                        await HandleListModelsAsync(client, writer, listModels, cancellationToken).ConfigureAwait(false);
+                        break;
+
                     case InvokeToolRequest invokeTool:
                         await HandleInvokeToolAsync(writer, invokeTool, cancellationToken).ConfigureAwait(false);
                         break;
@@ -204,6 +213,7 @@ internal sealed partial class ChatServiceSession {
         } finally {
             await CancelActiveChatIfAnyAsync().ConfigureAwait(false);
             CancelLoginIfActive();
+            await DisposeClientAsync(client).ConfigureAwait(false);
         }
     }
 

@@ -36,6 +36,10 @@ internal static partial class Program {
             _status = status;
         }
 
+        public void ResetThread() {
+            _previousResponseId = null;
+        }
+
         public async Task<ReplTurnResult> AskAsync(string text, CancellationToken cancellationToken) {
             if (string.IsNullOrWhiteSpace(text)) {
                 return new ReplTurnResult(string.Empty, Array.Empty<ToolCall>(), Array.Empty<ToolOutput>());
@@ -52,6 +56,10 @@ internal static partial class Program {
             var chatOptions = new ChatOptions {
                 Model = _options.Model,
                 Instructions = _instructions,
+                ReasoningEffort = _options.ReasoningEffort,
+                ReasoningSummary = _options.ReasoningSummary,
+                TextVerbosity = _options.TextVerbosity,
+                Temperature = _options.Temperature,
                 ParallelToolCalls = _options.ParallelToolCalls,
                 Tools = toolDefs.Count == 0 ? null : toolDefs,
                 ToolChoice = toolDefs.Count == 0 ? null : ToolChoice.Auto,
