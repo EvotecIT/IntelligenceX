@@ -4,16 +4,26 @@
       {{ if menu.name == "docs" }}
         {{ for item in menu.items }}
           {{ if item.items && item.items.size > 0 }}
-            <div class="docs-nav-group">
-              <h3 class="docs-nav-heading">{{ item.title }}</h3>
+            {{~ is_open = false ~}}
+            {{~ for child in item.items ~}}
+              {{~ if page.url == child.url ~}}
+                {{~ is_open = true ~}}
+              {{~ end ~}}
+            {{~ end ~}}
+            <details class="docs-nav-group" open{{ if is_open }} data-current="true"{{ end }}>
+              <summary class="docs-nav-heading">{{ item.title }}</summary>
               <ul class="docs-nav-list">
                 {{ for child in item.items }}
-                  <li><a href="{{ child.url }}" class="docs-nav-item{{ if page.url == child.url }} active{{ end }}">{{ child.title }}</a></li>
+                  <li>
+                    <a href="{{ child.url }}"
+                       aria-label="{{ item.title }}: {{ child.title }}"
+                       class="docs-nav-item{{ if page.url == child.url }} active{{ end }}">{{ child.title }}</a>
+                  </li>
                 {{ end }}
               </ul>
-            </div>
+            </details>
           {{ else }}
-            <a href="{{ item.url }}" class="docs-nav-item docs-nav-top{{ if page.url == item.url }} active{{ end }}">{{ item.title }}</a>
+            <a href="{{ item.url }}" aria-label="Docs: {{ item.title }}" class="docs-nav-item docs-nav-top{{ if page.url == item.url }} active{{ end }}">{{ item.title }}</a>
           {{ end }}
         {{ end }}
       {{ end }}

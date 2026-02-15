@@ -6,6 +6,7 @@
         <p>From GitHub Actions to C# and PowerShell.</p>
     </div>
 
+    {{ if data && data.code_examples && data.code_examples.tabs && data.code_examples.tabs.size > 0 }}
     <div class="code-tabs">
         {{ for item in data.code_examples.tabs }}
         <button class="code-tab{{ if for.first }} active{{ end }}" data-tab="{{ item.id }}">{{ item.label }}</button>
@@ -15,5 +16,6 @@
     <div class="code-panel{{ if for.first }} active{{ end }}" data-panel="{{ item.id }}">
 <pre><code class="language-{{ item.language }}">{{ item.code }}</code></pre>
     </div>
+    {{ end }}
     {{ end }}
 </section>

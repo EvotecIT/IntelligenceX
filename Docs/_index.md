@@ -15,33 +15,33 @@ Welcome to the IntelligenceX documentation.
 
 ## GitHub Actions Reviewer
 
-- [Overview](/docs/reviewer/overview/)
-- [Onboarding Wizard](/docs/reviewer/onboarding-wizard/)
-- [Web Setup UI](/docs/reviewer/setup-web/)
-- [Onboarding Unification Tracker](/docs/reviewer/onboarding-unification-tracker/)
-- [Configuration](/docs/reviewer/configuration/)
-- [Security & Trust](/docs/reviewer/security-trust/)
-- [Static Analysis](/docs/reviewer/static-analysis/)
+- [Reviewer Overview](/docs/reviewer/overview/)
+- [Reviewer Onboarding Wizard](/docs/reviewer/onboarding-wizard/)
+- [Reviewer Web Setup UI](/docs/reviewer/setup-web/)
+- [Reviewer Onboarding Unification Tracker](/docs/reviewer/onboarding-unification-tracker/)
+- [Reviewer Configuration](/docs/reviewer/configuration/)
+- [Reviewer Security & Trust](/docs/reviewer/security-trust/)
+- [Reviewer Static Analysis](/docs/reviewer/static-analysis/)
 
 ## CLI Tools
 
-- [Overview](/docs/cli/overview/)
-- [Quick Start](/docs/cli/quickstart/)
-- [Install](/docs/cli/install/)
+- [CLI Overview](/docs/cli/overview/)
+- [CLI Quick Start](/docs/cli/quickstart/)
+- [CLI Install](/docs/cli/install/)
 
 ## .NET Library
 
-- [Overview](/docs/library/overview/)
-- [Quickstart](/docs/library/quickstart/)
-- [Providers](/docs/library/providers/)
-- [Tool Calling](/docs/library/tools/)
-- [Tool Packs](/docs/library/tool-packs/)
+- [Library Overview](/docs/library/overview/)
+- [Library Quickstart](/docs/library/quickstart/)
+- [Library Providers](/docs/library/providers/)
+- [Library Tool Calling](/docs/library/tools/)
+- [Library Tool Packs](/docs/library/tool-packs/)
 - [API Reference](/api/)
 
 ## PowerShell Module
 
-- [Overview](/docs/powershell/overview/)
-- [Quickstart](/docs/powershell/quickstart/)
+- [PowerShell Overview](/docs/powershell/overview/)
+- [PowerShell Quickstart](/docs/powershell/quickstart/)
 
 ## Guides
 

@@ -18,12 +18,12 @@
     "tag": "Desktop App",
     "badge": "New",
     "featured": false,
-    "install": "intelligencex chat",
+    "install": "dotnet run --project IntelligenceX.Chat.WinUI",
     "screenshot": "/assets/screenshots/product-chat.svg"
   },
   {
     "title": "IX Tools",
-    "description": "Eight specialized tool packs for AI assistants. Email, Active Directory, file operations, and more. Register once, use across all providers.",
+    "description": "Tool packs that power tool calling in IX Chat and the .NET library. Email, Active Directory, file operations, and more.",
     "icon": "tools",
     "link": "/docs/tools/overview/",
     "tag": "Tool Packs",
@@ -39,7 +39,7 @@
     "link": "/docs/cli/overview/",
     "tag": "Setup",
     "featured": false,
-    "install": "dotnet tool install IntelligenceX.CLI -g",
+    "install": "intelligencex setup wizard",
     "screenshot": "/assets/screenshots/product-cli.svg"
   },
   {
