@@ -64,6 +64,8 @@ internal static partial class Program {
         Console.WriteLine();
         Console.WriteLine("TODO:");
         Console.WriteLine("  todo sync-bot-feedback   Sync bot checklist items into TODO.md (optional issue creation)");
+        Console.WriteLine("  todo build-triage-index  Build PR/Issue triage index with duplicate clusters and best PR ranking");
+        Console.WriteLine("  todo vision-check        Compare PR backlog against VISION.md and flag likely out-of-scope work");
         Console.WriteLine();
         Console.WriteLine("Release commands:");
         Console.WriteLine("  release notes    Generate release notes from git tags/commits");

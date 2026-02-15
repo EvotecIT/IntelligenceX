@@ -15,6 +15,8 @@ intelligencex setup web
 intelligencex reviewer run
 intelligencex reviewer resolve-threads
 intelligencex todo sync-bot-feedback --repo EvotecIT/IntelligenceX
+intelligencex todo build-triage-index --repo EvotecIT/IntelligenceX
+intelligencex todo vision-check --repo EvotecIT/IntelligenceX --vision VISION.md
 intelligencex analyze run --config .intelligencex/reviewer.json --out artifacts
 intelligencex analyze export-config --out artifacts/analysis-config
 intelligencex analyze validate-catalog

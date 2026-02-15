@@ -1,0 +1,73 @@
+name: Triage Index Sweep
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      max_prs:
+        description: "Max open PRs to scan"
+        required: false
+        default: "500"
+      max_issues:
+        description: "Max open issues to scan"
+        required: false
+        default: "500"
+      duplicate_threshold:
+        description: "Duplicate confidence threshold"
+        required: false
+        default: "0.82"
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build triage index
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          MAX_PRS="${{ github.event.inputs.max_prs }}"
+          MAX_ISSUES="${{ github.event.inputs.max_issues }}"
+          DUP_THRESHOLD="${{ github.event.inputs.duplicate_threshold }}"
+          if [ -z "$MAX_PRS" ]; then MAX_PRS="500"; fi
+          if [ -z "$MAX_ISSUES" ]; then MAX_ISSUES="500"; fi
+          if [ -z "$DUP_THRESHOLD" ]; then DUP_THRESHOLD="0.82"; fi
+
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- \
+            todo build-triage-index \
+            --repo "${{ github.repository }}" \
+            --max-prs "$MAX_PRS" \
+            --max-issues "$MAX_ISSUES" \
+            --duplicate-threshold "$DUP_THRESHOLD" \
+            --out artifacts/triage/ix-triage-index.json \
+            --summary artifacts/triage/ix-triage-index.md
+
+      - name: Upload triage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ix-triage-index
+          path: artifacts/triage
+
+      - name: Comment summary on control issue (optional)
+        if: ${{ vars.IX_TRIAGE_CONTROL_ISSUE != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ISSUE="${{ vars.IX_TRIAGE_CONTROL_ISSUE }}"
+          if [ -f artifacts/triage/ix-triage-index.md ]; then
+            gh issue comment "$ISSUE" --repo "${{ github.repository }}" --body-file artifacts/triage/ix-triage-index.md
+          fi
