@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace IntelligenceX.Cli.Todo;
 
@@ -10,17 +11,47 @@ internal sealed record ProjectLabelDefinition(
 );
 
 internal static class ProjectLabelCatalog {
+    private const int MaxNormalizedTokenLength = 38;
+    private static readonly IReadOnlyDictionary<string, string> CategoryToLabel = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+        ["bug"] = "ix/category:bug",
+        ["feature"] = "ix/category:feature",
+        ["documentation"] = "ix/category:documentation",
+        ["docs"] = "ix/category:documentation",
+        ["maintenance"] = "ix/category:maintenance",
+        ["security"] = "ix/category:security",
+        ["performance"] = "ix/category:performance",
+        ["testing"] = "ix/category:testing",
+        ["ci"] = "ix/category:ci"
+    };
+
     private static readonly IReadOnlyDictionary<string, string> TagToLabel = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
         ["security"] = "ix/tag:security",
         ["bugfix"] = "ix/tag:bugfix",
+        ["bug-fix"] = "ix/tag:bugfix",
         ["performance"] = "ix/tag:performance",
         ["docs"] = "ix/tag:docs",
+        ["doc"] = "ix/tag:docs",
+        ["documentation"] = "ix/tag:docs",
         ["testing"] = "ix/tag:testing",
+        ["test"] = "ix/tag:testing",
+        ["tests"] = "ix/tag:testing",
         ["ci"] = "ix/tag:ci",
         ["maintenance"] = "ix/tag:maintenance",
         ["api"] = "ix/tag:api",
         ["ux"] = "ix/tag:ux",
-        ["dependencies"] = "ix/tag:dependencies"
+        ["dependencies"] = "ix/tag:dependencies",
+        ["dependency"] = "ix/tag:dependencies"
+    };
+
+    private static readonly string[] DynamicLabelPalette = {
+        "5319e7",
+        "1d76db",
+        "0052cc",
+        "0e8a16",
+        "fbca04",
+        "d73a4a",
+        "6f42c1",
+        "b60205"
     };
 
     public static readonly IReadOnlyList<ProjectLabelDefinition> DefaultLabels = new[] {
@@ -57,12 +88,133 @@ internal static class ProjectLabelCatalog {
         new ProjectLabelDefinition("ix/duplicate:clustered", "f9d0c4", "Item is part of a duplicate cluster.")
     };
 
-    public static bool TryMapTagLabel(string tag, out string label) {
-        if (string.IsNullOrWhiteSpace(tag)) {
-            label = string.Empty;
+    public static bool TryMapCategoryLabel(string category, out string label) {
+        label = string.Empty;
+        if (!TryNormalizeToken(category, out var normalized)) {
             return false;
         }
 
-        return TagToLabel.TryGetValue(tag.Trim(), out label!);
+        if (CategoryToLabel.TryGetValue(normalized, out var knownLabel)) {
+            label = knownLabel;
+            return true;
+        }
+
+        label = $"ix/category:{normalized}";
+        return true;
+    }
+
+    public static bool TryMapTagLabel(string tag, out string label) {
+        label = string.Empty;
+        if (!TryNormalizeToken(tag, out var normalized)) {
+            return false;
+        }
+
+        if (TagToLabel.TryGetValue(normalized, out var knownLabel)) {
+            label = knownLabel;
+            return true;
+        }
+
+        label = $"ix/tag:{normalized}";
+        return true;
+    }
+
+    public static IReadOnlyList<ProjectLabelDefinition> BuildEnsureLabelCatalog(
+        IEnumerable<string?> categories,
+        IEnumerable<string?> tags) {
+        var byName = DefaultLabels.ToDictionary(label => label.Name, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var category in categories) {
+            if (!TryBuildDynamicCategoryLabelDefinition(category, out var definition)) {
+                continue;
+            }
+            byName[definition.Name] = definition;
+        }
+
+        foreach (var tag in tags) {
+            if (!TryBuildDynamicTagLabelDefinition(tag, out var definition)) {
+                continue;
+            }
+            byName[definition.Name] = definition;
+        }
+
+        return byName.Values
+            .OrderBy(label => label.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static bool TryBuildDynamicCategoryLabelDefinition(string? category, out ProjectLabelDefinition definition) {
+        definition = default!;
+        if (!TryNormalizeToken(category, out var normalized) || CategoryToLabel.ContainsKey(normalized)) {
+            return false;
+        }
+
+        var labelName = $"ix/category:{normalized}";
+        definition = new ProjectLabelDefinition(
+            labelName,
+            ResolveDynamicColor(labelName),
+            $"Triage category: {normalized}");
+        return true;
+    }
+
+    private static bool TryBuildDynamicTagLabelDefinition(string? tag, out ProjectLabelDefinition definition) {
+        definition = default!;
+        if (!TryNormalizeToken(tag, out var normalized) || TagToLabel.ContainsKey(normalized)) {
+            return false;
+        }
+
+        var labelName = $"ix/tag:{normalized}";
+        definition = new ProjectLabelDefinition(
+            labelName,
+            ResolveDynamicColor(labelName),
+            $"Triage tag: {normalized}");
+        return true;
+    }
+
+    private static bool TryNormalizeToken(string? value, out string normalized) {
+        normalized = string.Empty;
+        if (string.IsNullOrWhiteSpace(value)) {
+            return false;
+        }
+
+        var buffer = new char[Math.Min(MaxNormalizedTokenLength, value.Length * 2)];
+        var length = 0;
+        var previousDash = false;
+        foreach (var character in value.Trim().ToLowerInvariant()) {
+            if ((character >= 'a' && character <= 'z') || (character >= '0' && character <= '9')) {
+                if (length < buffer.Length) {
+                    buffer[length++] = character;
+                }
+                previousDash = false;
+                continue;
+            }
+
+            if (!previousDash && length > 0) {
+                if (length < buffer.Length) {
+                    buffer[length++] = '-';
+                }
+                previousDash = true;
+            }
+        }
+
+        while (length > 0 && buffer[length - 1] == '-') {
+            length--;
+        }
+        if (length <= 0) {
+            return false;
+        }
+
+        normalized = new string(buffer, 0, length);
+        return true;
+    }
+
+    private static string ResolveDynamicColor(string labelName) {
+        uint hash = 2166136261;
+        foreach (var character in labelName) {
+            hash ^= character;
+            hash *= 16777619;
+        }
+
+        var index = (int)(hash % (uint)DynamicLabelPalette.Length);
+        return DynamicLabelPalette[index];
     }
 }
