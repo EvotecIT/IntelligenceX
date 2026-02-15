@@ -134,10 +134,15 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
+                // Capture pending actions from the raw assistant text so confirmation routing doesn't depend on
+                // whether redaction changes ids/fields in the displayed output.
+                RememberPendingActions(threadId, text);
+
                 if (_options.Redact) {
                     text = RedactText(text);
                 }
-                return new ChatResultMessage {
+
+                var result = new ChatResultMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,
                     ThreadId = threadId,
@@ -146,6 +151,7 @@ internal sealed partial class ChatServiceSession {
                         ? null
                         : new ToolRunDto { Calls = toolCalls.ToArray(), Outputs = toolOutputs.ToArray() }
                 };
+                return result;
             }
 
             foreach (var call in extracted) {
