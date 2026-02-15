@@ -93,6 +93,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (normalized.IndexOf("ix_action_selection", StringComparison.Ordinal) < 0) {
+            return false;
+        }
+
         try {
             using var doc = JsonDocument.Parse(normalized);
             if (doc.RootElement.ValueKind != JsonValueKind.Object) {
@@ -103,15 +107,20 @@ internal sealed partial class ChatServiceSession {
                 return false;
             }
 
-            if (!selection.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.String) {
-                if (!selection.TryGetProperty("id", out id) || id.ValueKind != JsonValueKind.Number) {
-                    return false;
-                }
+            if (!selection.TryGetProperty("id", out var id)) {
+                return false;
+            }
+
+            if (id.ValueKind == JsonValueKind.String) {
+                var value = (id.GetString() ?? string.Empty).Trim();
+                return value.Length > 0;
+            }
+
+            if (id.ValueKind == JsonValueKind.Number) {
                 return id.TryGetInt64(out var numericId) && numericId > 0;
             }
 
-            var value = (id.GetString() ?? string.Empty).Trim();
-            return value.Length > 0;
+            return false;
         } catch (JsonException) {
             return false;
         } catch (FormatException) {
