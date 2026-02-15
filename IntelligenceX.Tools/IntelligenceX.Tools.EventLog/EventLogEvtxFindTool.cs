@@ -370,6 +370,9 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
 
         // Normalize Windows extended-length prefixes so containment checks don't vary by representation.
         if (OperatingSystem.IsWindows()) {
+            // Normalize separators so containment checks don't vary by representation ("C:/x" vs "C:\\x").
+            path = path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+
             if (path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase)) {
                 return @"\\" + path.Substring(@"\\?\UNC\".Length);
             }
