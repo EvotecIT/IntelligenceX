@@ -104,12 +104,19 @@ internal sealed partial class ChatServiceSession {
             }
 
             if (!selection.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.String) {
-                return false;
+                if (!selection.TryGetProperty("id", out id) || id.ValueKind != JsonValueKind.Number) {
+                    return false;
+                }
+                return id.TryGetInt64(out var numericId) && numericId > 0;
             }
 
             var value = (id.GetString() ?? string.Empty).Trim();
             return value.Length > 0;
-        } catch {
+        } catch (JsonException) {
+            return false;
+        } catch (FormatException) {
+            return false;
+        } catch (ArgumentException) {
             return false;
         }
     }
