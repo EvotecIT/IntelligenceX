@@ -30,6 +30,7 @@
     <ProjectReference Include="..\IntelligenceX.Tools.Email\IntelligenceX.Tools.Email.csproj" />
     <ProjectReference Include="..\IntelligenceX.Tools.ActiveDirectory\IntelligenceX.Tools.ActiveDirectory.csproj" />
     <ProjectReference Include="..\IntelligenceX.Tools.ReviewerSetup\IntelligenceX.Tools.ReviewerSetup.csproj" />
+    <ProjectReference Include="..\IntelligenceX.Tools.OfficeIMO\IntelligenceX.Tools.OfficeIMO.csproj" />
   </ItemGroup>
 
 </Project>

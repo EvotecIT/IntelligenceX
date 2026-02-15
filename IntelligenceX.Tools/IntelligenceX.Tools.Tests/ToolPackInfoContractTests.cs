@@ -10,6 +10,7 @@ using IntelligenceX.Tools.Common;
 using IntelligenceX.Tools.Email;
 using IntelligenceX.Tools.EventLog;
 using IntelligenceX.Tools.FileSystem;
+using IntelligenceX.Tools.OfficeIMO;
 using IntelligenceX.Tools.PowerShell;
 using IntelligenceX.Tools.System;
 using IntelligenceX.Tools.TestimoX;
@@ -27,6 +28,7 @@ public class ToolPackInfoContractTests {
         var emailOptions = new EmailToolOptions();
         var powerShellOptions = new PowerShellToolOptions { Enabled = true };
         var testimoXOptions = new TestimoXToolOptions { Enabled = true };
+        var officeImoOptions = new OfficeImoToolOptions();
 
         var cases = new[] {
             new PackCase(
@@ -70,7 +72,13 @@ public class ToolPackInfoContractTests {
                 Engine: "TestimoX",
                 Tool: new TestimoXPackInfoTool(testimoXOptions),
                 ExpectedTools: ToolRegistryTestimoXExtensions.GetRegisteredToolNames(testimoXOptions),
-                ExpectedCatalog: ToolRegistryTestimoXExtensions.GetRegisteredToolCatalog(testimoXOptions))
+                ExpectedCatalog: ToolRegistryTestimoXExtensions.GetRegisteredToolCatalog(testimoXOptions)),
+            new PackCase(
+                Pack: "officeimo",
+                Engine: "OfficeIMO.Reader",
+                Tool: new OfficeImoPackInfoTool(officeImoOptions),
+                ExpectedTools: ToolRegistryOfficeImoExtensions.GetRegisteredToolNames(officeImoOptions),
+                ExpectedCatalog: ToolRegistryOfficeImoExtensions.GetRegisteredToolCatalog(officeImoOptions))
         };
 
         foreach (var @case in cases) {

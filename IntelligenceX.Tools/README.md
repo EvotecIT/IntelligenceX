@@ -57,6 +57,11 @@ and can resolve engine sources from configured local roots when needed.
 - `IntelligenceX.Tools.ActiveDirectory`
   - Engine-first via `ADPlayground` (in `TestimoX` monorepo)
   - Includes `ad_pack_info` guidance tool
+- `IntelligenceX.Tools.OfficeIMO`
+  - Read-only ingestion for Word/Excel/PowerPoint/Markdown into normalized chunks
+  - Includes `officeimo_pack_info` and `officeimo_read`
+  - Engine-first via `OfficeIMO.Reader` (local sibling or NuGet package)
+  - Docs: `Docs/OfficeIMO.md`
 
 ## Model-facing contract
 
