@@ -567,6 +567,25 @@
     });
   }
 
+  function hasPendingLocalProviderChanges() {
+    var local = state.options.localModel || {};
+    var currentTransport = normalizeLocalTransportValue(local.transport || "native");
+    var currentBaseUrl = currentTransport === "compatible-http"
+      ? String(local.baseUrl || "").trim().toLowerCase()
+      : "";
+    var currentModel = String(local.model || "").trim();
+
+    var draftTransport = normalizeLocalTransportValue(byId("optLocalTransport").value || "native");
+    var draftBaseUrl = draftTransport === "compatible-http"
+      ? (byId("optLocalBaseUrl").value || "").trim().toLowerCase()
+      : "";
+    var draftModel = (byId("optLocalModelInput").value || "").trim();
+
+    return draftTransport !== currentTransport
+      || draftBaseUrl !== currentBaseUrl
+      || draftModel !== currentModel;
+  }
+
   byId("optLocalTransport").addEventListener("change", function(e) {
     var next = normalizeLocalTransportValue(e.target.value || "native");
     e.target.value = next;
@@ -601,6 +620,7 @@
     baseUrl.value = "http://127.0.0.1:11434";
     byId("optLocalBaseUrlRow").hidden = false;
     baseUrl.disabled = false;
+    applyLocalProviderSettings(true);
   });
 
   byId("btnLocalPresetLmStudio").addEventListener("click", function() {
@@ -611,9 +631,14 @@
     baseUrl.value = "http://127.0.0.1:1234/v1";
     byId("optLocalBaseUrlRow").hidden = false;
     baseUrl.disabled = false;
+    applyLocalProviderSettings(true);
   });
 
   byId("btnRefreshModels").addEventListener("click", function() {
+    if (hasPendingLocalProviderChanges()) {
+      applyLocalProviderSettings(true);
+      return;
+    }
     post("refresh_models", { forceRefresh: true });
   });
 
