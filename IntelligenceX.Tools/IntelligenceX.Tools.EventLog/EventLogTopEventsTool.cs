@@ -97,7 +97,7 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
             return Task.FromResult(ErrorFromLiveQueryFailure(failure));
         }
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+        if (!ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
             arguments: arguments,
             model: root,
             sourceRows: root.Events,
@@ -105,7 +105,9 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
             title: $"Top {maxEvents} recent events (preview)",
             maxTop: MaxViewTop,
             baseTruncated: root.Truncated,
-            response: out var response);
+            response: out var response)) {
+            return Task.FromResult(ToolResponse.Error("tool_error", "Failed to build table view response envelope."));
+        }
         return Task.FromResult(response);
     }
 }
