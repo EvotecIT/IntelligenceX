@@ -20,6 +20,7 @@ internal static class TodoRunner {
             "project-init" => ProjectInitRunner.RunAsync(rest),
             "project-sync" => ProjectSyncRunner.RunAsync(rest),
             "project-bootstrap" => ProjectBootstrapRunner.RunAsync(rest),
+            "project-view-checklist" => ProjectViewChecklistRunner.RunAsync(rest),
             _ => Task.FromResult(PrintHelpReturn(command))
         };
     }
@@ -46,6 +47,7 @@ internal static class TodoRunner {
         Console.WriteLine("  intelligencex todo project-init [options]");
         Console.WriteLine("  intelligencex todo project-sync [options]");
         Console.WriteLine("  intelligencex todo project-bootstrap [options]");
+        Console.WriteLine("  intelligencex todo project-view-checklist [options]");
         Console.WriteLine();
         Console.WriteLine("Use `intelligencex todo sync-bot-feedback --help` for options.");
         Console.WriteLine("Use `intelligencex todo build-triage-index --help` for options.");
@@ -53,5 +55,6 @@ internal static class TodoRunner {
         Console.WriteLine("Use `intelligencex todo project-init --help` for options.");
         Console.WriteLine("Use `intelligencex todo project-sync --help` for options.");
         Console.WriteLine("Use `intelligencex todo project-bootstrap --help` for options.");
+        Console.WriteLine("Use `intelligencex todo project-view-checklist --help` for options.");
     }
 }
