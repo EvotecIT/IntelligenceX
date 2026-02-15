@@ -451,6 +451,9 @@ internal static partial class Program {
         failed += Run("Todo project fields defaults", TestProjectFieldCatalogDefaultsIncludeVisionAndDecisionFields);
         failed += Run("Todo project labels include decision taxonomy", TestProjectLabelCatalogDefaultsIncludeDecisionLabels);
         failed += Run("Todo project labels include dynamic category and tag taxonomy", TestProjectLabelCatalogBuildEnsureCatalogIncludesDynamicCategoryAndTags);
+        failed += Run("Todo project views include queue and merge views", TestProjectViewCatalogDefaultsIncludeQueueAndMergeViews);
+        failed += Run("Todo project views missing detection", TestProjectViewCatalogFindMissingDefaultViewsReturnsMissingOnly);
+        failed += Run("Todo project views full coverage has no missing", TestProjectViewCatalogFindMissingDefaultViewsReturnsEmptyWhenComplete);
         failed += Run("Todo project sync merges vision and canonical", TestProjectSyncBuildEntriesMergesVisionAndCanonical);
         failed += Run("Todo project sync labels include tags and high-confidence match", TestProjectSyncBuildLabelsIncludesTagsAndHighConfidenceIssueMatch);
         failed += Run("Todo project sync labels normalize dynamic category and tags", TestProjectSyncBuildLabelsNormalizesDynamicCategoryAndTags);

@@ -98,7 +98,13 @@ Options:
 - `--public` / `--private`
 - `--link-repo` / `--no-link-repo`
 - `--ensure-labels` / `--no-ensure-labels`
+- `--ensure-default-views` / `--no-ensure-default-views`
+- `--view-template-project <n>` copy from a template project to preserve saved views
+- `--view-template-owner <login>` owner for template project lookup
 - `--out <path>` (default `artifacts/triage/ix-project-config.json`)
+
+Note:
+- GitHub API currently lacks a `createProjectV2View` mutation; IX can validate/report default view coverage, and template-copy can preserve ready view layouts.
 
 Expected fields:
 - `Vision Fit` (single-select)
@@ -154,6 +160,9 @@ Options:
 - `--force-workflow-write` overwrite existing workflow file
 - `--skip-vision-scaffold` do not create/update vision file
 - `--force-vision-write` overwrite existing vision file
+- `--view-template-project <n>` pass template-copy through to `project-init`
+- `--view-template-owner <login>` template owner override for `project-init`
+- `--ensure-default-views` / `--no-ensure-default-views` pass-through to `project-init`
 - `--control-issue <n>` set `IX_TRIAGE_CONTROL_ISSUE` to an existing issue number
 - `--create-control-issue` create a control issue and set `IX_TRIAGE_CONTROL_ISSUE`
 - `--control-issue-title <text>` customize the title when creating a control issue

@@ -112,10 +112,15 @@ intelligencex todo project-init \
 
 Notes:
 - Creates a project (or initializes an existing one with `--project <n>`).
+- Can copy from a prepared template project with `--view-template-project <n>` to preserve saved GitHub views.
 - Ensures required custom fields such as `Vision Fit`, `Category`, `Tags`, `Matched Issue`, `Triage Score`, `Duplicate Cluster`, and `IX Suggested Decision`.
 - Ensures IX label taxonomy in the repo by default (`--no-ensure-labels` to skip).
+- Validates default IX view coverage by default (`--no-ensure-default-views` to skip).
 - Writes a reusable config file containing owner/project/field metadata.
 - Requires GitHub token scopes: `project` (and typically `read:project` for follow-up sync).
+
+Important:
+- GitHub API currently does not provide a `createProjectV2View` mutation, so IX can validate/report default view coverage but cannot create views from scratch without a template copy.
 
 ## Sync triage + vision into GitHub Project
 
@@ -169,6 +174,9 @@ Useful options:
 - `--force-workflow-write` to overwrite an existing workflow file.
 - `--skip-vision-scaffold` to keep the bootstrap workflow only.
 - `--force-vision-write` to overwrite an existing vision file.
+- `--view-template-project <n>` to copy from an existing template project (preserves saved views).
+- `--view-template-owner <login>` to resolve template project from a different owner.
+- `--ensure-default-views` / `--no-ensure-default-views` to control default view coverage checks.
 - `--control-issue <n>` to point summaries at an existing GitHub issue by setting `IX_TRIAGE_CONTROL_ISSUE`.
 - `--create-control-issue` to create a new control issue and auto-set `IX_TRIAGE_CONTROL_ISSUE`.
 - `--control-issue-title <text>` to customize the created control issue title.
