@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using System.Text;
 using System.Text.Json;
 
 namespace IntelligenceX.Chat.Service;
@@ -12,6 +13,10 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private const int PendingActionStoreVersion = 1;
     private static readonly object PendingActionStoreLock = new();
+    private static readonly JsonSerializerOptions PendingActionStoreJsonOptions = new() {
+        WriteIndented = false,
+        PropertyNameCaseInsensitive = false
+    };
 
     private static bool TryGetUtcDateTimeFromTicks(long utcTicks, out DateTime value) {
         value = default;
@@ -43,15 +48,10 @@ internal sealed partial class ChatServiceSession {
                 return;
             }
 
-            var adminsSid = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
-            var systemSid = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
-
             var security = new FileSecurity();
             security.SetOwner(currentSid);
             security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
             security.AddAccessRule(new FileSystemAccessRule(currentSid, FileSystemRights.Read | FileSystemRights.Write, AccessControlType.Allow));
-            security.AddAccessRule(new FileSystemAccessRule(systemSid, FileSystemRights.Read | FileSystemRights.Write, AccessControlType.Allow));
-            security.AddAccessRule(new FileSystemAccessRule(adminsSid, FileSystemRights.Read | FileSystemRights.Write, AccessControlType.Allow));
 
             new FileInfo(path).SetAccessControl(security);
         } catch (Exception ex) {
@@ -105,6 +105,11 @@ internal sealed partial class ChatServiceSession {
             }
 
             if (!Path.IsPathFullyQualified(candidate)) {
+                // Only allow simple file names (no traversal / no separators) for overrides.
+                if (candidate.Contains("..", StringComparison.Ordinal) ||
+                    candidate.IndexOfAny(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }) >= 0) {
+                    return defaultPath;
+                }
                 return Path.Combine(baseDir, candidate);
             }
 
@@ -228,12 +233,18 @@ internal sealed partial class ChatServiceSession {
                 return new PendingActionStoreDto();
             }
 
+            var info = new FileInfo(path);
+            if (info.Length <= 0 || info.Length > 1024 * 1024) {
+                // Cap read size to avoid local DoS via gigantic store files.
+                return new PendingActionStoreDto();
+            }
+
             var json = File.ReadAllText(path);
             if (string.IsNullOrWhiteSpace(json)) {
                 return new PendingActionStoreDto();
             }
 
-            var store = JsonSerializer.Deserialize<PendingActionStoreDto>(json);
+            var store = JsonSerializer.Deserialize<PendingActionStoreDto>(json, PendingActionStoreJsonOptions);
             if (store is null || store.Version != PendingActionStoreVersion || store.Threads is null) {
                 return new PendingActionStoreDto();
             }
@@ -262,14 +273,16 @@ internal sealed partial class ChatServiceSession {
                 Directory.CreateDirectory(dir);
             }
 
-            var json = JsonSerializer.Serialize(store);
+            var json = JsonSerializer.Serialize(store, PendingActionStoreJsonOptions);
             var fileName = Path.GetFileName(path);
             var tmpName = $"{fileName}.{Guid.NewGuid():N}.tmp";
             tmp = string.IsNullOrWhiteSpace(dir) ? tmpName : Path.Combine(dir!, tmpName);
 
             // CreateNew avoids clobbering attacker-planted tmp files.
             using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
-                using var writer = new StreamWriter(fs);
+                // Harden as early as possible; with FileShare.None other users can't open this file while we write.
+                TryHardenPendingActionsStoreAclNoThrow(tmp);
+                using var writer = new StreamWriter(fs, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
                 writer.Write(json);
                 writer.Flush();
                 fs.Flush(true);

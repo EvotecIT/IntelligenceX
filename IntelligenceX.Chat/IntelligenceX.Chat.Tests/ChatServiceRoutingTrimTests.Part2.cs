@@ -194,7 +194,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             storeFile);
         try {
             var threadId = "thread-001";
-            var invalidTicks = DateTime.MaxValue.Ticks + 1;
+            var invalidTicks = 0;
             var json = $$"""
                 {
                   "Version": 1,
