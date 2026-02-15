@@ -777,6 +777,7 @@ internal sealed partial class ChatServiceSession {
         var requestText = TrimForPrompt(userRequest, 1200);
         var draftText = TrimForPrompt(assistantDraft, 1200);
         var reasonCode = string.IsNullOrWhiteSpace(reason) ? "no_tool_calls_after_retries" : reason.Trim();
+        var replayActionBlock = BuildExecutionContractReplayActionBlock(userRequest);
         return $$"""
             [Execution blocked]
             {{ExecutionContractMarker}}
@@ -791,6 +792,129 @@ internal sealed partial class ChatServiceSession {
             Reason code: {{reasonCode}}
 
             Please retry this action, or provide the minimal missing input if you already know it.
+            {{replayActionBlock}}
             """;
+    }
+
+    private static string BuildExecutionContractReplayActionBlock(string userRequest) {
+        if (!TryParseActionSelectionForReplay(userRequest, out var actionId, out var actionTitle, out var actionRequest)) {
+            return string.Empty;
+        }
+
+        return $$"""
+
+            [Action]
+            ix:action:v1
+            id: {{actionId}}
+            title: {{actionTitle}}
+            request: {{actionRequest}}
+            reply: /act {{actionId}}
+            """;
+    }
+
+    private static bool TryParseActionSelectionForReplay(string userRequest, out string actionId, out string actionTitle, out string actionRequest) {
+        actionId = string.Empty;
+        actionTitle = string.Empty;
+        actionRequest = string.Empty;
+
+        var normalized = (userRequest ?? string.Empty).Trim();
+        if (normalized.Length == 0 || normalized.Length > MaxActionSelectionPayloadChars || normalized[0] != '{') {
+            return false;
+        }
+
+        try {
+            using var doc = JsonDocument.Parse(normalized, ActionSelectionJsonOptions);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) {
+                return false;
+            }
+
+            if (!doc.RootElement.TryGetProperty("ix_action_selection", out var selection) || selection.ValueKind != JsonValueKind.Object) {
+                return false;
+            }
+
+            if (!selection.TryGetProperty("id", out var id)) {
+                return false;
+            }
+
+            actionId = NormalizeReplayActionId(id);
+            if (actionId.Length == 0) {
+                return false;
+            }
+
+            actionTitle = NormalizeReplayActionText(TryReadReplayActionSelectionText(selection, "title"), maxChars: 200);
+            actionRequest = NormalizeReplayActionText(TryReadReplayActionSelectionText(selection, "request"), maxChars: 600);
+            if (actionRequest.Length == 0) {
+                actionRequest = actionTitle;
+            }
+            if (actionRequest.Length == 0) {
+                actionRequest = "Retry selected action.";
+            }
+            if (actionTitle.Length == 0) {
+                actionTitle = actionRequest;
+            }
+
+            return true;
+        } catch (JsonException) {
+            return false;
+        }
+    }
+
+    private static string NormalizeReplayActionId(JsonElement id) {
+        switch (id.ValueKind) {
+            case JsonValueKind.String: {
+                    var token = ReadFirstToken((id.GetString() ?? string.Empty).Trim());
+                    if (token.Length == 0) {
+                        return string.Empty;
+                    }
+
+                    var sb = new StringBuilder(Math.Min(token.Length, 64));
+                    for (var i = 0; i < token.Length && sb.Length < 64; i++) {
+                        var ch = token[i];
+                        if (char.IsWhiteSpace(ch) || char.IsControl(ch)) {
+                            continue;
+                        }
+                        if (ch == ':' || ch == ';') {
+                            continue;
+                        }
+
+                        sb.Append(ch);
+                    }
+
+                    return sb.ToString().Trim();
+                }
+            case JsonValueKind.Number:
+                if (!id.TryGetInt64(out var numericId) || numericId <= 0) {
+                    return string.Empty;
+                }
+
+                return numericId.ToString();
+            default:
+                return string.Empty;
+        }
+    }
+
+    private static string TryReadReplayActionSelectionText(JsonElement selection, string propertyName) {
+        if (!selection.TryGetProperty(propertyName, out var value)) {
+            return string.Empty;
+        }
+
+        if (value.ValueKind == JsonValueKind.String) {
+            return value.GetString() ?? string.Empty;
+        }
+
+        return string.Empty;
+    }
+
+    private static string NormalizeReplayActionText(string text, int maxChars) {
+        var normalized = CollapseWhitespace(text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        if (normalized.Length > maxChars) {
+            normalized = normalized.Substring(0, maxChars);
+        }
+
+        return normalized.Trim();
     }
 }

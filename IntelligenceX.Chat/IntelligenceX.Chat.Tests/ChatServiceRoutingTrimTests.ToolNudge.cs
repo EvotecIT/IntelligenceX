@@ -184,6 +184,18 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildExecutionContractBlockerText_EmbedsReplayableActionEnvelopeForSelectionPayload() {
+        var request = "{\"ix_action_selection\":{\"id\":\"act_failed4625\",\"title\":\"Failed logons (4625)\",\"request\":\"Run failed logon report on ADO Security.\"}}";
+        var result = BuildExecutionContractBlockerTextMethod.Invoke(null, new object?[] { request, "draft", "no_tool_calls_after_watchdog_retry" });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("[Action]", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ix:action:v1", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("id: act_failed4625", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("reply: /act act_failed4625", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ShouldSkipWeightedRouting_TrueForActionSelectionPayload() {
         var request = "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Run\",\"request\":\"Run it.\"}}";
         var result = ShouldSkipWeightedRoutingMethod.Invoke(null, new object?[] { request });

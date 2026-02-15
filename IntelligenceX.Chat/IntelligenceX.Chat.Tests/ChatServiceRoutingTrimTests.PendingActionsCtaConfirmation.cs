@@ -373,4 +373,21 @@ public sealed partial class ChatServiceRoutingTrimTests {
         using var doc = JsonDocument.Parse(expanded);
         Assert.Equal("act_001", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
     }
+
+    [Fact]
+    public void RememberPendingActions_RehydratesReplayActionFromExecutionContractBlockerText() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var selectionPayload = "{\"ix_action_selection\":{\"id\":\"act_failed4625\",\"title\":\"Failed logons (4625)\",\"request\":\"Run failed logon report on ADO Security and summarize top events.\"}}";
+        var blockerText = Assert.IsType<string>(BuildExecutionContractBlockerTextMethod.Invoke(
+            null,
+            new object?[] { selectionPayload, "Ok, doing it now.", "no_tool_calls_after_watchdog_retry" }));
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", blockerText });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "go ahead and run it" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        var selection = doc.RootElement.GetProperty("ix_action_selection");
+        Assert.Equal("act_failed4625", selection.GetProperty("id").GetString());
+    }
 }
