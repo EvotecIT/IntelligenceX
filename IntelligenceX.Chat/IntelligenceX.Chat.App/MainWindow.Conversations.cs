@@ -339,6 +339,25 @@ public sealed partial class MainWindow : Window {
 
         await PersistAppStateAsync().ConfigureAwait(false);
         await LoadProfileStateAsync(normalized, render: true).ConfigureAwait(false);
+        ClearConversationThreadIds();
+        await PersistAppStateAsync().ConfigureAwait(false);
+
+        if (_client is not null) {
+            try {
+                var profileApplied = await SyncConnectedServiceProfileAndModelsAsync(
+                    forceModelRefresh: false,
+                    setProfileNewThread: true,
+                    appendWarnings: false).ConfigureAwait(false);
+                if (!profileApplied) {
+                    await ReconnectServiceSessionAsync().ConfigureAwait(false);
+                }
+            } catch (Exception ex) {
+                if (VerboseServiceLogs || _debugMode) {
+                    AppendSystem("Profile switch runtime sync failed: " + ex.Message);
+                }
+            }
+        }
+
         await EnsureFirstRunAuthenticatedAsync().ConfigureAwait(false);
         await EnsureOnboardingStartedAsync().ConfigureAwait(false);
         await PersistAppStateAsync().ConfigureAwait(false);

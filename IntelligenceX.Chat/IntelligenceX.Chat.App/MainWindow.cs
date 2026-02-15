@@ -42,6 +42,11 @@ public sealed partial class MainWindow : Window {
     private const int MaxConversations = 40;
     private const int MaxMessagesPerConversation = 250;
     private const string DefaultConversationTitle = "New Chat";
+    private const string DefaultLocalModel = "gpt-5.3-codex";
+    private const string TransportNative = "native";
+    private const string TransportCompatibleHttp = "compatible-http";
+    private const string DefaultOllamaBaseUrl = "http://127.0.0.1:11434";
+    private const string DefaultLmStudioBaseUrl = "http://127.0.0.1:1234/v1";
     private static readonly TimeSpan StreamingTranscriptRenderCadence = TimeSpan.FromMilliseconds(80);
     private static readonly Regex UserNameIntentRegex = new(@"\b(?:you can call me|call me|my name is|name is|set my name to|change my name to)\s+(?<value>[^,\.\!\?\r\n]{1,64})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex PersonaIntentRegex = new(@"\b(?:assistant\s+persona|persona|style|tone|mode)\s*(?:is|to|=|:)\s*(?<value>[^,\.\!\?\r\n]{2,180})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
@@ -145,6 +150,15 @@ public sealed partial class MainWindow : Window {
     private string _exportDefaultFormat = ExportPreferencesContract.DefaultFormat;
     private string? _lastExportDirectory;
     private bool _persistentMemoryEnabled = true;
+    private string _localProviderTransport = TransportNative;
+    private string? _localProviderBaseUrl;
+    private string _localProviderModel = DefaultLocalModel;
+    private ModelInfoDto[] _availableModels = Array.Empty<ModelInfoDto>();
+    private string[] _favoriteModels = Array.Empty<string>();
+    private string[] _recentModels = Array.Empty<string>();
+    private bool _modelListIsStale;
+    private string? _modelListWarning;
+    private string[] _serviceProfileNames = Array.Empty<string>();
     private SessionPolicyDto? _sessionPolicy;
     private readonly Dictionary<string, bool> _toolStates = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _toolDisplayNames = new(StringComparer.OrdinalIgnoreCase);
@@ -194,6 +208,7 @@ public sealed partial class MainWindow : Window {
     private Process? _serviceProcess;
     private string? _servicePipeName;
     private string? _stagedServiceDir;
+    private ServiceLaunchProfileOptions? _pendingServiceLaunchProfileOptions;
     private readonly object _aliveProbeSync = new();
     private ChatServiceClient? _aliveProbeClient;
     private long _aliveProbeTicksUtc;
@@ -222,6 +237,17 @@ public sealed partial class MainWindow : Window {
     private sealed class MemorySemanticVectorCacheEntry {
         public required string Signature { get; init; }
         public required Dictionary<int, double> Vector { get; init; }
+    }
+
+    private sealed class ServiceLaunchProfileOptions {
+        public string? LoadProfileName { get; init; }
+        public string? SaveProfileName { get; init; }
+        public string? Model { get; init; }
+        public string? OpenAITransport { get; init; }
+        public string? OpenAIBaseUrl { get; init; }
+        public string? OpenAIApiKey { get; init; }
+        public bool? OpenAIStreaming { get; init; }
+        public bool? OpenAIAllowInsecureHttp { get; init; }
     }
 
     private sealed class MemoryDebugSnapshot {
@@ -699,6 +725,18 @@ public sealed partial class MainWindow : Window {
 
         _themePreset = NormalizeTheme(_appState.ThemePreset) ?? "default";
         _appState.ThemePreset = _themePreset;
+        _localProviderTransport = NormalizeLocalProviderTransport(_appState.LocalProviderTransport);
+        _localProviderBaseUrl = NormalizeLocalProviderBaseUrl(_appState.LocalProviderBaseUrl, _localProviderTransport);
+        _localProviderModel = NormalizeLocalProviderModel(_appState.LocalProviderModel);
+        _appState.LocalProviderTransport = _localProviderTransport;
+        _appState.LocalProviderBaseUrl = _localProviderBaseUrl;
+        _appState.LocalProviderModel = _localProviderModel;
+        _availableModels = Array.Empty<ModelInfoDto>();
+        _favoriteModels = Array.Empty<string>();
+        _recentModels = Array.Empty<string>();
+        _modelListIsStale = false;
+        _modelListWarning = null;
+        _serviceProfileNames = Array.Empty<string>();
 
         if (!string.IsNullOrWhiteSpace(_appState.TimestampMode)) {
             _timestampMode = ResolveTimestampMode(_appState.TimestampMode);

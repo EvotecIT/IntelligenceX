@@ -31,12 +31,15 @@
     ensureCustomSelect("optExportDefaultFormat");
     ensureCustomSelect("optSidebarMode");
     ensureCustomSelect("optProfileApplyMode");
+    ensureCustomSelect("optLocalTransport");
+    ensureCustomSelect("optLocalModelSelect");
     ensureCustomSelect("optAutonomyParallel");
     ensureCustomSelect("optAutonomyWeightedRouting");
 
     renderPolicy();
     renderAutonomy();
     renderMemory();
+    renderLocalModelOptions();
     renderTools();
     renderSidebarConversations();
     renderProfileScopeHint();
@@ -227,6 +230,7 @@
     state.options.activeConversationId = nextOptions.activeConversationId || state.options.activeConversationId;
     state.options.conversations = nextOptions.conversations || [];
     state.options.profile = nextOptions.profile || state.options.profile;
+    state.options.localModel = nextOptions.localModel || state.options.localModel;
     state.options.policy = nextOptions.policy || null;
     state.options.packs = nextOptions.packs || [];
     state.options.tools = nextOptions.tools || [];

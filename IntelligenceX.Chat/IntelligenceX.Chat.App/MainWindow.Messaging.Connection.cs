@@ -113,6 +113,16 @@ public sealed partial class MainWindow : Window {
             }
 
             _ = await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
+            try {
+                await SyncConnectedServiceProfileAndModelsAsync(
+                    forceModelRefresh: false,
+                    setProfileNewThread: false,
+                    appendWarnings: false).ConfigureAwait(false);
+            } catch (Exception ex) {
+                if (VerboseServiceLogs || _debugMode) {
+                    AppendSystem("Model/profile sync failed: " + ex.Message);
+                }
+            }
         } finally {
             _connectGate.Release();
         }

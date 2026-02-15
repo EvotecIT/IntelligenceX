@@ -277,6 +277,7 @@ public sealed partial class MainWindow : Window {
             ?? SafeDefaultToolTimeoutSeconds;
 
         return new ChatRequestOptions {
+            Model = string.IsNullOrWhiteSpace(_localProviderModel) ? null : _localProviderModel,
             DisabledTools = disabled.Count == 0 ? null : disabled.ToArray(),
             MaxToolRounds = effectiveMaxToolRounds,
             ParallelTools = effectiveParallelTools,
@@ -341,6 +342,43 @@ public sealed partial class MainWindow : Window {
         }
 
         return parsed;
+    }
+
+    private static string NormalizeLocalProviderTransport(string? value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch {
+            "native" => TransportNative,
+            "compatible-http" => TransportCompatibleHttp,
+            "compatiblehttp" => TransportCompatibleHttp,
+            "http" => TransportCompatibleHttp,
+            "local" => TransportCompatibleHttp,
+            "ollama" => TransportCompatibleHttp,
+            "lmstudio" => TransportCompatibleHttp,
+            "lm-studio" => TransportCompatibleHttp,
+            _ => TransportNative
+        };
+    }
+
+    private static string? NormalizeLocalProviderBaseUrl(string? value, string transport, string? transportHint = null) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (!string.Equals(transport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)) {
+            return null;
+        }
+
+        if (normalized.Length == 0) {
+            var hint = (transportHint ?? string.Empty).Trim().ToLowerInvariant();
+            if (hint is "lmstudio" or "lm-studio") {
+                return DefaultLmStudioBaseUrl;
+            }
+            return DefaultOllamaBaseUrl;
+        }
+
+        return normalized;
+    }
+
+    private static string NormalizeLocalProviderModel(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? DefaultLocalModel : normalized;
     }
 
     private static bool? ParseAutonomyParallelMode(string? raw) {

@@ -246,6 +246,17 @@ public sealed partial class MainWindow : Window {
                     theme = !string.IsNullOrWhiteSpace(_sessionThemeOverride)
                 }
             },
+            localModel = new {
+                transport = _localProviderTransport,
+                baseUrl = _localProviderBaseUrl ?? string.Empty,
+                model = _localProviderModel,
+                models = _availableModels,
+                favoriteModels = _favoriteModels,
+                recentModels = _recentModels,
+                isStale = _modelListIsStale,
+                warning = _modelListWarning,
+                profileSaved = Array.Exists(_serviceProfileNames, name => string.Equals(name, _appProfileName, StringComparison.OrdinalIgnoreCase))
+            },
             packs,
             tools,
             policy = _sessionPolicy is null ? null : new {
