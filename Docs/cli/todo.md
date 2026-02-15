@@ -90,6 +90,10 @@ intelligencex todo vision-check \
 Notes:
 - Classification is assistive (`aligned`, `needs-human-review`, `likely-out-of-scope`), not an automatic reject gate.
 - Uses `VISION.md` section heuristics (`In Scope`, `Out of Scope`, `Goals`, `Non-Goals`) plus token overlap.
+- Supports explicit policy bullets for stronger guidance:
+  - `aligned: ...`
+  - `likely-out-of-scope: ...`
+  - `needs-human-review: ...`
 
 ## Initialize GitHub Project (assistive control plane)
 

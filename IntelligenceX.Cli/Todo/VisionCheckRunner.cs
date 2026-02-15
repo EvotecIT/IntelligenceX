@@ -13,10 +13,17 @@ namespace IntelligenceX.Cli.Todo;
 internal static class VisionCheckRunner {
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
     private static readonly Regex NumberedBullet = new(@"^\d+\.\s+", RegexOptions.Compiled);
+    private static readonly Regex PolicyPrefix = new(
+        @"^(aligned|accept|approve|likely-out-of-scope|reject|deny|needs-human-review|human-review|review|required-review)\s*:\s*(.+)$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase
+    );
 
     internal sealed record VisionSignals(
         IReadOnlySet<string> InScopeTokens,
-        IReadOnlySet<string> OutOfScopeTokens
+        IReadOnlySet<string> OutOfScopeTokens,
+        IReadOnlySet<string> ExplicitAcceptTokens,
+        IReadOnlySet<string> ExplicitRejectTokens,
+        IReadOnlySet<string> ExplicitReviewTokens
     );
 
     internal sealed record PullRequestCandidate(
@@ -38,6 +45,9 @@ internal static class VisionCheckRunner {
         double? Score,
         IReadOnlyList<string> InScopeMatches,
         IReadOnlyList<string> OutOfScopeMatches,
+        IReadOnlyList<string> ExplicitAcceptMatches,
+        IReadOnlyList<string> ExplicitRejectMatches,
+        IReadOnlyList<string> ExplicitReviewMatches,
         string Reason
     );
 
@@ -97,7 +107,10 @@ internal static class VisionCheckRunner {
             vision = new {
                 path = options.VisionPath,
                 inScopeTokens = signals.InScopeTokens.Count,
-                outOfScopeTokens = signals.OutOfScopeTokens.Count
+                outOfScopeTokens = signals.OutOfScopeTokens.Count,
+                explicitAcceptTokens = signals.ExplicitAcceptTokens.Count,
+                explicitRejectTokens = signals.ExplicitRejectTokens.Count,
+                explicitReviewTokens = signals.ExplicitReviewTokens.Count
             },
             summary = new {
                 pullRequestsEvaluated = assessments.Count,
@@ -207,6 +220,9 @@ internal static class VisionCheckRunner {
     internal static VisionSignals ParseVisionSignals(string visionPath) {
         var inScope = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var outOfScope = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var explicitAccept = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var explicitReject = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var explicitReview = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var allTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var section = string.Empty;
 
@@ -229,24 +245,61 @@ internal static class VisionCheckRunner {
                 section = "out";
                 continue;
             }
+            if (lowered.Contains("accept guidance", StringComparison.Ordinal) ||
+                lowered.Contains("accept signals", StringComparison.Ordinal) ||
+                lowered.Equals("## accept", StringComparison.Ordinal) ||
+                lowered.Equals("### accept", StringComparison.Ordinal)) {
+                section = "accept";
+                continue;
+            }
+            if (lowered.Contains("reject guidance", StringComparison.Ordinal) ||
+                lowered.Contains("reject signals", StringComparison.Ordinal) ||
+                lowered.Equals("## reject", StringComparison.Ordinal) ||
+                lowered.Equals("### reject", StringComparison.Ordinal)) {
+                section = "reject";
+                continue;
+            }
+            if (lowered.Contains("human review guidance", StringComparison.Ordinal) ||
+                lowered.Contains("needs human review", StringComparison.Ordinal) ||
+                lowered.Equals("## review", StringComparison.Ordinal) ||
+                lowered.Equals("### review", StringComparison.Ordinal)) {
+                section = "review";
+                continue;
+            }
 
             if (!IsBulletLine(line)) {
                 continue;
             }
 
             var content = StripBullet(line);
-            var tokens = TriageIndexRunner.Tokenize(content);
+            var policySection = TryParsePolicySection(content, out var policyBody)
+                ? policyBody.Item1
+                : section;
+            var policyContent = policyBody.Item2;
+            var tokens = TriageIndexRunner.Tokenize(policyContent);
             foreach (var token in tokens) {
                 allTokens.Add(token);
             }
 
-            if (section == "in") {
+            if (policySection == "in") {
                 foreach (var token in tokens) {
                     inScope.Add(token);
                 }
-            } else if (section == "out") {
+            } else if (policySection == "out") {
                 foreach (var token in tokens) {
                     outOfScope.Add(token);
+                }
+            } else if (policySection == "accept") {
+                foreach (var token in tokens) {
+                    explicitAccept.Add(token);
+                }
+            } else if (policySection == "reject") {
+                foreach (var token in tokens) {
+                    explicitReject.Add(token);
+                }
+            } else if (policySection == "review") {
+                foreach (var token in tokens) {
+                    explicitReview.Add(token);
                 }
             }
         }
@@ -257,7 +310,7 @@ internal static class VisionCheckRunner {
             }
         }
 
-        return new VisionSignals(inScope, outOfScope);
+        return new VisionSignals(inScope, outOfScope, explicitAccept, explicitReject, explicitReview);
     }
 
     private static bool IsBulletLine(string line) {
@@ -271,6 +324,41 @@ internal static class VisionCheckRunner {
             return line.Substring(2).Trim();
         }
         return NumberedBullet.Replace(line, string.Empty).Trim();
+    }
+
+    private static bool TryParsePolicySection(string content, out (string Item1, string Item2) policy) {
+        policy = (string.Empty, content);
+        var match = PolicyPrefix.Match(content);
+        if (!match.Success) {
+            return false;
+        }
+
+        var directive = match.Groups[1].Value.Trim().ToLowerInvariant();
+        var body = match.Groups[2].Value.Trim();
+        if (string.IsNullOrWhiteSpace(body)) {
+            return false;
+        }
+
+        var section = directive switch {
+            "aligned" => "accept",
+            "accept" => "accept",
+            "approve" => "accept",
+            "likely-out-of-scope" => "reject",
+            "reject" => "reject",
+            "deny" => "reject",
+            "needs-human-review" => "review",
+            "human-review" => "review",
+            "review" => "review",
+            "required-review" => "review",
+            _ => string.Empty
+        };
+
+        if (string.IsNullOrWhiteSpace(section)) {
+            return false;
+        }
+
+        policy = (section, body);
+        return true;
     }
 
     private static List<PullRequestCandidate> LoadCandidates(string indexPath) {
@@ -315,11 +403,42 @@ internal static class VisionCheckRunner {
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(token => token, StringComparer.OrdinalIgnoreCase)
             .ToList();
+        var explicitAcceptMatches = tokens
+            .Where(token => signals.ExplicitAcceptTokens.Contains(token))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(token => token, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var explicitRejectMatches = tokens
+            .Where(token => signals.ExplicitRejectTokens.Contains(token))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(token => token, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var explicitReviewMatches = tokens
+            .Where(token => signals.ExplicitReviewTokens.Contains(token))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(token => token, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         string classification;
         double confidence;
         string reason;
-        if (outMatches.Count >= 2 && inMatches.Count == 0) {
+        if (explicitRejectMatches.Count > 0 && explicitAcceptMatches.Count == 0) {
+            classification = "likely-out-of-scope";
+            confidence = Math.Min(0.99, 0.80 + (explicitRejectMatches.Count * 0.06));
+            reason = $"Explicit reject-policy matches: {string.Join(", ", explicitRejectMatches.Take(5))}.";
+        } else if (explicitAcceptMatches.Count > 0 && explicitRejectMatches.Count == 0 && explicitReviewMatches.Count == 0) {
+            classification = "aligned";
+            confidence = Math.Min(0.98, 0.78 + (explicitAcceptMatches.Count * 0.05));
+            reason = $"Explicit accept-policy matches: {string.Join(", ", explicitAcceptMatches.Take(5))}.";
+        } else if (explicitAcceptMatches.Count > 0 && explicitRejectMatches.Count > 0) {
+            classification = "needs-human-review";
+            confidence = 0.66;
+            reason = $"Conflicting explicit policy matches (accept: {string.Join(", ", explicitAcceptMatches.Take(3))}; reject: {string.Join(", ", explicitRejectMatches.Take(3))}).";
+        } else if (explicitReviewMatches.Count > 0) {
+            classification = "needs-human-review";
+            confidence = Math.Min(0.80, 0.60 + (explicitReviewMatches.Count * 0.05));
+            reason = $"Explicit human-review policy matches: {string.Join(", ", explicitReviewMatches.Take(5))}.";
+        } else if (outMatches.Count >= 2 && inMatches.Count == 0) {
             classification = "likely-out-of-scope";
             confidence = Math.Min(0.98, 0.65 + (outMatches.Count * 0.10));
             reason = $"Out-of-scope token matches: {string.Join(", ", outMatches.Take(5))}.";
@@ -347,6 +466,9 @@ internal static class VisionCheckRunner {
             candidate.Score,
             inMatches,
             outMatches,
+            explicitAcceptMatches,
+            explicitRejectMatches,
+            explicitReviewMatches,
             reason
         );
     }
