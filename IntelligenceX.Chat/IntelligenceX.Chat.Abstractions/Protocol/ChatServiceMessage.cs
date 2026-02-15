@@ -19,6 +19,7 @@ namespace IntelligenceX.Chat.Abstractions.Protocol;
 [JsonDerivedType(typeof(ToolListMessage), "tool_list")]
 [JsonDerivedType(typeof(ProfileListMessage), "profile_list")]
 [JsonDerivedType(typeof(ModelListMessage), "model_list")]
+[JsonDerivedType(typeof(ModelFavoritesMessage), "model_favorites")]
 [JsonDerivedType(typeof(InvokeToolResultMessage), "invoke_tool_result")]
 [JsonDerivedType(typeof(ChatStatusMessage), "chat_status")]
 [JsonDerivedType(typeof(ChatDeltaMessage), "chat_delta")]

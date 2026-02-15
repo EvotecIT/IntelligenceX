@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Profiles;
 using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
@@ -15,6 +16,7 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private sealed record SetProfileResult(bool ReconnectClient, bool ModelChanged);
+    private sealed record ModelListCacheEntry(string Key, DateTime ExpiresAtUtc, ModelListResult Result);
 
     private static async ValueTask DisposeClientAsync(IntelligenceXClient client) {
         if (client is null) {
@@ -193,6 +195,9 @@ internal sealed partial class ChatServiceSession {
             _options.ProfileName = name;
             _instructions = LoadInstructions(_options);
             RebuildToolingFromOptions();
+            lock (_modelListCacheLock) {
+                _modelListCache = null;
+            }
 
             var nextClientOptions = BuildClientOptions();
             nextClientOptions.Validate();
@@ -236,39 +241,198 @@ internal sealed partial class ChatServiceSession {
     }
 
     private async Task HandleListModelsAsync(IntelligenceXClient client, StreamWriter writer, ListModelsRequest request, CancellationToken cancellationToken) {
-        // ForceRefresh is reserved for future server-side caching.
+        var profileName = (_options.ProfileName ?? string.Empty).Trim();
+        var canUseStateDb = !_options.NoStateDb && !string.IsNullOrWhiteSpace(profileName);
+        var favorites = Array.Empty<string>();
+        var recents = Array.Empty<string>();
+        if (canUseStateDb) {
+            try {
+                using var prefs = new SqliteModelPreferencesStore(ResolveStateDbPath());
+                var favs = await prefs.ListFavoritesAsync(profileName, cancellationToken).ConfigureAwait(false);
+                favorites = favs.Count == 0 ? Array.Empty<string>() : favs.ToArray();
+                var recentList = await prefs.ListRecentsAsync(profileName, max: 10, cancellationToken).ConfigureAwait(false);
+                recents = recentList.Count == 0 ? Array.Empty<string>() : recentList.ToArray();
+            } catch {
+                // Best-effort; listing models should still work if preferences fail.
+            }
+        }
+
+        var cacheKey = $"{profileName}|{_options.OpenAITransport}|{_options.OpenAIBaseUrl ?? string.Empty}";
+        ModelListResult? cached = null;
+        var cachedIsFresh = false;
+        lock (_modelListCacheLock) {
+            if (_modelListCache is not null && string.Equals(_modelListCache.Key, cacheKey, StringComparison.Ordinal)) {
+                cached = _modelListCache.Result;
+                cachedIsFresh = DateTime.UtcNow <= _modelListCache.ExpiresAtUtc;
+            }
+        }
+
+        // ForceRefresh bypasses cache (best-effort).
+        if (!request.ForceRefresh && cachedIsFresh && cached is not null) {
+            await WriteModelListAsync(writer, request.RequestId, cached, favorites, recents, isStale: false, warning: null, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         try {
             var result = await client.ListModelsAsync(cancellationToken).ConfigureAwait(false);
-            var models = result.Models.Select(m => new ModelInfoDto {
-                Id = m.Id,
-                Model = m.Model,
-                DisplayName = string.IsNullOrWhiteSpace(m.DisplayName) ? null : m.DisplayName,
-                Description = string.IsNullOrWhiteSpace(m.Description) ? null : m.Description,
-                IsDefault = m.IsDefault,
-                DefaultReasoningEffort = string.IsNullOrWhiteSpace(m.DefaultReasoningEffort) ? null : m.DefaultReasoningEffort,
-                SupportedReasoningEfforts = m.SupportedReasoningEfforts.Count == 0
-                    ? Array.Empty<ReasoningEffortOptionDto>()
-                    : m.SupportedReasoningEfforts
-                        .Select(e => new ReasoningEffortOptionDto {
-                            ReasoningEffort = e.ReasoningEffort,
-                            Description = string.IsNullOrWhiteSpace(e.Description) ? null : e.Description
-                        })
-                        .ToArray()
-            }).ToArray();
 
-            await WriteAsync(writer, new ModelListMessage {
-                Kind = ChatServiceMessageKind.Response,
-                RequestId = request.RequestId,
-                Models = models,
-                NextCursor = result.NextCursor
-            }, cancellationToken).ConfigureAwait(false);
+            lock (_modelListCacheLock) {
+                _modelListCache = new ModelListCacheEntry(
+                    Key: cacheKey,
+                    ExpiresAtUtc: DateTime.UtcNow.AddMinutes(5),
+                    Result: result);
+            }
+
+            await WriteModelListAsync(writer, request.RequestId, result, favorites, recents, isStale: false, warning: null, cancellationToken).ConfigureAwait(false);
         } catch (Exception ex) {
+            // If discovery fails, fall back to cached models (even if stale) to keep the UI usable.
+            if (cached is not null) {
+                await WriteModelListAsync(writer, request.RequestId, cached, favorites, recents, isStale: true,
+                    warning: $"Model discovery failed; returning cached results. Error: {ex.Message}", cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
             await WriteAsync(writer, new ErrorMessage {
                 Kind = ChatServiceMessageKind.Response,
                 RequestId = request.RequestId,
                 Error = $"Failed to list models: {ex.Message}",
                 Code = "models_failed"
             }, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task WriteModelListAsync(StreamWriter writer, string requestId, ModelListResult result, string[] favorites, string[] recents,
+        bool isStale, string? warning, CancellationToken cancellationToken) {
+        var models = result.Models.Select(m => new ModelInfoDto {
+            Id = m.Id,
+            Model = m.Model,
+            DisplayName = string.IsNullOrWhiteSpace(m.DisplayName) ? null : m.DisplayName,
+            Description = string.IsNullOrWhiteSpace(m.Description) ? null : m.Description,
+            IsDefault = m.IsDefault,
+            DefaultReasoningEffort = string.IsNullOrWhiteSpace(m.DefaultReasoningEffort) ? null : m.DefaultReasoningEffort,
+            SupportedReasoningEfforts = m.SupportedReasoningEfforts.Count == 0
+                ? Array.Empty<ReasoningEffortOptionDto>()
+                : m.SupportedReasoningEfforts
+                    .Select(e => new ReasoningEffortOptionDto {
+                        ReasoningEffort = e.ReasoningEffort,
+                        Description = string.IsNullOrWhiteSpace(e.Description) ? null : e.Description
+                    })
+                    .ToArray()
+        }).ToArray();
+
+        await WriteAsync(writer, new ModelListMessage {
+            Kind = ChatServiceMessageKind.Response,
+            RequestId = requestId,
+            Models = models,
+            FavoriteModels = favorites ?? Array.Empty<string>(),
+            RecentModels = recents ?? Array.Empty<string>(),
+            IsStale = isStale,
+            Warning = warning,
+            NextCursor = result.NextCursor
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task HandleListModelFavoritesAsync(StreamWriter writer, ListModelFavoritesRequest request, CancellationToken cancellationToken) {
+        var profileName = (_options.ProfileName ?? string.Empty).Trim();
+        if (_options.NoStateDb) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = "State DB is disabled; favorites are unavailable.",
+                Code = "state_db_disabled"
+            }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(profileName)) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = "No active profile. Use set_profile first.",
+                Code = "no_active_profile"
+            }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        try {
+            using var prefs = new SqliteModelPreferencesStore(ResolveStateDbPath());
+            var favs = await prefs.ListFavoritesAsync(profileName, cancellationToken).ConfigureAwait(false);
+            await WriteAsync(writer, new ModelFavoritesMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Models = favs.Count == 0 ? Array.Empty<string>() : favs.ToArray()
+            }, cancellationToken).ConfigureAwait(false);
+        } catch (Exception ex) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = $"Failed to list model favorites: {ex.Message}",
+                Code = "favorites_failed"
+            }, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task HandleSetModelFavoriteAsync(StreamWriter writer, SetModelFavoriteRequest request, CancellationToken cancellationToken) {
+        var profileName = (_options.ProfileName ?? string.Empty).Trim();
+        var model = (request.Model ?? string.Empty).Trim();
+        if (_options.NoStateDb) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = "State DB is disabled; favorites are unavailable.",
+                Code = "state_db_disabled"
+            }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(profileName)) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = "No active profile. Use set_profile first.",
+                Code = "no_active_profile"
+            }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(model)) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = "model is required.",
+                Code = "invalid_argument"
+            }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        try {
+            using var prefs = new SqliteModelPreferencesStore(ResolveStateDbPath());
+            await prefs.SetFavoriteAsync(profileName, model, request.IsFavorite, cancellationToken).ConfigureAwait(false);
+            await WriteAsync(writer, new AckMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Ok = true,
+                Message = request.IsFavorite ? $"Favorited model '{model}'." : $"Unfavorited model '{model}'."
+            }, cancellationToken).ConfigureAwait(false);
+        } catch (Exception ex) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = $"Failed to update model favorite: {ex.Message}",
+                Code = "favorites_failed"
+            }, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task TryRecordRecentModelAsync(string model, CancellationToken cancellationToken) {
+        var profileName = (_options.ProfileName ?? string.Empty).Trim();
+        var normalizedModel = (model ?? string.Empty).Trim();
+        if (_options.NoStateDb || string.IsNullOrWhiteSpace(profileName) || string.IsNullOrWhiteSpace(normalizedModel)) {
+            return;
+        }
+
+        try {
+            using var prefs = new SqliteModelPreferencesStore(ResolveStateDbPath());
+            await prefs.RecordRecentAsync(profileName, normalizedModel, maxRecentsPerProfile: 50, cancellationToken).ConfigureAwait(false);
+        } catch {
+            // Best-effort.
         }
     }
 
