@@ -37,8 +37,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             null,
             new object?[] { userRequest, assistantDraft, true, 0, false });
 
-        Assert.False(Assert.IsType<bool>(result));
+        Assert.False((bool)result!);
     }
 
 }
-
