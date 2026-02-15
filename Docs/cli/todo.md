@@ -233,6 +233,7 @@ It runs `build-triage-index`, uploads artifacts, and can optionally upsert a con
 when repository variable `IX_TRIAGE_CONTROL_ISSUE` is set.
 For `triage-index-scheduled.yml`, IX upserts a single marker comment (latest only) with the triage index summary.
 For `triage-project-sync.yml`, IX upserts a single marker comment (latest only) that includes both triage and vision markdown summaries.
+Both workflows also upsert a shared `intelligencex:triage-control-dashboard` comment linking to the latest summary comments.
 `todo project-bootstrap --create-control-issue` can set this variable for you automatically.
 
 ## Options

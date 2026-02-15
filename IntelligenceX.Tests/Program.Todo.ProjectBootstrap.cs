@@ -78,9 +78,11 @@ project={{ProjectNumber}}
             300);
 
         AssertContainsText(rendered, "intelligencex:triage-project-sync-summary", "workflow summary marker present");
+        AssertContainsText(rendered, "intelligencex:triage-control-dashboard", "workflow dashboard marker present");
         AssertContainsText(rendered, "issues/$ISSUE/comments", "workflow reads control issue comments");
         AssertContainsText(rendered, "--method PATCH", "workflow updates existing summary comment");
         AssertContainsText(rendered, "--method POST", "workflow creates summary comment when missing");
+        AssertContainsText(rendered, "Latest Summaries", "workflow dashboard includes latest summaries section");
     }
 
     private static void TestTriageIndexWorkflowTemplateUpsertsControlIssueSummaryComment() {
@@ -88,9 +90,11 @@ project={{ProjectNumber}}
         var rendered = File.ReadAllText(templatePath);
 
         AssertContainsText(rendered, "intelligencex:triage-index-summary", "index workflow summary marker present");
+        AssertContainsText(rendered, "intelligencex:triage-control-dashboard", "index workflow dashboard marker present");
         AssertContainsText(rendered, "issues/$ISSUE/comments", "index workflow reads control issue comments");
         AssertContainsText(rendered, "--method PATCH", "index workflow updates existing summary comment");
         AssertContainsText(rendered, "--method POST", "index workflow creates summary comment when missing");
+        AssertContainsText(rendered, "Latest Summaries", "index workflow dashboard includes latest summaries section");
     }
 
     private static void TestProjectBootstrapBuildControlIssueBodyIncludesProjectContext() {

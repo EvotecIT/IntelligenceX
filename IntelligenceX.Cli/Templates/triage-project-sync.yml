@@ -97,8 +97,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           MARKER="<!-- intelligencex:triage-project-sync-summary -->"
+          DASHBOARD_MARKER="<!-- intelligencex:triage-control-dashboard -->"
           ISSUE="${{ vars.IX_TRIAGE_CONTROL_ISSUE }}"
           SUMMARY_FILE="artifacts/triage/ix-triage-project-sync-summary.md"
+          DASHBOARD_FILE="artifacts/triage/ix-triage-control-dashboard.md"
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           GENERATED_AT="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
 
@@ -137,10 +139,59 @@ jobs:
                 --method PATCH \
                 "repos/${{ github.repository }}/issues/comments/$EXISTING_ID" \
                 -F "body=@$SUMMARY_FILE" > /dev/null
+              SUMMARY_COMMENT_ID="$EXISTING_ID"
+            else
+              SUMMARY_COMMENT_ID="$(gh api \
+                --method POST \
+                "repos/${{ github.repository }}/issues/$ISSUE/comments" \
+                -F "body=@$SUMMARY_FILE" \
+                --jq '.id')"
+            fi
+
+            TRIAGE_INDEX_COMMENT_ID="$(gh api --paginate \
+              "repos/${{ github.repository }}/issues/$ISSUE/comments" \
+              --jq '.[] | select(.body | contains("<!-- intelligencex:triage-index-summary -->")) | .id' \
+              | tail -n 1)"
+
+            PROJECT_SYNC_LINK="${{ github.server_url }}/${{ github.repository }}/issues/$ISSUE#issuecomment-$SUMMARY_COMMENT_ID"
+            if [ -n "$TRIAGE_INDEX_COMMENT_ID" ]; then
+              TRIAGE_INDEX_LINK="${{ github.server_url }}/${{ github.repository }}/issues/$ISSUE#issuecomment-$TRIAGE_INDEX_COMMENT_ID"
+            else
+              TRIAGE_INDEX_LINK=""
+            fi
+
+            {
+              echo "$DASHBOARD_MARKER"
+              echo "# IX Triage Control Dashboard"
+              echo
+              echo "- Updated: $GENERATED_AT"
+              echo "- Repo: \`${{ github.repository }}\`"
+              echo "- Workflow run: $RUN_URL"
+              echo
+              echo "## Latest Summaries"
+              echo
+              if [ -n "$TRIAGE_INDEX_LINK" ]; then
+                echo "- Triage Index Sweep: $TRIAGE_INDEX_LINK"
+              else
+                echo "- Triage Index Sweep: _not available yet_"
+              fi
+              echo "- Triage Project Sync: $PROJECT_SYNC_LINK"
+            } > "$DASHBOARD_FILE"
+
+            DASHBOARD_EXISTING_ID="$(gh api --paginate \
+              "repos/${{ github.repository }}/issues/$ISSUE/comments" \
+              --jq '.[] | select(.body | contains("<!-- intelligencex:triage-control-dashboard -->")) | .id' \
+              | tail -n 1)"
+
+            if [ -n "$DASHBOARD_EXISTING_ID" ]; then
+              gh api \
+                --method PATCH \
+                "repos/${{ github.repository }}/issues/comments/$DASHBOARD_EXISTING_ID" \
+                -F "body=@$DASHBOARD_FILE" > /dev/null
             else
               gh api \
                 --method POST \
                 "repos/${{ github.repository }}/issues/$ISSUE/comments" \
-                -F "body=@$SUMMARY_FILE" > /dev/null
+                -F "body=@$DASHBOARD_FILE" > /dev/null
             fi
           fi
