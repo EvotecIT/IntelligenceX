@@ -173,4 +173,19 @@ public class EventLogEvtxFindToolTests {
             }
         }
     }
+
+    [Fact]
+    public void IsUnderRoot_RespectsBoundaryAndTrailingSeparators() {
+        var cmp = StringComparison.OrdinalIgnoreCase;
+
+        // Trailing separators on root should not affect containment checks.
+        var root = @"C:\allowed\root\";
+        Assert.True(EventLogEvtxFindTool.IsUnderRoot(@"C:\allowed\root\file.evtx", root, cmp));
+
+        // Exact root equality should be allowed (we enqueue the root itself).
+        Assert.True(EventLogEvtxFindTool.IsUnderRoot(@"C:\allowed\root", root, cmp));
+
+        // "C:\allowed\root2" must not be treated as under "C:\allowed\root".
+        Assert.False(EventLogEvtxFindTool.IsUnderRoot(@"C:\allowed\root2\file.evtx", root, cmp));
+    }
 }

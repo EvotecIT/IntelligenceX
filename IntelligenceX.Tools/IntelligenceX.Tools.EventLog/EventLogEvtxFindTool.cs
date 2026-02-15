@@ -112,6 +112,8 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                 continue;
             }
 
+            rootFull = Path.TrimEndingDirectorySeparator(rootFull);
+
             var queue = new Queue<(string Dir, int Depth)>();
             queue.Enqueue((rootFull, 0));
 
@@ -155,6 +157,9 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                         }
 
                         var fileFull = NormalizePathForComparison(info.FullName);
+                        if (!IsUnderRoot(fileFull, rootFull, comparison)) {
+                            continue;
+                        }
 
                         var candidate = new EvtxFindFile(
                             Path: fileFull,
@@ -197,6 +202,10 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                         subFull = NormalizePathForComparison(Path.GetFullPath(subDir));
                     } catch (Exception ex) when (
                         ex is ArgumentException or NotSupportedException or PathTooLongException) {
+                        continue;
+                    }
+
+                    if (!IsUnderRoot(subFull, rootFull, comparison)) {
                         continue;
                     }
 
@@ -309,6 +318,21 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             // Treat as unsafe: skip traversal if we can't reliably read attributes.
             return true;
         }
+    }
+
+    // Internal so we can unit-test root boundary logic without relying on junction/symlink creation.
+    internal static bool IsUnderRoot(string candidateFullPath, string rootFullPath, StringComparison comparison) {
+        if (string.IsNullOrWhiteSpace(candidateFullPath) || string.IsNullOrWhiteSpace(rootFullPath)) {
+            return false;
+        }
+
+        rootFullPath = Path.TrimEndingDirectorySeparator(rootFullPath);
+        if (string.Equals(candidateFullPath, rootFullPath, comparison)) {
+            return true;
+        }
+
+        var prefix = rootFullPath + Path.DirectorySeparatorChar;
+        return candidateFullPath.StartsWith(prefix, comparison);
     }
 
     private static string NormalizePathForComparison(string path) {
