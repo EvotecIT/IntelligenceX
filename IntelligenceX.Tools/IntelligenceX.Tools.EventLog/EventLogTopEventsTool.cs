@@ -154,6 +154,9 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
             await RemoteReadGate.WaitAsync(cancellationToken);
             (bool Ok, LiveEventQueryResult? Root, LiveEventQueryFailure? Failure) remote;
             try {
+                // Cancellation is best-effort: we honor it while waiting for the concurrency gate and before starting
+                // the remote read. The underlying synchronous call may or may not observe it once running.
+                cancellationToken.ThrowIfCancellationRequested();
                 remote = await Task.Run(() => {
                     var okInner = LiveEventQueryExecutor.TryRead(
                         request: request,
@@ -161,7 +164,7 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
                         failure: out var remoteFailure,
                         cancellationToken: cancellationToken);
                     return (Ok: okInner, Root: okInner ? remoteRoot : null, Failure: okInner ? null : remoteFailure);
-                }, cancellationToken);
+                }, CancellationToken.None);
             } finally {
                 RemoteReadGate.Release();
             }
