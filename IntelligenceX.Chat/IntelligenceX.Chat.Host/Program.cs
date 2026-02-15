@@ -176,7 +176,7 @@ internal static partial class Program {
             session = nextSession;
 
             Console.WriteLine($"Registered tools: {registry.GetDefinitions().Count}");
-            Console.WriteLine("Commands: /help, /tools, /roots, /profiles, /profile <name>, /models, /model <name>, /favorites, /favorite <model>, /unfavorite <model>, /exit");
+            Console.WriteLine("Commands: /help, /tools, /roots, /profiles, /profile <name>, /models, /model <name>, /favorites, /favorite <model>, /unfavorite <model>, /compare <p1,p2,...> -- <prompt>, /exit");
             Console.WriteLine();
         }
 
@@ -360,6 +360,9 @@ internal static partial class Program {
                                 Console.WriteLine($"Unfavorited: {arg}");
                                 continue;
                             }
+                        case "/compare":
+                            await HandleCompareCommandAsync(arg, options, cancellationToken).ConfigureAwait(false);
+                            continue;
                         default:
                             Console.WriteLine("Unknown command. Try /help.");
                             continue;
@@ -549,7 +552,7 @@ internal static partial class Program {
         Console.WriteLine("  -h, --help              Show help.");
         Console.WriteLine();
         Console.WriteLine("REPL commands:");
-        Console.WriteLine("  /help, /tools, /roots, /profiles, /profile <name>, /models, /model <name>, /favorites, /favorite <model>, /unfavorite <model>, /exit");
+        Console.WriteLine("  /help, /tools, /roots, /profiles, /profile <name>, /models, /model <name>, /favorites, /favorite <model>, /unfavorite <model>, /compare <p1,p2,...> -- <prompt>, /exit");
     }
 
     private static string? LoadInstructions(ReplOptions options) {
