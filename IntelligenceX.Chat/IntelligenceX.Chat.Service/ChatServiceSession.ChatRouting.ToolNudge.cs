@@ -9,19 +9,6 @@ internal sealed partial class ChatServiceSession {
     private const int MaxQuotedPhraseSpan = 140;
     private const string ExecutionCorrectionMarker = "ix:execution-correction:v1";
 
-    // Narrow, safety-oriented hints: this is not a "phrase list" of confirmations. It's a guard to ensure we only
-    // treat quoted phrases as call-to-action targets when the assistant explicitly instructs the user to say/type/etc.
-    private static readonly string[] ToolNudgeCallToActionHints = new[] {
-        "say",
-        "type",
-        "reply",
-        "respond",
-        "send",
-        "enter",
-        "paste",
-        "write"
-    };
-
     private static bool ShouldAttemptToolExecutionNudge(string userRequest, string assistantDraft, bool toolsAvailable, int priorToolCalls,
         bool usedContinuationSubset) {
         if (!toolsAvailable || priorToolCalls > 0) {
@@ -60,12 +47,16 @@ internal sealed partial class ChatServiceSession {
         }
 
         // Language-agnostic "acknowledgement-like" draft: short, no structured output, no numeric evidence.
-        var hasStructuredOutput = draft.Contains('\n', StringComparison.Ordinal)
+        var isMultiLine = draft.Contains('\n', StringComparison.Ordinal) || draft.Contains('\r', StringComparison.Ordinal);
+        var hasStructuredOutput = isMultiLine
                                   || draft.Contains('|', StringComparison.Ordinal)
                                   || draft.Contains('{', StringComparison.Ordinal)
                                   || draft.Contains('[', StringComparison.Ordinal);
         if (hasStructuredOutput) {
-            return false;
+            // Multi-line drafts are usually results/explanations; avoid retrying tools based on incidental quoted text
+            // inside structured output (for example JSON like `"run now",`). Only allow the nudge when the CTA quote
+            // is formatted as an explicit option/bullet on its own line.
+            return echoedCallToAction && UserMatchesAssistantCallToAction(request, draft, onlyBulletContext: true);
         }
 
         var hasNumericSignal = false;
@@ -85,7 +76,7 @@ internal sealed partial class ChatServiceSession {
         return echoedCallToAction || AssistantDraftReferencesUserRequest(request, draft);
     }
 
-    private static bool UserMatchesAssistantCallToAction(string userRequest, string assistantDraft) {
+    private static bool UserMatchesAssistantCallToAction(string userRequest, string assistantDraft, bool onlyBulletContext = false) {
         var request = NormalizeCompactText(userRequest);
         if (request.Length == 0 || request.Length > 120) {
             return false;
@@ -98,7 +89,7 @@ internal sealed partial class ChatServiceSession {
 
         for (var i = 0; i < phrases.Count; i++) {
             var phrase = phrases[i];
-            if (!LooksLikeCallToActionContext(assistantDraft, phrase.OpenIndex)) {
+            if (!LooksLikeCallToActionContext(assistantDraft, phrase, onlyBulletContext)) {
                 continue;
             }
 
@@ -121,23 +112,114 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
-    private static bool LooksLikeCallToActionContext(string assistantDraft, int quoteIndex) {
-        if (quoteIndex <= 0) {
+    // Keep this language-agnostic: treat a quote as a "say/type this exact phrase" CTA only when local punctuation
+    // makes it look like an instruction snippet, not an incidental quoted error message.
+    private static bool LooksLikeCallToActionContext(string assistantDraft, QuotedPhrase phrase, bool onlyBulletContext) {
+        if (string.IsNullOrEmpty(assistantDraft)) {
             return false;
         }
 
-        // Constrain to the "local" sentence so earlier CTA phrases don't bleed into later incidental quotes.
-        var windowStart = Math.Max(0, quoteIndex - 72);
-        for (var i = quoteIndex - 1; i >= 0 && (quoteIndex - i) <= 220; i--) {
+        var openIndex = phrase.OpenIndex;
+        var closeIndexExclusive = phrase.CloseIndexExclusive;
+        if (openIndex < 0 || closeIndexExclusive <= openIndex + 1 || closeIndexExclusive > assistantDraft.Length) {
+            return false;
+        }
+
+        var closeQuoteIndex = closeIndexExclusive - 1;
+
+        if (!onlyBulletContext) {
+            // Most common CTA pattern: "... \"run now\", I'll execute ..."
+            var after = closeIndexExclusive;
+            if (after < assistantDraft.Length) {
+                // Allow tiny whitespace, then comma.
+                var scan = after;
+                var consumedSpace = 0;
+                while (scan < assistantDraft.Length && consumedSpace < 3 && char.IsWhiteSpace(assistantDraft[scan])) {
+                    scan++;
+                    consumedSpace++;
+                }
+                if (scan < assistantDraft.Length && assistantDraft[scan] == ',') {
+                    return true;
+                }
+            }
+        }
+
+        // Bullet-like CTA: "- \"run now\"" or "1. \"run now\"" on its own line.
+        var lineStart = 0;
+        for (var i = openIndex - 1; i >= 0; i--) {
             var ch = assistantDraft[i];
-            if (ch == '.' || ch == '!' || ch == '?' || ch == '\n' || ch == '\r') {
-                windowStart = Math.Max(windowStart, i + 1);
+            if (ch == '\n' || ch == '\r') {
+                lineStart = i + 1;
                 break;
             }
         }
 
-        for (var i = 0; i < ToolNudgeCallToActionHints.Length; i++) {
-            if (ContainsWordInRange(assistantDraft, windowStart, quoteIndex, ToolNudgeCallToActionHints[i])) {
+        var lineEnd = assistantDraft.Length;
+        for (var i = closeQuoteIndex + 1; i < assistantDraft.Length; i++) {
+            var ch = assistantDraft[i];
+            if (ch == '\n' || ch == '\r') {
+                lineEnd = i;
+                break;
+            }
+        }
+
+        // Scan trimmed prefix without allocating (no Substring/Trim).
+        var left = lineStart;
+        var right = openIndex - 1;
+        while (left <= right && char.IsWhiteSpace(assistantDraft[left])) {
+            left++;
+        }
+        while (right >= left && char.IsWhiteSpace(assistantDraft[right])) {
+            right--;
+        }
+        if (left > right) {
+            // Quote is the only meaningful content on its line (explicit instruction snippet).
+            var suffixLeft = closeIndexExclusive;
+            if (suffixLeft >= assistantDraft.Length) {
+                // Only accept quote-only lines when preceded by an explicit label line (for example "To proceed:").
+                return PreviousNonEmptyLineEndsWithColon(assistantDraft, lineStart);
+            }
+
+            var suffixRight = lineEnd - 1;
+            if (suffixRight >= assistantDraft.Length) {
+                suffixRight = assistantDraft.Length - 1;
+            }
+            while (suffixLeft <= suffixRight && char.IsWhiteSpace(assistantDraft[suffixLeft])) {
+                suffixLeft++;
+            }
+            while (suffixRight >= suffixLeft && char.IsWhiteSpace(assistantDraft[suffixRight])) {
+                suffixRight--;
+            }
+
+            if (suffixLeft > suffixRight) {
+                // Avoid treating incidental quoted log/error lines as CTAs unless the assistant explicitly introduced them.
+                return PreviousNonEmptyLineEndsWithColon(assistantDraft, lineStart);
+            }
+
+            return false;
+        }
+
+        // "-", "*", "•"
+        if (right == left) {
+            var bullet = assistantDraft[left];
+            if (bullet == '-' || bullet == '*' || bullet == '•') {
+                return true;
+            }
+        }
+
+        // "1." / "1)" / "1:" (accept common markers without requiring '.')
+        var marker = assistantDraft[right];
+        if (marker == '.' || marker == ')' || marker == ':') {
+            // Multi-digit markers ("12)") are common; accept any non-empty run of digits before the marker.
+            var digitCount = 0;
+            for (var i = left; i < right; i++) {
+                if (!char.IsDigit(assistantDraft[i])) {
+                    digitCount = 0;
+                    break;
+                }
+                digitCount++;
+            }
+            if (digitCount > 0) {
                 return true;
             }
         }
@@ -145,52 +227,47 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
-    private static bool ContainsWordInRange(string text, int startIndex, int endIndexExclusive, string word) {
-        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(word)) {
+    private static bool PreviousNonEmptyLineEndsWithColon(string text, int currentLineStart) {
+        if (string.IsNullOrEmpty(text) || currentLineStart <= 0) {
             return false;
         }
 
-        if (startIndex < 0) {
-            startIndex = 0;
-        }
-        if (endIndexExclusive > text.Length) {
-            endIndexExclusive = text.Length;
-        }
-
-        var rangeLength = endIndexExclusive - startIndex;
-        if (rangeLength <= 0 || word.Length > rangeLength) {
-            return false;
+        // Walk backwards over line breaks and empty lines until we find the previous non-empty line.
+        var i = currentLineStart - 1;
+        while (i >= 0 && (text[i] == '\n' || text[i] == '\r')) {
+            i--;
         }
 
-        var scanStart = startIndex;
-        while (true) {
-            var remaining = endIndexExclusive - scanStart;
-            if (remaining < word.Length) {
-                return false;
+        while (i >= 0) {
+            var lineEnd = i;
+            var lineStart = i;
+            while (lineStart >= 0 && text[lineStart] != '\n' && text[lineStart] != '\r') {
+                lineStart--;
+            }
+            var start = lineStart + 1;
+
+            while (start <= lineEnd && char.IsWhiteSpace(text[start])) {
+                start++;
+            }
+            while (lineEnd >= start && char.IsWhiteSpace(text[lineEnd])) {
+                lineEnd--;
             }
 
-            var idx = text.IndexOf(word, scanStart, remaining, StringComparison.OrdinalIgnoreCase);
-            if (idx < 0) {
-                return false;
+            if (start <= lineEnd) {
+                return text[lineEnd] == ':';
             }
 
-            // Boundaries must be evaluated against the full string (not the scan range), otherwise a range that starts
-            // or ends in the middle of a word could incorrectly treat the hint as a standalone token.
-            var beforeOk = idx == 0 || !char.IsLetterOrDigit(text[idx - 1]);
-            var afterIndex = idx + word.Length;
-            var afterOk = afterIndex >= text.Length || !char.IsLetterOrDigit(text[afterIndex]);
-            if (beforeOk && afterOk) {
-                return true;
-            }
-
-            scanStart = idx + 1;
-            if (scanStart >= endIndexExclusive) {
-                return false;
+            // Empty line; move to previous.
+            i = lineStart - 1;
+            while (i >= 0 && (text[i] == '\n' || text[i] == '\r')) {
+                i--;
             }
         }
+
+        return false;
     }
 
-    private readonly record struct QuotedPhrase(int OpenIndex, int CloseIndex, string Value);
+    private readonly record struct QuotedPhrase(int OpenIndex, int CloseIndexExclusive, string Value);
 
     private static List<QuotedPhrase> ExtractQuotedPhrases(string text) {
         var value = text ?? string.Empty;
@@ -246,7 +323,7 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            phrases.Add(new QuotedPhrase(openIndex, end, inner));
+            phrases.Add(new QuotedPhrase(openIndex, end + 1, inner));
             if (phrases.Count >= 6) {
                 break;
             }

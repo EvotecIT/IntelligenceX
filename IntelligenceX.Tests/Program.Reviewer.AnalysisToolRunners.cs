@@ -27,8 +27,10 @@ internal static partial class Program {
         AssertContainsText(script, "if ($analysisPaths.Length -gt 0)", "powershell runner handles empty path list");
         AssertContainsText(script, "foreach ($analysisPath in $analysisPaths)", "powershell runner iterates filtered paths");
         AssertContainsText(script, "Invoke-ScriptAnalyzer -Path $analysisPath", "powershell runner invokes analyzer per path");
-        AssertContainsText(script, "-ErrorAction Continue -ErrorVariable +invokeErrors",
-            "powershell runner captures non-terminating engine errors");
+        AssertContainsText(script, "-ErrorAction Continue -ErrorVariable +localErrors",
+            "powershell runner captures non-terminating engine errors per file");
+        AssertContainsText(script, "foreach ($err in $localErrors)",
+            "powershell runner aggregates engine errors across files");
         AssertContainsText(script, "if ($sawInvokeErrors -and $FailOnAnalyzerErrors)",
             "powershell runner strict-mode failure gate");
         AssertContainsText(script, "exit 2", "powershell runner strict-mode engine error exit code");

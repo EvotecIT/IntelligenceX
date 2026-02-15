@@ -572,14 +572,59 @@ if ($analysisPaths.Length -gt 0) {
         }
 
         try {
-            if ($hasSettings) {
-                foreach ($result in @(Invoke-ScriptAnalyzer -Path $analysisPath -Severity $invokeSeverity -Settings $SettingsPath -ErrorAction Continue -ErrorVariable +invokeErrors)) {
-                    [void]$results.Add($result)
-                }
+            $localErrors = @()
+            $localResults = if ($hasSettings) {
+                @(Invoke-ScriptAnalyzer -Path $analysisPath -Severity $invokeSeverity -Settings $SettingsPath -ErrorAction Continue -ErrorVariable +localErrors)
             } else {
-                foreach ($result in @(Invoke-ScriptAnalyzer -Path $analysisPath -Severity $invokeSeverity -ErrorAction Continue -ErrorVariable +invokeErrors)) {
+                @(Invoke-ScriptAnalyzer -Path $analysisPath -Severity $invokeSeverity -ErrorAction Continue -ErrorVariable +localErrors)
+            }
+
+            # Work around intermittent PSScriptAnalyzer engine crashes (NullReferenceException) by retrying once.
+            $shouldRetry = $false
+            foreach ($err in $localErrors) {
+                $msg = if ($err.Exception -and $err.Exception.Message) { $err.Exception.Message } else { [string]$err }
+                if ($msg -like '*Object reference not set*' -or $msg -like '*NullReferenceException*') {
+                    $shouldRetry = $true
+                    break
+                }
+            }
+
+            if ($shouldRetry) {
+                Import-Module PSScriptAnalyzer -Force -ErrorAction SilentlyContinue | Out-Null
+
+                $retryErrors = @()
+                $retryResults = if ($hasSettings) {
+                    @(Invoke-ScriptAnalyzer -Path $analysisPath -Severity $invokeSeverity -Settings $SettingsPath -ErrorAction Continue -ErrorVariable +retryErrors)
+                } else {
+                    @(Invoke-ScriptAnalyzer -Path $analysisPath -Severity $invokeSeverity -ErrorAction Continue -ErrorVariable +retryErrors)
+                }
+
+                if ($retryErrors.Count -eq 0) {
+                    foreach ($result in $retryResults) {
+                        [void]$results.Add($result)
+                    }
+                    continue
+                }
+
+                foreach ($result in $localResults) {
                     [void]$results.Add($result)
                 }
+
+                foreach ($err in $localErrors) {
+                    $invokeErrors += $err
+                }
+                foreach ($err in $retryErrors) {
+                    $invokeErrors += $err
+                }
+
+                continue
+            }
+
+            foreach ($result in $localResults) {
+                [void]$results.Add($result)
+            }
+            foreach ($err in $localErrors) {
+                $invokeErrors += $err
             }
         } catch {
             $invokeErrors += $_

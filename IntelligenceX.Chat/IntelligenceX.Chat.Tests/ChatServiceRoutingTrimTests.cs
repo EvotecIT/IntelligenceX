@@ -208,6 +208,145 @@ public sealed class ChatServiceRoutingTrimTests {
         Assert.True(Assert.IsType<bool>(result));
     }
 
+    [Theory]
+    [InlineData("- 'run now'")]
+    [InlineData("-   'run now'")]
+    [InlineData("* 'run now'")]
+    [InlineData("*    'run now'")]
+    [InlineData("1. 'run now'")]
+    [InlineData("1) 'run now'")]
+    [InlineData("1: 'run now'")]
+    [InlineData("  12) 'run now'")]
+    public void ShouldAttemptToolExecutionNudge_TriggersForBulletFormattedQuotedCallToActionWithoutContinuationSubset(string bulletLine) {
+        var userRequest = "run now";
+        var assistantDraft = $"Pick one:\n{bulletLine}\n";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersWhenQuotedCallToActionIsOnItsOwnLineWithoutContinuationSubset() {
+        var userRequest = "run now";
+        var assistantDraft = """
+            To proceed:
+            'run now'
+            """;
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersWhenQuotedCallToActionIsOnItsOwnLineAtEndOfStringWithoutContinuationSubset() {
+        var userRequest = "run now";
+        var assistantDraft = "To proceed:\n'run now'";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersWhenQuotedCallToActionIsIndentedOnItsOwnLineWithoutContinuationSubset() {
+        var userRequest = "run now";
+        var assistantDraft = "To proceed:\n  'run now'";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerWhenQuotedTextHasTrailingContentOnSameLineWithoutContinuationSubset() {
+        var userRequest = "run now";
+        var assistantDraft = "To proceed:\n  'run now' trailing text";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForStandaloneQuotedLineWithoutLeadInLabelWithoutContinuationSubset() {
+        var userRequest = "run now";
+        var assistantDraft = "I saw this in logs\n'run now'";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForColonLabelQuotedTextWithoutContinuationSubset() {
+        var userRequest = "access denied";
+        var assistantDraft = "Status: 'access denied'";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForCommaAfterQuoteCallToActionWithoutContinuationSubset() {
+        var userRequest = "run now";
+        var assistantDraft = "If you say \"run now\", I'll execute checks.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForQuotedJsonValueWithoutContinuationSubset() {
+        var userRequest = "run now";
+        var assistantDraft = """
+            {
+              "note": "run now",
+              "status": "ok"
+            }
+            """;
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForMultilineIncidentalQuotedTextWithoutContinuationSubset() {
+        var userRequest = "run now";
+        var assistantDraft = """
+            First line.
+            I saw "run now", in the logs, but I can retry if needed.
+            """;
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
     [Fact]
     public void ShouldAttemptToolExecutionNudge_DoesNotTriggerWithoutContinuationSubsetWhenDraftDoesNotContainEchoableCallToAction() {
         var userRequest = "run now";
