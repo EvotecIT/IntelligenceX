@@ -49,6 +49,38 @@ internal static partial class Program {
             "triage control issue should not be provisioned when variable valid");
     }
 
+    private static void TestSetupProjectViewApplyIssueProvisionDecision() {
+        AssertEqual(false, SetupRunner.ShouldProvisionProjectViewApplyIssue(
+                issueVariableValue: "14",
+                missingViews: 3,
+                directCreateSupported: false),
+            "project view issue should not be provisioned when variable is valid");
+
+        AssertEqual(false, SetupRunner.ShouldProvisionProjectViewApplyIssue(
+                issueVariableValue: null,
+                missingViews: 0,
+                directCreateSupported: false),
+            "project view issue should not be provisioned when no views are missing");
+
+        AssertEqual(false, SetupRunner.ShouldProvisionProjectViewApplyIssue(
+                issueVariableValue: null,
+                missingViews: 2,
+                directCreateSupported: true),
+            "project view issue should not be provisioned when direct create is supported");
+
+        AssertEqual(true, SetupRunner.ShouldProvisionProjectViewApplyIssue(
+                issueVariableValue: null,
+                missingViews: 2,
+                directCreateSupported: false),
+            "project view issue should be provisioned when missing views and variable absent");
+
+        AssertEqual(true, SetupRunner.ShouldProvisionProjectViewApplyIssue(
+                issueVariableValue: "oops",
+                missingViews: 1,
+                directCreateSupported: false),
+            "project view issue should be provisioned when variable is invalid");
+    }
+
     private static void TestSetupArgsIncludeAnalysisRunStrictOption() {
         var plan = new SetupPlan("owner/repo") {
             AnalysisEnabled = true,
