@@ -8,7 +8,13 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
 
     private const int MaxQuotedPhraseSpan = 140;
+    private const int MaxActionSelectionPayloadChars = 4096;
     private const string ExecutionCorrectionMarker = "ix:execution-correction:v1";
+    private static readonly JsonDocumentOptions ActionSelectionJsonOptions = new() {
+        MaxDepth = 16,
+        CommentHandling = JsonCommentHandling.Disallow,
+        AllowTrailingCommas = false
+    };
 
     private static bool ShouldAttemptToolExecutionNudge(string userRequest, string assistantDraft, bool toolsAvailable, int priorToolCalls,
         bool usedContinuationSubset) {
@@ -85,7 +91,7 @@ internal sealed partial class ChatServiceSession {
 
     private static bool LooksLikeActionSelectionPayload(string text) {
         var normalized = (text ?? string.Empty).Trim();
-        if (normalized.Length == 0 || normalized.Length > 4096) {
+        if (normalized.Length == 0 || normalized.Length > MaxActionSelectionPayloadChars) {
             return false;
         }
 
@@ -93,12 +99,8 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (normalized.IndexOf("ix_action_selection", StringComparison.Ordinal) < 0) {
-            return false;
-        }
-
         try {
-            using var doc = JsonDocument.Parse(normalized);
+            using var doc = JsonDocument.Parse(normalized, ActionSelectionJsonOptions);
             if (doc.RootElement.ValueKind != JsonValueKind.Object) {
                 return false;
             }

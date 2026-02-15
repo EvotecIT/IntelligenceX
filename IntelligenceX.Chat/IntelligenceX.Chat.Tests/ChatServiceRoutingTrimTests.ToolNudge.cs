@@ -43,4 +43,30 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.False(value);
     }
 
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForActionSelectionWithEmptyId() {
+        var userRequest = "{\"ix_action_selection\":{\"id\":\"\",\"title\":\"Run\",\"request\":\"Run it.\"}}";
+        var assistantDraft = "Ok, doing it now.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        var value = Assert.IsType<bool>(result);
+        Assert.False(value);
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForActionSelectionWithZeroNumericId() {
+        var userRequest = "{\"ix_action_selection\":{\"id\":0,\"title\":\"Run\",\"request\":\"Run it.\"}}";
+        var assistantDraft = "Ok, doing it now.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, false });
+
+        var value = Assert.IsType<bool>(result);
+        Assert.False(value);
+    }
+
 }
