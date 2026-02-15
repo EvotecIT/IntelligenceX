@@ -79,6 +79,7 @@ internal static partial class Program {
         failed += Run("Setup args include analysis run strict option", TestSetupArgsIncludeAnalysisRunStrictOption);
         failed += Run("Setup args include analysis export path", TestSetupArgsIncludeAnalysisExportPath);
         failed += Run("Setup args disable analysis omits gate and packs", TestSetupArgsDisableAnalysisOmitsGateAndPacks);
+        failed += Run("Setup args include triage bootstrap", TestSetupArgsIncludeTriageBootstrap);
         failed += Run("Setup args include OpenAI account routing", TestSetupArgsIncludeOpenAiAccountRouting);
         failed += Run("Setup args include OpenAI account routing with primary only",
             TestSetupArgsIncludeOpenAiAccountRoutingWithPrimaryOnly);
@@ -184,6 +185,7 @@ internal static partial class Program {
         failed += Run("Web setup args propagate OpenAI account routing with primary only",
             TestWebSetupBuildSetupArgsPropagatesOpenAiAccountRoutingWithPrimaryOnly);
         failed += Run("Web setup args propagate analysis run strict", TestWebSetupBuildSetupArgsPropagatesAnalysisRunStrict);
+        failed += Run("Web setup args propagate triage bootstrap", TestWebSetupBuildSetupArgsPropagatesTriageBootstrap);
         failed += Run("Web setup resolves with-config from args", TestWebSetupResolveWithConfigFromArgs);
         failed += Run("Web setup OpenAI routing validation rejects config override",
             TestWebSetupOpenAiRoutingValidationRejectsConfigOverride);

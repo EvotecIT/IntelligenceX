@@ -50,6 +50,10 @@ internal static class SetupArgsBuilder {
             args.Add("--with-config");
         }
 
+        if (plan.TriageBootstrap) {
+            args.Add("--triage-bootstrap");
+        }
+
         if (!string.IsNullOrWhiteSpace(plan.ConfigPath)) {
             args.Add("--config-path");
             args.Add(plan.ConfigPath);

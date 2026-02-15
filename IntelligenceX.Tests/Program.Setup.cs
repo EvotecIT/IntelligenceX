@@ -25,6 +25,17 @@ internal static partial class Program {
         }, args, "setup args analysis");
     }
 
+    private static void TestSetupArgsIncludeTriageBootstrap() {
+        var plan = new SetupPlan("owner/repo") {
+            TriageBootstrap = true
+        };
+        var args = SetupArgsBuilder.FromPlan(plan);
+        AssertSequenceEqual(new[] {
+            "--repo", "owner/repo",
+            "--triage-bootstrap"
+        }, args, "setup args triage bootstrap");
+    }
+
     private static void TestSetupArgsIncludeAnalysisRunStrictOption() {
         var plan = new SetupPlan("owner/repo") {
             AnalysisEnabled = true,

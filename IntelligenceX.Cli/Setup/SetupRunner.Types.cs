@@ -65,6 +65,7 @@ internal static partial class SetupRunner {
         public bool CleanupPostEditComment { get; set; } = true;
         public string? BranchName { get; set; }
         public bool WithConfig { get; set; }
+        public bool TriageBootstrap { get; set; }
         public bool Upgrade { get; set; }
         public bool Cleanup { get; set; }
         public bool UpdateSecret { get; set; }
@@ -299,6 +300,9 @@ internal static partial class SetupRunner {
                         break;
                     case "with-config":
                         options.WithConfig = ParseBool(value, true);
+                        break;
+                    case "triage-bootstrap":
+                        options.TriageBootstrap = ParseBool(value, true);
                         break;
                     case "upgrade":
                         options.Upgrade = ParseBool(value, true);
