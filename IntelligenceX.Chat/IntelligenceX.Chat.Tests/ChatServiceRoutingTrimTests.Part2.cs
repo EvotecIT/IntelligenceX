@@ -148,6 +148,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("ok！")]
     [InlineData("ok。")]
     [InlineData("do   it")]
+    [InlineData("ＧＯ")]
     public void ExpandContinuationUserRequest_AutoConfirmsSinglePendingActionForCommonAcknowledgements(string input) {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """

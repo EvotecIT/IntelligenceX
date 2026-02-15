@@ -344,7 +344,9 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static string CanonicalizeImplicitPendingActionConfirmationPhrase(string text) {
-        var normalized = (text ?? string.Empty).Trim();
+        var normalized = (text ?? string.Empty)
+            .Trim()
+            .Normalize(NormalizationForm.FormKC);
 
         // Trim leading/trailing punctuation broadly (including CJK/fullwidth punctuation) so "ok!" and "ok！" match.
         // Example punctuation this is expected to handle: '！', '。', '，'.
