@@ -30,6 +30,7 @@ internal static class ProjectFieldCatalog {
         new ProjectFieldDefinition("Tags", "TEXT", Array.Empty<string>()),
         new ProjectFieldDefinition("Matched Issue", "TEXT", Array.Empty<string>()),
         new ProjectFieldDefinition("Matched Issue Confidence", "NUMBER", Array.Empty<string>()),
+        new ProjectFieldDefinition("Related Issues", "TEXT", Array.Empty<string>()),
         new ProjectFieldDefinition("Triage Score", "NUMBER", Array.Empty<string>()),
         new ProjectFieldDefinition("Duplicate Cluster", "TEXT", Array.Empty<string>()),
         new ProjectFieldDefinition("Canonical Item", "TEXT", Array.Empty<string>()),

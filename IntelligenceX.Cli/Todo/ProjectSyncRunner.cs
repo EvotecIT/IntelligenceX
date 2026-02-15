@@ -586,6 +586,14 @@ internal static class ProjectSyncRunner {
             updated++;
         }
 
+        if (fields.TryGetValue("Related Issues", out var relatedIssuesField)) {
+            var relatedIssuesValue = BuildRelatedIssuesFieldValue(entry, maxIssues: 3);
+            if (!string.IsNullOrWhiteSpace(relatedIssuesValue)) {
+                await client.SetTextFieldAsync(projectId, itemId, relatedIssuesField.Id, relatedIssuesValue).ConfigureAwait(false);
+                updated++;
+            }
+        }
+
         if (fields.TryGetValue("Duplicate Cluster", out var duplicateField) && !string.IsNullOrWhiteSpace(entry.DuplicateCluster)) {
             await client.SetTextFieldAsync(projectId, itemId, duplicateField.Id, entry.DuplicateCluster).ConfigureAwait(false);
             updated++;
@@ -657,6 +665,22 @@ internal static class ProjectSyncRunner {
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(label => label, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    internal static string BuildRelatedIssuesFieldValue(ProjectSyncEntry entry, int maxIssues) {
+        var limit = Math.Max(1, Math.Min(maxIssues, 10));
+        var related = (entry.RelatedIssues ?? Array.Empty<RelatedIssueCandidate>())
+            .Where(candidate => candidate.Number > 0 && !string.IsNullOrWhiteSpace(candidate.Url))
+            .OrderByDescending(candidate => candidate.Confidence)
+            .ThenBy(candidate => candidate.Number)
+            .Take(limit)
+            .ToList();
+        if (related.Count == 0) {
+            return string.Empty;
+        }
+
+        return string.Join(Environment.NewLine, related.Select(candidate =>
+            $"#{candidate.Number.ToString(CultureInfo.InvariantCulture)} | {candidate.Confidence.ToString("0.00", CultureInfo.InvariantCulture)} | {candidate.Url}"));
     }
 
     internal static string? BuildIssueMatchSuggestionComment(ProjectSyncEntry entry, double minConfidence, int maxIssues) {

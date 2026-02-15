@@ -15,6 +15,7 @@ internal static partial class Program {
         AssertEqual(true, names.Contains("Tags", StringComparer.OrdinalIgnoreCase), "has Tags");
         AssertEqual(true, names.Contains("Matched Issue", StringComparer.OrdinalIgnoreCase), "has Matched Issue");
         AssertEqual(true, names.Contains("Matched Issue Confidence", StringComparer.OrdinalIgnoreCase), "has Matched Issue Confidence");
+        AssertEqual(true, names.Contains("Related Issues", StringComparer.OrdinalIgnoreCase), "has Related Issues");
         AssertEqual(true, names.Contains("Triage Score", StringComparer.OrdinalIgnoreCase), "has Triage Score");
         AssertEqual(true, names.Contains("Maintainer Decision", StringComparer.OrdinalIgnoreCase), "has Maintainer Decision");
     }
@@ -197,6 +198,35 @@ internal static partial class Program {
 
         var comment = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildIssueMatchSuggestionComment(entry, minConfidence: 0.55, maxIssues: 3);
         AssertEqual(true, string.IsNullOrWhiteSpace(comment), "no comment for weak matches");
+    }
+
+    private static void TestProjectSyncBuildRelatedIssuesFieldValueOrdersAndLimitsCandidates() {
+        var entry = new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+            Number: 57,
+            Url: "https://github.com/EvotecIT/IntelligenceX/pull/57",
+            Kind: "pull_request",
+            TriageScore: 70.0,
+            DuplicateCluster: null,
+            CanonicalItem: null,
+            Category: "feature",
+            Tags: Array.Empty<string>(),
+            MatchedIssueUrl: null,
+            MatchedIssueConfidence: null,
+            VisionFit: null,
+            VisionConfidence: null,
+            RelatedIssues: new[] {
+                new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedIssueCandidate(20, "https://github.com/EvotecIT/IntelligenceX/issues/20", 0.52, "token overlap"),
+                new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedIssueCandidate(11, "https://github.com/EvotecIT/IntelligenceX/issues/11", 0.93, "explicit"),
+                new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedIssueCandidate(19, "https://github.com/EvotecIT/IntelligenceX/issues/19", 0.61, "token overlap"),
+                new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedIssueCandidate(18, "https://github.com/EvotecIT/IntelligenceX/issues/18", 0.58, "token overlap")
+            }
+        );
+
+        var value = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildRelatedIssuesFieldValue(entry, maxIssues: 3);
+        AssertContainsText(value, "#11 | 0.93", "top candidate first");
+        AssertContainsText(value, "#19 | 0.61", "second candidate");
+        AssertContainsText(value, "#18 | 0.58", "third candidate");
+        AssertEqual(false, value.Contains("#20", StringComparison.OrdinalIgnoreCase), "limited to top three");
     }
 #endif
 }
