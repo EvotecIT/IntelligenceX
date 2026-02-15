@@ -196,6 +196,39 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildExecutionContractBlockerText_EmbedsReplayableActionEnvelopeForSingleActionAssistantDraft() {
+        var draft = """
+            Pulling failed logons from ADO now would be the next step.
+            You can run one of these follow-up actions:
+            1. Run failed logon report (4625) on ADO Security (/act act_failed4625)
+            """;
+        var result = BuildExecutionContractBlockerTextMethod.Invoke(
+            null,
+            new object?[] { "failed logons please", draft, "no_tool_calls_after_watchdog_retry" });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("[Action]", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ix:action:v1", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("id: act_failed4625", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("reply: /act act_failed4625", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildExecutionContractBlockerText_DoesNotEmbedReplayableActionEnvelopeForAmbiguousAssistantDraft() {
+        var draft = """
+            You can run one of these follow-up actions:
+            1. Run failed logon report (4625) on ADO Security (/act act_failed4625)
+            2. Pull account lockout events (4740) on ADO Security (/act act_lockouts4740)
+            """;
+        var result = BuildExecutionContractBlockerTextMethod.Invoke(
+            null,
+            new object?[] { "security log please", draft, "no_tool_calls_after_watchdog_retry" });
+        var text = Assert.IsType<string>(result);
+
+        Assert.DoesNotContain("ix:action:v1", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ShouldSkipWeightedRouting_TrueForActionSelectionPayload() {
         var request = "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Run\",\"request\":\"Run it.\"}}";
         var result = ShouldSkipWeightedRoutingMethod.Invoke(null, new object?[] { request });
