@@ -31,26 +31,11 @@ internal sealed partial class ChatServiceSession {
             throw new ArgumentNullException(nameof(options));
         }
 
-        return new ChatOptions {
-            Model = options.Model,
-            Instructions = options.Instructions,
-            ReasoningEffort = options.ReasoningEffort,
-            ReasoningSummary = options.ReasoningSummary,
-            TextVerbosity = options.TextVerbosity,
-            Temperature = options.Temperature,
-            WorkingDirectory = options.WorkingDirectory,
-            Workspace = options.Workspace,
-            Tools = options.Tools,
-            ToolChoice = options.ToolChoice,
-            ParallelToolCalls = options.ParallelToolCalls,
-            PreviousResponseId = options.PreviousResponseId,
-            AllowNetwork = options.AllowNetwork,
-            ApprovalPolicy = options.ApprovalPolicy,
-            SandboxPolicy = options.SandboxPolicy,
-            NewThread = newThreadOverride ?? options.NewThread,
-            MaxImageBytes = options.MaxImageBytes,
-            RequireWorkspaceForFileAccess = options.RequireWorkspaceForFileAccess
-        };
+        var copy = options.Clone();
+        if (newThreadOverride.HasValue) {
+            copy.NewThread = newThreadOverride.Value;
+        }
+        return copy;
     }
 
     private async Task<ChatResultMessage> RunChatOnCurrentThreadAsync(IntelligenceXClient client, StreamWriter writer, ChatRequest request, string threadId,
