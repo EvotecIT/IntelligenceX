@@ -14,12 +14,14 @@ For the WinUI desktop app (`Build/Run-ChatApp.ps1`):
 
 1. Open **Options -> Profile -> Model Runtime**.
 2. Click **Use Ollama Runtime** or **Use LM Studio Runtime**.
-3. The app applies runtime settings immediately and refreshes model discovery.
-4. If needed, choose a model from **Discovered models** and click **Apply Runtime**.
+3. If your provider needs auth, enter **API key (optional)**.
+4. The app applies runtime settings immediately and refreshes model discovery.
+5. If needed, choose a model from **Discovered models** and click **Apply Runtime**.
 
 Notes:
 - `Refresh Models` applies pending runtime field changes first, then refreshes discovery.
 - For `compatible-http`, if the current model is empty or invalid, the app auto-selects the first discovered model.
+- Leaving API key empty keeps the currently saved key unchanged.
 
 ## Security Model
 

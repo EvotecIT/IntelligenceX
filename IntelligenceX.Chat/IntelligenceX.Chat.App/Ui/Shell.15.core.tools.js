@@ -441,6 +441,19 @@
       baseUrlInput.disabled = transport !== "compatible-http";
     }
 
+    var apiKeyRow = byId("optLocalApiKeyRow");
+    if (apiKeyRow) {
+      apiKeyRow.hidden = transport !== "compatible-http";
+    }
+
+    var apiKeyInput = byId("optLocalApiKey");
+    if (apiKeyInput) {
+      apiKeyInput.disabled = transport !== "compatible-http";
+      if (transport !== "compatible-http") {
+        apiKeyInput.value = "";
+      }
+    }
+
     var modelInput = byId("optLocalModelInput");
     if (modelInput) {
       modelInput.value = model;

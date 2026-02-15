@@ -389,6 +389,15 @@ public sealed partial class MainWindow : Window {
         return DefaultLocalModel;
     }
 
+    private static string? NormalizeLocalProviderApiKey(string? value, string transport) {
+        if (!string.Equals(transport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)) {
+            return null;
+        }
+
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? null : normalized;
+    }
+
     private static bool? ParseAutonomyParallelMode(string? raw) {
         var text = (raw ?? string.Empty).Trim();
         if (text.Equals("on", StringComparison.OrdinalIgnoreCase)) {

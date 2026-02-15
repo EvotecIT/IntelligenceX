@@ -559,10 +559,14 @@
     var transport = normalizeLocalTransportValue(byId("optLocalTransport").value || "native");
     var baseUrl = (byId("optLocalBaseUrl").value || "").trim();
     var model = (byId("optLocalModelInput").value || "").trim();
+    var apiKey = transport === "compatible-http"
+      ? (byId("optLocalApiKey").value || "").trim()
+      : "";
     post("apply_local_provider", {
       transport: transport,
       baseUrl: baseUrl,
       model: model,
+      apiKey: apiKey,
       forceRefresh: forceRefresh !== false
     });
   }
@@ -580,10 +584,14 @@
       ? (byId("optLocalBaseUrl").value || "").trim().toLowerCase()
       : "";
     var draftModel = (byId("optLocalModelInput").value || "").trim();
+    var draftApiKey = draftTransport === "compatible-http"
+      ? (byId("optLocalApiKey").value || "").trim()
+      : "";
 
     return draftTransport !== currentTransport
       || draftBaseUrl !== currentBaseUrl
-      || draftModel !== currentModel;
+      || draftModel !== currentModel
+      || draftApiKey.length > 0;
   }
 
   byId("optLocalTransport").addEventListener("change", function(e) {
@@ -593,6 +601,8 @@
 
     var baseRow = byId("optLocalBaseUrlRow");
     var baseInput = byId("optLocalBaseUrl");
+    var apiKeyRow = byId("optLocalApiKeyRow");
+    var apiKeyInput = byId("optLocalApiKey");
     if (baseRow) {
       baseRow.hidden = next !== "compatible-http";
     }
@@ -600,6 +610,15 @@
       baseInput.disabled = next !== "compatible-http";
       if (next !== "compatible-http") {
         baseInput.value = "";
+      }
+    }
+    if (apiKeyRow) {
+      apiKeyRow.hidden = next !== "compatible-http";
+    }
+    if (apiKeyInput) {
+      apiKeyInput.disabled = next !== "compatible-http";
+      if (next !== "compatible-http") {
+        apiKeyInput.value = "";
       }
     }
   });
@@ -620,6 +639,8 @@
     baseUrl.value = "http://127.0.0.1:11434";
     byId("optLocalBaseUrlRow").hidden = false;
     baseUrl.disabled = false;
+    byId("optLocalApiKeyRow").hidden = false;
+    byId("optLocalApiKey").disabled = false;
     applyLocalProviderSettings(true);
   });
 
@@ -631,6 +652,8 @@
     baseUrl.value = "http://127.0.0.1:1234/v1";
     byId("optLocalBaseUrlRow").hidden = false;
     baseUrl.disabled = false;
+    byId("optLocalApiKeyRow").hidden = false;
+    byId("optLocalApiKey").disabled = false;
     applyLocalProviderSettings(true);
   });
 

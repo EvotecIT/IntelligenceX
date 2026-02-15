@@ -277,8 +277,9 @@ public sealed partial class MainWindow : Window {
                         var transport = TryGetString(root, "transport");
                         var baseUrl = TryGetString(root, "baseUrl");
                         var model = TryGetString(root, "model");
+                        var apiKey = TryGetString(root, "apiKey");
                         var forceRefresh = TryGetBoolean(root, "forceRefresh");
-                        await ApplyLocalProviderAsync(transport, baseUrl, model, forceRefresh ?? true).ConfigureAwait(true);
+                        await ApplyLocalProviderAsync(transport, baseUrl, model, apiKey, forceRefresh ?? true).ConfigureAwait(true);
                         break;
                     }
                 case "restart_onboarding":

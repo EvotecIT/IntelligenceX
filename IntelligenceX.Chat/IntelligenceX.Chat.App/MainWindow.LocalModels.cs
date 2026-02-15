@@ -118,7 +118,7 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private async Task ApplyLocalProviderAsync(string? transportValue, string? baseUrlValue, string? modelValue, bool forceModelRefresh) {
+    private async Task ApplyLocalProviderAsync(string? transportValue, string? baseUrlValue, string? modelValue, string? apiKeyValue, bool forceModelRefresh) {
         if (_isSending) {
             await SetStatusAsync("Finish the active response before changing local runtime settings.").ConfigureAwait(false);
             return;
@@ -128,10 +128,13 @@ public sealed partial class MainWindow : Window {
         var normalizedTransport = NormalizeLocalProviderTransport(rawTransport);
         var normalizedBaseUrl = NormalizeLocalProviderBaseUrl(baseUrlValue, normalizedTransport, rawTransport);
         var normalizedModel = NormalizeLocalProviderModel(modelValue, normalizedTransport);
+        var normalizedApiKey = NormalizeLocalProviderApiKey(apiKeyValue, normalizedTransport);
+        var hasApiKeyUpdate = normalizedApiKey is not null;
 
         var changed = !string.Equals(_localProviderTransport, normalizedTransport, StringComparison.OrdinalIgnoreCase)
                       || !string.Equals(_localProviderBaseUrl ?? string.Empty, normalizedBaseUrl ?? string.Empty, StringComparison.OrdinalIgnoreCase)
-                      || !string.Equals(_localProviderModel, normalizedModel, StringComparison.Ordinal);
+                      || !string.Equals(_localProviderModel, normalizedModel, StringComparison.Ordinal)
+                      || hasApiKeyUpdate;
 
         _localProviderTransport = normalizedTransport;
         _localProviderBaseUrl = normalizedBaseUrl;
@@ -157,7 +160,7 @@ public sealed partial class MainWindow : Window {
             Model = _localProviderModel,
             OpenAITransport = _localProviderTransport,
             OpenAIBaseUrl = _localProviderBaseUrl,
-            OpenAIApiKey = null,
+            OpenAIApiKey = normalizedApiKey,
             OpenAIStreaming = true,
             OpenAIAllowInsecureHttp = ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl)
         };

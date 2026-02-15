@@ -43,7 +43,8 @@ Inside the app:
 1. Open **Options -> Profile -> Model Runtime**.
 2. Click **Use Ollama Runtime** or **Use LM Studio Runtime**.
 3. Wait for model discovery to populate.
-4. Optionally choose a model and click **Apply Runtime**.
+4. If your provider needs auth, enter **API key (optional)**.
+5. Optionally choose a model and click **Apply Runtime**.
 
 Reference: `Docs/apps/chat-local-providers.md`
 
