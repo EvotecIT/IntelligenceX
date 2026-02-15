@@ -42,6 +42,10 @@ public sealed partial class MainWindow : Window {
             cleanedText = memoryCleanedText;
         }
 
+        if (ActionModelProtocol.TryStripAndExtractPendingActions(cleanedText, out var pendingActions, out var actionCleanedText)) {
+            cleanedText = ActionModelProtocol.MergeVisibleTextWithPendingActions(actionCleanedText, pendingActions);
+        }
+
         if (!string.IsNullOrWhiteSpace(cleanedText)) {
             return cleanedText;
         }

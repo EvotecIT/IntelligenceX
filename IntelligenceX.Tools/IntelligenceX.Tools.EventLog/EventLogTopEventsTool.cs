@@ -198,7 +198,7 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
             maxTop: MaxViewTop,
             baseTruncated: root!.Truncated,
             response: out var response)) {
-            return ToolResponse.Error("tool_error", "Failed to build table view response envelope.");
+            return response;
         }
         return response;
     }

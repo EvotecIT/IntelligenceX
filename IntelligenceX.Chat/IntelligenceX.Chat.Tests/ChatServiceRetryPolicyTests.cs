@@ -1,6 +1,8 @@
 using System;
 using System.Reflection;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Json;
+using IntelligenceX.Tools;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -22,6 +24,14 @@ public sealed class ChatServiceRetryPolicyTests {
         "ShouldRetryToolCall",
         BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldRetryToolCall not found.");
+    private static readonly MethodInfo IsProjectionViewArgumentFailureMethod = ChatServiceSessionType.GetMethod(
+        "IsProjectionViewArgumentFailure",
+        BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("IsProjectionViewArgumentFailure not found.");
+    private static readonly MethodInfo TryBuildProjectionArgsFallbackCallMethod = ChatServiceSessionType.GetMethod(
+        "TryBuildProjectionArgsFallbackCall",
+        BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("TryBuildProjectionArgsFallbackCall not found.");
 
     [Fact]
     public void ShouldRetryToolCall_DoesNotRetryPermanentAccessDeniedFailure() {
@@ -74,6 +84,71 @@ public sealed class ChatServiceRetryPolicyTests {
         Assert.False(shouldRetry);
     }
 
+    [Fact]
+    public void IsProjectionViewArgumentFailure_DetectsUnsupportedProjectionColumns() {
+        var output = new ToolOutputDto {
+            CallId = "call-4",
+            Output = "{\"ok\":false,\"error_code\":\"invalid_argument\",\"error\":\"columns contains unsupported value 'bad_column'.\"}",
+            Ok = false,
+            ErrorCode = "invalid_argument",
+            Error = "columns contains unsupported value 'bad_column'."
+        };
+
+        var detected = InvokeIsProjectionViewArgumentFailure(output);
+
+        Assert.True(detected);
+    }
+
+    [Fact]
+    public void IsProjectionViewArgumentFailure_DoesNotMatchUnrelatedPermanentErrors() {
+        var output = new ToolOutputDto {
+            CallId = "call-5",
+            Output = "{\"ok\":false,\"error_code\":\"tool_exception\",\"error\":\"Access denied.\"}",
+            Ok = false,
+            ErrorCode = "tool_exception",
+            Error = "Access denied."
+        };
+
+        var detected = InvokeIsProjectionViewArgumentFailure(output);
+
+        Assert.False(detected);
+    }
+
+    [Fact]
+    public void TryBuildProjectionArgsFallbackCall_StripsProjectionArgumentsAndKeepsToolArguments() {
+        var call = new ToolCall(
+            callId: "call-6",
+            name: "eventlog_top_events",
+            input: null,
+            arguments: new JsonObject()
+                .Add("log_name", "System")
+                .Add("columns", new JsonArray().Add("event_id"))
+                .Add("sort_by", "event_id")
+                .Add("sort_direction", "desc")
+                .Add("top", 5),
+            raw: new JsonObject());
+        var output = new ToolOutputDto {
+            CallId = call.CallId,
+            Output = "{\"ok\":false,\"error_code\":\"invalid_argument\",\"error\":\"sort_by must be one of: event_id, level.\"}",
+            Ok = false,
+            ErrorCode = "invalid_argument",
+            Error = "sort_by must be one of: event_id, level."
+        };
+
+        var args = new object?[] { call, output, null, null };
+        var built = TryBuildProjectionArgsFallbackCallMethod.Invoke(null, args);
+        var fallbackCall = Assert.IsType<ToolCall>(args[2]);
+
+        Assert.True(Assert.IsType<bool>(built));
+        Assert.NotNull(args[3]);
+        Assert.NotNull(fallbackCall.Arguments);
+        Assert.Equal("System", fallbackCall.Arguments!.GetString("log_name"));
+        Assert.False(fallbackCall.Arguments.TryGetValue("columns", out _));
+        Assert.False(fallbackCall.Arguments.TryGetValue("sort_by", out _));
+        Assert.False(fallbackCall.Arguments.TryGetValue("sort_direction", out _));
+        Assert.False(fallbackCall.Arguments.TryGetValue("top", out _));
+    }
+
     private static object InvokeResolveRetryProfile(string toolName) {
         var profile = ResolveRetryProfileMethod.Invoke(null, new object?[] { toolName });
         return profile ?? throw new InvalidOperationException("ResolveRetryProfile returned null.");
@@ -81,6 +156,11 @@ public sealed class ChatServiceRetryPolicyTests {
 
     private static bool InvokeShouldRetryToolCall(ToolOutputDto output, object profile, int attemptIndex) {
         var result = ShouldRetryToolCallMethod.Invoke(null, new object?[] { output, profile, attemptIndex });
+        return Assert.IsType<bool>(result);
+    }
+
+    private static bool InvokeIsProjectionViewArgumentFailure(ToolOutputDto output) {
+        var result = IsProjectionViewArgumentFailureMethod.Invoke(null, new object?[] { output });
         return Assert.IsType<bool>(result);
     }
 }

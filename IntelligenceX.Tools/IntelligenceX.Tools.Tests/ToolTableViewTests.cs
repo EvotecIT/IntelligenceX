@@ -106,6 +106,31 @@ public class ToolTableViewTests {
     }
 
     [Fact]
+    public void EnvelopeAutoColumns_ShouldReturnProjectionMetadataOnInvalidViewArguments() {
+        var ok = ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
+            arguments: new JsonObject().Add("columns", new JsonArray().Add("missing_column")),
+            model: new AutoModel {
+                Items = new[] {
+                    new AutoRow(1, "alpha", DateTime.UnixEpoch, new[] { "a" })
+                }
+            },
+            sourceRows: new[] {
+                new AutoRow(1, "alpha", DateTime.UnixEpoch, new[] { "a" })
+            },
+            viewRowsPath: "items_view",
+            title: "Items",
+            maxTop: 100,
+            baseTruncated: false,
+            response: out var response);
+
+        Assert.False(ok);
+        Assert.Contains("\"ok\":false", response);
+        Assert.Contains("\"error_code\":\"invalid_argument\"", response);
+        Assert.Contains("\"available_columns\":[", response);
+        Assert.Contains("\"projection_arguments\":[\"columns\",\"sort_by\",\"sort_direction\",\"top\"]", response);
+    }
+
+    [Fact]
     public void DynamicEnvelope_ShouldProjectDictionaryRows() {
         IReadOnlyList<IReadOnlyDictionary<string, object?>> rows = new[] {
             new Dictionary<string, object?>(StringComparer.Ordinal) {
