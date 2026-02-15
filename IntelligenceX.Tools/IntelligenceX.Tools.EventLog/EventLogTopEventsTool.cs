@@ -109,7 +109,15 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
                 if (sessionTimeoutValue.Kind != JsonValueKind.Number) {
                     return ToolResponse.Error("invalid_argument", "session_timeout_ms must be a number of milliseconds.");
                 }
-                sessionTimeoutRaw = sessionTimeoutValue.AsInt64();
+                // Be defensive with untrusted numeric representations (long/int/double) and avoid undefined casts.
+                sessionTimeoutRaw = sessionTimeoutValue.Value switch {
+                    long l => l,
+                    int i => i,
+                    double d => double.IsFinite(d) && d >= long.MinValue && d <= long.MaxValue
+                        ? (long)Math.Truncate(d)
+                        : null,
+                    _ => sessionTimeoutValue.AsInt64()
+                };
             }
         }
 
@@ -149,29 +157,18 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
                 failure: out failure,
                 cancellationToken: cancellationToken);
         } else {
-            // Live querying is synchronous; for remote sessions, offload work so callers don't tie up request threads.
-            // Use a small concurrency gate to avoid threadpool starvation under concurrent remote queries.
+            // Live querying is synchronous; for remote sessions, use a small concurrency gate to avoid saturating
+            // the host with concurrent RPC/session work.
             await RemoteReadGate.WaitAsync(cancellationToken);
-            (bool Ok, LiveEventQueryResult? Root, LiveEventQueryFailure? Failure) remote;
             try {
-                // Cancellation is best-effort: we honor it while waiting for the concurrency gate and before starting
-                // the remote read. The underlying synchronous call may or may not observe it once running.
-                cancellationToken.ThrowIfCancellationRequested();
-                remote = await Task.Run(() => {
-                    var okInner = LiveEventQueryExecutor.TryRead(
-                        request: request,
-                        result: out var remoteRoot,
-                        failure: out var remoteFailure,
-                        cancellationToken: cancellationToken);
-                    return (Ok: okInner, Root: okInner ? remoteRoot : null, Failure: okInner ? null : remoteFailure);
-                }, CancellationToken.None);
+                ok = LiveEventQueryExecutor.TryRead(
+                    request: request,
+                    result: out root,
+                    failure: out failure,
+                    cancellationToken: cancellationToken);
             } finally {
                 RemoteReadGate.Release();
             }
-
-            ok = remote.Ok;
-            root = remote.Root;
-            failure = remote.Failure;
         }
 
         if (!ok) {
