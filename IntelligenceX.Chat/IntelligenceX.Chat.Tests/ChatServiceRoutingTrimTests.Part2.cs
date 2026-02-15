@@ -224,6 +224,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("run now;")]
     [InlineData("run now：")]
     [InlineData("run now；")]
+    [InlineData("`run now`:")]
     public void ExpandContinuationUserRequest_DoesNotConfirmWhenFollowUpLooksLikeAPrefix(string input) {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
@@ -417,6 +418,72 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 File.Delete(storePath);
             }
         }
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotConfirmCtaAfterRestartWhenMultiplePendingActionsExist() {
+        var storeFile = $"pending-actions-test-{Guid.NewGuid():N}.json";
+        var storePath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "IntelligenceX.Chat",
+            storeFile);
+        try {
+            var threadId = "thread-001";
+            var assistantDraft = """
+                If you say "run now", I'll execute it.
+
+                [Action]
+                ix:action:v1
+                id: act_001
+                title: First
+                request: Do first thing.
+                reply: /act act_001
+
+                [Action]
+                ix:action:v1
+                id: act_002
+                title: Second
+                request: Do second thing.
+                reply: /act act_002
+                """;
+
+            Directory.CreateDirectory(Path.GetDirectoryName(storePath)!);
+            var opts = new ServiceOptions { PendingActionsStorePath = storeFile };
+            var session1 = new ChatServiceSession(opts, Stream.Null);
+            RememberPendingActionsMethod.Invoke(session1, new object?[] { threadId, assistantDraft });
+
+            var session2 = new ChatServiceSession(opts, Stream.Null);
+            var expandedObj = ExpandContinuationUserRequestMethod.Invoke(session2, new object?[] { threadId, "run now" });
+            var expanded = Assert.IsType<string>(expandedObj);
+
+            Assert.Equal("run now", expanded);
+        } finally {
+            if (File.Exists(storePath)) {
+                File.Delete(storePath);
+            }
+        }
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotConfirmWhenUserMatchesNonCtaQuotedPhrase() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Note: this is not a CTA. The text "run now" appeared inside an error message.
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var input = "run now";
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
     }
 
     [Fact]

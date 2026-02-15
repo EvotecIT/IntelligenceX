@@ -302,7 +302,7 @@ internal sealed partial class ChatServiceSession {
             if (!_pendingActionsSeenUtcTicks.TryGetValue(threadId, out var ticks) || ticks <= 0) {
                 _pendingActionsByThreadId.Remove(threadId);
                 _pendingActionsSeenUtcTicks.Remove(threadId);
-                _pendingActionsAssistantContextByThreadId.Remove(threadId);
+                _pendingActionsCallToActionTokensByThreadId.Remove(threadId);
                 removedInvalid = true;
             }
         }
@@ -351,7 +351,7 @@ internal sealed partial class ChatServiceSession {
             _lastUserIntentSeenUtcTicks.Remove(threadId);
             _pendingActionsByThreadId.Remove(threadId);
             _pendingActionsSeenUtcTicks.Remove(threadId);
-            _pendingActionsAssistantContextByThreadId.Remove(threadId);
+            _pendingActionsCallToActionTokensByThreadId.Remove(threadId);
         }
     }
 
