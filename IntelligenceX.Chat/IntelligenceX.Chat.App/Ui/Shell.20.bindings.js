@@ -667,6 +667,23 @@
     }
   });
 
+  byId("btnToggleLocalAdvancedRuntime").addEventListener("click", function() {
+    setRuntimeAdvancedOpen(!isRuntimeAdvancedOpen());
+  });
+
+  byId("btnConnectLmStudio").addEventListener("click", function() {
+    var transport = byId("optLocalTransport");
+    var baseUrl = byId("optLocalBaseUrl");
+    var modelInput = byId("optLocalModelInput");
+    transport.value = "compatible-http";
+    syncCustomSelect(transport);
+    baseUrl.value = "http://127.0.0.1:1234/v1";
+    if (modelInput) {
+      modelInput.value = "";
+    }
+    applyLocalProviderSettings(true);
+  });
+
   byId("btnAutoDetectLocalRuntime").addEventListener("click", function() {
     post("auto_detect_local_runtime", { forceRefresh: true });
   });

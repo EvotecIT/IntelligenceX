@@ -412,9 +412,41 @@
     return String(value == null ? "" : value).trim();
   }
 
+  function runtimeAdvancedStorageKey() {
+    return "ixchat.runtime.advanced";
+  }
+
+  function isRuntimeAdvancedOpen() {
+    return readStorage(runtimeAdvancedStorageKey()) === "1";
+  }
+
+  function setRuntimeAdvancedOpen(open) {
+    var next = open === true;
+    var advancedArea = byId("optLocalAdvancedArea");
+    if (advancedArea) {
+      advancedArea.hidden = !next;
+    }
+
+    var toggle = byId("btnToggleLocalAdvancedRuntime");
+    if (toggle) {
+      toggle.textContent = next ? "Hide Advanced Runtime" : "Show Advanced Runtime";
+    }
+
+    writeStorage(runtimeAdvancedStorageKey(), next ? "1" : "0");
+  }
+
+  function isLmStudioBaseUrl(value) {
+    var normalized = String(value || "").trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+    return normalized.indexOf("127.0.0.1:1234") >= 0 || normalized.indexOf("localhost:1234") >= 0;
+  }
+
   function renderLocalModelOptions() {
     var local = state.options.localModel || {};
     var transport = normalizeLocalTransport(local.transport);
+    var isCompatible = transport === "compatible-http";
     var baseUrl = String(local.baseUrl || "");
     var model = normalizeModelText(local.model || "");
     var models = Array.isArray(local.models) ? local.models : [];
@@ -429,6 +461,29 @@
     var ollamaAvailable = runtimeDetection.ollamaAvailable === true;
     var runtimeDetectedName = normalizeModelText(runtimeDetection.detectedName || "");
     var runtimeDetectionWarning = normalizeModelText(runtimeDetection.warning || "");
+    var lmStudioConnected = isCompatible && isLmStudioBaseUrl(baseUrl);
+    var simpleHint = byId("optLocalSimpleHint");
+    if (simpleHint) {
+      if (lmStudioConnected) {
+        simpleHint.textContent = "LM Studio runtime is active for this profile.";
+      } else if (runtimeDetectionHasRun && !lmStudioAvailable) {
+        simpleHint.textContent = "LM Studio not detected on http://127.0.0.1:1234/v1. Start LM Studio or open Advanced Runtime.";
+      } else {
+        simpleHint.textContent = "ChatGPT native is default. Connect LM Studio for local models.";
+      }
+    }
+
+    var connectLmStudioButton = byId("btnConnectLmStudio");
+    if (connectLmStudioButton) {
+      connectLmStudioButton.textContent = lmStudioConnected ? "Reconnect LM Studio" : "Connect LM Studio";
+    }
+
+    var advancedShouldBeOpen = isRuntimeAdvancedOpen();
+    if (!isCompatible && !advancedShouldBeOpen) {
+      setRuntimeAdvancedOpen(false);
+    } else {
+      setRuntimeAdvancedOpen(advancedShouldBeOpen);
+    }
 
     var transportSelect = byId("optLocalTransport");
     if (transportSelect) {
@@ -438,7 +493,7 @@
 
     var btnAutoDetect = byId("btnAutoDetectLocalRuntime");
     if (btnAutoDetect) {
-      btnAutoDetect.hidden = transport !== "compatible-http";
+      btnAutoDetect.hidden = !isCompatible;
     }
 
     var btnPresetLmStudio = byId("btnLocalPresetLmStudio");
@@ -453,29 +508,29 @@
 
     var baseUrlRow = byId("optLocalBaseUrlRow");
     if (baseUrlRow) {
-      baseUrlRow.hidden = transport !== "compatible-http";
+      baseUrlRow.hidden = !isCompatible;
     }
 
     var baseUrlInput = byId("optLocalBaseUrl");
     if (baseUrlInput) {
       baseUrlInput.value = baseUrl;
-      baseUrlInput.disabled = transport !== "compatible-http";
+      baseUrlInput.disabled = !isCompatible;
     }
 
     var apiKeyRow = byId("optLocalApiKeyRow");
     if (apiKeyRow) {
-      apiKeyRow.hidden = transport !== "compatible-http";
+      apiKeyRow.hidden = !isCompatible;
     }
 
     var apiKeyHint = byId("optLocalApiKeyHint");
     if (apiKeyHint) {
-      apiKeyHint.hidden = transport !== "compatible-http";
+      apiKeyHint.hidden = !isCompatible;
     }
 
     var apiKeyInput = byId("optLocalApiKey");
     if (apiKeyInput) {
-      apiKeyInput.disabled = transport !== "compatible-http";
-      if (transport !== "compatible-http") {
+      apiKeyInput.disabled = !isCompatible;
+      if (!isCompatible) {
         apiKeyInput.value = "";
       }
     }
@@ -543,21 +598,23 @@
     var hasSelectableModels = recents.length > 0 || favorites.length > 0 || models.length > 0;
     var usingManualInput = !modelSelect || !hasSelectableModels || modelSelect.value === "";
     if (modelSelectRow) {
-      modelSelectRow.hidden = !hasSelectableModels;
+      modelSelectRow.hidden = !isCompatible || !hasSelectableModels;
     }
     if (modelInputRow) {
-      modelInputRow.hidden = hasSelectableModels && !usingManualInput;
+      modelInputRow.hidden = !isCompatible || (hasSelectableModels && !usingManualInput);
     }
     if (modelInput) {
-      modelInput.disabled = hasSelectableModels && !usingManualInput;
+      modelInput.disabled = !isCompatible || (hasSelectableModels && !usingManualInput);
     }
 
     var stateNote = byId("optLocalModelsState");
     if (stateNote) {
       var parts = [];
-      if (transport === "compatible-http" && runtimeDetectedName) {
+      if (!isCompatible) {
+        parts.push("ChatGPT native runtime active");
+      } else if (runtimeDetectedName) {
         parts.push("detected runtime: " + runtimeDetectedName);
-      } else if (transport === "compatible-http" && runtimeDetectionHasRun && runtimeDetectionWarning) {
+      } else if (runtimeDetectionHasRun && runtimeDetectionWarning) {
         parts.push(runtimeDetectionWarning);
       }
       if (models.length > 0) {
