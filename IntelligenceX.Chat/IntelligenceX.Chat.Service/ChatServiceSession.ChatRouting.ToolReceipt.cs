@@ -7,6 +7,8 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
 
     private const string ToolReceiptCorrectionMarker = "ix:tool-receipt-correction:v1";
+    private const int ToolReceiptCorrectionMaxUserRequestChars = 2000;
+    private const int ToolReceiptCorrectionMaxDraftChars = 3200;
 
     private static bool ShouldAttemptToolReceiptCorrection(string userRequest, string assistantDraft, IReadOnlyList<ToolDefinition> tools, int priorToolCalls,
         int priorToolOutputs, int assistantDraftToolCalls) {
@@ -142,8 +144,8 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static string BuildToolReceiptCorrectionPrompt(string userRequest, string assistantDraft) {
-        var requestText = string.IsNullOrWhiteSpace(userRequest) ? "(empty)" : userRequest.Trim();
-        var draftText = string.IsNullOrWhiteSpace(assistantDraft) ? "(empty)" : assistantDraft.Trim();
+        var requestText = TrimForPrompt(userRequest, ToolReceiptCorrectionMaxUserRequestChars);
+        var draftText = TrimForPrompt(assistantDraft, ToolReceiptCorrectionMaxDraftChars);
         return $$"""
             [Tool receipt correction]
             {{ToolReceiptCorrectionMarker}}
@@ -161,5 +163,17 @@ internal sealed partial class ChatServiceSession {
             - If tools are not needed, answer normally but explicitly state that no tools were run in this turn.
             """;
     }
-}
 
+    private static string TrimForPrompt(string? text, int maxChars) {
+        if (string.IsNullOrWhiteSpace(text)) {
+            return "(empty)";
+        }
+
+        var trimmed = text.Trim();
+        if (maxChars <= 0 || trimmed.Length <= maxChars) {
+            return trimmed;
+        }
+
+        return trimmed.Substring(0, maxChars) + "\n(truncated)";
+    }
+}

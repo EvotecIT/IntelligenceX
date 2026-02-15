@@ -84,5 +84,17 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var value = Assert.IsType<string>(prompt);
         Assert.Contains("ix:tool-receipt-correction:v1", value, StringComparison.OrdinalIgnoreCase);
     }
-}
 
+    [Fact]
+    public void BuildToolReceiptCorrectionPrompt_TruncatesOversizedUserRequest() {
+        var oversized = new string('A', 2500) + "TAIL";
+
+        var prompt = BuildToolReceiptCorrectionPromptMethod.Invoke(
+            null,
+            new object?[] { oversized, "Draft" });
+
+        var value = Assert.IsType<string>(prompt);
+        Assert.Contains("(truncated)", value, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("TAIL", value, StringComparison.Ordinal);
+    }
+}
