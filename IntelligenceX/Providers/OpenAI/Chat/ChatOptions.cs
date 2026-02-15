@@ -35,7 +35,7 @@ public sealed class ChatOptions {
         PreviousResponseId = other.PreviousResponseId;
         AllowNetwork = other.AllowNetwork;
         ApprovalPolicy = other.ApprovalPolicy;
-        SandboxPolicy = other.SandboxPolicy;
+        SandboxPolicy = other.SandboxPolicy?.Clone();
         NewThread = other.NewThread;
         MaxImageBytes = other.MaxImageBytes;
         RequireWorkspaceForFileAccess = other.RequireWorkspaceForFileAccess;

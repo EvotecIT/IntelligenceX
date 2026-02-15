@@ -45,6 +45,23 @@ public sealed class ChatOptionsCloneTests {
                 continue;
             }
 
+            if (prop.Name == nameof(ChatOptions.SandboxPolicy)) {
+                Assert.NotNull(originalValue);
+                Assert.NotNull(clonedValue);
+
+                var originalPolicy = Assert.IsType<SandboxPolicy>(originalValue);
+                var clonedPolicy = Assert.IsType<SandboxPolicy>(clonedValue);
+
+                Assert.NotSame(originalPolicy, clonedPolicy);
+                Assert.Equal(originalPolicy.Type, clonedPolicy.Type);
+                Assert.Equal(originalPolicy.NetworkAccess, clonedPolicy.NetworkAccess);
+                Assert.Equal(originalPolicy.NetworkAccessMode, clonedPolicy.NetworkAccessMode);
+                Assert.Equal(
+                    originalPolicy.WritableRoots?.ToArray() ?? Array.Empty<string>(),
+                    clonedPolicy.WritableRoots?.ToArray() ?? Array.Empty<string>());
+                continue;
+            }
+
             Assert.Equal(originalValue, clonedValue);
         }
     }
@@ -69,6 +86,28 @@ public sealed class ChatOptionsCloneTests {
         // Mutating the original list should not affect the clone.
         tools.Add(new ToolDefinition("t2"));
         Assert.Single(clone.Tools!);
+    }
+
+    [Fact]
+    public void Clone_ShouldDefensivelyCopySandboxPolicyWritableRoots() {
+        var roots = new List<string> { "C:\\Temp" };
+        var policy = new SandboxPolicy("test-sandbox", networkAccess: true, writableRoots: roots);
+
+        var options = new ChatOptions {
+            SandboxPolicy = policy
+        };
+
+        var clone = options.Clone();
+
+        Assert.NotSame(options, clone);
+        Assert.NotNull(clone.SandboxPolicy);
+        Assert.NotSame(options.SandboxPolicy, clone.SandboxPolicy);
+
+        Assert.NotNull(clone.SandboxPolicy!.WritableRoots);
+
+        // Mutating the original list should not affect the clone.
+        roots.Add("C:\\Other");
+        Assert.Single(clone.SandboxPolicy!.WritableRoots!);
     }
 
     private static object? MakeSampleValue(Type propertyType, string propertyName) {
@@ -106,7 +145,7 @@ public sealed class ChatOptionsCloneTests {
         }
 
         if (t == typeof(SandboxPolicy)) {
-            return new SandboxPolicy("test-sandbox", networkAccess: true, writableRoots: new[] { "C:\\Temp" });
+            return new SandboxPolicy("test-sandbox", networkAccess: true, writableRoots: new List<string> { "C:\\Temp" });
         }
 
         throw new NotSupportedException($"No sample value generator for property '{propertyName}' of type '{propertyType.FullName}'.");
