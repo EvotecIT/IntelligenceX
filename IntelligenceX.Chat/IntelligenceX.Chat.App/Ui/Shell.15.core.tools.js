@@ -416,6 +416,10 @@
     return "ixchat.runtime.advanced";
   }
 
+  function runtimeModelFilterStorageKey() {
+    return "ixchat.runtime.model.filter";
+  }
+
   function isRuntimeAdvancedOpen() {
     return readStorage(runtimeAdvancedStorageKey()) === "1";
   }
@@ -473,6 +477,18 @@
     return count;
   }
 
+  function isOllamaBaseUrl(value) {
+    var normalized = String(value || "").trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+    return normalized.indexOf("127.0.0.1:11434") >= 0 || normalized.indexOf("localhost:11434") >= 0;
+  }
+
+  function normalizeModelFilter(value) {
+    return String(value || "").trim().toLowerCase();
+  }
+
   function renderLocalModelOptions() {
     var local = state.options.localModel || {};
     var transport = normalizeLocalTransport(local.transport);
@@ -511,6 +527,21 @@
       } else {
         runtimeAuthHint.textContent = "ChatGPT sign-in and runtime provider are separate. You can switch to LM Studio any time.";
       }
+    }
+
+    var ollamaConnected = isCompatible && isOllamaBaseUrl(baseUrl);
+    var runtimeBadge = byId("optLocalRuntimeBadge");
+    if (runtimeBadge) {
+      var runtimeName = "ChatGPT Native";
+      if (lmStudioConnected) {
+        runtimeName = "LM Studio";
+      } else if (ollamaConnected) {
+        runtimeName = "Ollama";
+      } else if (isCompatible) {
+        runtimeName = "Compatible HTTP";
+      }
+      var activeModel = model ? model : "(auto)";
+      runtimeBadge.textContent = "Active runtime: " + runtimeName + " | Active model: " + activeModel;
     }
 
     var simpleHint = byId("optLocalSimpleHint");
@@ -609,7 +640,15 @@
       modelInput.value = model;
     }
 
+    var modelFilterInput = byId("optLocalModelFilter");
+    var storedModelFilter = String(readStorage(runtimeModelFilterStorageKey()) || "");
+    if (modelFilterInput && modelFilterInput.value.length === 0 && storedModelFilter.length > 0) {
+      modelFilterInput.value = storedModelFilter;
+    }
+    var modelFilterQuery = normalizeModelFilter(modelFilterInput ? modelFilterInput.value : storedModelFilter);
+
     var modelSelect = byId("optLocalModelSelect");
+    var selectableOptionCount = 0;
     if (modelSelect) {
       modelSelect.innerHTML = "";
 
@@ -619,9 +658,15 @@
       modelSelect.appendChild(manualOption);
 
       var seen = {};
-      function pushModelOption(modelName, labelPrefix) {
+      function pushModelOption(modelName, labelPrefix, matchLabel) {
         var normalized = normalizeModelText(modelName);
         if (!normalized) {
+          return;
+        }
+        var normalizedMatchLabel = normalizeModelText(matchLabel || labelPrefix || "");
+        if (modelFilterQuery.length > 0
+            && normalized.toLowerCase().indexOf(modelFilterQuery) < 0
+            && normalizedMatchLabel.toLowerCase().indexOf(modelFilterQuery) < 0) {
           return;
         }
         var key = normalized.toLowerCase();
@@ -633,13 +678,14 @@
         option.value = normalized;
         option.textContent = labelPrefix ? (labelPrefix + " " + normalized) : normalized;
         modelSelect.appendChild(option);
+        selectableOptionCount++;
       }
 
       for (var r = 0; r < recents.length; r++) {
-        pushModelOption(recents[r], "Recent:");
+        pushModelOption(recents[r], "Recent:", recents[r]);
       }
       for (var f = 0; f < favorites.length; f++) {
-        pushModelOption(favorites[f], "Favorite:");
+        pushModelOption(favorites[f], "Favorite:", favorites[f]);
       }
       for (var i = 0; i < models.length; i++) {
         var item = models[i] || {};
@@ -649,9 +695,9 @@
         }
         var displayName = normalizeModelText(item.displayName || item.DisplayName);
         if (displayName && displayName.toLowerCase() !== modelName.toLowerCase()) {
-          pushModelOption(modelName, displayName + ":");
+          pushModelOption(modelName, displayName + ":", displayName);
         } else {
-          pushModelOption(modelName, "");
+          pushModelOption(modelName, "", modelName);
         }
       }
 
@@ -664,16 +710,21 @@
 
     var modelInputRow = byId("optLocalModelInputRow");
     var modelSelectRow = byId("optLocalModelSelectRow");
-    var hasSelectableModels = recents.length > 0 || favorites.length > 0 || models.length > 0;
+    var modelFilterRow = byId("optLocalModelFilterRow");
+    var hasSelectableModels = selectableOptionCount > 0;
     var usingManualInput = !modelSelect || !hasSelectableModels || modelSelect.value === "";
+    var showModelSelect = isCompatible && (hasSelectableModels || modelFilterQuery.length > 0);
     if (modelSelectRow) {
-      modelSelectRow.hidden = !isCompatible || !hasSelectableModels;
+      modelSelectRow.hidden = !showModelSelect;
+    }
+    if (modelFilterRow) {
+      modelFilterRow.hidden = !showModelSelect;
     }
     if (modelInputRow) {
-      modelInputRow.hidden = !isCompatible || (hasSelectableModels && !usingManualInput);
+      modelInputRow.hidden = !isCompatible || (showModelSelect && !usingManualInput);
     }
     if (modelInput) {
-      modelInput.disabled = !isCompatible || (hasSelectableModels && !usingManualInput);
+      modelInput.disabled = !isCompatible || (showModelSelect && !usingManualInput);
     }
 
     var stateNote = byId("optLocalModelsState");
