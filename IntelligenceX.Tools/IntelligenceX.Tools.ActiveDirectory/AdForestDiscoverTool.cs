@@ -288,7 +288,7 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
 
                 if (skipRodc && perDomainList.Count > 0) {
                     perDomainList = perDomainList
-                        .Where(dc => !LooksLikeRodc(dc))
+                        .Where(dc => !IsRodcBestEffort(dc))
                         .ToList();
                 }
 
@@ -491,6 +491,18 @@ public sealed class AdForestDiscoverTool : ActiveDirectoryToolBase, ITool {
                label.EndsWith("rodc", StringComparison.OrdinalIgnoreCase) ||
                label.Contains("-rodc", StringComparison.OrdinalIgnoreCase) ||
                label.Contains("rodc-", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsRodcBestEffort(string host) {
+        if (string.IsNullOrWhiteSpace(host)) {
+            return false;
+        }
+
+        try {
+            return DomainHelper.IsReadOnlyDc(NormalizeHostOrName(host));
+        } catch {
+            return LooksLikeRodc(host);
+        }
     }
 
     private static object MapTrust(System.DirectoryServices.ActiveDirectory.TrustRelationshipInformation trust, string scope) {
