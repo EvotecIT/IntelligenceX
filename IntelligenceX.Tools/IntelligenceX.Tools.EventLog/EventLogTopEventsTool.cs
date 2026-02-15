@@ -47,20 +47,20 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
     /// <summary>
     /// Invokes the tool.
     /// </summary>
-    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+    protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
         var logName = arguments?.GetString("log_name") ?? string.Empty;
         if (string.IsNullOrWhiteSpace(logName)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "log_name is required."));
+            return ToolResponse.Error("invalid_argument", "log_name is required.");
         }
         logName = logName.Trim();
         if (logName.Length > MaxLogNameLength) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", $"log_name must be <= {MaxLogNameLength} characters."));
+            return ToolResponse.Error("invalid_argument", $"log_name must be <= {MaxLogNameLength} characters.");
         }
         foreach (var c in logName) {
             if (char.IsControl(c)) {
-                return Task.FromResult(ToolResponse.Error("invalid_argument", "log_name must not contain control characters."));
+                return ToolResponse.Error("invalid_argument", "log_name must not contain control characters.");
             }
         }
 
@@ -71,11 +71,11 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
         }
         if (machineName is not null) {
             if (machineName.Length > MaxMachineNameLength) {
-                return Task.FromResult(ToolResponse.Error("invalid_argument", $"machine_name must be <= {MaxMachineNameLength} characters."));
+                return ToolResponse.Error("invalid_argument", $"machine_name must be <= {MaxMachineNameLength} characters.");
             }
             foreach (var c in machineName) {
                 if (char.IsControl(c)) {
-                    return Task.FromResult(ToolResponse.Error("invalid_argument", "machine_name must not contain control characters."));
+                    return ToolResponse.Error("invalid_argument", "machine_name must not contain control characters.");
                 }
             }
         }
@@ -98,7 +98,16 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
         }
 
         // Default off: formatting messages can be slow/fragile for remote sessions and is not always needed for triage.
-        var includeMessage = arguments?.GetBoolean("include_message") ?? false;
+        var includeMessage = false;
+        if (arguments is not null && arguments.TryGetValue("include_message", out var includeMessageValue)) {
+            // Treat explicit null as "not provided".
+            if (includeMessageValue is not null && includeMessageValue.Kind != JsonValueKind.Null) {
+                if (includeMessageValue.Kind != JsonValueKind.Boolean) {
+                    return ToolResponse.Error("invalid_argument", "include_message must be a boolean.");
+                }
+                includeMessage = includeMessageValue.AsBoolean();
+            }
+        }
 
         var sessionTimeoutMs = ToolArgs.ToPositiveInt32OrNull(arguments?.GetInt64("session_timeout_ms"), maxInclusive: MaxSessionTimeoutMs);
         if (sessionTimeoutMs.HasValue && sessionTimeoutMs.Value < MinSessionTimeoutMs) {
@@ -113,34 +122,59 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
             ? Math.Max(0, Math.Min(Options.MaxMessageChars, 1200))
             : 0;
 
-        if (!LiveEventQueryExecutor.TryRead(
-                request: new LiveEventQueryRequest {
-                    LogName = logName,
-                    MachineName = machineName,
-                    XPath = "*",
-                    MaxEvents = maxEvents,
-                    OldestFirst = false,
-                    IncludeMessage = includeMessage,
-                    MaxMessageChars = maxMessageChars,
-                    SessionTimeoutMs = sessionTimeoutMs
-                },
-                result: out var root,
-                failure: out var failure,
-                cancellationToken: cancellationToken)) {
-            return Task.FromResult(ErrorFromLiveQueryFailure(failure));
+        var request = new LiveEventQueryRequest {
+            LogName = logName,
+            MachineName = machineName,
+            XPath = "*",
+            MaxEvents = maxEvents,
+            OldestFirst = false,
+            IncludeMessage = includeMessage,
+            MaxMessageChars = maxMessageChars,
+            SessionTimeoutMs = sessionTimeoutMs
+        };
+
+        LiveEventQueryResult? root;
+        LiveEventQueryFailure? failure;
+        bool ok;
+
+        if (machineName is null) {
+            // Local reads are typically fast and stay on the current thread to reduce overhead.
+            ok = LiveEventQueryExecutor.TryRead(
+                request: request,
+                result: out root,
+                failure: out failure,
+                cancellationToken: cancellationToken);
+        } else {
+            // Live querying is currently synchronous; for remote sessions, offload so callers don't tie up request threads.
+            var remote = await Task.Run(() => {
+                var okInner = LiveEventQueryExecutor.TryRead(
+                    request: request,
+                    result: out var remoteRoot,
+                    failure: out var remoteFailure,
+                    cancellationToken: cancellationToken);
+                return (Ok: okInner, Root: okInner ? remoteRoot : null, Failure: okInner ? null : remoteFailure);
+            }, cancellationToken);
+
+            ok = remote.Ok;
+            root = remote.Root;
+            failure = remote.Failure;
+        }
+
+        if (!ok) {
+            return ErrorFromLiveQueryFailure(failure);
         }
 
         if (!ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
             arguments: arguments,
-            model: root,
-            sourceRows: root.Events,
+            model: root!,
+            sourceRows: root!.Events,
             viewRowsPath: "events_view",
             title: $"Top {maxEvents} recent events (preview)",
             maxTop: MaxViewTop,
-            baseTruncated: root.Truncated,
+            baseTruncated: root!.Truncated,
             response: out var response)) {
-            return Task.FromResult(ToolResponse.Error("tool_error", "Failed to build table view response envelope."));
+            return ToolResponse.Error("tool_error", "Failed to build table view response envelope.");
         }
-        return Task.FromResult(response);
+        return response;
     }
 }
