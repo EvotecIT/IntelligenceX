@@ -291,14 +291,14 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        // Reject structured payload fragments. This avoids surprising rewrites when users paste JSON-like snippets.
-        // (Most of the time, those should be treated as new context, not as a confirmation.)
-        if (raw.IndexOfAny(ImplicitConfirmationStructuredChars) >= 0) {
+        var normalized = CanonicalizeImplicitPendingActionConfirmationPhrase(raw);
+        if (normalized.Length == 0) {
             return false;
         }
 
-        var normalized = CanonicalizeImplicitPendingActionConfirmationPhrase(raw);
-        if (normalized.Length == 0) {
+        // Reject structured payload fragments (JSON-ish snippets, XML, inline code) *after* canonicalization so
+        // benign punctuation around confirmations (e.g., `"ok"`, `ok'`, `ok.`) doesn't get rejected prematurely.
+        if (normalized.IndexOfAny(ImplicitConfirmationStructuredChars) >= 0) {
             return false;
         }
 
