@@ -466,6 +466,10 @@ internal static partial class Program {
         failed += Run("Todo project bootstrap clamps max items", TestProjectBootstrapRenderWorkflowTemplateClampsMaxItems);
         failed += Run("Todo project bootstrap renders vision template", TestProjectBootstrapRenderVisionTemplateInjectsContext);
         failed += Run("Todo project bootstrap workflow enables label apply", TestProjectBootstrapWorkflowTemplateEnablesApplyLabels);
+        failed += Run("Todo project bootstrap control issue body includes context", TestProjectBootstrapBuildControlIssueBodyIncludesProjectContext);
+        failed += Run("Todo project bootstrap parses issue url output", TestProjectBootstrapParseIssueNumberFromGhOutputParsesIssueUrl);
+        failed += Run("Todo project bootstrap parses trailing issue number", TestProjectBootstrapParseIssueNumberFromGhOutputParsesTrailingInteger);
+        failed += Run("Todo project bootstrap rejects conflicting control issue options", TestProjectBootstrapRejectsConflictingControlIssueOptions);
         failed += Run("Analyze run PowerShell script captures engine errors", TestAnalyzeRunPowerShellScriptCapturesEngineErrors);
         failed += Run("Analyze run PowerShell strict args include fail switch", TestAnalyzeRunPowerShellStrictArgsIncludeFailSwitch);
         failed += Run("Analyze run disabled writes empty findings", TestAnalyzeRunDisabledWritesEmptyFindings);

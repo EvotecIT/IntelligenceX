@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using IntelligenceX.Cli.GitHub;
 
 namespace IntelligenceX.Cli.Todo;
 
@@ -18,6 +19,8 @@ internal static class ProjectBootstrapRunner {
     private const string DefaultConfigPath = "artifacts/triage/ix-project-config.json";
     private const string DefaultWorkflowPath = ".github/workflows/ix-triage-project-sync.yml";
     private const string DefaultVisionPath = "VISION.md";
+    private const string DefaultControlIssueTitle = "IX Triage Control";
+    private const string ControlIssueVariableName = "IX_TRIAGE_CONTROL_ISSUE";
 
     private sealed class Options {
         public string Repo { get; set; } = DefaultRepo;
@@ -37,6 +40,9 @@ internal static class ProjectBootstrapRunner {
         public bool ForceWorkflowWrite { get; set; }
         public bool SkipVisionScaffold { get; set; }
         public bool ForceVisionWrite { get; set; }
+        public int? ControlIssueNumber { get; set; }
+        public bool CreateControlIssue { get; set; }
+        public string ControlIssueTitle { get; set; } = DefaultControlIssueTitle;
         public bool ShowHelp { get; set; }
         public bool ParseFailed { get; set; }
     }
@@ -110,6 +116,28 @@ internal static class ProjectBootstrapRunner {
             }
         }
 
+        var controlIssueStatus = "Control issue variable unchanged.";
+        if (options.CreateControlIssue || options.ControlIssueNumber.HasValue) {
+            var controlIssueNumber = options.ControlIssueNumber ?? 0;
+            if (options.CreateControlIssue) {
+                var createResult = await CreateControlIssueAsync(options.Repo, options.ControlIssueTitle, owner, projectNumber)
+                    .ConfigureAwait(false);
+                if (!createResult.Success) {
+                    Console.Error.WriteLine(createResult.Error);
+                    return 1;
+                }
+                controlIssueNumber = createResult.IssueNumber;
+            }
+
+            var variableError = await SetControlIssueVariableAsync(options.Repo, controlIssueNumber).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(variableError)) {
+                Console.Error.WriteLine(variableError);
+                return 1;
+            }
+
+            controlIssueStatus = $"Control issue configured: #{controlIssueNumber} ({ControlIssueVariableName}).";
+        }
+
         Console.WriteLine(options.SkipProjectInit
             ? "Bootstrap workflow generated from existing project config."
             : "Project initialized and bootstrap workflow generated.");
@@ -117,6 +145,7 @@ internal static class ProjectBootstrapRunner {
         Console.WriteLine($"Project config: {options.ConfigPath}");
         Console.WriteLine($"Workflow file: {options.WorkflowPath}");
         Console.WriteLine(visionStatusMessage);
+        Console.WriteLine(controlIssueStatus);
         Console.WriteLine("Next step: commit generated files (workflow + vision) to enable scheduled GitHub-only triage sync.");
         return 0;
     }
@@ -143,6 +172,53 @@ internal static class ProjectBootstrapRunner {
 
     internal static string LoadVisionTemplate() {
         return ReadEmbeddedResource(VisionTemplateResourceName);
+    }
+
+    internal static string BuildControlIssueBody(string repo, string owner, int projectNumber) {
+        var builder = new StringBuilder();
+        builder.AppendLine("# IX Triage Control Plane");
+        builder.AppendLine();
+        builder.AppendLine("This issue is used by the scheduled IX triage workflow as a summary sink.");
+        builder.AppendLine();
+        builder.AppendLine($"- Repository: `{repo}`");
+        builder.AppendLine($"- Project target: `{owner}#{projectNumber}`");
+        builder.AppendLine($"- Variable: `{ControlIssueVariableName}`");
+        builder.AppendLine();
+        builder.AppendLine("## What appears here");
+        builder.AppendLine();
+        builder.AppendLine("- Triage index summary (duplicate clusters + best PR candidates)");
+        builder.AppendLine("- Vision check summary (aligned / needs-human-review / likely-out-of-scope)");
+        builder.AppendLine("- Links to each workflow run");
+        builder.AppendLine();
+        builder.AppendLine("## Maintainer flow");
+        builder.AppendLine();
+        builder.AppendLine("1. Review latest workflow comment.");
+        builder.AppendLine("2. Open project board and filter by `IX Suggested Decision`, `Vision Fit`, and `Category`.");
+        builder.AppendLine("3. Confirm human decision in `Maintainer Decision` and merge/close as needed.");
+        builder.AppendLine();
+        builder.AppendLine("_Managed by IntelligenceX project-bootstrap._");
+        return builder.ToString().TrimEnd();
+    }
+
+    internal static bool TryParseIssueNumberFromGhOutput(string stdout, out int issueNumber) {
+        issueNumber = 0;
+        if (string.IsNullOrWhiteSpace(stdout)) {
+            return false;
+        }
+
+        var lines = stdout.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var rawLine in lines) {
+            var line = rawLine.Trim();
+            if (TryParseIssueNumberFromUrl(line, out issueNumber)) {
+                return true;
+            }
+
+            if (TryParseTrailingInteger(line, out issueNumber)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string[] BuildProjectInitArgs(Options options) {
@@ -288,6 +364,27 @@ internal static class ProjectBootstrapRunner {
                 case "--force-vision-write":
                     options.ForceVisionWrite = true;
                     break;
+                case "--control-issue":
+                    if (i + 1 < args.Length &&
+                        int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out var controlIssueNumber) &&
+                        controlIssueNumber > 0) {
+                        options.ControlIssueNumber = controlIssueNumber;
+                    } else {
+                        options.ParseFailed = true;
+                        options.ShowHelp = true;
+                    }
+                    break;
+                case "--create-control-issue":
+                    options.CreateControlIssue = true;
+                    break;
+                case "--control-issue-title":
+                    if (i + 1 < args.Length) {
+                        options.ControlIssueTitle = args[++i];
+                    } else {
+                        options.ParseFailed = true;
+                        options.ShowHelp = true;
+                    }
+                    break;
                 default:
                     Console.Error.WriteLine($"Unknown option: {arg}");
                     options.ParseFailed = true;
@@ -299,6 +396,16 @@ internal static class ProjectBootstrapRunner {
         if (string.IsNullOrWhiteSpace(options.Repo) || !options.Repo.Contains('/')) {
             options.ParseFailed = true;
             options.ShowHelp = true;
+        }
+
+        if (options.CreateControlIssue && options.ControlIssueNumber.HasValue) {
+            Console.Error.WriteLine("Choose either --control-issue <n> or --create-control-issue, not both.");
+            options.ParseFailed = true;
+            options.ShowHelp = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(options.ControlIssueTitle)) {
+            options.ControlIssueTitle = DefaultControlIssueTitle;
         }
 
         return options;
@@ -326,8 +433,12 @@ internal static class ProjectBootstrapRunner {
         Console.WriteLine("  --force-workflow-write    Overwrite existing workflow output file");
         Console.WriteLine("  --skip-vision-scaffold    Do not create/update VISION.md template");
         Console.WriteLine("  --force-vision-write      Overwrite existing VISION.md output file");
+        Console.WriteLine("  --control-issue <n>       Set IX_TRIAGE_CONTROL_ISSUE to an existing issue number");
+        Console.WriteLine("  --create-control-issue    Create a new control issue and set IX_TRIAGE_CONTROL_ISSUE");
+        Console.WriteLine("  --control-issue-title     New control issue title (default: IX Triage Control)");
         Console.WriteLine();
         Console.WriteLine("Required token scopes: project (+ read:project for sync operations).");
+        Console.WriteLine("For control issue automation, repository issue + variable write permissions are also required.");
     }
 
     private static bool TryReadProjectTarget(string configPath, out string owner, out int projectNumber, out string error) {
@@ -411,5 +522,100 @@ internal static class ProjectBootstrapRunner {
             Directory.CreateDirectory(directory);
         }
         File.WriteAllText(path, content, Utf8NoBom);
+    }
+
+    private static async Task<(bool Success, int IssueNumber, string Error)> CreateControlIssueAsync(
+        string repo,
+        string title,
+        string owner,
+        int projectNumber) {
+        var body = BuildControlIssueBody(repo, owner, projectNumber);
+        var (code, stdout, stderr) = await GhCli.RunAsync(
+            TimeSpan.FromSeconds(90),
+            "issue", "create",
+            "--repo", repo,
+            "--title", title,
+            "--body", body
+        ).ConfigureAwait(false);
+
+        if (code != 0) {
+            return (
+                false,
+                0,
+                $"Failed to create control issue in '{repo}': {(string.IsNullOrWhiteSpace(stderr) ? "unknown error" : stderr.Trim())}");
+        }
+
+        if (!TryParseIssueNumberFromGhOutput(stdout, out var issueNumber)) {
+            return (
+                false,
+                0,
+                "Control issue was created but issue number could not be parsed from `gh issue create` output.");
+        }
+
+        return (true, issueNumber, string.Empty);
+    }
+
+    private static async Task<string> SetControlIssueVariableAsync(string repo, int issueNumber) {
+        var (code, _, stderr) = await GhCli.RunAsync(
+            "variable", "set",
+            ControlIssueVariableName,
+            "--repo", repo,
+            "--body", issueNumber.ToString(CultureInfo.InvariantCulture)
+        ).ConfigureAwait(false);
+
+        if (code == 0) {
+            return string.Empty;
+        }
+
+        return $"Failed to set {ControlIssueVariableName} for '{repo}': {(string.IsNullOrWhiteSpace(stderr) ? "unknown error" : stderr.Trim())}";
+    }
+
+    private static bool TryParseIssueNumberFromUrl(string value, out int issueNumber) {
+        issueNumber = 0;
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)) {
+            return false;
+        }
+
+        var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i + 1 < segments.Length; i++) {
+            if (!segments[i].Equals("issues", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (int.TryParse(segments[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) && number > 0) {
+                issueNumber = number;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryParseTrailingInteger(string value, out int number) {
+        number = 0;
+        if (string.IsNullOrWhiteSpace(value)) {
+            return false;
+        }
+
+        var end = value.Length - 1;
+        while (end >= 0 && !char.IsDigit(value[end])) {
+            end--;
+        }
+        if (end < 0) {
+            return false;
+        }
+
+        var start = end;
+        while (start >= 0 && char.IsDigit(value[start])) {
+            start--;
+        }
+        start++;
+
+        if (start > end) {
+            return false;
+        }
+
+        return int.TryParse(value.AsSpan(start, end - start + 1), NumberStyles.Integer, CultureInfo.InvariantCulture, out number) &&
+               number > 0;
     }
 }

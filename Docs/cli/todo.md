@@ -169,6 +169,9 @@ Useful options:
 - `--force-workflow-write` to overwrite an existing workflow file.
 - `--skip-vision-scaffold` to keep the bootstrap workflow only.
 - `--force-vision-write` to overwrite an existing vision file.
+- `--control-issue <n>` to point summaries at an existing GitHub issue by setting `IX_TRIAGE_CONTROL_ISSUE`.
+- `--create-control-issue` to create a new control issue and auto-set `IX_TRIAGE_CONTROL_ISSUE`.
+- `--control-issue-title <text>` to customize the created control issue title.
 
 ## GitHub Actions template
 
@@ -180,6 +183,7 @@ A reusable scheduled workflow template is available at:
 It runs `build-triage-index`, uploads artifacts, and can optionally post the markdown summary to a control issue
 when repository variable `IX_TRIAGE_CONTROL_ISSUE` is set.
 For `triage-project-sync.yml`, the posted comment includes both triage and vision markdown summaries.
+`todo project-bootstrap --create-control-issue` can set this variable for you automatically.
 
 ## Options
 
