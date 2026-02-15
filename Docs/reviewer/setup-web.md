@@ -26,12 +26,20 @@ This starts a local web server and opens the wizard in your browser (http://127.
 
 ```mermaid
 flowchart LR
+  classDef step fill:#BAE6FD,stroke:#0369A1,color:#082F49,stroke-width:2px;
+  classDef auth fill:#FDE68A,stroke:#B45309,color:#451A03,stroke-width:2px;
+  classDef apply fill:#A7F3D0,stroke:#047857,color:#052E2B,stroke-width:2px;
+
   A["Path"] --> B["Auto-Detect"]
   B --> C["GitHub Auth"]
   C --> D["Repos"]
   D --> E["Configure/Auth"]
   E --> F["Plan"]
   F --> G["Apply + Verify"]
+
+  class A,B,D,E,F step;
+  class C auth;
+  class G apply;
 ```
 
 Path requirements (GitHub/repo/AI auth) and Bot contract checks are defined in [Web Onboarding Flow](/docs/reviewer/web-onboarding/).

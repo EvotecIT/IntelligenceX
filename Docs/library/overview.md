@@ -8,6 +8,34 @@ Tools: [Tool Calling](/docs/library/tools/)
 Tool packs: [Library Tool Packs](/docs/library/tool-packs/)
 Plugin rollout draft: [Plugin Rollout Draft](/docs/library/plugin-rollout-draft/)
 
+## Conceptual Package Map
+
+```mermaid
+flowchart TD
+  classDef app fill:#BAE6FD,stroke:#0369A1,color:#082F49,stroke-width:2px;
+  classDef core fill:#DDD6FE,stroke:#5B21B6,color:#2E1065,stroke-width:2px;
+  classDef provider fill:#FDE68A,stroke:#B45309,color:#451A03,stroke-width:2px;
+  classDef tools fill:#A7F3D0,stroke:#047857,color:#052E2B,stroke-width:2px;
+  classDef optional fill:#FBCFE8,stroke:#BE185D,color:#500724,stroke-width:2px;
+
+  APP["Your .NET app"] --> CORE["IntelligenceX.OpenAI"]
+  APP --> COPI["IntelligenceX.Copilot"]
+  CORE --> NATIVE["Native transport"]
+  CORE --> APPSERVER["AppServer transport"]
+  CORE --> HTTP["Compatible HTTP transport"]
+  CORE --> TOOLCALL["Tool-calling orchestration"]
+  TOOLCALL --> TOOLS["IntelligenceX.Tools contract"]
+  TOOLS --> PACKS["IntelligenceX.Tools.* packs"]
+  COPI --> COPCLI["Copilot CLI transport"]
+  COPI --> COPDIR["Copilot Direct transport (experimental)"]
+
+  class APP app;
+  class CORE core;
+  class NATIVE,APPSERVER,HTTP provider;
+  class TOOLCALL,TOOLS,PACKS tools;
+  class COPI,COPCLI,COPDIR optional;
+```
+
 ## Quick start (app-server)
 
 ```csharp
