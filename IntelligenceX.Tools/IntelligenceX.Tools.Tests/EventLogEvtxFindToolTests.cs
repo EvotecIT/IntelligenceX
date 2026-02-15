@@ -102,6 +102,48 @@ public class EventLogEvtxFindToolTests {
     }
 
     [Fact]
+    public async Task EvtxFind_LogNameMatchesFileNameNotDirectoryName() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-evtx-find-" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tempRoot);
+        try {
+            var dirNamedSystem = Path.Combine(tempRoot, "System");
+            Directory.CreateDirectory(dirNamedSystem);
+
+            // Directory name contains "System" but the EVTX name does not: should NOT match log_name=System.
+            File.WriteAllText(Path.Combine(dirNamedSystem, "Other.evtx"), "x");
+
+            // EVTX name contains "System": should match log_name=System.
+            File.WriteAllText(Path.Combine(tempRoot, "System.evtx"), "x");
+
+            var options = new EventLogToolOptions();
+            options.AllowedRoots.Add(tempRoot);
+            var tool = new EventLogEvtxFindTool(options);
+
+            var args = new JsonObject()
+                .Add("log_name", "System")
+                .Add("max_results", 10);
+
+            var json = await tool.InvokeAsync(args, CancellationToken.None);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            Assert.True(root.GetProperty("ok").GetBoolean());
+
+            var names = root.GetProperty("files").EnumerateArray()
+                .Select(static x => x.GetProperty("file_name").GetString())
+                .ToArray();
+
+            Assert.Equal(new[] { "System.evtx" }, names);
+        } finally {
+            try {
+                Directory.Delete(tempRoot, recursive: true);
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
+    }
+
+    [Fact]
     public async Task EvtxFind_ReturnsNewestFilesWhenMoreThanMaxResultsExist() {
         var tempRoot = Path.Combine(Path.GetTempPath(), "ix-evtx-find-" + Guid.NewGuid().ToString("n"));
         Directory.CreateDirectory(tempRoot);

@@ -162,7 +162,8 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
 
                     scannedFiles++;
 
-                    if (!IsMatch(file, queryTokens, logTokens, comparison)) {
+                    var fileName = Path.GetFileName(file);
+                    if (!IsMatch(path: file, fileName: fileName, queryTokens: queryTokens, logTokens: logTokens, comparison: comparison)) {
                         continue;
                     }
 
@@ -401,7 +402,12 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
         return path;
     }
 
-    private static bool IsMatch(string path, IReadOnlyList<string> queryTokens, IReadOnlyList<string> logTokens, StringComparison comparison) {
+    private static bool IsMatch(
+        string path,
+        string fileName,
+        IReadOnlyList<string> queryTokens,
+        IReadOnlyList<string> logTokens,
+        StringComparison comparison) {
         var haystack = path;
         if (queryTokens.Count > 0) {
             for (var i = 0; i < queryTokens.Count; i++) {
@@ -412,8 +418,11 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
         }
 
         if (logTokens.Count > 0) {
+            // log_name is a hint about the log itself (System/Security/Application), so match against the EVTX name,
+            // not directory segments, to avoid confusing false positives.
+            var nameHaystack = fileName;
             for (var i = 0; i < logTokens.Count; i++) {
-                if (haystack.IndexOf(logTokens[i], comparison) < 0) {
+                if (nameHaystack.IndexOf(logTokens[i], comparison) < 0) {
                     return false;
                 }
             }
