@@ -26,7 +26,7 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
                 ("log_name", ToolSchema.String("Windows Event Log name (for example: System, Security, Application).")),
                 ("machine_name", ToolSchema.String("Optional remote machine name/FQDN. Omit for local machine.")),
                 ("max_events", ToolSchema.Integer("Optional number of most-recent events to return (default 5, capped).")),
-                ("include_message", ToolSchema.Boolean("If true, include formatted message text (truncated). Default true.")),
+                ("include_message", ToolSchema.Boolean("If true, include formatted message text (truncated).")),
                 ("session_timeout_ms", ToolSchema.Integer("Optional remote session timeout in milliseconds (capped).")))
             .WithTableViewOptions()
             .Required("log_name")
@@ -64,7 +64,8 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
             defaultValue: DefaultMaxEvents,
             maxInclusive: Math.Min(Options.MaxResults, MaxViewTop));
 
-        var includeMessage = arguments?.GetBoolean("include_message") ?? true;
+        // Default off: formatting messages can be slow/fragile for remote sessions and is not always needed for triage.
+        var includeMessage = arguments?.GetBoolean("include_message") ?? false;
 
         var sessionTimeoutMs = ToolArgs.ToPositiveInt32OrNull(arguments?.GetInt64("session_timeout_ms"), maxInclusive: MaxSessionTimeoutMs);
         if (sessionTimeoutMs.HasValue && sessionTimeoutMs.Value < MinSessionTimeoutMs) {
