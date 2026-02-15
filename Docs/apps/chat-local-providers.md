@@ -13,11 +13,10 @@ Examples: Ollama, LM Studio, llama.cpp server, and similar OpenAI-compat endpoin
 For the WinUI desktop app (`Build/Run-ChatApp.ps1`):
 
 1. Open **Options -> Profile -> Model Runtime**.
-2. Click **Auto Detect Runtime** (recommended). The app probes common local endpoints and picks an available runtime.
-3. If auto-detect is not available, use **Use LM Studio Runtime** or **Use Ollama Runtime** when shown.
-4. If your provider needs auth, enter **API key (optional)**.
-5. The app applies runtime settings immediately and refreshes model discovery.
-6. If needed, choose a model from **Discovered models** (or switch to manual input) and click **Apply Runtime**.
+2. Click **Connect LM Studio** (primary flow).
+3. The app switches to compatible HTTP using LM Studio defaults and refreshes model discovery.
+4. Choose a model from **Discovered models** and click **Apply Runtime** when needed.
+5. Open **Show Advanced Runtime** only for transport/base URL/API key/manual model overrides.
 
 Notes:
 - `Refresh Models` applies pending runtime field changes first, then refreshes discovery.
