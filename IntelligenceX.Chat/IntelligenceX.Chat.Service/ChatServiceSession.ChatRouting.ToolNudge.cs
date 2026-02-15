@@ -777,7 +777,7 @@ internal sealed partial class ChatServiceSession {
         var requestText = TrimForPrompt(userRequest, 1200);
         var draftText = TrimForPrompt(assistantDraft, 1200);
         var reasonCode = string.IsNullOrWhiteSpace(reason) ? "no_tool_calls_after_retries" : reason.Trim();
-        var replayActionBlock = BuildExecutionContractReplayActionBlock(userRequest);
+        var replayActionBlock = BuildExecutionContractReplayActionBlock(userRequest, assistantDraft);
         return $$"""
             [Execution blocked]
             {{ExecutionContractMarker}}
@@ -796,8 +796,8 @@ internal sealed partial class ChatServiceSession {
             """;
     }
 
-    private static string BuildExecutionContractReplayActionBlock(string userRequest) {
-        if (!TryParseActionSelectionForReplay(userRequest, out var actionId, out var actionTitle, out var actionRequest)) {
+    private static string BuildExecutionContractReplayActionBlock(string userRequest, string assistantDraft) {
+        if (!TryResolveReplayActionForExecutionContract(userRequest, assistantDraft, out var actionId, out var actionTitle, out var actionRequest)) {
             return string.Empty;
         }
 
@@ -810,6 +810,48 @@ internal sealed partial class ChatServiceSession {
             request: {{actionRequest}}
             reply: /act {{actionId}}
             """;
+    }
+
+    private static bool TryResolveReplayActionForExecutionContract(string userRequest, string assistantDraft, out string actionId, out string actionTitle, out string actionRequest) {
+        if (TryParseActionSelectionForReplay(userRequest, out actionId, out actionTitle, out actionRequest)) {
+            return true;
+        }
+
+        return TryParseSinglePendingActionForReplay(assistantDraft, out actionId, out actionTitle, out actionRequest);
+    }
+
+    private static bool TryParseSinglePendingActionForReplay(string assistantDraft, out string actionId, out string actionTitle, out string actionRequest) {
+        actionId = string.Empty;
+        actionTitle = string.Empty;
+        actionRequest = string.Empty;
+
+        var actions = ExtractPendingActions(assistantDraft);
+        if (actions.Count == 0) {
+            actions = ExtractFallbackChoicePendingActions(assistantDraft);
+        }
+        if (actions.Count != 1) {
+            return false;
+        }
+
+        var action = actions[0];
+        actionId = NormalizeReplayActionIdToken(action.Id);
+        if (actionId.Length == 0) {
+            return false;
+        }
+
+        actionTitle = NormalizeReplayActionText(action.Title, maxChars: 200);
+        actionRequest = NormalizeReplayActionText(action.Request, maxChars: 600);
+        if (actionRequest.Length == 0) {
+            actionRequest = actionTitle;
+        }
+        if (actionRequest.Length == 0) {
+            actionRequest = "Retry selected action.";
+        }
+        if (actionTitle.Length == 0) {
+            actionTitle = actionRequest;
+        }
+
+        return true;
     }
 
     private static bool TryParseActionSelectionForReplay(string userRequest, out string actionId, out string actionTitle, out string actionRequest) {
@@ -862,25 +904,7 @@ internal sealed partial class ChatServiceSession {
     private static string NormalizeReplayActionId(JsonElement id) {
         switch (id.ValueKind) {
             case JsonValueKind.String: {
-                    var token = ReadFirstToken((id.GetString() ?? string.Empty).Trim());
-                    if (token.Length == 0) {
-                        return string.Empty;
-                    }
-
-                    var sb = new StringBuilder(Math.Min(token.Length, 64));
-                    for (var i = 0; i < token.Length && sb.Length < 64; i++) {
-                        var ch = token[i];
-                        if (char.IsWhiteSpace(ch) || char.IsControl(ch)) {
-                            continue;
-                        }
-                        if (ch == ':' || ch == ';') {
-                            continue;
-                        }
-
-                        sb.Append(ch);
-                    }
-
-                    return sb.ToString().Trim();
+                    return NormalizeReplayActionIdToken(id.GetString() ?? string.Empty);
                 }
             case JsonValueKind.Number:
                 if (!id.TryGetInt64(out var numericId) || numericId <= 0) {
@@ -891,6 +915,28 @@ internal sealed partial class ChatServiceSession {
             default:
                 return string.Empty;
         }
+    }
+
+    private static string NormalizeReplayActionIdToken(string idToken) {
+        var token = ReadFirstToken((idToken ?? string.Empty).Trim());
+        if (token.Length == 0) {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder(Math.Min(token.Length, 64));
+        for (var i = 0; i < token.Length && sb.Length < 64; i++) {
+            var ch = token[i];
+            if (char.IsWhiteSpace(ch) || char.IsControl(ch)) {
+                continue;
+            }
+            if (ch == ':' || ch == ';') {
+                continue;
+            }
+
+            sb.Append(ch);
+        }
+
+        return sb.ToString().Trim();
     }
 
     private static string TryReadReplayActionSelectionText(JsonElement selection, string propertyName) {
