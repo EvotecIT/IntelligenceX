@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using IntelligenceX.Configuration;
 using IntelligenceX.OpenAI.AppServer;
+using IntelligenceX.OpenAI.CompatibleHttp;
 using IntelligenceX.OpenAI.Native;
 
 namespace IntelligenceX.OpenAI;
@@ -36,6 +37,10 @@ public sealed class EasySessionOptions {
     /// Native transport options.
     /// </summary>
     public OpenAINativeOptions NativeOptions { get; } = new();
+    /// <summary>
+    /// OpenAI-compatible HTTP transport options (for example local providers such as Ollama/LM Studio).
+    /// </summary>
+    public OpenAICompatibleHttpOptions CompatibleHttpOptions { get; } = new();
     /// <summary>
     /// Selected transport kind.
     /// </summary>
@@ -126,16 +131,25 @@ public sealed class EasySessionOptions {
         if (NativeOptions is null) {
             throw new ArgumentNullException(nameof(NativeOptions));
         }
+        if (CompatibleHttpOptions is null) {
+            throw new ArgumentNullException(nameof(CompatibleHttpOptions));
+        }
         if (string.IsNullOrWhiteSpace(DefaultModel)) {
             throw new ArgumentException("DefaultModel cannot be null or whitespace.", nameof(DefaultModel));
         }
         if (MaxImageBytes < 0) {
             throw new ArgumentOutOfRangeException(nameof(MaxImageBytes), "MaxImageBytes cannot be negative.");
         }
-        if (TransportKind == OpenAITransportKind.AppServer) {
-            AppServerOptions.Validate();
-        } else {
-            NativeOptions.Validate();
+        switch (TransportKind) {
+            case OpenAITransportKind.AppServer:
+                AppServerOptions.Validate();
+                break;
+            case OpenAITransportKind.CompatibleHttp:
+                CompatibleHttpOptions.Validate();
+                break;
+            default:
+                NativeOptions.Validate();
+                break;
         }
     }
 

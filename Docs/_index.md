@@ -49,6 +49,7 @@ Welcome to the IntelligenceX documentation.
 - [Troubleshooting](/docs/troubleshooting/)
 - [FAQ](/docs/faq/)
 - [Screenshots](/docs/screenshots/)
+- [Chat: Local Providers](/docs/apps/chat-local-providers/)
 
 ## Apps (Planned)
 

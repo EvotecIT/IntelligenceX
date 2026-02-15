@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using IntelligenceX.Chat.Service.Profiles;
+using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.CompatibleHttp;
 
 namespace IntelligenceX.Chat.Service;
 
@@ -10,6 +12,14 @@ internal sealed class ServiceOptions {
     public bool ShowHelp { get; set; }
     public string PipeName { get; set; } = "intelligencex.chat";
     public string Model { get; set; } = "gpt-5.3-codex";
+
+    // Provider selection for the underlying IntelligenceXClient used by the service.
+    public OpenAITransportKind OpenAITransport { get; set; } = OpenAITransportKind.Native;
+    public string? OpenAIBaseUrl { get; set; }
+    public string? OpenAIApiKey { get; set; }
+    public bool OpenAIStreaming { get; set; } = true;
+    public bool OpenAIAllowInsecureHttp { get; set; }
+    public bool OpenAIAllowInsecureHttpNonLoopback { get; set; }
 
     public string? ProfileName { get; set; }
     public string? SaveProfileName { get; set; }
@@ -77,6 +87,47 @@ internal sealed class ServiceOptions {
                     return options;
                 }
                 options.Model = value!;
+                continue;
+            }
+            if (arg is "--openai-transport") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!TryParseTransport(value!, out var kind)) {
+                    error = "--openai-transport must be one of: native, appserver, compatible-http.";
+                    return options;
+                }
+                options.OpenAITransport = kind;
+                continue;
+            }
+            if (arg is "--openai-base-url") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                options.OpenAIBaseUrl = value;
+                continue;
+            }
+            if (arg is "--openai-api-key") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                options.OpenAIApiKey = value;
+                continue;
+            }
+            if (arg is "--openai-stream") {
+                options.OpenAIStreaming = true;
+                continue;
+            }
+            if (arg is "--openai-no-stream") {
+                options.OpenAIStreaming = false;
+                continue;
+            }
+            if (arg is "--openai-allow-insecure-http") {
+                options.OpenAIAllowInsecureHttp = true;
+                continue;
+            }
+            if (arg is "--openai-allow-insecure-http-non-loopback") {
+                options.OpenAIAllowInsecureHttpNonLoopback = true;
                 continue;
             }
             if (arg is "--profile") {
@@ -263,6 +314,10 @@ internal sealed class ServiceOptions {
         if (string.IsNullOrWhiteSpace(options.Model)) {
             error = "--model cannot be empty.";
         }
+        if (string.IsNullOrWhiteSpace(error) && options.OpenAITransport == OpenAITransportKind.CompatibleHttp
+            && !TryValidateCompatibleHttpBaseUrl(options, out error)) {
+            return options;
+        }
 
         if (string.IsNullOrWhiteSpace(error) && !options.NoStateDb && !string.IsNullOrWhiteSpace(options.SaveProfileName)) {
             if (!TrySaveProfile(options, out error)) {
@@ -280,6 +335,13 @@ internal sealed class ServiceOptions {
         Console.WriteLine("Options:");
         Console.WriteLine("  --pipe <NAME>           Named pipe name (default: intelligencex.chat)");
         Console.WriteLine("  --model <NAME>          OpenAI model (default: gpt-5.3-codex)");
+        Console.WriteLine("  --openai-transport <KIND>  Underlying provider transport: native|appserver|compatible-http (default: native).");
+        Console.WriteLine("  --openai-base-url <URL> Base URL for compatible-http (example: http://127.0.0.1:11434 or http://127.0.0.1:11434/v1).");
+        Console.WriteLine("  --openai-api-key <KEY>  Optional Bearer token for compatible-http.");
+        Console.WriteLine("  --openai-stream         Request streaming responses (default: on).");
+        Console.WriteLine("  --openai-no-stream      Disable streaming responses.");
+        Console.WriteLine("  --openai-allow-insecure-http  Allow http:// base URLs for loopback hosts (default: off).");
+        Console.WriteLine("  --openai-allow-insecure-http-non-loopback  Allow http:// base URLs for non-loopback hosts (dangerous).");
         Console.WriteLine("  --profile <NAME>        Load a saved service profile (SQLite-backed) and apply it as defaults.");
         Console.WriteLine("  --save-profile <NAME>   Save the effective options as a named profile (SQLite-backed).");
         Console.WriteLine("  --state-db <PATH>       Override the SQLite state DB path (defaults to LocalAppData).");
@@ -306,6 +368,53 @@ internal sealed class ServiceOptions {
         Console.WriteLine("  --exit-on-disconnect    Exit when parent app disconnects (runtime-managed mode).");
         Console.WriteLine("  --parent-pid <PID>      Parent process id used with --exit-on-disconnect.");
         Console.WriteLine("  -h, --help              Show help.");
+    }
+
+    private static bool TryParseTransport(string value, out OpenAITransportKind kind) {
+        kind = OpenAITransportKind.Native;
+        if (string.IsNullOrWhiteSpace(value)) {
+            return false;
+        }
+        switch (value.Trim().ToLowerInvariant()) {
+            case "native":
+                kind = OpenAITransportKind.Native;
+                return true;
+            case "appserver":
+            case "app-server":
+            case "codex":
+                kind = OpenAITransportKind.AppServer;
+                return true;
+            case "compatible-http":
+            case "compatiblehttp":
+            case "http":
+            case "local":
+            case "ollama":
+            case "lmstudio":
+            case "lm-studio":
+                kind = OpenAITransportKind.CompatibleHttp;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool TryValidateCompatibleHttpBaseUrl(ServiceOptions options, out string? error) {
+        error = null;
+        try {
+            // Centralize validation behavior on the transport options, so CLI/config/runtime share the same rules.
+            var compatible = new OpenAICompatibleHttpOptions {
+                BaseUrl = options.OpenAIBaseUrl,
+                AllowInsecureHttp = options.OpenAIAllowInsecureHttp,
+                AllowInsecureHttpNonLoopback = options.OpenAIAllowInsecureHttpNonLoopback,
+                Streaming = options.OpenAIStreaming,
+                ApiKey = options.OpenAIApiKey
+            };
+            compatible.Validate();
+            return true;
+        } catch (Exception ex) {
+            error = ex.Message;
+            return false;
+        }
     }
 
     internal static string GetDefaultStateDbPath() {

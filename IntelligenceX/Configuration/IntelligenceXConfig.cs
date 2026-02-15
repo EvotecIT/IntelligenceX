@@ -130,6 +130,27 @@ public sealed class OpenAIConfig {
     /// </summary>
     public string? Transport { get; set; }
     /// <summary>
+    /// Base URL for OpenAI-compatible HTTP endpoints (for example, a local provider).
+    /// Example: http://127.0.0.1:11434/v1
+    /// </summary>
+    public string? CompatibleHttpBaseUrl { get; set; }
+    /// <summary>
+    /// Optional API key for OpenAI-compatible HTTP endpoints (sent as Bearer).
+    /// </summary>
+    public string? CompatibleHttpApiKey { get; set; }
+    /// <summary>
+    /// Whether to request streaming from OpenAI-compatible HTTP endpoints.
+    /// </summary>
+    public bool? CompatibleHttpStreaming { get; set; }
+    /// <summary>
+    /// Allows insecure http:// base URLs (loopback only).
+    /// </summary>
+    public bool? CompatibleHttpAllowInsecureHttp { get; set; }
+    /// <summary>
+    /// Allows insecure http:// base URLs for non-loopback hosts (dangerous).
+    /// </summary>
+    public bool? CompatibleHttpAllowInsecureHttpNonLoopback { get; set; }
+    /// <summary>
     /// Originator value reported for native OpenAI requests.
     /// </summary>
     public string? Originator { get; set; }
@@ -221,6 +242,12 @@ public sealed class OpenAIConfig {
         RequireWorkspaceForFileAccess = ReadBool(obj, "requireWorkspaceForFileAccess", RequireWorkspaceForFileAccess);
         ReasoningEffort = obj.GetString("reasoningEffort") ?? ReasoningEffort;
         ReasoningSummary = obj.GetString("reasoningSummary") ?? ReasoningSummary;
+        CompatibleHttpBaseUrl = obj.GetString("compatibleHttpBaseUrl") ?? obj.GetString("compatibleHttpUrl") ?? CompatibleHttpBaseUrl;
+        CompatibleHttpApiKey = obj.GetString("compatibleHttpApiKey") ?? obj.GetString("compatibleHttpKey") ?? CompatibleHttpApiKey;
+        CompatibleHttpStreaming = ReadBool(obj, "compatibleHttpStreaming", CompatibleHttpStreaming);
+        CompatibleHttpAllowInsecureHttp = ReadBool(obj, "compatibleHttpAllowInsecureHttp", CompatibleHttpAllowInsecureHttp);
+        CompatibleHttpAllowInsecureHttpNonLoopback =
+            ReadBool(obj, "compatibleHttpAllowInsecureHttpNonLoopback", CompatibleHttpAllowInsecureHttpNonLoopback);
     }
 
     /// <summary>
@@ -284,6 +311,25 @@ public sealed class OpenAIConfig {
         }
         if (!string.IsNullOrWhiteSpace(AppServerWorkingDirectory)) {
             options.AppServerOptions.WorkingDirectory = AppServerWorkingDirectory;
+        }
+        if (!string.IsNullOrWhiteSpace(CompatibleHttpBaseUrl)) {
+            options.CompatibleHttpOptions.BaseUrl = CompatibleHttpBaseUrl!;
+        }
+        if (!string.IsNullOrWhiteSpace(CompatibleHttpApiKey)) {
+            options.CompatibleHttpOptions.ApiKey = CompatibleHttpApiKey!;
+        }
+        if (CompatibleHttpStreaming.HasValue) {
+            options.CompatibleHttpOptions.Streaming = CompatibleHttpStreaming.Value;
+        }
+        if (CompatibleHttpAllowInsecureHttp.HasValue) {
+            options.CompatibleHttpOptions.AllowInsecureHttp = CompatibleHttpAllowInsecureHttp.Value;
+        }
+        if (CompatibleHttpAllowInsecureHttpNonLoopback.HasValue) {
+            options.CompatibleHttpOptions.AllowInsecureHttpNonLoopback = CompatibleHttpAllowInsecureHttpNonLoopback.Value;
+        }
+        if (options.TransportKind == OpenAITransportKind.CompatibleHttp) {
+            // Fail fast when config explicitly selects compatible-http transport.
+            options.CompatibleHttpOptions.Validate();
         }
         if (OpenBrowser.HasValue) {
             options.OpenBrowser = OpenBrowser.Value;
@@ -364,6 +410,25 @@ public sealed class OpenAIConfig {
         if (!string.IsNullOrWhiteSpace(AppServerWorkingDirectory)) {
             options.AppServerOptions.WorkingDirectory = AppServerWorkingDirectory;
         }
+        if (!string.IsNullOrWhiteSpace(CompatibleHttpBaseUrl)) {
+            options.CompatibleHttpOptions.BaseUrl = CompatibleHttpBaseUrl!;
+        }
+        if (!string.IsNullOrWhiteSpace(CompatibleHttpApiKey)) {
+            options.CompatibleHttpOptions.ApiKey = CompatibleHttpApiKey!;
+        }
+        if (CompatibleHttpStreaming.HasValue) {
+            options.CompatibleHttpOptions.Streaming = CompatibleHttpStreaming.Value;
+        }
+        if (CompatibleHttpAllowInsecureHttp.HasValue) {
+            options.CompatibleHttpOptions.AllowInsecureHttp = CompatibleHttpAllowInsecureHttp.Value;
+        }
+        if (CompatibleHttpAllowInsecureHttpNonLoopback.HasValue) {
+            options.CompatibleHttpOptions.AllowInsecureHttpNonLoopback = CompatibleHttpAllowInsecureHttpNonLoopback.Value;
+        }
+        if (options.TransportKind == OpenAITransportKind.CompatibleHttp) {
+            // Fail fast when config explicitly selects compatible-http transport.
+            options.CompatibleHttpOptions.Validate();
+        }
     }
 
     /// <summary>
@@ -393,6 +458,7 @@ public sealed class OpenAIConfig {
     private static OpenAITransportKind ParseTransport(string value) {
         return value.Trim().ToLowerInvariant() switch {
             "appserver" or "app-server" or "codex" => OpenAITransportKind.AppServer,
+            "compatible-http" or "compatiblehttp" or "http" or "local" or "ollama" or "lmstudio" or "lm-studio" => OpenAITransportKind.CompatibleHttp,
             _ => OpenAITransportKind.Native
         };
     }
@@ -458,4 +524,3 @@ public sealed class CopilotConfig {
         return value.AsBoolean();
     }
 }
-

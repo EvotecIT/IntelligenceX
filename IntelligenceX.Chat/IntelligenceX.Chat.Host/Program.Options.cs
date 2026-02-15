@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.CompatibleHttp;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Auth;
 using IntelligenceX.OpenAI.Chat;
@@ -22,6 +23,14 @@ internal static partial class Program {
 
     private sealed class ReplOptions {
         public string Model { get; set; } = "gpt-5.3-codex";
+
+        public OpenAITransportKind OpenAITransport { get; set; } = OpenAITransportKind.Native;
+        public string? OpenAIBaseUrl { get; set; }
+        public string? OpenAIApiKey { get; set; }
+        public bool OpenAIStreaming { get; set; } = true;
+        public bool OpenAIAllowInsecureHttp { get; set; }
+        public bool OpenAIAllowInsecureHttpNonLoopback { get; set; }
+
         public bool ShowHelp { get; set; }
         public bool ForceLogin { get; set; }
         public bool ParallelToolCalls { get; set; }
@@ -63,6 +72,40 @@ internal static partial class Program {
                             return options;
                         }
                         options.Model = model;
+                        break;
+                    case "--openai-transport":
+                        if (!TryGetValue(args, ref i, out var kindValue, out error)) {
+                            return options;
+                        }
+                        if (!TryParseTransport(kindValue, out var kind)) {
+                            error = "--openai-transport must be one of: native, appserver, compatible-http.";
+                            return options;
+                        }
+                        options.OpenAITransport = kind;
+                        break;
+                    case "--openai-base-url":
+                        if (!TryGetValue(args, ref i, out var baseUrl, out error)) {
+                            return options;
+                        }
+                        options.OpenAIBaseUrl = baseUrl;
+                        break;
+                    case "--openai-api-key":
+                        if (!TryGetValue(args, ref i, out var apiKey, out error)) {
+                            return options;
+                        }
+                        options.OpenAIApiKey = apiKey;
+                        break;
+                    case "--openai-stream":
+                        options.OpenAIStreaming = true;
+                        break;
+                    case "--openai-no-stream":
+                        options.OpenAIStreaming = false;
+                        break;
+                    case "--openai-allow-insecure-http":
+                        options.OpenAIAllowInsecureHttp = true;
+                        break;
+                    case "--openai-allow-insecure-http-non-loopback":
+                        options.OpenAIAllowInsecureHttpNonLoopback = true;
                         break;
                     case "--allow-root":
                         if (!TryGetValue(args, ref i, out var root, out error)) {
@@ -201,6 +244,12 @@ internal static partial class Program {
                 }
             }
 
+            if (options.OpenAITransport == OpenAITransportKind.CompatibleHttp) {
+                if (!TryValidateCompatibleHttpBaseUrl(options, out error)) {
+                    return options;
+                }
+            }
+
             return options;
         }
 
@@ -218,6 +267,52 @@ internal static partial class Program {
                 return false;
             }
             return true;
+        }
+
+        private static bool TryParseTransport(string value, out OpenAITransportKind kind) {
+            kind = OpenAITransportKind.Native;
+            if (string.IsNullOrWhiteSpace(value)) {
+                return false;
+            }
+            switch (value.Trim().ToLowerInvariant()) {
+                case "native":
+                    kind = OpenAITransportKind.Native;
+                    return true;
+                case "appserver":
+                case "app-server":
+                case "codex":
+                    kind = OpenAITransportKind.AppServer;
+                    return true;
+                case "compatible-http":
+                case "compatiblehttp":
+                case "http":
+                case "local":
+                case "ollama":
+                case "lmstudio":
+                case "lm-studio":
+                    kind = OpenAITransportKind.CompatibleHttp;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryValidateCompatibleHttpBaseUrl(ReplOptions options, out string? error) {
+            error = null;
+            try {
+                var compatible = new OpenAICompatibleHttpOptions {
+                    BaseUrl = options.OpenAIBaseUrl,
+                    AllowInsecureHttp = options.OpenAIAllowInsecureHttp,
+                    AllowInsecureHttpNonLoopback = options.OpenAIAllowInsecureHttpNonLoopback,
+                    Streaming = options.OpenAIStreaming,
+                    ApiKey = options.OpenAIApiKey
+                };
+                compatible.Validate();
+                return true;
+            } catch (Exception ex) {
+                error = ex.Message;
+                return false;
+            }
         }
     }
 }

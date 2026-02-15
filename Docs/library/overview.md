@@ -44,6 +44,25 @@ var turn = await client.ChatAsync("Summarize the latest PR");
 Console.WriteLine(turn.Outputs.Count);
 ```
 
+## Quick start (OpenAI-compatible HTTP)
+
+Use this when you want a local/self-hosted model server that exposes an OpenAI-style HTTP API.
+
+```csharp
+using IntelligenceX.OpenAI;
+
+var options = new IntelligenceXClientOptions {
+    TransportKind = OpenAITransportKind.CompatibleHttp,
+    DefaultModel = "llama3.1"
+};
+options.CompatibleHttpOptions.BaseUrl = "http://127.0.0.1:11434";
+options.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+await using var client = await IntelligenceXClient.ConnectAsync(options);
+var turn = await client.ChatAsync("Hello");
+Console.WriteLine(EasyChatResult.FromTurn(turn).Text);
+```
+
 ## Easy session (one-liner)
 
 ```csharp

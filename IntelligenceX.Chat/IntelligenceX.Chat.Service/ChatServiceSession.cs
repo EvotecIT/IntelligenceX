@@ -49,6 +49,7 @@ internal sealed partial class ChatServiceSession {
 
     private readonly JsonSerializerOptions _json;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
+    private string? _instructions;
 
     private readonly object _loginLock = new();
     private LoginFlow? _login;
@@ -95,12 +96,21 @@ internal sealed partial class ChatServiceSession {
 
     public async Task RunAsync(CancellationToken cancellationToken) {
         var clientOptions = new IntelligenceXClientOptions {
-            TransportKind = OpenAITransportKind.Native,
+            TransportKind = _options.OpenAITransport,
             DefaultModel = _options.Model
         };
         var instructions = LoadInstructions(_options);
-        if (!string.IsNullOrWhiteSpace(instructions)) {
+        _instructions = instructions;
+        if (clientOptions.TransportKind == OpenAITransportKind.Native && !string.IsNullOrWhiteSpace(instructions)) {
             clientOptions.NativeOptions.Instructions = instructions!;
+        }
+
+        if (clientOptions.TransportKind == OpenAITransportKind.CompatibleHttp) {
+            clientOptions.CompatibleHttpOptions.BaseUrl = _options.OpenAIBaseUrl;
+            clientOptions.CompatibleHttpOptions.ApiKey = _options.OpenAIApiKey;
+            clientOptions.CompatibleHttpOptions.Streaming = _options.OpenAIStreaming;
+            clientOptions.CompatibleHttpOptions.AllowInsecureHttp = _options.OpenAIAllowInsecureHttp;
+            clientOptions.CompatibleHttpOptions.AllowInsecureHttpNonLoopback = _options.OpenAIAllowInsecureHttpNonLoopback;
         }
 
         await using var client = await IntelligenceXClient.ConnectAsync(clientOptions, cancellationToken).ConfigureAwait(false);
