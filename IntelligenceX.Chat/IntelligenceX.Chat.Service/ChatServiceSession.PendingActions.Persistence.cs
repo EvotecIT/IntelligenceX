@@ -75,6 +75,10 @@ internal sealed partial class ChatServiceSession {
 
     private sealed class PendingActionStoreEntryDto {
         public long SeenUtcTicks { get; set; }
+        // Legacy v1 field: kept for backward compatibility with store files written by older builds.
+        // Newer builds persist CallToActionTokens instead of raw assistant text snippets.
+        public string AssistantContext { get; set; } = string.Empty;
+        public string[] CallToActionTokens { get; set; } = Array.Empty<string>();
         public PendingActionDto[] Actions { get; set; } = Array.Empty<PendingActionDto>();
     }
 
@@ -135,7 +139,7 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
-    private void PersistPendingActionsSnapshot(string threadId, long seenUtcTicks, PendingAction[] actions) {
+    private void PersistPendingActionsSnapshot(string threadId, long seenUtcTicks, PendingAction[] actions, string[] callToActionTokens) {
         if (string.IsNullOrWhiteSpace(threadId) || actions is null || actions.Length == 0 || seenUtcTicks <= 0) {
             return;
         }
@@ -146,8 +150,19 @@ internal sealed partial class ChatServiceSession {
 
             // Normalize and enforce bounds.
             var normalizedId = threadId.Trim();
+            var normalizedCtas = (callToActionTokens ?? Array.Empty<string>())
+                .Where(static token => !string.IsNullOrWhiteSpace(token))
+                .Select(static token => NormalizeCompactCallToActionToken(token))
+                .Where(static token => token.Length > 0)
+                .Where(static token => LooksLikeCompactCallToActionToken(token))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(6)
+                .ToArray();
             var dto = new PendingActionStoreEntryDto {
                 SeenUtcTicks = seenUtcTicks,
+                // Avoid persisting raw assistant snippets; store only the extracted CTA tokens.
+                AssistantContext = string.Empty,
+                CallToActionTokens = normalizedCtas,
                 Actions = actions
                     .Where(a => !string.IsNullOrWhiteSpace(a.Id))
                     .Take(6)
@@ -180,9 +195,10 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
-    private bool TryLoadPendingActionsSnapshot(string threadId, out long seenUtcTicks, out PendingAction[] actions) {
+    private bool TryLoadPendingActionsSnapshot(string threadId, out long seenUtcTicks, out PendingAction[] actions, out string[] callToActionTokens) {
         seenUtcTicks = 0;
         actions = Array.Empty<PendingAction>();
+        callToActionTokens = Array.Empty<string>();
 
         var normalized = (threadId ?? string.Empty).Trim();
         if (normalized.Length == 0) {
@@ -230,6 +246,24 @@ internal sealed partial class ChatServiceSession {
                 store.Threads.Remove(normalized);
                 WritePendingActionsStoreNoThrow(path, store);
                 return false;
+            }
+
+            callToActionTokens = (entry.CallToActionTokens ?? Array.Empty<string>())
+                .Where(static token => !string.IsNullOrWhiteSpace(token))
+                .Select(static token => NormalizeCompactCallToActionToken(token))
+                .Where(static token => token.Length > 0)
+                .Where(static token => LooksLikeCompactCallToActionToken(token))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(6)
+                .ToArray();
+            if (callToActionTokens.Length == 0 && !string.IsNullOrWhiteSpace(entry.AssistantContext)) {
+                // Backward compat: older builds persisted a raw assistant context snippet; extract CTA tokens on load.
+                var context = entry.AssistantContext.Trim();
+                if (context.Length > MaxPendingActionAssistantContextChars) {
+                    context = context.Substring(0, MaxPendingActionAssistantContextChars);
+                }
+
+                callToActionTokens = ExtractPendingActionCallToActionTokens(context);
             }
 
             return true;

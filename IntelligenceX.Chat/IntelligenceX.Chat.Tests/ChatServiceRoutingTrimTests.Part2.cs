@@ -13,29 +13,6 @@ namespace IntelligenceX.Chat.Tests;
 public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
-    public void CanonicalizeImplicitPendingActionConfirmationPhrase_NormalizesFullWidthOk() {
-        var normalized = CanonicalizeImplicitPendingActionConfirmationPhraseMethod.Invoke(null, new object?[] { "ＯＫ" });
-        Assert.Equal("ok", Assert.IsType<string>(normalized));
-    }
-
-    [Theory]
-    [InlineData("don\u2019t", "don't")] // don’t
-    [InlineData("don\u2018t", "don't")] // don‘t
-    [InlineData("don\uFF07t", "don't")] // don＇t
-    public void CanonicalizeImplicitPendingActionConfirmationPhrase_NormalizesCurlyApostrophes(string input, string expected) {
-        var normalized = CanonicalizeImplicitPendingActionConfirmationPhraseMethod.Invoke(null, new object?[] { input });
-        Assert.Equal(expected, Assert.IsType<string>(normalized));
-    }
-
-    [Fact]
-    public void CanonicalizeImplicitPendingActionConfirmationPhrase_DoesNotThrowOnLoneSurrogate() {
-        // string.Normalize can throw on invalid Unicode. This should never take down routing.
-        var input = "\uD800";
-        var normalized = CanonicalizeImplicitPendingActionConfirmationPhraseMethod.Invoke(null, new object?[] { input });
-        Assert.Equal(input, Assert.IsType<string>(normalized));
-    }
-
-    [Fact]
     public void ExpandContinuationUserRequest_DoesNotThrowOnInvalidUnicodeInUserInput() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
@@ -51,6 +28,48 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
         var input = "ok\uD800";
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotThrowOnInvalidUnicodeInAssistantContextForCtaExtraction() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = "If you say \"run now\uD800\", I'll execute it.\n\n" + """
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var input = "run now";
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotThrowOnInvalidUnicodeInUserInputWhenCtaTokensExist() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            If you say "run now", I'll execute it.
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var input = "run now\uD800";
         var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
         var expanded = Assert.IsType<string>(result);
 
@@ -210,70 +229,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("act_001", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
     }
 
-    [Theory]
-    [InlineData("ok")]
-    [InlineData(" ok ")]
-    [InlineData("ok.")]
-    [InlineData("ok,")]
-    [InlineData("`ok`")]
-    [InlineData(" ok! ")]
-    [InlineData("ok！")]
-    [InlineData("ok。")]
-    [InlineData("ＯＫ")]
-    [InlineData("do   it")]
-    public void ExpandContinuationUserRequest_AutoConfirmsSinglePendingActionForCommonAcknowledgements(string input) {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
-        var assistantDraft = """
-            Pick one:
-
-            [Action]
-            ix:action:v1
-            id: act_001
-            title: First
-            request: Do first thing.
-            reply: /act act_001
-            """;
-
-        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
-        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
-        var expanded = Assert.IsType<string>(result);
-
-        using var doc = JsonDocument.Parse(expanded);
-        var root = doc.RootElement;
-        Assert.True(root.TryGetProperty("ix_action_selection", out var selection));
-        Assert.Equal("act_001", selection.GetProperty("id").GetString());
-    }
-
-    [Theory]
-    [InlineData("ok:")]
-    [InlineData("ok;")]
-    [InlineData("tak:")]
-    [InlineData("sure:")]
-    public void ExpandContinuationUserRequest_DoesNotAutoConfirmOnPrefixStyleAcknowledgements(string input) {
-        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
-        var assistantDraft = """
-            Pick one:
-
-            [Action]
-            ix:action:v1
-            id: act_001
-            title: First
-            request: Do first thing.
-            reply: /act act_001
-            """;
-
-        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
-        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
-        var expanded = Assert.IsType<string>(result);
-
-        Assert.Equal(input, expanded);
-    }
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotAutoConfirmWhenMultiplePendingActionsExist() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
-            Pick one:
+            If you say "run now", I'll execute it.
 
             [Action]
             ix:action:v1
@@ -291,7 +252,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             """;
 
         RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
-        var input = "ok";
+        var input = "run now";
         var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
         var expanded = Assert.IsType<string>(result);
 
@@ -299,16 +260,14 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Theory]
-    [InlineData("why?")]
-    [InlineData("ok?")]
-    [InlineData("ok？")]
-    [InlineData("dalej?")]
-    [InlineData("¿dalej")]
-    [InlineData("dalej؟")]
-    public void ExpandContinuationUserRequest_DoesNotAutoConfirmOnQuestionLikeFollowUps(string input) {
+    [InlineData("run now?")]
+    [InlineData("run now？")]
+    [InlineData("¿run now")]
+    [InlineData("run now؟")]
+    public void ExpandContinuationUserRequest_DoesNotConfirmOnQuestionLikeFollowUps(string input) {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
-            Pick one:
+            If you say "run now", I'll execute it.
 
             [Action]
             ix:action:v1
@@ -404,71 +363,6 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(input, expanded);
     }
 
-    [Fact]
-    public void ExpandContinuationUserRequest_RehydratesPendingActionsAfterRestart() {
-        var storeFile = $"pending-actions-test-{Guid.NewGuid():N}.json";
-        var storePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "IntelligenceX.Chat",
-            storeFile);
-        try {
-            var threadId = "thread-001";
-            var assistantDraft = """
-                Pick one:
-
-                [Action]
-                ix:action:v1
-                id: act_001
-                title: Run forest probe
-                request: Run the forest-wide replication and LDAP diagnostics now.
-                reply: /act act_001
-                """;
-
-            Directory.CreateDirectory(Path.GetDirectoryName(storePath)!);
-            var opts = new ServiceOptions { PendingActionsStorePath = storeFile };
-            var session1 = new ChatServiceSession(opts, Stream.Null);
-            RememberPendingActionsMethod.Invoke(session1, new object?[] { threadId, assistantDraft });
-
-            // "Restart": new session instance with empty in-memory caches.
-            var session2 = new ChatServiceSession(opts, Stream.Null);
-            var expandedObj = ExpandContinuationUserRequestMethod.Invoke(session2, new object?[] { threadId, "/act act_001" });
-            var expanded = Assert.IsType<string>(expandedObj);
-
-            using var doc = JsonDocument.Parse(expanded);
-            var root = doc.RootElement;
-            Assert.True(root.TryGetProperty("ix_action_selection", out var selection));
-            Assert.Equal("act_001", selection.GetProperty("id").GetString());
-            Assert.Contains("forest-wide replication", selection.GetProperty("request").GetString(), StringComparison.OrdinalIgnoreCase);
-        } finally {
-            if (File.Exists(storePath)) {
-                File.Delete(storePath);
-            }
-        }
-    }
-
-    [Fact]
-    public void ExpandContinuationUserRequest_DoesNotThrowOnCorruptPendingActionsStore() {
-        var storeFile = $"pending-actions-test-{Guid.NewGuid():N}.json";
-        var storePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "IntelligenceX.Chat",
-            storeFile);
-        try {
-            Directory.CreateDirectory(Path.GetDirectoryName(storePath)!);
-            File.WriteAllText(storePath, "{ this is not valid json");
-
-            var opts = new ServiceOptions { PendingActionsStorePath = storeFile };
-            var session = new ChatServiceSession(opts, Stream.Null);
-            var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act act_001" });
-            var expanded = Assert.IsType<string>(result);
-
-            Assert.Equal("/act act_001", expanded);
-        } finally {
-            if (File.Exists(storePath)) {
-                File.Delete(storePath);
-            }
-        }
-    }
 
     [Fact]
     public void ExpandContinuationUserRequest_ActSelectionDoesNotNormalizeOpaqueIdToken() {

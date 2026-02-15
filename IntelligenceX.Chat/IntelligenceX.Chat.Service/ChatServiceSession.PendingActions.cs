@@ -10,7 +10,40 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private const string ActionMarker = "ix:action:v1";
     private const int MaxActionParsingChars = 64 * 1024;
+    private const int MaxPendingActionAssistantContextChars = 4096;
+    private static readonly char[] PendingActionConfirmationQuestionPunctuation = new[] { '?', '？', '¿', '؟' };
+    private static readonly char[] PendingActionConfirmationDisqualifierPunctuation = new[] { ':', ';', '\uFF1A', '\uFF1B' }; // ： ；
+    private static readonly char[] PendingActionConfirmationStructuredDisqualifierChars =
+        new[] { '\\', '{', '}', '[', ']', '<', '>', '=' };
 
+    private static bool LooksLikeStructuredPendingActionConfirmationInput(string userText) {
+        // Confirmation is safety-sensitive. If the user message looks like a command/payload rather than
+        // an intentional "echo this phrase" response, do not treat it as confirmation.
+        //
+        // This is language-agnostic (structural/syntactic), and complements the exact-equality token matching.
+        var trimmed = (userText ?? string.Empty).Trim();
+        if (trimmed.Length == 0) {
+            return false;
+        }
+
+        if (trimmed.StartsWith("/", StringComparison.Ordinal) || trimmed.StartsWith("-", StringComparison.Ordinal)) {
+            return true;
+        }
+
+        if (trimmed.Contains("://", StringComparison.Ordinal)) {
+            return true;
+        }
+
+        if (trimmed.IndexOfAny(PendingActionConfirmationStructuredDisqualifierChars) >= 0) {
+            return true;
+        }
+
+        if (trimmed.Contains('\n', StringComparison.Ordinal) || trimmed.Contains('\r', StringComparison.Ordinal)) {
+            return true;
+        }
+
+        return false;
+    }
     private readonly record struct PendingAction(string Id, string Title, string Request);
 
     private void RememberPendingActions(string threadId, string assistantText) {
@@ -34,6 +67,11 @@ internal sealed partial class ChatServiceSession {
             text = text.Substring(start, len);
         }
 
+        var assistantContext = text.Length <= MaxPendingActionAssistantContextChars
+            ? text
+            : text.Substring(0, MaxPendingActionAssistantContextChars);
+        var callToActionTokens = ExtractPendingActionCallToActionTokens(assistantContext);
+
         var actions = ExtractPendingActions(text);
         PendingAction[]? snapshotActions = null;
         long snapshotTicks = 0;
@@ -42,12 +80,15 @@ internal sealed partial class ChatServiceSession {
             if (actions.Count == 0) {
                 _pendingActionsByThreadId.Remove(normalizedThreadId);
                 _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
+                _pendingActionsCallToActionTokensByThreadId.Remove(normalizedThreadId);
                 shouldRemoveSnapshot = true;
             } else {
                 snapshotActions = actions.ToArray();
                 snapshotTicks = DateTime.UtcNow.Ticks;
                 _pendingActionsByThreadId[normalizedThreadId] = snapshotActions;
                 _pendingActionsSeenUtcTicks[normalizedThreadId] = snapshotTicks;
+                _pendingActionsCallToActionTokensByThreadId[normalizedThreadId] =
+                    callToActionTokens.Length == 0 ? Array.Empty<string>() : callToActionTokens;
                 TrimWeightedRoutingContextsNoLock();
             }
         }
@@ -57,7 +98,7 @@ internal sealed partial class ChatServiceSession {
             return;
         }
         if (snapshotActions is not null && snapshotActions.Length > 0 && snapshotTicks > 0) {
-            PersistPendingActionsSnapshot(normalizedThreadId, snapshotTicks, snapshotActions);
+            PersistPendingActionsSnapshot(normalizedThreadId, snapshotTicks, snapshotActions, callToActionTokens);
         }
     }
 
@@ -83,22 +124,30 @@ internal sealed partial class ChatServiceSession {
 
         PendingAction[]? actions;
         long ticks;
+        string[]? callToActionTokens;
         lock (_toolRoutingContextLock) {
             _pendingActionsByThreadId.TryGetValue(normalizedThreadId, out actions);
             ticks = _pendingActionsSeenUtcTicks.TryGetValue(normalizedThreadId, out var seen) ? seen : 0;
+            _pendingActionsCallToActionTokensByThreadId.TryGetValue(normalizedThreadId, out callToActionTokens);
         }
 
         if (actions is null || actions.Length == 0) {
-            if (!TryLoadPendingActionsSnapshot(normalizedThreadId, out var persistedTicks, out var persistedActions)) {
+            if (!TryLoadPendingActionsSnapshot(normalizedThreadId, out var persistedTicks, out var persistedActions, out var persistedCallToActionTokens)) {
                 return false;
             }
 
             actions = persistedActions;
             ticks = persistedTicks;
+            callToActionTokens = persistedCallToActionTokens;
 
             lock (_toolRoutingContextLock) {
                 _pendingActionsByThreadId[normalizedThreadId] = actions;
                 _pendingActionsSeenUtcTicks[normalizedThreadId] = ticks;
+                if (callToActionTokens is not null && callToActionTokens.Length > 0) {
+                    _pendingActionsCallToActionTokensByThreadId[normalizedThreadId] = callToActionTokens;
+                } else {
+                    _pendingActionsCallToActionTokensByThreadId.Remove(normalizedThreadId);
+                }
                 TrimWeightedRoutingContextsNoLock();
             }
         }
@@ -108,6 +157,7 @@ internal sealed partial class ChatServiceSession {
                 lock (_toolRoutingContextLock) {
                     _pendingActionsByThreadId.Remove(normalizedThreadId);
                     _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
+                    _pendingActionsCallToActionTokensByThreadId.Remove(normalizedThreadId);
                     TrimWeightedRoutingContextsNoLock();
                 }
                 RemovePendingActionsSnapshot(normalizedThreadId);
@@ -119,6 +169,7 @@ internal sealed partial class ChatServiceSession {
                 lock (_toolRoutingContextLock) {
                     _pendingActionsByThreadId.Remove(normalizedThreadId);
                     _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
+                    _pendingActionsCallToActionTokensByThreadId.Remove(normalizedThreadId);
                     TrimWeightedRoutingContextsNoLock();
                 }
                 RemovePendingActionsSnapshot(normalizedThreadId);
@@ -130,6 +181,7 @@ internal sealed partial class ChatServiceSession {
                 lock (_toolRoutingContextLock) {
                     _pendingActionsByThreadId.Remove(normalizedThreadId);
                     _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
+                    _pendingActionsCallToActionTokensByThreadId.Remove(normalizedThreadId);
                     TrimWeightedRoutingContextsNoLock();
                 }
                 RemovePendingActionsSnapshot(normalizedThreadId);
@@ -137,7 +189,7 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        var selected = TryMatchPendingAction(normalized, actions, out var match)
+        var selected = TryMatchPendingAction(normalized, actions, callToActionTokens ?? Array.Empty<string>(), out var match)
             ? match
             : (PendingAction?)null;
         if (selected is null) {
@@ -148,6 +200,7 @@ internal sealed partial class ChatServiceSession {
         lock (_toolRoutingContextLock) {
             _pendingActionsByThreadId.Remove(normalizedThreadId);
             _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
+            _pendingActionsCallToActionTokensByThreadId.Remove(normalizedThreadId);
             TrimWeightedRoutingContextsNoLock();
         }
         RemovePendingActionsSnapshot(normalizedThreadId);
@@ -168,7 +221,7 @@ internal sealed partial class ChatServiceSession {
         return true;
     }
 
-    private static bool TryMatchPendingAction(string userText, IReadOnlyList<PendingAction> actions, out PendingAction match) {
+    private static bool TryMatchPendingAction(string userText, IReadOnlyList<PendingAction> actions, IReadOnlyList<string> callToActionTokens, out PendingAction match) {
         match = default;
 
         // Be careful with normalization: explicit selections like `/act <id>` should treat `<id>` as an opaque token.
@@ -224,11 +277,16 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
-        // If there's only one pending action, treat a compact acknowledgement-like follow-up as confirmation.
-        // This is intentionally high-precision (allowlist-based) to avoid accidental execution from ambiguous short messages.
+        // If there's only one pending action, allow the user to echo an assistant-provided call-to-action phrase.
+        // This is language-agnostic, avoids locale-specific phrase lists in the host, and scopes matching to the
+        // assistant-provided CTA tokens (not arbitrary substrings in the assistant message).
         if (actions.Count == 1
             && !string.IsNullOrWhiteSpace(actions[0].Id)
-            && LooksLikeImplicitPendingActionConfirmation(trimmed)) {
+            && callToActionTokens is { Count: > 0 }
+            && trimmed.IndexOfAny(PendingActionConfirmationQuestionPunctuation) < 0
+            && trimmed.IndexOfAny(PendingActionConfirmationDisqualifierPunctuation) < 0
+            && !LooksLikeStructuredPendingActionConfirmationInput(trimmed)
+            && UserMatchesPendingActionCallToActionTokens(trimmed, callToActionTokens)) {
             match = actions[0];
             return true;
         }
@@ -447,6 +505,116 @@ internal sealed partial class ChatServiceSession {
 
         value = trimmed[(idx + 1)..].Trim();
         return true;
+    }
+
+
+    private static string NormalizeCompactCallToActionToken(string text) {
+        // Assistant CTAs often appear in prose with trailing ':' / ';' (including fullwidth variants) that users
+        // should not have to repeat, and that we explicitly disqualify for confirmation.
+        var token = NormalizeCompactText(text);
+        if (token.Length == 0) {
+            return string.Empty;
+        }
+
+        token = token.TrimEnd(':', ';', '\uFF1A', '\uFF1B');
+        return token.Trim();
+    }
+    private static string[] ExtractPendingActionCallToActionTokens(string assistantContext) {
+        var draft = assistantContext ?? string.Empty;
+        if (draft.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        var phrases = ExtractQuotedPhrases(draft);
+        if (phrases.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var tokens = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < phrases.Count; i++) {
+            var phrase = phrases[i];
+            if (!LooksLikeCallToActionContext(draft, phrase, onlyBulletContext: false)) {
+                continue;
+            }
+
+            var token = NormalizeCompactCallToActionToken(phrase.Value);
+            if (!LooksLikeCompactCallToActionToken(token)) {
+                continue;
+            }
+
+            if (!seen.Add(token)) {
+                continue;
+            }
+
+            tokens.Add(token);
+            if (tokens.Count >= 6) {
+                break;
+            }
+        }
+
+        return tokens.Count == 0 ? Array.Empty<string>() : tokens.ToArray();
+    }
+
+    private static bool LooksLikeCompactCallToActionToken(string token) {
+        var value = (token ?? string.Empty).Trim();
+        if (value.Length == 0 || value.Length > 96) {
+            return false;
+        }
+
+        if (value.Contains('\n', StringComparison.Ordinal) || value.Contains('\r', StringComparison.Ordinal)) {
+            return false;
+        }
+
+        for (var i = 0; i < value.Length; i++) {
+            if (char.IsControl(value[i])) {
+                return false;
+            }
+        }
+
+        // Keep it lean: only short, phrase-like tokens.
+        var tokens = CountLetterDigitTokens(value, maxTokens: 12);
+        return tokens is > 0 and <= 8;
+    }
+
+    private static bool UserMatchesPendingActionCallToActionTokens(string userText, IReadOnlyList<string> tokens) {
+        if (tokens is null || tokens.Count == 0) {
+            return false;
+        }
+
+        var raw = (userText ?? string.Empty).Trim();
+        if (raw.Length == 0 || raw.Length > 96) {
+            return false;
+        }
+
+        // Guardrails must run on raw input (pre-normalization) to avoid normalization widening matches.
+        if (raw.IndexOfAny(PendingActionConfirmationQuestionPunctuation) >= 0) {
+            return false;
+        }
+        if (raw.IndexOfAny(PendingActionConfirmationDisqualifierPunctuation) >= 0) {
+            return false;
+        }
+        if (LooksLikeStructuredPendingActionConfirmationInput(raw)) {
+            return false;
+        }
+
+        var request = NormalizeCompactText(raw);
+        if (request.Length == 0 || request.Length > 96) {
+            return false;
+        }
+
+        for (var i = 0; i < tokens.Count; i++) {
+            var token = (tokens[i] ?? string.Empty).Trim();
+            if (!LooksLikeCompactCallToActionToken(token)) {
+                continue;
+            }
+
+            if (string.Equals(request, token, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static List<string> SplitLines(string text) {
