@@ -13,7 +13,18 @@ internal sealed partial class ChatServiceSession {
     private static readonly char[] ImplicitConfirmationQuestionPunctuation = new[] { '?', '？', '¿', '؟' };
     private static readonly char[] ImplicitConfirmationStructuredChars = new[] { '{', '}', '[', ']', '"', '\'', '<', '>', '`', '=' };
     private static readonly HashSet<string> ImplicitSingleActionRejectPhrases = new(
-        new[] { "no", "nope", "nah", "nie" }
+        new[] {
+            "no",
+            "nope",
+            "nah",
+            "nie",
+            "no thanks",
+            "no thank you",
+            "not now",
+            "dont",
+            "don't",
+            "do not"
+        }
             .Select(CanonicalizeImplicitPendingActionConfirmationPhrase)
             .Where(static phrase => phrase.Length > 0),
         StringComparer.Ordinal);
@@ -261,9 +272,8 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool LooksLikeImplicitPendingActionConfirmation(string userText) {
-        var raw = (userText ?? string.Empty)
-            .Trim()
-            .Normalize(NormalizationForm.FormKC);
+        // Note: userText is already normalized to FormKC at the pending-action matching layer.
+        var raw = (userText ?? string.Empty).Trim();
         if (raw.Length == 0 || raw.Length > 32) {
             return false;
         }
@@ -292,13 +302,37 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        // Extra safety: never treat explicit negative acknowledgements as confirmation.
-        if (ImplicitSingleActionRejectPhrases.Contains(normalized)) {
+        // Extra safety: never treat explicit negative acknowledgements (including common "no <something>" variants)
+        // as confirmation.
+        if (LooksLikeImplicitSingleActionReject(normalized)) {
             return false;
         }
 
         // High-precision allowlist to avoid running tools from benign short messages ("tomorrow", "wait", "thanks").
         return ImplicitSingleActionConfirmPhrases.Contains(normalized);
+    }
+
+    private static bool LooksLikeImplicitSingleActionReject(string normalized) {
+        if (ImplicitSingleActionRejectPhrases.Contains(normalized)) {
+            return true;
+        }
+
+        // Conservative prefix rejects (safety-first): avoid implicit confirmation when the message starts
+        // like a refusal, even if it includes extra words.
+        return normalized.StartsWith("no ", StringComparison.Ordinal)
+            || normalized.StartsWith("no,", StringComparison.Ordinal)
+            || normalized.StartsWith("no.", StringComparison.Ordinal)
+            || normalized.StartsWith("no!", StringComparison.Ordinal)
+            || normalized.StartsWith("no?", StringComparison.Ordinal)
+            || normalized.StartsWith("nope ", StringComparison.Ordinal)
+            || normalized.StartsWith("nope,", StringComparison.Ordinal)
+            || normalized.StartsWith("nah ", StringComparison.Ordinal)
+            || normalized.StartsWith("nah,", StringComparison.Ordinal)
+            || normalized.StartsWith("nie ", StringComparison.Ordinal)
+            || normalized.StartsWith("nie,", StringComparison.Ordinal)
+            || normalized.StartsWith("dont", StringComparison.Ordinal)
+            || normalized.StartsWith("don't", StringComparison.Ordinal)
+            || normalized.StartsWith("do not", StringComparison.Ordinal);
     }
 
     private static bool LooksLikeWindowsDrivePath(string text) {
@@ -310,9 +344,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static string CanonicalizeImplicitPendingActionConfirmationPhrase(string text) {
-        var normalized = (text ?? string.Empty)
-            .Trim()
-            .Normalize(NormalizationForm.FormKC);
+        var normalized = (text ?? string.Empty).Trim();
 
         // Trim leading/trailing punctuation broadly (including CJK/fullwidth punctuation) so "ok!" and "ok！" match.
         // Example punctuation this is expected to handle: '！', '。', '，'.
