@@ -46,11 +46,11 @@ The table below reflects the actual bootstrap in `IntelligenceX.Chat.Tooling/Too
 | Event Log | `eventlog` | `builtin` | Yes | SensitiveRead | Windows |
 | File System | `fs` | `builtin` | Yes | ReadOnly | Cross-platform |
 | Reviewer Setup | `reviewer_setup` | `builtin` | Yes | ReadOnly | Cross-platform |
-| Email | `email` | `builtin` | Yes (when assembly is available) | SensitiveRead | Cross-platform |
-| IX.PowerShell | `powershell` | `builtin` | No (opt-in) | DangerousWrite | Windows/PowerShell hosts |
+| Email | `email` | `builtin` | Yes (OSS pack; runtime dependency-gated) | SensitiveRead | Cross-platform |
+| PowerShell | `powershell` | `builtin` | No (OSS pack; opt-in by policy) | DangerousWrite | Windows/PowerShell hosts |
 | System | `system` | `closed_source` | Yes (when available) | ReadOnly | Windows |
 | Active Directory | `ad` | `closed_source` | Yes (when available) | SensitiveRead | Windows (domain environments) |
-| IX.TestimoX | `testimox` | `closed_source` | Yes (when available) | SensitiveRead | Windows |
+| TestimoX | `testimox` | `closed_source` | Yes (when available) | SensitiveRead | Windows |
 
 ## IX Chat vs .NET Integration
 
@@ -58,7 +58,7 @@ The table below reflects the actual bootstrap in `IntelligenceX.Chat.Tooling/Too
 
 - Tool packs are loaded by the host bootstrap.
 - Some packs are always available in OSS (`eventlog`, `fs`, `reviewer_setup`).
-- Some are optional/conditional (`email` if assembly is present, `powershell` if enabled).
+- Some are optional/conditional for runtime reasons (`email` dependency gating, `powershell` safety opt-in), while still being OSS-oriented packs.
 - Some are enabled by default but may not exist in OSS environments (`system`, `ad`, `testimox`).
 
 ### .NET library (custom apps)
