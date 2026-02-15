@@ -129,14 +129,18 @@ intelligencex todo project-bootstrap --repo EvotecIT/IntelligenceX --owner Evote
 Default outputs:
 - `artifacts/triage/ix-project-config.json`
 - `.github/workflows/ix-triage-project-sync.yml`
+- `VISION.md` (starter template if missing)
 
 Options:
 - `--project <n>` use existing project instead of creating
 - `--workflow-out <path>`
+- `--vision-out <path>` scaffold a vision file at custom location
 - `--config-out <path>`
 - `--max-items <n>` default sync size for schedule runs
 - `--skip-project-init` regenerate workflow from existing config only
 - `--force-workflow-write` overwrite existing workflow file
+- `--skip-vision-scaffold` do not create/update vision file
+- `--force-vision-write` overwrite existing vision file
 
 ## Workflow Template
 

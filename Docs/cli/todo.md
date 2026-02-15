@@ -142,14 +142,18 @@ intelligencex todo project-bootstrap \
 Default outputs:
 - `artifacts/triage/ix-project-config.json`
 - `.github/workflows/ix-triage-project-sync.yml`
+- `VISION.md` (starter template if missing)
 
 Useful options:
 - `--project <n>` to bootstrap against an existing project.
 - `--workflow-out <path>` to choose a different workflow file name.
+- `--vision-out <path>` to scaffold the vision file at a custom location.
 - `--config-out <path>` to control where project metadata is written.
 - `--max-items <n>` to set default sync volume for scheduled runs.
 - `--skip-project-init` to only regenerate workflow from existing config.
 - `--force-workflow-write` to overwrite an existing workflow file.
+- `--skip-vision-scaffold` to keep the bootstrap workflow only.
+- `--force-vision-write` to overwrite an existing vision file.
 
 ## GitHub Actions template
 

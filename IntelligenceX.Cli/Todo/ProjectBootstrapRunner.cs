@@ -12,10 +12,12 @@ namespace IntelligenceX.Cli.Todo;
 internal static class ProjectBootstrapRunner {
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 
-    private const string TemplateResourceName = "triage-project-sync.yml";
+    private const string WorkflowTemplateResourceName = "triage-project-sync.yml";
+    private const string VisionTemplateResourceName = "vision-template.md";
     private const string DefaultRepo = "EvotecIT/IntelligenceX";
     private const string DefaultConfigPath = "artifacts/triage/ix-project-config.json";
     private const string DefaultWorkflowPath = ".github/workflows/ix-triage-project-sync.yml";
+    private const string DefaultVisionPath = "VISION.md";
 
     private sealed class Options {
         public string Repo { get; set; } = DefaultRepo;
@@ -29,9 +31,12 @@ internal static class ProjectBootstrapRunner {
         public bool LinkRepo { get; set; } = true;
         public string ConfigPath { get; set; } = DefaultConfigPath;
         public string WorkflowPath { get; set; } = DefaultWorkflowPath;
+        public string VisionPath { get; set; } = DefaultVisionPath;
         public int MaxItems { get; set; } = 500;
         public bool SkipProjectInit { get; set; }
         public bool ForceWorkflowWrite { get; set; }
+        public bool SkipVisionScaffold { get; set; }
+        public bool ForceVisionWrite { get; set; }
         public bool ShowHelp { get; set; }
         public bool ParseFailed { get; set; }
     }
@@ -60,15 +65,27 @@ internal static class ProjectBootstrapRunner {
             return 1;
         }
 
-        string template;
+        string workflowTemplate;
         try {
-            template = ReadEmbeddedResource(TemplateResourceName);
+            workflowTemplate = ReadEmbeddedResource(WorkflowTemplateResourceName);
         } catch (Exception ex) {
             Console.Error.WriteLine($"Failed to load workflow template: {ex.Message}");
             return 1;
         }
 
-        var workflowYaml = RenderWorkflowTemplate(template, owner, projectNumber, options.MaxItems);
+        var workflowYaml = RenderWorkflowTemplate(workflowTemplate, owner, projectNumber, options.MaxItems);
+
+        string visionTemplate;
+        if (!options.SkipVisionScaffold) {
+            try {
+                visionTemplate = ReadEmbeddedResource(VisionTemplateResourceName);
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Failed to load vision template: {ex.Message}");
+                return 1;
+            }
+        } else {
+            visionTemplate = string.Empty;
+        }
 
         var workflowPath = Path.GetFullPath(options.WorkflowPath);
         if (File.Exists(workflowPath) && !options.ForceWorkflowWrite) {
@@ -79,13 +96,28 @@ internal static class ProjectBootstrapRunner {
 
         WriteText(workflowPath, workflowYaml);
 
+        string visionStatusMessage;
+        if (options.SkipVisionScaffold) {
+            visionStatusMessage = "Vision scaffold skipped (--skip-vision-scaffold).";
+        } else {
+            var visionPath = Path.GetFullPath(options.VisionPath);
+            if (File.Exists(visionPath) && !options.ForceVisionWrite) {
+                visionStatusMessage = $"Vision file kept (already exists): {options.VisionPath}";
+            } else {
+                var visionMarkdown = RenderVisionTemplate(visionTemplate, options.Repo, owner, projectNumber);
+                WriteText(visionPath, visionMarkdown);
+                visionStatusMessage = $"Vision file: {options.VisionPath}";
+            }
+        }
+
         Console.WriteLine(options.SkipProjectInit
             ? "Bootstrap workflow generated from existing project config."
             : "Project initialized and bootstrap workflow generated.");
         Console.WriteLine($"Project target: {owner}#{projectNumber}");
         Console.WriteLine($"Project config: {options.ConfigPath}");
         Console.WriteLine($"Workflow file: {options.WorkflowPath}");
-        Console.WriteLine("Next step: commit the workflow file to enable scheduled GitHub-only triage sync.");
+        Console.WriteLine(visionStatusMessage);
+        Console.WriteLine("Next step: commit generated files (workflow + vision) to enable scheduled GitHub-only triage sync.");
         return 0;
     }
 
@@ -94,6 +126,14 @@ internal static class ProjectBootstrapRunner {
         result = result.Replace("{{Owner}}", owner, StringComparison.Ordinal);
         result = result.Replace("{{ProjectNumber}}", projectNumber.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
         result = result.Replace("{{MaxItems}}", Math.Max(1, maxItems).ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
+        return result;
+    }
+
+    internal static string RenderVisionTemplate(string template, string repo, string owner, int projectNumber) {
+        var result = template;
+        result = result.Replace("{{Repo}}", repo, StringComparison.Ordinal);
+        result = result.Replace("{{Owner}}", owner, StringComparison.Ordinal);
+        result = result.Replace("{{ProjectNumber}}", projectNumber.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
         return result;
     }
 
@@ -210,6 +250,14 @@ internal static class ProjectBootstrapRunner {
                         options.ShowHelp = true;
                     }
                     break;
+                case "--vision-out":
+                    if (i + 1 < args.Length) {
+                        options.VisionPath = args[++i];
+                    } else {
+                        options.ParseFailed = true;
+                        options.ShowHelp = true;
+                    }
+                    break;
                 case "--max-items":
                     if (i + 1 < args.Length &&
                         int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out var maxItems) &&
@@ -225,6 +273,12 @@ internal static class ProjectBootstrapRunner {
                     break;
                 case "--force-workflow-write":
                     options.ForceWorkflowWrite = true;
+                    break;
+                case "--skip-vision-scaffold":
+                    options.SkipVisionScaffold = true;
+                    break;
+                case "--force-vision-write":
+                    options.ForceVisionWrite = true;
                     break;
                 default:
                     Console.Error.WriteLine($"Unknown option: {arg}");
@@ -258,9 +312,12 @@ internal static class ProjectBootstrapRunner {
         Console.WriteLine("  --no-link-repo            Do not link project to repo");
         Console.WriteLine("  --config-out <path>       Project config path (default: artifacts/triage/ix-project-config.json)");
         Console.WriteLine("  --workflow-out <path>     Workflow output path (default: .github/workflows/ix-triage-project-sync.yml)");
+        Console.WriteLine("  --vision-out <path>       Vision file output path (default: VISION.md)");
         Console.WriteLine("  --max-items <n>           Default max items for scheduled sync (default: 500)");
         Console.WriteLine("  --skip-project-init       Do not run project-init; only render workflow from --config-out");
         Console.WriteLine("  --force-workflow-write    Overwrite existing workflow output file");
+        Console.WriteLine("  --skip-vision-scaffold    Do not create/update VISION.md template");
+        Console.WriteLine("  --force-vision-write      Overwrite existing VISION.md output file");
         Console.WriteLine();
         Console.WriteLine("Required token scopes: project (+ read:project for sync operations).");
     }

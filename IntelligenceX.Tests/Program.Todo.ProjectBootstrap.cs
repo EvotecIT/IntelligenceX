@@ -34,5 +34,26 @@ max={{MaxItems}}
 
         AssertContainsText(rendered, "max=1", "max items clamped to minimum");
     }
+
+    private static void TestProjectBootstrapRenderVisionTemplateInjectsContext() {
+        const string template = """
+repo={{Repo}}
+owner={{Owner}}
+project={{ProjectNumber}}
+""";
+
+        var rendered = IntelligenceX.Cli.Todo.ProjectBootstrapRunner.RenderVisionTemplate(
+            template,
+            "EvotecIT/IntelligenceX",
+            "EvotecIT",
+            654);
+
+        AssertContainsText(rendered, "repo=EvotecIT/IntelligenceX", "repo token replaced");
+        AssertContainsText(rendered, "owner=EvotecIT", "owner token replaced");
+        AssertContainsText(rendered, "project=654", "project token replaced");
+        AssertEqual(false, rendered.Contains("{{Repo}}", StringComparison.Ordinal), "repo placeholder removed");
+        AssertEqual(false, rendered.Contains("{{Owner}}", StringComparison.Ordinal), "owner placeholder removed");
+        AssertEqual(false, rendered.Contains("{{ProjectNumber}}", StringComparison.Ordinal), "project placeholder removed");
+    }
 #endif
 }
