@@ -214,7 +214,7 @@ Behavior:
 - Scheduled + manual runs.
 - Generates triage index artifacts.
 - Optional control-issue comment when repo variable `IX_TRIAGE_CONTROL_ISSUE` is configured.
-- `triage-project-sync.yml` posts a combined triage + vision markdown summary to the control issue.
+- `triage-project-sync.yml` upserts a single marker comment with the latest combined triage + vision markdown summary on the control issue.
 - `todo project-bootstrap --create-control-issue` can configure the control issue variable automatically.
 
 ## Legacy Script

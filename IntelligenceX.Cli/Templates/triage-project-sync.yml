@@ -96,12 +96,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          MARKER="<!-- intelligencex:triage-project-sync-summary -->"
           ISSUE="${{ vars.IX_TRIAGE_CONTROL_ISSUE }}"
           SUMMARY_FILE="artifacts/triage/ix-triage-project-sync-summary.md"
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           GENERATED_AT="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
 
           {
+            echo "$MARKER"
             echo "# IX Triage Project Sync"
             echo
             echo "- Generated: $GENERATED_AT"
@@ -125,5 +127,20 @@ jobs:
           } > "$SUMMARY_FILE"
 
           if [ -f "$SUMMARY_FILE" ]; then
-            gh issue comment "$ISSUE" --repo "${{ github.repository }}" --body-file "$SUMMARY_FILE"
+            EXISTING_ID="$(gh api --paginate \
+              "repos/${{ github.repository }}/issues/$ISSUE/comments" \
+              --jq '.[] | select(.body | contains("<!-- intelligencex:triage-project-sync-summary -->")) | .id' \
+              | tail -n 1)"
+
+            if [ -n "$EXISTING_ID" ]; then
+              gh api \
+                --method PATCH \
+                "repos/${{ github.repository }}/issues/comments/$EXISTING_ID" \
+                -F "body=@$SUMMARY_FILE" > /dev/null
+            else
+              gh api \
+                --method POST \
+                "repos/${{ github.repository }}/issues/$ISSUE/comments" \
+                -F "body=@$SUMMARY_FILE" > /dev/null
+            fi
           fi
