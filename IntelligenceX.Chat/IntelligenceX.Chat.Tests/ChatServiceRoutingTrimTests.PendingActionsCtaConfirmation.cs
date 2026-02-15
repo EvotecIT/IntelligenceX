@@ -121,6 +121,32 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("act_001", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
     }
 
+
+    [Theory]
+    [InlineData("run now:")]
+    [InlineData("run now;")]
+    [InlineData("run now\uFF1A")]
+    [InlineData("run now\uFF1B")]
+    public void ExpandContinuationUserRequest_DoesNotConfirmWhenAssistantCtaHadTrailingColonButUserRepliesWithPrefix(string input) {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            If you say "run now:", I'll execute it.
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
     [Theory]
     [InlineData("run now:")]
     [InlineData("run now;")]
@@ -174,3 +200,4 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(input, expanded);
     }
 }
+
