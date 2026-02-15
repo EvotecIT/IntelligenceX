@@ -17,6 +17,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("ok", Assert.IsType<string>(normalized));
     }
 
+    [Theory]
+    [InlineData("don\u2019t", "don't")] // don’t
+    [InlineData("don\u2018t", "don't")] // don‘t
+    [InlineData("don\uFF07t", "don't")] // don＇t
+    public void CanonicalizeImplicitPendingActionConfirmationPhrase_NormalizesCurlyApostrophes(string input, string expected) {
+        var normalized = CanonicalizeImplicitPendingActionConfirmationPhraseMethod.Invoke(null, new object?[] { input });
+        Assert.Equal(expected, Assert.IsType<string>(normalized));
+    }
+
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotCaptureActionsInsideCodeFence() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
