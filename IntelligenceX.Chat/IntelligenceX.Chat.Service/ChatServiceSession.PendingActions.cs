@@ -122,6 +122,7 @@ internal sealed partial class ChatServiceSession {
         if (normalized.Length == 0) {
             return false;
         }
+        normalized = normalized.Normalize(NormalizationForm.FormKC);
 
         // Only apply selection rewriting for explicit /act <id>, or when the message looks like a short follow-up.
         // This prevents rewriting normal user messages that happen to start with digits (e.g., "2 servers are down").
@@ -366,18 +367,17 @@ internal sealed partial class ChatServiceSession {
 
     private static string CanonicalizeImplicitPendingActionConfirmationPhrase(string text) {
         var normalized = (text ?? string.Empty)
-            .Trim()
-            .Normalize(NormalizationForm.FormKC);
+            .Trim();
 
         // Trim leading/trailing punctuation broadly (including CJK/fullwidth punctuation) so "ok!" and "ok！" match.
         // Example punctuation this is expected to handle: '！', '。', '，'.
         var span = normalized.AsSpan();
         var start = 0;
         var end = span.Length;
-        while (start < end && (char.IsWhiteSpace(span[start]) || char.IsPunctuation(span[start]))) {
+        while (start < end && (char.IsWhiteSpace(span[start]) || (char.IsPunctuation(span[start]) && !IsQuestionPunctuation(span[start])))) {
             start++;
         }
-        while (end > start && (char.IsWhiteSpace(span[end - 1]) || char.IsPunctuation(span[end - 1]))) {
+        while (end > start && (char.IsWhiteSpace(span[end - 1]) || (char.IsPunctuation(span[end - 1]) && !IsQuestionPunctuation(span[end - 1])))) {
             end--;
         }
         normalized = (start == 0 && end == span.Length) ? normalized : span.Slice(start, end - start).ToString();
@@ -391,6 +391,10 @@ internal sealed partial class ChatServiceSession {
         }
 
         return normalized.ToLowerInvariant();
+    }
+
+    private static bool IsQuestionPunctuation(char ch) {
+        return ch is '?' or '？' or '¿' or '؟';
     }
 
     private static string ReadFirstToken(string text) {

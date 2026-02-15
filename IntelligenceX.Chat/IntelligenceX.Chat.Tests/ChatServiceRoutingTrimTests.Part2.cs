@@ -207,6 +207,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Theory]
     [InlineData("why?")]
+    [InlineData("ok?")]
+    [InlineData("ok？")]
     [InlineData("dalej?")]
     [InlineData("¿dalej")]
     [InlineData("dalej؟")]
