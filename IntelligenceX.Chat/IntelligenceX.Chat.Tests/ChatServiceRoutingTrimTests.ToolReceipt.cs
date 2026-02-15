@@ -88,6 +88,30 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptToolReceiptCorrection_TriggersForStdoutReceiptLabel_WithWhitespaceBeforeColon() {
+        var assistantDraft = "stdout    : hello world";
+
+        var result = ShouldAttemptToolReceiptCorrectionMethod.Invoke(
+            null,
+            new object?[] { "Run it", assistantDraft, Array.Empty<ToolDefinition>(), 0, 0, 0 });
+
+        var value = Assert.IsType<bool>(result);
+        Assert.True(value);
+    }
+
+    [Fact]
+    public void ShouldAttemptToolReceiptCorrection_TriggersForStderrReceiptLabel() {
+        var assistantDraft = "stderr: something failed";
+
+        var result = ShouldAttemptToolReceiptCorrectionMethod.Invoke(
+            null,
+            new object?[] { "Run it", assistantDraft, Array.Empty<ToolDefinition>(), 0, 0, 0 });
+
+        var value = Assert.IsType<bool>(result);
+        Assert.True(value);
+    }
+
+    [Fact]
     public void ShouldAttemptToolReceiptCorrection_DoesNotTriggerWhenToolCallsAlreadyExist() {
         var schema = ToolSchema.Object().NoAdditionalProperties();
         var tools = new[] { new ToolDefinition("ad_search", "AD search", schema) };
@@ -137,5 +161,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var value = Assert.IsType<string>(prompt);
         Assert.Contains("(truncated)", value, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("TAIL", value, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildToolReceiptCorrectionPrompt_DoesNotInjectEmptySentinelText() {
+        var prompt = BuildToolReceiptCorrectionPromptMethod.Invoke(
+            null,
+            new object?[] { null, "   " });
+
+        var value = Assert.IsType<string>(prompt);
+        Assert.DoesNotContain("(empty)", value, StringComparison.OrdinalIgnoreCase);
     }
 }

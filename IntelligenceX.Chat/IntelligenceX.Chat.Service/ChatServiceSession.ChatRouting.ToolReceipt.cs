@@ -64,9 +64,14 @@ internal sealed partial class ChatServiceSession {
             var afterIdx = idx + label.Length;
             var afterOk = afterIdx >= text.Length || !IsReceiptLabelChar(text[afterIdx]);
             if (beforeOk && afterOk) {
+                // Match both "stdout:" and "stdout :".
+                if (afterIdx < text.Length && text[afterIdx] == ':') {
+                    return true;
+                }
+
                 var scan = afterIdx;
                 var consumedWhitespace = 0;
-                while (scan < text.Length && consumedWhitespace < 3 && char.IsWhiteSpace(text[scan])) {
+                while (scan < text.Length && consumedWhitespace < 16 && char.IsWhiteSpace(text[scan])) {
                     scan++;
                     consumedWhitespace++;
                 }
@@ -207,7 +212,7 @@ internal sealed partial class ChatServiceSession {
 
     private static string TrimForPrompt(string? text, int maxChars) {
         if (string.IsNullOrWhiteSpace(text)) {
-            return "(empty)";
+            return string.Empty;
         }
 
         var trimmed = text.Trim();
