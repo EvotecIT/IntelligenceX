@@ -11,11 +11,16 @@ namespace IntelligenceX.Cli.Todo;
 
 internal static class ProjectSyncRunner {
     internal sealed record ProjectSyncEntry(
+        int Number,
         string Url,
         string Kind,
         double? TriageScore,
         string? DuplicateCluster,
         string? CanonicalItem,
+        string? Category,
+        IReadOnlyList<string> Tags,
+        string? MatchedIssueUrl,
+        double? MatchedIssueConfidence,
         string? VisionFit,
         double? VisionConfidence
     );
@@ -30,6 +35,8 @@ internal static class ProjectSyncRunner {
         public int MaxItems { get; set; } = 500;
         public int ProjectItemScanLimit { get; set; } = 5000;
         public bool EnsureFields { get; set; } = true;
+        public bool ApplyLabels { get; set; }
+        public bool EnsureLabels { get; set; } = true;
         public bool DryRun { get; set; }
         public bool ShowHelp { get; set; }
     }
@@ -102,11 +109,21 @@ internal static class ProjectSyncRunner {
             return 1;
         }
 
+        if (options.ApplyLabels && options.EnsureLabels && !options.DryRun) {
+            try {
+                await RepositoryLabelManager.EnsureLabelsAsync(options.Repo, ProjectLabelCatalog.DefaultLabels).ConfigureAwait(false);
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Failed to ensure labels before apply-labels: {ex.Message}");
+                return 1;
+            }
+        }
+
         var itemsByUrl = new Dictionary<string, ProjectV2Client.ProjectItem>(existingItems, StringComparer.OrdinalIgnoreCase);
         var processed = 0;
         var added = 0;
         var updatedFieldValues = 0;
         var skippedMissing = 0;
+        var labeled = 0;
 
         foreach (var entry in entries) {
             processed++;
@@ -140,12 +157,28 @@ internal static class ProjectSyncRunner {
             if (!options.DryRun) {
                 updatedFieldValues += await ApplyUpdatesAsync(client, project.Id, item.Id, fields, entry).ConfigureAwait(false);
             }
+
+            if (options.ApplyLabels) {
+                var labels = BuildLabelsForEntry(entry);
+                if (labels.Count > 0 && entry.Number > 0) {
+                    if (options.DryRun) {
+                        labeled++;
+                    } else {
+                        if (await RepositoryLabelManager.AddLabelsAsync(options.Repo, entry.Kind, entry.Number, labels).ConfigureAwait(false)) {
+                            labeled++;
+                        }
+                    }
+                }
+            }
         }
 
         Console.WriteLine($"Project sync target: {owner}#{projectNumber} ({project.Url})");
         Console.WriteLine($"Entries processed: {processed}");
         Console.WriteLine($"Items added: {added}");
         Console.WriteLine($"Field values updated: {(options.DryRun ? 0 : updatedFieldValues)}");
+        if (options.ApplyLabels) {
+            Console.WriteLine($"Items labeled: {labeled}");
+        }
         Console.WriteLine($"Skipped unresolved items: {skippedMissing}");
         Console.WriteLine(options.DryRun ? "Dry run complete (no project updates were written)." : "Project sync complete.");
         return 0;
@@ -210,6 +243,15 @@ internal static class ProjectSyncRunner {
                 case "--no-ensure-fields":
                     options.EnsureFields = false;
                     break;
+                case "--apply-labels":
+                    options.ApplyLabels = true;
+                    break;
+                case "--ensure-labels":
+                    options.EnsureLabels = true;
+                    break;
+                case "--no-ensure-labels":
+                    options.EnsureLabels = false;
+                    break;
                 case "--dry-run":
                     options.DryRun = true;
                     break;
@@ -241,6 +283,9 @@ internal static class ProjectSyncRunner {
         Console.WriteLine("  --project-item-scan-limit <n>  Existing project item scan limit (100-10000, default: 5000)");
         Console.WriteLine("  --ensure-fields          Ensure IX fields exist before sync (default)");
         Console.WriteLine("  --no-ensure-fields       Skip field creation");
+        Console.WriteLine("  --apply-labels           Apply IX labels to PRs/issues from synced signals");
+        Console.WriteLine("  --ensure-labels          Ensure IX labels exist before applying labels (default)");
+        Console.WriteLine("  --no-ensure-labels       Skip label ensure step");
         Console.WriteLine("  --dry-run                Compute sync plan without writing project changes");
         Console.WriteLine();
         Console.WriteLine("Required token scopes for sync: `read:project` and `project`.");
@@ -324,12 +369,17 @@ internal static class ProjectSyncRunner {
                 if (string.IsNullOrWhiteSpace(url)) {
                     continue;
                 }
+                var number = ReadInt(item, "number");
                 var kind = ReadString(item, "kind");
                 if (string.IsNullOrWhiteSpace(kind)) {
                     kind = "pull_request";
                 }
                 var triageScore = ReadNullableDouble(item, "score");
                 var duplicateClusterId = ReadNullableString(item, "duplicateClusterId");
+                var category = ReadNullableString(item, "category");
+                var tags = ReadStringArray(item, "tags");
+                var matchedIssueUrl = ReadNullableString(item, "matchedIssueUrl");
+                var matchedIssueConfidence = ReadNullableDouble(item, "matchedIssueConfidence");
 
                 string? canonicalUrl = null;
                 if (!string.IsNullOrWhiteSpace(duplicateClusterId) &&
@@ -339,11 +389,16 @@ internal static class ProjectSyncRunner {
                 }
 
                 entriesByUrl[url] = new ProjectSyncEntry(
+                    Number: number,
                     Url: url,
                     Kind: kind,
                     TriageScore: triageScore,
                     DuplicateCluster: duplicateClusterId,
                     CanonicalItem: canonicalUrl,
+                    Category: category,
+                    Tags: tags,
+                    MatchedIssueUrl: matchedIssueUrl,
+                    MatchedIssueConfidence: matchedIssueConfidence,
                     VisionFit: null,
                     VisionConfidence: null
                 );
@@ -369,12 +424,18 @@ internal static class ProjectSyncRunner {
                         TriageScore = existing.TriageScore ?? score
                     };
                 } else {
+                    var (kind, number) = ParseKindAndNumberFromUrl(url);
                     entriesByUrl[url] = new ProjectSyncEntry(
+                        Number: number,
                         Url: url,
-                        Kind: "pull_request",
+                        Kind: kind,
                         TriageScore: score,
                         DuplicateCluster: null,
                         CanonicalItem: null,
+                        Category: null,
+                        Tags: Array.Empty<string>(),
+                        MatchedIssueUrl: null,
+                        MatchedIssueConfidence: null,
                         VisionFit: classification,
                         VisionConfidence: confidence
                     );
@@ -446,6 +507,30 @@ internal static class ProjectSyncRunner {
             updated++;
         }
 
+        if (fields.TryGetValue("Category", out var categoryField) && !string.IsNullOrWhiteSpace(entry.Category)) {
+            if (TryResolveOptionId(categoryField, entry.Category, out var categoryOptionId)) {
+                await client.SetSingleSelectFieldAsync(projectId, itemId, categoryField.Id, categoryOptionId).ConfigureAwait(false);
+                updated++;
+            } else {
+                Console.Error.WriteLine($"Warning: option '{entry.Category}' not found in field '{categoryField.Name}'.");
+            }
+        }
+
+        if (fields.TryGetValue("Tags", out var tagsField) && entry.Tags.Count > 0) {
+            await client.SetTextFieldAsync(projectId, itemId, tagsField.Id, string.Join(", ", entry.Tags)).ConfigureAwait(false);
+            updated++;
+        }
+
+        if (fields.TryGetValue("Matched Issue", out var matchedIssueField) && !string.IsNullOrWhiteSpace(entry.MatchedIssueUrl)) {
+            await client.SetTextFieldAsync(projectId, itemId, matchedIssueField.Id, entry.MatchedIssueUrl).ConfigureAwait(false);
+            updated++;
+        }
+
+        if (fields.TryGetValue("Matched Issue Confidence", out var matchedIssueConfidenceField) && entry.MatchedIssueConfidence.HasValue) {
+            await client.SetNumberFieldAsync(projectId, itemId, matchedIssueConfidenceField.Id, entry.MatchedIssueConfidence.Value).ConfigureAwait(false);
+            updated++;
+        }
+
         if (fields.TryGetValue("Duplicate Cluster", out var duplicateField) && !string.IsNullOrWhiteSpace(entry.DuplicateCluster)) {
             await client.SetTextFieldAsync(projectId, itemId, duplicateField.Id, entry.DuplicateCluster).ConfigureAwait(false);
             updated++;
@@ -480,6 +565,41 @@ internal static class ProjectSyncRunner {
         }
 
         return updated;
+    }
+
+    private static IReadOnlyList<string> BuildLabelsForEntry(ProjectSyncEntry entry) {
+        var labels = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(entry.Category)) {
+            labels.Add($"ix/category:{entry.Category}");
+        }
+
+        var visionLabel = MapVisionLabel(entry.VisionFit);
+        if (!string.IsNullOrWhiteSpace(visionLabel) && entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase)) {
+            labels.Add(visionLabel);
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.MatchedIssueUrl) && entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase)) {
+            labels.Add("ix/match:linked-issue");
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.DuplicateCluster)) {
+            labels.Add("ix/duplicate:clustered");
+        }
+
+        return labels
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(label => label, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string? MapVisionLabel(string? visionFit) {
+        return visionFit?.ToLowerInvariant() switch {
+            "aligned" => "ix/vision:aligned",
+            "needs-human-review" => "ix/vision:needs-review",
+            "likely-out-of-scope" => "ix/vision:out-of-scope",
+            _ => null
+        };
     }
 
     private static bool TryResolveOptionId(ProjectV2Client.ProjectField field, string optionName, out string optionId) {
@@ -521,6 +641,29 @@ internal static class ProjectSyncRunner {
         return prop.GetString();
     }
 
+    private static IReadOnlyList<string> ReadStringArray(JsonElement obj, string name) {
+        if (!TryGetProperty(obj, name, out var prop) || prop.ValueKind != JsonValueKind.Array) {
+            return Array.Empty<string>();
+        }
+
+        var values = new List<string>();
+        foreach (var element in prop.EnumerateArray()) {
+            if (element.ValueKind != JsonValueKind.String) {
+                continue;
+            }
+
+            var value = element.GetString();
+            if (!string.IsNullOrWhiteSpace(value)) {
+                values.Add(value);
+            }
+        }
+
+        return values
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     private static int ReadInt(JsonElement obj, string name) {
         if (!TryGetProperty(obj, name, out var prop) || prop.ValueKind != JsonValueKind.Number || !prop.TryGetInt32(out var value)) {
             return 0;
@@ -539,5 +682,29 @@ internal static class ProjectSyncRunner {
             return null;
         }
         return value;
+    }
+
+    private static (string Kind, int Number) ParseKindAndNumberFromUrl(string url) {
+        if (string.IsNullOrWhiteSpace(url)) {
+            return ("pull_request", 0);
+        }
+
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri)) {
+            var segments = uri.AbsolutePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length >= 4 &&
+                int.TryParse(segments[^1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) &&
+                number > 0) {
+                var kindSegment = segments[^2];
+                if (kindSegment.Equals("issues", StringComparison.OrdinalIgnoreCase)) {
+                    return ("issue", number);
+                }
+                if (kindSegment.Equals("pull", StringComparison.OrdinalIgnoreCase) ||
+                    kindSegment.Equals("pulls", StringComparison.OrdinalIgnoreCase)) {
+                    return ("pull_request", number);
+                }
+            }
+        }
+
+        return ("pull_request", 0);
     }
 }

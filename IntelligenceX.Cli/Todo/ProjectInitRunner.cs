@@ -24,6 +24,7 @@ internal static class ProjectInitRunner {
         public bool IsPublic { get; set; }
         public bool VisibilitySpecified { get; set; }
         public bool LinkRepo { get; set; } = true;
+        public bool EnsureLabels { get; set; } = true;
         public string OutputPath { get; set; } = Path.Combine("artifacts", "triage", "ix-project-config.json");
         public bool ShowHelp { get; set; }
     }
@@ -105,7 +106,16 @@ internal static class ProjectInitRunner {
             }
         }
 
-        var report = BuildConfigReport(owner, options.Repo, project, fields);
+        if (options.EnsureLabels) {
+            try {
+                await RepositoryLabelManager.EnsureLabelsAsync(options.Repo, ProjectLabelCatalog.DefaultLabels).ConfigureAwait(false);
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Failed to ensure labels: {ex.Message}");
+                return 1;
+            }
+        }
+
+        var report = BuildConfigReport(owner, options.Repo, project, fields, options.EnsureLabels);
         WriteText(options.OutputPath, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
 
         Console.WriteLine($"Project ready: #{project.Number} ({project.Url})");
@@ -165,6 +175,12 @@ internal static class ProjectInitRunner {
                 case "--no-link-repo":
                     options.LinkRepo = false;
                     break;
+                case "--ensure-labels":
+                    options.EnsureLabels = true;
+                    break;
+                case "--no-ensure-labels":
+                    options.EnsureLabels = false;
+                    break;
                 case "--out":
                     if (i + 1 < args.Length) {
                         options.OutputPath = args[++i];
@@ -197,6 +213,8 @@ internal static class ProjectInitRunner {
         Console.WriteLine("  --private                Set project visibility to private (default)");
         Console.WriteLine("  --link-repo              Link project to --repo (default)");
         Console.WriteLine("  --no-link-repo           Do not link project to repo");
+        Console.WriteLine("  --ensure-labels          Ensure IX labels exist in --repo (default)");
+        Console.WriteLine("  --no-ensure-labels       Skip repo label setup");
         Console.WriteLine("  --out <path>             Write project config JSON (default: artifacts/triage/ix-project-config.json)");
         Console.WriteLine();
         Console.WriteLine("Required token scopes for project setup: `project`.");
@@ -249,7 +267,8 @@ internal static class ProjectInitRunner {
         string owner,
         string repo,
         ProjectV2Client.ProjectRef project,
-        IReadOnlyDictionary<string, ProjectV2Client.ProjectField> fields) {
+        IReadOnlyDictionary<string, ProjectV2Client.ProjectField> fields,
+        bool labelsEnsured) {
         var fieldsJson = fields.Values
             .OrderBy(field => field.Name, StringComparer.OrdinalIgnoreCase)
             .Select(field => new {
@@ -277,7 +296,21 @@ internal static class ProjectInitRunner {
                 title = project.Title,
                 url = project.Url
             },
-            fields = fieldsJson
+            fields = fieldsJson,
+            labels = new {
+                ensured = labelsEnsured,
+                items = labelsEnsured
+                    ? ProjectLabelCatalog.DefaultLabels
+                        .OrderBy(label => label.Name, StringComparer.OrdinalIgnoreCase)
+                        .Select(label => new {
+                            name = label.Name,
+                            color = label.Color,
+                            description = label.Description
+                        })
+                        .Cast<object>()
+                        .ToList()
+                    : new List<object>()
+            }
         };
     }
 

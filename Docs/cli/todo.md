@@ -60,6 +60,8 @@ Notes:
 - Supports paginated fetches for larger backlogs (`--max-prs` / `--max-issues` up to 2000).
 - Uses token-based similarity for duplicate clusters (deterministic and explainable).
 - PR ranking uses mergeability/review/status-check/churn/recency signals as assistive scoring, not an automatic merge decision.
+- Emits assistive `category` + `tags` per item for reliable labeling workflows.
+- Emits PR `relatedIssues` candidates plus `matchedIssueUrl`/`matchedIssueConfidence` (explicit references like `closes #123` + similarity fallback).
 
 ## Vision check (assistive scope alignment)
 
@@ -106,7 +108,8 @@ intelligencex todo project-init \
 
 Notes:
 - Creates a project (or initializes an existing one with `--project <n>`).
-- Ensures required custom fields such as `Vision Fit`, `Triage Score`, and `Duplicate Cluster`.
+- Ensures required custom fields such as `Vision Fit`, `Category`, `Tags`, `Matched Issue`, `Triage Score`, and `Duplicate Cluster`.
+- Ensures IX label taxonomy in the repo by default (`--no-ensure-labels` to skip).
 - Writes a reusable config file containing owner/project/field metadata.
 - Requires GitHub token scopes: `project` (and typically `read:project` for follow-up sync).
 
@@ -126,6 +129,8 @@ intelligencex todo project-sync \
 Useful options:
 - `--config <path>` to resolve owner/project from `project-init` output.
 - `--ensure-fields` / `--no-ensure-fields`.
+- `--apply-labels` to apply IX labels (`ix/category:*`, `ix/vision:*`, `ix/match:*`) on PRs/issues.
+- `--ensure-labels` / `--no-ensure-labels` for label taxonomy management.
 - `--project-item-scan-limit <n>` for larger projects.
 - `--dry-run` for a no-write sync preview.
 

@@ -17,6 +17,19 @@ internal static class ProjectFieldCatalog {
             "likely-out-of-scope"
         }),
         new ProjectFieldDefinition("Vision Confidence", "NUMBER", Array.Empty<string>()),
+        new ProjectFieldDefinition("Category", "SINGLE_SELECT", new[] {
+            "bug",
+            "feature",
+            "documentation",
+            "maintenance",
+            "security",
+            "performance",
+            "testing",
+            "ci"
+        }),
+        new ProjectFieldDefinition("Tags", "TEXT", Array.Empty<string>()),
+        new ProjectFieldDefinition("Matched Issue", "TEXT", Array.Empty<string>()),
+        new ProjectFieldDefinition("Matched Issue Confidence", "NUMBER", Array.Empty<string>()),
         new ProjectFieldDefinition("Triage Score", "NUMBER", Array.Empty<string>()),
         new ProjectFieldDefinition("Duplicate Cluster", "TEXT", Array.Empty<string>()),
         new ProjectFieldDefinition("Canonical Item", "TEXT", Array.Empty<string>()),

@@ -56,6 +56,7 @@ Important:
 - This is a first-slice ranking/dedupe helper, not a hard merge gate.
 - Duplicate detection is deterministic and explainable; semantic/embedding clustering can be layered later.
 - PR ranking includes status-check signals (when available) in addition to mergeability/review/churn/recency.
+- Item output includes assistive `category` + `tags` and PR `relatedIssues`/`matchedIssueUrl` fields for downstream automation.
 
 ## Vision Check (Assistive)
 
@@ -91,11 +92,16 @@ Options:
 - `--title <text>` and `--description <text>` when creating
 - `--public` / `--private`
 - `--link-repo` / `--no-link-repo`
+- `--ensure-labels` / `--no-ensure-labels`
 - `--out <path>` (default `artifacts/triage/ix-project-config.json`)
 
 Expected fields:
 - `Vision Fit` (single-select)
 - `Vision Confidence` (number)
+- `Category` (single-select)
+- `Tags` (text)
+- `Matched Issue` (text)
+- `Matched Issue Confidence` (number)
 - `Triage Score` (number)
 - `Duplicate Cluster` (text)
 - `Canonical Item` (text)
@@ -116,6 +122,8 @@ Options:
 - `--max-items <n>` (default `500`)
 - `--project-item-scan-limit <n>` (default `5000`)
 - `--ensure-fields` / `--no-ensure-fields`
+- `--apply-labels`
+- `--ensure-labels` / `--no-ensure-labels`
 - `--dry-run`
 
 ## Workflow Template

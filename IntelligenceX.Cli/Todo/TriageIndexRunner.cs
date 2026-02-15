@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.GitHub;
 
@@ -18,6 +19,18 @@ internal static class TriageIndexRunner {
         "was", "were", "will", "with", "this", "these", "those", "into", "over",
         "under", "fix", "update", "add", "remove", "improve", "refactor", "cleanup"
     };
+    private static readonly Regex ExplicitIssueRef = new(
+        @"(?i)\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?|ref(?:s|erences?)|related to)\s+#(?<num>\d+)\b",
+        RegexOptions.Compiled
+    );
+    private static readonly Regex ExplicitRepoIssueRef = new(
+        @"(?i)\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?|ref(?:s|erences?)|related to)\s+(?<owner>[A-Za-z0-9_.-]+)/(?<repo>[A-Za-z0-9_.-]+)#(?<num>\d+)\b",
+        RegexOptions.Compiled
+    );
+    private static readonly Regex ExplicitIssueUrlRef = new(
+        @"(?i)\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?|ref(?:s|erences?)|related to)\s+https?://github\.com/(?<owner>[A-Za-z0-9_.-]+)/(?<repo>[A-Za-z0-9_.-]+)/issues/(?<num>\d+)\b",
+        RegexOptions.Compiled
+    );
 
     internal sealed record PullRequestSignals(
         bool IsDraft,
@@ -107,6 +120,21 @@ internal static class TriageIndexRunner {
         string? DuplicateClusterId
     );
 
+    internal sealed record RelatedIssueCandidate(
+        int Number,
+        string Url,
+        double Confidence,
+        string Reason
+    );
+
+    internal sealed record ItemEnrichment(
+        string Category,
+        IReadOnlyList<string> Tags,
+        string? MatchedIssueUrl,
+        double? MatchedIssueConfidence,
+        IReadOnlyList<RelatedIssueCandidate> RelatedIssues
+    );
+
     private sealed class Options {
         public string Repo { get; set; } = "EvotecIT/IntelligenceX";
         public int MaxPrs { get; set; } = 100;
@@ -147,6 +175,7 @@ internal static class TriageIndexRunner {
         var items = BuildItems(pullRequests, issues);
         var clusters = BuildDuplicateClusters(items, options.DuplicateThreshold);
         var clusterByItem = BuildClusterLookup(clusters);
+        var enrichments = BuildItemEnrichments(options.Repo, items, pullRequests, issues);
 
         var scoredItems = new List<ItemWithScore>(items.Count);
         foreach (var item in items) {
@@ -163,8 +192,8 @@ internal static class TriageIndexRunner {
         }
 
         var bestPullRequests = BuildBestPullRequests(scoredItems, clusters, options.BestLimit);
-        var report = BuildReport(options, nowUtc, scoredItems, clusters, bestPullRequests);
-        var summary = BuildMarkdownSummary(options, nowUtc, scoredItems, clusters, bestPullRequests);
+        var report = BuildReport(options, nowUtc, scoredItems, clusters, bestPullRequests, enrichments);
+        var summary = BuildMarkdownSummary(options, nowUtc, scoredItems, clusters, bestPullRequests, enrichments);
 
         WriteText(options.OutputPath, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
         WriteText(options.SummaryPath, summary);
@@ -508,6 +537,237 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
         }
 
         return items;
+    }
+
+    private static Dictionary<string, ItemEnrichment> BuildItemEnrichments(
+        string repo,
+        IReadOnlyList<TriageIndexItem> items,
+        IReadOnlyList<RawPullRequest> pullRequests,
+        IReadOnlyList<RawIssue> issues) {
+        var enrichments = new Dictionary<string, ItemEnrichment>(StringComparer.OrdinalIgnoreCase);
+        var issueItems = items
+            .Where(item => item.Kind.Equals("issue", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var rawPrByNumber = pullRequests.ToDictionary(pr => pr.Number);
+
+        foreach (var item in items) {
+            var (category, tags) = InferCategoryAndTags(item);
+
+            IReadOnlyList<RelatedIssueCandidate> related = Array.Empty<RelatedIssueCandidate>();
+            string? matchedIssueUrl = null;
+            double? matchedIssueConfidence = null;
+
+            if (item.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase)) {
+                if (rawPrByNumber.TryGetValue(item.Number, out var rawPr)) {
+                    related = MatchPullRequestToIssues(repo, rawPr.Title, rawPr.Body, issueItems);
+                } else {
+                    related = MatchPullRequestToIssues(repo, item.Title, string.Join(' ', item.ContextTokens), issueItems);
+                }
+
+                if (related.Count > 0) {
+                    matchedIssueUrl = related[0].Url;
+                    matchedIssueConfidence = related[0].Confidence;
+                }
+            }
+
+            enrichments[item.Id] = new ItemEnrichment(
+                Category: category,
+                Tags: tags,
+                MatchedIssueUrl: matchedIssueUrl,
+                MatchedIssueConfidence: matchedIssueConfidence,
+                RelatedIssues: related
+            );
+        }
+
+        return enrichments;
+    }
+
+    internal static (string Category, IReadOnlyList<string> Tags) InferCategoryAndTags(TriageIndexItem item) {
+        var tokens = new HashSet<string>(item.ContextTokens, StringComparer.OrdinalIgnoreCase);
+        foreach (var token in item.TitleTokens) {
+            tokens.Add(token);
+        }
+
+        foreach (var label in item.Labels) {
+            foreach (var token in Tokenize(label)) {
+                tokens.Add(token);
+            }
+        }
+
+        bool HasAny(params string[] candidates) {
+            foreach (var candidate in candidates) {
+                if (tokens.Contains(candidate)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        var isSecurity = HasAny("security", "vulnerability", "vulnerabilities", "auth", "authorization", "xss", "injection", "cve", "secret", "secrets");
+        var isBug = HasAny("bug", "bugs", "error", "errors", "failure", "failures", "exception", "exceptions", "crash", "regression", "defect", "defects");
+        var isPerformance = HasAny("performance", "perf", "latency", "throughput", "memory", "cpu");
+        var isDocs = HasAny("docs", "doc", "documentation", "readme", "wiki", "changelog");
+        var isTesting = HasAny("test", "tests", "testing", "unittest", "integration", "e2e");
+        var isCi = HasAny("ci", "pipeline", "workflows", "workflow", "actions", "github", "build");
+        var isMaintenance = HasAny("refactor", "cleanup", "chore", "maintenance", "bump", "upgrade", "dependency", "dependencies", "deps");
+
+        var category = isSecurity ? "security"
+            : isBug ? "bug"
+            : isPerformance ? "performance"
+            : isDocs ? "documentation"
+            : isTesting ? "testing"
+            : isCi ? "ci"
+            : isMaintenance ? "maintenance"
+            : "feature";
+
+        var tags = new List<string>();
+        if (isSecurity) {
+            tags.Add("security");
+        }
+        if (isBug) {
+            tags.Add("bugfix");
+        }
+        if (isPerformance) {
+            tags.Add("performance");
+        }
+        if (isDocs) {
+            tags.Add("docs");
+        }
+        if (isTesting) {
+            tags.Add("testing");
+        }
+        if (isCi) {
+            tags.Add("ci");
+        }
+        if (isMaintenance) {
+            tags.Add("maintenance");
+        }
+        if (HasAny("api", "apis")) {
+            tags.Add("api");
+        }
+        if (HasAny("ui", "ux", "frontend", "website")) {
+            tags.Add("ux");
+        }
+        if (HasAny("dependency", "dependencies", "deps", "nuget", "package", "packages")) {
+            tags.Add("dependencies");
+        }
+        if (tags.Count == 0) {
+            tags.Add(category);
+        }
+
+        return (
+            Category: category,
+            Tags: tags
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase)
+                .Take(8)
+                .ToList()
+        );
+    }
+
+    internal static IReadOnlyList<RelatedIssueCandidate> MatchPullRequestToIssues(
+        string repo,
+        string prTitle,
+        string prBody,
+        IReadOnlyList<TriageIndexItem> issueItems) {
+        if (issueItems.Count == 0) {
+            return Array.Empty<RelatedIssueCandidate>();
+        }
+
+        var (owner, name) = SplitRepo(repo);
+        var issueByNumber = issueItems.ToDictionary(item => item.Number);
+        var matchesByNumber = new Dictionary<int, RelatedIssueCandidate>();
+
+        foreach (var issueNumber in ParseExplicitIssueReferences(prTitle, prBody, owner, name)) {
+            if (!issueByNumber.TryGetValue(issueNumber, out var issue)) {
+                continue;
+            }
+
+            matchesByNumber[issue.Number] = new RelatedIssueCandidate(
+                Number: issue.Number,
+                Url: issue.Url,
+                Confidence: 0.98,
+                Reason: "explicit issue reference in PR title/body"
+            );
+        }
+
+        var prTitleTokens = Tokenize(prTitle);
+        var prContextTokens = Tokenize($"{prTitle}\n{prBody}");
+
+        foreach (var issue in issueItems) {
+            if (matchesByNumber.ContainsKey(issue.Number)) {
+                continue;
+            }
+
+            var titleScore = Jaccard(prTitleTokens, issue.TitleTokens);
+            var contextScore = Jaccard(prContextTokens, issue.ContextTokens);
+            var blended = Math.Round((titleScore * 0.55) + (contextScore * 0.45), 4, MidpointRounding.AwayFromZero);
+            if (blended < 0.34) {
+                continue;
+            }
+
+            var reason = $"token similarity title={titleScore.ToString("0.00", CultureInfo.InvariantCulture)}, context={contextScore.ToString("0.00", CultureInfo.InvariantCulture)}";
+            matchesByNumber[issue.Number] = new RelatedIssueCandidate(
+                Number: issue.Number,
+                Url: issue.Url,
+                Confidence: blended,
+                Reason: reason
+            );
+        }
+
+        return matchesByNumber.Values
+            .OrderByDescending(match => match.Confidence)
+            .ThenBy(match => match.Number)
+            .Take(3)
+            .ToList();
+    }
+
+    private static IReadOnlyList<int> ParseExplicitIssueReferences(
+        string prTitle,
+        string prBody,
+        string owner,
+        string repoName) {
+        var text = $"{prTitle}\n{prBody}";
+        var results = new HashSet<int>();
+
+        foreach (Match match in ExplicitIssueRef.Matches(text)) {
+            if (TryReadIssueNumber(match, out var number)) {
+                results.Add(number);
+            }
+        }
+
+        foreach (Match match in ExplicitRepoIssueRef.Matches(text)) {
+            var refOwner = match.Groups["owner"].Value;
+            var refRepo = match.Groups["repo"].Value;
+            if (!refOwner.Equals(owner, StringComparison.OrdinalIgnoreCase) ||
+                !refRepo.Equals(repoName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (TryReadIssueNumber(match, out var number)) {
+                results.Add(number);
+            }
+        }
+
+        foreach (Match match in ExplicitIssueUrlRef.Matches(text)) {
+            var refOwner = match.Groups["owner"].Value;
+            var refRepo = match.Groups["repo"].Value;
+            if (!refOwner.Equals(owner, StringComparison.OrdinalIgnoreCase) ||
+                !refRepo.Equals(repoName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (TryReadIssueNumber(match, out var number)) {
+                results.Add(number);
+            }
+        }
+
+        return results.OrderBy(value => value).ToList();
+    }
+
+    private static bool TryReadIssueNumber(Match match, out int number) {
+        number = 0;
+        return match.Groups["num"].Success &&
+               int.TryParse(match.Groups["num"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out number) &&
+               number > 0;
     }
 
     internal static string NormalizeText(string? value) {
@@ -886,7 +1146,8 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
         DateTimeOffset nowUtc,
         IReadOnlyList<ItemWithScore> scoredItems,
         IReadOnlyList<DuplicateCluster> clusters,
-        IReadOnlyList<BestPullRequest> bestPullRequests) {
+        IReadOnlyList<BestPullRequest> bestPullRequests,
+        IReadOnlyDictionary<string, ItemEnrichment> enrichments) {
         var duplicateIds = new HashSet<string>(
             clusters.SelectMany(cluster => cluster.ItemIds),
             StringComparer.OrdinalIgnoreCase
@@ -896,22 +1157,38 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
             .OrderByDescending(item => item.Item.UpdatedAtUtc)
             .ThenBy(item => item.Item.Kind, StringComparer.OrdinalIgnoreCase)
             .ThenBy(item => item.Item.Number)
-            .Select(item => new {
-                id = item.Item.Id,
-                kind = item.Item.Kind,
-                number = item.Item.Number,
-                title = item.Item.Title,
-                url = item.Item.Url,
-                updatedAtUtc = item.Item.UpdatedAtUtc.UtcDateTime.ToString("o", CultureInfo.InvariantCulture),
-                labels = item.Item.Labels,
-                dedupeKey = string.Join("-", item.Item.TitleTokens.Take(8)),
-                duplicateClusterId = item.DuplicateClusterId,
-                score = item.Score,
-                scoreReasons = item.ScoreReasons,
-                signals = new {
-                    pullRequest = item.Item.PullRequest,
-                    issue = item.Item.Issue
-                }
+            .Select(item => {
+                enrichments.TryGetValue(item.Item.Id, out var enrichment);
+                return new {
+                    id = item.Item.Id,
+                    kind = item.Item.Kind,
+                    number = item.Item.Number,
+                    title = item.Item.Title,
+                    url = item.Item.Url,
+                    updatedAtUtc = item.Item.UpdatedAtUtc.UtcDateTime.ToString("o", CultureInfo.InvariantCulture),
+                    labels = item.Item.Labels,
+                    dedupeKey = string.Join("-", item.Item.TitleTokens.Take(8)),
+                    duplicateClusterId = item.DuplicateClusterId,
+                    category = enrichment?.Category,
+                    tags = enrichment?.Tags ?? Array.Empty<string>(),
+                    matchedIssueUrl = enrichment?.MatchedIssueUrl,
+                    matchedIssueConfidence = enrichment?.MatchedIssueConfidence,
+                    relatedIssues = enrichment?.RelatedIssues
+                        .Select(related => new {
+                            number = related.Number,
+                            url = related.Url,
+                            confidence = related.Confidence,
+                            reason = related.Reason
+                        })
+                        .Cast<object>()
+                        .ToList() ?? new List<object>(),
+                    score = item.Score,
+                    scoreReasons = item.ScoreReasons,
+                    signals = new {
+                        pullRequest = item.Item.PullRequest,
+                        issue = item.Item.Issue
+                    }
+                };
             })
             .ToList();
 
@@ -949,7 +1226,8 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
                 issues = scoredItems.Count(item => item.Item.Kind == "issue"),
                 duplicateClusters = clusters.Count,
                 duplicateItems = duplicateIds.Count,
-                bestPullRequestCandidates = bestPullRequests.Count
+                bestPullRequestCandidates = bestPullRequests.Count,
+                pullRequestsWithMatchedIssue = enrichments.Values.Count(value => !string.IsNullOrWhiteSpace(value.MatchedIssueUrl))
             },
             bestPullRequests = best,
             duplicateClusters = duplicates,
@@ -962,7 +1240,8 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
         DateTimeOffset nowUtc,
         IReadOnlyList<ItemWithScore> scoredItems,
         IReadOnlyList<DuplicateCluster> clusters,
-        IReadOnlyList<BestPullRequest> bestPullRequests) {
+        IReadOnlyList<BestPullRequest> bestPullRequests,
+        IReadOnlyDictionary<string, ItemEnrichment> enrichments) {
         var duplicateIds = new HashSet<string>(
             clusters.SelectMany(cluster => cluster.ItemIds),
             StringComparer.OrdinalIgnoreCase
@@ -983,6 +1262,7 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
         sb.AppendLine($"- Issues: {scoredItems.Count(item => item.Item.Kind == "issue")}");
         sb.AppendLine($"- Duplicate clusters: {clusters.Count}");
         sb.AppendLine($"- Duplicate items: {duplicateIds.Count}");
+        sb.AppendLine($"- PRs with matched issue: {enrichments.Values.Count(value => !string.IsNullOrWhiteSpace(value.MatchedIssueUrl))}");
         sb.AppendLine();
         sb.AppendLine("## Best PR Candidates");
         sb.AppendLine();
