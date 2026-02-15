@@ -299,6 +299,25 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        // Treat assignment-ish fragments as "new context", not confirmation (e.g. "x=y", "FOO=bar").
+        // This also closes a class of "structured fragment -> accidental token" risks if the allowlist expands.
+        if (raw.Contains('=', StringComparison.Ordinal)) {
+            return false;
+        }
+
+        // Support chatty wrapper confirmations like `ok` without turning arbitrary code-ish snippets into tokens.
+        // We only unwrap when the inner text is already an allowlisted confirmation.
+        if (raw is { Length: >= 2 } && raw[0] == '`' && raw[^1] == '`') {
+            var inner = raw.Substring(1, raw.Length - 2);
+            var innerNormalized = CanonicalizeImplicitPendingActionConfirmationPhrase(inner);
+            if (innerNormalized.Length != 0
+                && !LooksLikeImplicitSingleActionReject(innerNormalized)
+                && ImplicitSingleActionConfirmPhrases.Contains(innerNormalized)) {
+                return true;
+            }
+            return false;
+        }
+
         var normalized = CanonicalizeImplicitPendingActionConfirmationPhrase(raw);
         if (normalized.Length == 0) {
             return false;
@@ -355,10 +374,10 @@ internal sealed partial class ChatServiceSession {
         var span = normalized.AsSpan();
         var start = 0;
         var end = span.Length;
-        while (start < end && (char.IsWhiteSpace(span[start]) || char.IsPunctuation(span[start]) || span[start] == '`')) {
+        while (start < end && (char.IsWhiteSpace(span[start]) || char.IsPunctuation(span[start]))) {
             start++;
         }
-        while (end > start && (char.IsWhiteSpace(span[end - 1]) || char.IsPunctuation(span[end - 1]) || span[end - 1] == '`')) {
+        while (end > start && (char.IsWhiteSpace(span[end - 1]) || char.IsPunctuation(span[end - 1]))) {
             end--;
         }
         normalized = (start == 0 && end == span.Length) ? normalized : span.Slice(start, end - start).ToString();
