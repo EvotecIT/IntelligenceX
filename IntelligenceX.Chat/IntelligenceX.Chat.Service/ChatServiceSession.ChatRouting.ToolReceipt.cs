@@ -65,10 +65,6 @@ internal sealed partial class ChatServiceSession {
             var afterOk = afterIdx >= text.Length || !IsReceiptLabelChar(text[afterIdx]);
             if (beforeOk && afterOk) {
                 // Match both "stdout:" and "stdout :".
-                if (afterIdx < text.Length && text[afterIdx] == ':') {
-                    return true;
-                }
-
                 var scan = afterIdx;
                 var consumedWhitespace = 0;
                 while (scan < text.Length && consumedWhitespace < 16 && char.IsWhiteSpace(text[scan])) {
