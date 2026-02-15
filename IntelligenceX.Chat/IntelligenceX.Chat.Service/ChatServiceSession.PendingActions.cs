@@ -274,8 +274,9 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool LooksLikeImplicitPendingActionConfirmation(string userText) {
-        // Note: userText is already normalized to FormKC at the pending-action matching layer.
-        var raw = (userText ?? string.Empty).Trim();
+        // The caller is responsible for trimming/primary normalization; keep this predicate stable and avoid
+        // re-trimming which can subtly change the decision boundary for wrapper/punctuation cases.
+        var raw = userText ?? string.Empty;
         if (raw.Length == 0 || raw.Length > 32) {
             return false;
         }
