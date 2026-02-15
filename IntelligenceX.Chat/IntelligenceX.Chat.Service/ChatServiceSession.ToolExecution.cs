@@ -46,9 +46,21 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        return message.IndexOf("missing required parameter", StringComparison.OrdinalIgnoreCase) >= 0
-               && message.IndexOf("tools", StringComparison.OrdinalIgnoreCase) >= 0
-               && message.IndexOf(".name", StringComparison.OrdinalIgnoreCase) >= 0;
+        var missingToolName = message.IndexOf("missing required parameter", StringComparison.OrdinalIgnoreCase) >= 0
+                              && message.IndexOf("tools", StringComparison.OrdinalIgnoreCase) >= 0
+                              && message.IndexOf(".name", StringComparison.OrdinalIgnoreCase) >= 0;
+        if (missingToolName) {
+            return true;
+        }
+
+        // Compatible local providers (for example LM Studio with low n_ctx) can reject requests
+        // once tool schemas push prompt size over context limits.
+        return message.IndexOf("cannot truncate prompt with n_keep", StringComparison.OrdinalIgnoreCase) >= 0
+               || message.IndexOf("n_ctx", StringComparison.OrdinalIgnoreCase) >= 0
+               || message.IndexOf("context length", StringComparison.OrdinalIgnoreCase) >= 0
+               || message.IndexOf("context window", StringComparison.OrdinalIgnoreCase) >= 0
+               || message.IndexOf("maximum context length", StringComparison.OrdinalIgnoreCase) >= 0
+               || message.IndexOf("prompt too long", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private async Task<IReadOnlyList<ToolOutputDto>> ExecuteToolsAsync(StreamWriter writer, string requestId, string threadId, IReadOnlyList<ToolCall> calls,

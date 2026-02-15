@@ -113,7 +113,7 @@ internal static partial class Program {
             if (_options.LiveProgress) {
                 _status?.Invoke("thinking...");
             }
-            TurnInfo turn = await _client.ChatAsync(input, chatOptions, turnToken).ConfigureAwait(false);
+            TurnInfo turn = await ChatWithToolSchemaRecoveryAsync(input, chatOptions, turnToken).ConfigureAwait(false);
 
             for (var round = 0; round < Math.Max(1, _options.MaxToolRounds); round++) {
                 var extracted = ToolCallParser.Extract(turn);
@@ -145,7 +145,7 @@ internal static partial class Program {
                 if (_options.LiveProgress) {
                     _status?.Invoke("thinking...");
                 }
-                turn = await _client.ChatAsync(next, chatOptions, turnToken).ConfigureAwait(false);
+                turn = await ChatWithToolSchemaRecoveryAsync(next, chatOptions, turnToken).ConfigureAwait(false);
             }
 
             throw new InvalidOperationException($"Tool runner exceeded max rounds ({_options.MaxToolRounds}).");
@@ -212,6 +212,41 @@ internal static partial class Program {
             }
             var response = turn.Raw.GetObject("response");
             return response?.GetString("id");
+        }
+
+        private async Task<TurnInfo> ChatWithToolSchemaRecoveryAsync(ChatInput input, ChatOptions options, CancellationToken cancellationToken) {
+            try {
+                return await _client.ChatAsync(input, options, cancellationToken).ConfigureAwait(false);
+            } catch (Exception ex) when (ShouldRetryWithoutTools(ex, options)) {
+                options.Tools = null;
+                options.ToolChoice = null;
+                return await _client.ChatAsync(input, options, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        private static bool ShouldRetryWithoutTools(Exception ex, ChatOptions options) {
+            if (options.Tools is not { Count: > 0 }) {
+                return false;
+            }
+
+            var message = ex.Message ?? string.Empty;
+            if (message.Length == 0) {
+                return false;
+            }
+
+            var missingToolName = message.IndexOf("missing required parameter", StringComparison.OrdinalIgnoreCase) >= 0
+                                  && message.IndexOf("tools", StringComparison.OrdinalIgnoreCase) >= 0
+                                  && message.IndexOf(".name", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (missingToolName) {
+                return true;
+            }
+
+            return message.IndexOf("cannot truncate prompt with n_keep", StringComparison.OrdinalIgnoreCase) >= 0
+                   || message.IndexOf("n_ctx", StringComparison.OrdinalIgnoreCase) >= 0
+                   || message.IndexOf("context length", StringComparison.OrdinalIgnoreCase) >= 0
+                   || message.IndexOf("context window", StringComparison.OrdinalIgnoreCase) >= 0
+                   || message.IndexOf("maximum context length", StringComparison.OrdinalIgnoreCase) >= 0
+                   || message.IndexOf("prompt too long", StringComparison.OrdinalIgnoreCase) >= 0;
         }
     }
 
