@@ -213,4 +213,37 @@ public sealed class ChatServiceClient : IAsyncDisposable {
             // Ignore.
         }
     }
+
+    /// <summary>
+    /// Generates a new request id suitable for <see cref="ChatServiceRequest.RequestId"/>.
+    /// </summary>
+    public static string NewRequestId() => Guid.NewGuid().ToString("N");
+
+    /// <summary>
+    /// Requests the list of available saved profiles from the service.
+    /// </summary>
+    public Task<ProfileListMessage> ListProfilesAsync(CancellationToken cancellationToken = default) {
+        return RequestAsync<ProfileListMessage>(new ListProfilesRequest { RequestId = NewRequestId() }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Switches the active service profile for this session.
+    /// </summary>
+    public Task<AckMessage> SetProfileAsync(string profileName, bool newThread = true, CancellationToken cancellationToken = default) {
+        if (string.IsNullOrWhiteSpace(profileName)) {
+            throw new ArgumentException("Profile name cannot be empty.", nameof(profileName));
+        }
+        return RequestAsync<AckMessage>(new SetProfileRequest {
+            RequestId = NewRequestId(),
+            ProfileName = profileName.Trim(),
+            NewThread = newThread
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Requests the list of models from the active provider/transport.
+    /// </summary>
+    public Task<ModelListMessage> ListModelsAsync(bool forceRefresh = false, CancellationToken cancellationToken = default) {
+        return RequestAsync<ModelListMessage>(new ListModelsRequest { RequestId = NewRequestId(), ForceRefresh = forceRefresh }, cancellationToken);
+    }
 }

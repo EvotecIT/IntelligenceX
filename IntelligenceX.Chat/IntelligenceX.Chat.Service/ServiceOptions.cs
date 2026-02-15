@@ -2,8 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
-using IntelligenceX.Chat.Service.Profiles;
+using IntelligenceX.Chat.Profiles;
 using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.CompatibleHttp;
 
 namespace IntelligenceX.Chat.Service;
@@ -20,6 +21,11 @@ internal sealed class ServiceOptions {
     public bool OpenAIStreaming { get; set; } = true;
     public bool OpenAIAllowInsecureHttp { get; set; }
     public bool OpenAIAllowInsecureHttpNonLoopback { get; set; }
+
+    public ReasoningEffort? ReasoningEffort { get; set; }
+    public ReasoningSummary? ReasoningSummary { get; set; }
+    public TextVerbosity? TextVerbosity { get; set; }
+    public double? Temperature { get; set; }
 
     public string? ProfileName { get; set; }
     public string? SaveProfileName { get; set; }
@@ -87,6 +93,53 @@ internal sealed class ServiceOptions {
                     return options;
                 }
                 options.Model = value!;
+                continue;
+            }
+            if (arg is "--reasoning-effort") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                var parsed = ChatEnumParser.ParseReasoningEffort(value);
+                if (!parsed.HasValue) {
+                    error = "--reasoning-effort must be one of: minimal, low, medium, high, xhigh.";
+                    return options;
+                }
+                options.ReasoningEffort = parsed;
+                continue;
+            }
+            if (arg is "--reasoning-summary") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                var parsed = ChatEnumParser.ParseReasoningSummary(value);
+                if (!parsed.HasValue) {
+                    error = "--reasoning-summary must be one of: auto, concise, detailed, off.";
+                    return options;
+                }
+                options.ReasoningSummary = parsed;
+                continue;
+            }
+            if (arg is "--text-verbosity") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                var parsed = ChatEnumParser.ParseTextVerbosity(value);
+                if (!parsed.HasValue) {
+                    error = "--text-verbosity must be one of: low, medium, high.";
+                    return options;
+                }
+                options.TextVerbosity = parsed;
+                continue;
+            }
+            if (arg is "--temperature") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!double.TryParse(value, out var temp) || double.IsNaN(temp) || double.IsInfinity(temp) || temp < 0d || temp > 2d) {
+                    error = "--temperature must be a number between 0 and 2.";
+                    return options;
+                }
+                options.Temperature = temp;
                 continue;
             }
             if (arg is "--openai-transport") {
@@ -335,6 +388,10 @@ internal sealed class ServiceOptions {
         Console.WriteLine("Options:");
         Console.WriteLine("  --pipe <NAME>           Named pipe name (default: intelligencex.chat)");
         Console.WriteLine("  --model <NAME>          OpenAI model (default: gpt-5.3-codex)");
+        Console.WriteLine("  --reasoning-effort <LEVEL>   Reasoning effort hint: minimal|low|medium|high|xhigh.");
+        Console.WriteLine("  --reasoning-summary <LEVEL>  Reasoning summary hint: auto|concise|detailed|off.");
+        Console.WriteLine("  --text-verbosity <LEVEL>     Text verbosity hint: low|medium|high.");
+        Console.WriteLine("  --temperature <N>       Sampling temperature (0-2).");
         Console.WriteLine("  --openai-transport <KIND>  Underlying provider transport: native|appserver|compatible-http (default: native).");
         Console.WriteLine("  --openai-base-url <URL> Base URL for compatible-http (example: http://127.0.0.1:11434 or http://127.0.0.1:11434/v1).");
         Console.WriteLine("  --openai-api-key <KEY>  Optional Bearer token for compatible-http.");
@@ -431,6 +488,19 @@ internal sealed class ServiceOptions {
         }
 
         Model = profile.Model ?? Model;
+
+        OpenAITransport = profile.OpenAITransport;
+        OpenAIBaseUrl = profile.OpenAIBaseUrl;
+        OpenAIApiKey = profile.OpenAIApiKey;
+        OpenAIStreaming = profile.OpenAIStreaming;
+        OpenAIAllowInsecureHttp = profile.OpenAIAllowInsecureHttp;
+        OpenAIAllowInsecureHttpNonLoopback = profile.OpenAIAllowInsecureHttpNonLoopback;
+
+        ReasoningEffort = profile.ReasoningEffort;
+        ReasoningSummary = profile.ReasoningSummary;
+        TextVerbosity = profile.TextVerbosity;
+        Temperature = profile.Temperature;
+
         MaxToolRounds = profile.MaxToolRounds;
         ParallelTools = profile.ParallelTools;
         TurnTimeoutSeconds = profile.TurnTimeoutSeconds;
@@ -445,6 +515,7 @@ internal sealed class ServiceOptions {
         AdDefaultSearchBaseDn = profile.AdDefaultSearchBaseDn;
         AdMaxResults = profile.AdMaxResults;
         EnablePowerShellPack = profile.EnablePowerShellPack;
+        PowerShellAllowWrite = profile.PowerShellAllowWrite;
         EnableTestimoXPack = profile.EnableTestimoXPack;
         EnableDefaultPluginPaths = profile.EnableDefaultPluginPaths;
         PluginPaths.Clear();
@@ -461,6 +532,16 @@ internal sealed class ServiceOptions {
     internal ServiceProfile ToProfile() {
         return new ServiceProfile {
             Model = Model,
+            OpenAITransport = OpenAITransport,
+            OpenAIBaseUrl = OpenAIBaseUrl,
+            OpenAIApiKey = OpenAIApiKey,
+            OpenAIStreaming = OpenAIStreaming,
+            OpenAIAllowInsecureHttp = OpenAIAllowInsecureHttp,
+            OpenAIAllowInsecureHttpNonLoopback = OpenAIAllowInsecureHttpNonLoopback,
+            ReasoningEffort = ReasoningEffort,
+            ReasoningSummary = ReasoningSummary,
+            TextVerbosity = TextVerbosity,
+            Temperature = Temperature,
             MaxToolRounds = MaxToolRounds,
             ParallelTools = ParallelTools,
             TurnTimeoutSeconds = TurnTimeoutSeconds,
@@ -470,6 +551,7 @@ internal sealed class ServiceOptions {
             AdDefaultSearchBaseDn = AdDefaultSearchBaseDn,
             AdMaxResults = AdMaxResults,
             EnablePowerShellPack = EnablePowerShellPack,
+            PowerShellAllowWrite = PowerShellAllowWrite,
             EnableTestimoXPack = EnableTestimoXPack,
             EnableDefaultPluginPaths = EnableDefaultPluginPaths,
             PluginPaths = new List<string>(PluginPaths),

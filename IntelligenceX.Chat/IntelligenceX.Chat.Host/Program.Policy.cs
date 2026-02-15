@@ -20,6 +20,18 @@ namespace IntelligenceX.Chat.Host;
 
 internal static partial class Program {
 
+    private static IReadOnlyList<IToolPack> BuildPacks(ReplOptions options) {
+        var bootstrapOptions = new ToolPackBootstrapOptions {
+            AllowedRoots = options.AllowedRoots.ToArray(),
+            AdDomainController = options.AdDomainController,
+            AdDefaultSearchBaseDn = options.AdDefaultSearchBaseDn,
+            AdMaxResults = options.AdMaxResults,
+            EnablePowerShellPack = options.EnablePowerShellPack,
+            EnableTestimoXPack = options.EnableTestimoXPack
+        };
+        return ToolPackBootstrap.CreateDefaultReadOnlyPacks(bootstrapOptions);
+    }
+
     private static void WritePolicyBanner(ReplOptions options, IReadOnlyList<IToolPack> packs) {
         var descriptors = ToolPackBootstrap.GetDescriptors(packs);
         var dangerousEnabled = descriptors.Any(static p => p.IsDangerous || p.Tier == ToolCapabilityTier.DangerousWrite);
