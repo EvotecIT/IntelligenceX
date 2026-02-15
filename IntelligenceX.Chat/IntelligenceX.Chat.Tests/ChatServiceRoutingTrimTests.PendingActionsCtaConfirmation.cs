@@ -382,6 +382,24 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExpandContinuationUserRequest_ResolvesSingleBulletFallbackChoiceWithInlineActIdWithPromptContext() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Pulling failed logons from ADO now would be the next step, but I need your go-ahead in this flow:
+            - Run failed logon report (4625) on ADO Security (/act act_failed4625)
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "go ahead and run it" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        var selection = doc.RootElement.GetProperty("ix_action_selection");
+        Assert.Equal("act_failed4625", selection.GetProperty("id").GetString());
+        Assert.Equal("Run failed logon report (4625) on ADO Security", selection.GetProperty("request").GetString());
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_ResolvesSingleNumberedFallbackChoiceWithInlineActIdInParentheses() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
