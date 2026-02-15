@@ -116,6 +116,12 @@ public class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "ad_forest_discover",
+            new[] { "forest_name", "domain_name", "domain_controller", "include_domains", "exclude_domains", "include_domain_controllers", "exclude_domain_controllers", "skip_rodc", "include_trusts", "discovery_fallback", "max_domains", "max_domain_controllers_total", "max_domain_controllers_per_domain", "include_trust_relationships", "include_domain_trust_relationships", "trust_timeout_ms", "max_trusts" },
+            new[] { "discovery_fallback" }
+        };
+
+        yield return new object[] {
             "ad_group_members",
             new[] { "identity", "search_base_dn", "domain_controller", "max_members" },
             new[] { "identity" }

@@ -33,6 +33,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
             tools: ToolRegistryActiveDirectoryExtensions.GetRegisteredToolNames(Options),
             recommendedFlow: new[] {
                 "Call ad_environment_discover first to learn effective domain_controller/search_base_dn and candidate DCs.",
+                "Use ad_forest_discover to make forest scope explicit and get a receipt (domains/trusts/DCs discovered and how).",
                 "Use ad_search/ad_groups_list/ad_spn_search for broad discovery.",
                 "Use ad_object_resolve to avoid N+1 object lookups when correlating identities.",
                 "Use ad_ldap_query_paged for large exploratory queries and continue with cursor.",
@@ -43,6 +44,9 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                 ToolPackGuidance.FlowStep(
                     goal: "Discover candidate AD objects",
                     suggestedTools: new[] { "ad_search", "ad_groups_list", "ad_spn_search" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Discover forest scope and enumerate domains/DCs/trusts",
+                    suggestedTools: new[] { "ad_forest_discover" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Resolve/expand identities for correlation",
                     suggestedTools: new[] { "ad_object_resolve", "ad_object_get", "ad_group_members_resolved" }),
