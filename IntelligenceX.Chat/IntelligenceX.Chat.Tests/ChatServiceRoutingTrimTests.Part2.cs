@@ -100,6 +100,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Theory]
     [InlineData("ok")]
     [InlineData(" ok! ")]
+    [InlineData("ok！")]
+    [InlineData("ok。")]
     [InlineData("do   it")]
     public void ExpandContinuationUserRequest_AutoConfirmsSinglePendingActionForCommonAcknowledgements(string input) {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
@@ -182,6 +184,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("wait")]
     [InlineData("thanks")]
     [InlineData("no")]
+    [InlineData("{\"a\": 1}")]
     public void ExpandContinuationUserRequest_DoesNotAutoConfirmForBenignShortNonConfirmations(string input) {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """

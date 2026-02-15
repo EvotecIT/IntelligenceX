@@ -266,13 +266,14 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var normalized = CanonicalizeImplicitPendingActionConfirmationPhrase(raw);
-        if (normalized.Length == 0) {
+        // Reject structured payload fragments. This avoids surprising rewrites when users paste JSON-like snippets.
+        // (Most of the time, those should be treated as new context, not as a confirmation.)
+        if (raw.IndexOfAny(new[] { '{', '}', '[', ']', '"', '\'' }) >= 0) {
             return false;
         }
 
-        var tokenCount = CountLetterDigitTokens(normalized, maxTokens: 8);
-        if (tokenCount is < 1 or > 4) {
+        var normalized = CanonicalizeImplicitPendingActionConfirmationPhrase(raw);
+        if (normalized.Length == 0) {
             return false;
         }
 
@@ -283,8 +284,19 @@ internal sealed partial class ChatServiceSession {
     private static string CanonicalizeImplicitPendingActionConfirmationPhrase(string text) {
         var normalized = (text ?? string.Empty)
             .Trim()
-            .Normalize(NormalizationForm.FormKC)
-            .Trim(' ', '\t', '\r', '\n', '.', '!', '"', '\'', '`');
+            .Normalize(NormalizationForm.FormKC);
+
+        // Trim leading/trailing punctuation broadly (including CJK/fullwidth punctuation) so "ok!" and "ok！" match.
+        var span = normalized.AsSpan();
+        var start = 0;
+        var end = span.Length;
+        while (start < end && (char.IsWhiteSpace(span[start]) || char.IsPunctuation(span[start]))) {
+            start++;
+        }
+        while (end > start && (char.IsWhiteSpace(span[end - 1]) || char.IsPunctuation(span[end - 1]))) {
+            end--;
+        }
+        normalized = (start == 0 && end == span.Length) ? normalized : span.Slice(start, end - start).ToString();
         if (normalized.Length == 0) {
             return string.Empty;
         }
