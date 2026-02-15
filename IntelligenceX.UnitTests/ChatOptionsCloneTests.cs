@@ -126,11 +126,11 @@ public sealed class ChatOptionsCloneTests {
         }
 
         if (t == typeof(double)) {
-            return (double?)0.42;
+            return Nullable.GetUnderlyingType(propertyType) is null ? 0.42 : (double?)0.42;
         }
 
         if (t == typeof(long)) {
-            return (long?)1234L;
+            return Nullable.GetUnderlyingType(propertyType) is null ? 1234L : (long?)1234L;
         }
 
         if (t.IsEnum) {
