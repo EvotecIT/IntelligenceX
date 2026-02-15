@@ -35,16 +35,29 @@ internal sealed partial class ChatServiceSession {
         }
 
         var actions = ExtractPendingActions(text);
+        PendingAction[]? snapshotActions = null;
+        long snapshotTicks = 0;
+        var shouldRemoveSnapshot = false;
         lock (_toolRoutingContextLock) {
             if (actions.Count == 0) {
                 _pendingActionsByThreadId.Remove(normalizedThreadId);
                 _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
-                return;
+                shouldRemoveSnapshot = true;
+            } else {
+                snapshotActions = actions.ToArray();
+                snapshotTicks = DateTime.UtcNow.Ticks;
+                _pendingActionsByThreadId[normalizedThreadId] = snapshotActions;
+                _pendingActionsSeenUtcTicks[normalizedThreadId] = snapshotTicks;
+                TrimWeightedRoutingContextsNoLock();
             }
+        }
 
-            _pendingActionsByThreadId[normalizedThreadId] = actions.ToArray();
-            _pendingActionsSeenUtcTicks[normalizedThreadId] = DateTime.UtcNow.Ticks;
-            TrimWeightedRoutingContextsNoLock();
+        if (shouldRemoveSnapshot) {
+            RemovePendingActionsSnapshot(normalizedThreadId);
+            return;
+        }
+        if (snapshotActions is not null && snapshotActions.Length > 0 && snapshotTicks > 0) {
+            PersistPendingActionsSnapshot(normalizedThreadId, snapshotTicks, snapshotActions);
         }
     }
 
@@ -71,10 +84,23 @@ internal sealed partial class ChatServiceSession {
         PendingAction[]? actions;
         long ticks;
         lock (_toolRoutingContextLock) {
-            if (!_pendingActionsByThreadId.TryGetValue(normalizedThreadId, out actions) || actions is null || actions.Length == 0) {
+            _pendingActionsByThreadId.TryGetValue(normalizedThreadId, out actions);
+            ticks = _pendingActionsSeenUtcTicks.TryGetValue(normalizedThreadId, out var seen) ? seen : 0;
+        }
+
+        if (actions is null || actions.Length == 0) {
+            if (!TryLoadPendingActionsSnapshot(normalizedThreadId, out var persistedTicks, out var persistedActions)) {
                 return false;
             }
-            ticks = _pendingActionsSeenUtcTicks.TryGetValue(normalizedThreadId, out var seen) ? seen : 0;
+
+            actions = persistedActions;
+            ticks = persistedTicks;
+
+            lock (_toolRoutingContextLock) {
+                _pendingActionsByThreadId[normalizedThreadId] = actions;
+                _pendingActionsSeenUtcTicks[normalizedThreadId] = ticks;
+                TrimWeightedRoutingContextsNoLock();
+            }
         }
 
         if (ticks > 0) {
@@ -84,6 +110,7 @@ internal sealed partial class ChatServiceSession {
                     _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
                     TrimWeightedRoutingContextsNoLock();
                 }
+                RemovePendingActionsSnapshot(normalizedThreadId);
                 return false;
             }
             var age = DateTime.UtcNow - new DateTime(ticks, DateTimeKind.Utc);
@@ -93,6 +120,7 @@ internal sealed partial class ChatServiceSession {
                     _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
                     TrimWeightedRoutingContextsNoLock();
                 }
+                RemovePendingActionsSnapshot(normalizedThreadId);
                 return false;
             }
         }
@@ -110,6 +138,7 @@ internal sealed partial class ChatServiceSession {
             _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
             TrimWeightedRoutingContextsNoLock();
         }
+        RemovePendingActionsSnapshot(normalizedThreadId);
 
         var request = string.IsNullOrWhiteSpace(selected.Value.Request) ? selected.Value.Title : selected.Value.Request;
         if (string.IsNullOrWhiteSpace(request)) {

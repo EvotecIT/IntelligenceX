@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.Json;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
@@ -116,6 +117,43 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var expanded = Assert.IsType<string>(result);
 
         Assert.Equal(input, expanded);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_RehydratesPendingActionsAfterRestart() {
+        var storePath = Path.Combine(Path.GetTempPath(), $"ix-pending-actions-{Guid.NewGuid():N}.json");
+        try {
+            var threadId = "thread-001";
+            var assistantDraft = """
+                Pick one:
+
+                [Action]
+                ix:action:v1
+                id: act_001
+                title: Run forest probe
+                request: Run the forest-wide replication and LDAP diagnostics now.
+                reply: /act act_001
+                """;
+
+            var opts = new ServiceOptions { PendingActionsStorePath = storePath };
+            var session1 = new ChatServiceSession(opts, Stream.Null);
+            RememberPendingActionsMethod.Invoke(session1, new object?[] { threadId, assistantDraft });
+
+            // "Restart": new session instance with empty in-memory caches.
+            var session2 = new ChatServiceSession(opts, Stream.Null);
+            var expandedObj = ExpandContinuationUserRequestMethod.Invoke(session2, new object?[] { threadId, "/act act_001" });
+            var expanded = Assert.IsType<string>(expandedObj);
+
+            using var doc = JsonDocument.Parse(expanded);
+            var root = doc.RootElement;
+            Assert.True(root.TryGetProperty("ix_action_selection", out var selection));
+            Assert.Equal("act_001", selection.GetProperty("id").GetString());
+            Assert.Contains("forest-wide replication", selection.GetProperty("request").GetString(), StringComparison.OrdinalIgnoreCase);
+        } finally {
+            if (File.Exists(storePath)) {
+                File.Delete(storePath);
+            }
+        }
     }
 
     [Fact]

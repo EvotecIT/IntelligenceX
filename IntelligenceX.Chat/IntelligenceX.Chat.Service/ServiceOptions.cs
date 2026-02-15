@@ -38,6 +38,10 @@ internal sealed class ServiceOptions {
     public bool ExitOnDisconnect { get; set; }
     public int? ParentProcessId { get; set; }
 
+    // Optional override for where the chat service persists pending-action proposals (for /act <id> rehydration).
+    // When unset, the service uses a LocalAppData-based default path.
+    public string? PendingActionsStorePath { get; set; }
+
     public static ServiceOptions Parse(string[] args, out string? error) {
         error = null;
         var options = new ServiceOptions();
