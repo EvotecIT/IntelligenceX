@@ -4,16 +4,28 @@ Reference captures for onboarding "Configure" and "Verify" steps across CLI and 
 
 ## Web UI - Configure
 
-![Web Configure step](/assets/screenshots/web-configure-step.svg)
+<img src="/assets/screenshots/web-configure-step.svg"
+     alt="Web Configure step"
+     loading="lazy"
+     decoding="async" />
 
 ## Web UI - Verify
 
-![Web Verify step](/assets/screenshots/web-verify-step.svg)
+<img src="/assets/screenshots/web-verify-step.svg"
+     alt="Web Verify step"
+     loading="lazy"
+     decoding="async" />
 
 ## CLI Wizard - Configure
 
-![CLI Configure step](/assets/screenshots/cli-configure-step.svg)
+<img src="/assets/screenshots/cli-configure-step.svg"
+     alt="CLI Configure step"
+     loading="lazy"
+     decoding="async" />
 
 ## CLI Wizard - Verify
 
-![CLI Verify step](/assets/screenshots/cli-verify-step.svg)
+<img src="/assets/screenshots/cli-verify-step.svg"
+     alt="CLI Verify step"
+     loading="lazy"
+     decoding="async" />

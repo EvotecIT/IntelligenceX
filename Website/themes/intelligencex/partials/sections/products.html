@@ -24,11 +24,11 @@
                     <code>{{ item.install }}</code>
                 </div>
                 {{ end }}
-                <a href="{{ item.link }}" class="feature-link">Learn more &rarr;</a>
+                <a href="{{ item.link }}" class="feature-link">Learn about {{ item.title }} &rarr;</a>
             </div>
             {{ if item.screenshot }}
             <div class="product-card-image">
-                <img src="{{ item.screenshot }}" alt="{{ item.title }}" loading="lazy" />
+                <img src="{{ item.screenshot }}" alt="{{ item.title }}" loading="lazy" decoding="async" />
             </div>
             {{ end }}
         </div>
