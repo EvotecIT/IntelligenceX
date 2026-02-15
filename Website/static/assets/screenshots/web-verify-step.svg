@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675" role="img" aria-label="Web UI Verify step screenshot placeholder">
+  <rect width="1200" height="675" fill="#0b1220"/>
+  <rect x="40" y="40" width="1120" height="595" rx="16" fill="#0f1a2e" stroke="#2a3a5c" stroke-width="2"/>
+  <text x="90" y="130" fill="#e6edf7" font-family="Arial, sans-serif" font-size="44">Web UI - Verify</text>
+  <text x="90" y="190" fill="#9fb3d6" font-family="Arial, sans-serif" font-size="24">Placeholder image (replace with real capture)</text>
+  <rect x="90" y="240" width="1020" height="340" rx="12" fill="#0b1220" stroke="#2a3a5c" stroke-width="2"/>
+  <text x="120" y="310" fill="#9fb3d6" font-family="Arial, sans-serif" font-size="20">Expected: plan/apply results and verification status summary.</text>
+</svg>
+

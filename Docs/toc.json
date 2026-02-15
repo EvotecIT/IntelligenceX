@@ -9,6 +9,8 @@
       { "title": "Overview", "href": "/docs/reviewer/overview/" },
       { "title": "Understanding Reviewer Output", "href": "/docs/reviewer/review-output/" },
       { "title": "Onboarding Wizard", "href": "/docs/reviewer/onboarding-wizard/" },
+      { "title": "First PR Checklist", "href": "/docs/reviewer/first-pr-checklist/" },
+      { "title": "Onboarding Unification Tracker", "href": "/docs/reviewer/onboarding-unification-tracker/" },
       { "title": "Web Setup UI", "href": "/docs/reviewer/setup-web/" },
       { "title": "Web Onboarding Flow", "href": "/docs/reviewer/web-onboarding/" },
       { "title": "Configuration", "href": "/docs/reviewer/configuration/" },
@@ -48,6 +50,8 @@
       { "title": "Providers", "href": "/docs/library/providers/" },
       { "title": "Tool Calling", "href": "/docs/library/tools/" },
       { "title": "Tool Packs", "href": "/docs/library/tool-packs/" },
+      { "title": "Build & Publish (Draft)", "href": "/docs/library/build-publish/" },
+      { "title": "Plugin Rollout (Draft)", "href": "/docs/library/plugin-rollout-draft/" },
       { "title": "API Reference", "href": "/api/" }
     ]
   },
@@ -65,7 +69,8 @@
       { "title": "Troubleshooting", "href": "/docs/troubleshooting/" },
       { "title": "Screenshots (Planned)", "href": "/docs/screenshots/" },
       { "title": "Chat: Local Providers", "href": "/docs/apps/chat-local-providers/" },
-      { "title": "Windows Tray Chat (Planned)", "href": "/docs/apps/windows-tray-chat/" }
+      { "title": "Windows Tray Chat (Planned)", "href": "/docs/apps/windows-tray-chat/" },
+      { "title": "Agent Superpowers Backlog (Draft)", "href": "/docs/agent-superpowers-backlog/" }
     ]
   }
 ]

@@ -10,8 +10,8 @@ This starts a local web server and opens the wizard in your browser (http://127.
 
 ## Screenshots
 
-- Configure step: [Screenshot](../screenshots.md#web-ui---configure)
-- Verify step: [Screenshot](../screenshots.md#web-ui---verify)
+- Configure step: [Screenshot](/docs/screenshots/#web-ui---configure)
+- Verify step: [Screenshot](/docs/screenshots/#web-ui---verify)
 
 ## Quick flow
 

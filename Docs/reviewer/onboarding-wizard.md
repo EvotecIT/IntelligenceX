@@ -2,12 +2,12 @@
 
 The CLI wizard is the fastest way to set up the reviewer across one or more repositories.
 It runs locally, opens any needed browser approvals, and applies changes via PRs by default.
-After merging onboarding, run the [First PR Checklist](/Docs/reviewer/first-pr-checklist.md) on your next PR.
+After merging onboarding, run the [First PR Checklist](/docs/reviewer/first-pr-checklist/) on your next PR.
 
 ## Screenshots
 
-- Configure step: [Screenshot](../screenshots.md#cli-wizard---configure)
-- Verify step: [Screenshot](../screenshots.md#cli-wizard---verify)
+- Configure step: [Screenshot](/docs/screenshots/#cli-wizard---configure)
+- Verify step: [Screenshot](/docs/screenshots/#cli-wizard---verify)
 
 ## Quick start
 

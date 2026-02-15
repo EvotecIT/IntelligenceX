@@ -28,19 +28,6 @@
       "config": "./site.json"
     },
     {
-      "task": "verify",
-      "id": "verify-ci",
-      "dependsOn": "build-site",
-      "modes": ["ci"],
-      "config": "./site.json",
-      "baseline": "./.powerforge/verify-baseline.json",
-      "failOnNewWarnings": true,
-      "failOnNavLint": true,
-      "failOnThemeContract": true,
-      "warningPreviewCount": 10,
-      "errorPreviewCount": 10
-    },
-    {
       "task": "apidocs",
       "id": "build-apidocs",
       "dependsOn": ["build-library", "build-site"],
@@ -81,7 +68,7 @@
     },
     {
       "task": "verify",
-      "id": "verify-ci-final",
+      "id": "verify-ci",
       "dependsOn": "build-site-xref-refresh",
       "modes": ["ci"],
       "config": "./site.json",
@@ -95,7 +82,7 @@
     {
       "task": "llms",
       "id": "build-llms",
-      "dependsOn": "verify-ci-final",
+      "dependsOn": "verify-ci",
       "siteRoot": "./_site",
       "project": "../IntelligenceX/IntelligenceX.csproj",
       "apiIndex": "./_site/api/index.json",
@@ -155,7 +142,7 @@
       "baseline": "./.powerforge/audit-baseline.json",
       "failOnNewIssues": true,
       "maxTotalFiles": 800,
-      "ignoreNav": "sitemap/**",
+      "ignoreNav": "sitemap/**,search/**",
       "noDefaultIgnoreNav": true,
       "navSelector": "header nav.ix-nav",
       "navCanonicalPath": "index.html",
