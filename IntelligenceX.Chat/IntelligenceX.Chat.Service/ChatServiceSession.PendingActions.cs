@@ -13,7 +13,37 @@ internal sealed partial class ChatServiceSession {
     private const int MaxPendingActionAssistantContextChars = 4096;
     private static readonly char[] PendingActionConfirmationQuestionPunctuation = new[] { '?', '？', '¿', '؟' };
     private static readonly char[] PendingActionConfirmationDisqualifierPunctuation = new[] { ':', ';', '\uFF1A', '\uFF1B' }; // ： ；
+    private static readonly char[] PendingActionConfirmationStructuredDisqualifierChars =
+        new[] { '\\', '{', '}', '[', ']', '<', '>', '=' };
 
+    private static bool LooksLikeStructuredPendingActionConfirmationInput(string userText) {
+        // Confirmation is safety-sensitive. If the user message looks like a command/payload rather than
+        // an intentional "echo this phrase" response, do not treat it as confirmation.
+        //
+        // This is language-agnostic (structural/syntactic), and complements the exact-equality token matching.
+        var trimmed = (userText ?? string.Empty).Trim();
+        if (trimmed.Length == 0) {
+            return false;
+        }
+
+        if (trimmed.StartsWith("/", StringComparison.Ordinal) || trimmed.StartsWith("-", StringComparison.Ordinal)) {
+            return true;
+        }
+
+        if (trimmed.Contains("://", StringComparison.Ordinal)) {
+            return true;
+        }
+
+        if (trimmed.IndexOfAny(PendingActionConfirmationStructuredDisqualifierChars) >= 0) {
+            return true;
+        }
+
+        if (trimmed.Contains('\n', StringComparison.Ordinal) || trimmed.Contains('\r', StringComparison.Ordinal)) {
+            return true;
+        }
+
+        return false;
+    }
     private readonly record struct PendingAction(string Id, string Title, string Request);
 
     private void RememberPendingActions(string threadId, string assistantText) {
@@ -255,6 +285,7 @@ internal sealed partial class ChatServiceSession {
             && callToActionTokens is { Count: > 0 }
             && trimmed.IndexOfAny(PendingActionConfirmationQuestionPunctuation) < 0
             && trimmed.IndexOfAny(PendingActionConfirmationDisqualifierPunctuation) < 0
+            && !LooksLikeStructuredPendingActionConfirmationInput(trimmed)
             && UserMatchesPendingActionCallToActionTokens(trimmed, callToActionTokens)) {
             match = actions[0];
             return true;
