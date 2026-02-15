@@ -178,7 +178,8 @@ internal sealed partial class ChatServiceSession {
 
             if (look < maxLook) {
                 var ch = text[look];
-                if (ch == '{' || ch == '[' || char.IsDigit(ch)) {
+                // JSON-ish payloads are strong binding signals; avoid triggering on common numeric prose like "port: 80".
+                if (ch == '{' || ch == '[') {
                     return true;
                 }
             }

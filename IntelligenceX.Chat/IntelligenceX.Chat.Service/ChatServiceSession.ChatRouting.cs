@@ -31,7 +31,7 @@ internal sealed partial class ChatServiceSession {
             throw new ArgumentNullException(nameof(options));
         }
 
-        var copy = new ChatOptions(options);
+        var copy = options.Clone();
         if (newThreadOverride.HasValue) {
             copy.NewThread = newThreadOverride.Value;
         }
