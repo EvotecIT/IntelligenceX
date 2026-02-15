@@ -11,6 +11,22 @@ internal sealed partial class ChatServiceSession {
     private const int PendingActionStoreVersion = 1;
     private static readonly object PendingActionStoreLock = new();
 
+    private static bool TryGetUtcDateTimeFromTicks(long utcTicks, out DateTime value) {
+        value = default;
+        if (utcTicks <= 0) {
+            return false;
+        }
+        if (utcTicks < DateTime.MinValue.Ticks || utcTicks > DateTime.MaxValue.Ticks) {
+            return false;
+        }
+        try {
+            value = new DateTime(utcTicks, DateTimeKind.Utc);
+            return true;
+        } catch (ArgumentOutOfRangeException) {
+            return false;
+        }
+    }
+
     private sealed class PendingActionStoreDto {
         public int Version { get; set; } = PendingActionStoreVersion;
         public Dictionary<string, PendingActionStoreEntryDto> Threads { get; set; } = new(StringComparer.Ordinal);
@@ -102,13 +118,20 @@ internal sealed partial class ChatServiceSession {
             }
 
             seenUtcTicks = entry.SeenUtcTicks;
-            if (seenUtcTicks <= 0 || seenUtcTicks < DateTime.MinValue.Ticks || seenUtcTicks > DateTime.MaxValue.Ticks) {
+            if (!TryGetUtcDateTimeFromTicks(seenUtcTicks, out var seenUtc)) {
                 store.Threads.Remove(normalized);
                 WritePendingActionsStoreNoThrow(path, store);
                 return false;
             }
 
-            var age = DateTime.UtcNow - new DateTime(seenUtcTicks, DateTimeKind.Utc);
+            var now = DateTime.UtcNow;
+            if (seenUtc > now) {
+                store.Threads.Remove(normalized);
+                WritePendingActionsStoreNoThrow(path, store);
+                return false;
+            }
+
+            var age = now - seenUtc;
             if (age > PendingActionContextMaxAge) {
                 store.Threads.Remove(normalized);
                 WritePendingActionsStoreNoThrow(path, store);
@@ -163,6 +186,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static void WritePendingActionsStoreNoThrow(string path, PendingActionStoreDto store) {
+        string? tmp = null;
         try {
             if (string.IsNullOrWhiteSpace(path)) {
                 return;
@@ -174,17 +198,34 @@ internal sealed partial class ChatServiceSession {
             }
 
             var json = JsonSerializer.Serialize(store);
-            var tmp = path + ".tmp";
-            File.WriteAllText(tmp, json);
+            var fileName = Path.GetFileName(path);
+            var tmpName = $"{fileName}.{Guid.NewGuid():N}.tmp";
+            tmp = string.IsNullOrWhiteSpace(dir) ? tmpName : Path.Combine(dir!, tmpName);
+
+            // CreateNew avoids clobbering attacker-planted tmp files.
+            using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
+                using var writer = new StreamWriter(fs);
+                writer.Write(json);
+                writer.Flush();
+                fs.Flush(true);
+            }
 
             if (File.Exists(path)) {
                 // Atomic swap (best-effort) to avoid losing the store if we crash mid-write.
-                File.Replace(tmp, path, null);
+                File.Replace(tmp, path, null, ignoreMetadataErrors: true);
             } else {
                 File.Move(tmp, path);
             }
         } catch (Exception ex) {
             Trace.TraceWarning($"Pending action store write failed: {ex.GetType().Name}: {ex.Message}");
+        } finally {
+            if (!string.IsNullOrWhiteSpace(tmp) && File.Exists(tmp)) {
+                try {
+                    File.Delete(tmp);
+                } catch {
+                    // Ignore cleanup failures; store writes are best-effort.
+                }
+            }
         }
     }
 

@@ -157,6 +157,61 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExpandContinuationUserRequest_DoesNotThrowOnCorruptPendingActionsStore() {
+        var storePath = Path.Combine(Path.GetTempPath(), $"ix-pending-actions-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(storePath, "{ this is not valid json");
+
+            var opts = new ServiceOptions { PendingActionsStorePath = storePath };
+            var session = new ChatServiceSession(opts, Stream.Null);
+            var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act act_001" });
+            var expanded = Assert.IsType<string>(result);
+
+            Assert.Equal("/act act_001", expanded);
+        } finally {
+            if (File.Exists(storePath)) {
+                File.Delete(storePath);
+            }
+        }
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_PrunesPendingActionsWithInvalidTicks() {
+        var storePath = Path.Combine(Path.GetTempPath(), $"ix-pending-actions-{Guid.NewGuid():N}.json");
+        try {
+            var threadId = "thread-001";
+            var invalidTicks = DateTime.MaxValue.Ticks + 1;
+            var json = $$"""
+                {
+                  "Version": 1,
+                  "Threads": {
+                    "{{threadId}}": {
+                      "SeenUtcTicks": {{invalidTicks}},
+                      "Actions": [
+                        { "Id": "act_001", "Title": "T", "Request": "R" }
+                      ]
+                    }
+                  }
+                }
+                """;
+            File.WriteAllText(storePath, json);
+
+            var opts = new ServiceOptions { PendingActionsStorePath = storePath };
+            var session = new ChatServiceSession(opts, Stream.Null);
+            var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { threadId, "/act act_001" });
+            var expanded = Assert.IsType<string>(result);
+            Assert.Equal("/act act_001", expanded);
+
+            var updated = File.ReadAllText(storePath);
+            Assert.DoesNotContain(threadId, updated, StringComparison.Ordinal);
+        } finally {
+            if (File.Exists(storePath)) {
+                File.Delete(storePath);
+            }
+        }
+    }
+
+    [Fact]
     public void TrimWeightedRoutingContextsForTesting_PrefersMostRecentTicksAcrossContexts() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
 

@@ -104,7 +104,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (ticks > 0) {
-            if (ticks < DateTime.MinValue.Ticks || ticks > DateTime.MaxValue.Ticks) {
+            if (!TryGetUtcDateTimeFromTicks(ticks, out var seenUtc)) {
                 lock (_toolRoutingContextLock) {
                     _pendingActionsByThreadId.Remove(normalizedThreadId);
                     _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
@@ -113,7 +113,19 @@ internal sealed partial class ChatServiceSession {
                 RemovePendingActionsSnapshot(normalizedThreadId);
                 return false;
             }
-            var age = DateTime.UtcNow - new DateTime(ticks, DateTimeKind.Utc);
+
+            var now = DateTime.UtcNow;
+            if (seenUtc > now) {
+                lock (_toolRoutingContextLock) {
+                    _pendingActionsByThreadId.Remove(normalizedThreadId);
+                    _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
+                    TrimWeightedRoutingContextsNoLock();
+                }
+                RemovePendingActionsSnapshot(normalizedThreadId);
+                return false;
+            }
+
+            var age = now - seenUtc;
             if (age > PendingActionContextMaxAge) {
                 lock (_toolRoutingContextLock) {
                     _pendingActionsByThreadId.Remove(normalizedThreadId);
