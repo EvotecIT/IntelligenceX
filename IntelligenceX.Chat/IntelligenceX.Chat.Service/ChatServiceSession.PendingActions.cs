@@ -207,7 +207,12 @@ internal sealed partial class ChatServiceSession {
     private static bool TryMatchPendingAction(string userText, IReadOnlyList<PendingAction> actions, out PendingAction match) {
         match = default;
 
-        var normalized = (userText ?? string.Empty).Trim();
+        // Normalize once for all pending-action matching (explicit selection + ordinal + implicit confirm).
+        // FormKC helps keep behavior stable across Unicode presentation forms (e.g., fullwidth punctuation).
+        var normalized = (userText ?? string.Empty)
+            .Trim()
+            .Normalize(NormalizationForm.FormKC);
+
         if (normalized.Length == 0 || actions.Count == 0) {
             return false;
         }
@@ -271,7 +276,8 @@ internal sealed partial class ChatServiceSession {
         // Avoid accidentally consuming explicit commands or paths.
         if (raw.StartsWith("/", StringComparison.Ordinal)
             || raw.Contains('\\', StringComparison.Ordinal)
-            || raw.Contains(':', StringComparison.Ordinal)) {
+            || raw.Contains("://", StringComparison.Ordinal)
+            || LooksLikeWindowsDrivePath(raw)) {
             return false;
         }
 
@@ -293,6 +299,14 @@ internal sealed partial class ChatServiceSession {
 
         // High-precision allowlist to avoid running tools from benign short messages ("tomorrow", "wait", "thanks").
         return ImplicitSingleActionConfirmPhrases.Contains(normalized);
+    }
+
+    private static bool LooksLikeWindowsDrivePath(string text) {
+        // Common case: "C:\\Windows\\..." / "D:/logs/..."
+        return text is { Length: >= 3 }
+            && char.IsLetter(text[0])
+            && text[1] == ':'
+            && (text[2] == '\\' || text[2] == '/');
     }
 
     private static string CanonicalizeImplicitPendingActionConfirmationPhrase(string text) {

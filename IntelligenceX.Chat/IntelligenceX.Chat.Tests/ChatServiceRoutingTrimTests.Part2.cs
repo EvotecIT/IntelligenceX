@@ -143,6 +143,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Theory]
     [InlineData("ok")]
+    [InlineData("ok:")]
     [InlineData(" ok! ")]
     [InlineData("ok！")]
     [InlineData("ok。")]
