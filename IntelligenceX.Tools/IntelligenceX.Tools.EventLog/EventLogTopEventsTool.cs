@@ -102,7 +102,18 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
         // Note: tool arguments are untrusted; treat invalid types as "not provided" rather than throwing.
         var includeMessage = ToolArgs.GetBoolean(arguments, "include_message");
 
-        var sessionTimeoutMs = ToolArgs.ToPositiveInt32OrNull(arguments?.GetInt64("session_timeout_ms"), maxInclusive: MaxSessionTimeoutMs);
+        long? sessionTimeoutRaw = null;
+        if (arguments is not null && arguments.TryGetValue("session_timeout_ms", out var sessionTimeoutValue)) {
+            // Treat explicit null as "not provided".
+            if (sessionTimeoutValue is not null && sessionTimeoutValue.Kind != JsonValueKind.Null) {
+                if (sessionTimeoutValue.Kind != JsonValueKind.Number) {
+                    return ToolResponse.Error("invalid_argument", "session_timeout_ms must be a number of milliseconds.");
+                }
+                sessionTimeoutRaw = sessionTimeoutValue.AsInt64();
+            }
+        }
+
+        var sessionTimeoutMs = ToolArgs.ToPositiveInt32OrNull(sessionTimeoutRaw, maxInclusive: MaxSessionTimeoutMs);
         if (sessionTimeoutMs.HasValue && sessionTimeoutMs.Value < MinSessionTimeoutMs) {
             sessionTimeoutMs = MinSessionTimeoutMs;
         }
