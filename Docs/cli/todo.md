@@ -181,6 +181,24 @@ Useful options:
 - `--create-control-issue` to create a new control issue and auto-set `IX_TRIAGE_CONTROL_ISSUE`.
 - `--control-issue-title <text>` to customize the created control issue title.
 
+## Build project view checklist (maintainer assist)
+
+Generate a markdown checklist for recommended GitHub Project views and optionally post it to an issue.
+
+```bash
+intelligencex todo project-view-checklist \
+  --config artifacts/triage/ix-project-config.json \
+  --create-issue
+```
+
+Useful options:
+- `--owner <login>` and `--project <n>` to target project directly.
+- `--repo <owner/name>` for issue posting context.
+- `--out <path>` to choose checklist markdown output path.
+- `--print` to emit checklist markdown to stdout.
+- `--issue <n>` to upsert the checklist comment on an existing issue.
+- `--create-issue` and `--issue-title <text>` to create a dedicated checklist issue.
+
 ## GitHub Actions template
 
 A reusable scheduled workflow template is available at:
