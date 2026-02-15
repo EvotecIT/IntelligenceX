@@ -16,7 +16,7 @@ internal sealed partial class ReviewRunner {
     private sealed record OpenAiCompatibleRawResponse(HttpStatusCode StatusCode, string Body);
 
     private async Task RunOpenAiCompatiblePreflightAsync(TimeSpan timeout, CancellationToken cancellationToken) {
-        var endpoint = ResolveOpenAiCompatiblePreflightEndpoint(_settings.OpenAICompatibleBaseUrl, _settings.OpenAICompatibleAllowInsecureHttp);
+        var endpoint = ResolveOpenAiCompatiblePreflightEndpoint(_settings.OpenAICompatibleBaseUrl, _settings.OpenAICompatibleAllowInsecureHttp, _settings.OpenAICompatibleAllowInsecureHttpNonLoopback);
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(timeout);
@@ -91,7 +91,7 @@ internal sealed partial class ReviewRunner {
         if (string.IsNullOrWhiteSpace(_settings.Model)) {
             throw new InvalidOperationException("OpenAI-compatible provider requires review.model to be set.");
         }
-        var endpoint = ResolveOpenAiCompatibleEndpoint(_settings.OpenAICompatibleBaseUrl, _settings.OpenAICompatibleAllowInsecureHttp);
+        var endpoint = ResolveOpenAiCompatibleEndpoint(_settings.OpenAICompatibleBaseUrl, _settings.OpenAICompatibleAllowInsecureHttp, _settings.OpenAICompatibleAllowInsecureHttpNonLoopback);
         var apiKey = ResolveOpenAiCompatibleApiKey();
 
         var timeoutSeconds = Math.Max(1, _settings.OpenAICompatibleTimeoutSeconds);
@@ -183,7 +183,7 @@ internal sealed partial class ReviewRunner {
 
             await DrainOpenAiCompatibleBodyAsync(response, cancellationToken).ConfigureAwait(false);
             var next = ResolveRedirectUri(current, location);
-            ValidateOpenAiCompatibleRedirectUri(current, next, _settings.OpenAICompatibleAllowInsecureHttp);
+            ValidateOpenAiCompatibleRedirectUri(current, next, _settings.OpenAICompatibleAllowInsecureHttp, _settings.OpenAICompatibleAllowInsecureHttpNonLoopback);
 
             if (_settings.Diagnostics) {
                 Console.Error.WriteLine(
@@ -242,7 +242,7 @@ internal sealed partial class ReviewRunner {
         return new Uri(requestUri, location);
     }
 
-    private static void ValidateOpenAiCompatibleRedirectUri(Uri from, Uri to, bool allowInsecureHttp) {
+    private static void ValidateOpenAiCompatibleRedirectUri(Uri from, Uri to, bool allowInsecureHttp, bool allowInsecureHttpNonLoopback) {
         if (!to.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
             !to.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)) {
             throw new InvalidOperationException(
@@ -258,7 +258,10 @@ internal sealed partial class ReviewRunner {
 
         var fromIsHttps = from.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
         var toIsHttp = to.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase);
-        if (toIsHttp && !allowInsecureHttp) {
+        if (!toIsHttp) {
+            return;
+        }
+        if (!allowInsecureHttp) {
             // Prevent accidental scheme downgrade even on loopback unless explicitly allowed.
             if (fromIsHttps) {
                 throw new InvalidOperationException(
@@ -270,20 +273,16 @@ internal sealed partial class ReviewRunner {
                     "OpenAI-compatible redirect attempted to use http:// for a non-loopback host. " +
                     "Set review.openaiCompatible.allowInsecureHttp=true to override.");
             }
-        }
-
-        if (toIsHttp && allowInsecureHttp) {
             return;
         }
-
-        if (toIsHttp && !to.IsLoopback) {
+        if (!to.IsLoopback && !allowInsecureHttpNonLoopback) {
             throw new InvalidOperationException(
                 "OpenAI-compatible redirect attempted to use http:// for a non-loopback host. " +
-                "Set review.openaiCompatible.allowInsecureHttp=true to override.");
+                "Set review.openaiCompatible.allowInsecureHttpNonLoopback=true to acknowledge the risk.");
         }
     }
 
-    private static Uri ResolveOpenAiCompatibleBaseUri(string? baseUrl, bool allowInsecureHttp) {
+    private static Uri ResolveOpenAiCompatibleBaseUri(string? baseUrl, bool allowInsecureHttp, bool allowInsecureHttpNonLoopback) {
         var trimmed = (baseUrl ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(trimmed)) {
             throw new InvalidOperationException("OpenAI-compatible provider requires review.openaiCompatible.baseUrl.");
@@ -297,17 +296,23 @@ internal sealed partial class ReviewRunner {
                 $"OpenAI-compatible baseUrl must use http:// or https:// (got '{baseUri.Scheme}').");
         }
         if (baseUri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) &&
-            !allowInsecureHttp &&
             !baseUri.IsLoopback) {
-            throw new InvalidOperationException(
-                "OpenAI-compatible baseUrl must use https:// for non-loopback hosts. " +
-                "Set review.openaiCompatible.allowInsecureHttp=true (or OPENAI_COMPATIBLE_ALLOW_INSECURE_HTTP=1) to override.");
+            if (!allowInsecureHttp) {
+                throw new InvalidOperationException(
+                    "OpenAI-compatible baseUrl must use https:// for non-loopback hosts. " +
+                    "Set review.openaiCompatible.allowInsecureHttp=true (or OPENAI_COMPATIBLE_ALLOW_INSECURE_HTTP=1) to override.");
+            }
+            if (!allowInsecureHttpNonLoopback) {
+                throw new InvalidOperationException(
+                    "OpenAI-compatible baseUrl must use https:// for non-loopback hosts. " +
+                    "To override, set review.openaiCompatible.allowInsecureHttpNonLoopback=true (or OPENAI_COMPATIBLE_ALLOW_INSECURE_HTTP_NON_LOOPBACK=1).");
+            }
         }
         return baseUri;
     }
 
-    private static Uri ResolveOpenAiCompatibleEndpoint(string? baseUrl, bool allowInsecureHttp) {
-        var baseUri = ResolveOpenAiCompatibleBaseUri(baseUrl, allowInsecureHttp);
+    private static Uri ResolveOpenAiCompatibleEndpoint(string? baseUrl, bool allowInsecureHttp, bool allowInsecureHttpNonLoopback) {
+        var baseUri = ResolveOpenAiCompatibleBaseUri(baseUrl, allowInsecureHttp, allowInsecureHttpNonLoopback);
         var normalized = baseUri.ToString().TrimEnd('/');
         if (normalized.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)) {
             normalized += "/chat/completions";
@@ -320,8 +325,8 @@ internal sealed partial class ReviewRunner {
         return endpoint;
     }
 
-    private static Uri ResolveOpenAiCompatiblePreflightEndpoint(string? baseUrl, bool allowInsecureHttp) {
-        var baseUri = ResolveOpenAiCompatibleBaseUri(baseUrl, allowInsecureHttp);
+    private static Uri ResolveOpenAiCompatiblePreflightEndpoint(string? baseUrl, bool allowInsecureHttp, bool allowInsecureHttpNonLoopback) {
+        var baseUri = ResolveOpenAiCompatibleBaseUri(baseUrl, allowInsecureHttp, allowInsecureHttpNonLoopback);
         // Probe authority only; avoid provider-specific endpoints (some gateways block /v1/models, etc.).
         return new Uri(baseUri, "/");
     }

@@ -344,6 +344,7 @@ internal static class ReviewConfigLoader {
         settings.OpenAICompatibleApiKey = openAi.GetString("apiKey") ?? settings.OpenAICompatibleApiKey;
         settings.OpenAICompatibleTimeoutSeconds = ReadInt(openAi, "timeoutSeconds", settings.OpenAICompatibleTimeoutSeconds);
         settings.OpenAICompatibleAllowInsecureHttp = ReadBool(openAi, "allowInsecureHttp", settings.OpenAICompatibleAllowInsecureHttp);
+        settings.OpenAICompatibleAllowInsecureHttpNonLoopback = ReadBool(openAi, "allowInsecureHttpNonLoopback", settings.OpenAICompatibleAllowInsecureHttpNonLoopback);
         settings.OpenAICompatibleDropAuthorizationOnRedirect = ReadBool(openAi, "dropAuthorizationOnRedirect", settings.OpenAICompatibleDropAuthorizationOnRedirect);
     }
 

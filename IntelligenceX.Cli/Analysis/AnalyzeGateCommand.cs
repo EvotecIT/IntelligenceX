@@ -322,7 +322,11 @@ internal static partial class AnalyzeGateCommand {
                         }
                         continue;
                     }
-                    if (baseline.WindowLines > 0 && baseline.WindowLines != current.WindowLines) {
+                    var isWindowMismatch =
+                        (baseline.WindowLines > 0 && current.WindowLines > 0 && baseline.WindowLines != current.WindowLines) ||
+                        (baseline.WindowLines == 0 && current.WindowLines > 0) ||
+                        (baseline.WindowLines > 0 && current.WindowLines == 0);
+                    if (isWindowMismatch) {
                         windowMismatch++;
                         Console.WriteLine(
                             $"Static analysis duplication delta gate: unavailable (baseline overall snapshot window mismatch for {current.RuleId} scope={current.Scope}: baseline={baseline.WindowLines} current={current.WindowLines}).");
@@ -376,7 +380,11 @@ internal static partial class AnalyzeGateCommand {
                         missingBaseline++;
                         continue;
                     }
-                    if (baseline.WindowLines > 0 && current.WindowLines > 0 && baseline.WindowLines != current.WindowLines) {
+                    var isWindowMismatch =
+                        (baseline.WindowLines > 0 && current.WindowLines > 0 && baseline.WindowLines != current.WindowLines) ||
+                        (baseline.WindowLines == 0 && current.WindowLines > 0) ||
+                        (baseline.WindowLines > 0 && current.WindowLines == 0);
+                    if (isWindowMismatch) {
                         windowMismatch++;
                         Console.WriteLine(
                             $"Static analysis duplication file delta gate: unavailable (baseline window mismatch for {current.RuleId} scope={current.Scope} file={current.Path}: baseline={baseline.WindowLines} current={current.WindowLines}).");

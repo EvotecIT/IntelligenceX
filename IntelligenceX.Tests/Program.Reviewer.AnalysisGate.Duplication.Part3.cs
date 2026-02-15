@@ -397,5 +397,86 @@ internal static partial class Program {
             }
         }
     }
+
+    private static void TestAnalyzeGateDuplicationFileDeltaBaselineWindowMissingIsUnavailable() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-analyze-gate-dup-file-window-missing-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var previousWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        try {
+            SeedMinimalGateCatalog(temp);
+            Directory.CreateDirectory(Path.Combine(temp, "artifacts"));
+            Directory.CreateDirectory(Path.Combine(temp, ".intelligencex"));
+
+            var findingsPath = Path.Combine(temp, "artifacts", "intelligencex.findings.json");
+            var metricsPath = Path.Combine(temp, "artifacts", "intelligencex.duplication.json");
+            var baselinePath = Path.Combine(temp, ".intelligencex", "analysis-baseline.json");
+
+            WriteEmptyFindings(findingsPath);
+
+            // Legacy baseline fingerprint without windowLines token (WindowLines=0).
+            File.WriteAllText(baselinePath, """
+{
+  "schema": "intelligencex.analysis-baseline.v1",
+  "items": [
+    {
+      "path": ".intelligencex/duplication-file",
+      "line": 0,
+      "severity": "info",
+      "ruleId": "IXDUP001",
+      "tool": "IntelligenceX.Maintainability",
+      "fingerprint": "IXDUP001:file:src/test.cs:10:100"
+    }
+  ]
+}
+""");
+
+            // Current metrics include an explicit window size.
+            WriteDuplicationMetrics(
+                metricsPath,
+                duplicatedPercent: 12,
+                duplicatedLines: 12,
+                significantLines: 100,
+                firstLine: 12,
+                fingerprint: "ixdup-fp-file-window-current",
+                findingPath: "src/test.cs",
+                windowLines: 9);
+
+            var configDeltaPath = Path.Combine(temp, ".intelligencex", "reviewer-delta.json");
+            File.WriteAllText(configDeltaPath, """
+{
+  "analysis": {
+    "enabled": true,
+    "packs": ["all-50"],
+    "gate": {
+      "enabled": true,
+      "baselinePath": ".intelligencex/analysis-baseline.json",
+      "failOnUnavailable": true,
+      "duplication": {
+        "enabled": true,
+        "metricsPath": "artifacts/intelligencex.duplication.json",
+        "ruleIds": ["IXDUP001"],
+        "maxFilePercentIncrease": 1,
+        "failOnUnavailable": true
+      }
+    },
+    "results": { "inputs": ["artifacts/intelligencex.findings.json"] }
+  }
+}
+""");
+
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", temp);
+            var deltaExit = IntelligenceX.Cli.Analysis.AnalyzeRunner.RunAsync(new[] {
+                "gate",
+                "--workspace", temp,
+                "--config", configDeltaPath
+            }).GetAwaiter().GetResult();
+            AssertEqual(2, deltaExit, "analyze gate file delta baseline window missing unavailable");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_WORKSPACE", previousWorkspace);
+            if (Directory.Exists(temp)) {
+                Directory.Delete(temp, true);
+            }
+        }
+    }
 }
 #endif

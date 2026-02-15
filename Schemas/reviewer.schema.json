@@ -74,6 +74,7 @@
             "apiKeyEnv": { "type": "string" },
             "apiKey": { "type": "string" },
             "allowInsecureHttp": { "type": "boolean" },
+            "allowInsecureHttpNonLoopback": { "type": "boolean" },
             "dropAuthorizationOnRedirect": { "type": "boolean" },
             "timeoutSeconds": { "type": "integer", "minimum": 1 }
           }
@@ -86,6 +87,7 @@
             "apiKeyEnv": { "type": "string" },
             "apiKey": { "type": "string" },
             "allowInsecureHttp": { "type": "boolean" },
+            "allowInsecureHttpNonLoopback": { "type": "boolean" },
             "dropAuthorizationOnRedirect": { "type": "boolean" },
             "timeoutSeconds": { "type": "integer", "minimum": 1 }
           }

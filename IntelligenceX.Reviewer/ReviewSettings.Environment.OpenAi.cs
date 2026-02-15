@@ -53,6 +53,13 @@ internal sealed partial class ReviewSettings {
             settings.OpenAICompatibleAllowInsecureHttp =
                 ParseBoolean(openAiCompatibleAllowInsecure, settings.OpenAICompatibleAllowInsecureHttp);
         }
+        var openAiCompatibleAllowInsecureNonLoopback = GetInput(
+            "openai_compatible_allow_insecure_http_non_loopback",
+            "OPENAI_COMPATIBLE_ALLOW_INSECURE_HTTP_NON_LOOPBACK");
+        if (!string.IsNullOrWhiteSpace(openAiCompatibleAllowInsecureNonLoopback)) {
+            settings.OpenAICompatibleAllowInsecureHttpNonLoopback =
+                ParseBoolean(openAiCompatibleAllowInsecureNonLoopback, settings.OpenAICompatibleAllowInsecureHttpNonLoopback);
+        }
         var openAiCompatibleDropAuthOnRedirect = GetInput(
             "openai_compatible_drop_authorization_on_redirect",
             "OPENAI_COMPATIBLE_DROP_AUTHORIZATION_ON_REDIRECT");

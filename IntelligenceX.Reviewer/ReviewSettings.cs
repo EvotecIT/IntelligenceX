@@ -130,6 +130,12 @@ internal sealed partial class ReviewSettings {
     /// </summary>
     public bool OpenAICompatibleAllowInsecureHttp { get; set; }
     /// <summary>
+    /// When true, allows non-loopback http:// base URLs for the OpenAI-compatible provider, but only when
+    /// <see cref="OpenAICompatibleAllowInsecureHttp"/> is also enabled. This is strongly discouraged because
+    /// bearer tokens may be sent in plaintext.
+    /// </summary>
+    public bool OpenAICompatibleAllowInsecureHttpNonLoopback { get; set; }
+    /// <summary>
     /// When true, drop the Authorization header when following redirects for the OpenAI-compatible provider.
     /// Defaults to false since cross-host redirects are blocked; keeping auth enables common reverse-proxy setups.
     /// </summary>
