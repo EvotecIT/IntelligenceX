@@ -132,6 +132,16 @@ internal static partial class Program {
         AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("Copilot", out var copilotMixedCase), "provider copilot mixed case alias");
         AssertEqual(ReviewProvider.Copilot, copilotMixedCase, "provider copilot mixed case value");
 
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("openai-compatible", out var openaiCompat),
+            "provider openai-compatible alias");
+        AssertEqual(ReviewProvider.OpenAICompatible, openaiCompat, "provider openai-compatible value");
+
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("ollama", out var ollama), "provider ollama alias");
+        AssertEqual(ReviewProvider.OpenAICompatible, ollama, "provider ollama value");
+
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("openrouter", out var openrouter), "provider openrouter alias");
+        AssertEqual(ReviewProvider.OpenAICompatible, openrouter, "provider openrouter value");
+
         AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias(null, out _), "provider null alias unsupported");
         AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias("", out _), "provider empty alias unsupported");
         AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias("   ", out _), "provider whitespace alias unsupported");
@@ -152,6 +162,13 @@ internal static partial class Program {
         AssertEqual(false, copilot.RequiresOpenAiAuthStore, "copilot auth");
         AssertEqual(true, copilot.SupportsStreaming, "copilot streaming");
         AssertEqual(true, copilot.MaxRecommendedRetryCount > 0, "copilot retry limit");
+
+        var compatible = ReviewProviderContracts.Get(ReviewProvider.OpenAICompatible);
+        AssertEqual(false, compatible.SupportsUsageApi, "openai-compatible usage api");
+        AssertEqual(false, compatible.SupportsReasoningControls, "openai-compatible reasoning");
+        AssertEqual(false, compatible.RequiresOpenAiAuthStore, "openai-compatible auth");
+        AssertEqual(false, compatible.SupportsStreaming, "openai-compatible streaming");
+        AssertEqual(true, compatible.MaxRecommendedRetryCount > 0, "openai-compatible retry limit");
 
         AssertThrows<NotSupportedException>(() => ReviewProviderContracts.Get((ReviewProvider)999), "unknown provider contract");
     }
@@ -191,6 +208,228 @@ internal static partial class Program {
         }
     }
 
+
+
+    private static void TestReviewOpenAiCompatibleApiKeyEnvWhitespaceFailsFast() {
+        var envName = "IX_OPENAI_COMPAT_KEY_TEST";
+        var previous = Environment.GetEnvironmentVariable(envName);
+        var previousCompat = Environment.GetEnvironmentVariable("OPENAI_COMPATIBLE_API_KEY");
+        try {
+            Environment.SetEnvironmentVariable(envName, "   ");
+            Environment.SetEnvironmentVariable("OPENAI_COMPATIBLE_API_KEY", null);
+
+            var settings = new ReviewSettings {
+                Provider = ReviewProvider.OpenAICompatible,
+                ProviderHealthChecks = false,
+                Preflight = false,
+                Model = "test-model",
+                OpenAICompatibleBaseUrl = "http://127.0.0.1:12345",
+                OpenAICompatibleApiKeyEnv = envName,
+                OpenAICompatibleApiKey = string.Empty,
+                OpenAICompatibleTimeoutSeconds = 10,
+                RetryCount = 1,
+                RetryDelaySeconds = 1,
+                RetryMaxDelaySeconds = 1,
+                FailOpen = false,
+                Diagnostics = false
+            };
+
+            try {
+                var runner = new ReviewRunner(settings);
+                runner.RunAsync("hi", onPartial: null, updateInterval: null, CancellationToken.None)
+                    .GetAwaiter()
+                    .GetResult();
+                AssertEqual(true, false, "openai-compatible should throw when apiKeyEnv resolves to whitespace");
+            } catch (InvalidOperationException ex) {
+                AssertContainsText(ex.Message, envName, "openai-compatible api key error mentions env var name");
+                AssertContainsText(ex.Message, "empty", "openai-compatible api key error indicates empty value");
+            }
+        } finally {
+            Environment.SetEnvironmentVariable(envName, previous);
+            Environment.SetEnvironmentVariable("OPENAI_COMPATIBLE_API_KEY", previousCompat);
+        }
+    }
+    private static void TestReviewOpenAiCompatiblePreflightTreats405AsReachable() {
+        using var server = new OpenAiCompatibleTestServer((method, path, _, _) => {
+            if (method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/", StringComparison.OrdinalIgnoreCase)) {
+                return (405, "Method Not Allowed", "{\"error\":\"nope\"}", null);
+            }
+            if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/chat/completions", StringComparison.OrdinalIgnoreCase)) {
+                return (200, "OK", "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}", null);
+            }
+            return (404, "Not Found", "{}", null);
+        });
+
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAICompatible,
+            ProviderHealthChecks = true,
+            Preflight = false,
+            Model = "test-model",
+            OpenAICompatibleBaseUrl = server.BaseUri.ToString(),
+            OpenAICompatibleApiKey = "test",
+            OpenAICompatibleTimeoutSeconds = 10,
+            RetryCount = 1,
+            RetryDelaySeconds = 1,
+            RetryMaxDelaySeconds = 1,
+            FailOpen = false,
+            Diagnostics = false
+        };
+
+        var runner = new ReviewRunner(settings);
+        var result = runner.RunAsync("hi", onPartial: null, updateInterval: null, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        AssertEqual("ok", result, "openai-compatible preflight treats 405 as reachable");
+    }
+
+    private static void TestReviewOpenAiCompatibleFollowsRedirects() {
+        using var server = new OpenAiCompatibleTestServer((method, path, body, _) => {
+            if (method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/", StringComparison.OrdinalIgnoreCase)) {
+                return (302, "Found", "{}", new Dictionary<string, string> {
+                    ["Location"] = "/preflight-redirected"
+                });
+            }
+            if (method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/preflight-redirected", StringComparison.OrdinalIgnoreCase)) {
+                return (405, "Method Not Allowed", "{\"error\":\"nope\"}", null);
+            }
+
+            if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/chat/completions", StringComparison.OrdinalIgnoreCase)) {
+                return (302, "Found", "{}", new Dictionary<string, string> {
+                    ["Location"] = "/v1/chat/completions-redirected"
+                });
+            }
+            if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/chat/completions-redirected", StringComparison.OrdinalIgnoreCase)) {
+                // Ensure redirect replays the POST body (gateways commonly redirect with 302 and still expect POST).
+                if (string.IsNullOrWhiteSpace(body)) {
+                    return (400, "Bad Request", "{\"error\":\"expected POST body\"}", null);
+                }
+                return (200, "OK", "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}", null);
+            }
+
+            return (404, "Not Found", "{}", null);
+        });
+
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAICompatible,
+            ProviderHealthChecks = true,
+            Preflight = false,
+            Model = "test-model",
+            OpenAICompatibleBaseUrl = server.BaseUri.ToString(),
+            OpenAICompatibleApiKey = "test",
+            OpenAICompatibleTimeoutSeconds = 10,
+            RetryCount = 1,
+            RetryDelaySeconds = 1,
+            RetryMaxDelaySeconds = 1,
+            FailOpen = false,
+            Diagnostics = false
+        };
+
+        var runner = new ReviewRunner(settings);
+        var result = runner.RunAsync("hi", onPartial: null, updateInterval: null, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        AssertEqual("ok", result, "openai-compatible follows redirects for preflight and request");
+    }
+
+    private static void TestReviewOpenAiCompatibleRedirect303SwitchesToGet() {
+        using var server = new OpenAiCompatibleTestServer((method, path, body, _) => {
+            if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/chat/completions", StringComparison.OrdinalIgnoreCase)) {
+                return (303, "See Other", "{}", new Dictionary<string, string> {
+                    ["Location"] = "/v1/chat/completions-redirected"
+                });
+            }
+            if (method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/chat/completions-redirected", StringComparison.OrdinalIgnoreCase)) {
+                // Ensure we did not forward the original POST body.
+                if (!string.IsNullOrEmpty(body)) {
+                    return (400, "Bad Request", "{\"error\":\"expected empty body\"}", null);
+                }
+                return (200, "OK", "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}", null);
+            }
+
+            return (404, "Not Found", "{}", null);
+        });
+
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAICompatible,
+            ProviderHealthChecks = true,
+            Preflight = false,
+            Model = "test-model",
+            OpenAICompatibleBaseUrl = server.BaseUri.ToString(),
+            OpenAICompatibleApiKey = "test",
+            OpenAICompatibleTimeoutSeconds = 10,
+            RetryCount = 1,
+            RetryDelaySeconds = 1,
+            RetryMaxDelaySeconds = 1,
+            FailOpen = false,
+            Diagnostics = false
+        };
+
+        var runner = new ReviewRunner(settings);
+        var result = runner.RunAsync("hi", onPartial: null, updateInterval: null, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        AssertEqual("ok", result, "openai-compatible 303 redirect switches POST to GET");
+    }
+
+
+    private static void TestReviewOpenAiCompatibleRedirect303KeepsGetForRedirectChain() {
+        using var server = new OpenAiCompatibleTestServer((method, path, body, _) => {
+            if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/chat/completions", StringComparison.OrdinalIgnoreCase)) {
+                return (303, "See Other", "{}", new Dictionary<string, string> {
+                    ["Location"] = "/v1/chat/completions-redirected"
+                });
+            }
+            if (method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/chat/completions-redirected", StringComparison.OrdinalIgnoreCase)) {
+                return (302, "Found", "{}", new Dictionary<string, string> {
+                    ["Location"] = "/v1/chat/completions-final"
+                });
+            }
+            if (method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/chat/completions-final", StringComparison.OrdinalIgnoreCase)) {
+                // After a 303, the entire redirect chain must stay GET and never replay the original POST body.
+                if (!string.IsNullOrEmpty(body)) {
+                    return (400, "Bad Request", "{\"error\":\"expected empty body\"}", null);
+                }
+                return (200, "OK", "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}", null);
+            }
+            if (method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                path.Equals("/v1/chat/completions-final", StringComparison.OrdinalIgnoreCase)) {
+                return (400, "Bad Request", "{\"error\":\"unexpected POST after 303\"}", null);
+            }
+            return (400, "Bad Request", "{\"error\":\"unexpected request\"}", null);
+        });
+
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAICompatible,
+            ProviderHealthChecks = true,
+            Preflight = false,
+            Model = "test-model",
+            OpenAICompatibleBaseUrl = server.BaseUri.ToString(),
+            OpenAICompatibleApiKey = "test",
+            OpenAICompatibleTimeoutSeconds = 10,
+            RetryCount = 1,
+            RetryDelaySeconds = 1,
+            RetryMaxDelaySeconds = 1,
+            FailOpen = false,
+            Diagnostics = false
+        };
+
+        var runner = new ReviewRunner(settings);
+        var result = runner.RunAsync("hi", onPartial: null, updateInterval: null, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        AssertEqual("ok", result, "openai-compatible 303 keeps GET for entire redirect chain");
+    }
     private static void TestReviewConfigLoaderReadsOpenAiAccountRotationCamelCase() {
         var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
         var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-rotation-{Guid.NewGuid():N}.json");

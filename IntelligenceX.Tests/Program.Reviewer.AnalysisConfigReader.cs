@@ -90,5 +90,26 @@ internal static partial class Program {
 
         AssertEqual(2.0, settings.Gate.Duplication.MaxOverallPercentIncrease, "analysis config duplication maxOverallPercentIncrease applied");
     }
+
+    private static void TestAnalysisConfigReaderReadsDuplicationMaxFilePercentIncrease() {
+        var root = JsonLite.Parse("""
+{
+  "analysis": {
+    "enabled": true,
+    "gate": {
+      "duplication": {
+        "maxFilePercentIncrease": 3
+      }
+    }
+  }
+}
+""")?.AsObject();
+        AssertNotNull(root, "analysis config duplication maxFilePercentIncrease parse root");
+
+        var settings = new AnalysisSettings();
+        AnalysisConfigReader.Apply(root!, reviewObj: null, settings);
+
+        AssertEqual(3.0, settings.Gate.Duplication.MaxFilePercentIncrease, "analysis config duplication maxFilePercentIncrease applied");
+    }
 }
 #endif

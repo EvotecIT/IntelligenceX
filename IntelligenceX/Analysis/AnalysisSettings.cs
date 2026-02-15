@@ -177,6 +177,11 @@ public sealed class AnalysisGateDuplicationSettings {
     /// </summary>
     public double? MaxFilePercent { get; set; }
     /// <summary>
+    /// Optional allowed per-file duplication increase (in percentage points, 0-100) compared to the baseline file snapshot.
+    /// Requires <c>analysis.gate.baselinePath</c> to be configured and present.
+    /// </summary>
+    public double? MaxFilePercentIncrease { get; set; }
+    /// <summary>
     /// Optional overall duplication threshold (0-100) across all significant lines.
     /// </summary>
     public double? MaxOverallPercent { get; set; }

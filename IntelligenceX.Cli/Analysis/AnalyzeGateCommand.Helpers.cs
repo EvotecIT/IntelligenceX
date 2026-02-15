@@ -105,6 +105,7 @@ internal static partial class AnalyzeGateCommand {
 
         var violations = new List<AnalysisFinding>();
         var overallSnapshots = new List<DuplicationOverallSnapshot>();
+        var fileSnapshots = new List<DuplicationFileSnapshot>();
         foreach (var rule in selectedRules) {
             var ruleId = rule.RuleId.Trim();
             var tool = string.IsNullOrWhiteSpace(rule.Tool) ? "IntelligenceX.Maintainability" : rule.Tool.Trim();
@@ -113,6 +114,32 @@ internal static partial class AnalyzeGateCommand {
                 .Where(file => !useChangedFileScope || changedPaths.Contains(NormalizeChangedPath(file.Path)))
                 .ToList();
             foreach (var file in files) {
+                // Normalize deterministically so baseline snapshot matching and file-delta keys don't depend on how the analyzer emits paths.
+                var normalizedPath = AnalyzeGateBaseline.NormalizeDuplicationPathForKey(file.Path);
+                if (string.IsNullOrWhiteSpace(normalizedPath)) {
+                    normalizedPath = (file.Path ?? string.Empty).Trim().Replace('\\', '/');
+                }
+
+                if (file.SignificantLines > 0) {
+                    var snapshotFingerprint = BuildDuplicationFileSnapshotFingerprint(
+                        ruleId,
+                        normalizedPath,
+                        file.DuplicatedLines,
+                        file.SignificantLines,
+                        rule.WindowLines,
+                        effectiveScope);
+                    fileSnapshots.Add(new DuplicationFileSnapshot(
+                        RuleId: ruleId,
+                        Tool: tool,
+                        Scope: effectiveScope,
+                        Path: normalizedPath,
+                        SignificantLines: file.SignificantLines,
+                        DuplicatedLines: file.DuplicatedLines,
+                        DuplicatedPercent: file.DuplicatedPercent,
+                        WindowLines: rule.WindowLines,
+                        Fingerprint: snapshotFingerprint));
+                }
+
                 var fileThreshold = duplication.MaxFilePercent ??
                                     file.ConfiguredMaxPercent ??
                                     rule.ConfiguredMaxPercent;
@@ -123,7 +150,7 @@ internal static partial class AnalyzeGateCommand {
                     continue;
                 }
 
-                var path = file.Path.Replace('\\', '/');
+                var path = normalizedPath;
                 var line = file.FirstDuplicatedLine > 0 ? file.FirstDuplicatedLine : 1;
                 var fingerprint = !string.IsNullOrWhiteSpace(file.Fingerprint)
                     ? file.Fingerprint
@@ -164,7 +191,8 @@ internal static partial class AnalyzeGateCommand {
             }
         }
 
-        return DuplicationGateEvaluation.WithData(metricsPath, selectedRules.Count, violations, overallSnapshots, effectiveScope);
+        return DuplicationGateEvaluation.WithData(metricsPath, selectedRules.Count, violations, overallSnapshots, fileSnapshots,
+            effectiveScope);
     }
 
     private static int ResolveUnavailableExit(AnalysisSettings settings, bool findingsRequireBaseline,
@@ -199,6 +227,18 @@ internal static partial class AnalyzeGateCommand {
         };
     }
 
+    private static string BuildDuplicationFileSnapshotFingerprint(string ruleId, string path, int duplicatedLines, int significantLines,
+        int windowLines, string scope) {
+        // Encode the path so the fingerprint remains unambiguous when ':' appears in file names.
+        var normalizedPath = AnalyzeGateBaseline.NormalizeDuplicationPathForKey(path);
+        if (string.IsNullOrWhiteSpace(normalizedPath)) {
+            normalizedPath = (path ?? string.Empty).Trim().Replace('\\', '/');
+        }
+        var encodedPath = Uri.EscapeDataString(normalizedPath);
+        var scopeSuffix = scope == "changed-files" ? ":scope:changed-files" : string.Empty;
+        return $"{ruleId}:file-uri:{encodedPath}:{duplicatedLines}:{significantLines}:{windowLines}{scopeSuffix}";
+    }
+
     private static HashSet<string> BuildChangedPathSet(IReadOnlyList<PullRequestFile> files) {
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in files ?? Array.Empty<PullRequestFile>()) {
@@ -211,11 +251,31 @@ internal static partial class AnalyzeGateCommand {
     }
 
     private static string NormalizeChangedPath(string path) {
-        var normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
+        var normalized = AnalyzeGateBaseline.NormalizeDuplicationPathForKey(path);
+        if (!string.IsNullOrWhiteSpace(normalized)) {
+            return normalized;
+        }
+        normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
         while (normalized.StartsWith("./", StringComparison.Ordinal)) {
             normalized = normalized.Substring(2);
         }
         return normalized;
+    }
+
+    private static double ClampPercentIncrease(double value, string settingName) {
+        if (double.IsNaN(value) || double.IsInfinity(value)) {
+            Console.WriteLine($"Static analysis duplication delta gate: invalid {settingName}={value}; clamped to 0.");
+            return 0;
+        }
+        if (value < 0) {
+            Console.WriteLine($"Static analysis duplication delta gate: invalid {settingName}={value}; clamped to 0.");
+            return 0;
+        }
+        if (value > 100) {
+            Console.WriteLine($"Static analysis duplication delta gate: invalid {settingName}={value}; clamped to 100.");
+            return 100;
+        }
+        return value;
     }
 
     private static string FormatPercent(double value) {
@@ -522,6 +582,7 @@ internal static partial class AnalyzeGateCommand {
         int RulesEvaluated,
         IReadOnlyList<AnalysisFinding> Violations,
         IReadOnlyList<DuplicationOverallSnapshot> OverallSnapshots,
+        IReadOnlyList<DuplicationFileSnapshot> FileSnapshots,
         string Scope,
         string? UnavailableReason) {
         public static DuplicationGateEvaluation Disabled => new(
@@ -530,17 +591,22 @@ internal static partial class AnalyzeGateCommand {
             RulesEvaluated: 0,
             Violations: Array.Empty<AnalysisFinding>(),
             OverallSnapshots: Array.Empty<DuplicationOverallSnapshot>(),
+            FileSnapshots: Array.Empty<DuplicationFileSnapshot>(),
             Scope: "changed-files",
             UnavailableReason: null);
 
         public static DuplicationGateEvaluation WithData(string metricsPath, int rulesEvaluated,
-            IReadOnlyList<AnalysisFinding> violations, IReadOnlyList<DuplicationOverallSnapshot> overallSnapshots, string scope) {
+            IReadOnlyList<AnalysisFinding> violations,
+            IReadOnlyList<DuplicationOverallSnapshot> overallSnapshots,
+            IReadOnlyList<DuplicationFileSnapshot> fileSnapshots,
+            string scope) {
             return new DuplicationGateEvaluation(
                 Available: true,
                 MetricsPath: metricsPath,
                 RulesEvaluated: rulesEvaluated,
                 Violations: violations ?? Array.Empty<AnalysisFinding>(),
                 OverallSnapshots: overallSnapshots ?? Array.Empty<DuplicationOverallSnapshot>(),
+                FileSnapshots: fileSnapshots ?? Array.Empty<DuplicationFileSnapshot>(),
                 Scope: scope,
                 UnavailableReason: null);
         }
@@ -552,6 +618,7 @@ internal static partial class AnalyzeGateCommand {
                 RulesEvaluated: 0,
                 Violations: Array.Empty<AnalysisFinding>(),
                 OverallSnapshots: Array.Empty<DuplicationOverallSnapshot>(),
+                FileSnapshots: Array.Empty<DuplicationFileSnapshot>(),
                 Scope: "changed-files",
                 UnavailableReason: reason);
         }
@@ -561,6 +628,17 @@ internal static partial class AnalyzeGateCommand {
         string RuleId,
         string Tool,
         string Scope,
+        int SignificantLines,
+        int DuplicatedLines,
+        double DuplicatedPercent,
+        int WindowLines,
+        string Fingerprint);
+
+    private sealed record DuplicationFileSnapshot(
+        string RuleId,
+        string Tool,
+        string Scope,
+        string Path,
         int SignificantLines,
         int DuplicatedLines,
         double DuplicatedPercent,

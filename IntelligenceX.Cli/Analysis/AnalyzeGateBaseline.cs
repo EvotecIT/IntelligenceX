@@ -105,6 +105,9 @@ internal static class AnalyzeGateBaseline {
         }
 
         foreach (var item in items) {
+            if (item is null) {
+                continue;
+            }
             var obj = item.AsObject();
             if (obj is null) {
                 continue;
@@ -154,7 +157,11 @@ internal static class AnalyzeGateBaseline {
         baselines = new Dictionary<string, DuplicationOverallBaseline>(StringComparer.OrdinalIgnoreCase);
         error = null;
 
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
+        if (string.IsNullOrWhiteSpace(path)) {
+            error = "baseline path not provided";
+            return false;
+        }
+        if (!File.Exists(path)) {
             error = $"baseline file not found: {path}";
             return false;
         }
@@ -193,7 +200,8 @@ internal static class AnalyzeGateBaseline {
             if (string.IsNullOrWhiteSpace(fingerprint)) {
                 continue;
             }
-            if (!TryParseDuplicationOverallFingerprint(fingerprint, out var duplicated, out var significant, out var scope)) {
+            if (!TryParseDuplicationOverallFingerprint(fingerprint, out var duplicated, out var significant, out var windowLines,
+                    out var scope)) {
                 continue;
             }
             if (significant <= 0) {
@@ -201,19 +209,158 @@ internal static class AnalyzeGateBaseline {
             }
             var percent = Math.Round((duplicated * 100.0) / significant, 2, MidpointRounding.AwayFromZero);
             var key = $"{ruleId}|{scope}";
-            baselines[key] = new DuplicationOverallBaseline(ruleId, scope, significant, duplicated, percent, fingerprint);
+            baselines[key] = new DuplicationOverallBaseline(ruleId, scope, significant, duplicated, percent, windowLines, fingerprint);
         }
 
         return true;
     }
 
+    public static bool TryLoadDuplicationFileBaselines(string path, out Dictionary<string, DuplicationFileBaseline> baselines,
+        out string? error) {
+        baselines = new Dictionary<string, DuplicationFileBaseline>(StringComparer.OrdinalIgnoreCase);
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(path)) {
+            error = "baseline path not provided";
+            return false;
+        }
+        if (!File.Exists(path)) {
+            error = $"baseline file not found: {path}";
+            return false;
+        }
+
+        JsonObject? root;
+        try {
+            root = JsonLite.Parse(File.ReadAllText(path))?.AsObject();
+        } catch (Exception ex) {
+            error = $"could not parse baseline file ({FormatExceptionMessage(ex)})";
+            return false;
+        }
+        if (root is null) {
+            error = "baseline file root must be a JSON object";
+            return false;
+        }
+
+        var items = root.GetArray("items");
+        if (items is null || items.Count == 0) {
+            return true;
+        }
+
+        foreach (var item in items) {
+            if (item is null) {
+                continue;
+            }
+            var obj = item.AsObject();
+            if (obj is null) {
+                continue;
+            }
+            var findingPath = (obj.GetString("path") ?? string.Empty).Trim().Replace('\\', '/');
+            if (!findingPath.Equals(".intelligencex/duplication-file", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            var ruleId = (obj.GetString("ruleId") ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(ruleId)) {
+                continue;
+            }
+            var fingerprint = (obj.GetString("fingerprint") ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(fingerprint)) {
+                continue;
+            }
+            if (!TryParseDuplicationFileFingerprint(fingerprint, out var filePath, out var duplicated, out var significant,
+                    out var windowLines, out var scope)) {
+                continue;
+            }
+            var normalizedPath = NormalizeDuplicationPathForKey(filePath);
+            if (string.IsNullOrWhiteSpace(normalizedPath) || significant <= 0) {
+                continue;
+            }
+            var percent = Math.Round((duplicated * 100.0) / significant, 2, MidpointRounding.AwayFromZero);
+            var key = $"{ruleId}|{scope}|{normalizedPath}";
+            baselines[key] = new DuplicationFileBaseline(ruleId, scope, normalizedPath, significant, duplicated, percent, windowLines,
+                fingerprint);
+        }
+
+        return true;
+    }
+
+    internal static string NormalizeDuplicationPathForKey(string? path) {
+        // Duplication metrics + baselines can include "./" prefixes, mixed separators, repeated slashes, or safe ../ segments.
+        // Normalize so delta gating finds matches deterministically while avoiding path traversal above the root.
+        var normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
+        if (normalized.Contains('%', StringComparison.Ordinal)) {
+            // Allow baseline/current matching when paths are URI-escaped (some analyzers encode file paths).
+            for (var i = 0; i < 2; i++) {
+                try {
+                    var unescaped = Uri.UnescapeDataString(normalized);
+                    if (string.Equals(unescaped, normalized, StringComparison.Ordinal)) {
+                        break;
+                    }
+                    normalized = unescaped.Replace('\\', '/');
+                } catch {
+                    break;
+                }
+                if (!normalized.Contains('%', StringComparison.Ordinal)) {
+                    break;
+                }
+            }
+        }
+
+        var hasDotRelativePrefix = normalized.StartsWith("./", StringComparison.Ordinal);
+        var hasLeadingSlash = normalized.StartsWith("/", StringComparison.Ordinal);
+
+        while (normalized.StartsWith("./", StringComparison.Ordinal)) {
+            normalized = normalized.Substring(2);
+        }
+        while (normalized.Contains("//", StringComparison.Ordinal)) {
+            normalized = normalized.Replace("//", "/", StringComparison.Ordinal);
+        }
+
+        var parts = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) {
+            return string.Empty;
+        }
+
+        var stack = new List<string>(parts.Length);
+        foreach (var part in parts) {
+            if (part.Equals(".", StringComparison.Ordinal)) {
+                continue;
+            }
+            if (part.Equals("..", StringComparison.Ordinal)) {
+                if (stack.Count == 0) {
+                    if (hasLeadingSlash) {
+                        return string.Empty;
+                    }
+                    stack.Add("..");
+                    continue;
+                }
+                if (stack[stack.Count - 1].Equals("..", StringComparison.Ordinal)) {
+                    stack.Add("..");
+                    continue;
+                }
+                stack.RemoveAt(stack.Count - 1);
+                continue;
+            }
+            stack.Add(part);
+        }
+
+        var rebuilt = string.Join("/", stack);
+        if (hasDotRelativePrefix) {
+            rebuilt = rebuilt.TrimStart('/');
+        }
+        if (hasLeadingSlash) {
+            rebuilt = "/" + rebuilt.TrimStart('/');
+        }
+        return rebuilt;
+    }
+
     private static bool TryParseDuplicationOverallFingerprint(string fingerprint, out int duplicatedLines, out int significantLines,
-        out string scope) {
+        out int windowLines, out string scope) {
         duplicatedLines = 0;
         significantLines = 0;
+        windowLines = 0;
         scope = "all";
         var tokens = (fingerprint ?? string.Empty).Split(':');
-        if (tokens.Length < 5) {
+        if (tokens.Length < 4) {
             return false;
         }
         if (!tokens[1].Equals("overall", StringComparison.OrdinalIgnoreCase)) {
@@ -226,20 +373,120 @@ internal static class AnalyzeGateBaseline {
             return false;
         }
 
-        // Default scope is "all" unless an explicit suffix exists.
-        for (var i = 4; i < tokens.Length - 1; i++) {
-            if (tokens[i].Equals("scope", StringComparison.OrdinalIgnoreCase) &&
-                tokens[i + 1].Equals("changed-files", StringComparison.OrdinalIgnoreCase)) {
-                scope = "changed-files";
-                break;
+        // Accepted shapes:
+        // - <ruleId>:overall:<duplicated>:<significant>
+        // - <ruleId>:overall:<duplicated>:<significant>:<windowLines>
+        // - <ruleId>:overall:<duplicated>:<significant>:scope:changed-files
+        // - <ruleId>:overall:<duplicated>:<significant>:<windowLines>:scope:changed-files
+        if (tokens.Length == 4) {
+            return true;
+        }
+        if (tokens.Length == 5) {
+            return int.TryParse(tokens[4], out windowLines) && windowLines >= 0;
+        }
+        if (tokens.Length == 6) {
+            if (!tokens[4].Equals("scope", StringComparison.OrdinalIgnoreCase) ||
+                !tokens[5].Equals("changed-files", StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+            scope = "changed-files";
+            return true;
+        }
+        if (tokens.Length == 7) {
+            if (!int.TryParse(tokens[4], out windowLines) || windowLines < 0) {
+                return false;
+            }
+            if (!tokens[5].Equals("scope", StringComparison.OrdinalIgnoreCase) ||
+                !tokens[6].Equals("changed-files", StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+            scope = "changed-files";
+            return true;
+        }
+        return false;
+    }
+
+    private static bool TryParseDuplicationFileFingerprint(string fingerprint, out string path, out int duplicatedLines,
+        out int significantLines, out int windowLines, out string scope) {
+        path = string.Empty;
+        duplicatedLines = 0;
+        significantLines = 0;
+        windowLines = 0;
+        scope = "all";
+
+        var tokens = (fingerprint ?? string.Empty).Split(':');
+        if (tokens.Length < 5) {
+            return false;
+        }
+        var format = tokens[1].Trim();
+        var isFileUri = format.Equals("file-uri", StringComparison.OrdinalIgnoreCase);
+        if (!isFileUri && !format.Equals("file", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        // Optional suffix: :scope:changed-files
+        var effectiveLength = tokens.Length;
+        if (effectiveLength >= 2 &&
+            tokens[effectiveLength - 2].Equals("scope", StringComparison.OrdinalIgnoreCase) &&
+            tokens[effectiveLength - 1].Equals("changed-files", StringComparison.OrdinalIgnoreCase)) {
+            scope = "changed-files";
+            effectiveLength -= 2;
+        }
+        if (effectiveLength < 5) {
+            return false;
+        }
+
+        if (isFileUri) {
+            // Shape: <ruleId>:file-uri:<escapedPath>:<duplicated>:<significant>[:<windowLines>][:scope:changed-files]
+            if (effectiveLength != 5 && effectiveLength != 6) {
+                return false;
+            }
+            if (!int.TryParse(tokens[3], out duplicatedLines) || duplicatedLines < 0) {
+                return false;
+            }
+            if (!int.TryParse(tokens[4], out significantLines) || significantLines < 0) {
+                return false;
+            }
+            if (effectiveLength == 6) {
+                if (!int.TryParse(tokens[5], out windowLines) || windowLines < 0) {
+                    return false;
+                }
+            }
+            try {
+                path = Uri.UnescapeDataString(tokens[2]).Trim().Replace('\\', '/');
+            } catch {
+                return false;
+            }
+            return true;
+        }
+
+        // File paths may contain ":" (for example Windows drive letters).
+        // Parse the numeric tail and treat the rest as the path token(s).
+        var hasWindow = effectiveLength >= 6 &&
+                        int.TryParse(tokens[effectiveLength - 1], out windowLines) && windowLines >= 0 &&
+                        int.TryParse(tokens[effectiveLength - 2], out significantLines) && significantLines >= 0 &&
+                        int.TryParse(tokens[effectiveLength - 3], out duplicatedLines) && duplicatedLines >= 0;
+        if (!hasWindow) {
+            windowLines = 0;
+            if (!int.TryParse(tokens[effectiveLength - 1], out significantLines) || significantLines < 0) {
+                return false;
+            }
+            if (!int.TryParse(tokens[effectiveLength - 2], out duplicatedLines) || duplicatedLines < 0) {
+                return false;
             }
         }
+
+        var pathTokenCount = effectiveLength - (hasWindow ? 5 : 4);
+        if (pathTokenCount <= 0) {
+            return false;
+        }
+        path = string.Join(":", tokens, 2, pathTokenCount).Trim().Replace('\\', '/');
         return true;
     }
 
     private static string NormalizePathForBaselineKey(string? path) {
         var normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
-        var hasDotRelativePrefix = normalized.StartsWith(".", StringComparison.Ordinal);
+        var hasDotRelativePrefix = normalized.StartsWith("./", StringComparison.Ordinal);
         while (normalized.StartsWith("./", StringComparison.Ordinal)) {
             normalized = normalized.Substring(2);
         }
@@ -312,5 +559,18 @@ internal static class AnalyzeGateBaseline {
         int SignificantLines,
         int DuplicatedLines,
         double DuplicatedPercent,
+        int WindowLines,
+        string Fingerprint);
+
+    public sealed record DuplicationFileBaseline(
+        string RuleId,
+        string Scope,
+        string Path,
+        int SignificantLines,
+        int DuplicatedLines,
+        double DuplicatedPercent,
+        int WindowLines,
         string Fingerprint);
 }
+
+

@@ -57,10 +57,23 @@ internal static class ReviewProviderContracts {
         requiresOpenAiAuthStore: false,
         maxRecommendedRetryCount: 3);
 
+    private static readonly ReviewProviderContract OpenAiCompatible = new(
+        ReviewProvider.OpenAICompatible,
+        "openai-compatible",
+        "OpenAI Compatible",
+        new[] { "openai-api", "ollama", "openrouter" },
+        new[] { "http" },
+        supportsUsageApi: false,
+        supportsReasoningControls: false,
+        supportsStreaming: false,
+        requiresOpenAiAuthStore: false,
+        maxRecommendedRetryCount: 3);
+
     private static readonly IReadOnlyDictionary<ReviewProvider, ReviewProviderContract> ByProvider =
         new Dictionary<ReviewProvider, ReviewProviderContract> {
             [ReviewProvider.OpenAI] = OpenAi,
-            [ReviewProvider.Copilot] = Copilot
+            [ReviewProvider.Copilot] = Copilot,
+            [ReviewProvider.OpenAICompatible] = OpenAiCompatible
         };
 
     private static readonly IReadOnlyDictionary<string, ReviewProvider> ByAlias = BuildAliasMap();

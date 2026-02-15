@@ -129,6 +129,9 @@ internal static partial class AnalyzeRunCommand {
             if (normalizedTokens.Count == 0) {
                 continue;
             }
+            if (IsPowerShellUsingLine(normalizedTokens)) {
+                continue;
+            }
 
             result.Add(new SignificantLine(index + 1, string.Join(" ", normalizedTokens)));
         }
@@ -198,6 +201,36 @@ internal static partial class AnalyzeRunCommand {
         return token is "{" or "}" or ";" or "(" or ")" or "[" or "]" or ",";
     }
 
+    private static bool IsPowerShellUsingLine(IReadOnlyList<string> tokens) {
+        if (tokens is null || tokens.Count == 0) {
+            return false;
+        }
+        if (!tokens[0].Equals("using", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        for (var i = 1; i < tokens.Count; i++) {
+            var token = tokens[i];
+            if (string.IsNullOrWhiteSpace(token)) {
+                continue;
+            }
+            if (token.Equals("__ID__", StringComparison.Ordinal) ||
+                token.Equals("__LIT__", StringComparison.Ordinal)) {
+                continue;
+            }
+            // Keep conservative: treat "using *" lines as import-only noise for duplication calculations.
+            if (token.Equals(".", StringComparison.Ordinal) ||
+                token.Equals("/", StringComparison.Ordinal) ||
+                token.Equals("\\", StringComparison.Ordinal) ||
+                token.Equals(":", StringComparison.Ordinal)) {
+                continue;
+            }
+            return false;
+        }
+
+        return true;
+    }
+
     private static List<SignificantLine> BuildSignificantLinesFromJavaScriptTokens(string content) {
         var result = new List<SignificantLine>();
         var lines = (content ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
@@ -218,11 +251,53 @@ internal static partial class AnalyzeRunCommand {
             if (normalizedTokens.Count == 0) {
                 continue;
             }
+            if (IsJavaScriptImportOrExportLine(normalizedTokens)) {
+                continue;
+            }
 
             result.Add(new SignificantLine(index + 1, string.Join(" ", normalizedTokens)));
         }
 
         return result;
+    }
+
+    private static bool IsJavaScriptImportOrExportLine(IReadOnlyList<string> tokens) {
+        if (tokens is null || tokens.Count == 0) {
+            return false;
+        }
+        var hasImport = false;
+        var hasExport = false;
+        foreach (var token in tokens) {
+            if (string.Equals(token, "import", StringComparison.OrdinalIgnoreCase)) {
+                hasImport = true;
+            } else if (string.Equals(token, "export", StringComparison.OrdinalIgnoreCase)) {
+                hasExport = true;
+            }
+        }
+        if (!hasImport && !hasExport) {
+            return false;
+        }
+
+        foreach (var token in tokens) {
+            if (string.IsNullOrWhiteSpace(token)) {
+                continue;
+            }
+            if (token.Equals("__ID__", StringComparison.Ordinal) ||
+                token.Equals("__LIT__", StringComparison.Ordinal)) {
+                continue;
+            }
+            // Keep this conservative: only strip import/export-only lines to avoid suppressing real code.
+            if (token.Equals("import", StringComparison.OrdinalIgnoreCase) ||
+                token.Equals("export", StringComparison.OrdinalIgnoreCase) ||
+                token.Equals("from", StringComparison.OrdinalIgnoreCase) ||
+                token.Equals("as", StringComparison.OrdinalIgnoreCase) ||
+                token.Equals("default", StringComparison.OrdinalIgnoreCase) ||
+                token.Equals("*", StringComparison.Ordinal)) {
+                continue;
+            }
+            return false;
+        }
+        return true;
     }
 
     private static string StripJavaScriptComments(string input, ref bool inBlockComment) {
@@ -339,10 +414,46 @@ internal static partial class AnalyzeRunCommand {
             if (normalizedTokens.Count == 0) {
                 continue;
             }
+            if (IsPythonImportLine(normalizedTokens)) {
+                continue;
+            }
 
             result.Add(new SignificantLine(index + 1, string.Join(" ", normalizedTokens)));
         }
         return result;
+    }
+
+    private static bool IsPythonImportLine(IReadOnlyList<string> tokens) {
+        if (tokens is null || tokens.Count == 0) {
+            return false;
+        }
+        var hasImportLikeKeyword = false;
+        foreach (var token in tokens) {
+            if (string.Equals(token, "import", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(token, "from", StringComparison.OrdinalIgnoreCase)) {
+                hasImportLikeKeyword = true;
+                break;
+            }
+        }
+        if (!hasImportLikeKeyword) {
+            return false;
+        }
+
+        foreach (var token in tokens) {
+            if (string.IsNullOrWhiteSpace(token)) {
+                continue;
+            }
+            if (token.Equals("__ID__", StringComparison.Ordinal)) {
+                continue;
+            }
+            if (token.Equals("import", StringComparison.OrdinalIgnoreCase) ||
+                token.Equals("from", StringComparison.OrdinalIgnoreCase) ||
+                token.Equals("as", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            return false;
+        }
+        return true;
     }
 
     private static string StripPythonComments(string input, ref bool inTripleSingleQuote, ref bool inTripleDoubleQuote) {

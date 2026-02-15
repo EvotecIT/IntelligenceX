@@ -131,27 +131,8 @@ internal sealed partial class ReviewSettings {
             settings.StructuredFindings = ParseBoolean(structuredFindings, settings.StructuredFindings);
         }
 
-        var transport = GetInput("openai_transport", "OPENAI_TRANSPORT");
-        if (!string.IsNullOrWhiteSpace(transport)) {
-            settings.OpenAITransport = ParseTransport(transport);
-        }
-        var openAiAccountId = GetInput("openai_account_id", "REVIEW_OPENAI_ACCOUNT_ID", "INTELLIGENCEX_OPENAI_ACCOUNT_ID");
-        if (!string.IsNullOrWhiteSpace(openAiAccountId)) {
-            settings.OpenAiAccountId = openAiAccountId;
-        }
-        var openAiAccountIds = GetInput("openai_account_ids", "REVIEW_OPENAI_ACCOUNT_IDS", "INTELLIGENCEX_OPENAI_ACCOUNT_IDS");
-        if (!string.IsNullOrWhiteSpace(openAiAccountIds)) {
-            settings.OpenAiAccountIds = NormalizeAccountIdList(ParseList(openAiAccountIds));
-        }
-        var openAiAccountRotation = GetInput("openai_account_rotation", "REVIEW_OPENAI_ACCOUNT_ROTATION");
-        if (!string.IsNullOrWhiteSpace(openAiAccountRotation)) {
-            settings.OpenAiAccountRotation =
-                NormalizeOpenAiAccountRotation(openAiAccountRotation, settings.OpenAiAccountRotation);
-        }
-        var openAiAccountFailover = GetInput("openai_account_failover", "REVIEW_OPENAI_ACCOUNT_FAILOVER");
-        if (!string.IsNullOrWhiteSpace(openAiAccountFailover)) {
-            settings.OpenAiAccountFailover = ParseBoolean(openAiAccountFailover, settings.OpenAiAccountFailover);
-        }
+        ApplyOpenAiEnvironment(settings);
+        ApplyOpenAiCompatibleEnvironment(settings);
 
         var overwriteSummary = GetInput("overwrite_summary", "OVERWRITE_SUMMARY");
         if (!string.IsNullOrWhiteSpace(overwriteSummary)) {

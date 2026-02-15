@@ -7,6 +7,8 @@ using System.Net.Http;
 using System.Net.Sockets;
 using System.Runtime.ExceptionServices;
 using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Copilot;
@@ -17,11 +19,7 @@ using IntelligenceX.OpenAI.Native;
 
 namespace IntelligenceX.Reviewer;
 
-internal sealed class ReviewRunner {
-    // Infinite timeout here; each preflight call applies its own CTS-based timeout.
-    private static readonly HttpClient PreflightHttp = new() {
-        Timeout = Timeout.InfiniteTimeSpan
-    };
+internal sealed partial class ReviewRunner {
     private readonly ReviewSettings _settings;
     public ReviewProvider EffectiveProvider { get; private set; }
     public bool FallbackActivated { get; private set; }
@@ -147,6 +145,7 @@ internal sealed class ReviewRunner {
             return provider switch {
                 ReviewProvider.Copilot => await RunCopilotAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false),
                 ReviewProvider.OpenAI => await RunOpenAiWithRetryAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false),
+                ReviewProvider.OpenAICompatible => await RunOpenAiCompatibleWithRetryAsync(prompt, cancellationToken).ConfigureAwait(false),
                 _ => throw new NotSupportedException($"Unsupported review provider '{provider}'.")
             };
         } finally {
@@ -162,6 +161,9 @@ internal sealed class ReviewRunner {
                 return;
             case ReviewProvider.Copilot:
                 await RunCopilotHealthCheckAsync(timeout, cancellationToken).ConfigureAwait(false);
+                return;
+            case ReviewProvider.OpenAICompatible:
+                await RunOpenAiCompatiblePreflightAsync(timeout, cancellationToken).ConfigureAwait(false);
                 return;
             default:
                 throw new NotSupportedException($"Unsupported review provider '{provider}'.");
@@ -303,78 +305,6 @@ internal sealed class ReviewRunner {
             return true;
         }
         return !settings.FailOpenTransientOnly;
-    }
-
-    internal static class ReviewRetryPolicy {
-        public static Task<string> RunAsync(Func<Task<string>> action, Func<Exception, bool> isTransient,
-            int maxAttempts, int retryDelaySeconds, int retryMaxDelaySeconds, CancellationToken cancellationToken,
-            Func<Exception, string>? describeError, int extraAttempts, Func<Exception, bool>? extraRetryPredicate,
-            ReviewRetryState? retryState) {
-            return RunAsync(action, isTransient, maxAttempts, retryDelaySeconds, retryMaxDelaySeconds,
-                2.0, 200, 800, cancellationToken, describeError, extraAttempts, extraRetryPredicate, retryState);
-        }
-
-        public static async Task<string> RunAsync(Func<Task<string>> action, Func<Exception, bool> isTransient,
-            int maxAttempts, int retryDelaySeconds, int retryMaxDelaySeconds, double backoffMultiplier,
-            int retryJitterMinMs, int retryJitterMaxMs, CancellationToken cancellationToken,
-            Func<Exception, string>? describeError, int extraAttempts, Func<Exception, bool>? extraRetryPredicate,
-            ReviewRetryState? retryState) {
-            // maxAttempts includes the initial attempt.
-            var attempts = Math.Max(1, maxAttempts);
-            var extraRemaining = Math.Max(0, extraAttempts);
-            var delaySeconds = Math.Max(1, retryDelaySeconds);
-            var maxDelaySeconds = Math.Max(delaySeconds, retryMaxDelaySeconds);
-            var delay = TimeSpan.FromSeconds(delaySeconds);
-            var jitterMin = Math.Max(0, retryJitterMinMs);
-            var jitterMax = Math.Max(jitterMin, retryJitterMaxMs);
-            var backoff = Math.Max(1.0, backoffMultiplier);
-
-            Exception? lastError = null;
-            for (var attempt = 1; attempt <= attempts; attempt++) {
-                if (retryState is not null) {
-                    retryState.LastAttempt = attempt;
-                    retryState.MaxAttempts = attempts;
-                }
-                try {
-                    return await action().ConfigureAwait(false);
-                } catch (Exception ex) when (isTransient(ex) &&
-                                             !cancellationToken.IsCancellationRequested &&
-                                             (attempt < attempts ||
-                                              (extraRemaining > 0 &&
-                                               extraRetryPredicate is not null &&
-                                               extraRetryPredicate(ex)))) {
-                    lastError = ex;
-                    if (attempt >= attempts) {
-                        attempts += extraRemaining;
-                        extraRemaining = 0;
-                        if (retryState is not null) {
-                            retryState.MaxAttempts = attempts;
-                        }
-                    }
-
-                    int jitterMs;
-                    if (jitterMax > jitterMin) {
-                        var upperExclusive = jitterMax == int.MaxValue ? jitterMax : jitterMax + 1;
-                        jitterMs = Random.Shared.Next(jitterMin, upperExclusive);
-                    } else {
-                        jitterMs = jitterMin;
-                    }
-                    var jitter = TimeSpan.FromMilliseconds(jitterMs);
-                    var wait = delay + jitter;
-                    var summary = describeError is not null ? describeError(ex) : ex.Message;
-                    Console.Error.WriteLine($"OpenAI request failed (attempt {attempt}/{attempts}): {summary}. Retrying in {wait.TotalSeconds:0.0}s.");
-                    await Task.Delay(wait, cancellationToken).ConfigureAwait(false);
-                    var nextDelaySeconds = Math.Min(maxDelaySeconds, delay.TotalSeconds * backoff);
-                    delay = TimeSpan.FromSeconds(nextDelaySeconds);
-                }
-            }
-
-            if (lastError is not null) {
-                ExceptionDispatchInfo.Capture(lastError).Throw();
-            }
-
-            throw new InvalidOperationException("OpenAI request failed without a captured exception.");
-        }
     }
 
     private async Task RunCopilotHealthCheckAsync(TimeSpan timeout, CancellationToken cancellationToken) {

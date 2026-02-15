@@ -361,6 +361,7 @@ internal static partial class Program {
             TestAnalyzeGateNewIssuesOnlySuppressesLegacyBaselineKeyDotRelativePrefix);
         failed += Run("Analyze gate write baseline contract schema", TestAnalyzeGateWriteBaselineCreatesContractSchema);
         failed += Run("Reviewer schema includes analysis gate baseline properties", TestReviewerSchemaIncludesAnalysisGateBaselineProperties);
+        failed += Run("Reviewer schema includes OpenAI-compatible provider and config", TestReviewerSchemaIncludesOpenAiCompatibleProviderAndConfig);
         failed += Run("Analyze gate duplication per-file threshold blocks", TestAnalyzeGateDuplicationFailsOnPerFileThreshold);
         failed += Run("Analyze gate duplication per-file threshold passes", TestAnalyzeGateDuplicationPassesWhenWithinThreshold);
         failed += Run("Analyze gate duplication uses per-file configured threshold",
@@ -377,8 +378,34 @@ internal static partial class Program {
         failed += Run("Analyze gate duplication new-only suppresses baseline finding", TestAnalyzeGateDuplicationNewOnlySuppressesBaselineFindings);
         failed += Run("Analyze gate duplication overall delta blocks when increase exceeds allowed",
             TestAnalyzeGateDuplicationOverallDeltaBlocksWhenIncreaseExceedsAllowed);
+        failed += Run("Analyze gate duplication overall delta window mismatch unavailable",
+            TestAnalyzeGateDuplicationOverallDeltaWindowMismatchIsUnavailable);
+        failed += Run("Analyze gate duplication overall delta uses baseline written by write-baseline",
+            TestAnalyzeGateDuplicationOverallDeltaUsesBaselineWrittenByWriteBaseline);
         failed += Run("Analyze gate duplication overall delta missing baseline unavailable",
             TestAnalyzeGateDuplicationOverallDeltaMissingBaselineIsUnavailable);
+        failed += Run("Analyze gate duplication file delta blocks when increase exceeds allowed",
+            TestAnalyzeGateDuplicationFileDeltaBlocksWhenIncreaseExceedsAllowed);
+        failed += Run("Analyze gate duplication file delta normalizes ./ paths",
+            TestAnalyzeGateDuplicationFileDeltaNormalizesDotRelativePaths);
+        failed += Run("Analyze gate duplication file delta normalizes ../ paths",
+            TestAnalyzeGateDuplicationFileDeltaNormalizesParentRelativePaths);
+        failed += Run("Analyze gate duplication file delta normalizes // paths",
+            TestAnalyzeGateDuplicationFileDeltaNormalizesDoubleSlashes);
+        failed += Run("Analyze gate duplication file delta window mismatch unavailable",
+            TestAnalyzeGateDuplicationFileDeltaWindowMismatchIsUnavailable);
+        failed += Run("Analyze gate duplication overall baseline skips null items", TestAnalyzeGateDuplicationOverallBaselineSkipsNullItems);
+        failed += Run("Analyze gate duplication overall baseline rejects malformed fingerprints",
+            TestAnalyzeGateDuplicationOverallBaselineRejectsMalformedFingerprints);
+        failed += Run("Analyze gate duplication file baseline skips null items", TestAnalyzeGateDuplicationFileBaselineSkipsNullItems);
+        failed += Run("Analyze gate duplication file baseline loads paths with colon",
+            TestAnalyzeGateDuplicationFileBaselineLoadsPathsWithColon);
+        failed += Run("Analyze gate duplication file baseline loads paths containing scope suffix tokens",
+            TestAnalyzeGateDuplicationFileBaselineLoadsPathsContainingScopeSuffixTokens);
+        failed += Run("Analyze gate duplication file baseline missing path returns not provided",
+            TestAnalyzeGateDuplicationFileBaselineMissingPathReturnsNotProvided);
+        failed += Run("Analyze gate write baseline includes duplication file snapshots when configured",
+            TestAnalyzeGateWriteBaselineIncludesDuplicationFileSnapshotsWhenConfigured);
         failed += Run("Analyze gate write baseline includes duplication overall snapshot",
             TestAnalyzeGateWriteBaselineIncludesDuplicationOverallSnapshot);
         failed += Run("Analysis config reader normalizes duplication ruleIds",
@@ -389,6 +416,8 @@ internal static partial class Program {
             TestAnalysisConfigReaderReadsRunStrict);
         failed += Run("Analysis config reader reads duplication maxOverallPercentIncrease",
             TestAnalysisConfigReaderReadsDuplicationMaxOverallPercentIncrease);
+        failed += Run("Analysis config reader reads duplication maxFilePercentIncrease",
+            TestAnalysisConfigReaderReadsDuplicationMaxFilePercentIncrease);
         failed += Run("Analyze gate changed-files accepts absolute in-workspace path",
             TestAnalyzeGateChangedFilesAcceptsAbsoluteInWorkspace);
         failed += Run("Analyze gate changed-files rejects absolute outside-workspace path",
@@ -462,8 +491,14 @@ internal static partial class Program {
             TestAnalyzeRunInternalDuplicationRuleWarnsOnMalformedTags);
         failed += Run("Analyze run internal duplication tokenized javascript",
             TestAnalyzeRunInternalDuplicationTokenizesJavaScript);
+        failed += Run("Analyze run internal duplication ignores javascript imports",
+            TestAnalyzeRunInternalDuplicationIgnoresJavaScriptImports);
+        failed += Run("Analyze run internal duplication ignores PowerShell using statements",
+            TestAnalyzeRunInternalDuplicationIgnoresPowerShellUsingStatements);
         failed += Run("Analyze run internal duplication tokenized python",
             TestAnalyzeRunInternalDuplicationTokenizesPython);
+        failed += Run("Analyze run internal duplication ignores python imports",
+            TestAnalyzeRunInternalDuplicationIgnoresPythonImports);
         failed += Run("Analyze run internal duplication python triple-quote comment handling",
             TestAnalyzeRunInternalDuplicationPythonTripleQuoteCommentHandling);
         failed += Run("Analyze run include-ext is per-rule",
@@ -485,6 +520,14 @@ internal static partial class Program {
         failed += Run("Review provider contract capabilities", TestReviewProviderContractCapabilities);
         failed += Run("Review provider config alias", TestReviewProviderConfigAlias);
         failed += Run("Review provider invalid config throws", TestReviewProviderConfigInvalidThrows);
+        failed += Run("OpenAI-compatible rejects http non-loopback by default", TestReviewOpenAiCompatibleRejectsHttpNonLoopbackByDefault);
+        failed += Run("OpenAI-compatible preflight treats 405 as reachable", TestReviewOpenAiCompatiblePreflightTreats405AsReachable);
+        failed += Run("OpenAI-compatible follows redirects", TestReviewOpenAiCompatibleFollowsRedirects);
+        failed += Run("OpenAI-compatible preserves POST body across redirects", TestReviewOpenAiCompatiblePreservesPostBodyAcrossRedirects);
+        failed += Run("OpenAI-compatible 303 redirect switches POST to GET", TestReviewOpenAiCompatibleRedirect303SwitchesToGet);
+        failed += Run("OpenAI-compatible non-diagnostics omits remote error body",
+            TestReviewOpenAiCompatibleDoesNotLeakErrorBodyWhenDiagnosticsFalse);
+        failed += Run("OpenAI-compatible rejects cross-host redirects", TestReviewOpenAiCompatibleRejectsCrossHostRedirects);
         failed += Run("Review config loader reads openaiAccountRotation camelCase",
             TestReviewConfigLoaderReadsOpenAiAccountRotationCamelCase);
         failed += Run("Review config loader reads legacy includeRelatedPullRequests alias",
