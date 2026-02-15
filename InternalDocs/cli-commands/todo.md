@@ -154,6 +154,9 @@ Options:
 - `--force-workflow-write` overwrite existing workflow file
 - `--skip-vision-scaffold` do not create/update vision file
 - `--force-vision-write` overwrite existing vision file
+- `--control-issue <n>` set `IX_TRIAGE_CONTROL_ISSUE` to an existing issue number
+- `--create-control-issue` create a control issue and set `IX_TRIAGE_CONTROL_ISSUE`
+- `--control-issue-title <text>` customize the title when creating a control issue
 
 ## Workflow Template
 
@@ -166,6 +169,7 @@ Behavior:
 - Generates triage index artifacts.
 - Optional control-issue comment when repo variable `IX_TRIAGE_CONTROL_ISSUE` is configured.
 - `triage-project-sync.yml` posts a combined triage + vision markdown summary to the control issue.
+- `todo project-bootstrap --create-control-issue` can configure the control issue variable automatically.
 
 ## Legacy Script
 

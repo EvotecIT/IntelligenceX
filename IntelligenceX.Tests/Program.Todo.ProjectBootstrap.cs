@@ -68,5 +68,44 @@ project={{ProjectNumber}}
         AssertContainsText(rendered, "--apply-labels", "workflow enables label application");
         AssertContainsText(rendered, "--apply-link-comments", "workflow enables PR issue suggestion comments");
     }
+
+    private static void TestProjectBootstrapBuildControlIssueBodyIncludesProjectContext() {
+        var body = IntelligenceX.Cli.Todo.ProjectBootstrapRunner.BuildControlIssueBody(
+            "EvotecIT/IntelligenceX",
+            "EvotecIT",
+            789);
+
+        AssertContainsText(body, "`EvotecIT/IntelligenceX`", "control issue body includes repo");
+        AssertContainsText(body, "`EvotecIT#789`", "control issue body includes project target");
+        AssertContainsText(body, "IX_TRIAGE_CONTROL_ISSUE", "control issue body includes variable name");
+    }
+
+    private static void TestProjectBootstrapParseIssueNumberFromGhOutputParsesIssueUrl() {
+        var parsed = IntelligenceX.Cli.Todo.ProjectBootstrapRunner.TryParseIssueNumberFromGhOutput(
+            "https://github.com/EvotecIT/IntelligenceX/issues/456\n",
+            out var issueNumber);
+
+        AssertEqual(true, parsed, "issue number parsed from gh output");
+        AssertEqual(456, issueNumber, "parsed issue number");
+    }
+
+    private static void TestProjectBootstrapParseIssueNumberFromGhOutputParsesTrailingInteger() {
+        var parsed = IntelligenceX.Cli.Todo.ProjectBootstrapRunner.TryParseIssueNumberFromGhOutput(
+            "created issue #912",
+            out var issueNumber);
+
+        AssertEqual(true, parsed, "issue number parsed from trailing integer");
+        AssertEqual(912, issueNumber, "parsed trailing issue number");
+    }
+
+    private static void TestProjectBootstrapRejectsConflictingControlIssueOptions() {
+        var exitCode = IntelligenceX.Cli.Todo.ProjectBootstrapRunner.RunAsync(new[] {
+            "--help",
+            "--create-control-issue",
+            "--control-issue", "42"
+        }).GetAwaiter().GetResult();
+
+        AssertEqual(1, exitCode, "conflicting control issue options should fail parse");
+    }
 #endif
 }
