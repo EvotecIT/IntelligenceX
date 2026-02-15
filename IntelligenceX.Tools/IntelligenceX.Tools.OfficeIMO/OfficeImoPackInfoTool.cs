@@ -33,7 +33,8 @@ public sealed class OfficeImoPackInfoTool : OfficeImoToolBase, ITool {
             tools: ToolRegistryOfficeImoExtensions.GetRegisteredToolNames(Options),
             recommendedFlow: new[] {
                 "Use officeimo_pack_info to confirm caps and supported formats.",
-                "Use officeimo_read on a file or folder to extract normalized chunks for reasoning.",
+                "Use officeimo_read on a file or folder to extract normalized chunks/documents.",
+                "For indexing pipelines, set output_mode='documents' (or 'both') and upsert by source_id/source_hash + chunk_hash.",
                 "Reason from raw payload fields (chunks/text/tables). Use summary markdown only as a preview."
             },
             flowSteps: new[] {
@@ -44,12 +45,16 @@ public sealed class OfficeImoPackInfoTool : OfficeImoToolBase, ITool {
                 ToolPackGuidance.FlowStep(
                     goal: "Extract evidence from Office documents",
                     suggestedTools: new[] { "officeimo_read" },
-                    notes: "Prefer passing a folder to ingest a document set; use max_files/max_total_bytes to bound work.")
+                    notes: "Prefer passing a folder to ingest a document set; use max_files/max_total_bytes to bound work."),
+                ToolPackGuidance.FlowStep(
+                    goal: "Build incremental document index",
+                    suggestedTools: new[] { "officeimo_read" },
+                    notes: "Use output_mode='documents' and include_document_chunks=true to get per-source hashes/chunks for direct DB upserts.")
             },
             capabilities: new[] {
                 ToolPackGuidance.Capability(
                     id: "office_ingestion",
-                    summary: "Extract text/markdown/tables from Word/Excel/PowerPoint/Markdown/PDF files into AI-friendly chunks.",
+                    summary: "Extract text/markdown/tables from Word/Excel/PowerPoint/Markdown/PDF files into AI-friendly chunks and source-level documents.",
                     primaryTools: new[] { "officeimo_read" }),
                 ToolPackGuidance.Capability(
                     id: "bounded_access",
