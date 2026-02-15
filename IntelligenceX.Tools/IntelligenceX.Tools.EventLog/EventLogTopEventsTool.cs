@@ -62,7 +62,7 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
             arguments: arguments,
             key: "max_events",
             defaultValue: DefaultMaxEvents,
-            maxInclusive: Options.MaxResults);
+            maxInclusive: Math.Min(Options.MaxResults, MaxViewTop));
 
         var includeMessage = arguments?.GetBoolean("include_message") ?? true;
 
@@ -77,7 +77,7 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
 
         var maxMessageChars = includeMessage
             ? Math.Min(Options.MaxMessageChars, 1200)
-            : Options.MaxMessageChars;
+            : 0;
 
         if (!LiveEventQueryExecutor.TryRead(
                 request: new LiveEventQueryRequest {
@@ -108,4 +108,3 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
         return Task.FromResult(response);
     }
 }
-
