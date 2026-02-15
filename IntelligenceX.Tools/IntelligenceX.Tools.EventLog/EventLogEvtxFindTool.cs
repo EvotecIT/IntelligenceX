@@ -82,7 +82,10 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
         var maxDirsScanned = Options.EvtxFindMaxDirsScanned;
         var maxFilesScanned = Options.EvtxFindMaxFilesScanned;
 
-        var queryTokens = SplitTokens(query);
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var tokenComparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
+        var queryTokens = SplitTokens(query, tokenComparer);
         var logToken = string.IsNullOrWhiteSpace(logHint) ? null : logHint;
 
         var best = new List<EvtxFindFile>(Math.Min(64, maxResults));
@@ -91,7 +94,6 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
         var scannedDirs = 0;
         var scannedFiles = 0;
         var hitScanBudget = false;
-        var comparison = StringComparison.OrdinalIgnoreCase;
 
         foreach (var root in Options.AllowedRoots.Where(static x => !string.IsNullOrWhiteSpace(x))) {
             cancellationToken.ThrowIfCancellationRequested();
@@ -375,7 +377,7 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
         return true;
     }
 
-    private static IReadOnlyList<string> SplitTokens(string query) {
+    private static IReadOnlyList<string> SplitTokens(string query, StringComparer comparer) {
         if (string.IsNullOrWhiteSpace(query)) {
             return Array.Empty<string>();
         }
@@ -383,7 +385,7 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
         var tokens = query
             .Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(static x => x.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Distinct(comparer)
             .Take(8)
             .ToArray();
 
