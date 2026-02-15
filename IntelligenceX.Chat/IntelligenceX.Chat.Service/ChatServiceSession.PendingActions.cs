@@ -863,7 +863,7 @@ internal sealed partial class ChatServiceSession {
 
         var lines = SplitLines(text);
         var inFence = false;
-        var candidateTitles = new List<string>();
+        var candidateChoices = new List<(string Title, bool IsNumbered)>();
         var candidateStartLine = -1;
         for (var i = 0; i < lines.Count; i++) {
             var trimmedLine = (lines[i] ?? string.Empty).Trim();
@@ -876,31 +876,54 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            if (TryExtractFallbackChoiceTitle(trimmedLine, out var title)) {
+            if (TryExtractFallbackChoiceTitle(trimmedLine, out var title, out var isNumbered)) {
                 if (candidateStartLine < 0) {
                     candidateStartLine = i;
                 }
-                candidateTitles.Add(title);
+                candidateChoices.Add((title, isNumbered));
                 continue;
             }
 
-            if (candidateTitles.Count >= 2 && LooksLikeFallbackChoicePromptContext(lines, candidateStartLine)) {
-                return BuildFallbackChoicePendingActions(candidateTitles);
+            if (ShouldBuildFallbackChoiceActions(candidateChoices, lines, candidateStartLine)) {
+                return BuildFallbackChoicePendingActions(candidateChoices.Select(static c => c.Title).ToArray());
             }
 
-            candidateTitles.Clear();
+            candidateChoices.Clear();
             candidateStartLine = -1;
         }
 
-        if (candidateTitles.Count >= 2 && LooksLikeFallbackChoicePromptContext(lines, candidateStartLine)) {
-            return BuildFallbackChoicePendingActions(candidateTitles);
+        if (ShouldBuildFallbackChoiceActions(candidateChoices, lines, candidateStartLine)) {
+            return BuildFallbackChoicePendingActions(candidateChoices.Select(static c => c.Title).ToArray());
         }
 
         return new List<PendingAction>();
     }
 
-    private static bool TryExtractFallbackChoiceTitle(string trimmedLine, out string title) {
+    private static bool ShouldBuildFallbackChoiceActions(
+        IReadOnlyList<(string Title, bool IsNumbered)> choices,
+        IReadOnlyList<string> lines,
+        int firstChoiceLine) {
+        if (!LooksLikeFallbackChoicePromptContext(lines, firstChoiceLine)) {
+            return false;
+        }
+
+        if (choices is null || choices.Count == 0) {
+            return false;
+        }
+
+        if (choices.Count >= 2) {
+            return true;
+        }
+
+        // Single-option fallback is intentionally conservative:
+        // only allow it for explicitly numbered option lines (e.g., "1. ..."),
+        // which usually represent an actionable "pick this" list.
+        return choices.Count == 1 && choices[0].IsNumbered;
+    }
+
+    private static bool TryExtractFallbackChoiceTitle(string trimmedLine, out string title, out bool isNumbered) {
         title = string.Empty;
+        isNumbered = false;
         if (string.IsNullOrWhiteSpace(trimmedLine)) {
             return false;
         }
@@ -931,6 +954,7 @@ internal sealed partial class ChatServiceSession {
                     && char.IsWhiteSpace(value[idx + 1])) {
                     value = value[(idx + 2)..].Trim();
                     startsWithBullet = true;
+                    isNumbered = true;
                 }
             }
         }
