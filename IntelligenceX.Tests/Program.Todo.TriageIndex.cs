@@ -97,5 +97,70 @@ internal static partial class Program {
         var weakScore = IntelligenceX.Cli.Todo.TriageIndexRunner.ScorePullRequest(weak, now, out _);
         AssertEqual(true, strongScore > weakScore, "strong score should be higher");
     }
+
+    private static void TestTriageIndexMatchPullRequestToIssuesSupportsExplicitReference() {
+        var now = DateTimeOffset.UtcNow;
+        var issue42 = new IntelligenceX.Cli.Todo.TriageIndexRunner.TriageIndexItem(
+            "issue#42",
+            "issue",
+            42,
+            "Parser crashes on null input",
+            "https://github.com/EvotecIT/IntelligenceX/issues/42",
+            now,
+            Array.Empty<string>(),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.NormalizeText("Parser crashes on null input"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Parser crashes on null input"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Parser crashes on null input with stack trace"),
+            null,
+            new IntelligenceX.Cli.Todo.TriageIndexRunner.IssueSignals(4, "dev1")
+        );
+        var issue77 = new IntelligenceX.Cli.Todo.TriageIndexRunner.TriageIndexItem(
+            "issue#77",
+            "issue",
+            77,
+            "Website color tweaks",
+            "https://github.com/EvotecIT/IntelligenceX/issues/77",
+            now,
+            Array.Empty<string>(),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.NormalizeText("Website color tweaks"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Website color tweaks"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Website color tweaks"),
+            null,
+            new IntelligenceX.Cli.Todo.TriageIndexRunner.IssueSignals(1, "dev2")
+        );
+
+        var matches = IntelligenceX.Cli.Todo.TriageIndexRunner.MatchPullRequestToIssues(
+            "EvotecIT/IntelligenceX",
+            "Fix parser null handling",
+            "This closes #42 and adds regression coverage.",
+            new[] { issue42, issue77 }
+        );
+
+        AssertEqual(true, matches.Count >= 1, "match exists");
+        AssertEqual(42, matches[0].Number, "explicit issue number wins");
+        AssertEqual(true, matches[0].Confidence >= 0.95, "explicit confidence");
+    }
+
+    private static void TestTriageIndexInferCategoryAndTagsDetectsSecurity() {
+        var now = DateTimeOffset.UtcNow;
+        var item = new IntelligenceX.Cli.Todo.TriageIndexRunner.TriageIndexItem(
+            "pr#88",
+            "pull_request",
+            88,
+            "Harden auth token validation",
+            "https://example/pr/88",
+            now,
+            new[] { "security" },
+            IntelligenceX.Cli.Todo.TriageIndexRunner.NormalizeText("Harden auth token validation"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Harden auth token validation"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Security fix for auth token validation and API checks"),
+            new IntelligenceX.Cli.Todo.TriageIndexRunner.PullRequestSignals(false, "MERGEABLE", "APPROVED", "SUCCESS", 6, 40, 8, 1, 2, "dev"),
+            null
+        );
+
+        var (category, tags) = IntelligenceX.Cli.Todo.TriageIndexRunner.InferCategoryAndTags(item);
+        AssertEqual("security", category, "security category");
+        AssertEqual(true, tags.Contains("security", StringComparer.OrdinalIgnoreCase), "security tag");
+    }
 #endif
 }
