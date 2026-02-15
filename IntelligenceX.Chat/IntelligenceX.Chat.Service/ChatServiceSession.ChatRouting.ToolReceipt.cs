@@ -42,8 +42,49 @@ internal sealed partial class ChatServiceSession {
     private static bool LooksLikeToolReceiptOutput(string text) {
         return text.IndexOf("exit code", StringComparison.OrdinalIgnoreCase) >= 0
                || text.IndexOf("exited with code", StringComparison.OrdinalIgnoreCase) >= 0
-               || text.IndexOf("stdout", StringComparison.OrdinalIgnoreCase) >= 0
-               || text.IndexOf("stderr", StringComparison.OrdinalIgnoreCase) >= 0;
+               || ContainsReceiptLabel(text, "stdout")
+               || ContainsReceiptLabel(text, "stderr");
+    }
+
+    private static bool ContainsReceiptLabel(string text, string label) {
+        if (string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(label)) {
+            return false;
+        }
+
+        var startIndex = 0;
+        while (true) {
+            var idx = text.IndexOf(label, startIndex, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) {
+                return false;
+            }
+
+            // Require a word-ish boundary so casual mentions like "about stdout" don't trigger unless they look like
+            // "stdout: <content>" receipts.
+            var beforeOk = idx == 0 || !IsReceiptLabelChar(text[idx - 1]);
+            var afterIdx = idx + label.Length;
+            var afterOk = afterIdx >= text.Length || !IsReceiptLabelChar(text[afterIdx]);
+            if (beforeOk && afterOk) {
+                var scan = afterIdx;
+                var consumedWhitespace = 0;
+                while (scan < text.Length && consumedWhitespace < 3 && char.IsWhiteSpace(text[scan])) {
+                    scan++;
+                    consumedWhitespace++;
+                }
+
+                if (scan < text.Length && text[scan] == ':') {
+                    return true;
+                }
+            }
+
+            startIndex = idx + 1;
+            if (startIndex >= text.Length) {
+                return false;
+            }
+        }
+    }
+
+    private static bool IsReceiptLabelChar(char ch) {
+        return char.IsLetterOrDigit(ch) || ch == '_';
     }
 
     private static bool DraftBindsToolNameToResults(string assistantDraft, IReadOnlyList<ToolDefinition> tools) {

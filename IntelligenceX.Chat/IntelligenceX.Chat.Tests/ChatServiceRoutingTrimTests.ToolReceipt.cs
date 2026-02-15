@@ -64,6 +64,30 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptToolReceiptCorrection_DoesNotTriggerForCasualStdoutStderrMentions() {
+        var assistantDraft = "If you want, I can show you stdout and stderr handling, but I did not run anything yet.";
+
+        var result = ShouldAttemptToolReceiptCorrectionMethod.Invoke(
+            null,
+            new object?[] { "Explain it", assistantDraft, Array.Empty<ToolDefinition>(), 0, 0, 0 });
+
+        var value = Assert.IsType<bool>(result);
+        Assert.False(value);
+    }
+
+    [Fact]
+    public void ShouldAttemptToolReceiptCorrection_TriggersForStdoutReceiptLabel() {
+        var assistantDraft = "stdout: hello world";
+
+        var result = ShouldAttemptToolReceiptCorrectionMethod.Invoke(
+            null,
+            new object?[] { "Run it", assistantDraft, Array.Empty<ToolDefinition>(), 0, 0, 0 });
+
+        var value = Assert.IsType<bool>(result);
+        Assert.True(value);
+    }
+
+    [Fact]
     public void ShouldAttemptToolReceiptCorrection_DoesNotTriggerWhenToolCallsAlreadyExist() {
         var schema = ToolSchema.Object().NoAdditionalProperties();
         var tools = new[] { new ToolDefinition("ad_search", "AD search", schema) };

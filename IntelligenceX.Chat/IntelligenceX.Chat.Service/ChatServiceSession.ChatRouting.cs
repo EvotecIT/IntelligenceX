@@ -31,7 +31,13 @@ internal sealed partial class ChatServiceSession {
             throw new ArgumentNullException(nameof(options));
         }
 
-        var copy = options.Clone();
+        // Defensive: ChatOptions is sealed today, but if it ever becomes extensible we should fail closed
+        // rather than silently slicing provider-specific state.
+        if (options.GetType() != typeof(ChatOptions)) {
+            throw new NotSupportedException($"Unsupported ChatOptions runtime type: {options.GetType().FullName}");
+        }
+
+        var copy = new ChatOptions(options);
         if (newThreadOverride.HasValue) {
             copy.NewThread = newThreadOverride.Value;
         }
