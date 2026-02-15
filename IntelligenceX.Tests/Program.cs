@@ -489,6 +489,8 @@ internal static partial class Program {
         failed += Run("Todo project bootstrap workflow enables label apply", TestProjectBootstrapWorkflowTemplateEnablesApplyLabels);
         failed += Run("Todo project bootstrap workflow upserts control issue summary comment",
             TestProjectBootstrapWorkflowTemplateUpsertsControlIssueSummaryComment);
+        failed += Run("Todo triage index workflow upserts control issue summary comment",
+            TestTriageIndexWorkflowTemplateUpsertsControlIssueSummaryComment);
         failed += Run("Todo project bootstrap control issue body includes context", TestProjectBootstrapBuildControlIssueBodyIncludesProjectContext);
         failed += Run("Todo project bootstrap parses issue url output", TestProjectBootstrapParseIssueNumberFromGhOutputParsesIssueUrl);
         failed += Run("Todo project bootstrap parses trailing issue number", TestProjectBootstrapParseIssueNumberFromGhOutputParsesTrailingInteger);

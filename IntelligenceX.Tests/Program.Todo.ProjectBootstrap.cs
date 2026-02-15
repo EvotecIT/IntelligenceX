@@ -83,6 +83,16 @@ project={{ProjectNumber}}
         AssertContainsText(rendered, "--method POST", "workflow creates summary comment when missing");
     }
 
+    private static void TestTriageIndexWorkflowTemplateUpsertsControlIssueSummaryComment() {
+        var templatePath = Path.Combine("IntelligenceX.Cli", "Templates", "triage-index-scheduled.yml");
+        var rendered = File.ReadAllText(templatePath);
+
+        AssertContainsText(rendered, "intelligencex:triage-index-summary", "index workflow summary marker present");
+        AssertContainsText(rendered, "issues/$ISSUE/comments", "index workflow reads control issue comments");
+        AssertContainsText(rendered, "--method PATCH", "index workflow updates existing summary comment");
+        AssertContainsText(rendered, "--method POST", "index workflow creates summary comment when missing");
+    }
+
     private static void TestProjectBootstrapBuildControlIssueBodyIncludesProjectContext() {
         var body = IntelligenceX.Cli.Todo.ProjectBootstrapRunner.BuildControlIssueBody(
             "EvotecIT/IntelligenceX",
