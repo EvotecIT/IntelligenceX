@@ -16,6 +16,7 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
     private const int MaxViewTop = 5000;
     private const int MaxMachineNameLength = 260;
     private const int MaxLogNameLength = 260;
+    private static readonly SemaphoreSlim RemoteReadGate = new(initialCount: 4, maxCount: 4);
 
     private const int DefaultRemoteSessionTimeoutMs = 30_000;
     private const int MinSessionTimeoutMs = 250;
@@ -145,15 +146,26 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
                 failure: out failure,
                 cancellationToken: cancellationToken);
         } else {
-            // Live querying is currently synchronous; for remote sessions, offload so callers don't tie up request threads.
-            var remote = await Task.Run(() => {
-                var okInner = LiveEventQueryExecutor.TryRead(
-                    request: request,
-                    result: out var remoteRoot,
-                    failure: out var remoteFailure,
-                    cancellationToken: cancellationToken);
-                return (Ok: okInner, Root: okInner ? remoteRoot : null, Failure: okInner ? null : remoteFailure);
-            }, cancellationToken);
+            // Live querying is synchronous; for remote sessions, offload work so callers don't tie up request threads.
+            // Use a small concurrency gate + LongRunning to avoid threadpool starvation under concurrent remote queries.
+            await RemoteReadGate.WaitAsync(cancellationToken);
+            (bool Ok, LiveEventQueryResult? Root, LiveEventQueryFailure? Failure) remote;
+            try {
+                remote = await Task.Factory.StartNew(
+                    () => {
+                        var okInner = LiveEventQueryExecutor.TryRead(
+                            request: request,
+                            result: out var remoteRoot,
+                            failure: out var remoteFailure,
+                            cancellationToken: cancellationToken);
+                        return (Ok: okInner, Root: okInner ? remoteRoot : null, Failure: okInner ? null : remoteFailure);
+                    },
+                    cancellationToken,
+                    TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default);
+            } finally {
+                RemoteReadGate.Release();
+            }
 
             ok = remote.Ok;
             root = remote.Root;
