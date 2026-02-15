@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using IntelligenceX.Chat.Service;
@@ -24,6 +25,23 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void CanonicalizeImplicitPendingActionConfirmationPhrase_NormalizesCurlyApostrophes(string input, string expected) {
         var normalized = CanonicalizeImplicitPendingActionConfirmationPhraseMethod.Invoke(null, new object?[] { input });
         Assert.Equal(expected, Assert.IsType<string>(normalized));
+    }
+
+    [Fact]
+    public void CanonicalizeImplicitPendingActionConfirmationPhrase_UsesInvariantCasingUnderTurkishCulture() {
+        var originalCulture = CultureInfo.CurrentCulture;
+        var originalUiCulture = CultureInfo.CurrentUICulture;
+        try {
+            CultureInfo.CurrentCulture = new CultureInfo("tr-TR");
+            CultureInfo.CurrentUICulture = new CultureInfo("tr-TR");
+
+            // Under Turkish culture, ToLower() would map 'I' -> 'ı' (dotless i). We want invariant casing.
+            var normalized = CanonicalizeImplicitPendingActionConfirmationPhraseMethod.Invoke(null, new object?[] { "I" });
+            Assert.Equal("i", Assert.IsType<string>(normalized));
+        } finally {
+            CultureInfo.CurrentCulture = originalCulture;
+            CultureInfo.CurrentUICulture = originalUiCulture;
+        }
     }
 
     [Fact]
