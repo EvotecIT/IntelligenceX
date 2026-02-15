@@ -51,7 +51,7 @@ internal sealed partial class ChatServiceSession {
             var security = new FileSecurity();
             security.SetOwner(currentSid);
             security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
-            security.AddAccessRule(new FileSystemAccessRule(currentSid, FileSystemRights.Read | FileSystemRights.Write, AccessControlType.Allow));
+            security.AddAccessRule(new FileSystemAccessRule(currentSid, FileSystemRights.FullControl, AccessControlType.Allow));
 
             new FileInfo(path).SetAccessControl(security);
         } catch (Exception ex) {
@@ -239,7 +239,7 @@ internal sealed partial class ChatServiceSession {
                 return new PendingActionStoreDto();
             }
 
-            var json = File.ReadAllText(path);
+            var json = File.ReadAllText(path, Encoding.UTF8);
             if (string.IsNullOrWhiteSpace(json)) {
                 return new PendingActionStoreDto();
             }
