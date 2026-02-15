@@ -216,10 +216,10 @@ public sealed class ChatServiceRetryPolicyTests {
             raw: new JsonObject());
         var output = new ToolOutputDto {
             CallId = call.CallId,
-            Output = "{\"ok\":false,\"error_code\":\"invalid_argument\",\"error\":\"Failed to query top events because filter expression is invalid.\"}",
+            Output = "{\"ok\":false,\"error_code\":\"invalid_argument\",\"error\":\"Failed to query top events; invalid filter expression.\"}",
             Ok = false,
             ErrorCode = "invalid_argument",
-            Error = "Failed to query top events because filter expression is invalid."
+            Error = "Failed to query top events; invalid filter expression."
         };
 
         var args = new object?[] { call, output, null, null };

@@ -26,7 +26,7 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private static readonly string[] ProjectionFormattingArgumentNames = { "columns", "sort_by", "sort_direction" };
     private static readonly Regex TopValidationRegex = new(
-        @"\btop\b\s*(?:must|should|has to|needs to|is|was|value|argument|parameter)|\b(?:must|should|has to|needs to|invalid|unsupported|required)\b.{0,32}\btop\b|\btop\b.{0,32}\b(?:invalid|unsupported|required|between)\b",
+        @"\btop\b\s+(?:must|should|has to|needs to)\b|\b(?:invalid|unsupported|required)\s+(?:value\s+for\s+)?(?:top|top\s+(?:value|argument|parameter))\b|\b(?:top\s+(?:value|argument|parameter)|parameter\s+['""]?top['""]?)\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline);
     private const string ProjectionColumnsArgumentName = "columns";
     private const string ProjectionSortByArgumentName = "sort_by";
