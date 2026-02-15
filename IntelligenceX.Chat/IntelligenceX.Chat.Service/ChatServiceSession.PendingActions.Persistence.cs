@@ -75,6 +75,7 @@ internal sealed partial class ChatServiceSession {
 
     private sealed class PendingActionStoreEntryDto {
         public long SeenUtcTicks { get; set; }
+        public string AssistantContext { get; set; } = string.Empty;
         public PendingActionDto[] Actions { get; set; } = Array.Empty<PendingActionDto>();
     }
 
@@ -135,7 +136,7 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
-    private void PersistPendingActionsSnapshot(string threadId, long seenUtcTicks, PendingAction[] actions) {
+    private void PersistPendingActionsSnapshot(string threadId, long seenUtcTicks, PendingAction[] actions, string assistantContext) {
         if (string.IsNullOrWhiteSpace(threadId) || actions is null || actions.Length == 0 || seenUtcTicks <= 0) {
             return;
         }
@@ -146,8 +147,13 @@ internal sealed partial class ChatServiceSession {
 
             // Normalize and enforce bounds.
             var normalizedId = threadId.Trim();
+            var normalizedContext = (assistantContext ?? string.Empty).Trim();
+            if (normalizedContext.Length > MaxPendingActionAssistantContextChars) {
+                normalizedContext = normalizedContext.Substring(0, MaxPendingActionAssistantContextChars);
+            }
             var dto = new PendingActionStoreEntryDto {
                 SeenUtcTicks = seenUtcTicks,
+                AssistantContext = normalizedContext,
                 Actions = actions
                     .Where(a => !string.IsNullOrWhiteSpace(a.Id))
                     .Take(6)
@@ -180,9 +186,10 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
-    private bool TryLoadPendingActionsSnapshot(string threadId, out long seenUtcTicks, out PendingAction[] actions) {
+    private bool TryLoadPendingActionsSnapshot(string threadId, out long seenUtcTicks, out PendingAction[] actions, out string assistantContext) {
         seenUtcTicks = 0;
         actions = Array.Empty<PendingAction>();
+        assistantContext = string.Empty;
 
         var normalized = (threadId ?? string.Empty).Trim();
         if (normalized.Length == 0) {
@@ -230,6 +237,11 @@ internal sealed partial class ChatServiceSession {
                 store.Threads.Remove(normalized);
                 WritePendingActionsStoreNoThrow(path, store);
                 return false;
+            }
+
+            assistantContext = (entry.AssistantContext ?? string.Empty).Trim();
+            if (assistantContext.Length > MaxPendingActionAssistantContextChars) {
+                assistantContext = assistantContext.Substring(0, MaxPendingActionAssistantContextChars);
             }
 
             return true;

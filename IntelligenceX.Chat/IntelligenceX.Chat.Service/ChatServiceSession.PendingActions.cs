@@ -10,6 +10,9 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private const string ActionMarker = "ix:action:v1";
     private const int MaxActionParsingChars = 64 * 1024;
+    private const int MaxPendingActionAssistantContextChars = 4096;
+    private static readonly char[] PendingActionConfirmationQuestionPunctuation = new[] { '?', '？', '¿', '؟' };
+    private static readonly char[] PendingActionConfirmationDisqualifierPunctuation = new[] { ':', ';', '\uFF1A', '\uFF1B' }; // ： ；
 
     private readonly record struct PendingAction(string Id, string Title, string Request);
 
@@ -34,6 +37,10 @@ internal sealed partial class ChatServiceSession {
             text = text.Substring(start, len);
         }
 
+        var assistantContext = text.Length <= MaxPendingActionAssistantContextChars
+            ? text
+            : text.Substring(0, MaxPendingActionAssistantContextChars);
+
         var actions = ExtractPendingActions(text);
         PendingAction[]? snapshotActions = null;
         long snapshotTicks = 0;
@@ -42,12 +49,14 @@ internal sealed partial class ChatServiceSession {
             if (actions.Count == 0) {
                 _pendingActionsByThreadId.Remove(normalizedThreadId);
                 _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
+                _pendingActionsAssistantContextByThreadId.Remove(normalizedThreadId);
                 shouldRemoveSnapshot = true;
             } else {
                 snapshotActions = actions.ToArray();
                 snapshotTicks = DateTime.UtcNow.Ticks;
                 _pendingActionsByThreadId[normalizedThreadId] = snapshotActions;
                 _pendingActionsSeenUtcTicks[normalizedThreadId] = snapshotTicks;
+                _pendingActionsAssistantContextByThreadId[normalizedThreadId] = assistantContext;
                 TrimWeightedRoutingContextsNoLock();
             }
         }
@@ -57,7 +66,7 @@ internal sealed partial class ChatServiceSession {
             return;
         }
         if (snapshotActions is not null && snapshotActions.Length > 0 && snapshotTicks > 0) {
-            PersistPendingActionsSnapshot(normalizedThreadId, snapshotTicks, snapshotActions);
+            PersistPendingActionsSnapshot(normalizedThreadId, snapshotTicks, snapshotActions, assistantContext);
         }
     }
 
@@ -83,22 +92,30 @@ internal sealed partial class ChatServiceSession {
 
         PendingAction[]? actions;
         long ticks;
+        string? assistantContext;
         lock (_toolRoutingContextLock) {
             _pendingActionsByThreadId.TryGetValue(normalizedThreadId, out actions);
             ticks = _pendingActionsSeenUtcTicks.TryGetValue(normalizedThreadId, out var seen) ? seen : 0;
+            _pendingActionsAssistantContextByThreadId.TryGetValue(normalizedThreadId, out assistantContext);
         }
 
         if (actions is null || actions.Length == 0) {
-            if (!TryLoadPendingActionsSnapshot(normalizedThreadId, out var persistedTicks, out var persistedActions)) {
+            if (!TryLoadPendingActionsSnapshot(normalizedThreadId, out var persistedTicks, out var persistedActions, out var persistedAssistantContext)) {
                 return false;
             }
 
             actions = persistedActions;
             ticks = persistedTicks;
+            assistantContext = persistedAssistantContext;
 
             lock (_toolRoutingContextLock) {
                 _pendingActionsByThreadId[normalizedThreadId] = actions;
                 _pendingActionsSeenUtcTicks[normalizedThreadId] = ticks;
+                if (!string.IsNullOrWhiteSpace(assistantContext)) {
+                    _pendingActionsAssistantContextByThreadId[normalizedThreadId] = assistantContext;
+                } else {
+                    _pendingActionsAssistantContextByThreadId.Remove(normalizedThreadId);
+                }
                 TrimWeightedRoutingContextsNoLock();
             }
         }
@@ -108,6 +125,7 @@ internal sealed partial class ChatServiceSession {
                 lock (_toolRoutingContextLock) {
                     _pendingActionsByThreadId.Remove(normalizedThreadId);
                     _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
+                    _pendingActionsAssistantContextByThreadId.Remove(normalizedThreadId);
                     TrimWeightedRoutingContextsNoLock();
                 }
                 RemovePendingActionsSnapshot(normalizedThreadId);
@@ -119,6 +137,7 @@ internal sealed partial class ChatServiceSession {
                 lock (_toolRoutingContextLock) {
                     _pendingActionsByThreadId.Remove(normalizedThreadId);
                     _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
+                    _pendingActionsAssistantContextByThreadId.Remove(normalizedThreadId);
                     TrimWeightedRoutingContextsNoLock();
                 }
                 RemovePendingActionsSnapshot(normalizedThreadId);
@@ -130,6 +149,7 @@ internal sealed partial class ChatServiceSession {
                 lock (_toolRoutingContextLock) {
                     _pendingActionsByThreadId.Remove(normalizedThreadId);
                     _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
+                    _pendingActionsAssistantContextByThreadId.Remove(normalizedThreadId);
                     TrimWeightedRoutingContextsNoLock();
                 }
                 RemovePendingActionsSnapshot(normalizedThreadId);
@@ -137,7 +157,7 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        var selected = TryMatchPendingAction(normalized, actions, out var match)
+        var selected = TryMatchPendingAction(normalized, actions, assistantContext ?? string.Empty, out var match)
             ? match
             : (PendingAction?)null;
         if (selected is null) {
@@ -148,6 +168,7 @@ internal sealed partial class ChatServiceSession {
         lock (_toolRoutingContextLock) {
             _pendingActionsByThreadId.Remove(normalizedThreadId);
             _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
+            _pendingActionsAssistantContextByThreadId.Remove(normalizedThreadId);
             TrimWeightedRoutingContextsNoLock();
         }
         RemovePendingActionsSnapshot(normalizedThreadId);
@@ -168,7 +189,7 @@ internal sealed partial class ChatServiceSession {
         return true;
     }
 
-    private static bool TryMatchPendingAction(string userText, IReadOnlyList<PendingAction> actions, out PendingAction match) {
+    private static bool TryMatchPendingAction(string userText, IReadOnlyList<PendingAction> actions, string assistantContext, out PendingAction match) {
         match = default;
 
         // Be careful with normalization: explicit selections like `/act <id>` should treat `<id>` as an opaque token.
@@ -224,11 +245,14 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
-        // If there's only one pending action, treat a compact acknowledgement-like follow-up as confirmation.
-        // This is intentionally high-precision (allowlist-based) to avoid accidental execution from ambiguous short messages.
+        // If there's only one pending action, allow the user to echo an assistant-provided call-to-action phrase.
+        // This is language-agnostic, and avoids hardcoding locale-specific yes/no phrase lists in the host.
         if (actions.Count == 1
             && !string.IsNullOrWhiteSpace(actions[0].Id)
-            && LooksLikeImplicitPendingActionConfirmation(trimmed)) {
+            && !string.IsNullOrWhiteSpace(assistantContext)
+            && trimmed.IndexOfAny(PendingActionConfirmationQuestionPunctuation) < 0
+            && trimmed.IndexOfAny(PendingActionConfirmationDisqualifierPunctuation) < 0
+            && UserMatchesAssistantCallToAction(trimmed, assistantContext)) {
             match = actions[0];
             return true;
         }

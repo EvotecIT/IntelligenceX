@@ -13,29 +13,6 @@ namespace IntelligenceX.Chat.Tests;
 public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
-    public void CanonicalizeImplicitPendingActionConfirmationPhrase_NormalizesFullWidthOk() {
-        var normalized = CanonicalizeImplicitPendingActionConfirmationPhraseMethod.Invoke(null, new object?[] { "ＯＫ" });
-        Assert.Equal("ok", Assert.IsType<string>(normalized));
-    }
-
-    [Theory]
-    [InlineData("don\u2019t", "don't")] // don’t
-    [InlineData("don\u2018t", "don't")] // don‘t
-    [InlineData("don\uFF07t", "don't")] // don＇t
-    public void CanonicalizeImplicitPendingActionConfirmationPhrase_NormalizesCurlyApostrophes(string input, string expected) {
-        var normalized = CanonicalizeImplicitPendingActionConfirmationPhraseMethod.Invoke(null, new object?[] { input });
-        Assert.Equal(expected, Assert.IsType<string>(normalized));
-    }
-
-    [Fact]
-    public void CanonicalizeImplicitPendingActionConfirmationPhrase_DoesNotThrowOnLoneSurrogate() {
-        // string.Normalize can throw on invalid Unicode. This should never take down routing.
-        var input = "\uD800";
-        var normalized = CanonicalizeImplicitPendingActionConfirmationPhraseMethod.Invoke(null, new object?[] { input });
-        Assert.Equal(input, Assert.IsType<string>(normalized));
-    }
-
-    [Fact]
     public void ExpandContinuationUserRequest_DoesNotThrowOnInvalidUnicodeInUserInput() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
@@ -211,20 +188,18 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Theory]
-    [InlineData("ok")]
-    [InlineData(" ok ")]
-    [InlineData("ok.")]
-    [InlineData("ok,")]
-    [InlineData("`ok`")]
-    [InlineData(" ok! ")]
-    [InlineData("ok！")]
-    [InlineData("ok。")]
-    [InlineData("ＯＫ")]
-    [InlineData("do   it")]
-    public void ExpandContinuationUserRequest_AutoConfirmsSinglePendingActionForCommonAcknowledgements(string input) {
+    [InlineData("run now")]
+    [InlineData(" run now ")]
+    [InlineData("run now.")]
+    [InlineData("run now,")]
+    [InlineData("`run now`")]
+    [InlineData(" run now! ")]
+    [InlineData("\"run now\"")]
+    [InlineData("'run now'")]
+    public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenUserEchoesAssistantCallToAction(string input) {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
-            Pick one:
+            If you say "run now", I'll execute it.
 
             [Action]
             ix:action:v1
@@ -245,14 +220,14 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Theory]
-    [InlineData("ok:")]
-    [InlineData("ok;")]
-    [InlineData("tak:")]
-    [InlineData("sure:")]
-    public void ExpandContinuationUserRequest_DoesNotAutoConfirmOnPrefixStyleAcknowledgements(string input) {
+    [InlineData("run now:")]
+    [InlineData("run now;")]
+    [InlineData("run now：")]
+    [InlineData("run now；")]
+    public void ExpandContinuationUserRequest_DoesNotConfirmWhenFollowUpLooksLikeAPrefix(string input) {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
-            Pick one:
+            If you say "run now", I'll execute it.
 
             [Action]
             ix:action:v1
@@ -273,7 +248,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void ExpandContinuationUserRequest_DoesNotAutoConfirmWhenMultiplePendingActionsExist() {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
-            Pick one:
+            If you say "run now", I'll execute it.
 
             [Action]
             ix:action:v1
@@ -291,7 +266,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             """;
 
         RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
-        var input = "ok";
+        var input = "run now";
         var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
         var expanded = Assert.IsType<string>(result);
 
@@ -299,16 +274,14 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Theory]
-    [InlineData("why?")]
-    [InlineData("ok?")]
-    [InlineData("ok？")]
-    [InlineData("dalej?")]
-    [InlineData("¿dalej")]
-    [InlineData("dalej؟")]
-    public void ExpandContinuationUserRequest_DoesNotAutoConfirmOnQuestionLikeFollowUps(string input) {
+    [InlineData("run now?")]
+    [InlineData("run now？")]
+    [InlineData("¿run now")]
+    [InlineData("run now؟")]
+    public void ExpandContinuationUserRequest_DoesNotConfirmOnQuestionLikeFollowUps(string input) {
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         var assistantDraft = """
-            Pick one:
+            If you say "run now", I'll execute it.
 
             [Action]
             ix:action:v1
@@ -414,7 +387,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         try {
             var threadId = "thread-001";
             var assistantDraft = """
-                Pick one:
+                If you say "run now", I'll execute it.
 
                 [Action]
                 ix:action:v1
@@ -431,7 +404,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
             // "Restart": new session instance with empty in-memory caches.
             var session2 = new ChatServiceSession(opts, Stream.Null);
-            var expandedObj = ExpandContinuationUserRequestMethod.Invoke(session2, new object?[] { threadId, "/act act_001" });
+            var expandedObj = ExpandContinuationUserRequestMethod.Invoke(session2, new object?[] { threadId, "run now" });
             var expanded = Assert.IsType<string>(expandedObj);
 
             using var doc = JsonDocument.Parse(expanded);

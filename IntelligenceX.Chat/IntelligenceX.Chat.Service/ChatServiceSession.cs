@@ -46,6 +46,7 @@ internal sealed partial class ChatServiceSession {
     private readonly Dictionary<string, long> _lastUserIntentSeenUtcTicks = new(StringComparer.Ordinal);
     private readonly Dictionary<string, PendingAction[]> _pendingActionsByThreadId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _pendingActionsSeenUtcTicks = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _pendingActionsAssistantContextByThreadId = new(StringComparer.Ordinal);
 
     private readonly JsonSerializerOptions _json;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
