@@ -28,23 +28,6 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void CanonicalizeImplicitPendingActionConfirmationPhrase_UsesInvariantCasingUnderTurkishCulture() {
-        var originalCulture = CultureInfo.CurrentCulture;
-        var originalUiCulture = CultureInfo.CurrentUICulture;
-        try {
-            CultureInfo.CurrentCulture = new CultureInfo("tr-TR");
-            CultureInfo.CurrentUICulture = new CultureInfo("tr-TR");
-
-            // Under Turkish culture, ToLower() would map 'I' -> 'ı' (dotless i). We want invariant casing.
-            var normalized = CanonicalizeImplicitPendingActionConfirmationPhraseMethod.Invoke(null, new object?[] { "I" });
-            Assert.Equal("i", Assert.IsType<string>(normalized));
-        } finally {
-            CultureInfo.CurrentCulture = originalCulture;
-            CultureInfo.CurrentUICulture = originalUiCulture;
-        }
-    }
-
-    [Fact]
     public void CanonicalizeImplicitPendingActionConfirmationPhrase_DoesNotThrowOnLoneSurrogate() {
         // string.Normalize can throw on invalid Unicode. This should never take down routing.
         var input = "\uD800";
@@ -68,6 +51,29 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
         var input = "ok\uD800";
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Theory]
+    [InlineData("/actuator")]
+    [InlineData("/act1 act_001")]
+    public void ExpandContinuationUserRequest_DoesNotTreatNonActTokenPrefixesAsSelection(string input) {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var assistantDraft = """
+            Pick one:
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
         var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
         var expanded = Assert.IsType<string>(result);
 

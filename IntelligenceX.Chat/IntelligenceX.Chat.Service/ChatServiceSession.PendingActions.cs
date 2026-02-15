@@ -182,6 +182,11 @@ internal sealed partial class ChatServiceSession {
 
         // /act <id>
         if (trimmed.StartsWith("/act", StringComparison.OrdinalIgnoreCase)) {
+            // Require `/act` as a standalone token; avoid accidentally treating `/actuator` etc. as an action selection.
+            if (trimmed.Length > 4 && !char.IsWhiteSpace(trimmed[4])) {
+                return false;
+            }
+
             var rest = trimmed[4..].Trim();
             if (rest.Length == 0) {
                 return false;
