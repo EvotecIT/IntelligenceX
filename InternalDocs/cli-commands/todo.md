@@ -128,6 +128,7 @@ Behavior:
 - Scheduled + manual runs.
 - Generates triage index artifacts.
 - Optional control-issue comment when repo variable `IX_TRIAGE_CONTROL_ISSUE` is configured.
+- `triage-project-sync.yml` posts a combined triage + vision markdown summary to the control issue.
 
 ## Legacy Script
 
