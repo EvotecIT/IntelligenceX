@@ -14,6 +14,8 @@ namespace IntelligenceX.Tools.EventLog;
 public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
     private const int DefaultMaxEvents = 5;
     private const int MaxViewTop = 5000;
+    private const int MaxMachineNameLength = 260;
+    private const int MaxLogNameLength = 260;
 
     private const int DefaultRemoteSessionTimeoutMs = 30_000;
     private const int MinSessionTimeoutMs = 250;
@@ -52,16 +54,25 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
         if (string.IsNullOrWhiteSpace(logName)) {
             return Task.FromResult(ToolResponse.Error("invalid_argument", "log_name is required."));
         }
+        logName = logName.Trim();
+        if (logName.Length > MaxLogNameLength) {
+            return Task.FromResult(ToolResponse.Error("invalid_argument", $"log_name must be <= {MaxLogNameLength} characters."));
+        }
+        foreach (var c in logName) {
+            if (char.IsControl(c)) {
+                return Task.FromResult(ToolResponse.Error("invalid_argument", "log_name must not contain control characters."));
+            }
+        }
 
         // Treat whitespace-only values as "not provided" to avoid accidental remote session behavior.
         var machineName = ToolArgs.GetOptionalTrimmed(arguments, "machine_name");
-        if (machineName is { Length: > 260 }) {
-            machineName = machineName.Substring(0, 260);
-        }
         if (string.IsNullOrWhiteSpace(machineName)) {
             machineName = null;
         }
         if (machineName is not null) {
+            if (machineName.Length > MaxMachineNameLength) {
+                return Task.FromResult(ToolResponse.Error("invalid_argument", $"machine_name must be <= {MaxMachineNameLength} characters."));
+            }
             foreach (var c in machineName) {
                 if (char.IsControl(c)) {
                     return Task.FromResult(ToolResponse.Error("invalid_argument", "machine_name must not contain control characters."));
@@ -104,7 +115,7 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
 
         if (!LiveEventQueryExecutor.TryRead(
                 request: new LiveEventQueryRequest {
-                    LogName = logName.Trim(),
+                    LogName = logName,
                     MachineName = machineName,
                     XPath = "*",
                     MaxEvents = maxEvents,
