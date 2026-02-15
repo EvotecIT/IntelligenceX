@@ -340,22 +340,51 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
+        // Conservative "decorated reject" handling (safety-first): treat short refusal leads as rejections even when
+        // they're followed by punctuation and additional text (e.g. "no, thanks", "nah. later", "nie: jutro").
+        // False positives are acceptable here because this predicate is only used to *prevent* implicit execution.
+        if (LooksLikeDecoratedRejectLead(normalized, "no")
+            || LooksLikeDecoratedRejectLead(normalized, "nope")
+            || LooksLikeDecoratedRejectLead(normalized, "nah")
+            || LooksLikeDecoratedRejectLead(normalized, "nie")) {
+            return true;
+        }
+
         // Conservative prefix rejects (safety-first): avoid implicit confirmation when the message starts
         // like a refusal, even if it includes extra words.
-        return normalized.StartsWith("no ", StringComparison.Ordinal)
-            || normalized.StartsWith("no,", StringComparison.Ordinal)
-            || normalized.StartsWith("no.", StringComparison.Ordinal)
-            || normalized.StartsWith("no!", StringComparison.Ordinal)
-            || normalized.StartsWith("no?", StringComparison.Ordinal)
-            || normalized.StartsWith("nope ", StringComparison.Ordinal)
-            || normalized.StartsWith("nope,", StringComparison.Ordinal)
-            || normalized.StartsWith("nah ", StringComparison.Ordinal)
-            || normalized.StartsWith("nah,", StringComparison.Ordinal)
-            || normalized.StartsWith("nie ", StringComparison.Ordinal)
-            || normalized.StartsWith("nie,", StringComparison.Ordinal)
-            || normalized.StartsWith("dont", StringComparison.Ordinal)
+        return normalized.StartsWith("dont", StringComparison.Ordinal)
             || normalized.StartsWith("don't", StringComparison.Ordinal)
             || normalized.StartsWith("do not", StringComparison.Ordinal);
+    }
+
+    private static bool LooksLikeDecoratedRejectLead(string normalized, string lead) {
+        if (!normalized.StartsWith(lead, StringComparison.Ordinal)) {
+            return false;
+        }
+
+        if (normalized.Length == lead.Length) {
+            return true;
+        }
+
+        var next = normalized[lead.Length];
+        if (char.IsWhiteSpace(next)) {
+            return true;
+        }
+
+        // Treat common delimiters after a refusal lead as rejection even if additional text follows.
+        return IsRejectLeadPunctuation(next);
+    }
+
+    private static bool IsRejectLeadPunctuation(char ch) {
+        return IsDecorationPunctuation(ch)
+            || ch is ':'
+            or ';'
+            or '\uFF1A' // ：
+            or '\uFF1B' // ；
+            or '?'
+            or '？'
+            or '¿'
+            or '؟';
     }
 
     private static bool LooksLikeWindowsDrivePath(string text) {
