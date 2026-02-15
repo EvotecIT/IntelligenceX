@@ -69,6 +69,20 @@ project={{ProjectNumber}}
         AssertContainsText(rendered, "--apply-link-comments", "workflow enables PR issue suggestion comments");
     }
 
+    private static void TestProjectBootstrapWorkflowTemplateUpsertsControlIssueSummaryComment() {
+        var template = IntelligenceX.Cli.Todo.ProjectBootstrapRunner.LoadWorkflowTemplate();
+        var rendered = IntelligenceX.Cli.Todo.ProjectBootstrapRunner.RenderWorkflowTemplate(
+            template,
+            "EvotecIT",
+            654,
+            300);
+
+        AssertContainsText(rendered, "intelligencex:triage-project-sync-summary", "workflow summary marker present");
+        AssertContainsText(rendered, "issues/$ISSUE/comments", "workflow reads control issue comments");
+        AssertContainsText(rendered, "--method PATCH", "workflow updates existing summary comment");
+        AssertContainsText(rendered, "--method POST", "workflow creates summary comment when missing");
+    }
+
     private static void TestProjectBootstrapBuildControlIssueBodyIncludesProjectContext() {
         var body = IntelligenceX.Cli.Todo.ProjectBootstrapRunner.BuildControlIssueBody(
             "EvotecIT/IntelligenceX",

@@ -231,7 +231,7 @@ A reusable scheduled workflow template is available at:
 
 It runs `build-triage-index`, uploads artifacts, and can optionally post the markdown summary to a control issue
 when repository variable `IX_TRIAGE_CONTROL_ISSUE` is set.
-For `triage-project-sync.yml`, the posted comment includes both triage and vision markdown summaries.
+For `triage-project-sync.yml`, IX upserts a single marker comment (latest only) that includes both triage and vision markdown summaries.
 `todo project-bootstrap --create-control-issue` can set this variable for you automatically.
 
 ## Options
