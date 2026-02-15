@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text.Json;
 
 namespace IntelligenceX.Chat.Service;
@@ -24,6 +26,36 @@ internal sealed partial class ChatServiceSession {
             return true;
         } catch (ArgumentOutOfRangeException) {
             return false;
+        }
+    }
+
+    private static void TryHardenPendingActionsStoreAclNoThrow(string path) {
+        if (string.IsNullOrWhiteSpace(path)) {
+            return;
+        }
+        if (!OperatingSystem.IsWindows()) {
+            return;
+        }
+
+        try {
+            var currentSid = WindowsIdentity.GetCurrent().User;
+            if (currentSid is null) {
+                return;
+            }
+
+            var adminsSid = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
+            var systemSid = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
+
+            var security = new FileSecurity();
+            security.SetOwner(currentSid);
+            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            security.AddAccessRule(new FileSystemAccessRule(currentSid, FileSystemRights.Read | FileSystemRights.Write, AccessControlType.Allow));
+            security.AddAccessRule(new FileSystemAccessRule(systemSid, FileSystemRights.Read | FileSystemRights.Write, AccessControlType.Allow));
+            security.AddAccessRule(new FileSystemAccessRule(adminsSid, FileSystemRights.Read | FileSystemRights.Write, AccessControlType.Allow));
+
+            new FileInfo(path).SetAccessControl(security);
+        } catch (Exception ex) {
+            Trace.TraceWarning($"Pending action store ACL hardening failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -216,6 +248,8 @@ internal sealed partial class ChatServiceSession {
             } else {
                 File.Move(tmp, path);
             }
+
+            TryHardenPendingActionsStoreAclNoThrow(path);
         } catch (Exception ex) {
             Trace.TraceWarning($"Pending action store write failed: {ex.GetType().Name}: {ex.Message}");
         } finally {
