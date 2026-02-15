@@ -213,6 +213,44 @@ internal static partial class SetupRunner {
             return number;
         }
 
+        public async Task UpsertIssueCommentWithMarkerAsync(
+            string owner,
+            string repo,
+            int issueNumber,
+            string marker,
+            string body) {
+            if (issueNumber <= 0) {
+                throw new ArgumentOutOfRangeException(nameof(issueNumber), issueNumber, "Issue number must be positive.");
+            }
+            if (string.IsNullOrWhiteSpace(marker)) {
+                throw new ArgumentException("Marker is required.", nameof(marker));
+            }
+
+            var normalizedBody = string.IsNullOrWhiteSpace(body)
+                ? marker
+                : body.Contains(marker, StringComparison.Ordinal)
+                    ? body
+                    : $"{marker}{Environment.NewLine}{body}";
+
+            var existing = await TryFindIssueCommentByMarkerAsync(owner, repo, issueNumber, marker).ConfigureAwait(false);
+            if (existing.HasValue) {
+                var existingBody = existing.Value.Body ?? string.Empty;
+                if (string.Equals(existingBody.Trim(), normalizedBody.Trim(), StringComparison.Ordinal)) {
+                    return;
+                }
+
+                await PatchJsonAsync(
+                    $"/repos/{owner}/{repo}/issues/comments/{existing.Value.Id}",
+                    new { body = normalizedBody }).ConfigureAwait(false);
+                return;
+            }
+
+            await PostJsonAsync(
+                $"/repos/{owner}/{repo}/issues/{issueNumber}/comments",
+                new { body = normalizedBody },
+                allowConflict: false).ConfigureAwait(false);
+        }
+
         public async Task<string?> TryGetRepositoryVariableAsync(string owner, string repo, string name) {
             if (string.IsNullOrWhiteSpace(name)) {
                 throw new ArgumentException("Variable name is required.", nameof(name));
@@ -255,6 +293,46 @@ internal static partial class SetupRunner {
             }
 
             await PatchJsonAsync($"/repos/{owner}/{repo}/actions/variables/{escapedName}", payload).ConfigureAwait(false);
+        }
+
+        private async Task<(long Id, string Body)?> TryFindIssueCommentByMarkerAsync(
+            string owner,
+            string repo,
+            int issueNumber,
+            string marker) {
+            for (var page = 1; page <= 10; page++) {
+                var url = $"/repos/{owner}/{repo}/issues/{issueNumber}/comments?per_page=100&page={page}";
+                var json = await GetJsonAsync(url).ConfigureAwait(false);
+                if (json.ValueKind != JsonValueKind.Array || json.GetArrayLength() == 0) {
+                    return null;
+                }
+
+                var count = 0;
+                foreach (var item in json.EnumerateArray()) {
+                    count++;
+                    if (!item.TryGetProperty("id", out var idProp) ||
+                        idProp.ValueKind != JsonValueKind.Number ||
+                        !idProp.TryGetInt64(out var commentId) ||
+                        commentId <= 0) {
+                        continue;
+                    }
+
+                    if (!item.TryGetProperty("body", out var bodyProp) || bodyProp.ValueKind != JsonValueKind.String) {
+                        continue;
+                    }
+
+                    var body = bodyProp.GetString() ?? string.Empty;
+                    if (body.Contains(marker, StringComparison.Ordinal)) {
+                        return (commentId, body);
+                    }
+                }
+
+                if (count < 100) {
+                    return null;
+                }
+            }
+
+            return null;
         }
 
         public async Task SetSecretAsync(string owner, string repo, string name, string value) {
