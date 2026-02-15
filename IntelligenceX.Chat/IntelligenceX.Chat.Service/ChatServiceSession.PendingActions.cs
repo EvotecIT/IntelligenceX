@@ -11,7 +11,9 @@ internal sealed partial class ChatServiceSession {
     private const string ActionMarker = "ix:action:v1";
     private const int MaxActionParsingChars = 64 * 1024;
     private static readonly char[] ImplicitConfirmationQuestionPunctuation = new[] { '?', '？', '¿', '؟' };
-    private static readonly char[] ImplicitConfirmationStructuredChars = new[] { '{', '}', '[', ']', '"', '\'', '<', '>', '`', '=' };
+    // A very small disqualifying set for "this is clearly structured payload" (JSON/XML).
+    // Avoid overly broad disqualifiers like quotes/backticks which are common in plain chat.
+    private static readonly char[] ImplicitConfirmationStructuredChars = new[] { '{', '}', '[', ']', '<', '>' };
     private static readonly HashSet<string> ImplicitSingleActionRejectPhrases = new(
         new[] {
             "no",
@@ -291,14 +293,14 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var normalized = CanonicalizeImplicitPendingActionConfirmationPhrase(raw);
-        if (normalized.Length == 0) {
+        // Reject obvious structured payload fragments early. This prevents punctuation trimming from turning
+        // a paste like `{"go":false}` into an allowlisted confirmation token.
+        if (raw.IndexOfAny(ImplicitConfirmationStructuredChars) >= 0) {
             return false;
         }
 
-        // Reject structured payload fragments (JSON-ish snippets, XML, inline code) *after* canonicalization so
-        // benign punctuation around confirmations (e.g., `"ok"`, `ok'`, `ok.`) doesn't get rejected prematurely.
-        if (normalized.IndexOfAny(ImplicitConfirmationStructuredChars) >= 0) {
+        var normalized = CanonicalizeImplicitPendingActionConfirmationPhrase(raw);
+        if (normalized.Length == 0) {
             return false;
         }
 
@@ -353,10 +355,10 @@ internal sealed partial class ChatServiceSession {
         var span = normalized.AsSpan();
         var start = 0;
         var end = span.Length;
-        while (start < end && (char.IsWhiteSpace(span[start]) || char.IsPunctuation(span[start]))) {
+        while (start < end && (char.IsWhiteSpace(span[start]) || char.IsPunctuation(span[start]) || span[start] == '`')) {
             start++;
         }
-        while (end > start && (char.IsWhiteSpace(span[end - 1]) || char.IsPunctuation(span[end - 1]))) {
+        while (end > start && (char.IsWhiteSpace(span[end - 1]) || char.IsPunctuation(span[end - 1]) || span[end - 1] == '`')) {
             end--;
         }
         normalized = (start == 0 && end == span.Length) ? normalized : span.Slice(start, end - start).ToString();
