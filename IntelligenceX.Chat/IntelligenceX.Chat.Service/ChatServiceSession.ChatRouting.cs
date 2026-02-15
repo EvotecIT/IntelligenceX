@@ -26,6 +26,18 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
 
+    private static ChatOptions CopyChatOptions(ChatOptions options, bool? newThreadOverride = null) {
+        if (options is null) {
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        var copy = options.Clone();
+        if (newThreadOverride.HasValue) {
+            copy.NewThread = newThreadOverride.Value;
+        }
+        return copy;
+    }
+
     private async Task<ChatResultMessage> RunChatOnCurrentThreadAsync(IntelligenceXClient client, StreamWriter writer, ChatRequest request, string threadId,
         CancellationToken cancellationToken) {
         var toolCalls = new List<ToolCallDto>();
@@ -106,8 +118,10 @@ internal sealed partial class ChatServiceSession {
         }
 
         await TryWriteStatusAsync(writer, request.RequestId, threadId, status: "thinking").ConfigureAwait(false);
-        TurnInfo turn = await ChatWithToolSchemaRecoveryAsync(client, ChatInput.FromText(request.Text), options, turnToken).ConfigureAwait(false);
+        TurnInfo turn = await ChatWithToolSchemaRecoveryAsync(client, ChatInput.FromText(request.Text), CopyChatOptions(options), turnToken)
+            .ConfigureAwait(false);
         var executionNudgeUsed = false;
+        var toolReceiptCorrectionUsed = false;
 
         for (var round = 0; round < Math.Max(1, maxRounds); round++) {
             var extracted = ToolCallParser.Extract(turn);
@@ -130,8 +144,38 @@ internal sealed partial class ChatServiceSession {
                             status: "thinking",
                             message: "Re-planning to execute available tools in this turn.")
                         .ConfigureAwait(false);
-                    options.NewThread = false;
-                    turn = await ChatWithToolSchemaRecoveryAsync(client, ChatInput.FromText(nudgePrompt), options, turnToken).ConfigureAwait(false);
+                    turn = await ChatWithToolSchemaRecoveryAsync(
+                            client,
+                            ChatInput.FromText(nudgePrompt),
+                            CopyChatOptions(options, newThreadOverride: false),
+                            turnToken)
+                        .ConfigureAwait(false);
+                    continue;
+                }
+
+                if (!toolReceiptCorrectionUsed
+                    && ShouldAttemptToolReceiptCorrection(
+                        userRequest: routedUserRequest,
+                        assistantDraft: text,
+                        tools: toolDefs,
+                        priorToolCalls: toolCalls.Count,
+                        priorToolOutputs: toolOutputs.Count,
+                        assistantDraftToolCalls: extracted.Count)) {
+                    toolReceiptCorrectionUsed = true;
+                    var correctionPrompt = BuildToolReceiptCorrectionPrompt(routedUserRequest, text);
+                    await TryWriteStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            status: "thinking",
+                            message: "Re-planning to correct an inconsistent tool receipt in this turn.")
+                        .ConfigureAwait(false);
+                    turn = await ChatWithToolSchemaRecoveryAsync(
+                            client,
+                            ChatInput.FromText(correctionPrompt),
+                            CopyChatOptions(options, newThreadOverride: false),
+                            turnToken)
+                        .ConfigureAwait(false);
                     continue;
                 }
 
@@ -188,9 +232,8 @@ internal sealed partial class ChatServiceSession {
             foreach (var output in executed) {
                 next.AddToolOutput(output.CallId, output.Output);
             }
-            options.NewThread = false;
             await TryWriteStatusAsync(writer, request.RequestId, threadId, status: "thinking").ConfigureAwait(false);
-            turn = await ChatWithToolSchemaRecoveryAsync(client, next, options, turnToken).ConfigureAwait(false);
+            turn = await ChatWithToolSchemaRecoveryAsync(client, next, CopyChatOptions(options, newThreadOverride: false), turnToken).ConfigureAwait(false);
         }
 
         throw new InvalidOperationException($"Tool runner exceeded max rounds ({maxRounds}).");

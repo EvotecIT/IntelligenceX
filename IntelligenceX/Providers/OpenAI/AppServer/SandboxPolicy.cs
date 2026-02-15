@@ -49,6 +49,41 @@ public sealed class SandboxPolicy {
     /// </summary>
     public IReadOnlyList<string>? WritableRoots { get; }
 
+    /// <summary>
+    /// Creates a defensive copy of this policy instance.
+    /// </summary>
+    public SandboxPolicy Clone() {
+        // Defensive copy: callers may provide a mutable list implementation.
+        string[]? roots = null;
+        if (WritableRoots is not null && WritableRoots.Count > 0) {
+            // Filter out null/whitespace entries rather than propagating malformed values.
+            var count = 0;
+            for (var i = 0; i < WritableRoots.Count; i++) {
+                if (!string.IsNullOrWhiteSpace(WritableRoots[i])) {
+                    count++;
+                }
+            }
+
+            if (count > 0) {
+                roots = new string[count];
+                var j = 0;
+                for (var i = 0; i < WritableRoots.Count; i++) {
+                    var root = WritableRoots[i];
+                    if (string.IsNullOrWhiteSpace(root)) {
+                        continue;
+                    }
+                    roots[j++] = root.Trim();
+                }
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(NetworkAccessMode)) {
+            return new SandboxPolicy(Type, NetworkAccessMode!, roots);
+        }
+
+        return new SandboxPolicy(Type, NetworkAccess, roots);
+    }
+
     internal JsonObject ToJson() {
         var obj = new JsonObject()
             .Add("type", Type);

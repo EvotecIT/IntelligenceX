@@ -26,9 +26,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ShouldAttemptToolExecutionNudgeMethod =
         typeof(ChatServiceSession).GetMethod("ShouldAttemptToolExecutionNudge", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldAttemptToolExecutionNudge not found.");
+    private static readonly MethodInfo ShouldAttemptToolReceiptCorrectionMethod =
+        typeof(ChatServiceSession).GetMethod("ShouldAttemptToolReceiptCorrection", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ShouldAttemptToolReceiptCorrection not found.");
     private static readonly MethodInfo BuildToolExecutionNudgePromptMethod =
         typeof(ChatServiceSession).GetMethod("BuildToolExecutionNudgePrompt", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildToolExecutionNudgePrompt not found.");
+    private static readonly MethodInfo BuildToolReceiptCorrectionPromptMethod =
+        typeof(ChatServiceSession).GetMethod("BuildToolReceiptCorrectionPrompt", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildToolReceiptCorrectionPrompt not found.");
     private static readonly MethodInfo ExtractPrimaryUserRequestMethod =
         typeof(ChatServiceSession).GetMethod("ExtractPrimaryUserRequest", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ExtractPrimaryUserRequest not found.");

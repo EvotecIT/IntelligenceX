@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.ToolCalling;
 using IntelligenceX.Tools;
@@ -9,6 +11,46 @@ namespace IntelligenceX.OpenAI.Chat;
 /// Options for chat requests.
 /// </summary>
 public sealed class ChatOptions {
+    /// <summary>
+    /// Initializes a new instance of <see cref="ChatOptions"/> by copying values from <paramref name="other"/>.
+    /// </summary>
+    /// <param name="other">Options to copy.</param>
+    public ChatOptions(ChatOptions other) {
+        if (other is null) {
+            throw new ArgumentNullException(nameof(other));
+        }
+
+        Model = other.Model;
+        Instructions = other.Instructions;
+        ReasoningEffort = other.ReasoningEffort;
+        ReasoningSummary = other.ReasoningSummary;
+        TextVerbosity = other.TextVerbosity;
+        Temperature = other.Temperature;
+        WorkingDirectory = other.WorkingDirectory;
+        Workspace = other.Workspace;
+        // Defensive copy: caller may provide a mutable list instance.
+        Tools = other.Tools is null ? null : other.Tools.ToArray();
+        ToolChoice = other.ToolChoice;
+        ParallelToolCalls = other.ParallelToolCalls;
+        PreviousResponseId = other.PreviousResponseId;
+        AllowNetwork = other.AllowNetwork;
+        ApprovalPolicy = other.ApprovalPolicy;
+        SandboxPolicy = other.SandboxPolicy?.Clone();
+        NewThread = other.NewThread;
+        MaxImageBytes = other.MaxImageBytes;
+        RequireWorkspaceForFileAccess = other.RequireWorkspaceForFileAccess;
+    }
+
+    /// <summary>
+    /// Initializes a new <see cref="ChatOptions"/> instance.
+    /// </summary>
+    public ChatOptions() { }
+
+    /// <summary>
+    /// Creates a copy of this instance.
+    /// </summary>
+    public ChatOptions Clone() => new(this);
+
     /// <summary>
     /// Model name override.
     /// </summary>
