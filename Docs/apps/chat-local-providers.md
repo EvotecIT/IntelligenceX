@@ -15,7 +15,7 @@ For the WinUI desktop app (`Build/Run-ChatApp.ps1`):
 1. Open **Options -> Profile -> Model Runtime**.
 2. Click **Connect LM Studio** (primary flow).
 3. The app switches to compatible HTTP using LM Studio defaults and refreshes model discovery.
-4. Choose a model from **Discovered models** and click **Apply Runtime** when needed.
+4. Choose a model from **Discovered models** (use **Filter models** for long lists) and click **Apply Runtime** when needed.
 5. Open **Show Advanced Runtime** only for transport/base URL/API key/manual model overrides.
 
 Notes:
@@ -23,6 +23,7 @@ Notes:
 - For `compatible-http`, if the current model is empty or invalid, the app auto-selects the first discovered model.
 - Leaving API key empty keeps the currently saved key unchanged.
 - Use **Clear Saved API Key** to remove the saved key from the active profile.
+- The panel shows an explicit active runtime/model badge so you can confirm what is currently used.
 
 ## Security Model
 

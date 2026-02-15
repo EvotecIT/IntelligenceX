@@ -667,6 +667,11 @@
     }
   });
 
+  byId("optLocalModelFilter").addEventListener("input", function(e) {
+    writeStorage(runtimeModelFilterStorageKey(), (e.target.value || "").trim());
+    renderLocalModelOptions();
+  });
+
   byId("btnToggleLocalAdvancedRuntime").addEventListener("click", function() {
     setRuntimeAdvancedOpen(!isRuntimeAdvancedOpen());
   });

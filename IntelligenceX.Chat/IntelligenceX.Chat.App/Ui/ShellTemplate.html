@@ -155,6 +155,7 @@
         <section class="options-group">
           <div class="options-label">Runtime Mode</div>
           <div id="optRuntimeSummary" class="options-note options-note-strong"></div>
+          <div class="options-note" id="optLocalRuntimeBadge"></div>
           <div class="options-note" id="optRuntimeAuthHint">ChatGPT sign-in and runtime provider are separate. You can stay signed in while using local models.</div>
           <div class="options-actions options-actions-wrap">
             <button id="btnUseOpenAiRuntime" class="options-btn options-btn-sm">Use ChatGPT Runtime</button>
@@ -200,6 +201,10 @@
           <div class="options-row" id="optLocalModelSelectRow">
             <label class="options-label-inline" for="optLocalModelSelect">Discovered models</label>
             <select id="optLocalModelSelect" class="options-select"></select>
+          </div>
+          <div class="options-row" id="optLocalModelFilterRow">
+            <label class="options-label-inline" for="optLocalModelFilter">Filter models</label>
+            <input id="optLocalModelFilter" class="options-input options-input-sm" placeholder="Type to filter discovered models" />
           </div>
           <div class="options-note" id="optLocalModelsState"></div>
         </section>
