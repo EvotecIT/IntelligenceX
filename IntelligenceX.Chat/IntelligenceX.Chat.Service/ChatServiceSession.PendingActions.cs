@@ -12,6 +12,11 @@ internal sealed partial class ChatServiceSession {
     private const int MaxActionParsingChars = 64 * 1024;
     private static readonly char[] ImplicitConfirmationQuestionPunctuation = new[] { '?', '？', '¿', '؟' };
     private static readonly char[] ImplicitConfirmationStructuredChars = new[] { '{', '}', '[', ']', '"', '\'', '<', '>', '`', '=' };
+    private static readonly HashSet<string> ImplicitSingleActionRejectPhrases = new(
+        new[] { "no", "nope", "nah", "nie" }
+            .Select(CanonicalizeImplicitPendingActionConfirmationPhrase)
+            .Where(static phrase => phrase.Length > 0),
+        StringComparer.Ordinal);
     private static readonly HashSet<string> ImplicitSingleActionConfirmPhrases = new(
         new[] {
             // Keep this intentionally small and "high precision": when we have a single pending action, we only treat
@@ -276,6 +281,11 @@ internal sealed partial class ChatServiceSession {
 
         var normalized = CanonicalizeImplicitPendingActionConfirmationPhrase(raw);
         if (normalized.Length == 0) {
+            return false;
+        }
+
+        // Extra safety: never treat explicit negative acknowledgements as confirmation.
+        if (ImplicitSingleActionRejectPhrases.Contains(normalized)) {
             return false;
         }
 
