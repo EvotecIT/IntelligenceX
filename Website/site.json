@@ -138,7 +138,7 @@
         "Items": [
           { "Title": "Reviewer", "Url": "/docs/reviewer/overview/" },
           { "Title": "IX Chat", "Url": "/docs/chat/overview/" },
-          { "Title": "Tool Packs", "Url": "/docs/tools/overview/" },
+          { "Title": "IX Tools", "Url": "/docs/tools/overview/" },
           { "Title": "CLI Tools", "Url": "/docs/cli/overview/" },
           { "Title": ".NET Library", "Url": "/docs/library/overview/" },
           { "Title": "API Reference", "Url": "/api/" },

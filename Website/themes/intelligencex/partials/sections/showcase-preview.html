@@ -11,7 +11,7 @@
         {{ if for.index < 3 }}
         <div class="showcase-card">
             <div class="showcase-image">
-                <img src="{{ item.screenshot }}" alt="{{ item.title }}" loading="lazy" />
+                <img src="{{ item.screenshot }}" alt="{{ item.title }}" loading="lazy" decoding="async" />
             </div>
             <div class="showcase-card-body">
                 <h3>{{ item.title }}</h3>
