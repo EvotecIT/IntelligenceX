@@ -222,7 +222,8 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
                         continue;
                     }
 
-                    if (!IsUnderRoot(subFull, rootCmp, comparison)) {
+                    var subCmp = NormalizePathForComparison(subFull);
+                    if (!IsUnderRoot(subCmp, rootCmp, comparison)) {
                         continue;
                     }
 
