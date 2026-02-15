@@ -300,6 +300,76 @@ internal static partial class Program {
         AssertEqual(true, string.IsNullOrWhiteSpace(comment), "no comment for weak matches");
     }
 
+    private static void TestProjectSyncBuildIssueBacklinkSuggestionCommentsAggregatesPullRequests() {
+        var entries = new[] {
+            new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+                Number: 70,
+                Url: "https://github.com/EvotecIT/IntelligenceX/pull/70",
+                Kind: "pull_request",
+                TriageScore: 71.5,
+                DuplicateCluster: null,
+                CanonicalItem: null,
+                Category: "feature",
+                Tags: Array.Empty<string>(),
+                MatchedIssueUrl: "https://github.com/EvotecIT/IntelligenceX/issues/15",
+                MatchedIssueConfidence: 0.93,
+                VisionFit: "aligned",
+                VisionConfidence: 0.78,
+                RelatedIssues: new[] {
+                    new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedIssueCandidate(15, "https://github.com/EvotecIT/IntelligenceX/issues/15", 0.93, "explicit issue reference"),
+                    new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedIssueCandidate(22, "https://github.com/EvotecIT/IntelligenceX/issues/22", 0.57, "token overlap")
+                }
+            ),
+            new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+                Number: 71,
+                Url: "https://github.com/EvotecIT/IntelligenceX/pull/71",
+                Kind: "pull_request",
+                TriageScore: 66.0,
+                DuplicateCluster: null,
+                CanonicalItem: null,
+                Category: "feature",
+                Tags: Array.Empty<string>(),
+                MatchedIssueUrl: "https://github.com/EvotecIT/IntelligenceX/issues/15",
+                MatchedIssueConfidence: 0.62,
+                VisionFit: "needs-human-review",
+                VisionConfidence: 0.55,
+                RelatedIssues: new[] {
+                    new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedIssueCandidate(15, "https://github.com/EvotecIT/IntelligenceX/issues/15", 0.62, "token overlap")
+                }
+            )
+        };
+
+        var comments = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildIssueBacklinkSuggestionComments(
+            entries,
+            minConfidence: 0.55,
+            maxPullRequestsPerIssue: 3);
+
+        AssertEqual(true, comments.ContainsKey(15), "issue 15 has backlink comment");
+        var issue15 = comments[15];
+        AssertContainsText(issue15, "<!-- intelligencex:issue-pr-suggestions -->", "issue marker present");
+        AssertContainsText(issue15, "PR #70", "top PR included");
+        AssertContainsText(issue15, "PR #71", "second PR included");
+    }
+
+    private static void TestProjectSyncBuildIssueBacklinkSuggestionCommentRespectsThresholdAndLimit() {
+        var candidates = new[] {
+            new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedPullRequestCandidate(81, "https://github.com/EvotecIT/IntelligenceX/pull/81", 0.91, "explicit"),
+            new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedPullRequestCandidate(82, "https://github.com/EvotecIT/IntelligenceX/pull/82", 0.74, "token overlap"),
+            new IntelligenceX.Cli.Todo.ProjectSyncRunner.RelatedPullRequestCandidate(83, "https://github.com/EvotecIT/IntelligenceX/pull/83", 0.44, "weak overlap")
+        };
+
+        var comment = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildIssueBacklinkSuggestionComment(
+            issueNumber: 30,
+            candidates: candidates,
+            minConfidence: 0.55,
+            maxPullRequests: 1);
+
+        AssertEqual(true, !string.IsNullOrWhiteSpace(comment), "issue backlink comment generated");
+        AssertContainsText(comment ?? string.Empty, "PR #81", "top confidence PR kept");
+        AssertEqual(false, (comment ?? string.Empty).Contains("PR #82", StringComparison.OrdinalIgnoreCase), "limited to maxPullRequests");
+        AssertEqual(false, (comment ?? string.Empty).Contains("PR #83", StringComparison.OrdinalIgnoreCase), "below threshold excluded");
+    }
+
     private static void TestProjectSyncBuildRelatedIssuesFieldValueOrdersAndLimitsCandidates() {
         var entry = new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
             Number: 57,

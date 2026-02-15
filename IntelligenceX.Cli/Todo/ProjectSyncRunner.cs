@@ -23,6 +23,13 @@ internal static class ProjectSyncRunner {
         string Reason
     );
 
+    internal sealed record RelatedPullRequestCandidate(
+        int Number,
+        string Url,
+        double Confidence,
+        string Reason
+    );
+
     internal sealed record PullRequestDecisionSignals(
         bool? IsDraft,
         string? Mergeable,
@@ -149,7 +156,8 @@ internal static class ProjectSyncRunner {
         var updatedFieldValues = 0;
         var skippedMissing = 0;
         var labeled = 0;
-        var commentUpserts = 0;
+        var prCommentUpserts = 0;
+        var issueCommentUpserts = 0;
 
         foreach (var entry in entries) {
             processed++;
@@ -205,11 +213,33 @@ internal static class ProjectSyncRunner {
                     options.LinkCommentMaxIssues);
                 if (!string.IsNullOrWhiteSpace(comment)) {
                     if (options.DryRun) {
-                        commentUpserts++;
+                        prCommentUpserts++;
                     } else if (await IssueSuggestionCommentManager.UpsertAsync(options.Repo, entry.Number, comment)
                                    .ConfigureAwait(false)) {
-                        commentUpserts++;
+                        prCommentUpserts++;
                     }
+                }
+            }
+        }
+
+        if (options.ApplyLinkComments) {
+            var issueBacklinkComments = BuildIssueBacklinkSuggestionComments(
+                entries,
+                options.LinkCommentMinConfidence,
+                options.LinkCommentMaxIssues);
+
+            foreach (var suggestion in issueBacklinkComments) {
+                if (options.DryRun) {
+                    issueCommentUpserts++;
+                    continue;
+                }
+
+                if (await IssueSuggestionCommentManager.UpsertAsync(
+                        options.Repo,
+                        suggestion.Key,
+                        suggestion.Value,
+                        IssueSuggestionCommentManager.IssueBacklinkCommentMarker).ConfigureAwait(false)) {
+                    issueCommentUpserts++;
                 }
             }
         }
@@ -222,7 +252,8 @@ internal static class ProjectSyncRunner {
             Console.WriteLine($"Items labeled: {labeled}");
         }
         if (options.ApplyLinkComments) {
-            Console.WriteLine($"PR suggestion comments upserted: {commentUpserts}");
+            Console.WriteLine($"PR suggestion comments upserted: {prCommentUpserts}");
+            Console.WriteLine($"Issue backlink comments upserted: {issueCommentUpserts}");
         }
         Console.WriteLine($"Skipped unresolved items: {skippedMissing}");
         Console.WriteLine(options.DryRun ? "Dry run complete (no project updates were written)." : "Project sync complete.");
@@ -346,7 +377,7 @@ internal static class ProjectSyncRunner {
         Console.WriteLine("  --apply-labels           Apply IX labels to PRs/issues from synced signals");
         Console.WriteLine("  --ensure-labels          Ensure IX labels exist before applying labels (default)");
         Console.WriteLine("  --no-ensure-labels       Skip label ensure step");
-        Console.WriteLine("  --apply-link-comments    Upsert one marker comment on PRs with related issue suggestions");
+        Console.WriteLine("  --apply-link-comments    Upsert marker comments on PRs (related issues) and issues (related PRs)");
         Console.WriteLine("  --link-comment-min-confidence <0-1>  Min confidence for suggestion comments (default: 0.55)");
         Console.WriteLine("  --link-comment-max-issues <n>  Max related issues to include per PR comment (1-10, default: 3)");
         Console.WriteLine("  --dry-run                Compute sync plan without writing project changes");
@@ -862,6 +893,101 @@ internal static class ProjectSyncRunner {
         foreach (var candidate in related) {
             var reason = NormalizeCommentReason(candidate.Reason);
             lines.Add($"- #{candidate.Number} ({candidate.Url}) - confidence {candidate.Confidence.ToString("0.00", CultureInfo.InvariantCulture)} - {reason}");
+        }
+
+        return string.Join(Environment.NewLine, lines).TrimEnd() + Environment.NewLine;
+    }
+
+    internal static IReadOnlyDictionary<int, string> BuildIssueBacklinkSuggestionComments(
+        IReadOnlyList<ProjectSyncEntry> entries,
+        double minConfidence,
+        int maxPullRequestsPerIssue) {
+        var threshold = Math.Clamp(minConfidence, 0.0, 1.0);
+        var issueToCandidates = new Dictionary<int, Dictionary<int, RelatedPullRequestCandidate>>();
+
+        foreach (var entry in entries) {
+            if (!entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase) || entry.Number <= 0) {
+                continue;
+            }
+
+            var related = (entry.RelatedIssues ?? Array.Empty<RelatedIssueCandidate>())
+                .Where(candidate => candidate.Number > 0 &&
+                                    candidate.Confidence >= threshold &&
+                                    !string.IsNullOrWhiteSpace(candidate.Url))
+                .ToList();
+            if (related.Count == 0) {
+                continue;
+            }
+
+            foreach (var candidate in related) {
+                if (!issueToCandidates.TryGetValue(candidate.Number, out var prMap)) {
+                    prMap = new Dictionary<int, RelatedPullRequestCandidate>();
+                    issueToCandidates[candidate.Number] = prMap;
+                }
+
+                if (prMap.TryGetValue(entry.Number, out var existing) &&
+                    existing.Confidence >= candidate.Confidence) {
+                    continue;
+                }
+
+                prMap[entry.Number] = new RelatedPullRequestCandidate(
+                    Number: entry.Number,
+                    Url: entry.Url,
+                    Confidence: candidate.Confidence,
+                    Reason: candidate.Reason
+                );
+            }
+        }
+
+        var comments = new Dictionary<int, string>();
+        foreach (var issueCandidates in issueToCandidates) {
+            var candidates = issueCandidates.Value.Values.ToList();
+            var comment = BuildIssueBacklinkSuggestionComment(
+                issueCandidates.Key,
+                candidates,
+                threshold,
+                maxPullRequestsPerIssue);
+            if (!string.IsNullOrWhiteSpace(comment)) {
+                comments[issueCandidates.Key] = comment;
+            }
+        }
+
+        return comments;
+    }
+
+    internal static string? BuildIssueBacklinkSuggestionComment(
+        int issueNumber,
+        IReadOnlyList<RelatedPullRequestCandidate> candidates,
+        double minConfidence,
+        int maxPullRequests) {
+        if (issueNumber <= 0 || candidates.Count == 0) {
+            return null;
+        }
+
+        var limit = Math.Max(1, Math.Min(maxPullRequests, 10));
+        var filtered = candidates
+            .Where(candidate => candidate.Number > 0 &&
+                                candidate.Confidence >= minConfidence &&
+                                !string.IsNullOrWhiteSpace(candidate.Url))
+            .OrderByDescending(candidate => candidate.Confidence)
+            .ThenBy(candidate => candidate.Number)
+            .Take(limit)
+            .ToList();
+        if (filtered.Count == 0) {
+            return null;
+        }
+
+        var lines = new List<string> {
+            IssueSuggestionCommentManager.IssueBacklinkCommentMarker,
+            $"### IntelligenceX Related Pull Request Suggestions for #{issueNumber.ToString(CultureInfo.InvariantCulture)}",
+            string.Empty,
+            $"Automated PR candidates (confidence >= {minConfidence.ToString("0.00", CultureInfo.InvariantCulture)}). Please verify before linking/closing.",
+            string.Empty
+        };
+
+        foreach (var candidate in filtered) {
+            var reason = NormalizeCommentReason(candidate.Reason);
+            lines.Add($"- PR #{candidate.Number} ({candidate.Url}) - confidence {candidate.Confidence.ToString("0.00", CultureInfo.InvariantCulture)} - {reason}");
         }
 
         return string.Join(Environment.NewLine, lines).TrimEnd() + Environment.NewLine;
