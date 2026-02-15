@@ -409,7 +409,14 @@ internal sealed partial class ChatServiceSession {
 
     private static bool IsQuoteWrapper(char ch) {
         // Common wrapper characters in chat/code that should not be stripped into confirmations.
-        return ch is '"' or '\'';
+        return ch is '"'
+            or '\''
+            or '\u2018' // ‘
+            or '\u2019' // ’
+            or '\uFF07' // ＇
+            or '\u201C' // “
+            or '\u201D' // ”
+            or '\uFF02'; // ＂
     }
 
     private static string NormalizeApostrophes(string value) {
