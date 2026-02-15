@@ -113,7 +113,6 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             try {
                 rootFull = Path.GetFullPath(rootPath);
                 rootFull = Path.TrimEndingDirectorySeparator(rootFull);
-                rootFull = NormalizePathForComparison(rootFull);
             } catch (Exception ex) when (
                 ex is ArgumentException or NotSupportedException or PathTooLongException) {
                 continue;
@@ -277,6 +276,9 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             });
     }
 
+    private static readonly StringComparison BestStringComparison =
+        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
     private static readonly IComparer<EvtxFindFile> BestComparer = Comparer<EvtxFindFile>.Create(CompareBest);
 
     // Negative means "a is better than b" (earlier in output ordering).
@@ -286,12 +288,12 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             return cmp;
         }
 
-        cmp = string.Compare(a.FileName, b.FileName, StringComparison.OrdinalIgnoreCase);
+        cmp = string.Compare(a.FileName, b.FileName, BestStringComparison);
         if (cmp != 0) {
             return cmp;
         }
 
-        return string.Compare(a.Path, b.Path, StringComparison.OrdinalIgnoreCase);
+        return string.Compare(a.Path, b.Path, BestStringComparison);
     }
 
     private static void ConsiderCandidate(List<EvtxFindFile> best, EvtxFindFile candidate, int maxResults) {
