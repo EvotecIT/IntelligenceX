@@ -29,7 +29,7 @@ public sealed class FileSystemPackInfoTool : FileSystemToolBase, ITool {
 
         var root = ToolPackGuidance.Create(
             pack: "filesystem",
-            engine: "ComputerX.FileSystem",
+            engine: "IntelligenceX.Engines.FileSystem",
             tools: ToolRegistryFileSystemExtensions.GetRegisteredToolNames(Options),
             recommendedFlow: new[] {
                 "Use fs_list to discover candidate files/folders.",

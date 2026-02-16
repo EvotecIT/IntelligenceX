@@ -60,6 +60,36 @@ What this runs:
 
 ## 3. Publish
 
+Full release bundle (recommended for client delivery):
+
+```powershell
+pwsh ./Build/Build-Release.ps1 -Runtime win-x64 -Configuration Release -TestimoXRoot C:\Support\GitHub\TestimoX
+```
+
+This single command orchestrates:
+- workspace validation build (`full-private` profile by default)
+- plugin NuGet packaging (`public + private`)
+- portable chat bundle (`PluginMode all`, closed-source included)
+- MSI installer build from the portable payload
+- release manifest + SHA256 checksums
+
+Default output:
+- `Artifacts\Releases\<release-id>\nuget`
+- `Artifacts\Releases\<release-id>\portable`
+- `Artifacts\Releases\<release-id>\installer`
+- `Artifacts\Releases\<release-id>\release-manifest.json`
+- `Artifacts\Releases\<release-id>\SHA256SUMS.txt`
+
+Installer-only (build from an existing portable payload or package one on demand):
+
+```powershell
+pwsh ./Build/Build-Installer.ps1 -Runtime win-x64 -Configuration Release -TestimoXRoot C:\Support\GitHub\TestimoX
+```
+
+Installer project files:
+- `Installer/IntelligenceX.Chat/IntelligenceX.Chat.Installer.wixproj`
+- `Installer/IntelligenceX.Chat/IntelligenceX.Chat.wxs`
+
 CLI:
 
 ```powershell

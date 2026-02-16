@@ -11,13 +11,14 @@ This catalog is generated from what the codebase currently registers in tool-pac
 
 | Pack | Descriptor ID | Source kind | Tier | Typical availability |
 |---|---|---|---|---|
-| Event Log | `eventlog` | `builtin` | SensitiveRead | OSS + internal |
+| Event Log (EventViewerX) | `eventlog` | `builtin` | SensitiveRead | OSS + internal |
 | File System | `fs` | `builtin` | ReadOnly | OSS + internal |
-| Reviewer Setup | `reviewer_setup` | `builtin` | ReadOnly | OSS + internal |
-| Email | `email` | `builtin` | SensitiveRead | OSS + internal (dependency-gated at runtime) |
-| PowerShell | `powershell` | `builtin` | DangerousWrite | OSS + internal (opt-in by policy) |
-| System | `system` | `closed_source` | ReadOnly | Internal/private builds |
-| Active Directory | `ad` | `closed_source` | SensitiveRead | Internal/private builds |
+| Reviewer Setup | `reviewersetup` | `builtin` | ReadOnly | OSS + internal |
+| Email (Mailozaurr) | `email` | `builtin` | SensitiveRead | OSS + internal (dependency-gated at runtime) |
+| Office Documents (OfficeIMO) | `officeimo` | `open_source` | ReadOnly | OSS + internal (dependency-gated at runtime) |
+| PowerShell Runtime | `powershell` | `builtin` | DangerousWrite | OSS + internal (opt-in by policy) |
+| ComputerX | `system` | `closed_source` | ReadOnly | Internal/private builds |
+| ADPlayground | `ad` | `closed_source` | SensitiveRead | Internal/private builds |
 | TestimoX | `testimox` | `closed_source` | SensitiveRead | Internal/private builds |
 
 ## Builtin / OSS-Oriented Packs
@@ -42,7 +43,7 @@ Representative tools:
 - `fs_read`
 - `fs_search`
 
-### Reviewer Setup (`reviewer_setup`)
+### Reviewer Setup (`reviewersetup`)
 
 Representative tools:
 
@@ -67,9 +68,16 @@ Representative tools:
 - `powershell_hosts`
 - `powershell_run`
 
+### Office Documents (`officeimo`)
+
+Representative tools:
+
+- `officeimo_pack_info`
+- `officeimo_read`
+
 ## Closed-Source / Internal Packs
 
-### Active Directory (`ad`)
+### ADPlayground (`ad`)
 
 Representative tools:
 
@@ -80,7 +88,7 @@ Representative tools:
 - `ad_users_expired`
 - `ad_search`
 
-### System (`system`)
+### ComputerX (`system`)
 
 Representative tools:
 

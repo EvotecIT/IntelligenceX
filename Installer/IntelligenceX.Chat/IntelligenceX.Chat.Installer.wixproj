@@ -1,0 +1,30 @@
+<Project Sdk="WixToolset.Sdk/4.0.6">
+  <PropertyGroup>
+    <OutputType>Package</OutputType>
+    <Platform>x64</Platform>
+    <ProductName>IntelligenceX Chat</ProductName>
+    <Manufacturer>Evotec</Manufacturer>
+    <ProductVersion></ProductVersion>
+    <UpgradeCode>{a2b787a5-f539-4763-add6-2baa2c2518c7}</UpgradeCode>
+    <PayloadDir>..\..\Artifacts\Portable\win-x64\IntelligenceX.Chat-Portable-win-x64</PayloadDir>
+    <HarvestFile></HarvestFile>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <DefineConstants>PayloadDir=$(PayloadDir);ProductName=$(ProductName);Manufacturer=$(Manufacturer);ProductVersion=$(ProductVersion);UpgradeCode=$(UpgradeCode)</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.UI.wixext" Version="4.0.6" />
+  </ItemGroup>
+
+  <Target Name="EnsureInstallerInputs" BeforeTargets="Compile">
+    <Error Condition="'$(ProductVersion)' == ''" Text="ProductVersion must be provided. Run Build/Build-Installer.ps1 to compute and pass it." />
+    <Error Condition="'$(HarvestFile)' == ''" Text="HarvestFile must be provided. Run Build/Build-Installer.ps1 to generate it." />
+    <Error Condition="!Exists('$(HarvestFile)')" Text="HarvestFile not found: $(HarvestFile)" />
+  </Target>
+
+  <ItemGroup Condition="'$(HarvestFile)' != '' and Exists('$(HarvestFile)')">
+    <Compile Include="$(HarvestFile)" />
+  </ItemGroup>
+</Project>

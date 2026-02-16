@@ -43,13 +43,14 @@ The table below reflects the actual bootstrap in `IntelligenceX.Chat.Tooling/Too
 
 | Pack | Descriptor ID | Source kind | Default in IX Chat | Tier | Platform |
 |---|---|---|---|---|---|
-| Event Log | `eventlog` | `builtin` | Yes | SensitiveRead | Windows |
+| Event Log (EventViewerX) | `eventlog` | `builtin` | Yes | SensitiveRead | Windows |
 | File System | `fs` | `builtin` | Yes | ReadOnly | Cross-platform |
-| Reviewer Setup | `reviewer_setup` | `builtin` | Yes | ReadOnly | Cross-platform |
-| Email | `email` | `builtin` | Yes (OSS pack; runtime dependency-gated) | SensitiveRead | Cross-platform |
-| PowerShell | `powershell` | `builtin` | No (OSS pack; opt-in by policy) | DangerousWrite | Windows/PowerShell hosts |
-| System | `system` | `closed_source` | Yes (when available) | ReadOnly | Windows |
-| Active Directory | `ad` | `closed_source` | Yes (when available) | SensitiveRead | Windows (domain environments) |
+| Reviewer Setup | `reviewersetup` | `builtin` | Yes | ReadOnly | Cross-platform |
+| Email (Mailozaurr) | `email` | `builtin` | Yes (OSS pack; runtime dependency-gated) | SensitiveRead | Cross-platform |
+| Office Documents (OfficeIMO) | `officeimo` | `open_source` | Yes (OSS pack; runtime dependency-gated) | ReadOnly | Cross-platform |
+| PowerShell Runtime | `powershell` | `builtin` | No (OSS pack; opt-in by policy) | DangerousWrite | Windows/PowerShell hosts |
+| ComputerX | `system` | `closed_source` | Yes (when available) | ReadOnly | Windows |
+| ADPlayground | `ad` | `closed_source` | Yes (when available) | SensitiveRead | Windows (domain environments) |
 | TestimoX | `testimox` | `closed_source` | Yes (when available) | SensitiveRead | Windows |
 
 ## IX Chat vs .NET Integration
@@ -57,7 +58,7 @@ The table below reflects the actual bootstrap in `IntelligenceX.Chat.Tooling/Too
 ### IX Chat
 
 - Tool packs are loaded by the host bootstrap.
-- Some packs are always available in OSS (`eventlog`, `fs`, `reviewer_setup`).
+- Some packs are always available in OSS (`eventlog`, `fs`, `reviewersetup`).
 - Some are optional/conditional for runtime reasons (`email` dependency gating, `powershell` safety opt-in), while still being OSS-oriented packs.
 - Some are enabled by default but may not exist in OSS environments (`system`, `ad`, `testimox`).
 
@@ -78,5 +79,6 @@ For package-based integration, use only packs you actually reference.
 ## Related
 
 - [Tool Catalog](/docs/tools/catalog/) - Pack-by-pack summary and representative tools
+- [Tool Pack Governance](/docs/tools/governance/) - Naming, provenance, and delivery rules
 - [IX Chat Architecture](/docs/chat/architecture/) - How packs are loaded by the host
 - [Tool Calling](/docs/library/tools/) - Using tool calling in the .NET library

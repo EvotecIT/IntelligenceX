@@ -21,7 +21,7 @@ public sealed class EventLogToolPack : IToolPack {
     /// <inheritdoc />
     public ToolPackDescriptor Descriptor { get; } = new() {
         Id = "eventlog",
-        Name = "Event Log",
+        Name = "Event Log (EventViewerX)",
         Tier = ToolCapabilityTier.SensitiveRead,
         IsDangerous = false,
         Description = "Windows Event Log and EVTX analysis (restricted to AllowedRoots for EVTX file access).",

@@ -21,7 +21,7 @@ public sealed class EmailToolPack : IToolPack {
     /// <inheritdoc />
     public ToolPackDescriptor Descriptor { get; } = new() {
         Id = "email",
-        Name = "Email",
+        Name = "Email (Mailozaurr)",
         Tier = ToolCapabilityTier.SensitiveRead,
         IsDangerous = false,
         Description = "IMAP/SMTP workflows (search/get/send) via Mailozaurr.",

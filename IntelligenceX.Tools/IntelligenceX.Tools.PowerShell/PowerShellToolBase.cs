@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using ComputerX.PowerShellRuntime;
+using IntelligenceX.Engines.PowerShell;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.PowerShell;

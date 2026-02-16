@@ -13,6 +13,10 @@ public sealed record ToolPackInfoDto {
     /// </summary>
     public required string Name { get; init; }
     /// <summary>
+    /// Optional pack description shown in host UX.
+    /// </summary>
+    public string? Description { get; init; }
+    /// <summary>
     /// Capability tier for the pack.
     /// </summary>
     public required CapabilityTier Tier { get; init; }

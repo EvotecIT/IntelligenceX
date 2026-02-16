@@ -21,7 +21,7 @@ public sealed class OfficeImoToolPack : IToolPack {
     /// <inheritdoc />
     public ToolPackDescriptor Descriptor { get; } = new() {
         Id = "officeimo",
-        Name = "OfficeIMO",
+        Name = "Office Documents (OfficeIMO)",
         Tier = ToolCapabilityTier.ReadOnly,
         IsDangerous = false,
         Description = "Read-only Office document ingestion (Word/Excel/PowerPoint/Markdown/PDF) backed by OfficeIMO.Reader.",

@@ -78,29 +78,29 @@ Purpose: keep AD wrappers thin and consume ADPlayground services/contracts.
 
 ```powershell
 git -C C:/Support/GitHub/.wt-ix-tools-big-sweep-phase1 add `
-  IntelligenceX.Tools.ActiveDirectory/AdDelegationAuditTool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdDomainAdminsSummaryTool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdDomainControllersTool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdDomainInfoTool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdGroupMembersResolvedTool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdGroupMembersTool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdGroupsListTool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdLdapDiagnosticsTool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdLdapQueryPagedTool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdLdapQueryTool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdObjectGetTool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdObjectResolveTool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdPrivilegedGroupsSummaryTool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdQueryResultHelpers.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdReplicationSummaryTool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdSearchFacetsTool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdSearchTool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdSpnSearchTool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdSpnStatsTool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdStaleAccountsTool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdUsersExpiredTool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdWhoAmITool.cs `
-  IntelligenceX.Tools.ActiveDirectory/AdSearchRow.cs
+  IntelligenceX.Tools.ADPlayground/AdDelegationAuditTool.cs `
+  IntelligenceX.Tools.ADPlayground/AdDomainAdminsSummaryTool.cs `
+  IntelligenceX.Tools.ADPlayground/AdDomainControllersTool.cs `
+  IntelligenceX.Tools.ADPlayground/AdDomainInfoTool.cs `
+  IntelligenceX.Tools.ADPlayground/AdGroupMembersResolvedTool.cs `
+  IntelligenceX.Tools.ADPlayground/AdGroupMembersTool.cs `
+  IntelligenceX.Tools.ADPlayground/AdGroupsListTool.cs `
+  IntelligenceX.Tools.ADPlayground/AdLdapDiagnosticsTool.cs `
+  IntelligenceX.Tools.ADPlayground/AdLdapQueryPagedTool.cs `
+  IntelligenceX.Tools.ADPlayground/AdLdapQueryTool.cs `
+  IntelligenceX.Tools.ADPlayground/AdObjectGetTool.cs `
+  IntelligenceX.Tools.ADPlayground/AdObjectResolveTool.cs `
+  IntelligenceX.Tools.ADPlayground/AdPrivilegedGroupsSummaryTool.cs `
+  IntelligenceX.Tools.ADPlayground/AdQueryResultHelpers.cs `
+  IntelligenceX.Tools.ADPlayground/AdReplicationSummaryTool.cs `
+  IntelligenceX.Tools.ADPlayground/AdSearchFacetsTool.cs `
+  IntelligenceX.Tools.ADPlayground/AdSearchTool.cs `
+  IntelligenceX.Tools.ADPlayground/AdSpnSearchTool.cs `
+  IntelligenceX.Tools.ADPlayground/AdSpnStatsTool.cs `
+  IntelligenceX.Tools.ADPlayground/AdStaleAccountsTool.cs `
+  IntelligenceX.Tools.ADPlayground/AdUsersExpiredTool.cs `
+  IntelligenceX.Tools.ADPlayground/AdWhoAmITool.cs `
+  IntelligenceX.Tools.ADPlayground/AdSearchRow.cs
 ```
 
 ### IXT-03 Event/System/Email Wrapper Dedupe

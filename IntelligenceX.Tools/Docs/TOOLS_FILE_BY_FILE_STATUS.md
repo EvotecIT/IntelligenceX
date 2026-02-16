@@ -17,34 +17,34 @@ Status values:
 ## ActiveDirectory
 | File | Status | Notes |
 |---|---|---|
-| `IntelligenceX.Tools.ActiveDirectory/ActiveDirectoryToolBase.cs` | `keep` | AD wrapper plumbing only. |
-| `IntelligenceX.Tools.ActiveDirectory/ActiveDirectoryToolOptions.cs` | `keep` | AD pack runtime options. |
-| `IntelligenceX.Tools.ActiveDirectory/ActiveDirectoryToolPack.cs` | `done` | Pack descriptor/registration only. |
-| `IntelligenceX.Tools.ActiveDirectory/ToolRegistryActiveDirectoryExtensions.cs` | `done` | Single registration source; exposes tool names and runtime-derived tool catalog metadata. |
-| `IntelligenceX.Tools.ActiveDirectory/AdPackInfoTool.cs` | `done` | Model-facing pack guidance via shared contract (tools + tool catalog + capabilities + flow steps). |
-| `IntelligenceX.Tools.ActiveDirectory/AdDynamicTableView.cs` | `keep` | Thin AD adapter for dynamic LDAP bags; generic projection logic lives in `Tools.Common`. |
-| `IntelligenceX.Tools.ActiveDirectory/AdQueryResultHelpers.cs` | `keep` | AD failure mapping + small AD result helpers. |
-| `IntelligenceX.Tools.ActiveDirectory/AdSearchTool.cs` | `done` | Engine call + dynamic view helper only. |
-| `IntelligenceX.Tools.ActiveDirectory/AdSearchFacetsTool.cs` | `done` | Engine facets result pass-through + facts summary. |
-| `IntelligenceX.Tools.ActiveDirectory/AdObjectGetTool.cs` | `done` | Engine object-get result pass-through + facts summary. |
-| `IntelligenceX.Tools.ActiveDirectory/AdObjectResolveTool.cs` | `done` | Engine resolve pass-through + auto-column projection via shared table envelope. |
-| `IntelligenceX.Tools.ActiveDirectory/AdGroupsListTool.cs` | `done` | Engine list + dynamic view helper only. |
-| `IntelligenceX.Tools.ActiveDirectory/AdGroupMembersTool.cs` | `done` | Engine member listing wrapper. |
-| `IntelligenceX.Tools.ActiveDirectory/AdGroupMembersResolvedTool.cs` | `done` | Engine resolved-members wrapper + dynamic view helper. |
-| `IntelligenceX.Tools.ActiveDirectory/AdDomainControllersTool.cs` | `done` | Engine domain controllers wrapper + dynamic view helper. |
-| `IntelligenceX.Tools.ActiveDirectory/AdDomainInfoTool.cs` | `done` | Engine domain info wrapper + shared facts summary. |
-| `IntelligenceX.Tools.ActiveDirectory/AdWhoAmITool.cs` | `done` | Engine whoami wrapper + shared facts summary. |
-| `IntelligenceX.Tools.ActiveDirectory/AdDelegationAuditTool.cs` | `done` | Engine delegation audit wrapper + auto-column projection via shared table envelope. |
-| `IntelligenceX.Tools.ActiveDirectory/AdReplicationSummaryTool.cs` | `done` | Engine replication wrapper + auto-column projection via shared table envelope. |
-| `IntelligenceX.Tools.ActiveDirectory/AdSpnSearchTool.cs` | `done` | Engine SPN search wrapper + dynamic view helper. |
-| `IntelligenceX.Tools.ActiveDirectory/AdSpnStatsTool.cs` | `done` | Engine SPN stats wrapper + auto-column projection via shared table envelope. |
-| `IntelligenceX.Tools.ActiveDirectory/AdStaleAccountsTool.cs` | `done` | Engine stale-accounts wrapper. |
-| `IntelligenceX.Tools.ActiveDirectory/AdUsersExpiredTool.cs` | `done` | Engine expired-users wrapper. |
-| `IntelligenceX.Tools.ActiveDirectory/AdLdapQueryTool.cs` | `done` | Engine LDAP query wrapper + dynamic view helper. |
-| `IntelligenceX.Tools.ActiveDirectory/AdLdapQueryPagedTool.cs` | `done` | Engine paged LDAP query wrapper + dynamic view helper. |
-| `IntelligenceX.Tools.ActiveDirectory/AdLdapDiagnosticsTool.cs` | `done` | Engine diagnostics wrapper + auto-column projection via shared table envelope. |
-| `IntelligenceX.Tools.ActiveDirectory/AdPrivilegedGroupsSummaryTool.cs` | `done` | Engine summary wrapper. |
-| `IntelligenceX.Tools.ActiveDirectory/AdDomainAdminsSummaryTool.cs` | `done` | Engine summary wrapper. |
+| `IntelligenceX.Tools.ADPlayground/ActiveDirectoryToolBase.cs` | `keep` | AD wrapper plumbing only. |
+| `IntelligenceX.Tools.ADPlayground/ActiveDirectoryToolOptions.cs` | `keep` | AD pack runtime options. |
+| `IntelligenceX.Tools.ADPlayground/ActiveDirectoryToolPack.cs` | `done` | Pack descriptor/registration only. |
+| `IntelligenceX.Tools.ADPlayground/ToolRegistryActiveDirectoryExtensions.cs` | `done` | Single registration source; exposes tool names and runtime-derived tool catalog metadata. |
+| `IntelligenceX.Tools.ADPlayground/AdPackInfoTool.cs` | `done` | Model-facing pack guidance via shared contract (tools + tool catalog + capabilities + flow steps). |
+| `IntelligenceX.Tools.ADPlayground/AdDynamicTableView.cs` | `keep` | Thin AD adapter for dynamic LDAP bags; generic projection logic lives in `Tools.Common`. |
+| `IntelligenceX.Tools.ADPlayground/AdQueryResultHelpers.cs` | `keep` | AD failure mapping + small AD result helpers. |
+| `IntelligenceX.Tools.ADPlayground/AdSearchTool.cs` | `done` | Engine call + dynamic view helper only. |
+| `IntelligenceX.Tools.ADPlayground/AdSearchFacetsTool.cs` | `done` | Engine facets result pass-through + facts summary. |
+| `IntelligenceX.Tools.ADPlayground/AdObjectGetTool.cs` | `done` | Engine object-get result pass-through + facts summary. |
+| `IntelligenceX.Tools.ADPlayground/AdObjectResolveTool.cs` | `done` | Engine resolve pass-through + auto-column projection via shared table envelope. |
+| `IntelligenceX.Tools.ADPlayground/AdGroupsListTool.cs` | `done` | Engine list + dynamic view helper only. |
+| `IntelligenceX.Tools.ADPlayground/AdGroupMembersTool.cs` | `done` | Engine member listing wrapper. |
+| `IntelligenceX.Tools.ADPlayground/AdGroupMembersResolvedTool.cs` | `done` | Engine resolved-members wrapper + dynamic view helper. |
+| `IntelligenceX.Tools.ADPlayground/AdDomainControllersTool.cs` | `done` | Engine domain controllers wrapper + dynamic view helper. |
+| `IntelligenceX.Tools.ADPlayground/AdDomainInfoTool.cs` | `done` | Engine domain info wrapper + shared facts summary. |
+| `IntelligenceX.Tools.ADPlayground/AdWhoAmITool.cs` | `done` | Engine whoami wrapper + shared facts summary. |
+| `IntelligenceX.Tools.ADPlayground/AdDelegationAuditTool.cs` | `done` | Engine delegation audit wrapper + auto-column projection via shared table envelope. |
+| `IntelligenceX.Tools.ADPlayground/AdReplicationSummaryTool.cs` | `done` | Engine replication wrapper + auto-column projection via shared table envelope. |
+| `IntelligenceX.Tools.ADPlayground/AdSpnSearchTool.cs` | `done` | Engine SPN search wrapper + dynamic view helper. |
+| `IntelligenceX.Tools.ADPlayground/AdSpnStatsTool.cs` | `done` | Engine SPN stats wrapper + auto-column projection via shared table envelope. |
+| `IntelligenceX.Tools.ADPlayground/AdStaleAccountsTool.cs` | `done` | Engine stale-accounts wrapper. |
+| `IntelligenceX.Tools.ADPlayground/AdUsersExpiredTool.cs` | `done` | Engine expired-users wrapper. |
+| `IntelligenceX.Tools.ADPlayground/AdLdapQueryTool.cs` | `done` | Engine LDAP query wrapper + dynamic view helper. |
+| `IntelligenceX.Tools.ADPlayground/AdLdapQueryPagedTool.cs` | `done` | Engine paged LDAP query wrapper + dynamic view helper. |
+| `IntelligenceX.Tools.ADPlayground/AdLdapDiagnosticsTool.cs` | `done` | Engine diagnostics wrapper + auto-column projection via shared table envelope. |
+| `IntelligenceX.Tools.ADPlayground/AdPrivilegedGroupsSummaryTool.cs` | `done` | Engine summary wrapper. |
+| `IntelligenceX.Tools.ADPlayground/AdDomainAdminsSummaryTool.cs` | `done` | Engine summary wrapper. |
 
 ## System
 | File | Status | Notes |
@@ -75,13 +75,13 @@ Status values:
 | File | Status | Notes |
 |---|---|---|
 | `IntelligenceX.Tools.PowerShell/PowerShellToolOptions.cs` | `keep` | Runtime enablement/caps for dangerous shell execution. |
-| `IntelligenceX.Tools.PowerShell/PowerShellToolBase.cs` | `keep` | Shared ComputerX.PowerShellRuntime failure mapping/plumbing. |
+| `IntelligenceX.Tools.PowerShell/PowerShellToolBase.cs` | `keep` | Shared `IntelligenceX.Engines.PowerShell` failure mapping/plumbing. |
 | `IntelligenceX.Tools.PowerShell/PowerShellToolPack.cs` | `done` | Dedicated `IX.PowerShell` descriptor (`DangerousWrite`). |
 | `IntelligenceX.Tools.PowerShell/ToolRegistryPowerShellExtensions.cs` | `done` | Single registration source; exposes tool names and runtime-derived tool catalog metadata. |
 | `IntelligenceX.Tools.PowerShell/PowerShellPackInfoTool.cs` | `done` | Model-facing dangerous-capability guidance via shared contract. |
 | `IntelligenceX.Tools.PowerShell/PowerShellEnvironmentDiscoverTool.cs` | `done` | Policy + runtime autodiscovery wrapper for agent planning (`enabled`, write policy, host availability, limits). |
 | `IntelligenceX.Tools.PowerShell/PowerShellHostsTool.cs` | `done` | Engine host discovery wrapper (`pwsh` / `windows_powershell`). |
-| `IntelligenceX.Tools.PowerShell/PowerShellRunTool.cs` | `done` | Thin runtime execution wrapper over `ComputerX.PowerShellRuntime`. |
+| `IntelligenceX.Tools.PowerShell/PowerShellRunTool.cs` | `done` | Thin runtime execution wrapper over `IntelligenceX.Engines.PowerShell`. |
 
 ## TestimoX
 | File | Status | Notes |

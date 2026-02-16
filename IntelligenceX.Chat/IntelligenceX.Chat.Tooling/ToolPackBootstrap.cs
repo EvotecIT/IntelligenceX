@@ -44,7 +44,7 @@ public sealed record ToolPackBootstrapOptions {
     public bool EnableSystemPack { get; init; } = true;
 
     /// <summary>
-    /// Enables private IX.ActiveDirectory pack when available.
+    /// Enables private IX.ADPlayground pack when available.
     /// </summary>
     public bool EnableActiveDirectoryPack { get; init; } = true;
 
@@ -133,8 +133,8 @@ public static class ToolPackBootstrap {
     private const string FileSystemOptionsTypeName = "IntelligenceX.Tools.FileSystem.FileSystemToolOptions, IntelligenceX.Tools.FileSystem";
     private const string SystemPackTypeName = "IntelligenceX.Tools.System.SystemToolPack, IntelligenceX.Tools.System";
     private const string SystemOptionsTypeName = "IntelligenceX.Tools.System.SystemToolOptions, IntelligenceX.Tools.System";
-    private const string ActiveDirectoryPackTypeName = "IntelligenceX.Tools.ActiveDirectory.ActiveDirectoryToolPack, IntelligenceX.Tools.ActiveDirectory";
-    private const string ActiveDirectoryOptionsTypeName = "IntelligenceX.Tools.ActiveDirectory.ActiveDirectoryToolOptions, IntelligenceX.Tools.ActiveDirectory";
+    private const string ActiveDirectoryPackTypeName = "IntelligenceX.Tools.ADPlayground.ActiveDirectoryToolPack, IntelligenceX.Tools.ADPlayground";
+    private const string ActiveDirectoryOptionsTypeName = "IntelligenceX.Tools.ADPlayground.ActiveDirectoryToolOptions, IntelligenceX.Tools.ADPlayground";
     private const string PowerShellPackTypeName = "IntelligenceX.Tools.PowerShell.PowerShellToolPack, IntelligenceX.Tools.PowerShell";
     private const string PowerShellOptionsTypeName = "IntelligenceX.Tools.PowerShell.PowerShellToolOptions, IntelligenceX.Tools.PowerShell";
     private const string TestimoXPackTypeName = "IntelligenceX.Tools.TestimoX.TestimoXToolPack, IntelligenceX.Tools.TestimoX";
@@ -198,7 +198,7 @@ public static class ToolPackBootstrap {
         if (options.EnableActiveDirectoryPack) {
             TryAddPack(
                 packs,
-                packLabel: "IX.ActiveDirectory",
+                packLabel: "IX.ADPlayground",
                 packTypeName: ActiveDirectoryPackTypeName,
                 optionsTypeName: ActiveDirectoryOptionsTypeName,
                 configureOptions: adOptions => {
@@ -274,7 +274,7 @@ public static class ToolPackBootstrap {
         if (options.EnablePluginFolderLoading) {
             var existingPackIds = new HashSet<string>(
                 packs
-                    .Select(static pack => pack.Descriptor.Id)
+                    .Select(static pack => NormalizePackId(pack.Descriptor.Id))
                     .Where(static id => !string.IsNullOrWhiteSpace(id)),
                 StringComparer.OrdinalIgnoreCase);
 
@@ -309,6 +309,18 @@ public static class ToolPackBootstrap {
     /// <param name="registry">Tool registry.</param>
     /// <param name="packs">Packs to register.</param>
     public static void RegisterAll(ToolRegistry registry, IEnumerable<IToolPack> packs) {
+        RegisterAll(registry, packs, toolPackIdsByToolName: null);
+    }
+
+    /// <summary>
+    /// Registers all provided packs into the registry and optionally records tool-to-pack ownership.
+    /// </summary>
+    /// <param name="registry">Tool registry.</param>
+    /// <param name="packs">Packs to register.</param>
+    /// <param name="toolPackIdsByToolName">
+    /// Optional sink populated with registered tool definition name to normalized pack id mappings.
+    /// </param>
+    public static void RegisterAll(ToolRegistry registry, IEnumerable<IToolPack> packs, IDictionary<string, string>? toolPackIdsByToolName) {
         if (registry is null) {
             throw new ArgumentNullException(nameof(registry));
         }
@@ -316,8 +328,30 @@ public static class ToolPackBootstrap {
             throw new ArgumentNullException(nameof(packs));
         }
 
+        var knownDefinitions = new HashSet<string>(
+            registry.GetDefinitions().Select(static definition => definition.Name),
+            StringComparer.OrdinalIgnoreCase);
+
         foreach (var pack in packs) {
             pack.Register(registry);
+
+            var normalizedPackId = NormalizePackId(pack.Descriptor.Id);
+            if (normalizedPackId.Length == 0) {
+                foreach (var definition in registry.GetDefinitions()) {
+                    knownDefinitions.Add(definition.Name);
+                }
+                continue;
+            }
+
+            foreach (var definition in registry.GetDefinitions()) {
+                if (!knownDefinitions.Add(definition.Name)) {
+                    continue;
+                }
+
+                if (toolPackIdsByToolName is not null && normalizedPackId.Length > 0) {
+                    toolPackIdsByToolName[definition.Name] = normalizedPackId;
+                }
+            }
         }
     }
 
@@ -393,9 +427,9 @@ public static class ToolPackBootstrap {
     }
 
     /// <summary>
-    /// Normalizes descriptor/alias ids into canonical pack ids used across policy and filtering.
+    /// Normalizes descriptor ids into canonical pack ids used across policy and filtering.
     /// </summary>
-    /// <param name="descriptorId">Descriptor id or alias.</param>
+    /// <param name="descriptorId">Descriptor id.</param>
     /// <returns>Canonical pack id, or empty string when input is empty.</returns>
     public static string NormalizePackId(string? descriptorId) {
         var normalized = (descriptorId ?? string.Empty).Trim().ToLowerInvariant();
@@ -405,22 +439,10 @@ public static class ToolPackBootstrap {
 
         normalized = normalized.Replace("-", string.Empty, StringComparison.Ordinal)
             .Replace("_", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal)
             .Replace(".", string.Empty, StringComparison.Ordinal);
 
-        if (normalized.StartsWith("ix", StringComparison.Ordinal)) {
-            normalized = normalized[2..];
-        } else if (normalized.StartsWith("intelligencex", StringComparison.Ordinal)) {
-            normalized = normalized["intelligencex".Length..];
-        }
-
-        return normalized switch {
-            "computerx" => "system",
-            "adplayground" => "ad",
-            "activedirectory" => "ad",
-            "filesystem" => "fs",
-            "reviewersetuppack" => "reviewersetup",
-            _ => normalized
-        };
+        return normalized;
     }
 
     internal static IToolPack WithSourceKind(IToolPack pack, string sourceKind) {

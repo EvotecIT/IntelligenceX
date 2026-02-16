@@ -253,18 +253,21 @@
       groups[packId].push(tool);
     }
 
-    var order = [];
-    var packs = state.options.packs || [];
-    for (var p = 0; p < packs.length; p++) {
-      var pid = normalizePackId(packs[p].id);
-      if (groups[pid]) {
-        order.push(pid);
+    var order = Object.keys(groups);
+    order.sort(function(a, b) {
+      var aUncategorized = a === "uncategorized";
+      var bUncategorized = b === "uncategorized";
+      if (aUncategorized !== bUncategorized) {
+        return aUncategorized ? 1 : -1;
       }
-    }
 
-    var remaining = Object.keys(groups).filter(function(k) { return order.indexOf(k) < 0; });
-    remaining.sort();
-    order = order.concat(remaining);
+      var byName = packDisplayName(a).localeCompare(packDisplayName(b), undefined, { sensitivity: "base" });
+      if (byName !== 0) {
+        return byName;
+      }
+
+      return a.localeCompare(b, undefined, { sensitivity: "base" });
+    });
 
     for (var g = 0; g < order.length; g++) {
       var currentPackId = order[g];
@@ -285,21 +288,37 @@
       var summary = document.createElement("summary");
       summary.className = "options-accordion-summary";
 
+      var heading = document.createElement("div");
+      heading.className = "options-accordion-heading";
+
       var title = document.createElement("span");
       title.className = "options-accordion-title";
       title.textContent = packDisplayName(currentPackId);
-      summary.appendChild(title);
+      heading.appendChild(title);
+
+      var packDesc = packDescription(currentPackId);
+      if (packDesc) {
+        var subtitle = document.createElement("span");
+        subtitle.className = "options-accordion-subtitle";
+        subtitle.textContent = packDesc;
+        heading.appendChild(subtitle);
+      }
+      summary.appendChild(heading);
+
+      var summaryRight = document.createElement("div");
+      summaryRight.className = "options-accordion-summary-right";
 
       var sourceKind = packSourceKind(currentPackId);
       var sourceBadge = document.createElement("span");
       sourceBadge.className = "options-pill options-pill-source options-pill-source-" + sourceKind;
       sourceBadge.textContent = packSourceLabel(sourceKind);
-      summary.appendChild(sourceBadge);
+      sourceBadge.title = packSourceHint(sourceKind);
+      summaryRight.appendChild(sourceBadge);
 
       var meta = document.createElement("span");
       meta.className = "options-accordion-meta";
-      meta.textContent = String(groupTools.length) + " tools";
-      summary.appendChild(meta);
+      meta.textContent = String(groupTools.length) + (groupTools.length === 1 ? " tool" : " tools");
+      summaryRight.appendChild(meta);
 
       var enabledCount = 0;
       for (var c = 0; c < groupTools.length; c++) {
@@ -313,7 +332,7 @@
       var pill = document.createElement("span");
       pill.className = "options-pill" + (allEnabled ? "" : " off");
       pill.textContent = allEnabled ? "Loaded" : (someEnabled ? "Partial" : "Disabled");
-      summary.appendChild(pill);
+      summaryRight.appendChild(pill);
 
       var packToggle = document.createElement("input");
       packToggle.className = "options-toggle options-toggle-pack";
@@ -332,7 +351,8 @@
           renderTools();
         });
       })(currentPackId, groupTools);
-      summary.appendChild(packToggle);
+      summaryRight.appendChild(packToggle);
+      summary.appendChild(summaryRight);
 
       details.appendChild(summary);
 

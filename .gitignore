@@ -368,6 +368,9 @@ FodyWeavers.xsd
 .vscode/*
 
 build/*
+!Build/
+!Build/Build-Installer.ps1
+!Build/Build-Release.ps1
 
 # Allow release command sources under IntelligenceX.Cli/Release
 !IntelligenceX.Cli/Release/

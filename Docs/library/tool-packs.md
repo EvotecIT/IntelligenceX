@@ -17,7 +17,7 @@ Core idea:
   - `IntelligenceX.Tools.FileSystem` (cross-platform)
   - `IntelligenceX.Tools.Email` (depends on Mailozaurr/MailKit/MimeKit)
   - `IntelligenceX.Tools.System` (OS-specific helpers; keep isolated)
-  - Future Windows-only packs (recommended): `IntelligenceX.Tools.ActiveDirectory`, `IntelligenceX.Tools.EventLog`, etc.
+  - Future Windows-only packs (recommended): `IntelligenceX.Tools.ADPlayground`, `IntelligenceX.Tools.EventLog`, etc.
 
 ## Recommended libraries (by domain)
 

@@ -30,7 +30,8 @@
     "title": "Tool Packs",
     "items": [
       { "title": "Overview", "href": "/docs/tools/overview/" },
-      { "title": "Tool Catalog", "href": "/docs/tools/catalog/" }
+      { "title": "Tool Catalog", "href": "/docs/tools/catalog/" },
+      { "title": "Governance", "href": "/docs/tools/governance/" }
     ]
   },
   {

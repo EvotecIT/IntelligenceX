@@ -162,7 +162,11 @@ internal sealed partial class ChatServiceSession {
     }
 
     private (string PackId, string? PackName, ToolPackSourceKind SourceKind) ResolvePackMetadata(ToolDefinition definition) {
-        var packId = NormalizePackId(InferPackIdFromToolName(definition.Name, definition.Tags));
+        var packId = string.Empty;
+        if (_toolPackIdsByToolName.TryGetValue(definition.Name, out var assignedPackId)) {
+            packId = NormalizePackId(assignedPackId);
+        }
+
         _packDisplayNamesById.TryGetValue(packId, out var packName);
         var sourceKind = ToolPackSourceKind.OpenSource;
         if (packId.Length > 0 && _packSourceKindsById.TryGetValue(packId, out var resolved)) {

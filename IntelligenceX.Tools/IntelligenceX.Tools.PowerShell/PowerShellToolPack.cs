@@ -21,7 +21,7 @@ public sealed class PowerShellToolPack : IToolPack {
     /// <inheritdoc />
     public ToolPackDescriptor Descriptor { get; } = new() {
         Id = "powershell",
-        Name = "IX.PowerShell",
+        Name = "PowerShell Runtime",
         Tier = ToolCapabilityTier.DangerousWrite,
         IsDangerous = true,
         Description = "Opt-in PowerShell runtime execution (windows_powershell / pwsh).",

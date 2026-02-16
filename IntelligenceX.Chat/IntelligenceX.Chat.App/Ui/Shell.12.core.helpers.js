@@ -434,18 +434,13 @@
   }
 
   function normalizePackId(value) {
-    var normalized = String(value || "").toLowerCase().replace(/[\s_.]/g, "-");
-    if (normalized.indexOf("ix-") === 0) {
-      normalized = normalized.substring(3);
-    } else if (normalized.indexOf("intelligencex-") === 0) {
-      normalized = normalized.substring("intelligencex-".length);
+    var normalized = String(value || "").trim().toLowerCase();
+    if (!normalized) {
+      return "";
     }
 
-    if (normalized === "active-directory" || normalized === "activedirectory" || normalized === "adplayground") return "ad";
-    if (normalized === "computerx") return "system";
-    if (normalized === "event-log") return "eventlog";
-    if (normalized === "file-system" || normalized === "filesystem") return "fs";
-    if (normalized === "reviewersetup") return "reviewer-setup";
+    normalized = normalized.replace(/[\s_.-]/g, "");
+    if (normalized === "other") return "uncategorized";
     return normalized;
   }
 
@@ -479,68 +474,46 @@
   function packSourceLabel(sourceKind) {
     var normalized = normalizePackSourceKind(sourceKind);
     if (normalized === "builtin") {
-      return "Built-in";
+      return "Core";
     }
     if (normalized === "closed_source") {
-      return "Closed source";
+      return "Private";
     }
-    return "Open source";
+    return "Open";
   }
 
-  function mapCategoryToPackId(category) {
-    var normalized = normalizePackId(category);
-    if (normalized === "ad") return "ad";
-    if (normalized === "active-directory") return "ad";
-    if (normalized === "eventlog") return "eventlog";
-    if (normalized === "event-log") return "eventlog";
-    if (normalized === "fs") return "fs";
-    if (normalized === "file-system") return "fs";
-    if (normalized === "system") return "system";
-    if (normalized === "email") return "email";
-    if (normalized === "testimox") return "testimox";
-    if (normalized === "reviewer-setup") return "reviewer-setup";
-    return "";
+  function packSourceHint(sourceKind) {
+    var normalized = normalizePackSourceKind(sourceKind);
+    if (normalized === "builtin") {
+      return "Pack ships with the core IntelligenceX distribution.";
+    }
+    if (normalized === "closed_source") {
+      return "Pack is from a private/proprietary codebase.";
+    }
+    return "Pack is from an open-source codebase.";
   }
 
   function inferPackIdFromTool(tool) {
     if (!tool) {
-      return "other";
+      return "uncategorized";
     }
 
-    if (tool.packId) {
-      var explicit = normalizePackId(tool.packId);
-      if (explicit) {
-        return explicit;
-      }
+    var explicit = normalizePackId(tool.packId);
+    if (explicit) {
+      return explicit;
     }
 
-    var fromCategory = mapCategoryToPackId(tool.category);
+    var fromPackName = normalizePackId(tool.packName);
+    if (fromPackName) {
+      return fromPackName;
+    }
+
+    var fromCategory = normalizePackId(tool.category);
     if (fromCategory) {
       return fromCategory;
     }
 
-    var tags = tool.tags || [];
-    for (var i = 0; i < tags.length; i++) {
-      var mapped = mapCategoryToPackId(tags[i]);
-      if (mapped) {
-        return mapped;
-      }
-      var normalized = normalizePackId(tags[i]);
-      if (normalized === "ad" || normalized === "eventlog" || normalized === "system" || normalized === "fs" || normalized === "email" || normalized === "testimox" || normalized === "reviewer-setup") {
-        return normalized;
-      }
-    }
-
-    var name = (tool.name || "").toLowerCase();
-    if (name.indexOf("ad_") === 0) return "ad";
-    if (name.indexOf("eventlog_") === 0) return "eventlog";
-    if (name.indexOf("system_") === 0 || name.indexOf("wsl_") === 0) return "system";
-    if (name.indexOf("fs_") === 0) return "fs";
-    if (name.indexOf("email_") === 0) return "email";
-    if (name.indexOf("testimox_") === 0) return "testimox";
-    if (name.indexOf("reviewer_setup_") === 0) return "reviewer-setup";
-
-    return "other";
+    return "uncategorized";
   }
 
   function packDisplayName(packId) {
@@ -560,14 +533,31 @@
       return pack.name;
     }
 
-    if (packId === "ad") return "ADPlayground";
-    if (packId === "eventlog") return "Event Log";
-    if (packId === "system") return "ComputerX";
-    if (packId === "fs") return "File System";
-    if (packId === "email") return "Email";
-    if (packId === "testimox") return "TestimoX";
-    if (packId === "reviewer-setup") return "Reviewer Setup";
-    return "Other";
+    if (packId === "uncategorized") return "Uncategorized";
+    var normalized = String(packId || "").trim();
+    if (!normalized) {
+      return "Uncategorized";
+    }
+
+    return normalized
+      .replace(/[_-]+/g, " ")
+      .replace(/\b[a-z]/g, function(ch) { return ch.toUpperCase(); });
+  }
+
+  function packDescription(packId) {
+    var pack = findPackById(packId);
+    if (pack && pack.description) {
+      var normalized = String(pack.description || "").trim();
+      if (normalized.length > 0) {
+        return normalized;
+      }
+    }
+
+    if (packId === "uncategorized") {
+      return "Tools without pack metadata. Prefer assigning a canonical pack id and descriptor.";
+    }
+
+    return "";
   }
 
   function ensureAccordionState(packId) {

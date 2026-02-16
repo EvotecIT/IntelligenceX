@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using IntelligenceX.Chat.Abstractions.Policy;
 
 namespace IntelligenceX.Chat.Abstractions.Protocol;
 
@@ -34,6 +35,14 @@ public sealed record ToolDefinitionDto {
     /// Optional tool-pack display name.
     /// </summary>
     public string? PackName { get; init; }
+    /// <summary>
+    /// Optional tool-pack description.
+    /// </summary>
+    public string? PackDescription { get; init; }
+    /// <summary>
+    /// Optional tool-pack source classification.
+    /// </summary>
+    public ToolPackSourceKind? PackSourceKind { get; init; }
     /// <summary>
     /// JSON serialized input schema from the runtime tool definition.
     /// </summary>

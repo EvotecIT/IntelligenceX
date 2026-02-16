@@ -34,12 +34,21 @@ internal sealed partial class ChatServiceSession {
             packList.Add(new ToolPackInfoDto {
                 Id = pack.Id,
                 Name = ResolvePackDisplayName(pack.Id, pack.Name),
+                Description = string.IsNullOrWhiteSpace(pack.Description) ? null : pack.Description.Trim(),
                 Tier = MapTier(pack.Tier),
                 Enabled = true,
                 IsDangerous = pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite,
                 SourceKind = MapSourceKind(pack.SourceKind, pack.Id)
             });
         }
+        packList.Sort(static (a, b) => {
+            var byName = string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+            if (byName != 0) {
+                return byName;
+            }
+
+            return string.Compare(a.Id, b.Id, StringComparison.OrdinalIgnoreCase);
+        });
 
         var dangerousEnabled = packList.Exists(static p => p.IsDangerous || p.Tier == CapabilityTier.DangerousWrite);
 

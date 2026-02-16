@@ -287,20 +287,34 @@ internal sealed partial class ChatServiceSession {
             var parametersJson = defs[i].Parameters is null ? "{}" : JsonLite.Serialize(defs[i].Parameters);
             var required = ExtractRequiredArguments(parametersJson);
             var parameters = ExtractToolParameters(parametersJson, required);
-            var packId = NormalizePackId(InferPackIdFromToolName(defs[i].Name, defs[i].Tags));
+            var packId = string.Empty;
+            if (_toolPackIdsByToolName.TryGetValue(defs[i].Name, out var registeredPackId)) {
+                packId = NormalizePackId(registeredPackId);
+            }
+
             string? packName = null;
+            string? packDescription = null;
+            ToolPackSourceKind? packSourceKind = null;
             if (packId.Length > 0 && _packDisplayNamesById.TryGetValue(packId, out var resolvedPackName)) {
                 packName = resolvedPackName;
+            }
+            if (packId.Length > 0 && _packDescriptionsById.TryGetValue(packId, out var resolvedPackDescription)) {
+                packDescription = resolvedPackDescription;
+            }
+            if (packId.Length > 0 && _packSourceKindsById.TryGetValue(packId, out var resolvedPackSourceKind)) {
+                packSourceKind = resolvedPackSourceKind;
             }
 
             tools[i] = new ToolDefinitionDto {
                 Name = defs[i].Name,
                 Description = defs[i].Description ?? string.Empty,
-                DisplayName = FormatToolDisplayName(defs[i].Name),
-                Category = InferToolCategory(defs[i].Name, defs[i].Tags),
+                DisplayName = ResolveToolDisplayName(defs[i]),
+                Category = InferToolCategory(packId, ResolveToolCategory(defs[i])),
                 Tags = defs[i].Tags.Count == 0 ? null : defs[i].Tags.ToArray(),
                 PackId = packId.Length == 0 ? null : packId,
                 PackName = string.IsNullOrWhiteSpace(packName) ? null : packName,
+                PackDescription = string.IsNullOrWhiteSpace(packDescription) ? null : packDescription,
+                PackSourceKind = packSourceKind,
                 ParametersJson = parametersJson,
                 RequiredArguments = required,
                 Parameters = parameters

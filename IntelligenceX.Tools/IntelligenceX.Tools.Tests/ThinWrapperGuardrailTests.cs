@@ -1,4 +1,4 @@
-using IntelligenceX.Tools.ActiveDirectory;
+using IntelligenceX.Tools.ADPlayground;
 using Xunit;
 
 namespace IntelligenceX.Tools.Tests;
@@ -8,8 +8,8 @@ public class ThinWrapperGuardrailTests {
     public void ActiveDirectoryAssembly_ShouldNotContainLegacyKindParsers() {
         var assembly = typeof(AdObjectResolveTool).Assembly;
 
-        Assert.Null(assembly.GetType("IntelligenceX.Tools.ActiveDirectory.ActiveDirectoryObjectKind", throwOnError: false));
-        Assert.Null(assembly.GetType("IntelligenceX.Tools.ActiveDirectory.ActiveDirectoryObjectKindTools", throwOnError: false));
-        Assert.Null(assembly.GetType("IntelligenceX.Tools.ActiveDirectory.SpnAccountKindTools", throwOnError: false));
+        Assert.Null(assembly.GetType("IntelligenceX.Tools.ADPlayground.ActiveDirectoryObjectKind", throwOnError: false));
+        Assert.Null(assembly.GetType("IntelligenceX.Tools.ADPlayground.ActiveDirectoryObjectKindTools", throwOnError: false));
+        Assert.Null(assembly.GetType("IntelligenceX.Tools.ADPlayground.SpnAccountKindTools", throwOnError: false));
     }
 }

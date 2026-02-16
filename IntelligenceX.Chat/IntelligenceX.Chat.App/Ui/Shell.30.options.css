@@ -556,6 +556,14 @@ body.options-open .options-panel {
   border-bottom: 1px solid transparent;
 }
 
+.options-accordion-heading {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .options-accordion-summary::-webkit-details-marker {
   display: none;
 }
@@ -568,12 +576,28 @@ body.options-open .options-panel {
 .options-accordion-title {
   font-size: 12.5px;
   font-weight: 700;
-  flex: 1;
+  min-width: 0;
+}
+
+.options-accordion-subtitle {
+  font-size: 10.5px;
+  color: var(--ix-text-muted);
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.options-accordion-summary-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  min-width: 0;
 }
 
 .options-accordion-meta {
   font-size: 10.5px;
   color: var(--ix-text-muted);
+  white-space: nowrap;
 }
 
 .options-accordion-body {
@@ -623,6 +647,29 @@ body.options-open .options-panel {
   border: 1px solid rgba(100, 240, 205, 0.34);
   background: rgba(100, 240, 205, 0.1);
   color: #d8fff2;
+}
+
+.options-pill-source {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.options-pill-source-builtin {
+  border-color: rgba(147, 197, 253, 0.5);
+  background: rgba(59, 130, 246, 0.2);
+  color: #dbeafe;
+}
+
+.options-pill-source-open_source {
+  border-color: rgba(52, 211, 153, 0.5);
+  background: rgba(16, 185, 129, 0.2);
+  color: #d1fae5;
+}
+
+.options-pill-source-closed_source {
+  border-color: rgba(251, 191, 36, 0.5);
+  background: rgba(245, 158, 11, 0.2);
+  color: #fef3c7;
 }
 
 .options-pill.off {
@@ -714,6 +761,18 @@ body.options-open .options-panel {
 
 .options-toggle-pack {
   margin-left: 2px;
+}
+
+@media (max-width: 920px) {
+  .options-accordion-summary {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .options-accordion-summary-right {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 
 .options-tag-row {

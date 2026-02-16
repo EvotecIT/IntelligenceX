@@ -31,6 +31,5 @@ Why:
 ## Tool packs (Windows-only examples)
 
 Keep these out of the core repo and out of cross-platform packs:
-- `IntelligenceX.Tools.ActiveDirectory` (ADPlayground)
+- `IntelligenceX.Tools.ADPlayground`
 - `IntelligenceX.Tools.EventLog` (EventViewerX / PSEventViewer)
-

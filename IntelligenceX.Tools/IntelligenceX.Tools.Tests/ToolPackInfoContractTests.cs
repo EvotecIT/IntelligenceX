@@ -5,7 +5,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Tools;
-using IntelligenceX.Tools.ActiveDirectory;
+using IntelligenceX.Tools.ADPlayground;
 using IntelligenceX.Tools.Common;
 using IntelligenceX.Tools.Email;
 using IntelligenceX.Tools.EventLog;
@@ -45,7 +45,7 @@ public class ToolPackInfoContractTests {
                 ExpectedCatalog: ToolRegistryEventLogExtensions.GetRegisteredToolCatalog(eventLogOptions)),
             new PackCase(
                 Pack: "filesystem",
-                Engine: "ComputerX.FileSystem",
+                Engine: "IntelligenceX.Engines.FileSystem",
                 Tool: new FileSystemPackInfoTool(fileSystemOptions),
                 ExpectedTools: ToolRegistryFileSystemExtensions.GetRegisteredToolNames(fileSystemOptions),
                 ExpectedCatalog: ToolRegistryFileSystemExtensions.GetRegisteredToolCatalog(fileSystemOptions)),
@@ -63,7 +63,7 @@ public class ToolPackInfoContractTests {
                 ExpectedCatalog: ToolRegistryEmailExtensions.GetRegisteredToolCatalog(emailOptions)),
             new PackCase(
                 Pack: "powershell",
-                Engine: "ComputerX.PowerShellRuntime",
+                Engine: "IntelligenceX.Engines.PowerShell",
                 Tool: new PowerShellPackInfoTool(powerShellOptions),
                 ExpectedTools: ToolRegistryPowerShellExtensions.GetRegisteredToolNames(powerShellOptions),
                 ExpectedCatalog: ToolRegistryPowerShellExtensions.GetRegisteredToolCatalog(powerShellOptions)),

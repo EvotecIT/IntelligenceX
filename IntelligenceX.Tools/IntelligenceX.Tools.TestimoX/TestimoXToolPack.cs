@@ -21,7 +21,7 @@ public sealed class TestimoXToolPack : IToolPack {
     /// <inheritdoc />
     public ToolPackDescriptor Descriptor { get; } = new() {
         Id = "testimox",
-        Name = "IX.TestimoX",
+        Name = "TestimoX",
         Tier = ToolCapabilityTier.SensitiveRead,
         IsDangerous = false,
         Description = "TestimoX rule discovery and targeted rule execution (read-oriented diagnostics).",

@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -9,7 +9,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Tools.FileSys
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Tools.Email", "IntelligenceX.Tools.Email\IntelligenceX.Tools.Email.csproj", "{278F4428-59E8-460D-BBAE-F222FB8E6D9F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Tools.ActiveDirectory", "IntelligenceX.Tools.ActiveDirectory\IntelligenceX.Tools.ActiveDirectory.csproj", "{F1111684-E706-4A97-A93E-278073B40C9E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Tools.ADPlayground", "IntelligenceX.Tools.ADPlayground\IntelligenceX.Tools.ADPlayground.csproj", "{F1111684-E706-4A97-A93E-278073B40C9E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Tools.EventLog", "IntelligenceX.Tools.EventLog\IntelligenceX.Tools.EventLog.csproj", "{A9CEA85E-2FDA-4849-9789-1D2D2B543AE3}"
 EndProject

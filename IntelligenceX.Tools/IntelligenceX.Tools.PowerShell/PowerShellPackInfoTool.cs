@@ -29,7 +29,7 @@ public sealed class PowerShellPackInfoTool : PowerShellToolBase, ITool {
 
         var root = ToolPackGuidance.Create(
             pack: "powershell",
-            engine: "ComputerX.PowerShellRuntime",
+            engine: "IntelligenceX.Engines.PowerShell",
             tools: ToolRegistryPowerShellExtensions.GetRegisteredToolNames(Options),
             recommendedFlow: new[] {
                 "Call powershell_environment_discover first to read policy, host availability, and runtime limits.",

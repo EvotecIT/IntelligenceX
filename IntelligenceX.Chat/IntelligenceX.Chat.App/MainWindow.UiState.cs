@@ -613,12 +613,24 @@ public sealed partial class MainWindow : Window {
     }
 
     private static object[] BuildPackState(ToolPackInfoDto[] packs) {
-        var list = new List<object>(packs.Length);
-        foreach (var pack in packs) {
+        var ordered = new List<ToolPackInfoDto>(packs.Length);
+        ordered.AddRange(packs);
+        ordered.Sort(static (a, b) => {
+            var byName = string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+            if (byName != 0) {
+                return byName;
+            }
+
+            return string.Compare(a.Id, b.Id, StringComparison.OrdinalIgnoreCase);
+        });
+
+        var list = new List<object>(ordered.Count);
+        foreach (var pack in ordered) {
             var normalizedPackId = NormalizePackId(pack.Id);
             list.Add(new {
                 id = string.IsNullOrWhiteSpace(normalizedPackId) ? pack.Id : normalizedPackId,
                 name = ResolvePackDisplayName(normalizedPackId, pack.Name),
+                description = string.IsNullOrWhiteSpace(pack.Description) ? null : pack.Description.Trim(),
                 tier = pack.Tier.ToString(),
                 enabled = pack.Enabled,
                 isDangerous = pack.IsDangerous,
@@ -780,7 +792,7 @@ public sealed partial class MainWindow : Window {
                 name,
                 displayName = string.IsNullOrWhiteSpace(displayName) ? FormatToolDisplayName(name) : displayName,
                 description = description ?? string.Empty,
-                category = string.IsNullOrWhiteSpace(category) ? InferToolCategory(name) : category,
+                category = string.IsNullOrWhiteSpace(category) ? "other" : category,
                 packId = string.IsNullOrWhiteSpace(normalizedPackId) ? null : normalizedPackId,
                 packName = string.IsNullOrWhiteSpace(normalizedPackName) ? null : normalizedPackName,
                 tags = tags ?? Array.Empty<string>(),
