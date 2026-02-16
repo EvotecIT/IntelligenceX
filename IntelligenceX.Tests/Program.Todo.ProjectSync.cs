@@ -15,9 +15,11 @@ internal static partial class Program {
         AssertEqual(true, names.Contains("Tags", StringComparer.OrdinalIgnoreCase), "has Tags");
         AssertEqual(true, names.Contains("Matched Issue", StringComparer.OrdinalIgnoreCase), "has Matched Issue");
         AssertEqual(true, names.Contains("Matched Issue Confidence", StringComparer.OrdinalIgnoreCase), "has Matched Issue Confidence");
+        AssertEqual(true, names.Contains("Matched Issue Reason", StringComparer.OrdinalIgnoreCase), "has Matched Issue Reason");
         AssertEqual(true, names.Contains("Related Issues", StringComparer.OrdinalIgnoreCase), "has Related Issues");
         AssertEqual(true, names.Contains("Matched Pull Request", StringComparer.OrdinalIgnoreCase), "has Matched Pull Request");
         AssertEqual(true, names.Contains("Matched Pull Request Confidence", StringComparer.OrdinalIgnoreCase), "has Matched Pull Request Confidence");
+        AssertEqual(true, names.Contains("Matched Pull Request Reason", StringComparer.OrdinalIgnoreCase), "has Matched Pull Request Reason");
         AssertEqual(true, names.Contains("Related Pull Requests", StringComparer.OrdinalIgnoreCase), "has Related Pull Requests");
         AssertEqual(true, names.Contains("Triage Score", StringComparer.OrdinalIgnoreCase), "has Triage Score");
         AssertEqual(true, names.Contains("IX Suggested Decision", StringComparer.OrdinalIgnoreCase), "has IX Suggested Decision");
@@ -422,6 +424,7 @@ internal static partial class Program {
         var issue = entries.Single(item => item.Kind.Equals("issue", StringComparison.OrdinalIgnoreCase));
         AssertEqual("https://github.com/EvotecIT/IntelligenceX/pull/77", issue.MatchedPullRequestUrl, "issue matched pull request url derived");
         AssertEqual(true, issue.MatchedPullRequestConfidence.HasValue && issue.MatchedPullRequestConfidence.Value >= 0.89, "issue matched pull request confidence derived");
+        AssertEqual(true, issue.MatchedPullRequestReason?.Contains("explicit issue reference", StringComparison.OrdinalIgnoreCase) == true, "issue matched pull request reason derived");
     }
 
     private static void TestProjectSyncBuildEntriesPreservesHigherConfidenceIssueSidePullRequestMatch() {
@@ -448,7 +451,8 @@ internal static partial class Program {
       "number": 120,
       "url": "https://github.com/EvotecIT/IntelligenceX/issues/120",
       "matchedPullRequestUrl": "https://github.com/EvotecIT/IntelligenceX/pull/88",
-      "matchedPullRequestConfidence": 0.97
+      "matchedPullRequestConfidence": 0.97,
+      "matchedPullRequestReason": "manual maintainer link"
     }
   ]
 }
@@ -463,6 +467,7 @@ internal static partial class Program {
         var issue = entries.Single(item => item.Kind.Equals("issue", StringComparison.OrdinalIgnoreCase));
         AssertEqual("https://github.com/EvotecIT/IntelligenceX/pull/88", issue.MatchedPullRequestUrl, "issue-side pull request match preserved");
         AssertEqual(true, issue.MatchedPullRequestConfidence.HasValue && issue.MatchedPullRequestConfidence.Value >= 0.97, "issue-side confidence preserved");
+        AssertEqual("manual maintainer link", issue.MatchedPullRequestReason, "issue-side reason preserved");
     }
 
     private static void TestProjectSyncBuildEntriesUsesIssueRelatedPullRequestFallback() {
@@ -502,6 +507,7 @@ internal static partial class Program {
         var issue = entries.Single(item => item.Kind.Equals("issue", StringComparison.OrdinalIgnoreCase));
         AssertEqual("https://github.com/EvotecIT/IntelligenceX/pull/90", issue.MatchedPullRequestUrl, "fallback uses top related pull request");
         AssertEqual(true, issue.MatchedPullRequestConfidence.HasValue && issue.MatchedPullRequestConfidence.Value >= 0.88, "fallback confidence derived from top related pull request");
+        AssertEqual(true, issue.MatchedPullRequestReason?.Contains("explicit pull request reference", StringComparison.OrdinalIgnoreCase) == true, "fallback reason derived from top related pull request");
     }
 
     private static void TestProjectSyncBuildEntriesUsesPullRequestRelatedIssueFallback() {
@@ -541,6 +547,7 @@ internal static partial class Program {
         var pullRequest = entries.Single(item => item.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase));
         AssertEqual("https://github.com/EvotecIT/IntelligenceX/issues/201", pullRequest.MatchedIssueUrl, "fallback uses top related issue");
         AssertEqual(true, pullRequest.MatchedIssueConfidence.HasValue && pullRequest.MatchedIssueConfidence.Value >= 0.88, "fallback confidence derived from top related issue");
+        AssertEqual(true, pullRequest.MatchedIssueReason?.Contains("explicit issue reference", StringComparison.OrdinalIgnoreCase) == true, "fallback reason derived from top related issue");
     }
 
     private static void TestProjectSyncBuildEntriesDerivesMissingMatchedIssueConfidenceFromRelatedIssues() {
@@ -581,6 +588,7 @@ internal static partial class Program {
         var pullRequest = entries.Single(item => item.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase));
         AssertEqual("https://github.com/EvotecIT/IntelligenceX/issues/220", pullRequest.MatchedIssueUrl, "explicit matched issue url preserved");
         AssertEqual(true, pullRequest.MatchedIssueConfidence.HasValue && pullRequest.MatchedIssueConfidence.Value >= 0.64, "matched issue confidence derived from same related issue");
+        AssertEqual(true, pullRequest.MatchedIssueReason?.Contains("token overlap", StringComparison.OrdinalIgnoreCase) == true, "matched issue reason derived from same related issue");
     }
 
     private static void TestProjectSyncBuildIssueMatchSuggestionCommentFiltersByConfidence() {
@@ -1005,6 +1013,14 @@ internal static partial class Program {
         AssertContainsText(value, "PR #19 | 0.61", "second pull request candidate");
         AssertContainsText(value, "PR #18 | 0.58", "third pull request candidate");
         AssertEqual(false, value.Contains("PR #20", StringComparison.OrdinalIgnoreCase), "limited to top three pull request candidates");
+    }
+
+    private static void TestProjectSyncBuildMatchReasonFieldValueNormalizesReasonText() {
+        var empty = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildMatchReasonFieldValue("   ");
+        AssertEqual(string.Empty, empty, "empty reason values omitted");
+
+        var normalized = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildMatchReasonFieldValue(" explicit issue reference \r\n in PR body ");
+        AssertEqual("explicit issue reference in PR body", normalized, "reason whitespace normalized");
     }
 #endif
 }

@@ -113,7 +113,7 @@ intelligencex todo project-init \
 Notes:
 - Creates a project (or initializes an existing one with `--project <n>`).
 - Can copy from a prepared template project with `--view-template-project <n>` to preserve saved GitHub views.
-- Ensures required custom fields such as `Vision Fit`, `Category`, `Tags`, `Matched Issue`, `Triage Score`, `Duplicate Cluster`, and `IX Suggested Decision`.
+- Ensures required custom fields such as `Vision Fit`, `Category`, `Tags`, `Matched Issue`, `Matched Issue Reason`, `Matched Pull Request`, `Matched Pull Request Reason`, `Triage Score`, `Duplicate Cluster`, and `IX Suggested Decision`.
 - Ensures IX label taxonomy in the repo by default (`--no-ensure-labels` to skip).
 - Validates default IX view coverage by default (`--no-ensure-default-views` to skip).
 - Writes a reusable config file containing owner/project/field metadata.
