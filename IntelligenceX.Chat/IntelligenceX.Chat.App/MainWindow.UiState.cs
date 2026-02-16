@@ -535,8 +535,9 @@ public sealed partial class MainWindow : Window {
             _pendingOptionsStatePublishTcs = null;
             _activeSessionStatePublishTcs = null;
             _activeOptionsStatePublishTcs = null;
-            _uiPublishPumpCts = null;
-            _uiPublishPumpRunning = false;
+            if (_uiPublishPumpCts is null) {
+                _uiPublishPumpRunning = false;
+            }
         }
 
         // Queue teardown is a cancellation boundary: pending awaiters should observe cancellation.
@@ -550,9 +551,10 @@ public sealed partial class MainWindow : Window {
         }
 
         try {
+            // Preserve token ownership semantics: the running pump finalizer disposes and clears state.
             pumpCts.Cancel();
-        } finally {
-            pumpCts.Dispose();
+        } catch (ObjectDisposedException) {
+            // Pump already finalized/disposed concurrently.
         }
     }
 
