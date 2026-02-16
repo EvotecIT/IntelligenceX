@@ -334,7 +334,7 @@ public sealed partial class MainWindow : Window {
             CancelQueuedUiPublishes();
             StopAutoReconnectLoop();
             await CancelQueuedPersistAppStateAsync().ConfigureAwait(false);
-            await PersistAppStateAsync().ConfigureAwait(false);
+            await PersistAppStateAsync(allowDuringShutdown: true).ConfigureAwait(false);
             await DisposeClientAsync().ConfigureAwait(false);
             StopServiceIfOwned();
             UninstallGlobalWheelHook();

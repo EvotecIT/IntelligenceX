@@ -30,8 +30,8 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
-    private async Task PersistAppStateAsync() {
-        if (!_appStateLoaded) {
+    private async Task PersistAppStateAsync(bool allowDuringShutdown = false) {
+        if (!_appStateLoaded || (_shutdownRequested && !allowDuringShutdown)) {
             return;
         }
 
