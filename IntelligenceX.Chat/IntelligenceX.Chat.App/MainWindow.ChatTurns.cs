@@ -51,7 +51,7 @@ public sealed partial class MainWindow : Window {
             await RenderTranscriptAsync().ConfigureAwait(false);
         }
 
-        await PersistAppStateAsync().ConfigureAwait(false);
+        QueuePersistAppState();
         return new ChatTurnContext(
             conversation,
             conversationId,
@@ -140,7 +140,7 @@ public sealed partial class MainWindow : Window {
             await RenderTranscriptAsync().ConfigureAwait(false);
         }
 
-        await PersistAppStateAsync().ConfigureAwait(false);
+        QueuePersistAppState();
     }
 
     private async Task ApplyTurnFailureAsync(ChatTurnContext turn, AssistantTurnOutcome outcome) {
@@ -155,7 +155,7 @@ public sealed partial class MainWindow : Window {
             await RenderTranscriptAsync().ConfigureAwait(false);
         }
 
-        await PersistAppStateAsync().ConfigureAwait(false);
+        QueuePersistAppState();
     }
 
     private bool TryGetPartialTurnFailureNotice(ConversationRuntime conversation, AssistantTurnOutcome outcome, out string notice) {

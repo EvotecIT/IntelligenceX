@@ -30,8 +30,8 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
-    private async Task PersistAppStateAsync() {
-        if (!_appStateLoaded) {
+    private async Task PersistAppStateAsync(bool allowDuringShutdown = false) {
+        if (!_appStateLoaded || (_shutdownRequested && !allowDuringShutdown)) {
             return;
         }
 
@@ -70,6 +70,112 @@ public sealed partial class MainWindow : Window {
             }
         } finally {
             _stateWriteGate.Release();
+        }
+    }
+
+    private void QueuePersistAppState() {
+        if (!_appStateLoaded || _shutdownRequested) {
+            return;
+        }
+
+        var shouldStartWorker = false;
+        lock (_persistDebounceSync) {
+            _persistDebounceCts?.Cancel();
+            _persistDebounceCts?.Dispose();
+            _persistDebounceCts = new CancellationTokenSource();
+            _persistDebounceRequested = true;
+            if (!_persistDebounceWorkerRunning) {
+                _persistDebounceWorkerRunning = true;
+                shouldStartWorker = true;
+            }
+        }
+
+        if (shouldStartWorker) {
+            _persistDebounceWorkerTask = Task.Run(PersistDebounceWorkerAsync);
+        }
+    }
+
+    private async Task PersistDebounceWorkerAsync() {
+        while (true) {
+            CancellationToken token;
+            lock (_persistDebounceSync) {
+                if (!_persistDebounceRequested || _shutdownRequested) {
+                    _persistDebounceWorkerRunning = false;
+                    return;
+                }
+
+                token = _persistDebounceCts?.Token ?? CancellationToken.None;
+                _persistDebounceRequested = false;
+            }
+
+            try {
+                await Task.Delay(PersistDebounceInterval, token).ConfigureAwait(false);
+            } catch (OperationCanceledException) {
+                // A newer queued request superseded this delay window.
+                continue;
+            }
+
+            try {
+                await PersistAppStateAsync().ConfigureAwait(false);
+            } catch (ObjectDisposedException) {
+                // Best-effort background save path during shutdown.
+            } catch (Exception ex) {
+                if (VerboseServiceLogs || _debugMode) {
+                    try {
+                        await RunOnUiThreadAsync(() => {
+                            AppendSystem(SystemNotice.StateSaveFailed(ex.Message));
+                            return Task.CompletedTask;
+                        }).ConfigureAwait(false);
+                    } catch {
+                        // Best-effort diagnostics only.
+                    }
+                }
+            }
+
+            var persistRequestedDuringSave = false;
+            lock (_persistDebounceSync) {
+                persistRequestedDuringSave = _persistDebounceRequested && !_shutdownRequested;
+            }
+
+            // If new state arrived while persisting, loop immediately and keep the worker alive.
+            if (persistRequestedDuringSave) {
+                continue;
+            }
+        }
+    }
+
+    private async Task CancelQueuedPersistAppStateAsync() {
+        CancellationTokenSource? cts;
+        Task? workerTask;
+        lock (_persistDebounceSync) {
+            cts = _persistDebounceCts;
+            workerTask = _persistDebounceWorkerTask;
+            _persistDebounceCts = null;
+            _persistDebounceRequested = false;
+        }
+
+        if (cts is not null) {
+            try {
+                cts.Cancel();
+            } finally {
+                cts.Dispose();
+            }
+        }
+
+        if (workerTask is null) {
+            return;
+        }
+
+        try {
+            await workerTask.ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            // Debounce worker cancellation is expected during shutdown teardown.
+        } finally {
+            lock (_persistDebounceSync) {
+                if (ReferenceEquals(_persistDebounceWorkerTask, workerTask)) {
+                    _persistDebounceWorkerTask = null;
+                }
+            }
         }
     }
 

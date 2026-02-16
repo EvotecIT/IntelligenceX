@@ -1,12 +1,113 @@
-  dragBar.addEventListener("pointerdown", function(e) {
-    if (e.button !== 0) {
+  var pendingWindowDrag = null;
+  var windowDragThresholdPx = 6;
+
+  function isNoDragTarget(target) {
+    if (!target || !target.closest) {
+      return false;
+    }
+    return !!target.closest("[data-no-drag],button,input,textarea,a,select");
+  }
+
+  function clearPendingWindowDrag(pointerId, force) {
+    if (!pendingWindowDrag) {
       return;
     }
-    if (e.target.closest("[data-no-drag],button,input,textarea,a,select")) {
+
+    var pendingPointerId = pendingWindowDrag.pointerId;
+    var pointerMatches = (typeof pointerId !== "number") || (pointerId === pendingPointerId);
+
+    if (!pointerMatches && !force) {
+      // Ignore unrelated pointer events to avoid interfering with active capture.
       return;
     }
-    post("window_drag");
-  });
+
+    if (dragBar && dragBar.hasPointerCapture) {
+      if (dragBar.hasPointerCapture(pendingPointerId)) {
+        try {
+          dragBar.releasePointerCapture(pendingPointerId);
+        } catch (_) {
+          // Ignore release failures.
+        }
+      }
+
+      if (typeof pointerId === "number" && pointerId !== pendingPointerId && dragBar.hasPointerCapture(pointerId)) {
+        try {
+          dragBar.releasePointerCapture(pointerId);
+        } catch (_) {
+          // Ignore release failures.
+        }
+      }
+    }
+
+    pendingWindowDrag = null;
+  }
+
+  if (dragBar) {
+    dragBar.addEventListener("pointerdown", function(e) {
+      if (e.button !== 0 || isNoDragTarget(e.target)) {
+        return;
+      }
+
+      // Reset any stale candidate before tracking a new pointer sequence.
+      clearPendingWindowDrag(undefined, true);
+
+      pendingWindowDrag = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY
+      };
+
+      if (dragBar.setPointerCapture) {
+        try {
+          dragBar.setPointerCapture(e.pointerId);
+        } catch (_) {
+          // Ignore capture failures.
+        }
+      }
+    });
+
+    dragBar.addEventListener("pointermove", function(e) {
+      if (!pendingWindowDrag || pendingWindowDrag.pointerId !== e.pointerId) {
+        return;
+      }
+
+      if ((e.buttons & 1) !== 1) {
+        clearPendingWindowDrag(e.pointerId);
+        return;
+      }
+
+      var dx = e.clientX - pendingWindowDrag.startX;
+      var dy = e.clientY - pendingWindowDrag.startY;
+      if ((dx * dx + dy * dy) < (windowDragThresholdPx * windowDragThresholdPx)) {
+        return;
+      }
+
+      e.preventDefault();
+      clearPendingWindowDrag(e.pointerId);
+      post("window_drag");
+    });
+
+    dragBar.addEventListener("pointerup", function(e) {
+      clearPendingWindowDrag(e.pointerId);
+    });
+
+    dragBar.addEventListener("pointercancel", function(e) {
+      clearPendingWindowDrag(e.pointerId);
+    });
+
+    dragBar.addEventListener("lostpointercapture", function(e) {
+      var hasPointerId = typeof e.pointerId === "number";
+      clearPendingWindowDrag(hasPointerId ? e.pointerId : undefined, !hasPointerId);
+    });
+
+    dragBar.addEventListener("dblclick", function(e) {
+      if (e.button !== 0 || isNoDragTarget(e.target)) {
+        return;
+      }
+      e.preventDefault();
+      post("window_maximize");
+    });
+  }
 
   byId("btnWinMin").addEventListener("click", function() { post("window_minimize"); });
   byId("btnWinMax").addEventListener("click", function() { post("window_maximize"); });
