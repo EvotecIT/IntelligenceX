@@ -487,7 +487,7 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        if (preferCancel && _shutdownRequested) {
+        if (preferCancel) {
             tcs.TrySetCanceled();
             return;
         }
