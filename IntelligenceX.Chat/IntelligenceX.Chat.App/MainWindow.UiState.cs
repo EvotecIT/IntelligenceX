@@ -455,20 +455,24 @@ public sealed partial class MainWindow : Window {
             CancellationToken restartToken = CancellationToken.None;
 
             lock (_uiPublishSync) {
-                _uiPublishPumpRunning = false;
+                // Ignore stale pump finalizers after ownership moved to a newer token/worker.
+                if (_uiPublishPumpCts is { } activePumpCts && activePumpCts.Token == cancellationToken) {
+                    _uiPublishPumpRunning = false;
 
-                if (!_shutdownRequested && (_pendingSessionStatePublish || _pendingOptionsStatePublish)) {
-                    if (_uiPublishPumpCts is null || _uiPublishPumpCts.IsCancellationRequested) {
-                        _uiPublishPumpCts?.Dispose();
-                        _uiPublishPumpCts = new CancellationTokenSource();
+                    if (!_shutdownRequested && (_pendingSessionStatePublish || _pendingOptionsStatePublish)) {
+                        if (activePumpCts.IsCancellationRequested) {
+                            activePumpCts.Dispose();
+                            activePumpCts = new CancellationTokenSource();
+                            _uiPublishPumpCts = activePumpCts;
+                        }
+
+                        restartToken = activePumpCts.Token;
+                        _uiPublishPumpRunning = true;
+                        shouldRestart = true;
+                    } else {
+                        activePumpCts.Dispose();
+                        _uiPublishPumpCts = null;
                     }
-
-                    restartToken = _uiPublishPumpCts.Token;
-                    _uiPublishPumpRunning = true;
-                    shouldRestart = true;
-                } else {
-                    _uiPublishPumpCts?.Dispose();
-                    _uiPublishPumpCts = null;
                 }
             }
 
