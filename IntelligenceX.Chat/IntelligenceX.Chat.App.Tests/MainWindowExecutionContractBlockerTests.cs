@@ -35,6 +35,21 @@ public sealed class MainWindowExecutionContractBlockerTests {
     }
 
     /// <summary>
+    /// Ensures current blocker matching is content-based and resilient when extra assistant messages follow it.
+    /// </summary>
+    [Fact]
+    public void CollapseRepeatedExecutionContractBlockers_DoesNotCollapseWhenTrailingAssistantMessagesExist() {
+        var current = BuildBlocker(actionId: "act_sidtrace", reasonCode: "execution_contract_unmet_tool_activity_absent");
+        var conversation = CreateConversation(
+            ("Assistant", current),
+            ("Assistant", "Interim assistant text unrelated to execution-contract blockers."));
+
+        var collapsed = InvokeCollapse(conversation, current);
+
+        Assert.Equal(current, collapsed);
+    }
+
+    /// <summary>
     /// Ensures collapse is applied only when a prior assistant blocker is present in conversation history.
     /// </summary>
     [Fact]

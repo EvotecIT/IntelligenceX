@@ -216,6 +216,7 @@ public sealed partial class MainWindow : Window {
 
         if (!TryFindRecentExecutionContractBlocker(
                 conversation,
+                currentAssistantText: assistantText,
                 actionIdHint: actionId,
                 reasonHint: reasonCode,
                 previousReasonCode: out var previousReasonCode,
@@ -246,25 +247,20 @@ public sealed partial class MainWindow : Window {
             """;
     }
 
-    private static bool TryFindRecentExecutionContractBlocker(ConversationRuntime conversation, string? actionIdHint, string? reasonHint,
+    private static bool TryFindRecentExecutionContractBlocker(ConversationRuntime conversation, string? currentAssistantText, string? actionIdHint, string? reasonHint,
         out string previousReasonCode, out string previousActionId) {
         previousReasonCode = string.Empty;
         previousActionId = string.Empty;
 
+        var normalizedCurrentAssistantText = NormalizeExecutionContractBlockerText(currentAssistantText);
         var normalizedActionHint = (actionIdHint ?? string.Empty).Trim();
         var normalizedReasonHint = (reasonHint ?? string.Empty).Trim();
 
         var scanned = 0;
-        var skippedCurrentAssistant = false;
+        var skippedCurrentBlocker = false;
         for (var i = conversation.Messages.Count - 1; i >= 0; i--) {
             var entry = conversation.Messages[i];
             if (!string.Equals(entry.Role, "Assistant", StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-
-            // Skip the current turn's assistant slot (which may already contain streamed draft text).
-            if (!skippedCurrentAssistant) {
-                skippedCurrentAssistant = true;
                 continue;
             }
 
@@ -279,6 +275,15 @@ public sealed partial class MainWindow : Window {
 
             var normalizedCandidateAction = (candidateAction ?? string.Empty).Trim();
             var normalizedCandidateReason = (candidateReason ?? string.Empty).Trim();
+            if (!skippedCurrentBlocker && normalizedCurrentAssistantText.Length > 0) {
+                var normalizedEntryText = NormalizeExecutionContractBlockerText(entry.Text);
+                if (normalizedEntryText.Length > 0
+                    && string.Equals(normalizedEntryText, normalizedCurrentAssistantText, StringComparison.OrdinalIgnoreCase)) {
+                    skippedCurrentBlocker = true;
+                    continue;
+                }
+            }
+
             if (normalizedActionHint.Length > 0) {
                 if (!string.Equals(normalizedActionHint, normalizedCandidateAction, StringComparison.OrdinalIgnoreCase)) {
                     continue;
@@ -295,6 +300,13 @@ public sealed partial class MainWindow : Window {
         }
 
         return false;
+    }
+
+    private static string NormalizeExecutionContractBlockerText(string? text) {
+        return (text ?? string.Empty)
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Trim();
     }
 
     private static bool TryParseExecutionContractBlocker(string text, out string reasonCode, out string actionId) {
