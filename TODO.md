@@ -6,6 +6,9 @@ Status: In progress
 For the "smart colleague" chat agent roadmap (ADPlayground/TestimoX/ComputerX/EventViewerX + runtime parallelism),
 see [Docs/agent-superpowers-backlog.md](Docs/agent-superpowers-backlog.md).
 
+## PR Feedback Churn
+- [ ] PR #399: Confirm intended shutdown semantics for queued UI publish awaiters (`CancelQueuedUiPublishes`) because reviewer todo/critical guidance alternates between "complete on shutdown" and "cancel on shutdown". Source: https://github.com/EvotecIT/IntelligenceX/pull/399#issuecomment-3906851784
+
 ## Reviewer E2E Launch Plan
 Status: In progress
 
