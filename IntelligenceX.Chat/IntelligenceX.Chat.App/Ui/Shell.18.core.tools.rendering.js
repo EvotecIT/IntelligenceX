@@ -354,7 +354,10 @@
   }
 
   function copyTableAs(table, separator) {
-    var rows = window.ixBuildTableMatrix ? window.ixBuildTableMatrix(table) : null;
+    var rows = window.ixGetDataViewRowsForTable ? window.ixGetDataViewRowsForTable(table) : null;
+    if (!rows || rows.length === 0) {
+      rows = window.ixBuildTableMatrix ? window.ixBuildTableMatrix(table) : null;
+    }
     if (!rows || rows.length === 0) {
       rows = [];
       var sourceRows = table.querySelectorAll("tr");
@@ -443,10 +446,13 @@
     var shouldStickBottom = isNearBottom(transcript);
     var previousTop = transcript.scrollTop;
     transcript.innerHTML = html || "";
-    setupCodeCopyButtons();
     if (window.ixEnhanceTranscriptTables) {
       window.ixEnhanceTranscriptTables(transcript);
     }
+    if (window.ixExtractToolDataViewPayloads) {
+      window.ixExtractToolDataViewPayloads(transcript);
+    }
+    setupCodeCopyButtons();
     setupTableCopyButtons();
     if (shouldStickBottom) {
       transcript.scrollTop = transcript.scrollHeight;

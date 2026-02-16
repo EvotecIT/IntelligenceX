@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.Json;
 using IntelligenceX.Chat.Abstractions.Protocol;
 
 namespace IntelligenceX.Chat.App.Markdown;
@@ -9,6 +10,9 @@ namespace IntelligenceX.Chat.App.Markdown;
 /// Formats structured tool-run envelopes into transcript markdown.
 /// </summary>
 internal static class ToolRunMarkdownFormatter {
+    private const string DataViewPayloadFenceLanguage = "ix-dataview";
+    private const string DataViewPayloadKind = "ix_tool_dataview_v1";
+
     /// <summary>
     /// Builds markdown for tool calls and outputs.
     /// </summary>
@@ -37,6 +41,10 @@ internal static class ToolRunMarkdownFormatter {
             markdown.Heading(toolLabel, 4);
             if (hasError) {
                 AppendFailureDescriptor(markdown, output);
+            }
+
+            if (TryBuildDataViewPayload(output, out var dataViewPayloadJson)) {
+                markdown.CodeFence(DataViewPayloadFenceLanguage, dataViewPayloadJson);
             }
 
             var summary = NormalizeSummaryMarkdown(output.SummaryMarkdown, toolLabel);
@@ -204,6 +212,226 @@ internal static class ToolRunMarkdownFormatter {
         return hasPipe;
     }
 
+    private static bool TryBuildDataViewPayload(ToolOutputDto output, out string payloadJson) {
+        payloadJson = string.Empty;
+        if (string.IsNullOrWhiteSpace(output.RenderJson) || string.IsNullOrWhiteSpace(output.Output)) {
+            return false;
+        }
+
+        try {
+            using var renderDoc = JsonDocument.Parse(output.RenderJson);
+            if (renderDoc.RootElement.ValueKind != JsonValueKind.Object) {
+                return false;
+            }
+
+            var render = renderDoc.RootElement;
+            var kind = ReadStringProperty(render, "kind");
+            if (!string.Equals(kind, "table", StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+
+            var rowsPath = ReadStringProperty(render, "rows_path");
+            if (string.IsNullOrWhiteSpace(rowsPath)) {
+                return false;
+            }
+
+            using var outputDoc = JsonDocument.Parse(output.Output);
+            if (outputDoc.RootElement.ValueKind != JsonValueKind.Object) {
+                return false;
+            }
+
+            if (!TryResolvePath(outputDoc.RootElement, rowsPath, out var rowsNode) || rowsNode.ValueKind != JsonValueKind.Array) {
+                return false;
+            }
+
+            var columns = ReadRenderColumns(render);
+            if (columns.Count == 0) {
+                columns = InferColumnsFromRows(rowsNode);
+            }
+            if (columns.Count == 0) {
+                return false;
+            }
+
+            var matrix = BuildRowsMatrix(rowsNode, columns);
+            if (matrix.Length == 0) {
+                return false;
+            }
+
+            var payload = new Dictionary<string, object?> {
+                ["kind"] = DataViewPayloadKind,
+                ["call_id"] = output.CallId ?? string.Empty,
+                ["rows"] = matrix
+            };
+            payloadJson = JsonSerializer.Serialize(payload);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    private static string[][] BuildRowsMatrix(JsonElement rowsNode, IReadOnlyList<(string Key, string Label)> columns) {
+        var header = new string[columns.Count];
+        for (var i = 0; i < columns.Count; i++) {
+            var label = columns[i].Label;
+            header[i] = string.IsNullOrWhiteSpace(label) ? columns[i].Key : label.Trim();
+        }
+
+        var result = new List<string[]> {
+            header
+        };
+
+        foreach (var rowNode in rowsNode.EnumerateArray()) {
+            var row = new string[columns.Count];
+            switch (rowNode.ValueKind) {
+                case JsonValueKind.Object:
+                    for (var i = 0; i < columns.Count; i++) {
+                        row[i] = TryGetPropertyValueCaseInsensitive(rowNode, columns[i].Key, out var valueNode)
+                            ? FormatJsonElement(valueNode)
+                            : string.Empty;
+                    }
+                    break;
+                case JsonValueKind.Array: {
+                        var i = 0;
+                        foreach (var cell in rowNode.EnumerateArray()) {
+                            if (i >= row.Length) {
+                                break;
+                            }
+
+                            row[i] = FormatJsonElement(cell);
+                            i++;
+                        }
+                        break;
+                    }
+                default:
+                    if (row.Length > 0) {
+                        row[0] = FormatJsonElement(rowNode);
+                    }
+                    break;
+            }
+
+            result.Add(row);
+        }
+
+        return result.ToArray();
+    }
+
+    private static List<(string Key, string Label)> ReadRenderColumns(JsonElement render) {
+        var columns = new List<(string Key, string Label)>();
+        if (!TryGetPropertyValueCaseInsensitive(render, "columns", out var columnsNode) || columnsNode.ValueKind != JsonValueKind.Array) {
+            return columns;
+        }
+
+        foreach (var item in columnsNode.EnumerateArray()) {
+            if (item.ValueKind != JsonValueKind.Object) {
+                continue;
+            }
+
+            var key = ReadStringProperty(item, "key");
+            if (string.IsNullOrWhiteSpace(key)) {
+                continue;
+            }
+
+            var label = ReadStringProperty(item, "label");
+            columns.Add((key.Trim(), string.IsNullOrWhiteSpace(label) ? key.Trim() : label.Trim()));
+        }
+
+        return columns;
+    }
+
+    private static List<(string Key, string Label)> InferColumnsFromRows(JsonElement rowsNode) {
+        var columns = new List<(string Key, string Label)>();
+        foreach (var rowNode in rowsNode.EnumerateArray()) {
+            if (rowNode.ValueKind != JsonValueKind.Object) {
+                continue;
+            }
+
+            foreach (var prop in rowNode.EnumerateObject()) {
+                var key = (prop.Name ?? string.Empty).Trim();
+                if (key.Length == 0) {
+                    continue;
+                }
+
+                columns.Add((key, key));
+            }
+            break;
+        }
+
+        return columns;
+    }
+
+    private static bool TryResolvePath(JsonElement root, string path, out JsonElement node) {
+        node = root;
+        var normalized = (path ?? string.Empty).Trim().Trim('/');
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        var segments = normalized.Split(new[] { '/', '.' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Length == 0) {
+            return false;
+        }
+
+        var current = root;
+        for (var i = 0; i < segments.Length; i++) {
+            if (current.ValueKind != JsonValueKind.Object) {
+                return false;
+            }
+
+            if (!TryGetPropertyValueCaseInsensitive(current, segments[i], out var next)) {
+                return false;
+            }
+
+            current = next;
+        }
+
+        node = current;
+        return true;
+    }
+
+    private static bool TryGetPropertyValueCaseInsensitive(JsonElement obj, string propertyName, out JsonElement value) {
+        value = default;
+        if (obj.ValueKind != JsonValueKind.Object || string.IsNullOrWhiteSpace(propertyName)) {
+            return false;
+        }
+
+        if (obj.TryGetProperty(propertyName, out value)) {
+            return true;
+        }
+
+        foreach (var prop in obj.EnumerateObject()) {
+            if (!string.Equals(prop.Name, propertyName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            value = prop.Value;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static string ReadStringProperty(JsonElement obj, string propertyName) {
+        if (!TryGetPropertyValueCaseInsensitive(obj, propertyName, out var valueNode)) {
+            return string.Empty;
+        }
+
+        return valueNode.ValueKind == JsonValueKind.String
+            ? (valueNode.GetString() ?? string.Empty)
+            : valueNode.GetRawText();
+    }
+
+    private static string FormatJsonElement(JsonElement valueNode) {
+        return valueNode.ValueKind switch {
+            JsonValueKind.Null => string.Empty,
+            JsonValueKind.Undefined => string.Empty,
+            JsonValueKind.String => valueNode.GetString() ?? string.Empty,
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            JsonValueKind.Number => valueNode.GetRawText(),
+            _ => valueNode.GetRawText()
+        };
+    }
+
     private static void AppendFailureDescriptor(MarkdownComposer markdown, ToolOutputDto output) {
         var detailParts = new List<string>();
         var errorCode = (output.ErrorCode ?? string.Empty).Trim();
@@ -235,4 +463,5 @@ internal static class ToolRunMarkdownFormatter {
             }
         }
     }
+
 }
