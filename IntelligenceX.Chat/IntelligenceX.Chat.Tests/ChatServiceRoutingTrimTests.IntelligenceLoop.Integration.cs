@@ -98,14 +98,19 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     private static async Task WaitForStatusAsync(MemoryStream stream, string status, TimeSpan timeout) {
-        var deadline = DateTime.UtcNow + timeout;
-        while (DateTime.UtcNow < deadline) {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (sw.Elapsed < timeout) {
             var statuses = ParseStatuses(stream);
             if (statuses.Contains(status, StringComparer.OrdinalIgnoreCase)) {
                 return;
             }
 
             await Task.Delay(TimeSpan.FromMilliseconds(50));
+        }
+
+        var finalStatuses = ParseStatuses(stream);
+        if (finalStatuses.Contains(status, StringComparer.OrdinalIgnoreCase)) {
+            return;
         }
 
         throw new TimeoutException($"Timed out waiting for status '{status}'.");

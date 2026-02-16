@@ -338,6 +338,7 @@ internal sealed partial class ChatServiceSession {
         string phaseMessage,
         string heartbeatLabel,
         int heartbeatSeconds) {
+        // Review-only passes are in-thread rewrites of the current draft and must never execute tools.
         return RunModelPhaseWithProgressAsync(
             client,
             writer,
