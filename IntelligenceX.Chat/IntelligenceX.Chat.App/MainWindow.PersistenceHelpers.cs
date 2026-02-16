@@ -91,7 +91,7 @@ public sealed partial class MainWindow : Window {
         }
 
         if (shouldStartWorker) {
-            _ = Task.Run(PersistDebounceWorkerAsync);
+            _persistDebounceWorkerTask = Task.Run(PersistDebounceWorkerAsync);
         }
     }
 
@@ -144,22 +144,38 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private void CancelQueuedPersistAppState() {
+    private async Task CancelQueuedPersistAppStateAsync() {
         CancellationTokenSource? cts;
+        Task? workerTask;
         lock (_persistDebounceSync) {
             cts = _persistDebounceCts;
+            workerTask = _persistDebounceWorkerTask;
             _persistDebounceCts = null;
             _persistDebounceRequested = false;
         }
 
-        if (cts is null) {
+        if (cts is not null) {
+            try {
+                cts.Cancel();
+            } finally {
+                cts.Dispose();
+            }
+        }
+
+        if (workerTask is null) {
             return;
         }
 
         try {
-            cts.Cancel();
+            await workerTask.ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            // Debounce worker cancellation is expected during shutdown teardown.
         } finally {
-            cts.Dispose();
+            lock (_persistDebounceSync) {
+                if (ReferenceEquals(_persistDebounceWorkerTask, workerTask)) {
+                    _persistDebounceWorkerTask = null;
+                }
+            }
         }
     }
 

@@ -225,6 +225,7 @@ public sealed partial class MainWindow : Window {
     private CancellationTokenSource? _persistDebounceCts;
     private bool _persistDebounceWorkerRunning;
     private bool _persistDebounceRequested;
+    private Task? _persistDebounceWorkerTask;
     private volatile bool _shutdownRequested;
 
     private Process? _serviceProcess;
@@ -332,7 +333,7 @@ public sealed partial class MainWindow : Window {
             _shutdownRequested = true;
             CancelQueuedUiPublishes();
             StopAutoReconnectLoop();
-            CancelQueuedPersistAppState();
+            await CancelQueuedPersistAppStateAsync().ConfigureAwait(false);
             await PersistAppStateAsync().ConfigureAwait(false);
             await DisposeClientAsync().ConfigureAwait(false);
             StopServiceIfOwned();
