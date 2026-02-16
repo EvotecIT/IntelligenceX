@@ -47,6 +47,26 @@ internal static class TriageIndexRunner {
         @"(?i)\bhttps?://github\.com/(?<owner>[A-Za-z0-9_.-]+)/(?<repo>[A-Za-z0-9_.-]+)/issues/(?<num>\d+)\b",
         RegexOptions.Compiled
     );
+    private static readonly Regex ExplicitPullRequestRef = new(
+        @"(?i)\b(?:fix(?:e[sd])?\s+by|close[sd]?\s+by|resolve[sd]?\s+by|implemented\s+in|addressed\s+in)\s+(?:pr|pull\s*request|pull)\s*#(?<num>\d+)\b",
+        RegexOptions.Compiled
+    );
+    private static readonly Regex DirectPullRequestRef = new(
+        @"(?i)\b(?:pr|pull\s*request|pull)\s*#(?<num>\d+)\b",
+        RegexOptions.Compiled
+    );
+    private static readonly Regex DirectRepoPullRequestRef = new(
+        @"(?i)\b(?:pr|pull\s*request|pull)\s+(?<owner>[A-Za-z0-9_.-]+)/(?<repo>[A-Za-z0-9_.-]+)#(?<num>\d+)\b",
+        RegexOptions.Compiled
+    );
+    private static readonly Regex DirectPullRequestUrlRef = new(
+        @"(?i)\b(?:pr|pull\s*request|pull)\s+https?://github\.com/(?<owner>[A-Za-z0-9_.-]+)/(?<repo>[A-Za-z0-9_.-]+)/pull/(?<num>\d+)\b",
+        RegexOptions.Compiled
+    );
+    private static readonly Regex BarePullRequestUrlRef = new(
+        @"(?i)\bhttps?://github\.com/(?<owner>[A-Za-z0-9_.-]+)/(?<repo>[A-Za-z0-9_.-]+)/pull/(?<num>\d+)\b",
+        RegexOptions.Compiled
+    );
 
     internal sealed record PullRequestSignals(
         bool IsDraft,
@@ -143,15 +163,31 @@ internal static class TriageIndexRunner {
         string Reason
     );
 
+    internal sealed record RelatedPullRequestCandidate(
+        int Number,
+        string Url,
+        double Confidence,
+        string Reason
+    );
+
     internal sealed record ItemEnrichment(
         string Category,
         IReadOnlyList<string> Tags,
         string? MatchedIssueUrl,
         double? MatchedIssueConfidence,
-        IReadOnlyList<RelatedIssueCandidate> RelatedIssues
+        IReadOnlyList<RelatedIssueCandidate> RelatedIssues,
+        string? MatchedPullRequestUrl,
+        double? MatchedPullRequestConfidence,
+        IReadOnlyList<RelatedPullRequestCandidate> RelatedPullRequests
     );
 
     private sealed record IssueReferenceHint(
+        int Number,
+        double Confidence,
+        string Reason
+    );
+
+    private sealed record PullRequestReferenceHint(
         int Number,
         double Confidence,
         string Reason
@@ -570,25 +606,43 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
         var issueItems = items
             .Where(item => item.Kind.Equals("issue", StringComparison.OrdinalIgnoreCase))
             .ToList();
+        var pullRequestItems = items
+            .Where(item => item.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase))
+            .ToList();
         var rawPrByNumber = pullRequests.ToDictionary(pr => pr.Number);
+        var rawIssueByNumber = issues.ToDictionary(issue => issue.Number);
 
         foreach (var item in items) {
             var (category, tags) = InferCategoryAndTags(item);
 
-            IReadOnlyList<RelatedIssueCandidate> related = Array.Empty<RelatedIssueCandidate>();
+            IReadOnlyList<RelatedIssueCandidate> relatedIssues = Array.Empty<RelatedIssueCandidate>();
+            IReadOnlyList<RelatedPullRequestCandidate> relatedPullRequests = Array.Empty<RelatedPullRequestCandidate>();
             string? matchedIssueUrl = null;
             double? matchedIssueConfidence = null;
+            string? matchedPullRequestUrl = null;
+            double? matchedPullRequestConfidence = null;
 
             if (item.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase)) {
                 if (rawPrByNumber.TryGetValue(item.Number, out var rawPr)) {
-                    related = MatchPullRequestToIssues(repo, rawPr.Title, rawPr.Body, issueItems);
+                    relatedIssues = MatchPullRequestToIssues(repo, rawPr.Title, rawPr.Body, issueItems);
                 } else {
-                    related = MatchPullRequestToIssues(repo, item.Title, string.Join(' ', item.ContextTokens), issueItems);
+                    relatedIssues = MatchPullRequestToIssues(repo, item.Title, string.Join(' ', item.ContextTokens), issueItems);
                 }
 
-                if (related.Count > 0) {
-                    matchedIssueUrl = related[0].Url;
-                    matchedIssueConfidence = related[0].Confidence;
+                if (relatedIssues.Count > 0) {
+                    matchedIssueUrl = relatedIssues[0].Url;
+                    matchedIssueConfidence = relatedIssues[0].Confidence;
+                }
+            } else if (item.Kind.Equals("issue", StringComparison.OrdinalIgnoreCase)) {
+                if (rawIssueByNumber.TryGetValue(item.Number, out var rawIssue)) {
+                    relatedPullRequests = MatchIssueToPullRequests(repo, rawIssue.Title, rawIssue.Body, pullRequestItems);
+                } else {
+                    relatedPullRequests = MatchIssueToPullRequests(repo, item.Title, string.Join(' ', item.ContextTokens), pullRequestItems);
+                }
+
+                if (relatedPullRequests.Count > 0) {
+                    matchedPullRequestUrl = relatedPullRequests[0].Url;
+                    matchedPullRequestConfidence = relatedPullRequests[0].Confidence;
                 }
             }
 
@@ -597,7 +651,10 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
                 Tags: tags,
                 MatchedIssueUrl: matchedIssueUrl,
                 MatchedIssueConfidence: matchedIssueConfidence,
-                RelatedIssues: related
+                RelatedIssues: relatedIssues,
+                MatchedPullRequestUrl: matchedPullRequestUrl,
+                MatchedPullRequestConfidence: matchedPullRequestConfidence,
+                RelatedPullRequests: relatedPullRequests
             );
         }
 
@@ -744,6 +801,63 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
             .ToList();
     }
 
+    internal static IReadOnlyList<RelatedPullRequestCandidate> MatchIssueToPullRequests(
+        string repo,
+        string issueTitle,
+        string issueBody,
+        IReadOnlyList<TriageIndexItem> pullRequestItems) {
+        if (pullRequestItems.Count == 0) {
+            return Array.Empty<RelatedPullRequestCandidate>();
+        }
+
+        var (owner, name) = SplitRepo(repo);
+        var pullRequestByNumber = pullRequestItems.ToDictionary(item => item.Number);
+        var matchesByNumber = new Dictionary<int, RelatedPullRequestCandidate>();
+
+        foreach (var pullRequestHint in ParseExplicitPullRequestReferences(issueTitle, issueBody, owner, name)) {
+            if (!pullRequestByNumber.TryGetValue(pullRequestHint.Number, out var pullRequest)) {
+                continue;
+            }
+
+            matchesByNumber[pullRequest.Number] = new RelatedPullRequestCandidate(
+                Number: pullRequest.Number,
+                Url: pullRequest.Url,
+                Confidence: pullRequestHint.Confidence,
+                Reason: pullRequestHint.Reason
+            );
+        }
+
+        var issueTitleTokens = Tokenize(issueTitle);
+        var issueContextTokens = Tokenize($"{issueTitle}\n{issueBody}");
+
+        foreach (var pullRequest in pullRequestItems) {
+            if (matchesByNumber.ContainsKey(pullRequest.Number)) {
+                continue;
+            }
+
+            var titleScore = Jaccard(issueTitleTokens, pullRequest.TitleTokens);
+            var contextScore = Jaccard(issueContextTokens, pullRequest.ContextTokens);
+            var blended = Math.Round((titleScore * 0.55) + (contextScore * 0.45), 4, MidpointRounding.AwayFromZero);
+            if (blended < 0.34) {
+                continue;
+            }
+
+            var reason = $"token similarity title={titleScore.ToString("0.00", CultureInfo.InvariantCulture)}, context={contextScore.ToString("0.00", CultureInfo.InvariantCulture)}";
+            matchesByNumber[pullRequest.Number] = new RelatedPullRequestCandidate(
+                Number: pullRequest.Number,
+                Url: pullRequest.Url,
+                Confidence: blended,
+                Reason: reason
+            );
+        }
+
+        return matchesByNumber.Values
+            .OrderByDescending(match => match.Confidence)
+            .ThenBy(match => match.Number)
+            .Take(3)
+            .ToList();
+    }
+
     private static IReadOnlyList<IssueReferenceHint> ParseExplicitIssueReferences(
         string prTitle,
         string prBody,
@@ -841,7 +955,87 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
             .ToList();
     }
 
+    private static IReadOnlyList<PullRequestReferenceHint> ParseExplicitPullRequestReferences(
+        string issueTitle,
+        string issueBody,
+        string owner,
+        string repoName) {
+        var text = $"{issueTitle}\n{issueBody}";
+        var results = new Dictionary<int, PullRequestReferenceHint>();
+
+        static void AddHint(
+            IDictionary<int, PullRequestReferenceHint> map,
+            int number,
+            double confidence,
+            string reason) {
+            if (!map.TryGetValue(number, out var existing) ||
+                confidence > existing.Confidence) {
+                map[number] = new PullRequestReferenceHint(number, confidence, reason);
+            }
+        }
+
+        foreach (Match match in ExplicitPullRequestRef.Matches(text)) {
+            if (TryReadPullRequestNumber(match, out var number)) {
+                AddHint(results, number, 0.98, "explicit pull request reference in issue title/body");
+            }
+        }
+
+        foreach (Match match in DirectPullRequestRef.Matches(text)) {
+            if (TryReadPullRequestNumber(match, out var number)) {
+                AddHint(results, number, 0.93, "direct pull request reference in issue title/body");
+            }
+        }
+
+        foreach (Match match in DirectRepoPullRequestRef.Matches(text)) {
+            var refOwner = match.Groups["owner"].Value;
+            var refRepo = match.Groups["repo"].Value;
+            if (!refOwner.Equals(owner, StringComparison.OrdinalIgnoreCase) ||
+                !refRepo.Equals(repoName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (TryReadPullRequestNumber(match, out var number)) {
+                AddHint(results, number, 0.93, "direct pull request reference in issue title/body");
+            }
+        }
+
+        foreach (Match match in DirectPullRequestUrlRef.Matches(text)) {
+            var refOwner = match.Groups["owner"].Value;
+            var refRepo = match.Groups["repo"].Value;
+            if (!refOwner.Equals(owner, StringComparison.OrdinalIgnoreCase) ||
+                !refRepo.Equals(repoName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (TryReadPullRequestNumber(match, out var number)) {
+                AddHint(results, number, 0.93, "direct pull request reference in issue title/body");
+            }
+        }
+
+        foreach (Match match in BarePullRequestUrlRef.Matches(text)) {
+            var refOwner = match.Groups["owner"].Value;
+            var refRepo = match.Groups["repo"].Value;
+            if (!refOwner.Equals(owner, StringComparison.OrdinalIgnoreCase) ||
+                !refRepo.Equals(repoName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (TryReadPullRequestNumber(match, out var number)) {
+                AddHint(results, number, 0.90, "pull request URL reference in issue title/body");
+            }
+        }
+
+        return results.Values
+            .OrderByDescending(value => value.Confidence)
+            .ThenBy(value => value.Number)
+            .ToList();
+    }
+
     private static bool TryReadIssueNumber(Match match, out int number) {
+        number = 0;
+        return match.Groups["num"].Success &&
+               int.TryParse(match.Groups["num"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out number) &&
+               number > 0;
+    }
+
+    private static bool TryReadPullRequestNumber(Match match, out int number) {
         number = 0;
         return match.Groups["num"].Success &&
                int.TryParse(match.Groups["num"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out number) &&
@@ -1251,7 +1445,18 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
                     tags = enrichment?.Tags ?? Array.Empty<string>(),
                     matchedIssueUrl = enrichment?.MatchedIssueUrl,
                     matchedIssueConfidence = enrichment?.MatchedIssueConfidence,
+                    matchedPullRequestUrl = enrichment?.MatchedPullRequestUrl,
+                    matchedPullRequestConfidence = enrichment?.MatchedPullRequestConfidence,
                     relatedIssues = enrichment?.RelatedIssues
+                        .Select(related => new {
+                            number = related.Number,
+                            url = related.Url,
+                            confidence = related.Confidence,
+                            reason = related.Reason
+                        })
+                        .Cast<object>()
+                        .ToList() ?? new List<object>(),
+                    relatedPullRequests = enrichment?.RelatedPullRequests
                         .Select(related => new {
                             number = related.Number,
                             url = related.Url,
@@ -1305,7 +1510,8 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
                 duplicateClusters = clusters.Count,
                 duplicateItems = duplicateIds.Count,
                 bestPullRequestCandidates = bestPullRequests.Count,
-                pullRequestsWithMatchedIssue = enrichments.Values.Count(value => !string.IsNullOrWhiteSpace(value.MatchedIssueUrl))
+                pullRequestsWithMatchedIssue = enrichments.Values.Count(value => !string.IsNullOrWhiteSpace(value.MatchedIssueUrl)),
+                issuesWithMatchedPullRequest = enrichments.Values.Count(value => !string.IsNullOrWhiteSpace(value.MatchedPullRequestUrl))
             },
             bestPullRequests = best,
             duplicateClusters = duplicates,
@@ -1341,6 +1547,7 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
         sb.AppendLine($"- Duplicate clusters: {clusters.Count}");
         sb.AppendLine($"- Duplicate items: {duplicateIds.Count}");
         sb.AppendLine($"- PRs with matched issue: {enrichments.Values.Count(value => !string.IsNullOrWhiteSpace(value.MatchedIssueUrl))}");
+        sb.AppendLine($"- Issues with matched PR: {enrichments.Values.Count(value => !string.IsNullOrWhiteSpace(value.MatchedPullRequestUrl))}");
         sb.AppendLine();
         sb.AppendLine("## Best PR Candidates");
         sb.AppendLine();
