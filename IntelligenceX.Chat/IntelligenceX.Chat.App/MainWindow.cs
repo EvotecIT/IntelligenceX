@@ -155,6 +155,9 @@ public sealed partial class MainWindow : Window {
     private int? _autonomyToolTimeoutSeconds;
     private bool? _autonomyWeightedToolRouting;
     private int? _autonomyMaxCandidateTools;
+    private bool? _autonomyPlanExecuteReviewLoop;
+    private int? _autonomyMaxReviewPasses;
+    private int? _autonomyModelHeartbeatSeconds;
     private bool _proactiveModeEnabled = true;
     private string _exportSaveMode = ExportPreferencesContract.DefaultSaveMode;
     private string _exportDefaultFormat = ExportPreferencesContract.DefaultFormat;
@@ -814,12 +817,18 @@ public sealed partial class MainWindow : Window {
         _autonomyToolTimeoutSeconds = NormalizeAutonomyInt(_appState.AutonomyToolTimeoutSeconds, min: 0, max: 3600);
         _autonomyWeightedToolRouting = _appState.AutonomyWeightedToolRouting;
         _autonomyMaxCandidateTools = NormalizeAutonomyInt(_appState.AutonomyMaxCandidateTools, min: 0, max: 64);
+        _autonomyPlanExecuteReviewLoop = _appState.AutonomyPlanExecuteReviewLoop;
+        _autonomyMaxReviewPasses = NormalizeAutonomyInt(_appState.AutonomyMaxReviewPasses, min: 0, max: 3);
+        _autonomyModelHeartbeatSeconds = NormalizeAutonomyInt(_appState.AutonomyModelHeartbeatSeconds, min: 0, max: 60);
         _appState.AutonomyMaxToolRounds = _autonomyMaxToolRounds;
         _appState.AutonomyParallelTools = _autonomyParallelTools;
         _appState.AutonomyTurnTimeoutSeconds = _autonomyTurnTimeoutSeconds;
         _appState.AutonomyToolTimeoutSeconds = _autonomyToolTimeoutSeconds;
         _appState.AutonomyWeightedToolRouting = _autonomyWeightedToolRouting;
         _appState.AutonomyMaxCandidateTools = _autonomyMaxCandidateTools;
+        _appState.AutonomyPlanExecuteReviewLoop = _autonomyPlanExecuteReviewLoop;
+        _appState.AutonomyMaxReviewPasses = _autonomyMaxReviewPasses;
+        _appState.AutonomyModelHeartbeatSeconds = _autonomyModelHeartbeatSeconds;
         _exportSaveMode = ExportPreferencesContract.NormalizeSaveMode(_appState.ExportSaveMode);
         _appState.ExportSaveMode = _exportSaveMode;
         _exportDefaultFormat = ExportPreferencesContract.NormalizeFormat(_appState.ExportDefaultFormat);

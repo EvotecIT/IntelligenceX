@@ -835,6 +835,9 @@
     var autonomy = state.options.autonomy || {};
     var maxRoundsInput = byId("optAutonomyMaxRounds");
     var parallelSelect = byId("optAutonomyParallel");
+    var planReviewSelect = byId("optAutonomyPlanReview");
+    var maxReviewPassesInput = byId("optAutonomyMaxReviewPasses");
+    var modelHeartbeatInput = byId("optAutonomyModelHeartbeat");
     var proactiveModeToggle = byId("optProactiveMode");
     var queueAutoDispatchToggle = byId("optQueueAutoDispatch");
     var turnTimeoutInput = byId("optAutonomyTurnTimeout");
@@ -868,6 +871,22 @@
         parallelSelect.value = "auto";
       }
       syncCustomSelect(parallelSelect);
+    }
+    if (planReviewSelect) {
+      if (autonomy.planExecuteReviewLoop === true) {
+        planReviewSelect.value = "on";
+      } else if (autonomy.planExecuteReviewLoop === false) {
+        planReviewSelect.value = "off";
+      } else {
+        planReviewSelect.value = "default";
+      }
+      syncCustomSelect(planReviewSelect);
+    }
+    if (maxReviewPassesInput) {
+      maxReviewPassesInput.value = autonomy.maxReviewPasses == null ? "" : String(autonomy.maxReviewPasses);
+    }
+    if (modelHeartbeatInput) {
+      modelHeartbeatInput.value = autonomy.modelHeartbeatSeconds == null ? "" : String(autonomy.modelHeartbeatSeconds);
     }
     if (proactiveModeToggle) {
       proactiveModeToggle.checked = autonomy.proactiveMode !== false;

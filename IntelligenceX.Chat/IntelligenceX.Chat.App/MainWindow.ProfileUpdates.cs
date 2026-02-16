@@ -288,18 +288,24 @@ public sealed partial class MainWindow : Window {
             TurnTimeoutSeconds = effectiveTurnTimeoutSeconds,
             ToolTimeoutSeconds = effectiveToolTimeoutSeconds,
             WeightedToolRouting = _autonomyWeightedToolRouting,
-            MaxCandidateTools = _autonomyMaxCandidateTools
+            MaxCandidateTools = _autonomyMaxCandidateTools,
+            PlanExecuteReviewLoop = _autonomyPlanExecuteReviewLoop,
+            MaxReviewPasses = _autonomyMaxReviewPasses,
+            ModelHeartbeatSeconds = _autonomyModelHeartbeatSeconds
         };
     }
 
     private async Task SetAutonomyOverridesAsync(string? maxRounds, string? parallelMode, string? turnTimeout, string? toolTimeout,
-        string? weightedRouting, string? maxCandidates) {
+        string? weightedRouting, string? maxCandidates, string? planExecuteReviewLoop, string? maxReviewPasses, string? modelHeartbeatSeconds) {
         _autonomyMaxToolRounds = ParseAutonomyInt(maxRounds, min: 1, max: 64);
         _autonomyParallelTools = ParseAutonomyParallelToolMode(parallelMode);
         _autonomyTurnTimeoutSeconds = ParseAutonomyInt(turnTimeout, min: 0, max: 3600);
         _autonomyToolTimeoutSeconds = ParseAutonomyInt(toolTimeout, min: 0, max: 3600);
         _autonomyWeightedToolRouting = ParseAutonomyParallelMode(weightedRouting);
         _autonomyMaxCandidateTools = ParseAutonomyInt(maxCandidates, min: 0, max: 64);
+        _autonomyPlanExecuteReviewLoop = ParseAutonomyParallelMode(planExecuteReviewLoop);
+        _autonomyMaxReviewPasses = ParseAutonomyInt(maxReviewPasses, min: 0, max: 3);
+        _autonomyModelHeartbeatSeconds = ParseAutonomyInt(modelHeartbeatSeconds, min: 0, max: 60);
 
         _appState.AutonomyMaxToolRounds = _autonomyMaxToolRounds;
         _appState.AutonomyParallelTools = _autonomyParallelTools;
@@ -307,6 +313,9 @@ public sealed partial class MainWindow : Window {
         _appState.AutonomyToolTimeoutSeconds = _autonomyToolTimeoutSeconds;
         _appState.AutonomyWeightedToolRouting = _autonomyWeightedToolRouting;
         _appState.AutonomyMaxCandidateTools = _autonomyMaxCandidateTools;
+        _appState.AutonomyPlanExecuteReviewLoop = _autonomyPlanExecuteReviewLoop;
+        _appState.AutonomyMaxReviewPasses = _autonomyMaxReviewPasses;
+        _appState.AutonomyModelHeartbeatSeconds = _autonomyModelHeartbeatSeconds;
 
         await PublishOptionsStateAsync().ConfigureAwait(false);
         await PersistAppStateAsync().ConfigureAwait(false);
@@ -319,6 +328,9 @@ public sealed partial class MainWindow : Window {
         _autonomyToolTimeoutSeconds = null;
         _autonomyWeightedToolRouting = null;
         _autonomyMaxCandidateTools = null;
+        _autonomyPlanExecuteReviewLoop = null;
+        _autonomyMaxReviewPasses = null;
+        _autonomyModelHeartbeatSeconds = null;
 
         _appState.AutonomyMaxToolRounds = null;
         _appState.AutonomyParallelTools = null;
@@ -326,6 +338,9 @@ public sealed partial class MainWindow : Window {
         _appState.AutonomyToolTimeoutSeconds = null;
         _appState.AutonomyWeightedToolRouting = null;
         _appState.AutonomyMaxCandidateTools = null;
+        _appState.AutonomyPlanExecuteReviewLoop = null;
+        _appState.AutonomyMaxReviewPasses = null;
+        _appState.AutonomyModelHeartbeatSeconds = null;
 
         await PublishOptionsStateAsync().ConfigureAwait(false);
         await PersistAppStateAsync().ConfigureAwait(false);
@@ -563,6 +578,12 @@ public sealed partial class MainWindow : Window {
             lines.Add("Max tool rounds: " + options.MaxToolRounds.ToString(CultureInfo.InvariantCulture));
             lines.Add("Turn timeout: " + (options.TurnTimeoutSeconds?.ToString(CultureInfo.InvariantCulture) ?? "default")
                       + "s; tool timeout: " + (options.ToolTimeoutSeconds?.ToString(CultureInfo.InvariantCulture) ?? "default") + "s");
+            lines.Add("Plan/execute/review loop: "
+                      + (options.PlanExecuteReviewLoop.HasValue ? (options.PlanExecuteReviewLoop.Value ? "enabled" : "disabled") : "default")
+                      + "; max review passes: "
+                      + (options.MaxReviewPasses?.ToString(CultureInfo.InvariantCulture) ?? "default")
+                      + "; model heartbeat: "
+                      + (options.ModelHeartbeatSeconds?.ToString(CultureInfo.InvariantCulture) ?? "default") + "s");
         }
 
         var queuedTurns = GetQueuedTurnCount();

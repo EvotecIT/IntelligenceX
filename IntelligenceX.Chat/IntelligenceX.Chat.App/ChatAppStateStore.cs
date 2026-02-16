@@ -171,6 +171,9 @@ internal sealed class ChatAppState {
     public int? AutonomyToolTimeoutSeconds { get; set; }
     public bool? AutonomyWeightedToolRouting { get; set; }
     public int? AutonomyMaxCandidateTools { get; set; }
+    public bool? AutonomyPlanExecuteReviewLoop { get; set; }
+    public int? AutonomyMaxReviewPasses { get; set; }
+    public int? AutonomyModelHeartbeatSeconds { get; set; }
     public string ExportSaveMode { get; set; } = ExportPreferencesContract.DefaultSaveMode;
     public string ExportDefaultFormat { get; set; } = ExportPreferencesContract.DefaultFormat;
     public string? ExportLastDirectory { get; set; }

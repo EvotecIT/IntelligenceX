@@ -62,6 +62,9 @@
         toolTimeoutSeconds: null,
         weightedToolRouting: null,
         maxCandidateTools: null,
+        planExecuteReviewLoop: null,
+        maxReviewPasses: null,
+        modelHeartbeatSeconds: null,
         queueAutoDispatch: true,
         proactiveMode: true
       },

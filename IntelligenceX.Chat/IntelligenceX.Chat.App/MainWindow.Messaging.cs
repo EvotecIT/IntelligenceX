@@ -165,7 +165,19 @@ public sealed partial class MainWindow : Window {
                         var toolTimeout = TryGetString(root, "toolTimeoutSeconds");
                         var weightedRouting = TryGetString(root, "weightedToolRouting");
                         var maxCandidates = TryGetString(root, "maxCandidateTools");
-                        await SetAutonomyOverridesAsync(maxRounds, parallelMode, turnTimeout, toolTimeout, weightedRouting, maxCandidates)
+                        var planExecuteReviewLoop = TryGetString(root, "planExecuteReviewLoop");
+                        var maxReviewPasses = TryGetString(root, "maxReviewPasses");
+                        var modelHeartbeatSeconds = TryGetString(root, "modelHeartbeatSeconds");
+                        await SetAutonomyOverridesAsync(
+                                maxRounds,
+                                parallelMode,
+                                turnTimeout,
+                                toolTimeout,
+                                weightedRouting,
+                                maxCandidates,
+                                planExecuteReviewLoop,
+                                maxReviewPasses,
+                                modelHeartbeatSeconds)
                             .ConfigureAwait(true);
                         break;
                     }

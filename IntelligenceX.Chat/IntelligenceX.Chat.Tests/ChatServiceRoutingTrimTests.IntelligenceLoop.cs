@@ -19,6 +19,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo BuildResponseQualityReviewPromptMethod =
         typeof(ChatServiceSession).GetMethod("BuildResponseQualityReviewPrompt", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildResponseQualityReviewPrompt not found.");
+    private static readonly MethodInfo TryReadProactiveModeFromRequestTextMethod =
+        typeof(ChatServiceSession).GetMethod("TryReadProactiveModeFromRequestText", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("TryReadProactiveModeFromRequestText not found.");
+    private static readonly MethodInfo ShouldAttemptProactiveFollowUpReviewMethod =
+        typeof(ChatServiceSession).GetMethod("ShouldAttemptProactiveFollowUpReview", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ShouldAttemptProactiveFollowUpReview not found.");
+    private static readonly MethodInfo BuildProactiveFollowUpReviewPromptMethod =
+        typeof(ChatServiceSession).GetMethod("BuildProactiveFollowUpReviewPrompt", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildProactiveFollowUpReviewPrompt not found.");
 
     [Fact]
     public void ResolveMaxReviewPasses_DefaultsToSafeValueWhenUnset() {
@@ -91,5 +100,48 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("ix:response-review:v1", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Review pass 1/2", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Tool activity this turn: none.", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("[Proactive execution mode]\nix:proactive-mode:v1\nenabled: true", true, true)]
+    [InlineData("[Proactive execution mode]\nix:proactive-mode:v1\nenabled: false", true, false)]
+    [InlineData("no marker", false, false)]
+    public void TryReadProactiveModeFromRequestText_ParsesStructuredMarker(string requestText, bool expectedRead, bool expectedEnabled) {
+        var args = new object?[] { requestText, null };
+        var result = TryReadProactiveModeFromRequestTextMethod.Invoke(null, args);
+
+        Assert.Equal(expectedRead, Assert.IsType<bool>(result));
+        Assert.Equal(expectedEnabled, Assert.IsType<bool>(args[1]));
+    }
+
+    [Theory]
+    [InlineData(true, true, false, "Findings summary without actions.", true)]
+    [InlineData(false, true, false, "Findings summary without actions.", false)]
+    [InlineData(true, false, false, "Findings summary without actions.", false)]
+    [InlineData(true, true, true, "Findings summary without actions.", false)]
+    [InlineData(true, true, false, "[Action]\nix:action:v1\nid: act_001\nreply: /act act_001", false)]
+    public void ShouldAttemptProactiveFollowUpReview_RespectsToolActivityAndActionBlocks(
+        bool proactiveModeEnabled,
+        bool hasToolActivity,
+        bool proactiveFollowUpUsed,
+        string assistantDraft,
+        bool expected) {
+        var result = ShouldAttemptProactiveFollowUpReviewMethod.Invoke(
+            null,
+            new object?[] { proactiveModeEnabled, hasToolActivity, proactiveFollowUpUsed, assistantDraft });
+
+        Assert.Equal(expected, Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_EmitsStableMarkerAndSections() {
+        var result = BuildProactiveFollowUpReviewPromptMethod.Invoke(
+            null,
+            new object?[] { "analyze failed logons", "Current findings..." });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("ix:proactive-followup:v1", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Potential issues to verify", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Recommended next fixes", text, StringComparison.OrdinalIgnoreCase);
     }
 }

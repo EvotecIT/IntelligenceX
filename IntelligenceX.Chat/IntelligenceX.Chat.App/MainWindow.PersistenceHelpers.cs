@@ -46,6 +46,9 @@ public sealed partial class MainWindow : Window {
             _appState.AutonomyToolTimeoutSeconds = _autonomyToolTimeoutSeconds;
             _appState.AutonomyWeightedToolRouting = _autonomyWeightedToolRouting;
             _appState.AutonomyMaxCandidateTools = _autonomyMaxCandidateTools;
+            _appState.AutonomyPlanExecuteReviewLoop = _autonomyPlanExecuteReviewLoop;
+            _appState.AutonomyMaxReviewPasses = _autonomyMaxReviewPasses;
+            _appState.AutonomyModelHeartbeatSeconds = _autonomyModelHeartbeatSeconds;
             _appState.ExportSaveMode = _exportSaveMode;
             _appState.ExportDefaultFormat = _exportDefaultFormat;
             _appState.ExportLastDirectory = _lastExportDirectory;

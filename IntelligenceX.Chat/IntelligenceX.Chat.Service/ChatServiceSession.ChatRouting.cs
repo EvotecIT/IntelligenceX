@@ -29,6 +29,8 @@ internal sealed partial class ChatServiceSession {
     private const string ParallelToolModeForceSerial = "force_serial";
     private const string ParallelToolModeAllowParallel = "allow_parallel";
     private const string ResponseReviewMarker = "ix:response-review:v1";
+    private const string ProactiveModeMarker = "ix:proactive-mode:v1";
+    private const string ProactiveFollowUpMarker = "ix:proactive-followup:v1";
     private const int DefaultMaxReviewPasses = 1;
     private const int MaxReviewPassesLimit = 3;
     private const int DefaultModelHeartbeatSeconds = 8;
@@ -85,6 +87,37 @@ internal sealed partial class ChatServiceSession {
         }
 
         return Math.Clamp(configured.Value, 0, MaxModelHeartbeatSeconds);
+    }
+
+    private static bool TryReadProactiveModeFromRequestText(string requestText, out bool enabled) {
+        enabled = false;
+        var text = requestText ?? string.Empty;
+        if (text.Length == 0) {
+            return false;
+        }
+
+        var markerIndex = text.IndexOf(ProactiveModeMarker, StringComparison.OrdinalIgnoreCase);
+        if (markerIndex < 0) {
+            return false;
+        }
+
+        var tailLength = Math.Min(280, text.Length - markerIndex);
+        if (tailLength <= 0) {
+            return false;
+        }
+
+        var tail = text.Substring(markerIndex, tailLength);
+        if (tail.IndexOf("enabled: true", StringComparison.OrdinalIgnoreCase) >= 0) {
+            enabled = true;
+            return true;
+        }
+
+        if (tail.IndexOf("enabled: false", StringComparison.OrdinalIgnoreCase) >= 0) {
+            enabled = false;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool ShouldAttemptResponseQualityReview(
@@ -158,35 +191,79 @@ internal sealed partial class ChatServiceSession {
             """;
     }
 
-    private async Task<TurnInfo> RunModelPhaseWithProgressAsync(
-        IntelligenceXClient client,
+    private static bool ShouldAttemptProactiveFollowUpReview(
+        bool proactiveModeEnabled,
+        bool hasToolActivity,
+        bool proactiveFollowUpUsed,
+        string assistantDraft) {
+        if (!proactiveModeEnabled || !hasToolActivity || proactiveFollowUpUsed) {
+            return false;
+        }
+
+        var draft = (assistantDraft ?? string.Empty).Trim();
+        if (draft.Length == 0 || draft.Length > 2800) {
+            return false;
+        }
+
+        if (draft.Contains(ProactiveFollowUpMarker, StringComparison.OrdinalIgnoreCase)
+            || draft.Contains(ResponseReviewMarker, StringComparison.OrdinalIgnoreCase)
+            || draft.Contains(ExecutionContractMarker, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        return ExtractPendingActions(draft).Count == 0;
+    }
+
+    private static string BuildProactiveFollowUpReviewPrompt(string userRequest, string assistantDraft) {
+        var requestText = TrimForPrompt(userRequest, 520);
+        var draftText = TrimForPrompt(assistantDraft, 1800);
+        return $$"""
+            [Proactive follow-up review]
+            {{ProactiveFollowUpMarker}}
+            Expand the response with proactive intelligence based on current tool findings.
+
+            User request:
+            {{requestText}}
+
+            Current assistant draft:
+            {{draftText}}
+
+            Requirements:
+            - Keep all existing factual findings that are already supported by tool output.
+            - Add a short "Potential issues to verify" section (1-3 bullets).
+            - Add a short "Recommended next fixes" section (1-3 bullets).
+            - Do not invent tool outputs or claim completed actions that were not executed.
+            Return only the revised assistant response text.
+            """;
+    }
+
+    private async Task RunPhaseProgressLoopAsync(
         StreamWriter writer,
         string requestId,
         string threadId,
-        ChatInput input,
-        ChatOptions options,
-        CancellationToken cancellationToken,
         string phaseStatus,
-        string phaseMessage,
+        string? phaseMessage,
         string heartbeatLabel,
-        int heartbeatSeconds) {
+        int heartbeatSeconds,
+        CancellationToken cancellationToken,
+        Task phaseTask) {
         var status = string.IsNullOrWhiteSpace(phaseStatus) ? "thinking" : phaseStatus.Trim();
         if (!string.IsNullOrWhiteSpace(phaseMessage)) {
             await TryWriteStatusAsync(writer, requestId, threadId, status: status, message: phaseMessage).ConfigureAwait(false);
         }
 
-        var chatTask = ChatWithToolSchemaRecoveryAsync(client, input, options, cancellationToken);
         if (heartbeatSeconds <= 0) {
-            return await chatTask.ConfigureAwait(false);
+            await phaseTask.ConfigureAwait(false);
+            return;
         }
 
         var heartbeatInterval = TimeSpan.FromSeconds(Math.Max(1, heartbeatSeconds));
         var sw = Stopwatch.StartNew();
         var cancellationTask = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-        while (!chatTask.IsCompleted) {
+        while (!phaseTask.IsCompleted) {
             var heartbeatDelayTask = Task.Delay(heartbeatInterval);
-            var completedTask = await Task.WhenAny(chatTask, heartbeatDelayTask, cancellationTask).ConfigureAwait(false);
-            if (ReferenceEquals(completedTask, chatTask) || ReferenceEquals(completedTask, cancellationTask)) {
+            var completedTask = await Task.WhenAny(phaseTask, heartbeatDelayTask, cancellationTask).ConfigureAwait(false);
+            if (ReferenceEquals(completedTask, phaseTask) || ReferenceEquals(completedTask, cancellationTask)) {
                 break;
             }
 
@@ -201,6 +278,33 @@ internal sealed partial class ChatServiceSession {
                 .ConfigureAwait(false);
         }
 
+        await phaseTask.ConfigureAwait(false);
+    }
+
+    private async Task<TurnInfo> RunModelPhaseWithProgressAsync(
+        IntelligenceXClient client,
+        StreamWriter writer,
+        string requestId,
+        string threadId,
+        ChatInput input,
+        ChatOptions options,
+        CancellationToken cancellationToken,
+        string phaseStatus,
+        string phaseMessage,
+        string heartbeatLabel,
+        int heartbeatSeconds) {
+        var chatTask = ChatWithToolSchemaRecoveryAsync(client, input, options, cancellationToken);
+        await RunPhaseProgressLoopAsync(
+                writer,
+                requestId,
+                threadId,
+                phaseStatus,
+                phaseMessage,
+                heartbeatLabel,
+                heartbeatSeconds,
+                cancellationToken,
+                chatTask)
+            .ConfigureAwait(false);
         return await chatTask.ConfigureAwait(false);
     }
 
@@ -253,6 +357,7 @@ internal sealed partial class ChatServiceSession {
         RememberUserIntent(threadId, userIntent);
         var routedUserRequest = ExpandContinuationUserRequest(threadId, userRequest);
         var executionContractApplies = ShouldEnforceExecuteOrExplainContract(routedUserRequest);
+        var proactiveModeEnabled = TryReadProactiveModeFromRequestText(request.Text, out var proactiveMode) && proactiveMode;
         var usedContinuationSubset = false;
         if (weightedToolRouting && toolDefs.Count > 0) {
             if (!executionContractApplies) {
@@ -339,6 +444,7 @@ internal sealed partial class ChatServiceSession {
         var executionContractEscapeUsed = false;
         var continuationSubsetEscapeUsed = false;
         var autoPendingActionReplayUsed = false;
+        var proactiveFollowUpUsed = false;
 
         for (var round = 0; round < Math.Max(1, maxRounds); round++) {
             var extracted = ToolCallParser.Extract(turn);
@@ -589,6 +695,29 @@ internal sealed partial class ChatServiceSession {
                             phaseStatus: "phase_review",
                             phaseMessage: $"Reviewing response quality ({reviewPassesUsed}/{maxReviewPasses})...",
                             heartbeatLabel: "Reviewing response",
+                            heartbeatSeconds: modelHeartbeatSeconds)
+                        .ConfigureAwait(false);
+                    continue;
+                }
+
+                if (ShouldAttemptProactiveFollowUpReview(
+                        proactiveModeEnabled: proactiveModeEnabled,
+                        hasToolActivity: hasToolActivity,
+                        proactiveFollowUpUsed: proactiveFollowUpUsed,
+                        assistantDraft: text)) {
+                    proactiveFollowUpUsed = true;
+                    var proactivePrompt = BuildProactiveFollowUpReviewPrompt(routedUserRequest, text);
+                    turn = await RunModelPhaseWithProgressAsync(
+                            client,
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            ChatInput.FromText(proactivePrompt),
+                            CopyChatOptions(options, newThreadOverride: false),
+                            turnToken,
+                            phaseStatus: "phase_review",
+                            phaseMessage: "Generating proactive next checks and fixes...",
+                            heartbeatLabel: "Preparing proactive follow-up",
                             heartbeatSeconds: modelHeartbeatSeconds)
                         .ConfigureAwait(false);
                     continue;

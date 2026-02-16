@@ -263,6 +263,9 @@ public sealed partial class MainWindow : Window {
                 toolTimeoutSeconds = _autonomyToolTimeoutSeconds,
                 weightedToolRouting = _autonomyWeightedToolRouting,
                 maxCandidateTools = _autonomyMaxCandidateTools,
+                planExecuteReviewLoop = _autonomyPlanExecuteReviewLoop,
+                maxReviewPasses = _autonomyMaxReviewPasses,
+                modelHeartbeatSeconds = _autonomyModelHeartbeatSeconds,
                 queueAutoDispatch = _queueAutoDispatchEnabled,
                 proactiveMode = _proactiveModeEnabled
             },
