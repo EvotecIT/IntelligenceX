@@ -12,6 +12,7 @@
     [string] $PortableOutDir,
     [string] $BundleName,
     [switch] $IncludeService,
+    [switch] $IncludeSymbols,
     [string] $TestimoXRoot,
 
     [string] $ProductName = 'IntelligenceX Chat',
@@ -274,6 +275,9 @@ if ([string]::IsNullOrWhiteSpace($PayloadDir)) {
     if ($IncludeService) {
         $packageArgs['IncludeService'] = $true
     }
+    if ($IncludeSymbols) {
+        $packageArgs['IncludeSymbols'] = $true
+    }
     if (-not [string]::IsNullOrWhiteSpace($TestimoXRoot)) {
         $packageArgs['TestimoXRoot'] = $TestimoXRoot
     }
@@ -343,6 +347,7 @@ try {
         productName = $ProductName
         manufacturer = $Manufacturer
         productVersion = $ProductVersion
+        includeSymbols = [bool] $IncludeSymbols
         upgradeCode = $UpgradeCode
         createdUtc = (Get-Date).ToUniversalTime().ToString('o')
     }
