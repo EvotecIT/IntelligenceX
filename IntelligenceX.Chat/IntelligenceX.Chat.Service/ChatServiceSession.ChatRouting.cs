@@ -71,6 +71,7 @@ internal sealed partial class ChatServiceSession {
         };
     }
 
+    // Internal seam for deterministic chat-loop tests and shared routing behavior.
     internal static int ResolveMaxReviewPasses(ChatRequestOptions? options) {
         var configured = options?.MaxReviewPasses;
         if (!configured.HasValue || configured.Value <= 0) {
@@ -89,7 +90,7 @@ internal sealed partial class ChatServiceSession {
         return Math.Clamp(configured.Value, 0, MaxModelHeartbeatSeconds);
     }
 
-    internal static bool TryReadProactiveModeFromRequestText(string requestText, out bool enabled) {
+    internal static bool TryReadProactiveModeFromRequestText(string? requestText, out bool enabled) {
         enabled = false;
         var text = requestText ?? string.Empty;
         if (text.Length == 0) {
