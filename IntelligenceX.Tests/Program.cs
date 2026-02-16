@@ -457,6 +457,15 @@ internal static partial class Program {
         failed += Run("Todo vision check aligned classification", TestVisionCheckClassifiesAlignedWhenInTokensMatch);
         failed += Run("Todo vision check explicit reject policy precedence", TestVisionCheckExplicitRejectPolicyTakesPrecedence);
         failed += Run("Todo vision check explicit policy prefix parsing", TestVisionCheckParseSignalsSupportsExplicitPolicyPrefixes);
+        failed += Run("Todo vision check strict contract parsing", TestVisionCheckParseDocumentSupportsStrictContract);
+        failed += Run("Todo vision check heading variants satisfy strict contract", TestVisionCheckParseDocumentSupportsHeadingVariants);
+        failed += Run("Todo vision check backticked policy prefixes satisfy strict contract", TestVisionCheckParseDocumentSupportsBacktickedPolicyPrefixes);
+        failed += Run("Todo vision check enforce contract accepts backticked policy prefixes", TestVisionCheckRunEnforceContractSupportsBacktickedPolicyPrefixes);
+        failed += Run("Todo vision check legacy decision heading satisfies strict contract", TestVisionCheckParseDocumentSupportsLegacyDecisionHeading);
+        failed += Run("Todo vision check missing required section", TestVisionCheckParseDocumentReportsMissingRequiredSection);
+        failed += Run("Todo vision check enforce contract exits non-zero", TestVisionCheckRunFailsOnContractWhenEnforced);
+        failed += Run("Todo vision check fail on drift exits non-zero", TestVisionCheckRunFailsOnHighConfidenceDrift);
+        failed += Run("Todo vision check rejects malformed drift thresholds", TestVisionCheckRejectsMalformedDriftThresholds);
         failed += Run("Todo project fields defaults", TestProjectFieldCatalogDefaultsIncludeVisionAndDecisionFields);
         failed += Run("Todo project labels include decision taxonomy", TestProjectLabelCatalogDefaultsIncludeDecisionLabels);
         failed += Run("Todo project labels include dynamic category and tag taxonomy", TestProjectLabelCatalogBuildEnsureCatalogIncludesDynamicCategoryAndTags);
@@ -486,6 +495,7 @@ internal static partial class Program {
         failed += Run("Todo project bootstrap renders project target", TestProjectBootstrapRenderWorkflowTemplateInjectsProjectTarget);
         failed += Run("Todo project bootstrap clamps max items", TestProjectBootstrapRenderWorkflowTemplateClampsMaxItems);
         failed += Run("Todo project bootstrap renders vision template", TestProjectBootstrapRenderVisionTemplateInjectsContext);
+        failed += Run("Todo project bootstrap vision template strict contract sections", TestProjectBootstrapVisionTemplateIncludesStrictContractSections);
         failed += Run("Todo project bootstrap workflow enables label apply", TestProjectBootstrapWorkflowTemplateEnablesApplyLabels);
         failed += Run("Todo project bootstrap workflow upserts control issue summary comment",
             TestProjectBootstrapWorkflowTemplateUpsertsControlIssueSummaryComment);

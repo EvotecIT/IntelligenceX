@@ -56,6 +56,19 @@ project={{ProjectNumber}}
         AssertEqual(false, rendered.Contains("{{ProjectNumber}}", StringComparison.Ordinal), "project placeholder removed");
     }
 
+    private static void TestProjectBootstrapVisionTemplateIncludesStrictContractSections() {
+        var template = IntelligenceX.Cli.Todo.ProjectBootstrapRunner.LoadVisionTemplate();
+
+        AssertContainsText(template, "## Goals", "vision template includes goals section");
+        AssertContainsText(template, "## Non-Goals", "vision template includes non-goals section");
+        AssertContainsText(template, "## In Scope", "vision template includes in-scope section");
+        AssertContainsText(template, "## Out Of Scope", "vision template includes out-of-scope section");
+        AssertContainsText(template, "## Decision Principles", "vision template includes decision principles section");
+        AssertContainsText(template, "`aligned`:", "vision template includes aligned policy bullet");
+        AssertContainsText(template, "`likely-out-of-scope`:", "vision template includes out-of-scope policy bullet");
+        AssertContainsText(template, "`needs-human-review`:", "vision template includes review policy bullet");
+    }
+
     private static void TestProjectBootstrapWorkflowTemplateEnablesApplyLabels() {
         var template = IntelligenceX.Cli.Todo.ProjectBootstrapRunner.LoadWorkflowTemplate();
         var rendered = IntelligenceX.Cli.Todo.ProjectBootstrapRunner.RenderWorkflowTemplate(
@@ -67,6 +80,9 @@ project={{ProjectNumber}}
         AssertContainsText(rendered, "todo project-sync", "workflow contains project sync step");
         AssertContainsText(rendered, "--apply-labels", "workflow enables label application");
         AssertContainsText(rendered, "--apply-link-comments", "workflow enables PR issue suggestion comments");
+        AssertContainsText(rendered, "--enforce-contract", "workflow enforces vision contract");
+        AssertContainsText(rendered, "--fail-on-drift", "workflow enables vision drift gate");
+        AssertContainsText(rendered, "--drift-threshold 0.70", "workflow sets deterministic drift threshold");
     }
 
     private static void TestProjectBootstrapWorkflowTemplateUpsertsControlIssueSummaryComment() {

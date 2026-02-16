@@ -14,9 +14,16 @@ internal static class VisionCheckRunner {
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
     private static readonly Regex NumberedBullet = new(@"^\d+\.\s+", RegexOptions.Compiled);
     private static readonly Regex PolicyPrefix = new(
-        @"^(aligned|accept|approve|likely-out-of-scope|reject|deny|needs-human-review|human-review|review|required-review)\s*:\s*(.+)$",
+        @"^`?\s*(aligned|accept|approve|likely-out-of-scope|reject|deny|needs-human-review|human-review|review|required-review)\s*`?\s*:\s*(.+)$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase
     );
+    private static readonly string[] RequiredSectionNames = {
+        "goals",
+        "non-goals",
+        "in-scope",
+        "out-of-scope",
+        "decision-principles"
+    };
 
     internal sealed record VisionSignals(
         IReadOnlySet<string> InScopeTokens,
@@ -51,6 +58,25 @@ internal static class VisionCheckRunner {
         string Reason
     );
 
+    internal sealed record VisionContract(
+        IReadOnlyList<string> MissingSections,
+        int GoalsBullets,
+        int NonGoalsBullets,
+        int InScopeBullets,
+        int OutOfScopeBullets,
+        int DecisionPrinciplesBullets,
+        int ExplicitAcceptBullets,
+        int ExplicitRejectBullets,
+        int ExplicitReviewBullets,
+        IReadOnlyList<string> Diagnostics,
+        bool IsValid
+    );
+
+    internal sealed record VisionParseResult(
+        VisionSignals Signals,
+        VisionContract Contract
+    );
+
     private sealed class Options {
         public string Repo { get; set; } = "EvotecIT/IntelligenceX";
         public string VisionPath { get; set; } = "VISION.md";
@@ -61,6 +87,9 @@ internal static class VisionCheckRunner {
         public int MaxPrs { get; set; } = 300;
         public int MaxIssues { get; set; } = 300;
         public int MaxItems { get; set; } = 50;
+        public bool EnforceContract { get; set; }
+        public bool FailOnDrift { get; set; }
+        public double DriftThreshold { get; set; } = 0.70;
         public bool ShowHelp { get; set; }
     }
 
@@ -91,13 +120,20 @@ internal static class VisionCheckRunner {
             }
         }
 
-        var signals = ParseVisionSignals(options.VisionPath);
+        var vision = ParseVisionDocument(options.VisionPath);
+        var signals = vision.Signals;
+        var contract = vision.Contract;
         var candidates = LoadCandidates(options.IndexPath);
         var assessments = candidates
             .Select(candidate => EvaluateAlignment(candidate, signals))
             .OrderBy(assessment => ClassificationRank(assessment.Classification))
             .ThenByDescending(assessment => assessment.Confidence)
             .ThenByDescending(assessment => assessment.Score ?? 0)
+            .ToList();
+        var highConfidenceLikelyOutOfScope = assessments
+            .Where(item => item.Classification == "likely-out-of-scope" && item.Confidence >= options.DriftThreshold)
+            .OrderByDescending(item => item.Confidence)
+            .ThenByDescending(item => item.Score ?? 0)
             .ToList();
 
         var report = new {
@@ -110,7 +146,20 @@ internal static class VisionCheckRunner {
                 outOfScopeTokens = signals.OutOfScopeTokens.Count,
                 explicitAcceptTokens = signals.ExplicitAcceptTokens.Count,
                 explicitRejectTokens = signals.ExplicitRejectTokens.Count,
-                explicitReviewTokens = signals.ExplicitReviewTokens.Count
+                explicitReviewTokens = signals.ExplicitReviewTokens.Count,
+                contract = new {
+                    isValid = contract.IsValid,
+                    missingSections = contract.MissingSections,
+                    diagnostics = contract.Diagnostics,
+                    goalsBullets = contract.GoalsBullets,
+                    nonGoalsBullets = contract.NonGoalsBullets,
+                    inScopeBullets = contract.InScopeBullets,
+                    outOfScopeBullets = contract.OutOfScopeBullets,
+                    decisionPrinciplesBullets = contract.DecisionPrinciplesBullets,
+                    explicitAcceptBullets = contract.ExplicitAcceptBullets,
+                    explicitRejectBullets = contract.ExplicitRejectBullets,
+                    explicitReviewBullets = contract.ExplicitReviewBullets
+                }
             },
             summary = new {
                 pullRequestsEvaluated = assessments.Count,
@@ -118,10 +167,16 @@ internal static class VisionCheckRunner {
                 needsHumanReview = assessments.Count(item => item.Classification == "needs-human-review"),
                 likelyOutOfScope = assessments.Count(item => item.Classification == "likely-out-of-scope")
             },
+            drift = new {
+                threshold = Math.Round(options.DriftThreshold, 2, MidpointRounding.AwayFromZero),
+                highConfidenceLikelyOutOfScope = highConfidenceLikelyOutOfScope.Count,
+                failOnDrift = options.FailOnDrift,
+                wouldFail = options.FailOnDrift && highConfidenceLikelyOutOfScope.Count > 0
+            },
             assessments
         };
 
-        var summary = BuildSummaryMarkdown(options, assessments);
+        var summary = BuildSummaryMarkdown(options, assessments, contract, highConfidenceLikelyOutOfScope);
         WriteText(options.OutputPath, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
         WriteText(options.SummaryPath, summary);
 
@@ -129,6 +184,23 @@ internal static class VisionCheckRunner {
         Console.WriteLine($"Generated vision summary: {options.SummaryPath}");
         Console.WriteLine($"PRs evaluated: {assessments.Count}");
         Console.WriteLine($"Likely out of scope: {assessments.Count(item => item.Classification == "likely-out-of-scope")}");
+        Console.WriteLine($"Vision contract valid: {(contract.IsValid ? "yes" : "no")}");
+        Console.WriteLine($"High-confidence likely-out-of-scope (>= {options.DriftThreshold.ToString("0.00", CultureInfo.InvariantCulture)}): {highConfidenceLikelyOutOfScope.Count}");
+
+        if (options.EnforceContract && !contract.IsValid) {
+            Console.Error.WriteLine("Vision contract validation failed.");
+            foreach (var diagnostic in contract.Diagnostics) {
+                Console.Error.WriteLine($"- {diagnostic}");
+            }
+            return 2;
+        }
+
+        if (options.FailOnDrift && highConfidenceLikelyOutOfScope.Count > 0) {
+            Console.Error.WriteLine(
+                $"Vision drift gate failed: found {highConfidenceLikelyOutOfScope.Count} likely-out-of-scope PR(s) with confidence >= {options.DriftThreshold.ToString("0.00", CultureInfo.InvariantCulture)}.");
+            return 3;
+        }
+
         return 0;
     }
 
@@ -187,6 +259,26 @@ internal static class VisionCheckRunner {
                         options.MaxItems = Math.Max(1, Math.Min(maxItems, 500));
                     }
                     break;
+                case "--enforce-contract":
+                    options.EnforceContract = true;
+                    break;
+                case "--no-enforce-contract":
+                    options.EnforceContract = false;
+                    break;
+                case "--fail-on-drift":
+                    options.FailOnDrift = true;
+                    break;
+                case "--no-fail-on-drift":
+                    options.FailOnDrift = false;
+                    break;
+                case "--drift-threshold":
+                    if (i + 1 < args.Length && TryParseDriftThreshold(args[++i], out var driftThreshold)) {
+                        options.DriftThreshold = driftThreshold;
+                    } else {
+                        Console.Error.WriteLine("Invalid --drift-threshold value. Expected a number between 0 and 1.");
+                        options.ShowHelp = true;
+                    }
+                    break;
                 default:
                     Console.Error.WriteLine($"Unknown option: {arg}");
                     options.ShowHelp = true;
@@ -213,18 +305,54 @@ internal static class VisionCheckRunner {
         Console.WriteLine("  --max-prs <n>               PR scan limit when refreshing index (1-2000, default: 300)");
         Console.WriteLine("  --max-issues <n>            Issue scan limit when refreshing index (1-2000, default: 300)");
         Console.WriteLine("  --max-items <n>             Max items per section in markdown summary (1-500, default: 50)");
+        Console.WriteLine("  --enforce-contract          Fail when VISION.md misses required sections/policy bullets");
+        Console.WriteLine("  --no-enforce-contract       Do not fail when VISION.md contract is incomplete (default)");
+        Console.WriteLine("  --fail-on-drift             Fail when likely-out-of-scope PR confidence exceeds threshold");
+        Console.WriteLine("  --no-fail-on-drift          Do not fail on drift matches (default)");
+        Console.WriteLine("  --drift-threshold <0-1>     Drift fail threshold (default: 0.70)");
         Console.WriteLine("  --out <path>                JSON output path (default: artifacts/triage/ix-vision-check.json)");
         Console.WriteLine("  --summary <path>            Markdown summary path (default: artifacts/triage/ix-vision-check.md)");
     }
 
+    private static bool TryParseDriftThreshold(string input, out double threshold) {
+        threshold = 0;
+        if (!double.TryParse(input, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var parsed)) {
+            return false;
+        }
+
+        if (double.IsNaN(parsed) || double.IsInfinity(parsed)) {
+            return false;
+        }
+
+        if (parsed < 0.0 || parsed > 1.0) {
+            return false;
+        }
+
+        threshold = parsed;
+        return true;
+    }
+
     internal static VisionSignals ParseVisionSignals(string visionPath) {
+        return ParseVisionDocument(visionPath).Signals;
+    }
+
+    internal static VisionParseResult ParseVisionDocument(string visionPath) {
         var inScope = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var outOfScope = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var explicitAccept = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var explicitReject = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var explicitReview = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var allTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenRequiredSections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var section = string.Empty;
+        var goalsBullets = 0;
+        var nonGoalsBullets = 0;
+        var inScopeBullets = 0;
+        var outOfScopeBullets = 0;
+        var decisionPrinciplesBullets = 0;
+        var explicitAcceptBullets = 0;
+        var explicitRejectBullets = 0;
+        var explicitReviewBullets = 0;
 
         foreach (var rawLine in File.ReadLines(visionPath)) {
             var line = rawLine?.Trim() ?? string.Empty;
@@ -232,43 +360,34 @@ internal static class VisionCheckRunner {
                 continue;
             }
 
+            if (TryMapHeadingToSection(line, out var headingSection, out var requiredSection)) {
+                section = headingSection;
+                if (!string.IsNullOrWhiteSpace(requiredSection)) {
+                    seenRequiredSections.Add(requiredSection);
+                }
+                continue;
+            }
+
             var lowered = line.ToLowerInvariant();
-            if (lowered.Contains("in scope", StringComparison.Ordinal) ||
-                lowered.Contains("goals", StringComparison.Ordinal) ||
-                lowered.Contains("included", StringComparison.Ordinal)) {
-                section = "in";
-                continue;
-            }
-            if (lowered.Contains("out of scope", StringComparison.Ordinal) ||
-                lowered.Contains("non-goals", StringComparison.Ordinal) ||
-                lowered.Contains("not in scope", StringComparison.Ordinal)) {
-                section = "out";
-                continue;
-            }
-            if (lowered.Contains("accept guidance", StringComparison.Ordinal) ||
-                lowered.Contains("accept signals", StringComparison.Ordinal) ||
-                lowered.Equals("## accept", StringComparison.Ordinal) ||
-                lowered.Equals("### accept", StringComparison.Ordinal)) {
-                section = "accept";
-                continue;
-            }
-            if (lowered.Contains("reject guidance", StringComparison.Ordinal) ||
-                lowered.Contains("reject signals", StringComparison.Ordinal) ||
-                lowered.Equals("## reject", StringComparison.Ordinal) ||
-                lowered.Equals("### reject", StringComparison.Ordinal)) {
-                section = "reject";
-                continue;
-            }
-            if (lowered.Contains("human review guidance", StringComparison.Ordinal) ||
-                lowered.Contains("needs human review", StringComparison.Ordinal) ||
-                lowered.Equals("## review", StringComparison.Ordinal) ||
-                lowered.Equals("### review", StringComparison.Ordinal)) {
-                section = "review";
+            if (TryMapLegacySectionLine(lowered, out var mappedSection)) {
+                section = mappedSection;
                 continue;
             }
 
             if (!IsBulletLine(line)) {
                 continue;
+            }
+
+            if (section == "goals") {
+                goalsBullets++;
+            } else if (section == "non-goals") {
+                nonGoalsBullets++;
+            } else if (section == "in") {
+                inScopeBullets++;
+            } else if (section == "out") {
+                outOfScopeBullets++;
+            } else if (section == "decision-principles") {
+                decisionPrinciplesBullets++;
             }
 
             var content = StripBullet(line);
@@ -281,11 +400,23 @@ internal static class VisionCheckRunner {
                 allTokens.Add(token);
             }
 
-            if (policySection == "in") {
+            switch (policySection) {
+                case "accept":
+                    explicitAcceptBullets++;
+                    break;
+                case "reject":
+                    explicitRejectBullets++;
+                    break;
+                case "review":
+                    explicitReviewBullets++;
+                    break;
+            }
+
+            if (policySection == "in" || policySection == "goals") {
                 foreach (var token in tokens) {
                     inScope.Add(token);
                 }
-            } else if (policySection == "out") {
+            } else if (policySection == "out" || policySection == "non-goals") {
                 foreach (var token in tokens) {
                     outOfScope.Add(token);
                 }
@@ -310,7 +441,53 @@ internal static class VisionCheckRunner {
             }
         }
 
-        return new VisionSignals(inScope, outOfScope, explicitAccept, explicitReject, explicitReview);
+        var missingSections = RequiredSectionNames
+            .Where(required => !seenRequiredSections.Contains(required))
+            .ToList();
+        var diagnostics = new List<string>();
+        foreach (var missing in missingSections) {
+            diagnostics.Add($"Missing required section: {DisplaySectionName(missing)}.");
+        }
+        if (goalsBullets == 0) {
+            diagnostics.Add("Section Goals must include at least one bullet.");
+        }
+        if (nonGoalsBullets == 0) {
+            diagnostics.Add("Section Non-Goals must include at least one bullet.");
+        }
+        if (inScopeBullets == 0) {
+            diagnostics.Add("Section In Scope must include at least one bullet.");
+        }
+        if (outOfScopeBullets == 0) {
+            diagnostics.Add("Section Out Of Scope must include at least one bullet.");
+        }
+        if (decisionPrinciplesBullets == 0) {
+            diagnostics.Add("Section Decision Principles must include at least one bullet.");
+        }
+        if (explicitAcceptBullets == 0) {
+            diagnostics.Add("Decision policy is missing an `aligned:` (or `accept:`) bullet.");
+        }
+        if (explicitRejectBullets == 0) {
+            diagnostics.Add("Decision policy is missing a `likely-out-of-scope:` (or `reject:`) bullet.");
+        }
+        if (explicitReviewBullets == 0) {
+            diagnostics.Add("Decision policy is missing a `needs-human-review:` (or `review:`) bullet.");
+        }
+
+        var contract = new VisionContract(
+            missingSections,
+            goalsBullets,
+            nonGoalsBullets,
+            inScopeBullets,
+            outOfScopeBullets,
+            decisionPrinciplesBullets,
+            explicitAcceptBullets,
+            explicitRejectBullets,
+            explicitReviewBullets,
+            diagnostics,
+            diagnostics.Count == 0
+        );
+
+        return new VisionParseResult(new VisionSignals(inScope, outOfScope, explicitAccept, explicitReject, explicitReview), contract);
     }
 
     private static bool IsBulletLine(string line) {
@@ -359,6 +536,192 @@ internal static class VisionCheckRunner {
 
         policy = (section, body);
         return true;
+    }
+
+    private static bool TryMapHeadingToSection(string line, out string section, out string requiredSection) {
+        section = string.Empty;
+        requiredSection = string.Empty;
+        if (!line.StartsWith("#", StringComparison.Ordinal)) {
+            return false;
+        }
+
+        var heading = line.TrimStart('#').Trim();
+        if (string.IsNullOrWhiteSpace(heading)) {
+            return false;
+        }
+
+        var words = ExtractHeadingWords(heading);
+        if (words.Count == 0) {
+            return false;
+        }
+
+        if (HeadingHasPhrase(words, "non", "goals") ||
+            HeadingHasPhrase(words, "non", "goal") ||
+            HeadingHasAnyWord(words, "nongoals", "nongoal")) {
+            section = "non-goals";
+            requiredSection = "non-goals";
+            return true;
+        }
+
+        if (HeadingHasAnyWord(words, "goals", "goal", "mission")) {
+            section = "goals";
+            requiredSection = "goals";
+            return true;
+        }
+
+        if (HeadingHasPhrase(words, "in", "scope") ||
+            HeadingHasAnyWord(words, "inscope", "included")) {
+            section = "in";
+            requiredSection = "in-scope";
+            return true;
+        }
+
+        if (HeadingHasPhrase(words, "out", "of", "scope") ||
+            HeadingHasPhrase(words, "not", "in", "scope") ||
+            HeadingHasAnyWord(words, "outofscope")) {
+            section = "out";
+            requiredSection = "out-of-scope";
+            return true;
+        }
+
+        if (HeadingHasPhrase(words, "decision", "principles") ||
+            HeadingHasPhrase(words, "decision", "principle") ||
+            HeadingHasPhrase(words, "decision", "notes") ||
+            HeadingHasPhrase(words, "maintainer", "guidance") ||
+            HeadingHasPhrase(words, "maintainers", "guidance")) {
+            section = "decision-principles";
+            requiredSection = "decision-principles";
+            return true;
+        }
+
+        if (HeadingHasAnyWord(words, "accept") ||
+            HeadingHasPhrase(words, "accept", "guidance") ||
+            HeadingHasPhrase(words, "accept", "signals")) {
+            section = "accept";
+            return true;
+        }
+
+        if (HeadingHasAnyWord(words, "reject") ||
+            HeadingHasPhrase(words, "reject", "guidance") ||
+            HeadingHasPhrase(words, "reject", "signals")) {
+            section = "reject";
+            return true;
+        }
+
+        if (HeadingHasAnyWord(words, "review") ||
+            HeadingHasPhrase(words, "needs", "human", "review") ||
+            HeadingHasPhrase(words, "human", "review", "guidance")) {
+            section = "review";
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryMapLegacySectionLine(string loweredLine, out string section) {
+        section = string.Empty;
+        if (loweredLine.Contains("in scope", StringComparison.Ordinal) ||
+            loweredLine.Contains("goals", StringComparison.Ordinal) ||
+            loweredLine.Contains("included", StringComparison.Ordinal)) {
+            section = "in";
+            return true;
+        }
+        if (loweredLine.Contains("out of scope", StringComparison.Ordinal) ||
+            loweredLine.Contains("non-goals", StringComparison.Ordinal) ||
+            loweredLine.Contains("not in scope", StringComparison.Ordinal)) {
+            section = "out";
+            return true;
+        }
+        if (loweredLine.Contains("accept guidance", StringComparison.Ordinal) ||
+            loweredLine.Contains("accept signals", StringComparison.Ordinal) ||
+            loweredLine.Equals("## accept", StringComparison.Ordinal) ||
+            loweredLine.Equals("### accept", StringComparison.Ordinal)) {
+            section = "accept";
+            return true;
+        }
+        if (loweredLine.Contains("reject guidance", StringComparison.Ordinal) ||
+            loweredLine.Contains("reject signals", StringComparison.Ordinal) ||
+            loweredLine.Equals("## reject", StringComparison.Ordinal) ||
+            loweredLine.Equals("### reject", StringComparison.Ordinal)) {
+            section = "reject";
+            return true;
+        }
+        if (loweredLine.Contains("human review guidance", StringComparison.Ordinal) ||
+            loweredLine.Contains("needs human review", StringComparison.Ordinal) ||
+            loweredLine.Equals("## review", StringComparison.Ordinal) ||
+            loweredLine.Equals("### review", StringComparison.Ordinal)) {
+            section = "review";
+            return true;
+        }
+        return false;
+    }
+
+    private static List<string> ExtractHeadingWords(string heading) {
+        var words = new List<string>();
+        var token = new StringBuilder(heading.Length);
+        foreach (var ch in heading) {
+            if (char.IsLetterOrDigit(ch)) {
+                token.Append(char.ToLowerInvariant(ch));
+                continue;
+            }
+
+            if (token.Length == 0) {
+                continue;
+            }
+            words.Add(token.ToString());
+            token.Clear();
+        }
+
+        if (token.Length > 0) {
+            words.Add(token.ToString());
+        }
+
+        return words;
+    }
+
+    private static bool HeadingHasAnyWord(IReadOnlyList<string> words, params string[] expectedWords) {
+        for (var i = 0; i < expectedWords.Length; i++) {
+            var expected = expectedWords[i];
+            for (var j = 0; j < words.Count; j++) {
+                if (words[j].Equals(expected, StringComparison.Ordinal)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static bool HeadingHasPhrase(IReadOnlyList<string> words, params string[] expectedPhrase) {
+        if (expectedPhrase.Length == 0 || words.Count < expectedPhrase.Length) {
+            return false;
+        }
+
+        for (var i = 0; i <= words.Count - expectedPhrase.Length; i++) {
+            var matches = true;
+            for (var j = 0; j < expectedPhrase.Length; j++) {
+                if (!words[i + j].Equals(expectedPhrase[j], StringComparison.Ordinal)) {
+                    matches = false;
+                    break;
+                }
+            }
+
+            if (matches) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string DisplaySectionName(string normalized) {
+        return normalized switch {
+            "goals" => "Goals",
+            "non-goals" => "Non-Goals",
+            "in-scope" => "In Scope",
+            "out-of-scope" => "Out Of Scope",
+            "decision-principles" => "Decision Principles",
+            _ => normalized
+        };
     }
 
     private static List<PullRequestCandidate> LoadCandidates(string indexPath) {
@@ -481,7 +844,11 @@ internal static class VisionCheckRunner {
         };
     }
 
-    private static string BuildSummaryMarkdown(Options options, IReadOnlyList<VisionAssessment> assessments) {
+    private static string BuildSummaryMarkdown(
+        Options options,
+        IReadOnlyList<VisionAssessment> assessments,
+        VisionContract contract,
+        IReadOnlyList<VisionAssessment> highConfidenceLikelyOutOfScope) {
         var sb = new StringBuilder();
         sb.AppendLine("# IntelligenceX Vision Check");
         sb.AppendLine();
@@ -489,6 +856,41 @@ internal static class VisionCheckRunner {
         sb.AppendLine($"- Repo: `{options.Repo}`");
         sb.AppendLine($"- PRs evaluated: {assessments.Count}");
         sb.AppendLine();
+        sb.AppendLine("## Vision Contract");
+        sb.AppendLine();
+        sb.AppendLine($"- required sections status: {(contract.MissingSections.Count == 0 ? "ok" : "missing sections detected")}");
+        sb.AppendLine($"- goals bullets: {contract.GoalsBullets}");
+        sb.AppendLine($"- non-goals bullets: {contract.NonGoalsBullets}");
+        sb.AppendLine($"- in-scope bullets: {contract.InScopeBullets}");
+        sb.AppendLine($"- out-of-scope bullets: {contract.OutOfScopeBullets}");
+        sb.AppendLine($"- decision-principles bullets: {contract.DecisionPrinciplesBullets}");
+        sb.AppendLine($"- explicit policy bullets (aligned / out-of-scope / review): {contract.ExplicitAcceptBullets} / {contract.ExplicitRejectBullets} / {contract.ExplicitReviewBullets}");
+        if (contract.Diagnostics.Count == 0) {
+            sb.AppendLine("- contract diagnostics: none");
+        } else {
+            sb.AppendLine("- contract diagnostics:");
+            foreach (var diagnostic in contract.Diagnostics.Take(options.MaxItems)) {
+                sb.AppendLine($"  - {diagnostic}");
+            }
+        }
+        sb.AppendLine();
+        sb.AppendLine("## Drift Gate");
+        sb.AppendLine();
+        sb.AppendLine($"- threshold: {options.DriftThreshold.ToString("0.00", CultureInfo.InvariantCulture)}");
+        sb.AppendLine($"- high-confidence likely-out-of-scope: {highConfidenceLikelyOutOfScope.Count}");
+        sb.AppendLine($"- fail-on-drift: {(options.FailOnDrift ? "enabled" : "disabled")}");
+        sb.AppendLine();
+        if (highConfidenceLikelyOutOfScope.Count > 0) {
+            sb.AppendLine("### High-Confidence Drift Items");
+            sb.AppendLine();
+            foreach (var item in highConfidenceLikelyOutOfScope.Take(options.MaxItems)) {
+                var scoreLabel = item.Score.HasValue ? $" | triage score {item.Score.Value.ToString("0.00", CultureInfo.InvariantCulture)}" : string.Empty;
+                sb.AppendLine($"- #{item.Number} ({item.Confidence.ToString("0.00", CultureInfo.InvariantCulture)}){scoreLabel}: [{item.Title}]({item.Url})");
+                sb.AppendLine($"  - {item.Reason}");
+            }
+            sb.AppendLine();
+        }
+
         sb.AppendLine("## Classification Summary");
         sb.AppendLine();
         sb.AppendLine($"- likely-out-of-scope: {assessments.Count(item => item.Classification == "likely-out-of-scope")}");
