@@ -17,16 +17,20 @@ internal static class IssueSuggestionCommentManager {
             return false;
         }
 
-        var existingCommentId = await TryFindManagedCommentIdAsync(repo, issueNumber, marker).ConfigureAwait(false);
-        if (existingCommentId.HasValue) {
+        var existingCommentIds = await TryFindManagedCommentIdsAsync(repo, issueNumber, marker).ConfigureAwait(false);
+        if (existingCommentIds.Count > 0) {
+            var existingCommentId = existingCommentIds[0];
             var (updateCode, _, updateErr) = await GhCli.RunAsync(
                 "api",
                 "--method", "PATCH",
-                $"repos/{repo}/issues/comments/{existingCommentId.Value.ToString(CultureInfo.InvariantCulture)}",
+                $"repos/{repo}/issues/comments/{existingCommentId.ToString(CultureInfo.InvariantCulture)}",
                 "-f", $"body={commentBody}"
             ).ConfigureAwait(false);
 
             if (updateCode == 0) {
+                foreach (var duplicateId in existingCommentIds.Skip(1)) {
+                    await TryDeleteCommentByIdAsync(repo, issueNumber, duplicateId, marker, suppressErrors: true).ConfigureAwait(false);
+                }
                 return true;
             }
 
@@ -50,7 +54,27 @@ internal static class IssueSuggestionCommentManager {
         return false;
     }
 
-    private static async Task<long?> TryFindManagedCommentIdAsync(string repo, int issueNumber, string marker) {
+    public static async Task<bool> DeleteAsync(string repo, int issueNumber, string marker = CommentMarker) {
+        if (string.IsNullOrWhiteSpace(repo) || issueNumber <= 0 || string.IsNullOrWhiteSpace(marker)) {
+            return false;
+        }
+
+        var existingCommentIds = await TryFindManagedCommentIdsAsync(repo, issueNumber, marker).ConfigureAwait(false);
+        if (existingCommentIds.Count == 0) {
+            return false;
+        }
+
+        var deleted = false;
+        foreach (var commentId in existingCommentIds) {
+            if (await TryDeleteCommentByIdAsync(repo, issueNumber, commentId, marker, suppressErrors: false).ConfigureAwait(false)) {
+                deleted = true;
+            }
+        }
+
+        return deleted;
+    }
+
+    private static async Task<IReadOnlyList<long>> TryFindManagedCommentIdsAsync(string repo, int issueNumber, string marker) {
         var (code, stdout, stderr) = await GhCli.RunAsync(
             "api",
             $"repos/{repo}/issues/{issueNumber.ToString(CultureInfo.InvariantCulture)}/comments?per_page=100"
@@ -58,16 +82,16 @@ internal static class IssueSuggestionCommentManager {
         if (code != 0) {
             Console.Error.WriteLine(
                 $"Warning: failed to list issue comments for {repo}#{issueNumber}: {(string.IsNullOrWhiteSpace(stderr) ? "unknown error" : stderr.Trim())}");
-            return null;
+            return Array.Empty<long>();
         }
 
         try {
             using var doc = JsonDocument.Parse(stdout);
             if (doc.RootElement.ValueKind != JsonValueKind.Array) {
-                return null;
+                return Array.Empty<long>();
             }
 
-            var matches = new List<long>();
+            var matches = new HashSet<long>();
             foreach (var item in doc.RootElement.EnumerateArray()) {
                 if (!item.TryGetProperty("body", out var bodyProp) || bodyProp.ValueKind != JsonValueKind.String) {
                     continue;
@@ -88,13 +112,38 @@ internal static class IssueSuggestionCommentManager {
             }
 
             if (matches.Count == 0) {
-                return null;
+                return Array.Empty<long>();
             }
 
-            return matches.Max();
+            return matches
+                .OrderByDescending(id => id)
+                .ToList();
         } catch (Exception ex) {
             Console.Error.WriteLine($"Warning: failed to parse issue comments JSON for {repo}#{issueNumber}: {ex.Message}");
-            return null;
+            return Array.Empty<long>();
         }
+    }
+
+    private static async Task<bool> TryDeleteCommentByIdAsync(
+        string repo,
+        int issueNumber,
+        long commentId,
+        string marker,
+        bool suppressErrors) {
+        var (deleteCode, _, deleteErr) = await GhCli.RunAsync(
+            "api",
+            "--method", "DELETE",
+            $"repos/{repo}/issues/comments/{commentId.ToString(CultureInfo.InvariantCulture)}"
+        ).ConfigureAwait(false);
+        if (deleteCode == 0) {
+            return true;
+        }
+
+        if (!suppressErrors) {
+            Console.Error.WriteLine(
+                $"Warning: failed to delete managed suggestion comment ({marker}) for {repo}#{issueNumber}: {(string.IsNullOrWhiteSpace(deleteErr) ? "unknown error" : deleteErr.Trim())}");
+        }
+
+        return false;
     }
 }

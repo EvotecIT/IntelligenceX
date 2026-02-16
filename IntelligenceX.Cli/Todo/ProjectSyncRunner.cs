@@ -166,6 +166,8 @@ internal static class ProjectSyncRunner {
         var labeled = 0;
         var prCommentUpserts = 0;
         var issueCommentUpserts = 0;
+        var prCommentDeletes = 0;
+        var issueCommentDeletes = 0;
 
         foreach (var entry in entries) {
             processed++;
@@ -225,6 +227,10 @@ internal static class ProjectSyncRunner {
                 entries,
                 options.LinkCommentMinConfidence,
                 options.LinkCommentMaxIssues);
+            var stalePullRequestCommentTargets = BuildStaleSuggestionCommentTargets(
+                entries,
+                "pull_request",
+                pullRequestSuggestionComments);
 
             foreach (var suggestion in pullRequestSuggestionComments) {
                 if (options.DryRun) {
@@ -240,10 +246,28 @@ internal static class ProjectSyncRunner {
                 }
             }
 
+            foreach (var pullRequestNumber in stalePullRequestCommentTargets) {
+                if (options.DryRun) {
+                    prCommentDeletes++;
+                    continue;
+                }
+
+                if (await IssueSuggestionCommentManager.DeleteAsync(
+                        options.Repo,
+                        pullRequestNumber,
+                        IssueSuggestionCommentManager.CommentMarker).ConfigureAwait(false)) {
+                    prCommentDeletes++;
+                }
+            }
+
             var issueBacklinkComments = BuildIssueBacklinkSuggestionComments(
                 entries,
                 options.LinkCommentMinConfidence,
                 options.LinkCommentMaxIssues);
+            var staleIssueBacklinkCommentTargets = BuildStaleSuggestionCommentTargets(
+                entries,
+                "issue",
+                issueBacklinkComments);
 
             foreach (var suggestion in issueBacklinkComments) {
                 if (options.DryRun) {
@@ -259,6 +283,20 @@ internal static class ProjectSyncRunner {
                     issueCommentUpserts++;
                 }
             }
+
+            foreach (var issueNumber in staleIssueBacklinkCommentTargets) {
+                if (options.DryRun) {
+                    issueCommentDeletes++;
+                    continue;
+                }
+
+                if (await IssueSuggestionCommentManager.DeleteAsync(
+                        options.Repo,
+                        issueNumber,
+                        IssueSuggestionCommentManager.IssueBacklinkCommentMarker).ConfigureAwait(false)) {
+                    issueCommentDeletes++;
+                }
+            }
         }
 
         Console.WriteLine($"Project sync target: {owner}#{projectNumber} ({project.Url})");
@@ -270,7 +308,9 @@ internal static class ProjectSyncRunner {
         }
         if (options.ApplyLinkComments) {
             Console.WriteLine($"PR suggestion comments upserted: {prCommentUpserts}");
+            Console.WriteLine($"PR suggestion comments deleted: {prCommentDeletes}");
             Console.WriteLine($"Issue backlink comments upserted: {issueCommentUpserts}");
+            Console.WriteLine($"Issue backlink comments deleted: {issueCommentDeletes}");
         }
         Console.WriteLine($"Skipped unresolved items: {skippedMissing}");
         Console.WriteLine(options.DryRun ? "Dry run complete (no project updates were written)." : "Project sync complete.");
@@ -394,7 +434,7 @@ internal static class ProjectSyncRunner {
         Console.WriteLine("  --apply-labels           Sync IX labels on PRs/issues (add missing + remove stale managed IX labels)");
         Console.WriteLine("  --ensure-labels          Ensure IX labels exist before applying labels (default)");
         Console.WriteLine("  --no-ensure-labels       Skip label ensure step");
-        Console.WriteLine("  --apply-link-comments    Upsert marker comments on PRs (related issues) and issues (related PRs)");
+        Console.WriteLine("  --apply-link-comments    Upsert marker comments on PRs/issues and delete stale managed suggestion comments");
         Console.WriteLine("  --link-comment-min-confidence <0-1>  Min confidence for suggestion comments (default: 0.55)");
         Console.WriteLine("  --link-comment-max-issues <n>  Max related issues to include per PR comment (1-10, default: 3)");
         Console.WriteLine("  --dry-run                Compute sync plan without writing project changes");
@@ -874,6 +914,8 @@ internal static class ProjectSyncRunner {
         IReadOnlyDictionary<string, ProjectV2Client.ProjectField> fields,
         ProjectSyncEntry entry) {
         var updated = 0;
+        var isPullRequest = entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase);
+        var isIssue = entry.Kind.Equals("issue", StringComparison.OrdinalIgnoreCase);
 
         if (fields.TryGetValue("Triage Score", out var triageScoreField) && entry.TriageScore.HasValue) {
             await client.SetNumberFieldAsync(projectId, itemId, triageScoreField.Id, entry.TriageScore.Value).ConfigureAwait(false);
@@ -894,41 +936,61 @@ internal static class ProjectSyncRunner {
             updated++;
         }
 
-        if (fields.TryGetValue("Matched Issue", out var matchedIssueField) && !string.IsNullOrWhiteSpace(entry.MatchedIssueUrl)) {
-            await client.SetTextFieldAsync(projectId, itemId, matchedIssueField.Id, entry.MatchedIssueUrl).ConfigureAwait(false);
+        if (isPullRequest && fields.TryGetValue("Matched Issue", out var matchedIssueField)) {
+            if (!string.IsNullOrWhiteSpace(entry.MatchedIssueUrl)) {
+                await client.SetTextFieldAsync(projectId, itemId, matchedIssueField.Id, entry.MatchedIssueUrl).ConfigureAwait(false);
+            } else {
+                await client.ClearFieldAsync(projectId, itemId, matchedIssueField.Id).ConfigureAwait(false);
+            }
             updated++;
         }
 
-        if (fields.TryGetValue("Matched Issue Confidence", out var matchedIssueConfidenceField) && entry.MatchedIssueConfidence.HasValue) {
-            await client.SetNumberFieldAsync(projectId, itemId, matchedIssueConfidenceField.Id, entry.MatchedIssueConfidence.Value).ConfigureAwait(false);
+        if (isPullRequest && fields.TryGetValue("Matched Issue Confidence", out var matchedIssueConfidenceField)) {
+            if (entry.MatchedIssueConfidence.HasValue) {
+                await client.SetNumberFieldAsync(projectId, itemId, matchedIssueConfidenceField.Id, entry.MatchedIssueConfidence.Value).ConfigureAwait(false);
+            } else {
+                await client.ClearFieldAsync(projectId, itemId, matchedIssueConfidenceField.Id).ConfigureAwait(false);
+            }
             updated++;
         }
 
-        if (fields.TryGetValue("Related Issues", out var relatedIssuesField)) {
+        if (isPullRequest && fields.TryGetValue("Related Issues", out var relatedIssuesField)) {
             var relatedIssuesValue = BuildRelatedIssuesFieldValue(entry, maxIssues: 3);
             if (!string.IsNullOrWhiteSpace(relatedIssuesValue)) {
                 await client.SetTextFieldAsync(projectId, itemId, relatedIssuesField.Id, relatedIssuesValue).ConfigureAwait(false);
-                updated++;
+            } else {
+                await client.ClearFieldAsync(projectId, itemId, relatedIssuesField.Id).ConfigureAwait(false);
             }
-        }
-
-        if (fields.TryGetValue("Matched Pull Request", out var matchedPullRequestField) && !string.IsNullOrWhiteSpace(entry.MatchedPullRequestUrl)) {
-            await client.SetTextFieldAsync(projectId, itemId, matchedPullRequestField.Id, entry.MatchedPullRequestUrl).ConfigureAwait(false);
             updated++;
         }
 
-        if (fields.TryGetValue("Matched Pull Request Confidence", out var matchedPullRequestConfidenceField) &&
-            entry.MatchedPullRequestConfidence.HasValue) {
-            await client.SetNumberFieldAsync(projectId, itemId, matchedPullRequestConfidenceField.Id, entry.MatchedPullRequestConfidence.Value).ConfigureAwait(false);
+        if (isIssue && fields.TryGetValue("Matched Pull Request", out var matchedPullRequestField)) {
+            if (!string.IsNullOrWhiteSpace(entry.MatchedPullRequestUrl)) {
+                await client.SetTextFieldAsync(projectId, itemId, matchedPullRequestField.Id, entry.MatchedPullRequestUrl).ConfigureAwait(false);
+            } else {
+                await client.ClearFieldAsync(projectId, itemId, matchedPullRequestField.Id).ConfigureAwait(false);
+            }
             updated++;
         }
 
-        if (fields.TryGetValue("Related Pull Requests", out var relatedPullRequestsField)) {
+        if (isIssue &&
+            fields.TryGetValue("Matched Pull Request Confidence", out var matchedPullRequestConfidenceField)) {
+            if (entry.MatchedPullRequestConfidence.HasValue) {
+                await client.SetNumberFieldAsync(projectId, itemId, matchedPullRequestConfidenceField.Id, entry.MatchedPullRequestConfidence.Value).ConfigureAwait(false);
+            } else {
+                await client.ClearFieldAsync(projectId, itemId, matchedPullRequestConfidenceField.Id).ConfigureAwait(false);
+            }
+            updated++;
+        }
+
+        if (isIssue && fields.TryGetValue("Related Pull Requests", out var relatedPullRequestsField)) {
             var relatedPullRequestsValue = BuildRelatedPullRequestsFieldValue(entry, maxPullRequests: 3);
             if (!string.IsNullOrWhiteSpace(relatedPullRequestsValue)) {
                 await client.SetTextFieldAsync(projectId, itemId, relatedPullRequestsField.Id, relatedPullRequestsValue).ConfigureAwait(false);
-                updated++;
+            } else {
+                await client.ClearFieldAsync(projectId, itemId, relatedPullRequestsField.Id).ConfigureAwait(false);
             }
+            updated++;
         }
 
         if (fields.TryGetValue("Duplicate Cluster", out var duplicateField) && !string.IsNullOrWhiteSpace(entry.DuplicateCluster)) {
@@ -1210,6 +1272,25 @@ internal static class ProjectSyncRunner {
         }
 
         return comments;
+    }
+
+    internal static IReadOnlyList<int> BuildStaleSuggestionCommentTargets(
+        IReadOnlyList<ProjectSyncEntry> entries,
+        string kind,
+        IReadOnlyDictionary<int, string> activeComments) {
+        if (string.IsNullOrWhiteSpace(kind) || entries.Count == 0) {
+            return Array.Empty<int>();
+        }
+
+        var activeNumbers = new HashSet<int>(activeComments.Keys);
+        return entries
+            .Where(entry => entry.Number > 0 &&
+                            entry.Kind.Equals(kind, StringComparison.OrdinalIgnoreCase) &&
+                            !activeNumbers.Contains(entry.Number))
+            .Select(entry => entry.Number)
+            .Distinct()
+            .OrderBy(number => number)
+            .ToList();
     }
 
     internal static string? BuildIssueMatchSuggestionComment(ProjectSyncEntry entry, double minConfidence, int maxIssues) {
