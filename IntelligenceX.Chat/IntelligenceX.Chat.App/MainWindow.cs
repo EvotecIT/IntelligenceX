@@ -42,6 +42,8 @@ public sealed partial class MainWindow : Window {
     private const int MaxConversations = 40;
     private const int MaxMessagesPerConversation = 250;
     private const string DefaultConversationTitle = "New Chat";
+    private const string SystemConversationId = "chat-system";
+    private const string SystemConversationTitle = "System";
     private const string DefaultLocalModel = "gpt-5.3-codex";
     private const string TransportNative = "native";
     private const string TransportCompatibleHttp = "compatible-http";
@@ -213,6 +215,7 @@ public sealed partial class MainWindow : Window {
     private string? _activeRequestConversationId;
     private string _activeConversationId = "chat-default";
     private readonly List<ConversationRuntime> _conversations = new();
+    private readonly HashSet<string> _startupToolHealthWarningSignatures = new(StringComparer.OrdinalIgnoreCase);
     private List<(string Role, string Text, DateTime Time)> _messages = new();
     private readonly StringBuilder _assistantStreaming = new();
     private readonly SemaphoreSlim _transcriptRenderGate = new(1, 1);

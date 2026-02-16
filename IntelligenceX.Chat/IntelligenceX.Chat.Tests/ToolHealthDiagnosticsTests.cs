@@ -93,6 +93,19 @@ public sealed class ToolHealthDiagnosticsTests {
         Assert.Equal("tool_timeout", result.ErrorCode);
     }
 
+    [Fact]
+    public async Task ProbeAsync_DoesNotRunContractVerifySmoke_ForReviewerSetupPackInfo() {
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool("reviewer_setup_pack_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
+        registry.Register(new StubTool("reviewer_setup_contract_verify",
+            static (_, _) => Task.FromResult("""{"ok":false,"error_code":"invalid_argument","error":"autodetect_contract_version is required."}""")));
+
+        var result = await ToolHealthDiagnostics.ProbeAsync(registry, "reviewer_setup_pack_info", timeoutSeconds: 2, CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Null(result.ErrorCode);
+    }
+
     private sealed class StubTool : ITool {
         private readonly Func<JsonObject?, CancellationToken, Task<string>> _invoke;
 

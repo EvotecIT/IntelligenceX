@@ -43,6 +43,9 @@ public sealed partial class MainWindow : Window {
                     ThreadId = string.IsNullOrWhiteSpace(stored.ThreadId) ? null : stored.ThreadId.Trim(),
                     UpdatedUtc = EnsureUtc(stored.UpdatedUtc)
                 };
+                if (IsSystemConversation(conversation)) {
+                    conversation.Title = SystemConversationTitle;
+                }
 
                 if (stored.Messages is { Count: > 0 }) {
                     foreach (var message in stored.Messages) {
@@ -70,6 +73,9 @@ public sealed partial class MainWindow : Window {
                 }
 
                 conversation.Title = ComputeConversationTitle(conversation.Title, conversation.Messages);
+                if (IsSystemConversation(conversation)) {
+                    conversation.Title = SystemConversationTitle;
+                }
 
                 _conversations.Add(conversation);
             }
@@ -102,14 +108,14 @@ public sealed partial class MainWindow : Window {
             _conversations.Add(legacy);
         }
 
+        EnsureSystemConversation();
         if (_conversations.Count == 0) {
             _conversations.Add(CreateConversationRuntime(DefaultConversationTitle));
+            EnsureSystemConversation();
         }
 
-        _conversations.Sort(static (a, b) => b.UpdatedUtc.CompareTo(a.UpdatedUtc));
-        if (_conversations.Count > MaxConversations) {
-            _conversations.RemoveRange(MaxConversations, _conversations.Count - MaxConversations);
-        }
+        _conversations.Sort(CompareConversationsForDisplay);
+        TrimConversationsToLimit();
 
         return repaired;
     }
@@ -130,7 +136,14 @@ public sealed partial class MainWindow : Window {
             return requested;
         }
 
-        return _conversations[0].Id;
+        for (var i = 0; i < _conversations.Count; i++) {
+            var conversation = _conversations[i];
+            if (!IsSystemConversation(conversation)) {
+                return conversation.Id;
+            }
+        }
+
+        return EnsureSystemConversation().Id;
     }
 
     private ConversationRuntime CreateConversationRuntime(string? title = null) {
@@ -144,6 +157,63 @@ public sealed partial class MainWindow : Window {
 
     private static string BuildConversationId() {
         return "chat-" + Guid.NewGuid().ToString("N");
+    }
+
+    private static bool IsSystemConversationId(string? conversationId) {
+        return string.Equals(
+            (conversationId ?? string.Empty).Trim(),
+            SystemConversationId,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSystemConversation(ConversationRuntime? conversation) {
+        return conversation is not null && IsSystemConversationId(conversation.Id);
+    }
+
+    private static int CompareConversationsForDisplay(ConversationRuntime? left, ConversationRuntime? right) {
+        var leftIsSystem = IsSystemConversation(left);
+        var rightIsSystem = IsSystemConversation(right);
+        if (leftIsSystem != rightIsSystem) {
+            return leftIsSystem ? 1 : -1;
+        }
+
+        if (left is null && right is null) {
+            return 0;
+        }
+
+        if (left is null) {
+            return 1;
+        }
+
+        if (right is null) {
+            return -1;
+        }
+
+        return right.UpdatedUtc.CompareTo(left.UpdatedUtc);
+    }
+
+    private ConversationRuntime EnsureSystemConversation() {
+        for (var i = 0; i < _conversations.Count; i++) {
+            var existing = _conversations[i];
+            if (!IsSystemConversation(existing)) {
+                continue;
+            }
+
+            existing.Title = SystemConversationTitle;
+            if (existing.UpdatedUtc == default) {
+                existing.UpdatedUtc = DateTime.UtcNow;
+            }
+            return existing;
+        }
+
+        var conversation = new ConversationRuntime {
+            Id = SystemConversationId,
+            Title = SystemConversationTitle,
+            ThreadId = null,
+            UpdatedUtc = DateTime.UtcNow
+        };
+        _conversations.Add(conversation);
+        return conversation;
     }
 
     private ConversationRuntime? FindConversationById(string? conversationId) {
@@ -167,6 +237,7 @@ public sealed partial class MainWindow : Window {
             conversation = _conversations.Count > 0 ? _conversations[0] : CreateConversationRuntime(DefaultConversationTitle);
             if (_conversations.Count == 0) {
                 _conversations.Add(conversation);
+                EnsureSystemConversation();
             }
         }
 
@@ -183,6 +254,7 @@ public sealed partial class MainWindow : Window {
 
         var created = CreateConversationRuntime(DefaultConversationTitle);
         _conversations.Add(created);
+        EnsureSystemConversation();
         ActivateConversation(created.Id);
         return created;
     }
@@ -232,6 +304,10 @@ public sealed partial class MainWindow : Window {
         if (conversation is null) {
             return;
         }
+        if (IsSystemConversation(conversation)) {
+            await SetStatusAsync("System conversation title is fixed.", SessionStatusTone.Warn).ConfigureAwait(false);
+            return;
+        }
 
         var normalized = BuildConversationTitleFromText(title);
         if (string.IsNullOrWhiteSpace(normalized)) {
@@ -249,20 +325,31 @@ public sealed partial class MainWindow : Window {
         if (conversation is null) {
             return;
         }
+        if (IsSystemConversation(conversation)) {
+            await SetStatusAsync("System conversation cannot be deleted.", SessionStatusTone.Warn).ConfigureAwait(false);
+            return;
+        }
 
         if (_isSending && string.Equals(_activeRequestConversationId, conversation.Id, StringComparison.OrdinalIgnoreCase)) {
             await SetStatusAsync(SessionStatus.CannotDeleteActiveConversationDuringTurn()).ConfigureAwait(false);
             return;
         }
 
-        if (_conversations.Count <= 1) {
+        var nonSystemConversationCount = 0;
+        for (var i = 0; i < _conversations.Count; i++) {
+            if (!IsSystemConversation(_conversations[i])) {
+                nonSystemConversationCount++;
+            }
+        }
+
+        if (nonSystemConversationCount <= 1) {
             ClearConversation();
             return;
         }
 
         _conversations.Remove(conversation);
         if (string.Equals(_activeConversationId, conversation.Id, StringComparison.OrdinalIgnoreCase)) {
-            _conversations.Sort(static (a, b) => b.UpdatedUtc.CompareTo(a.UpdatedUtc));
+            _conversations.Sort(CompareConversationsForDisplay);
             var next = _conversations[0];
             ActivateConversation(next.Id);
             await RenderTranscriptAsync().ConfigureAwait(false);
@@ -277,23 +364,51 @@ public sealed partial class MainWindow : Window {
     }
 
     private void TrimConversationsToLimit() {
-        if (_conversations.Count <= MaxConversations) {
+        _conversations.Sort(CompareConversationsForDisplay);
+        EnsureSystemConversation();
+
+        var userConversationLimit = MaxConversations - 1;
+        if (userConversationLimit < 1) {
+            userConversationLimit = 1;
+        }
+
+        var userConversations = new List<ConversationRuntime>(_conversations.Count);
+        for (var i = 0; i < _conversations.Count; i++) {
+            var conversation = _conversations[i];
+            if (!IsSystemConversation(conversation)) {
+                userConversations.Add(conversation);
+            }
+        }
+
+        if (userConversations.Count <= userConversationLimit) {
             return;
         }
 
-        _conversations.Sort(static (a, b) => b.UpdatedUtc.CompareTo(a.UpdatedUtc));
-        while (_conversations.Count > MaxConversations) {
-            var idx = _conversations.Count - 1;
-            if (string.Equals(_conversations[idx].Id, _activeConversationId, StringComparison.OrdinalIgnoreCase) && idx > 0) {
-                idx--;
-            }
-            if (!string.IsNullOrWhiteSpace(_activeRequestConversationId)
-                && string.Equals(_conversations[idx].Id, _activeRequestConversationId, StringComparison.OrdinalIgnoreCase)
-                && idx > 0) {
-                idx--;
-            }
-            _conversations.RemoveAt(idx);
+        userConversations.Sort(CompareConversationsForDisplay);
+        var protectedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+            _activeConversationId,
+            SystemConversationId
+        };
+        if (!string.IsNullOrWhiteSpace(_activeRequestConversationId)) {
+            protectedIds.Add(_activeRequestConversationId);
         }
+
+        while (userConversations.Count > userConversationLimit) {
+            var removalIndex = userConversations.Count - 1;
+            while (removalIndex >= 0 && protectedIds.Contains(userConversations[removalIndex].Id)) {
+                removalIndex--;
+            }
+
+            if (removalIndex < 0) {
+                break;
+            }
+
+            var toRemove = userConversations[removalIndex];
+            userConversations.RemoveAt(removalIndex);
+            _conversations.Remove(toRemove);
+        }
+
+        _conversations.Sort(CompareConversationsForDisplay);
     }
 
     private static string ComputeConversationTitle(string currentTitle, List<(string Role, string Text, DateTime Time)> messages) {

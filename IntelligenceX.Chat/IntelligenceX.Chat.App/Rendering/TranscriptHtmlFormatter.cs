@@ -70,7 +70,7 @@ internal static class TranscriptHtmlFormatter {
                 bodyHtml = AppendPendingActionChips(bodyHtml, actionExtraction.Actions);
             }
             var bubbleClass = "bubble";
-            if (TryRenderAssistantOutcomeCallout(message.Role, normalizedText, markdownOptions, out var calloutHtml)) {
+            if (TryRenderOutcomeCallout(message.Role, normalizedText, markdownOptions, out var calloutHtml)) {
                 bodyHtml = calloutHtml;
                 bubbleClass = "bubble bubble-callout";
             }
@@ -102,13 +102,13 @@ internal static class TranscriptHtmlFormatter {
         return html.ToString();
     }
 
-    private static bool TryRenderAssistantOutcomeCallout(
+    private static bool TryRenderOutcomeCallout(
         string role,
         string text,
         MarkdownRendererOptions markdownOptions,
         out string html) {
         html = string.Empty;
-        if (!string.Equals(role, "Assistant", StringComparison.OrdinalIgnoreCase)) {
+        if (!IsOutcomeRole(role)) {
             return false;
         }
 
@@ -129,7 +129,7 @@ internal static class TranscriptHtmlFormatter {
         }
 
         var headline = headlineRaw.Length == 0
-            ? GetAssistantOutcomeDefaultTitle(kindRaw)
+            ? GetOutcomeDefaultTitle(kindRaw, role)
             : headlineRaw;
         var detail = raw[match.Length..].Trim();
         var toneClass = GetAssistantOutcomeToneClass(kindRaw);
@@ -165,18 +165,24 @@ internal static class TranscriptHtmlFormatter {
                || kind.Equals("warning", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string GetAssistantOutcomeDefaultTitle(string kind) {
+    private static bool IsOutcomeRole(string role) {
+        return string.Equals(role, "Assistant", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(role, "System", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetOutcomeDefaultTitle(string kind, string role) {
+        var isSystemRole = string.Equals(role, "System", StringComparison.OrdinalIgnoreCase);
         if (kind.Equals("canceled", StringComparison.OrdinalIgnoreCase)) {
-            return "Turn canceled";
+            return isSystemRole ? "System canceled" : "Turn canceled";
         }
         if (kind.Equals("limit", StringComparison.OrdinalIgnoreCase)) {
-            return "Limit reached";
+            return isSystemRole ? "System limit reached" : "Limit reached";
         }
         if (kind.Equals("warning", StringComparison.OrdinalIgnoreCase)) {
-            return "Warning";
+            return isSystemRole ? "System warning" : "Warning";
         }
 
-        return "Request failed";
+        return isSystemRole ? "System error" : "Request failed";
     }
 
     private static string GetAssistantOutcomeBadge(string kind) {

@@ -76,6 +76,24 @@ public sealed class TranscriptHtmlFormatterTests {
     }
 
     /// <summary>
+    /// Ensures system warnings use the same callout card styling as assistant outcomes.
+    /// </summary>
+    [Fact]
+    public void Format_RendersSystemWarningAsCalloutCard() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 2, 16, 18, 2, 0, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("System", "[warning] Tool health checks need attention\n\nFound 1 startup warning.", now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("msg-row system", html);
+        Assert.Contains("bubble bubble-callout", html);
+        Assert.Contains("outcome-card outcome-warn", html);
+        Assert.Contains("outcome-badge'>Warning</span>", html);
+        Assert.Contains("Tool health checks need attention", html);
+    }
+
+    /// <summary>
     /// Ensures transcript rendering normalizes common token-join artifacts before markdown conversion.
     /// </summary>
     [Fact]

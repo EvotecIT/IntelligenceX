@@ -493,6 +493,16 @@ body.options-open .options-panel {
   background: rgba(76, 195, 255, 0.14);
 }
 
+.options-conversation-item.system {
+  border-color: rgba(255, 206, 107, 0.56);
+  background: rgba(93, 64, 15, 0.32);
+}
+
+.options-conversation-item.system.active {
+  border-color: rgba(255, 206, 107, 0.74);
+  background: rgba(122, 84, 20, 0.34);
+}
+
 .options-conversation-actions {
   display: flex;
   align-items: center;

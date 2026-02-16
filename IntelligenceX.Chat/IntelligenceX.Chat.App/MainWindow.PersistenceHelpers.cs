@@ -219,14 +219,35 @@ public sealed partial class MainWindow : Window {
         }
 
         var ordered = new List<ConversationRuntime>(_conversations);
-        ordered.Sort(static (a, b) => b.UpdatedUtc.CompareTo(a.UpdatedUtc));
-        if (ordered.Count > MaxConversations) {
-            ordered.RemoveRange(MaxConversations, ordered.Count - MaxConversations);
+        ordered.Sort(CompareConversationsForDisplay);
+
+        var userConversationLimit = MaxConversations - 1;
+        if (userConversationLimit < 1) {
+            userConversationLimit = 1;
         }
 
-        var conversations = new List<ChatConversationState>(ordered.Count);
-        foreach (var conversation in ordered) {
-            var title = ComputeConversationTitle(conversation.Title, conversation.Messages);
+        var trimmed = new List<ConversationRuntime>(Math.Min(MaxConversations, ordered.Count));
+        var userCount = 0;
+        for (var i = 0; i < ordered.Count; i++) {
+            var conversation = ordered[i];
+            if (IsSystemConversation(conversation)) {
+                trimmed.Add(conversation);
+                continue;
+            }
+
+            if (userCount >= userConversationLimit) {
+                continue;
+            }
+
+            userCount++;
+            trimmed.Add(conversation);
+        }
+
+        var conversations = new List<ChatConversationState>(trimmed.Count);
+        foreach (var conversation in trimmed) {
+            var title = IsSystemConversation(conversation)
+                ? SystemConversationTitle
+                : ComputeConversationTitle(conversation.Title, conversation.Messages);
             var updatedUtc = conversation.UpdatedUtc == default
                 ? (conversation.Messages.Count > 0 ? conversation.Messages[^1].Time.ToUniversalTime() : DateTime.UtcNow)
                 : EnsureUtc(conversation.UpdatedUtc);

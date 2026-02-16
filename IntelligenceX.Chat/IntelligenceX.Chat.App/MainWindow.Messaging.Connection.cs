@@ -368,17 +368,31 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
+        var signature = string.Join("|", toolHealthWarnings.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase));
+        if (!_startupToolHealthWarningSignatures.Add(signature)) {
+            return;
+        }
+
         const int maxShown = 4;
         var shown = toolHealthWarnings.Length <= maxShown
             ? toolHealthWarnings
             : toolHealthWarnings.Take(maxShown).ToArray();
 
-        var summary = string.Join("; ", shown.Select(static warning => warning.Trim()));
-        if (toolHealthWarnings.Length > shown.Length) {
-            summary += $"; +{toolHealthWarnings.Length - shown.Length} more";
+        var lines = new List<string>(shown.Length + 5) {
+            "[warning] Tool health checks need attention",
+            string.Empty,
+            $"Found {toolHealthWarnings.Length} startup tool health warning(s):"
+        };
+        for (var i = 0; i < shown.Length; i++) {
+            lines.Add("- " + shown[i].Trim());
         }
+        if (toolHealthWarnings.Length > shown.Length) {
+            lines.Add($"- +{toolHealthWarnings.Length - shown.Length} more");
+        }
+        lines.Add(string.Empty);
+        lines.Add("Check the runtime policy panel for the full startup warning list.");
 
-        AppendSystem("[warning] " + summary);
+        AppendSystem(string.Join(Environment.NewLine, lines));
     }
 
 }
