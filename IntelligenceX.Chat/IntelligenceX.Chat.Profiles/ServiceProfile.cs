@@ -40,7 +40,7 @@ internal sealed class ServiceProfile {
     public List<string> PluginPaths { get; set; } = new();
 
     public string? InstructionsFile { get; set; }
-    public int MaxTableRows { get; set; } = 20;
-    public int MaxSample { get; set; } = 10;
+    public int MaxTableRows { get; set; }
+    public int MaxSample { get; set; }
     public bool Redact { get; set; }
 }

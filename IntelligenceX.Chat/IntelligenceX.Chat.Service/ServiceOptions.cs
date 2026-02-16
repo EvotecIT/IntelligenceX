@@ -48,8 +48,8 @@ internal sealed class ServiceOptions {
     public List<string> PluginPaths { get; } = new();
 
     public string? InstructionsFile { get; set; }
-    public int MaxTableRows { get; set; } = 20;
-    public int MaxSample { get; set; } = 10;
+    public int MaxTableRows { get; set; }
+    public int MaxSample { get; set; }
     public bool Redact { get; set; }
     public bool ExitOnDisconnect { get; set; }
     public int? ParentProcessId { get; set; }
@@ -424,8 +424,8 @@ internal sealed class ServiceOptions {
         Console.WriteLine("  --disable-testimox-pack Disable IX.TestimoX diagnostics tools.");
         Console.WriteLine("  --plugin-path <PATH>    Additional folder-based plugin path (repeatable).");
         Console.WriteLine("  --no-default-plugin-paths Disable default plugin paths (%LOCALAPPDATA% and app ./plugins).");
-        Console.WriteLine("  --max-table-rows <N>    Max rows to show in table-like output (0 = no limit; default: 20).");
-        Console.WriteLine("  --max-sample <N>        Max sample items to show from long lists (0 = no limit; default: 10).");
+        Console.WriteLine("  --max-table-rows <N>    Max rows to show in table-like output (0 = no limit; default: 0).");
+        Console.WriteLine("  --max-sample <N>        Max sample items to show from long lists (0 = no limit; default: 0).");
         Console.WriteLine("  --redact                Best-effort redact output for display/logging (default: off).");
         Console.WriteLine("  --exit-on-disconnect    Exit when parent app disconnects (runtime-managed mode).");
         Console.WriteLine("  --parent-pid <PID>      Parent process id used with --exit-on-disconnect.");

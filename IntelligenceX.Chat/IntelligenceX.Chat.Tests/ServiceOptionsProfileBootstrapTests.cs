@@ -10,6 +10,29 @@ namespace IntelligenceX.Chat.Tests;
 /// </summary>
 public sealed class ServiceOptionsProfileBootstrapTests {
     [Fact]
+    public void Parse_DefaultsToNoResponseShapingLimits() {
+        var options = ServiceOptions.Parse(Array.Empty<string>(), out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error));
+        Assert.Equal(0, options.MaxTableRows);
+        Assert.Equal(0, options.MaxSample);
+    }
+
+    [Fact]
+    public void Parse_AppliesExplicitResponseShapingOverrides() {
+        var options = ServiceOptions.Parse(new[] {
+            "--max-table-rows", "25",
+            "--max-sample", "12"
+        }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error));
+        Assert.Equal(25, options.MaxTableRows);
+        Assert.Equal(12, options.MaxSample);
+    }
+
+    [Fact]
     public void Parse_AllowsMissingProfile_WhenSaveProfileMatches() {
         var dbPath = Path.Combine(Path.GetTempPath(), "ix-chat-service-" + Guid.NewGuid().ToString("N") + ".db");
         try {
