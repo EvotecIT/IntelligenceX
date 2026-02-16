@@ -113,7 +113,7 @@ intelligencex todo project-init \
 Notes:
 - Creates a project (or initializes an existing one with `--project <n>`).
 - Can copy from a prepared template project with `--view-template-project <n>` to preserve saved GitHub views.
-- Ensures required custom fields such as `Vision Fit`, `Category`, `Tags`, `Matched Issue`, `Matched Issue Reason`, `Matched Pull Request`, `Matched Pull Request Reason`, `Triage Score`, `Duplicate Cluster`, and `IX Suggested Decision`.
+- Ensures required custom fields such as `Vision Fit`, `Category`, `Category Confidence`, `Tags`, `Tag Confidence Summary`, `Matched Issue`, `Matched Issue Reason`, `Matched Pull Request`, `Matched Pull Request Reason`, `Triage Score`, `Duplicate Cluster`, and `IX Suggested Decision`.
 - Ensures IX label taxonomy in the repo by default (`--no-ensure-labels` to skip).
 - Validates default IX view coverage by default (`--no-ensure-default-views` to skip).
 - Writes a reusable config file containing owner/project/field metadata.
@@ -149,6 +149,7 @@ Behavior:
 - `Maintainer Decision` remains human-owned for final triage decisions.
 - Unknown categories/tags are normalized into dynamic labels (for example `ML Ops` -> `ix/category:ml-ops`, `Release Candidate` -> `ix/tag:release-candidate`) and are auto-created when `--apply-labels --ensure-labels` is used.
 - Category/tag labels are confidence-gated for reliability: category labels require `categoryConfidence >= 0.62` and tag labels require `tagConfidences[tag] >= 0.60` when those confidence fields are present in triage output.
+- Category confidence and per-tag confidence summaries are synced into project fields (`Category Confidence`, `Tag Confidence Summary`) when triage confidence data is available.
 - `--apply-labels` performs managed IX label reconciliation: stale `ix/*` labels for managed families are removed while non-IX maintainer labels are preserved.
 - Issues also receive match taxonomy labels when PR->issue linking signals exist (`ix/match:linked-pr` or `ix/match:needs-review-pr`).
 - Match-related project fields (`Matched Issue*`, `Related Issues`, `Matched Pull Request*`, `Related Pull Requests`) are cleared when no longer present in current triage outputs to prevent stale project metadata.

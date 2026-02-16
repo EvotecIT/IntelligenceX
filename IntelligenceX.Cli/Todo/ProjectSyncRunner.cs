@@ -983,8 +983,27 @@ internal static class ProjectSyncRunner {
             }
         }
 
+        if (fields.TryGetValue("Category Confidence", out var categoryConfidenceField)) {
+            if (entry.CategoryConfidence.HasValue) {
+                await client.SetNumberFieldAsync(projectId, itemId, categoryConfidenceField.Id, entry.CategoryConfidence.Value).ConfigureAwait(false);
+            } else {
+                await client.ClearFieldAsync(projectId, itemId, categoryConfidenceField.Id).ConfigureAwait(false);
+            }
+            updated++;
+        }
+
         if (fields.TryGetValue("Tags", out var tagsField) && entry.Tags.Count > 0) {
             await client.SetTextFieldAsync(projectId, itemId, tagsField.Id, string.Join(", ", entry.Tags)).ConfigureAwait(false);
+            updated++;
+        }
+
+        if (fields.TryGetValue("Tag Confidence Summary", out var tagConfidenceSummaryField)) {
+            var tagConfidenceSummary = BuildTagConfidenceSummaryFieldValue(entry, maxTags: 10);
+            if (!string.IsNullOrWhiteSpace(tagConfidenceSummary)) {
+                await client.SetTextFieldAsync(projectId, itemId, tagConfidenceSummaryField.Id, tagConfidenceSummary).ConfigureAwait(false);
+            } else {
+                await client.ClearFieldAsync(projectId, itemId, tagConfidenceSummaryField.Id).ConfigureAwait(false);
+            }
             updated++;
         }
 
@@ -1257,6 +1276,43 @@ internal static class ProjectSyncRunner {
         }
 
         return NormalizeCommentReason(reason);
+    }
+
+    internal static string BuildTagConfidenceSummaryFieldValue(ProjectSyncEntry entry, int maxTags) {
+        var limit = Math.Max(1, Math.Min(maxTags, 20));
+        if (entry.TagConfidences is null || entry.TagConfidences.Count == 0) {
+            return string.Empty;
+        }
+
+        var normalized = entry.TagConfidences
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Key))
+            .Select(pair => new KeyValuePair<string, double>(pair.Key.Trim(), Math.Clamp(pair.Value, 0, 1)))
+            .ToList();
+        if (normalized.Count == 0) {
+            return string.Empty;
+        }
+
+        var tagSet = entry.Tags
+            .Where(tag => !string.IsNullOrWhiteSpace(tag))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var selected = tagSet.Count > 0
+            ? normalized.Where(pair => tagSet.Contains(pair.Key)).ToList()
+            : normalized;
+        if (selected.Count == 0) {
+            selected = normalized;
+        }
+
+        var summaryLines = selected
+            .OrderByDescending(pair => pair.Value)
+            .ThenBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+            .Take(limit)
+            .Select(pair => $"{pair.Key}: {pair.Value.ToString("0.00", CultureInfo.InvariantCulture)}")
+            .ToList();
+        if (summaryLines.Count == 0) {
+            return string.Empty;
+        }
+
+        return string.Join(Environment.NewLine, summaryLines);
     }
 
     internal static string BuildRelatedPullRequestsFieldValue(ProjectSyncEntry entry, int maxPullRequests) {

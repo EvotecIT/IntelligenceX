@@ -27,7 +27,9 @@ internal static class ProjectFieldCatalog {
             "testing",
             "ci"
         }),
+        new ProjectFieldDefinition("Category Confidence", "NUMBER", Array.Empty<string>()),
         new ProjectFieldDefinition("Tags", "TEXT", Array.Empty<string>()),
+        new ProjectFieldDefinition("Tag Confidence Summary", "TEXT", Array.Empty<string>()),
         new ProjectFieldDefinition("Matched Issue", "TEXT", Array.Empty<string>()),
         new ProjectFieldDefinition("Matched Issue Confidence", "NUMBER", Array.Empty<string>()),
         new ProjectFieldDefinition("Matched Issue Reason", "TEXT", Array.Empty<string>()),
