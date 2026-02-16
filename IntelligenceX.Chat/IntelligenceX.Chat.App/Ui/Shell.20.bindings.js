@@ -101,9 +101,10 @@
     });
 
     dragBar.addEventListener("dblclick", function(e) {
-      if (isNoDragTarget(e.target)) {
+      if (e.button !== 0 || isNoDragTarget(e.target)) {
         return;
       }
+      e.preventDefault();
       post("window_maximize");
     });
   }
