@@ -12,6 +12,8 @@ namespace IntelligenceX.Cli.Todo;
 internal static class ProjectSyncRunner {
     private const double HighConfidenceIssueMatchLabelThreshold = 0.80;
     private const double HighConfidencePullRequestMatchLabelThreshold = 0.80;
+    private const double CategoryLabelConfidenceThreshold = 0.62;
+    private const double TagLabelConfidenceThreshold = 0.60;
     private const double DefaultIssueCommentMinConfidence = 0.55;
     private const double RejectVisionConfidenceThreshold = 0.70;
     private const double AcceptVisionConfidenceThreshold = 0.68;
@@ -58,7 +60,9 @@ internal static class ProjectSyncRunner {
         double? MatchedPullRequestConfidence = null,
         string? MatchedPullRequestReason = null,
         IReadOnlyList<RelatedPullRequestCandidate>? RelatedPullRequests = null,
-        IReadOnlyList<string>? ExistingLabels = null
+        IReadOnlyList<string>? ExistingLabels = null,
+        double? CategoryConfidence = null,
+        IReadOnlyDictionary<string, double>? TagConfidences = null
     );
 
     private sealed class Options {
@@ -150,9 +154,10 @@ internal static class ProjectSyncRunner {
 
         if (options.ApplyLabels && options.EnsureLabels && !options.DryRun) {
             try {
+                var (categoryLabels, tagLabels) = BuildLabelTaxonomyForEntries(entries);
                 var labelsToEnsure = ProjectLabelCatalog.BuildEnsureLabelCatalog(
-                    entries.Select(entry => entry.Category),
-                    entries.SelectMany(entry => entry.Tags));
+                    categoryLabels,
+                    tagLabels);
                 await RepositoryLabelManager.EnsureLabelsAsync(options.Repo, labelsToEnsure).ConfigureAwait(false);
             } catch (Exception ex) {
                 Console.Error.WriteLine($"Failed to ensure labels before apply-labels: {ex.Message}");
@@ -532,7 +537,9 @@ internal static class ProjectSyncRunner {
                 var triageScore = ReadNullableDouble(item, "score");
                 var duplicateClusterId = ReadNullableString(item, "duplicateClusterId");
                 var category = ReadNullableString(item, "category");
+                var categoryConfidence = ReadNullableDouble(item, "categoryConfidence");
                 var tags = ReadStringArray(item, "tags");
+                var tagConfidences = ReadStringDoubleMap(item, "tagConfidences");
                 var existingLabels = ReadStringArray(item, "labels");
                 var matchedIssueUrl = ReadNullableString(item, "matchedIssueUrl");
                 var matchedIssueConfidence = ReadNullableDouble(item, "matchedIssueConfidence");
@@ -614,7 +621,9 @@ internal static class ProjectSyncRunner {
                     MatchedPullRequestConfidence: matchedPullRequestConfidence,
                     MatchedPullRequestReason: matchedPullRequestReason,
                     RelatedPullRequests: relatedPullRequests,
-                    ExistingLabels: existingLabels
+                    ExistingLabels: existingLabels,
+                    CategoryConfidence: categoryConfidence,
+                    TagConfidences: tagConfidences
                 );
             }
         }
@@ -1107,12 +1116,14 @@ internal static class ProjectSyncRunner {
         var isPullRequest = entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase);
         var isIssue = entry.Kind.Equals("issue", StringComparison.OrdinalIgnoreCase);
 
-        if (ProjectLabelCatalog.TryMapCategoryLabel(entry.Category ?? string.Empty, out var categoryLabel)) {
+        if (ShouldApplyCategoryLabel(entry) &&
+            ProjectLabelCatalog.TryMapCategoryLabel(entry.Category ?? string.Empty, out var categoryLabel)) {
             labels.Add(categoryLabel);
         }
 
         foreach (var tag in entry.Tags) {
-            if (ProjectLabelCatalog.TryMapTagLabel(tag, out var tagLabel)) {
+            if (ShouldApplyTagLabel(entry, tag) &&
+                ProjectLabelCatalog.TryMapTagLabel(tag, out var tagLabel)) {
                 labels.Add(tagLabel);
             }
         }
@@ -1177,6 +1188,51 @@ internal static class ProjectSyncRunner {
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(label => label, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static bool ShouldApplyCategoryLabel(ProjectSyncEntry entry) {
+        if (!entry.CategoryConfidence.HasValue) {
+            // Backward-compatible default for legacy triage artifacts without confidence fields.
+            return true;
+        }
+
+        return entry.CategoryConfidence.Value >= CategoryLabelConfidenceThreshold;
+    }
+
+    private static bool ShouldApplyTagLabel(ProjectSyncEntry entry, string tag) {
+        if (string.IsNullOrWhiteSpace(tag)) {
+            return false;
+        }
+
+        if (entry.TagConfidences is null ||
+            !entry.TagConfidences.TryGetValue(tag, out var confidence)) {
+            // Backward-compatible default for legacy triage artifacts without confidence fields.
+            return true;
+        }
+
+        return confidence >= TagLabelConfidenceThreshold;
+    }
+
+    private static (IReadOnlyList<string> Categories, IReadOnlyList<string> Tags) BuildLabelTaxonomyForEntries(
+        IReadOnlyList<ProjectSyncEntry> entries) {
+        var categories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var tags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries) {
+            foreach (var label in BuildLabelsForEntry(entry)) {
+                if (label.StartsWith("ix/category:", StringComparison.OrdinalIgnoreCase)) {
+                    categories.Add(label["ix/category:".Length..]);
+                    continue;
+                }
+
+                if (label.StartsWith("ix/tag:", StringComparison.OrdinalIgnoreCase)) {
+                    tags.Add(label["ix/tag:".Length..]);
+                }
+            }
+        }
+
+        return (
+            categories.OrderBy(value => value, StringComparer.OrdinalIgnoreCase).ToList(),
+            tags.OrderBy(value => value, StringComparer.OrdinalIgnoreCase).ToList());
     }
 
     internal static string BuildRelatedIssuesFieldValue(ProjectSyncEntry entry, int maxIssues) {
@@ -1748,6 +1804,29 @@ internal static class ProjectSyncRunner {
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static IReadOnlyDictionary<string, double> ReadStringDoubleMap(JsonElement obj, string name) {
+        if (!TryGetProperty(obj, name, out var prop) || prop.ValueKind != JsonValueKind.Object) {
+            return new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var values = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in prop.EnumerateObject()) {
+            var key = property.Name?.Trim();
+            if (string.IsNullOrWhiteSpace(key)) {
+                continue;
+            }
+
+            if (property.Value.ValueKind != JsonValueKind.Number ||
+                !property.Value.TryGetDouble(out var confidence)) {
+                continue;
+            }
+
+            values[key] = Math.Clamp(confidence, 0, 1);
+        }
+
+        return values;
     }
 
     private static int ReadInt(JsonElement obj, string name) {

@@ -455,6 +455,7 @@ internal static partial class Program {
         failed += Run("Todo triage index issue-PR direct match", TestTriageIndexMatchIssueToPullRequestsSupportsDirectPullRequestReference);
         failed += Run("Todo triage index issue-PR URL match", TestTriageIndexMatchIssueToPullRequestsSupportsPullRequestUrlReference);
         failed += Run("Todo triage index category/tag inference", TestTriageIndexInferCategoryAndTagsDetectsSecurity);
+        failed += Run("Todo triage index category/tag confidence inference", TestTriageIndexInferCategoryAndTagsWithConfidenceUsesEvidenceStrength);
         failed += Run("Todo vision check out-of-scope classification", TestVisionCheckClassifiesOutOfScopeWhenOutTokensDominate);
         failed += Run("Todo vision check aligned classification", TestVisionCheckClassifiesAlignedWhenInTokensMatch);
         failed += Run("Todo vision check explicit reject policy precedence", TestVisionCheckExplicitRejectPolicyTakesPrecedence);
@@ -479,8 +480,10 @@ internal static partial class Program {
         failed += Run("Todo project view apply markdown includes missing views and platform note", TestProjectViewApplyMarkdownIncludesMissingViewsAndPlatformNote);
         failed += Run("Todo project view apply markdown all views present shows completed checklist", TestProjectViewApplyMarkdownAllViewsPresentShowsCompletedChecklist);
         failed += Run("Todo project sync merges vision and canonical", TestProjectSyncBuildEntriesMergesVisionAndCanonical);
+        failed += Run("Todo project sync parses category/tag confidence fields", TestProjectSyncBuildEntriesParsesCategoryAndTagConfidences);
         failed += Run("Todo project sync labels include tags and high-confidence match", TestProjectSyncBuildLabelsIncludesTagsAndHighConfidenceIssueMatch);
         failed += Run("Todo project sync labels normalize dynamic category and tags", TestProjectSyncBuildLabelsNormalizesDynamicCategoryAndTags);
+        failed += Run("Todo project sync labels skip low-confidence category/tags", TestProjectSyncBuildLabelsSkipsLowConfidenceCategoryAndTags);
         failed += Run("Todo project sync labels mark low-confidence match for review", TestProjectSyncBuildLabelsUsesNeedsReviewForLowConfidenceIssueMatch);
         failed += Run("Todo project sync labels use related-issue fallback", TestProjectSyncBuildLabelsUsesRelatedIssueFallbackWhenMatchedIssueMissing);
         failed += Run("Todo project sync labels issue pull-request matches", TestProjectSyncBuildLabelsUsesIssuePullRequestMatchSignals);

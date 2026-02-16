@@ -172,7 +172,9 @@ internal static class TriageIndexRunner {
 
     internal sealed record ItemEnrichment(
         string Category,
+        double CategoryConfidence,
         IReadOnlyList<string> Tags,
+        IReadOnlyDictionary<string, double> TagConfidences,
         string? MatchedIssueUrl,
         double? MatchedIssueConfidence,
         IReadOnlyList<RelatedIssueCandidate> RelatedIssues,
@@ -613,7 +615,7 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
         var rawIssueByNumber = issues.ToDictionary(issue => issue.Number);
 
         foreach (var item in items) {
-            var (category, tags) = InferCategoryAndTags(item);
+            var inference = InferCategoryAndTagsWithConfidence(item);
 
             IReadOnlyList<RelatedIssueCandidate> relatedIssues = Array.Empty<RelatedIssueCandidate>();
             IReadOnlyList<RelatedPullRequestCandidate> relatedPullRequests = Array.Empty<RelatedPullRequestCandidate>();
@@ -647,8 +649,10 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
             }
 
             enrichments[item.Id] = new ItemEnrichment(
-                Category: category,
-                Tags: tags,
+                Category: inference.Category,
+                CategoryConfidence: inference.CategoryConfidence,
+                Tags: inference.Tags,
+                TagConfidences: inference.TagConfidences,
                 MatchedIssueUrl: matchedIssueUrl,
                 MatchedIssueConfidence: matchedIssueConfidence,
                 RelatedIssues: relatedIssues,
@@ -661,8 +665,22 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
         return enrichments;
     }
 
+    internal sealed record CategoryTagInference(
+        string Category,
+        double CategoryConfidence,
+        IReadOnlyList<string> Tags,
+        IReadOnlyDictionary<string, double> TagConfidences
+    );
+
     internal static (string Category, IReadOnlyList<string> Tags) InferCategoryAndTags(TriageIndexItem item) {
+        var inference = InferCategoryAndTagsWithConfidence(item);
+        return (inference.Category, inference.Tags);
+    }
+
+    internal static CategoryTagInference InferCategoryAndTagsWithConfidence(TriageIndexItem item) {
         var tokens = new HashSet<string>(item.ContextTokens, StringComparer.OrdinalIgnoreCase);
+        var titleTokens = new HashSet<string>(item.TitleTokens, StringComparer.OrdinalIgnoreCase);
+        var labelTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var token in item.TitleTokens) {
             tokens.Add(token);
         }
@@ -670,25 +688,51 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
         foreach (var label in item.Labels) {
             foreach (var token in Tokenize(label)) {
                 tokens.Add(token);
+                labelTokens.Add(token);
             }
         }
 
-        bool HasAny(params string[] candidates) {
+        static int CountMatches(HashSet<string> source, IReadOnlyList<string> candidates) {
+            var matches = 0;
             foreach (var candidate in candidates) {
-                if (tokens.Contains(candidate)) {
-                    return true;
+                if (source.Contains(candidate)) {
+                    matches++;
                 }
             }
-            return false;
+            return matches;
         }
 
-        var isSecurity = HasAny("security", "vulnerability", "vulnerabilities", "auth", "authorization", "xss", "injection", "cve", "secret", "secrets");
-        var isBug = HasAny("bug", "bugs", "error", "errors", "failure", "failures", "exception", "exceptions", "crash", "regression", "defect", "defects");
-        var isPerformance = HasAny("performance", "perf", "latency", "throughput", "memory", "cpu");
-        var isDocs = HasAny("docs", "doc", "documentation", "readme", "wiki", "changelog");
-        var isTesting = HasAny("test", "tests", "testing", "unittest", "integration", "e2e");
-        var isCi = HasAny("ci", "pipeline", "workflows", "workflow", "actions", "github", "build");
-        var isMaintenance = HasAny("refactor", "cleanup", "chore", "maintenance", "bump", "upgrade", "dependency", "dependencies", "deps");
+        var securityTokens = new[] { "security", "vulnerability", "vulnerabilities", "auth", "authorization", "xss", "injection", "cve", "secret", "secrets" };
+        var bugTokens = new[] { "bug", "bugs", "error", "errors", "failure", "failures", "exception", "exceptions", "crash", "regression", "defect", "defects" };
+        var performanceTokens = new[] { "performance", "perf", "latency", "throughput", "memory", "cpu" };
+        var docsTokens = new[] { "docs", "doc", "documentation", "readme", "wiki", "changelog" };
+        var testingTokens = new[] { "test", "tests", "testing", "unittest", "integration", "e2e" };
+        var ciTokens = new[] { "ci", "pipeline", "workflows", "workflow", "actions", "github", "build" };
+        var maintenanceTokens = new[] { "refactor", "cleanup", "chore", "maintenance", "bump", "upgrade", "dependency", "dependencies", "deps" };
+        var featureTokens = new[] { "feature", "features", "enhancement", "enhancements" };
+        var apiTokens = new[] { "api", "apis" };
+        var uxTokens = new[] { "ui", "ux", "frontend", "website" };
+        var dependencyTokens = new[] { "dependency", "dependencies", "deps", "nuget", "package", "packages" };
+
+        var securityMatches = CountMatches(tokens, securityTokens);
+        var bugMatches = CountMatches(tokens, bugTokens);
+        var performanceMatches = CountMatches(tokens, performanceTokens);
+        var docsMatches = CountMatches(tokens, docsTokens);
+        var testingMatches = CountMatches(tokens, testingTokens);
+        var ciMatches = CountMatches(tokens, ciTokens);
+        var maintenanceMatches = CountMatches(tokens, maintenanceTokens);
+        var featureMatches = CountMatches(tokens, featureTokens);
+        var apiMatches = CountMatches(tokens, apiTokens);
+        var uxMatches = CountMatches(tokens, uxTokens);
+        var dependencyMatches = CountMatches(tokens, dependencyTokens);
+
+        var isSecurity = securityMatches > 0;
+        var isBug = bugMatches > 0;
+        var isPerformance = performanceMatches > 0;
+        var isDocs = docsMatches > 0;
+        var isTesting = testingMatches > 0;
+        var isCi = ciMatches > 0;
+        var isMaintenance = maintenanceMatches > 0;
 
         var category = isSecurity ? "security"
             : isBug ? "bug"
@@ -697,50 +741,125 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
             : isTesting ? "testing"
             : isCi ? "ci"
             : isMaintenance ? "maintenance"
+            : featureMatches > 0 ? "feature"
             : "feature";
 
-        var tags = new List<string>();
-        if (isSecurity) {
-            tags.Add("security");
-        }
-        if (isBug) {
-            tags.Add("bugfix");
-        }
-        if (isPerformance) {
-            tags.Add("performance");
-        }
-        if (isDocs) {
-            tags.Add("docs");
-        }
-        if (isTesting) {
-            tags.Add("testing");
-        }
-        if (isCi) {
-            tags.Add("ci");
-        }
-        if (isMaintenance) {
-            tags.Add("maintenance");
-        }
-        if (HasAny("api", "apis")) {
-            tags.Add("api");
-        }
-        if (HasAny("ui", "ux", "frontend", "website")) {
-            tags.Add("ux");
-        }
-        if (HasAny("dependency", "dependencies", "deps", "nuget", "package", "packages")) {
-            tags.Add("dependencies");
-        }
-        if (tags.Count == 0) {
-            tags.Add(category);
+        double ComputeConfidence(int matchCount, bool hasLabelEvidence, bool hasTitleEvidence, double baseConfidence) {
+            var confidence = baseConfidence;
+            if (matchCount > 0) {
+                confidence += 0.08;
+                confidence += Math.Min(0.16, (matchCount - 1) * 0.04);
+            }
+            if (hasLabelEvidence) {
+                confidence += 0.10;
+            }
+            if (hasTitleEvidence) {
+                confidence += 0.07;
+            }
+
+            return Math.Round(Math.Clamp(confidence, 0.35, 0.98), 2, MidpointRounding.AwayFromZero);
         }
 
-        return (
+        int ResolveCategoryMatches() {
+            return category switch {
+                "security" => securityMatches,
+                "bug" => bugMatches,
+                "performance" => performanceMatches,
+                "documentation" => docsMatches,
+                "testing" => testingMatches,
+                "ci" => ciMatches,
+                "maintenance" => maintenanceMatches,
+                _ => featureMatches
+            };
+        }
+
+        IReadOnlyList<string> ResolveCategoryCandidates() {
+            return category switch {
+                "security" => securityTokens,
+                "bug" => bugTokens,
+                "performance" => performanceTokens,
+                "documentation" => docsTokens,
+                "testing" => testingTokens,
+                "ci" => ciTokens,
+                "maintenance" => maintenanceTokens,
+                _ => featureTokens
+            };
+        }
+
+        var categoryCandidates = ResolveCategoryCandidates();
+        var categoryConfidence = ComputeConfidence(
+            ResolveCategoryMatches(),
+            CountMatches(labelTokens, categoryCandidates) > 0,
+            CountMatches(titleTokens, categoryCandidates) > 0,
+            category.Equals("feature", StringComparison.OrdinalIgnoreCase) ? 0.48 : 0.60);
+
+        var tags = new List<string>();
+        var tagConfidenceByName = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        void AddTag(string tag, int matchCount, IReadOnlyList<string> evidenceTokens, double baseConfidence) {
+            tags.Add(tag);
+            var confidence = ComputeConfidence(
+                matchCount,
+                CountMatches(labelTokens, evidenceTokens) > 0,
+                CountMatches(titleTokens, evidenceTokens) > 0,
+                baseConfidence);
+
+            if (tagConfidenceByName.TryGetValue(tag, out var existing)) {
+                tagConfidenceByName[tag] = Math.Max(existing, confidence);
+            } else {
+                tagConfidenceByName[tag] = confidence;
+            }
+        }
+
+        if (isSecurity) {
+            AddTag("security", securityMatches, securityTokens, 0.58);
+        }
+        if (isBug) {
+            AddTag("bugfix", bugMatches, bugTokens, 0.58);
+        }
+        if (isPerformance) {
+            AddTag("performance", performanceMatches, performanceTokens, 0.58);
+        }
+        if (isDocs) {
+            AddTag("docs", docsMatches, docsTokens, 0.58);
+        }
+        if (isTesting) {
+            AddTag("testing", testingMatches, testingTokens, 0.58);
+        }
+        if (isCi) {
+            AddTag("ci", ciMatches, ciTokens, 0.58);
+        }
+        if (isMaintenance) {
+            AddTag("maintenance", maintenanceMatches, maintenanceTokens, 0.58);
+        }
+        if (apiMatches > 0) {
+            AddTag("api", apiMatches, apiTokens, 0.56);
+        }
+        if (uxMatches > 0) {
+            AddTag("ux", uxMatches, uxTokens, 0.56);
+        }
+        if (dependencyMatches > 0) {
+            AddTag("dependencies", dependencyMatches, dependencyTokens, 0.56);
+        }
+        if (tags.Count == 0) {
+            AddTag(category, ResolveCategoryMatches(), categoryCandidates, Math.Max(0.44, categoryConfidence - 0.08));
+        }
+
+        var normalizedTags = tags
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase)
+            .Take(8)
+            .ToList();
+        var normalizedTagConfidences = normalizedTags
+            .ToDictionary(
+                tag => tag,
+                tag => tagConfidenceByName.TryGetValue(tag, out var confidence) ? confidence : 0.50,
+                StringComparer.OrdinalIgnoreCase);
+
+        return new CategoryTagInference(
             Category: category,
-            Tags: tags
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase)
-                .Take(8)
-                .ToList()
+            CategoryConfidence: categoryConfidence,
+            Tags: normalizedTags,
+            TagConfidences: normalizedTagConfidences
         );
     }
 
@@ -1442,7 +1561,9 @@ query($owner: String!, $name: String!, $n: Int!, $cursor: String) {
                     dedupeKey = string.Join("-", item.Item.TitleTokens.Take(8)),
                     duplicateClusterId = item.DuplicateClusterId,
                     category = enrichment?.Category,
+                    categoryConfidence = enrichment?.CategoryConfidence,
                     tags = enrichment?.Tags ?? Array.Empty<string>(),
+                    tagConfidences = enrichment?.TagConfidences ?? new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
                     matchedIssueUrl = enrichment?.MatchedIssueUrl,
                     matchedIssueConfidence = enrichment?.MatchedIssueConfidence,
                     matchedPullRequestUrl = enrichment?.MatchedPullRequestUrl,
