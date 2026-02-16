@@ -439,5 +439,80 @@ internal static partial class Program {
             }
         }
     }
+
+    private static void TestVisionCheckRejectsMalformedDriftThresholds() {
+        var tempDir = Path.Combine(Path.GetTempPath(), "ix-vision-drift-threshold-parse-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try {
+            var visionPath = Path.Combine(tempDir, "VISION.md");
+            var indexPath = Path.Combine(tempDir, "ix-triage-index.json");
+            var visionContent = string.Join('\n', new[] {
+                "# Vision",
+                string.Empty,
+                "## Goals",
+                "- Keep delivery quality high",
+                string.Empty,
+                "## Non-Goals",
+                "- Build large marketing campaigns",
+                string.Empty,
+                "## In Scope",
+                "- API stability and security hardening",
+                string.Empty,
+                "## Out Of Scope",
+                "- Marketing redesign campaigns",
+                string.Empty,
+                "## Decision Principles",
+                "- aligned: security hardening",
+                "- likely-out-of-scope: marketing redesign",
+                "- needs-human-review: migration rollout"
+            }) + "\n";
+            File.WriteAllText(visionPath, visionContent);
+
+            var indexJson = """
+{
+  "items": [
+    {
+      "kind": "pull_request",
+      "id": "pr#202",
+      "number": 202,
+      "title": "Marketing redesign and campaign refresh",
+      "url": "https://example/pr/202",
+      "score": 22.4,
+      "labels": [ "marketing" ]
+    }
+  ]
+}
+""";
+            File.WriteAllText(indexPath, indexJson);
+
+            var malformedThresholds = new[] { "0,70", "1,000", "1.20" };
+            for (var i = 0; i < malformedThresholds.Length; i++) {
+                var threshold = malformedThresholds[i];
+                var outputPath = Path.Combine(tempDir, $"ix-vision-check-invalid-{i}.json");
+                var summaryPath = Path.Combine(tempDir, $"ix-vision-check-invalid-{i}.md");
+                var exitCode = IntelligenceX.Cli.Todo.VisionCheckRunner.RunAsync(new[] {
+                    "--repo", "EvotecIT/IntelligenceX",
+                    "--vision", visionPath,
+                    "--no-refresh-index",
+                    "--index", indexPath,
+                    "--fail-on-drift",
+                    "--drift-threshold", threshold,
+                    "--out", outputPath,
+                    "--summary", summaryPath
+                }).GetAwaiter().GetResult();
+
+                AssertEqual(0, exitCode, $"invalid threshold {threshold} should route to help flow");
+                AssertEqual(false, File.Exists(outputPath), $"invalid threshold {threshold} should not produce json output");
+                AssertEqual(false, File.Exists(summaryPath), $"invalid threshold {threshold} should not produce markdown output");
+            }
+        } finally {
+            try {
+                Directory.Delete(tempDir, recursive: true);
+            } catch {
+                // best effort
+            }
+        }
+    }
 #endif
 }

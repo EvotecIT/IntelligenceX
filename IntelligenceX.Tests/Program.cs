@@ -464,6 +464,7 @@ internal static partial class Program {
         failed += Run("Todo vision check missing required section", TestVisionCheckParseDocumentReportsMissingRequiredSection);
         failed += Run("Todo vision check enforce contract exits non-zero", TestVisionCheckRunFailsOnContractWhenEnforced);
         failed += Run("Todo vision check fail on drift exits non-zero", TestVisionCheckRunFailsOnHighConfidenceDrift);
+        failed += Run("Todo vision check rejects malformed drift thresholds", TestVisionCheckRejectsMalformedDriftThresholds);
         failed += Run("Todo project fields defaults", TestProjectFieldCatalogDefaultsIncludeVisionAndDecisionFields);
         failed += Run("Todo project labels include decision taxonomy", TestProjectLabelCatalogDefaultsIncludeDecisionLabels);
         failed += Run("Todo project labels include dynamic category and tag taxonomy", TestProjectLabelCatalogBuildEnsureCatalogIncludesDynamicCategoryAndTags);

@@ -272,9 +272,8 @@ internal static class VisionCheckRunner {
                     options.FailOnDrift = false;
                     break;
                 case "--drift-threshold":
-                    if (i + 1 < args.Length &&
-                        double.TryParse(args[++i], NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var driftThreshold)) {
-                        options.DriftThreshold = Math.Clamp(driftThreshold, 0.0, 1.0);
+                    if (i + 1 < args.Length && TryParseDriftThreshold(args[++i], out var driftThreshold)) {
+                        options.DriftThreshold = driftThreshold;
                     } else {
                         Console.Error.WriteLine("Invalid --drift-threshold value. Expected a number between 0 and 1.");
                         options.ShowHelp = true;
@@ -313,6 +312,24 @@ internal static class VisionCheckRunner {
         Console.WriteLine("  --drift-threshold <0-1>     Drift fail threshold (default: 0.70)");
         Console.WriteLine("  --out <path>                JSON output path (default: artifacts/triage/ix-vision-check.json)");
         Console.WriteLine("  --summary <path>            Markdown summary path (default: artifacts/triage/ix-vision-check.md)");
+    }
+
+    private static bool TryParseDriftThreshold(string input, out double threshold) {
+        threshold = 0;
+        if (!double.TryParse(input, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var parsed)) {
+            return false;
+        }
+
+        if (double.IsNaN(parsed) || double.IsInfinity(parsed)) {
+            return false;
+        }
+
+        if (parsed < 0.0 || parsed > 1.0) {
+            return false;
+        }
+
+        threshold = parsed;
+        return true;
     }
 
     internal static VisionSignals ParseVisionSignals(string visionPath) {
