@@ -65,7 +65,7 @@ internal static class TranscriptMarkdownNormalizer {
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex CollapsedOrderedListAfterParenRegex = new(
-        @"(?<=\))[ \t]+(?=\d+\.\s*(?:\^\s*)?\S)",
+        @"(?<=\))[ \t]+(?=\d+\.(?:\^\s*|\s+)\S)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex OrderedListCaretRegex = new(
