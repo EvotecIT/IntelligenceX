@@ -91,6 +91,9 @@ When an agent is assigned a PR to improve or unblock, it must iterate until merg
 - For pending-action and execution-contract decisions, prefer structured protocol fields (for example `ix_action_selection.mutating` and `ix:action:v1` `mutating: true|false`) over lexical inference from free text.
 - If provider interoperability requires message-text matching, keep it as a structured-first fallback and do not reuse it for chat routing/confirmation logic.
 - When changing Chat routing/safety logic, add or update tests that prove the behavior is language-agnostic.
+- Keep `plan -> execute -> review` quality loops language-neutral too: review eligibility must use structure/shape signals (length, turn state, tool activity), not word lists.
+- Preserve progress transparency for long turns: emit phase/status updates (including heartbeats for long model phases) instead of adding blocking confirmation gates.
+- When proactive behavior is needed, use structured prompt markers (for example `ix:proactive-mode:v1` with `enabled: true|false`) instead of lexical intent detection.
 
 **Testing**
 - Run targeted `dotnet build` or tests if a change touches runtime behavior.

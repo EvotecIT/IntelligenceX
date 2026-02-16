@@ -34,6 +34,7 @@
     ensureCustomSelect("optLocalTransport");
     ensureCustomSelect("optLocalModelSelect");
     ensureCustomSelect("optAutonomyParallel");
+    ensureCustomSelect("optAutonomyPlanReview");
     ensureCustomSelect("optAutonomyWeightedRouting");
 
     renderPolicy();

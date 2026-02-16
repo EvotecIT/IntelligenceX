@@ -252,4 +252,19 @@ public sealed record ChatRequestOptions {
     /// Null/0 means service-selected default.
     /// </summary>
     public int? MaxCandidateTools { get; init; }
+    /// <summary>
+    /// Optional override for the deliberate runtime loop (<c>plan -> execute -> review</c>).
+    /// Null means service default.
+    /// </summary>
+    public bool? PlanExecuteReviewLoop { get; init; }
+    /// <summary>
+    /// Optional cap for response-quality review passes per turn.
+    /// Null/0 means service-selected default.
+    /// </summary>
+    public int? MaxReviewPasses { get; init; }
+    /// <summary>
+    /// Optional heartbeat interval for model phases in seconds.
+    /// Null means service-selected default. 0 disables model-phase heartbeats.
+    /// </summary>
+    public int? ModelHeartbeatSeconds { get; init; }
 }

@@ -116,13 +116,16 @@ internal static class PromptMarkdownBuilder {
 
         if (proactiveExecutionEnabled.HasValue) {
             markdown
-                .Paragraph("[Proactive execution mode]");
+                .Paragraph("[Proactive execution mode]")
+                .Raw("ix:proactive-mode:v1");
             if (proactiveExecutionEnabled.Value) {
                 markdown
+                    .Raw("enabled: true")
                     .Bullet("Proactively run relevant read-only checks when they can discover issues without extra user prompts.")
                     .Bullet("Surface detected risks and propose concrete next fixes before waiting for more direction.");
             } else {
                 markdown
+                    .Raw("enabled: false")
                     .Bullet("Stay strictly scoped to the explicit user request.")
                     .Bullet("Do not expand into additional diagnostics unless the user asks.");
             }

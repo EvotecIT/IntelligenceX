@@ -286,6 +286,22 @@
               <option value="force_serial">Force serial</option>
             </select>
           </div>
+          <div class="options-row">
+            <label class="options-label-inline" for="optAutonomyPlanReview">Plan/Execute/Review loop</label>
+            <select id="optAutonomyPlanReview" class="options-select">
+              <option value="default">Service default</option>
+              <option value="on">Enabled</option>
+              <option value="off">Disabled</option>
+            </select>
+          </div>
+          <div class="options-row">
+            <label class="options-label-inline" for="optAutonomyMaxReviewPasses">Max review passes</label>
+            <input id="optAutonomyMaxReviewPasses" class="options-input options-input-sm" type="number" min="0" max="3" placeholder="Default" />
+          </div>
+          <div class="options-row">
+            <label class="options-label-inline" for="optAutonomyModelHeartbeat">Model heartbeat (seconds)</label>
+            <input id="optAutonomyModelHeartbeat" class="options-input options-input-sm" type="number" min="0" max="60" placeholder="Default" />
+          </div>
           <div class="options-row options-row-inline">
             <label class="options-label-inline" for="optProactiveMode">Proactive execution mode</label>
             <input id="optProactiveMode" class="options-toggle" type="checkbox" />

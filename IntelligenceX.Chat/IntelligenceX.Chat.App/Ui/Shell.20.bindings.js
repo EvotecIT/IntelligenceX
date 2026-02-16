@@ -463,7 +463,10 @@
       turnTimeoutSeconds: (byId("optAutonomyTurnTimeout").value || "").trim(),
       toolTimeoutSeconds: (byId("optAutonomyToolTimeout").value || "").trim(),
       weightedToolRouting: (byId("optAutonomyWeightedRouting").value || "default").trim(),
-      maxCandidateTools: (byId("optAutonomyMaxCandidates").value || "").trim()
+      maxCandidateTools: (byId("optAutonomyMaxCandidates").value || "").trim(),
+      planExecuteReviewLoop: (byId("optAutonomyPlanReview").value || "default").trim(),
+      maxReviewPasses: (byId("optAutonomyMaxReviewPasses").value || "").trim(),
+      modelHeartbeatSeconds: (byId("optAutonomyModelHeartbeat").value || "").trim()
     });
   }
 
@@ -473,6 +476,9 @@
   byId("optAutonomyParallel").addEventListener("change", postAutonomySettings);
   byId("optAutonomyWeightedRouting").addEventListener("change", postAutonomySettings);
   byId("optAutonomyMaxCandidates").addEventListener("change", postAutonomySettings);
+  byId("optAutonomyPlanReview").addEventListener("change", postAutonomySettings);
+  byId("optAutonomyMaxReviewPasses").addEventListener("change", postAutonomySettings);
+  byId("optAutonomyModelHeartbeat").addEventListener("change", postAutonomySettings);
   var proactiveModeToggle = byId("optProactiveMode");
   if (proactiveModeToggle) {
     proactiveModeToggle.addEventListener("change", function(e) {
