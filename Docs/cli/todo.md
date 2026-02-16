@@ -148,6 +148,7 @@ Behavior:
 - `IX Suggested Decision` is populated automatically (`accept`, `defer`, `reject`, `merge-candidate`) from combined triage + vision signals.
 - `Maintainer Decision` remains human-owned for final triage decisions.
 - Unknown categories/tags are normalized into dynamic labels (for example `ML Ops` -> `ix/category:ml-ops`, `Release Candidate` -> `ix/tag:release-candidate`) and are auto-created when `--apply-labels --ensure-labels` is used.
+- Category/tag labels are confidence-gated for reliability: category labels require `categoryConfidence >= 0.62` and tag labels require `tagConfidences[tag] >= 0.60` when those confidence fields are present in triage output.
 - `--apply-labels` performs managed IX label reconciliation: stale `ix/*` labels for managed families are removed while non-IX maintainer labels are preserved.
 - Issues also receive match taxonomy labels when PR->issue linking signals exist (`ix/match:linked-pr` or `ix/match:needs-review-pr`).
 - Match-related project fields (`Matched Issue*`, `Related Issues`, `Matched Pull Request*`, `Related Pull Requests`) are cleared when no longer present in current triage outputs to prevent stale project metadata.

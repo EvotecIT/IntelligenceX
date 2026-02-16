@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 
 namespace IntelligenceX.Tests;
@@ -134,6 +135,43 @@ internal static partial class Program {
         AssertEqual("cluster-1", issue.DuplicateCluster, "duplicate cluster preserved");
         AssertEqual("https://github.com/EvotecIT/IntelligenceX/pull/10", issue.CanonicalItem, "issue canonical resolved");
         AssertEqual(true, string.IsNullOrWhiteSpace(issue.SuggestedDecision), "issues do not get automated decision");
+    }
+
+    private static void TestProjectSyncBuildEntriesParsesCategoryAndTagConfidences() {
+        const string triageJson = """
+{
+  "items": [
+    {
+      "id": "pr#410",
+      "kind": "pull_request",
+      "number": 410,
+      "url": "https://github.com/EvotecIT/IntelligenceX/pull/410",
+      "category": "security",
+      "categoryConfidence": 0.83,
+      "tags": [ "security", "api" ],
+      "tagConfidences": {
+        "security": 0.91,
+        "api": 0.57
+      }
+    }
+  ]
+}
+""";
+
+        using var triageDoc = System.Text.Json.JsonDocument.Parse(triageJson);
+        var entries = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildEntriesFromDocuments(
+            triageDoc.RootElement,
+            null,
+            100);
+
+        AssertEqual(1, entries.Count, "entries count");
+        var entry = entries[0];
+        AssertEqual(true, entry.CategoryConfidence.HasValue, "category confidence parsed");
+        AssertEqual(0.83, entry.CategoryConfidence!.Value, "category confidence value");
+        AssertEqual(true, entry.TagConfidences is not null, "tag confidence map parsed");
+        AssertEqual(true, entry.TagConfidences!.ContainsKey("security"), "security tag confidence key");
+        AssertEqual(0.91, entry.TagConfidences["security"], "security tag confidence value");
+        AssertEqual(0.57, entry.TagConfidences["api"], "api tag confidence value");
     }
 
     private static void TestProjectSyncBuildEntriesSuggestsMergeCandidateForBestReadyPr() {
@@ -281,6 +319,33 @@ internal static partial class Program {
         AssertEqual(true, labels.Contains("ix/category:ml-ops", StringComparer.OrdinalIgnoreCase), "dynamic category label");
         AssertEqual(true, labels.Contains("ix/tag:release-candidate", StringComparer.OrdinalIgnoreCase), "dynamic tag label");
         AssertEqual(true, labels.Contains("ix/tag:docs", StringComparer.OrdinalIgnoreCase), "known normalized alias tag label");
+    }
+
+    private static void TestProjectSyncBuildLabelsSkipsLowConfidenceCategoryAndTags() {
+        var entry = new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+            Number: 89,
+            Url: "https://github.com/EvotecIT/IntelligenceX/pull/89",
+            Kind: "pull_request",
+            TriageScore: 72.0,
+            DuplicateCluster: null,
+            CanonicalItem: null,
+            Category: "security",
+            Tags: new[] { "security", "api" },
+            MatchedIssueUrl: null,
+            MatchedIssueConfidence: null,
+            VisionFit: null,
+            VisionConfidence: null,
+            CategoryConfidence: 0.58,
+            TagConfidences: new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase) {
+                ["security"] = 0.55,
+                ["api"] = 0.71
+            }
+        );
+
+        var labels = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildLabelsForEntry(entry);
+        AssertEqual(false, labels.Contains("ix/category:security", StringComparer.OrdinalIgnoreCase), "low confidence category label skipped");
+        AssertEqual(false, labels.Contains("ix/tag:security", StringComparer.OrdinalIgnoreCase), "low confidence tag label skipped");
+        AssertEqual(true, labels.Contains("ix/tag:api", StringComparer.OrdinalIgnoreCase), "high confidence tag label kept");
     }
 
     private static void TestProjectSyncBuildLabelsUsesNeedsReviewForLowConfidenceIssueMatch() {

@@ -249,5 +249,43 @@ internal static partial class Program {
         AssertEqual("security", category, "security category");
         AssertEqual(true, tags.Contains("security", StringComparer.OrdinalIgnoreCase), "security tag");
     }
+
+    private static void TestTriageIndexInferCategoryAndTagsWithConfidenceUsesEvidenceStrength() {
+        var now = DateTimeOffset.UtcNow;
+        var strongEvidenceItem = new IntelligenceX.Cli.Todo.TriageIndexRunner.TriageIndexItem(
+            "pr#99",
+            "pull_request",
+            99,
+            "Security hardening for auth flow",
+            "https://example/pr/99",
+            now,
+            new[] { "security", "authentication" },
+            IntelligenceX.Cli.Todo.TriageIndexRunner.NormalizeText("Security hardening for auth flow"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Security hardening for auth flow"),
+            IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Fix auth token security checks and API validation"),
+            new IntelligenceX.Cli.Todo.TriageIndexRunner.PullRequestSignals(false, "MERGEABLE", "APPROVED", "SUCCESS", 4, 24, 5, 1, 1, "dev"),
+            null
+        );
+
+        var weakEvidenceItem = strongEvidenceItem with {
+            Id = "pr#100",
+            Number = 100,
+            Title = "Add helper utility",
+            Labels = Array.Empty<string>(),
+            NormalizedTitle = IntelligenceX.Cli.Todo.TriageIndexRunner.NormalizeText("Add helper utility"),
+            TitleTokens = IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("Add helper utility"),
+            ContextTokens = IntelligenceX.Cli.Todo.TriageIndexRunner.Tokenize("utility helper support")
+        };
+
+        var strongInference = IntelligenceX.Cli.Todo.TriageIndexRunner.InferCategoryAndTagsWithConfidence(strongEvidenceItem);
+        var weakInference = IntelligenceX.Cli.Todo.TriageIndexRunner.InferCategoryAndTagsWithConfidence(weakEvidenceItem);
+
+        AssertEqual("security", strongInference.Category, "strong inference category");
+        AssertEqual(true, strongInference.CategoryConfidence >= 0.80, "strong category confidence");
+        AssertEqual(true, strongInference.TagConfidences.TryGetValue("security", out var securityConfidence) && securityConfidence >= 0.75,
+            "strong security tag confidence");
+        AssertEqual("feature", weakInference.Category, "weak inference fallback category");
+        AssertEqual(true, weakInference.CategoryConfidence < 0.62, "weak category confidence below labeling threshold");
+    }
 #endif
 }
