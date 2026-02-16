@@ -255,9 +255,16 @@ public sealed partial class MainWindow : Window {
         var normalizedReasonHint = (reasonHint ?? string.Empty).Trim();
 
         var scanned = 0;
+        var skippedCurrentAssistant = false;
         for (var i = conversation.Messages.Count - 1; i >= 0; i--) {
             var entry = conversation.Messages[i];
             if (!string.Equals(entry.Role, "Assistant", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            // Skip the current turn's assistant slot (which may already contain streamed draft text).
+            if (!skippedCurrentAssistant) {
+                skippedCurrentAssistant = true;
                 continue;
             }
 
