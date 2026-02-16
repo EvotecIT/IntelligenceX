@@ -148,11 +148,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task PublishSessionStateAsync() {
-        try {
-            await QueueUiPublishAsync(requestSessionState: true, requestOptionsState: false).ConfigureAwait(false);
-        } catch (OperationCanceledException) {
-            // Caller-facing publish APIs are best-effort and non-throwing on queue cancellation.
-        }
+        await QueueUiPublishAsync(requestSessionState: true, requestOptionsState: false).ConfigureAwait(false);
     }
 
     private async Task PublishSessionStateCoreAsync() {
@@ -227,11 +223,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task PublishOptionsStateAsync() {
-        try {
-            await QueueUiPublishAsync(requestSessionState: false, requestOptionsState: true).ConfigureAwait(false);
-        } catch (OperationCanceledException) {
-            // Caller-facing publish APIs are best-effort and non-throwing on queue cancellation.
-        }
+        await QueueUiPublishAsync(requestSessionState: false, requestOptionsState: true).ConfigureAwait(false);
     }
 
     private async Task PublishOptionsStateCoreAsync() {
@@ -318,10 +310,6 @@ public sealed partial class MainWindow : Window {
     }
 
     private Task QueueUiPublishAsync(bool requestSessionState, bool requestOptionsState) {
-        if (_shutdownRequested) {
-            return Task.CompletedTask;
-        }
-
         if (!requestSessionState && !requestOptionsState) {
             return Task.CompletedTask;
         }
@@ -361,11 +349,22 @@ public sealed partial class MainWindow : Window {
             _ = Task.Run(() => ProcessUiPublishQueueAsync(pumpToken));
         }
 
-        if (requestSessionState && requestOptionsState) {
-            return Task.WhenAll(sessionTask, optionsTask);
-        }
+        var queuedTask = requestSessionState && requestOptionsState
+            ? Task.WhenAll(sessionTask, optionsTask)
+            : requestSessionState
+                ? sessionTask
+                : optionsTask;
 
-        return requestSessionState ? sessionTask : optionsTask;
+        // Public publish calls are best-effort and must not surface queue cancellation races.
+        return CompleteUiPublishBestEffortAsync(queuedTask);
+    }
+
+    private static async Task CompleteUiPublishBestEffortAsync(Task publishTask) {
+        try {
+            await publishTask.ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            // Queue cancellation during shutdown is expected and intentionally non-fatal.
+        }
     }
 
     private async Task ProcessUiPublishQueueAsync(CancellationToken cancellationToken) {
