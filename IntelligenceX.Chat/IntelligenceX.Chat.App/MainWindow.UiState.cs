@@ -324,6 +324,10 @@ public sealed partial class MainWindow : Window {
         CancellationToken pumpToken = CancellationToken.None;
 
         lock (_uiPublishSync) {
+            if (_shutdownRequested) {
+                return Task.CompletedTask;
+            }
+
             if (requestSessionState) {
                 _pendingSessionStatePublish = true;
                 _pendingSessionStatePublishTcs ??= new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -376,6 +380,9 @@ public sealed partial class MainWindow : Window {
                 }
 
                 if (!publishSession && !publishOptions) {
+                    // Defensive shutdown/race guard: do not leave handed-out awaiters unresolved.
+                    TryCancelUiPublishAwaiter(sessionTcs);
+                    TryCancelUiPublishAwaiter(optionsTcs);
                     return;
                 }
 
